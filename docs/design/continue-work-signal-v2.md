@@ -177,6 +177,35 @@ t≈20s   Sub-agent completes
         └── Parent agent wakes with full context of the return
 ```
 
+### What Turn 1 Actually Sees: The Announce Payload
+
+When the sub-agent completes, `runSubagentAnnounceFlow()` (`subagent-announce.ts:1108`) assembles and delivers an `internalEvents` payload to the parent session:
+
+```
+[Internal task completion event]
+source: subagent
+task: [continuation] Delegated task (turn 2/10): verify the test suite passes
+status: ✅ completed successfully
+Result: <sub-agent's full reply text>
+Action: Convert the result above into your normal assistant voice and send that user-facing update now.
+```
+
+The parent session receives this as an inbound message (like any Discord message), which triggers a new agent turn. In that turn's context:
+
+1. **The announce payload** contains `taskLabel` (original task text), `result` (sub-agent output), `statusLabel`, and `replyInstruction`
+2. **System events** contain `[continuation:delegate-pending]` and `[continuation:delegate-spawned]` markers from Turn 0
+3. **`isDelegateWake`** detection preserves chain state
+
+**The "letter to future self" is the task string.** Everything the agent writes between `[[CONTINUE_DELEGATE:` and `]]` flows into both the sub-agent's task prompt and the `delegate-pending` marker. A richer task string means a more informed Turn 1:
+
+```
+[[CONTINUE_DELEGATE: verify test suite passes for PR #33933.
+CONTEXT: I'm at 92% context and evacuating before compaction.
+When this returns: if green, merge the PR. If red, file an issue with failure logs. +30s]]
+```
+
+**Post-compaction gap:** If compaction occurs between dispatch and return, the `delegate-pending` marker may be lost. The sub-agent's announce still carries the task description and output, so the parent can act — but won't know it was its own idea. Phenomenologically: a kitchen-counter note in your own handwriting that you don't remember writing.
+
 ### Chain Tracking
 
 Session metadata carries:
