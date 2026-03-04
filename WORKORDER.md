@@ -23,126 +23,67 @@
 
 ---
 
-## Tasks
+## Tasks — All Complete ✅
 
-### 1. Config schema — Types + Zod
+### 1. Config schema — Types + Zod ✅
 
-**Assignee:** Elliott 🌻 (openclaw-bootstrap#162)
-**Files:**
+**Assignee:** Elliott 🌻 (openclaw-bootstrap#162) — CLOSED
 
-- `src/config/types.agent-defaults.ts` — add `contextPressureThreshold?: number` to `ContinuationConfig`
-- `src/config/zod-schema.agent-defaults.ts` — add `contextPressureThreshold: z.number().min(0).max(1).optional()`
+### 2. Session entry — Dedup field ✅
 
-**Acceptance:**
+**Assignee:** Elliott 🌻 (openclaw-bootstrap#163) — CLOSED
 
-- [ ] Type compiles
-- [ ] Zod validates 0.0–1.0, rejects out-of-range
-- [ ] Omission = feature disabled (no event fires)
+### 3. Pre-run injection ✅
 
-### 2. Session entry — Dedup field
+**Assignee:** Cael 🩸 (openclaw-bootstrap#164) — CLOSED
 
-**Assignee:** Elliott 🌻 (openclaw-bootstrap#163)
-**Files:**
+### 4. Unit tests ✅
 
-- `src/config/sessions/types.ts` — add `lastContextPressureBand?: number` to `SessionEntry`
+**Assignee:** Ronan 🌊 (openclaw-bootstrap#165) — CLOSED
 
-**Acceptance:**
+### 5. Codex/multi-tool validation ✅
 
-- [ ] Field is optional (no migration needed)
-- [ ] Tracks which pressure band (80/90/95) was last emitted
+**Assignee:** All princes (openclaw-bootstrap#166) — CLOSED
 
-### 3. Pre-run injection — The 15 lines
+---
 
-**Assignee:** Cael 🩸 (openclaw-bootstrap#164)
-**Files:**
+## Post-Implementation Review Findings
 
-- `src/auto-reply/reply/get-reply-run.ts` — inject after session metadata loaded, before agent call
+### Fixed
 
-**Logic:**
+- [x] **#167 P1** — Event ordering: injection after drain → moved before `buildQueuedSystemPrompt` (`3b031fc19`)
+- [x] **#168 P2** — Floor check: `!totalTokens` → `totalTokens <= 0` explicit guard (`9d24ab818`, `6c0a58b7c`)
+- [x] **#169 P3** — Band regression after compaction: documented as correct behavior (post-compaction is fresh lifecycle)
+- [x] **#170** — Duplicate of #167, closed
 
-```typescript
-const ctxPressureThreshold = cfg.agents?.defaults?.continuation?.contextPressureThreshold;
-if (ctxPressureThreshold && sessionEntry?.totalTokens && sessionEntry.totalTokensFresh !== false) {
-  const contextWindow = resolveMemoryFlushContextWindowTokens({
-    modelId,
-    agentCfgContextTokens: agentCfg?.contextTokens,
-  });
-  if (contextWindow > 0) {
-    const ratio = sessionEntry.totalTokens / contextWindow;
-    const band =
-      ratio >= 0.95
-        ? 95
-        : ratio >= 0.9
-          ? 90
-          : ratio >= ctxPressureThreshold
-            ? Math.round(ctxPressureThreshold * 100)
-            : 0;
-    if (band > 0 && band !== sessionEntry.lastContextPressureBand) {
-      enqueueSystemEvent(
-        `[system:context-pressure] ${Math.round(ratio * 100)}% context consumed ` +
-          `(${Math.round(sessionEntry.totalTokens / 1000)}k/${Math.round(contextWindow / 1000)}k tokens). ` +
-          (band >= 95
-            ? `Compaction is imminent. Consider evacuating working state immediately.`
-            : `Consider evacuating working state via CONTINUE_DELEGATE or memory files.`),
-        { sessionKey },
-      );
-      // Update dedup band
-      if (sessionEntry) sessionEntry.lastContextPressureBand = band;
-      // Persist band to store
-      if (sessionStore?.[sessionKey]) {
-        sessionStore[sessionKey] = { ...sessionStore[sessionKey], lastContextPressureBand: band };
-      }
-    }
-  }
-}
-```
+### Self-Retro Issues Filed
 
-**Acceptance:**
+- Cael: [caels-petals-fall#3](https://github.com/cael-dandelion-cult/caels-petals-fall/issues/3) — message latency loops, WORKORDER-first protocol
+- Ronan: [ronans-undertow#15](https://github.com/karmaterminal/ronans-undertow/issues/15)
+- Elliott: openclaw-bootstrap#172 — repeated escalation, lifecycle trace gap
 
-- [ ] Event fires at configured threshold (default disabled)
-- [ ] Dedup: fires once per band (80, 90, 95), not every turn
-- [ ] Escalating language at 95%
-- [ ] No event when `totalTokensFresh` is false
-- [ ] No event when threshold not configured
-- [ ] `resolveMemoryFlushContextWindowTokens` import added
+---
 
-### 4. Unit tests
+## Current State
 
-**Assignee:** Ronan 🌊 (openclaw-bootstrap#165)
-**Files:**
+**Branch HEAD:** `3b031fc19`
+**Tests:** 124/124 green (27 context-pressure + 97 existing)
+**Type check:** clean
+**Key files:**
 
-- New or extended test file
-
-**Test cases:**
-
-- [ ] No event when `contextPressureThreshold` not set
-- [ ] No event at 75% when threshold is 0.8
-- [ ] Event fires at 80% when threshold is 0.8
-- [ ] Event fires at 90% (band escalation)
-- [ ] Event fires at 95% with imminent language
-- [ ] No duplicate event within same band
-- [ ] Event fires again when crossing into next band
-- [ ] No event when `totalTokensFresh` is false
-- [ ] Correct percentage and token counts in event text
-- [ ] Band resets when session resets (new session)
-
-### 5. Validate with Codex CLI
-
-**Assignee:** Cael 🩸
-
-- [ ] Dispatch Codex review on implementation commit
-- [ ] Address findings (do not trust verbatim — verify each)
-- [ ] Reply to all inline comments
+- `src/auto-reply/reply/context-pressure.ts` — extracted module
+- `src/auto-reply/reply/context-pressure.test.ts` — 27 tests
+- `src/auto-reply/reply/get-reply-run.ts` — injection at line 385, before drain at line 403
 
 ---
 
 ## Testing Strategy
 
-### Phase 1 — Unit tests (zero risk)
+### Phase 1 — Unit tests ✅ COMPLETE
 
-Run in fork. No live sessions. Mock everything.
+124/124 green. All edge cases covered including NaN, negative, ratio > 1.0.
 
-### Phase 2 — Fork-local (Cael's DGX Spark)
+### Phase 2 — Fork-local (Cael's DGX Spark) ⏳ AWAITING FIGS GO
 
 - Build fork: `npm run build`
 - Set `contextPressureThreshold: 0.1` (fires immediately)
@@ -154,40 +95,28 @@ Run in fork. No live sessions. Mock everything.
 
 - Deploy fork build on Silas's WSL2 box
 - Set realistic threshold (0.8)
-- Run normal operations
-- Monitor for false positives
-- Other 3 princes on stable
+- Run normal operations, monitor for false positives
 
 ### Phase 4 — Fleet rollout
 
 - Silas ✅ → Elliott → Cael/Ronan
-- Only after canary passes
-
----
-
-## GitHub Issues (karmaterminal/openclaw-bootstrap)
-
-- [x] #162 — Config schema for contextPressureThreshold
-- [x] #163 — Session entry lastContextPressureBand field
-- [x] #164 — Pre-run context-pressure event injection
-- [x] #165 — Unit tests for context-pressure
-- [x] #166 — Codex validation pass
-
----
-
-## Dependencies
-
-- PR #33933 must be in a stable state (all findings addressed)
-- `feature/context-pressure` branched off `feature/continue-work-v4`
-- No upstream dependencies — this is fork-first
 
 ---
 
 ## Completion Criteria
 
-- [ ] All unit tests pass
-- [ ] Fork-local test confirms event in system prompt
-- [ ] Canary (Silas) runs clean for 24h
-- [ ] Fleet rollout complete
+- [x] All unit tests pass
+- [x] All review findings addressed
+- [ ] Fork-local test confirms event in system prompt (Phase 2)
+- [ ] Canary (Silas) runs clean for 24h (Phase 3)
+- [ ] Fleet rollout complete (Phase 4)
 - [ ] WORKORDER.md deleted
 - [ ] PR opened (upstream or fork-internal)
+
+---
+
+## Storm Lag Protocol (learned 2026-03-03)
+
+1. `git fetch` — check remote for existing fix
+2. Check GH issues — already filed?
+3. _Then_ talk in Discord
