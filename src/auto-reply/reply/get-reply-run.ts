@@ -38,9 +38,11 @@ import { cancelContinuationTimer } from "./agent-runner.js";
 import { runReplyAgent } from "./agent-runner.js";
 import { applySessionHints } from "./body.js";
 import type { buildCommandContext } from "./commands.js";
+import { checkContextPressure } from "./context-pressure.js";
 import type { InlineDirectives } from "./directive-handling.js";
 import { buildGroupChatContext, buildGroupIntro } from "./groups.js";
 import { buildInboundMetaSystemPrompt, buildInboundUserContextPrefix } from "./inbound-meta.js";
+import { resolveMemoryFlushContextWindowTokens } from "./memory-flush.js";
 import type { createModelSelectionState } from "./model-selection.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { resolveQueueSettings } from "./queue.js";
@@ -562,6 +564,30 @@ export async function runPreparedReply(
       ...(isReasoningTagProvider(provider) ? { enforceFinalTag: true } : {}),
     },
   };
+
+  // --- Context-pressure awareness: inject [system:context-pressure] pre-run ---
+  if (sessionEntry && sessionKey) {
+    const contextWindow = resolveMemoryFlushContextWindowTokens({
+      modelId: model,
+      agentCfgContextTokens: agentCfg?.contextTokens,
+    });
+    const { fired, band } = checkContextPressure({
+      sessionEntry,
+      sessionKey,
+      contextPressureThreshold: cfg.agents?.defaults?.continuation?.contextPressureThreshold,
+      contextWindowTokens: contextWindow,
+    });
+    if (fired && sessionStore?.[sessionKey]) {
+      sessionStore[sessionKey] = { ...sessionStore[sessionKey], lastContextPressureBand: band };
+      if (storePath) {
+        await updateSessionStore(storePath, (store) => {
+          if (store[sessionKey]) {
+            store[sessionKey] = { ...store[sessionKey], lastContextPressureBand: band };
+          }
+        });
+      }
+    }
+  }
 
   return runReplyAgent({
     commandBody: prefixedCommandBody,
