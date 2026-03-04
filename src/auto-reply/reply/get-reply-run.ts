@@ -382,10 +382,15 @@ export async function runPreparedReply(
       modelId: model,
       agentCfgContextTokens: agentCfg?.contextTokens,
     });
+    const cpThreshold = cfg.agents?.defaults?.continuation?.contextPressureThreshold;
+    // DEBUG: canary telemetry — remove after Phase 3
+    console.log(
+      `[context-pressure] sessionKey=${sessionKey} totalTokens=${sessionEntry.totalTokens} totalTokensFresh=${sessionEntry.totalTokensFresh} contextWindow=${contextWindow} threshold=${cpThreshold} lastBand=${sessionEntry.lastContextPressureBand}`,
+    );
     const { fired, band } = checkContextPressure({
       sessionEntry,
       sessionKey,
-      contextPressureThreshold: cfg.agents?.defaults?.continuation?.contextPressureThreshold,
+      contextPressureThreshold: cpThreshold,
       contextWindowTokens: contextWindow,
     });
     if (fired && sessionStore?.[sessionKey]) {
