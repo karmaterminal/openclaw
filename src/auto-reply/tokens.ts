@@ -95,7 +95,7 @@ export function isSilentReplyPrefixText(
 
 export type ContinuationSignal =
   | { kind: "work"; delayMs?: number }
-  | { kind: "delegate"; task: string; delayMs?: number; silent?: boolean };
+  | { kind: "delegate"; task: string; delayMs?: number; silent?: boolean; silentWake?: boolean };
 
 /**
  * Checks if the agent response ends with a continuation signal.
@@ -131,12 +131,20 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
   );
   if (delegateMatch) {
     let taskBody = delegateMatch[1].trim();
-    // Parse optional | silent suffix (e.g. "task +30s | silent")
+    // Parse optional | silent-wake or | silent suffix
+    // Check silent-wake FIRST to avoid partial match on silent
     let silent: boolean | undefined;
-    const silentSuffixMatch = taskBody.match(/\s*\|\s*silent\s*$/i);
-    if (silentSuffixMatch) {
-      silent = true;
-      taskBody = taskBody.slice(0, -silentSuffixMatch[0].length).trimEnd();
+    let silentWake: boolean | undefined;
+    const silentWakeSuffixMatch = taskBody.match(/\s*\|\s*silent[- ]wake\s*$/i);
+    if (silentWakeSuffixMatch) {
+      silentWake = true;
+      taskBody = taskBody.slice(0, -silentWakeSuffixMatch[0].length).trimEnd();
+    } else {
+      const silentSuffixMatch = taskBody.match(/\s*\|\s*silent\s*$/i);
+      if (silentSuffixMatch) {
+        silent = true;
+        taskBody = taskBody.slice(0, -silentSuffixMatch[0].length).trimEnd();
+      }
     }
     // Parse optional +Ns delay suffix (e.g. "+30s", "+5s")
     let delayMs: number | undefined;
@@ -146,7 +154,7 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
       taskBody = taskBody.slice(0, -delayMatch[0].length).trimEnd();
     }
     if (taskBody) {
-      return { kind: "delegate", task: taskBody, delayMs, silent };
+      return { kind: "delegate", task: taskBody, delayMs, silent, silentWake };
     }
   }
 
