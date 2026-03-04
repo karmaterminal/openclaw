@@ -60,10 +60,10 @@ export function checkContextPressure(
 
   const urgency =
     band >= 95
-      ? `Compaction is imminent. Evacuate working state now via CONTINUE_DELEGATE or memory files.`
+      ? `⚠️ COMPACTION IMMINENT — evacuate working state NOW. Use CONTINUE_DELEGATE to dispatch shards or write critical state to memory files immediately. This is your last chance before context resets.`
       : band >= 90
-        ? `Context window nearly full. Strongly consider evacuating working state.`
-        : `Consider evacuating working state via CONTINUE_DELEGATE or memory files.`;
+        ? `⚠️ CONTEXT WINDOW NEARLY FULL — strongly consider evacuating working state via CONTINUE_DELEGATE or memory files. Compaction will occur soon.`
+        : `Context pressure rising. Consider evacuating working state via CONTINUE_DELEGATE or memory files.`;
 
   enqueueSystemEvent(
     `[system:context-pressure] ${pct}% of context window consumed (${tokensK}k / ${windowK}k tokens). ${urgency}`,
