@@ -94,7 +94,7 @@ describe("Phase 2 integration: context-pressure → event queue → drain orderi
       contextWindowTokens: 10000,
     });
     events = drainSystemEventEntries(TEST_SESSION_KEY);
-    const imminent = events.find((e) => e.text?.includes("imminent"));
+    const imminent = events.find((e) => e.text?.toLowerCase().includes("imminent"));
     expect(imminent).toBeDefined();
   });
 
