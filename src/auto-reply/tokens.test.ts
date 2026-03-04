@@ -167,6 +167,42 @@ describe("parseContinuationSignal", () => {
     expect(result).toEqual({ kind: "delegate", task: "task" });
   });
 
+  // --- [[CONTINUE_DELEGATE: task +Ns]] (timed dispatch) ---
+
+  it("parses [[CONTINUE_DELEGATE: task +5s]] with 5-second delay", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: run tests +5s]]");
+    expect(result).toEqual({ kind: "delegate", task: "run tests", delayMs: 5000 });
+  });
+
+  it("parses [[CONTINUE_DELEGATE: task +30s]] with 30-second delay", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: review PR #42 +30s]]");
+    expect(result).toEqual({ kind: "delegate", task: "review PR #42", delayMs: 30000 });
+  });
+
+  it("parses [[CONTINUE_DELEGATE: multiline task +10s]] with delay", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: first do X\nthen do Y +10s]]");
+    expect(result).toEqual({ kind: "delegate", task: "first do X\nthen do Y", delayMs: 10000 });
+  });
+
+  it("parses [[CONTINUE_DELEGATE: task]] without delay as undefined delayMs", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: run tests]]");
+    expect(result).toEqual({ kind: "delegate", task: "run tests", delayMs: undefined });
+  });
+
+  it("does not treat +Ns mid-task as a delay", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: wait +5s then do thing]]");
+    expect(result).toEqual({
+      kind: "delegate",
+      task: "wait +5s then do thing",
+      delayMs: undefined,
+    });
+  });
+
+  it("handles +0s as zero delay", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: immediate +0s]]");
+    expect(result).toEqual({ kind: "delegate", task: "immediate", delayMs: 0 });
+  });
+
   // --- Precedence ---
 
   it("prefers [[CONTINUE_DELEGATE:]] over CONTINUE_WORK when both present", () => {
@@ -222,6 +258,18 @@ describe("stripContinuationSignal", () => {
     expect(result.signal).toEqual({
       kind: "delegate",
       task: "check CI\nreview the PR\nrun lint",
+    });
+  });
+
+  it("strips [[CONTINUE_DELEGATE:]] with timed delay suffix", () => {
+    const result = stripContinuationSignal(
+      "Scheduling review.\n[[CONTINUE_DELEGATE: review PR #42 +30s]]",
+    );
+    expect(result.text).toBe("Scheduling review.");
+    expect(result.signal).toEqual({
+      kind: "delegate",
+      task: "review PR #42",
+      delayMs: 30000,
     });
   });
 
