@@ -1,6 +1,6 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** ✅ Implemented — gateway hook wired, 97 tests (50 unit + 38 integration + 9 media-only)  
+**Status:** ✅ Implemented — gateway hook wired, 129 tests (50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration)  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#33933](https://github.com/openclaw/openclaw/pull/33933)  
@@ -110,13 +110,15 @@ Safety enforcement happens at the scheduling layer: chain length, cost cap, and 
 
 ### Test Coverage
 
-97 tests covering:
+129 tests covering:
 
 - Token parsing and stripping (50 tests in `src/auto-reply/tokens.test.ts`)
 - Gateway integration: continuation scheduling, timer cancellation, delay capping, streaming false-positive prevention, silent continuation suppression (38 tests in `agent-runner.misc.runreplyagent.test.ts`)
 - Media-only edge cases: continuation timer cancellation in media-only paths (9 tests in `get-reply-run.media-only.test.ts`)
 - DELEGATE mock tests: accepted spawn with delegate-pending marker, failed spawn with fallback, spawn error with graceful degradation
 - Edge cases: empty delegate task, empty/whitespace context, per-session generation counter isolation, delegate wake chain preservation
+- Context-pressure awareness: threshold/band logic, dedup, guard completeness, event text, escalation language, edge cases (27 unit tests in `context-pressure.test.ts`)
+- Context-pressure integration: real event queue ordering (enqueue → peek → drain), band escalation through session lifecycle, threshold 0.1 live-fire (5 integration tests in `context-pressure.test.ts`)
 
 ## Temporal Sharding
 
@@ -238,7 +240,7 @@ These are not hypothetical. We run 4 agents in persistent sessions. These are th
 
 - [x] Design review
 - [x] Implementation (gateway hook wired)
-- [x] Tests (97 passing — 50 unit + 38 integration + 9 media-only, covering parsing, scheduling, cancellation, delegation, silent continuation, delegate wake, edge cases)
+- [x] Tests (129 passing — 50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration, covering parsing, scheduling, cancellation, delegation, silent continuation, delegate wake, edge cases, context-pressure awareness)
 - [x] Token parsing: `parseContinuationSignal()`, `stripContinuationSignal()` in `src/auto-reply/tokens.ts`
 - [x] Gateway hook: signal detection in `agent-runner.ts`, scheduling via `session-updates.ts`
 - [x] Chain tracking: session metadata for chain count and cost
