@@ -978,6 +978,7 @@ export function registerSubagentRun(params: {
   attachmentsDir?: string;
   attachmentsRootDir?: string;
   retainAttachmentsOnKeep?: boolean;
+  silentAnnounce?: boolean;
 }) {
   const now = Date.now();
   const cfg = loadConfig();
@@ -1008,6 +1009,7 @@ export function registerSubagentRun(params: {
     attachmentsDir: params.attachmentsDir,
     attachmentsRootDir: params.attachmentsRootDir,
     retainAttachmentsOnKeep: params.retainAttachmentsOnKeep,
+    silentAnnounce: params.silentAnnounce,
   });
   ensureListener();
   persistSubagentRuns();
