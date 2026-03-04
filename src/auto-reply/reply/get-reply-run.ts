@@ -401,7 +401,11 @@ export async function runPreparedReply(
       contextWindowTokens: contextWindow,
     });
     if (fired) {
-      cpLog.info("fired", { band, sessionKey });
+      if (band >= 90) {
+        cpLog.warn("fired", { band, sessionKey });
+      } else {
+        cpLog.info("fired", { band, sessionKey });
+      }
     }
     if (fired && sessionStore?.[sessionKey]) {
       sessionStore[sessionKey] = { ...sessionStore[sessionKey], lastContextPressureBand: band };
