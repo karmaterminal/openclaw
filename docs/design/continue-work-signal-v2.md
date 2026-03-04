@@ -276,6 +276,114 @@ Consider evacuating working state to memory files or delegating remaining work.
 
 The agent sees this event on its next turn — the same way it sees `[continuation:wake]` — and can _elect_ to act: write memory files, dispatch delegate liches carrying context fragments, or simply note the pressure and continue.
 
+### Context-Pressure Event Lifecycle (Production Telemetry)
+
+The following traces are from the first live canary test (March 4, 2026) on a persistent session with `contextPressureThreshold: 0.25` and a 200k context window.
+
+#### Band Escalation: Normal Climb
+
+```
+[10:27:44] tokens=189705 window=1000000 threshold=0.25 lastBand=25 → fired=false band=0
+[10:30:05] tokens=193267 window=1000000 threshold=0.25 lastBand=25 → fired=false band=0
+[10:30:21] tokens=193866 window=1000000 threshold=0.25 lastBand=25 → fired=false band=0
+```
+
+At 19% of a 1M window, no band threshold is crossed. `lastBand=25` from a prior fire — the dedup uses equality (`!==`), so band 0 doesn't match band 25 and would fire, but `band=0` means "below all thresholds" and is never emitted.
+
+#### First Fire: Band 95 (Compaction Imminent)
+
+```
+[10:30:49] tokens=194872 window=200000 threshold=0.25 lastBand=25 → fired=true band=95
+```
+
+Context window changed from 1M to 200k (operator config change). Token ratio jumped from 19% to **97%** — straight past bands 25 and 90 to band 95. The agent receives:
+
+```
+[system:context-pressure] 97% of context window consumed (195k / 200k tokens).
+Compaction is imminent. Evacuate working state now via CONTINUE_DELEGATE or memory files.
+```
+
+Three urgency tiers:
+
+- **Band 25** (configurable first threshold): `Consider evacuating working state via CONTINUE_DELEGATE or memory files.`
+- **Band 90**: `Context window nearly full. Strongly consider evacuating working state.`
+- **Band 95**: `Compaction is imminent. Evacuate working state now via CONTINUE_DELEGATE or memory files.`
+
+#### Post-Compaction Re-Fire: New Lifecycle
+
+```
+[10:33:38] tokens=59742 window=200000 threshold=0.25 lastBand=95 → fired=true band=25
+```
+
+After compaction, tokens dropped from 195k to 60k (30% of 200k). Band 25 fires because `25 !== 95` — the dedup uses **equality**, not less-than-or-equal. This is intentional: each compaction starts a new lifecycle. The agent _should_ know it's at 30% and climbing again, even though it already survived band 95 in the previous lifecycle.
+
+The agent receives a fresh advisory:
+
+```
+[system:context-pressure] 30% of context window consumed (60k / 200k tokens).
+Consider evacuating working state via CONTINUE_DELEGATE or memory files.
+```
+
+#### Window Restoration: Alarm Suppression
+
+```
+[10:34:17] tokens=62464 window=1000000 threshold=0.25 lastBand=25 → fired=false band=0
+[10:34:21] tokens=62171 window=1000000 threshold=0.25 lastBand=25 → fired=false band=0
+```
+
+Window restored to 1M. At 6% usage, no band threshold is crossed. The alarm goes quiet.
+
+#### Hot-Reload of Threshold
+
+```
+[10:39:29] tokens=71484 window=1000000 threshold=0.25 lastBand=25 → fired=false band=0
+[10:39:49] tokens=71484 window=1000000 threshold=0.14 lastBand=25 → fired=false band=0
+```
+
+Threshold hot-reloaded from 0.25 to 0.14 without gateway restart. The gateway detected the config change at `10:33:21`:
+
+```
+config change detected; evaluating reload
+  (agents.defaults.continuation.contextPressureThreshold)
+```
+
+At 7% of 1M, still below the new 14% threshold. No fire.
+
+#### Dedup Behavior Summary
+
+| Scenario                    | `band` | `lastBand` | `band !== lastBand` | Fires?                  |
+| --------------------------- | ------ | ---------- | ------------------- | ----------------------- |
+| Below all thresholds        | 0      | 0          | false               | No (band=0 never fires) |
+| First crossing at 25%       | 25     | 0          | true                | **Yes**                 |
+| Same band again             | 25     | 25         | false               | No (dedup)              |
+| Escalation to 90%           | 90     | 25         | true                | **Yes**                 |
+| Escalation to 95%           | 95     | 90         | true                | **Yes**                 |
+| Post-compaction drop to 30% | 25     | 95         | true                | **Yes** (new lifecycle) |
+| Same post-compaction band   | 25     | 25         | false               | No (dedup)              |
+
+The dedup is equality-based: the _same_ band never fires twice consecutively, but a _different_ band always fires. This means post-compaction re-fires at lower bands are correct — each compaction resets the lifecycle, and the agent gets fresh advisories as it climbs again.
+
+#### Event Injection Path
+
+```
+checkContextPressure()           ← called pre-run in get-reply-run.ts (~line 385)
+  → ratio >= threshold?          ← compute band from ratio
+  → band !== lastBand?           ← dedup check
+  → enqueueSystemEvent()         ← internal call (line 73 of context-pressure.ts)
+                                    queues to in-memory Map keyed by sessionKey
+
+buildQueuedSystemPrompt()        ← called same turn (~line 403)
+  → drainSystemEventEntries()    ← drains the queue for this sessionKey
+  → compactSystemEvent()         ← format for system prompt injection
+  → extraSystemPromptParts[]     ← injected into agent's system prompt
+
+Agent sees event as:
+  ## Runtime System Events (gateway-generated)
+  - [02:11:22] [system:context-pressure] 74% of context window consumed ...
+```
+
+The event is enqueued and drained on the **same turn** — the agent sees the advisory before generating its response. This is the "pre-run" injection that enables evacuation _this_ turn rather than discovering the pressure _next_ turn.
+
 ### The Lich Circuit
 
 With context-pressure visibility, the full survival pattern becomes:
