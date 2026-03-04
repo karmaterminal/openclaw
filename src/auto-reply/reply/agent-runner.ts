@@ -930,45 +930,64 @@ export async function runReplyAgent(params: {
 
             if (continuationSignal.kind === "delegate") {
               const delegateTask = continuationSignal.task;
+              const delegateDelayMs = continuationSignal.delayMs;
 
-              try {
-                const spawnResult = await spawnSubagentDirect(
-                  {
-                    task: `[continuation] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegateTask}`,
-                  },
-                  {
-                    agentSessionKey: sessionKey,
-                    agentChannel: followupRun.originatingChannel ?? undefined,
-                    agentAccountId: followupRun.originatingAccountId ?? undefined,
-                    agentTo: followupRun.originatingTo ?? undefined,
-                    agentThreadId: followupRun.originatingThreadId ?? undefined,
-                  },
-                );
-                if (spawnResult.status === "accepted") {
-                  // Marker event so get-reply-run can detect an in-flight
-                  // delegate and skip the chain-reset logic when the sub-agent
-                  // completion announcement arrives as a normal (non-heartbeat) message.
-                  enqueueSystemEvent(
-                    `[continuation:delegate-pending] Delegated turn ${nextChainCount}/${maxChainLength}: ${delegateTask}`,
-                    { sessionKey },
+              const doSpawn = async () => {
+                try {
+                  const spawnResult = await spawnSubagentDirect(
+                    {
+                      task: `[continuation] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegateTask}`,
+                    },
+                    {
+                      agentSessionKey: sessionKey,
+                      agentChannel: followupRun.originatingChannel ?? undefined,
+                      agentAccountId: followupRun.originatingAccountId ?? undefined,
+                      agentTo: followupRun.originatingTo ?? undefined,
+                      agentThreadId: followupRun.originatingThreadId ?? undefined,
+                    },
                   );
-                } else {
+                  if (spawnResult.status === "accepted") {
+                    enqueueSystemEvent(
+                      `[continuation:delegate-spawned] Spawned turn ${nextChainCount}/${maxChainLength}: ${delegateTask}`,
+                      { sessionKey },
+                    );
+                  } else {
+                    defaultRuntime.log(
+                      `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
+                    );
+                    enqueueSystemEvent(
+                      `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${delegateTask}`,
+                      { sessionKey },
+                    );
+                  }
+                } catch (err) {
                   defaultRuntime.log(
-                    `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
+                    `DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
                   );
                   enqueueSystemEvent(
-                    `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${delegateTask}`,
+                    `[continuation] DELEGATE spawn failed: ${String(err)}. Original task: ${delegateTask}`,
                     { sessionKey },
                   );
                 }
-              } catch (err) {
+              };
+
+              // Marker event fires immediately — parent session knows a delegate
+              // is pending regardless of timer delay.
+              enqueueSystemEvent(
+                `[continuation:delegate-pending] Delegated turn ${nextChainCount}/${maxChainLength}${delegateDelayMs ? ` (delay: ${delegateDelayMs / 1000}s)` : ""}: ${delegateTask}`,
+                { sessionKey },
+              );
+
+              if (delegateDelayMs && delegateDelayMs > 0) {
+                // Timed dispatch: spawn after delay. Timer does not survive
+                // gateway restart — acceptable for v1 (see #176 for durable timers).
+                const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
                 defaultRuntime.log(
-                  `DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
+                  `DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegateTask}`,
                 );
-                enqueueSystemEvent(
-                  `[continuation] DELEGATE spawn failed: ${String(err)}. Original task: ${delegateTask}`,
-                  { sessionKey },
-                );
+                setTimeout(() => void doSpawn(), clampedDelay);
+              } else {
+                await doSpawn();
               }
             } else {
               // WORK: schedule a continuation turn after delay

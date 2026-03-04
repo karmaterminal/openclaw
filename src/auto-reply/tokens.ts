@@ -95,7 +95,7 @@ export function isSilentReplyPrefixText(
 
 export type ContinuationSignal =
   | { kind: "work"; delayMs?: number }
-  | { kind: "delegate"; task: string };
+  | { kind: "delegate"; task: string; delayMs?: number };
 
 /**
  * Checks if the agent response ends with a continuation signal.
@@ -104,7 +104,11 @@ export type ContinuationSignal =
  * Formats:
  *   CONTINUE_WORK              → continue with default delay
  *   CONTINUE_WORK:30           → continue after 30 seconds
- *   [[CONTINUE_DELEGATE: task]] → spawn sub-agent with task (bracket syntax, multiline-safe)
+ *   [[CONTINUE_DELEGATE: task]]      → spawn sub-agent with task immediately
+ *   [[CONTINUE_DELEGATE: task +30s]] → spawn sub-agent after 30-second delay
+ *
+ * The `+Ns` suffix on DELEGATE specifies a timer offset before the sub-agent
+ * spawns (delegate-as-scheduler pattern). Timers do not survive gateway restarts.
  *
  * DELEGATE uses bracket syntax ([[...]]) following the repo convention for tokens
  * that carry body content (see reply_to, tts, line directives). Brackets naturally
@@ -126,9 +130,16 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
     /\[\[\s*CONTINUE_DELEGATE:\s*((?:(?!\]\])[\s\S])+?)\s*\]\]\s*$/,
   );
   if (delegateMatch) {
-    const task = delegateMatch[1].trim();
-    if (task) {
-      return { kind: "delegate", task };
+    let taskBody = delegateMatch[1].trim();
+    // Parse optional +Ns delay suffix (e.g. "+30s", "+5s")
+    let delayMs: number | undefined;
+    const delayMatch = taskBody.match(/\s+\+(\d+)s\s*$/);
+    if (delayMatch) {
+      delayMs = parseInt(delayMatch[1], 10) * 1000;
+      taskBody = taskBody.slice(0, -delayMatch[0].length).trimEnd();
+    }
+    if (taskBody) {
+      return { kind: "delegate", task: taskBody, delayMs };
     }
   }
 
