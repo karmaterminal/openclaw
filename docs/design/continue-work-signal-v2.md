@@ -280,6 +280,8 @@ The agent sees this event on its next turn — the same way it sees `[continuati
 
 The following traces are from the first live canary test (March 4, 2026) on a persistent session with `contextPressureThreshold: 0.25` and a 200k context window.
 
+> **Note:** These traces were captured via bespoke debug instrumentation added to a local canary build. Production deployments do not emit `[context-pressure-debug]` log lines by default. The traces are included here to illustrate the detection→dedup→injection data flow. The agent-visible output (the `[system:context-pressure]` event in the system prompt) is the same regardless of debug logging.
+
 #### Band Escalation: Normal Climb
 
 ```
