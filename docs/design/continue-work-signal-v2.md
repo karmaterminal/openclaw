@@ -89,6 +89,94 @@ The implementation hooks into three layers of the existing gateway:
 
 3. **Turn scheduling** (`src/auto-reply/reply/session-updates.ts`): `scheduleContinuationTurn()` uses the existing `enqueueSystemEvent()` infrastructure to inject a continuation message after the specified delay. The continuation message triggers a new agent run through the standard inbound message path — no special machinery needed.
 
+### Delegate Dispatch: Turn-by-Turn Gateway Processing
+
+This section describes the exact code path when an agent emits `[[CONTINUE_DELEGATE: task +10s]]`, traced through the gateway source. No hand-waving — every function call and file reference is concrete.
+
+#### Turn 0: Agent Emits the Signal
+
+The agent writes its normal response text with the delegate directive appended:
+
+```
+Here's my analysis of the PR. The type errors are fixed.
+
+[[CONTINUE_DELEGATE: verify the test suite passes and report results +10s]]
+```
+
+The response is finalized in `runReplyAgent()` (`agent-runner.ts`). After all payloads are assembled:
+
+1. **Signal detection** (line ~544): `stripContinuationSignal(lastPayload.text)` is called on the final text payload.
+
+2. **Parsing** (`tokens.ts:130`): The regex `/\[\[\s*CONTINUE_DELEGATE:\s*((?:(?!\]\])[\s\S])+?)\s*\]\]\s*$/` matches the bracket directive. The `+10s` suffix is parsed by `/\s+\+(\d+)s\s*$/` into `delayMs: 10000`.
+
+3. **Stripping** (`tokens.ts:176`): The `[[CONTINUE_DELEGATE: ...]]` text is removed from the displayed response. The user sees only "Here's my analysis of the PR. The type errors are fixed." — the directive is never shown.
+
+4. **Marker event** (line ~977): `enqueueSystemEvent("[continuation:delegate-pending] Delegated turn 2/10 (delay: 10s): verify the test suite...")` fires immediately. This tells the parent session a delegate is in flight, even before the sub-agent spawns.
+
+5. **Timer scheduling** (line ~988): `setTimeout(() => void doSpawn(), 10000)` schedules the sub-agent spawn for 10 seconds later. The delay is clamped between `minDelayMs` (5s) and `maxDelayMs` (300s).
+
+> **Note:** The timer is volatile — it does not survive a gateway restart. This is intentional: restart = clean slate. Agents that need durable scheduling use the `openclaw cron` tool directly.
+
+#### t = 0s → 10s: The Gap
+
+The gateway continues processing other sessions normally. The parent session is idle. The `delegate-pending` marker is in the system event queue, ready to be drained on the next turn.
+
+#### t = 10s: Sub-Agent Spawns (Turn 0.5)
+
+The `setTimeout` fires. `doSpawn()` calls `spawnSubagentDirect()` (line ~937):
+
+```typescript
+spawnSubagentDirect(
+  {
+    task: "[continuation] Delegated task (turn 2/10): verify the test suite passes and report results",
+  },
+  {
+    agentSessionKey: sessionKey,
+    agentChannel: originatingChannel,
+    agentAccountId: originatingAccountId,
+    agentTo: originatingTo,
+    agentThreadId: originatingThreadId,
+  },
+);
+```
+
+The sub-agent session is created with a new `sessionKey`. It inherits the parent's channel context (so it can deliver results to the same conversation). On successful spawn, a `[continuation:delegate-spawned]` event is enqueued.
+
+The sub-agent runs independently — it has its own context window, its own turn, its own tools. It does its work (in this case, running the test suite).
+
+#### t ≈ 20s: Sub-Agent Completes → Parent Wakes (Turn 1)
+
+When the sub-agent finishes, the standard `sessions_spawn` completion path fires: the sub-agent's result is delivered as an inbound message to the parent session. This is existing OpenClaw behavior — no new code required.
+
+The parent session wakes. In its new turn:
+
+1. The inbound message contains the sub-agent's result (test suite output).
+2. The system event queue contains `[continuation:delegate-pending]` and `[continuation:delegate-spawned]` markers from Turn 0.
+3. The gateway detects the `[continuation:delegate-pending]` marker via `isDelegateWake` (line ~248), recognizing this as a continuation wake rather than external user input.
+4. Chain state is preserved: `continuationChainCount` and `continuationChainTokens` carry forward, bounded by `maxChainLength` and `costCapTokens`.
+
+The agent sees the sub-agent's result, the delegate markers in its system events, and can choose to continue (another `CONTINUE_WORK` or `CONTINUE_DELEGATE`), or stop.
+
+#### The Complete Timeline
+
+```
+t=0s    Agent emits [[CONTINUE_DELEGATE: task +10s]]
+        ├── Signal parsed, stripped from display output
+        ├── [delegate-pending] marker enqueued
+        └── setTimeout(doSpawn, 10000) scheduled
+
+t=10s   setTimeout fires
+        ├── spawnSubagentDirect() creates sub-agent session
+        ├── [delegate-spawned] marker enqueued
+        └── Sub-agent begins independent execution
+
+t≈20s   Sub-agent completes
+        ├── Result delivered as inbound message to parent
+        ├── isDelegateWake detects [delegate-pending] marker
+        ├── Chain state preserved (count, tokens, budget)
+        └── Parent agent wakes with full context of the return
+```
+
 ### Chain Tracking
 
 Session metadata carries:
