@@ -937,6 +937,7 @@ export async function runReplyAgent(params: {
                   const spawnResult = await spawnSubagentDirect(
                     {
                       task: `[continuation] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegateTask}`,
+                      ...(continuationSignal.silent ? { silentAnnounce: true } : {}),
                     },
                     {
                       agentSessionKey: sessionKey,

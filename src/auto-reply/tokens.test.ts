@@ -203,6 +203,40 @@ describe("parseContinuationSignal", () => {
     expect(result).toEqual({ kind: "delegate", task: "immediate", delayMs: 0 });
   });
 
+  // --- [[CONTINUE_DELEGATE: task | silent]] (silent enrichment) ---
+
+  it("parses [[CONTINUE_DELEGATE: task | silent]] with silent flag", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: enrich context | silent]]");
+    expect(result).toEqual({ kind: "delegate", task: "enrich context", silent: true });
+  });
+
+  it("parses [[CONTINUE_DELEGATE: task +15s | silent]] with delay and silent", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: think about X +15s | silent]]");
+    expect(result).toEqual({
+      kind: "delegate",
+      task: "think about X",
+      delayMs: 15000,
+      silent: true,
+    });
+  });
+
+  it("parses | silent case-insensitively", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: task | SILENT]]");
+    expect(result).toEqual({ kind: "delegate", task: "task", silent: true });
+  });
+
+  it("does not set silent when | silent is not at end", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: check | silent | then report]]");
+    // "| silent" is not at the end — the whole thing is the task
+    expect(result?.silent).toBeUndefined();
+  });
+
+  it("parses delegate without | silent as silent undefined", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: normal task]]");
+    expect(result).toEqual({ kind: "delegate", task: "normal task" });
+    expect(result?.silent).toBeUndefined();
+  });
+
   // --- Precedence ---
 
   it("prefers [[CONTINUE_DELEGATE:]] over CONTINUE_WORK when both present", () => {
