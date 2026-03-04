@@ -292,6 +292,8 @@ export type AgentDefaultsConfig = {
     maxDelayMs?: number;
     maxChainLength?: number;
     costCapTokens?: number;
+    /** Emit [system:context-pressure] when session token usage crosses this ratio (0.0–1.0). */
+    contextPressureThreshold?: number;
   };
 };
 

@@ -170,6 +170,8 @@ export type SessionEntry = {
   continuationChainStartedAt?: number;
   /** Accumulated token usage across the current continuation chain. Reset on external message. */
   continuationChainTokens?: number;
+  /** Last context-pressure band emitted (0–100). Used to dedup pressure events across turns. */
+  lastContextPressureBand?: number;
 };
 
 function normalizeRuntimeField(value: string | undefined): string | undefined {
