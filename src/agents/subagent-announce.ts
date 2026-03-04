@@ -11,6 +11,7 @@ import {
 import { callGateway } from "../gateway/call.js";
 import { createBoundDeliveryRouter } from "../infra/outbound/bound-delivery-router.js";
 import type { ConversationRef } from "../infra/outbound/session-binding-service.js";
+import { enqueueSystemEvent } from "../infra/system-events.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { normalizeAccountId, normalizeMainKey } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
@@ -1125,6 +1126,9 @@ export async function runSubagentAnnounceFlow(params: {
   spawnMode?: SpawnSubagentMode;
   signal?: AbortSignal;
   bestEffortDeliver?: boolean;
+  /** When true, deliver completion as a silent system event instead of a
+   *  visible channel message. Used for ambient enrichment (DELEGATE | silent). */
+  silentAnnounce?: boolean;
 }): Promise<boolean> {
   let didAnnounce = false;
   const expectsCompletionMessage = params.expectsCompletionMessage === true;
@@ -1355,6 +1359,18 @@ export async function runSubagentAnnounceFlow(params: {
     ];
     triggerMessage = buildAnnounceSteerMessage(internalEvents);
     steerMessage = triggerMessage;
+
+    // --- Silent announce gate: inject as system event, skip channel delivery ---
+    if (params.silentAnnounce) {
+      const rendered = formatAgentInternalEventsForPrompt(internalEvents);
+      if (rendered) {
+        enqueueSystemEvent(`[continuation:enrichment-return] ${rendered}`, {
+          sessionKey: targetRequesterSessionKey,
+        });
+      }
+      didAnnounce = true;
+      return true;
+    }
 
     const announceId = buildAnnounceIdFromChildRun({
       childSessionKey: params.childSessionKey,

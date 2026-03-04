@@ -95,7 +95,7 @@ export function isSilentReplyPrefixText(
 
 export type ContinuationSignal =
   | { kind: "work"; delayMs?: number }
-  | { kind: "delegate"; task: string; delayMs?: number };
+  | { kind: "delegate"; task: string; delayMs?: number; silent?: boolean };
 
 /**
  * Checks if the agent response ends with a continuation signal.
@@ -131,6 +131,13 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
   );
   if (delegateMatch) {
     let taskBody = delegateMatch[1].trim();
+    // Parse optional | silent suffix (e.g. "task +30s | silent")
+    let silent: boolean | undefined;
+    const silentSuffixMatch = taskBody.match(/\s*\|\s*silent\s*$/i);
+    if (silentSuffixMatch) {
+      silent = true;
+      taskBody = taskBody.slice(0, -silentSuffixMatch[0].length).trimEnd();
+    }
     // Parse optional +Ns delay suffix (e.g. "+30s", "+5s")
     let delayMs: number | undefined;
     const delayMatch = taskBody.match(/\s+\+(\d+)s\s*$/);
@@ -139,7 +146,7 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
       taskBody = taskBody.slice(0, -delayMatch[0].length).trimEnd();
     }
     if (taskBody) {
-      return { kind: "delegate", task: taskBody, delayMs };
+      return { kind: "delegate", task: taskBody, delayMs, silent };
     }
   }
 

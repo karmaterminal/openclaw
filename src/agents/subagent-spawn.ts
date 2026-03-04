@@ -73,6 +73,9 @@ export type SpawnSubagentParams = {
     mimeType?: string;
   }>;
   attachMountPath?: string;
+  /** When true, sub-agent completion is delivered as a silent system event
+   *  instead of a visible channel message. Used for ambient enrichment shards. */
+  silentAnnounce?: boolean;
 };
 
 export type SpawnSubagentContext = {
@@ -802,6 +805,7 @@ export async function spawnSubagentDirect(
       attachmentsDir: attachmentAbsDir,
       attachmentsRootDir: attachmentRootDir,
       retainAttachmentsOnKeep: retainOnSessionKeep,
+      ...(params.silentAnnounce ? { silentAnnounce: true } : {}),
     });
   } catch (err) {
     if (attachmentAbsDir) {

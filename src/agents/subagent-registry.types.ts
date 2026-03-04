@@ -35,4 +35,6 @@ export type SubagentRunRecord = {
   attachmentsDir?: string;
   attachmentsRootDir?: string;
   retainAttachmentsOnKeep?: boolean;
+  /** When true, announce is delivered as a silent system event, not a channel message. */
+  silentAnnounce?: boolean;
 };
