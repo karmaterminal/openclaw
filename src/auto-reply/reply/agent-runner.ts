@@ -938,6 +938,9 @@ export async function runReplyAgent(params: {
                     {
                       task: `[continuation] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegateTask}`,
                       ...(continuationSignal.silent ? { silentAnnounce: true } : {}),
+                      ...(continuationSignal.silentWake
+                        ? { silentAnnounce: true, wakeOnReturn: true }
+                        : {}),
                     },
                     {
                       agentSessionKey: sessionKey,

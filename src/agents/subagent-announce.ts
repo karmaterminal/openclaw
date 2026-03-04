@@ -9,6 +9,7 @@ import {
   resolveStorePath,
 } from "../config/sessions.js";
 import { callGateway } from "../gateway/call.js";
+import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
 import { createBoundDeliveryRouter } from "../infra/outbound/bound-delivery-router.js";
 import type { ConversationRef } from "../infra/outbound/session-binding-service.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
@@ -1129,6 +1130,10 @@ export async function runSubagentAnnounceFlow(params: {
   /** When true, deliver completion as a silent system event instead of a
    *  visible channel message. Used for ambient enrichment (DELEGATE | silent). */
   silentAnnounce?: boolean;
+  /** When true (with silentAnnounce), trigger a generation cycle on the parent
+   *  session after enrichment delivery. Enables autonomous cognition loops
+   *  (DELEGATE | silent-wake). */
+  wakeOnReturn?: boolean;
 }): Promise<boolean> {
   let didAnnounce = false;
   const expectsCompletionMessage = params.expectsCompletionMessage === true;
@@ -1366,6 +1371,13 @@ export async function runSubagentAnnounceFlow(params: {
       if (rendered) {
         enqueueSystemEvent(`[continuation:enrichment-return] ${rendered}`, {
           sessionKey: targetRequesterSessionKey,
+        });
+      }
+      // silent-wake: trigger generation cycle without channel echo
+      if (params.wakeOnReturn && targetRequesterSessionKey) {
+        requestHeartbeatNow({
+          sessionKey: targetRequesterSessionKey,
+          reason: "silent-wake-enrichment",
         });
       }
       didAnnounce = true;

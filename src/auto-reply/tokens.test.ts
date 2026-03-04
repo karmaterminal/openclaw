@@ -228,13 +228,55 @@ describe("parseContinuationSignal", () => {
   it("does not set silent when | silent is not at end", () => {
     const result = parseContinuationSignal("[[CONTINUE_DELEGATE: check | silent | then report]]");
     // "| silent" is not at the end — the whole thing is the task
-    expect(result?.silent).toBeUndefined();
+    expect(result?.kind === "delegate" && result.silent).toBeFalsy();
   });
 
   it("parses delegate without | silent as silent undefined", () => {
     const result = parseContinuationSignal("[[CONTINUE_DELEGATE: normal task]]");
     expect(result).toEqual({ kind: "delegate", task: "normal task" });
-    expect(result?.silent).toBeUndefined();
+    expect(result?.kind === "delegate" ? result.silent : undefined).toBeUndefined();
+  });
+
+  // --- [[CONTINUE_DELEGATE: task | silent-wake]] (silent wake enrichment) ---
+
+  it("parses [[CONTINUE_DELEGATE: task | silent-wake]] with silentWake flag", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: enrich context | silent-wake]]");
+    expect(result).toEqual({ kind: "delegate", task: "enrich context", silentWake: true });
+  });
+
+  it("parses [[CONTINUE_DELEGATE: task +20s | silent-wake]] with delay and silentWake", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: chain hop 2 +20s | silent-wake]]");
+    expect(result).toEqual({
+      kind: "delegate",
+      task: "chain hop 2",
+      delayMs: 20000,
+      silentWake: true,
+    });
+  });
+
+  it("parses | silent-wake case-insensitively", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: task | SILENT-WAKE]]");
+    expect(result).toEqual({ kind: "delegate", task: "task", silentWake: true });
+  });
+
+  it("parses | silent wake (space instead of hyphen)", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: task | silent wake]]");
+    expect(result).toEqual({ kind: "delegate", task: "task", silentWake: true });
+  });
+
+  it("does not confuse | silent-wake with | silent", () => {
+    const silentWake = parseContinuationSignal("[[CONTINUE_DELEGATE: task | silent-wake]]");
+    const silent = parseContinuationSignal("[[CONTINUE_DELEGATE: task | silent]]");
+    expect(silentWake?.kind === "delegate" && silentWake.silentWake).toBe(true);
+    expect(silentWake?.kind === "delegate" ? silentWake.silent : undefined).toBeUndefined();
+    expect(silent?.kind === "delegate" && silent.silent).toBe(true);
+    expect(silent?.kind === "delegate" ? silent.silentWake : undefined).toBeUndefined();
+  });
+
+  it("parses delegate without suffix as neither silent nor silentWake", () => {
+    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: plain task]]");
+    expect(result?.kind === "delegate" ? result.silent : undefined).toBeUndefined();
+    expect(result?.kind === "delegate" ? result.silentWake : undefined).toBeUndefined();
   });
 
   // --- Precedence ---

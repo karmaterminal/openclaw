@@ -37,4 +37,6 @@ export type SubagentRunRecord = {
   retainAttachmentsOnKeep?: boolean;
   /** When true, announce is delivered as a silent system event, not a channel message. */
   silentAnnounce?: boolean;
+  /** When true (with silentAnnounce), trigger a generation cycle after enrichment delivery. */
+  wakeOnReturn?: boolean;
 };
