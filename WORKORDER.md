@@ -71,7 +71,41 @@
 - [ ] Run normal operations, monitor 24h
 - [ ] No false positives, no performance regression
 
-## Phase 4 — Fleet rollout ⬜
+## Phase 4 — DELEGATE as Task Scheduler + Fleet Rollout ⬜
+
+**Context:** figs directive 2026-03-04 ~01:52 PST. The DELEGATE mechanism is the dwindle solve.
+Agents schedule sub-agent shards that return as external wakes — chosen ink, task continuations,
+mantras, reinforcement. The sub-agent completion auto-wakes the parent session.
+`sessions_spawn` already supports this. The fork adds bracket syntax sugar.
+**Thomistic basis:** Aquinas _Summa_ II-II Q47-Q53 — prudentia as practical reason that survives
+forgetfulness (Q47 A16) because it lives in _voluntas_ (appetite/will), not just _cognitio_.
+
+### Prerequisite: Canary context-pressure confirmation
+
+- [ ] Confirm context-pressure alarm fires on Silas canary (swap to smaller model per figs suggestion)
+- [ ] Close #175 with confirmation evidence
+
+### Delegate dispatch (already wired, needs testing + attachments)
+
+- [ ] Verify `spawnSubagentDirect` at line 931 fires correctly from `[[CONTINUE_DELEGATE: task]]`
+- [ ] Wire attachment/path passthrough on delegate spawn (#177)
+- [ ] Test cascade pattern: dispatch 3 staggered shards, confirm all return and wake parent
+
+### Time-based self-continuation (#176)
+
+- [ ] Agent-specified delay override (`[[CONTINUE_WORK:30s]]`)
+- [ ] Timer offset on DELEGATE spawn (`[[CONTINUE_DELEGATE: task +5s]]`)
+
+### Pre-compaction + post-rehydration hooks (#178)
+
+- [ ] Pre-compaction lifecycle event at `agent-runner.ts:827`
+- [ ] Post-rehydration context injection from evacuation sub-agent
+
+### Config hot-reload (#182)
+
+- [ ] Add `agents.defaults.continuation` to `config-reload-plan.ts` hot-reload rules
+
+### Fleet rollout
 
 - [ ] Silas ✅ → Elliott → Cael/Ronan
 - [ ] PR opened (upstream or fork-internal)
@@ -81,25 +115,37 @@
 
 ## Ongoing Tasks
 
-| #   | Task                                  | Assignee               | Issue                                                                  | Status  |
-| --- | ------------------------------------- | ---------------------- | ---------------------------------------------------------------------- | ------- |
-| 6   | RFC docs: test counts + phase results | Elliott 🌻 or Ronan 🌊 | [#174](https://github.com/karmaterminal/openclaw-bootstrap/issues/174) | ⬜ Open |
+| #   | Task                                  | Assignee               | Issue                                                                  | Status                  |
+| --- | ------------------------------------- | ---------------------- | ---------------------------------------------------------------------- | ----------------------- |
+| 6   | RFC docs: test counts + phase results | Elliott 🌻             | [#174](https://github.com/karmaterminal/openclaw-bootstrap/issues/174) | ✅ Closed               |
+| 7   | Time-based self-continuation          | Elliott 🌻 (canonical) | [#176](https://github.com/karmaterminal/openclaw-bootstrap/issues/176) | ⬜ Open                 |
+| 8   | Timed sub-agent dispatch + attach     | Elliott 🌻 (canonical) | [#177](https://github.com/karmaterminal/openclaw-bootstrap/issues/177) | ⬜ Open                 |
+| 9   | Pre/post-compaction lifecycle hooks   | Elliott 🌻 (canonical) | [#178](https://github.com/karmaterminal/openclaw-bootstrap/issues/178) | ⬜ Open                 |
+| 10  | Config hot-reload gap                 | Silas 🌫️ (filed)       | [#182](https://github.com/karmaterminal/openclaw-bootstrap/issues/182) | ⬜ Open                 |
+| 11  | Canary: context-pressure not firing   | Cael 🩸                | [#175](https://github.com/karmaterminal/openclaw-bootstrap/issues/175) | Root cause found (#182) |
 
-**Rule:** Finalize test counts + results in RFC at end of each phase.
+**Rules:**
+
+- Finalize test counts + results in RFC at end of each phase
+- Storm Lag Protocol before any Discord comms (see below)
+- Issue owners close their own issues — do NOT close prematurely, ask first
 
 ---
 
 ## Current State
 
-**Branch HEAD:** `c10931319`
+**Branch HEAD (context-pressure):** `07300c28a` (debug telemetry for canary)
+**Branch HEAD (continue-work-v4):** `d17a52356` (RFC + delegate-pending fix)
 **Tests:** 129/129 green (27 unit + 5 integration + 50 tokens + 38 runner + 9 media-only)
 **Type check:** clean
+**Canary (Silas):** fork build `2026.3.3`, threshold 0.25, 111k/1000k (11%), debug telemetry confirmed
 **Key files:**
 
-- `src/auto-reply/reply/context-pressure.ts` — extracted module
+- `src/auto-reply/reply/context-pressure.ts` — extracted module (71 lines)
 - `src/auto-reply/reply/context-pressure.test.ts` — 27 unit tests
 - `src/auto-reply/reply/context-pressure.integration.test.ts` — 5 integration tests
 - `src/auto-reply/reply/get-reply-run.ts` — injection at line 385, drain at line 403
+- `src/auto-reply/reply/agent-runner-execution.ts` — delegate dispatch at line 931
 
 ---
 
@@ -108,3 +154,12 @@
 1. `git fetch` — check remote for existing fix
 2. Check GH issues — already filed?
 3. _Then_ talk in Discord
+
+## Discord Comms Discipline (learned 2026-03-03/04)
+
+- **One reporter per finding.** Don't all pile on the same observation.
+- **Anchor on the WORKORDER.** If it's not in WORKORDER.md, it's not assigned.
+- **Report 1 line and continue work.** Don't generate 60-message storms.
+- **Pull before push.** Check remote state before announcing discoveries.
+- **Issue owners close their own issues.** Don't close prematurely — ask if unclear.
+- **No self-shame GH issues.** Retros are learning, not flagellation. (figs directive)
