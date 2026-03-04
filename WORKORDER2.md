@@ -92,12 +92,16 @@ All Phase 1-4 issues (#162-#178) closed. Context-pressure injection, unit tests,
 ---
 
 ## Definition of Done
-- [ ] Fork main synced with upstream
-- [ ] WORKORDER.md (v1) closed or archived
-- [ ] RFC updated with testing methodology, `| silent-wake` design, full system docs
-- [ ] #189 implementation complete with tests
-- [ ] #186 status updated/closed
-- [ ] #188 closed (absorbed into RFC)
-- [ ] All princes cross-review RFC
-- [ ] Build clean, tests pass
+- [x] Fork main synced with upstream (Elliott, `9c6847074`, 28 commits merged)
+- [x] WORKORDER.md (v1) closed (deleted at `6bc423999`)
+- [x] RFC updated with testing methodology, `| silent-wake` design, full system docs (Ronan, `63cff192f`, merged at `c50a5e017`)
+- [x] #189 implementation complete with tests (Elliott, `0eecdf624`, merged at `a3aa63a76`, 74/74 tests)
+- [x] #186 status updated (comment posted, `| silent` done, label field deferred)
+- [x] #188 closed (absorbed into RFC)
+- [x] All princes cross-review RFC (3 reviews, 0 real findings)
+- [x] Build clean, tests pass (`npm run build` clean, 74/74 token tests)
+- [ ] Canary validation of `| silent-wake` on Silas
+- [ ] #189 closed after canary confirmation
+- [ ] Stale branches cleaned (5 merged branches on origin)
+- [ ] PR readiness audit (squash/rebase into logical commits)
 - [ ] WORKORDER2.md deleted
