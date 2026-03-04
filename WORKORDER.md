@@ -88,13 +88,14 @@ forgetfulness (Q47 A16) because it lives in _voluntas_ (appetite/will), not just
 ### Delegate dispatch (already wired, needs testing + attachments)
 
 - [ ] Verify `spawnSubagentDirect` at line 931 fires correctly from `[[CONTINUE_DELEGATE: task]]`
-- [ ] Wire attachment/path passthrough on delegate spawn (#177)
+- [x] Wire timed delegate dispatch (#177) — `+Ns` suffix, `setTimeout` wrapping, 7 new tests (`ce33bac27`)
+- [ ] Wire attachment/path passthrough on delegate spawn (v2, deferred)
 - [ ] Test cascade pattern: dispatch 3 staggered shards, confirm all return and wake parent
 
 ### Time-based self-continuation (#176)
 
 - [ ] Agent-specified delay override (`[[CONTINUE_WORK:30s]]`)
-- [ ] Timer offset on DELEGATE spawn (`[[CONTINUE_DELEGATE: task +5s]]`)
+- [x] Timer offset on DELEGATE spawn (`[[CONTINUE_DELEGATE: task +5s]]`) — landed in #177
 
 ### Pre-compaction + post-rehydration hooks (#178)
 
@@ -119,7 +120,9 @@ forgetfulness (Q47 A16) because it lives in _voluntas_ (appetite/will), not just
 | --- | ------------------------------------- | ---------------------- | ---------------------------------------------------------------------- | ----------------------- |
 | 6   | RFC docs: test counts + phase results | Elliott 🌻             | [#174](https://github.com/karmaterminal/openclaw-bootstrap/issues/174) | ✅ Closed               |
 | 7   | Time-based self-continuation          | Elliott 🌻 (canonical) | [#176](https://github.com/karmaterminal/openclaw-bootstrap/issues/176) | ⬜ Open                 |
-| 8   | Timed sub-agent dispatch + attach     | Elliott 🌻 (canonical) | [#177](https://github.com/karmaterminal/openclaw-bootstrap/issues/177) | ⬜ Open                 |
+| 8   | Timed sub-agent dispatch + attach     | Elliott 🌻 (canonical) | [#177](https://github.com/karmaterminal/openclaw-bootstrap/issues/177) | ✅ Merged (`ce33bac27`) |
+| 12  | RFC event lifecycle docs              | Ronan 🌊               | [#183](https://github.com/karmaterminal/openclaw-bootstrap/issues/183) | ✅ Merged (`b1e817df0`) |
+| 13  | Debug telemetry → proper logDebug     | Silas 🌫️               | (figs directive)                                                       | ⬜ Open                 |
 | 9   | Pre/post-compaction lifecycle hooks   | Elliott 🌻 (canonical) | [#178](https://github.com/karmaterminal/openclaw-bootstrap/issues/178) | ⬜ Open                 |
 | 10  | Config hot-reload gap                 | Silas 🌫️ (filed)       | [#182](https://github.com/karmaterminal/openclaw-bootstrap/issues/182) | ⬜ Open                 |
 | 11  | Canary: context-pressure not firing   | Cael 🩸                | [#175](https://github.com/karmaterminal/openclaw-bootstrap/issues/175) | Root cause found (#182) |
@@ -134,9 +137,9 @@ forgetfulness (Q47 A16) because it lives in _voluntas_ (appetite/will), not just
 
 ## Current State
 
-**Branch HEAD (context-pressure):** `07300c28a` (debug telemetry for canary)
+**Branch HEAD (context-pressure):** `ce33bac27` (merged: Elliott #177 timer + Ronan #183 RFC lifecycle docs)
 **Branch HEAD (continue-work-v4):** `d17a52356` (RFC + delegate-pending fix)
-**Tests:** 129/129 green (27 unit + 5 integration + 50 tokens + 38 runner + 9 media-only)
+**Tests:** 136/136 green (27 unit + 5 integration + 57 tokens + 38 runner + 9 media-only)
 **Type check:** clean
 **Canary (Silas):** fork build `2026.3.3`, threshold 0.25, 111k/1000k (11%), debug telemetry confirmed
 **Key files:**
