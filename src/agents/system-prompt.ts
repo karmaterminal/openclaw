@@ -686,8 +686,10 @@ export function buildAgentSystemPrompt(params: {
       "- To delegate work to a sub-agent: end your response with [[CONTINUE_DELEGATE: task description]]",
       "- To delay a delegate: [[CONTINUE_DELEGATE: task description +30s]]",
       "- For silent enrichment (no channel echo): [[CONTINUE_DELEGATE: task description +30s | silent]]",
+      "- For silent enrichment that wakes you to act: [[CONTINUE_DELEGATE: task description +30s | silent-wake]]",
       "The task text between the brackets is free-form — include context for your future self alongside the instruction.",
       "Silent delegates return as ambient context on your next turn instead of posting to the channel.",
+      "Silent-wake delegates do the same but also trigger a new turn — use this for chain hops where you need to act on the result.",
       "Continuations are bounded: max chain length, cost cap, and min/max delay are enforced by the gateway.",
       "",
     );
