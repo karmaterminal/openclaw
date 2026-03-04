@@ -429,4 +429,32 @@ describe("checkContextPressure", () => {
     expect(result.fired).toBe(true);
     expect(result.band).toBe(80);
   });
+
+  /* ---------------------------------------------------------------- */
+  /*  Edge cases from review (ratio > 1.0, negative tokens)           */
+  /* ---------------------------------------------------------------- */
+
+  it("handles ratio > 1.0 (tokens exceed window) as band 95", () => {
+    const entry = makeSessionEntry({ totalTokens: 120_000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(true);
+    expect(result.band).toBe(95);
+  });
+
+  it("does not fire for negative totalTokens", () => {
+    const entry = makeSessionEntry({ totalTokens: -1000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(false);
+    expect(result.band).toBe(0);
+  });
 });
