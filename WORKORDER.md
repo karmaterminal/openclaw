@@ -27,7 +27,7 @@
 
 ### 1. Config schema — Types + Zod
 
-**Assignee:** TBD (issue #)
+**Assignee:** Elliott 🌻 (openclaw-bootstrap#162)
 **Files:**
 
 - `src/config/types.agent-defaults.ts` — add `contextPressureThreshold?: number` to `ContinuationConfig`
@@ -41,7 +41,7 @@
 
 ### 2. Session entry — Dedup field
 
-**Assignee:** TBD (issue #)
+**Assignee:** Elliott 🌻 (openclaw-bootstrap#163)
 **Files:**
 
 - `src/config/sessions/types.ts` — add `lastContextPressureBand?: number` to `SessionEntry`
@@ -53,7 +53,7 @@
 
 ### 3. Pre-run injection — The 15 lines
 
-**Assignee:** TBD (issue #)
+**Assignee:** Cael 🩸 (openclaw-bootstrap#164)
 **Files:**
 
 - `src/auto-reply/reply/get-reply-run.ts` — inject after session metadata loaded, before agent call
@@ -108,7 +108,7 @@ if (ctxPressureThreshold && sessionEntry?.totalTokens && sessionEntry.totalToken
 
 ### 4. Unit tests
 
-**Assignee:** TBD (issue #)
+**Assignee:** Ronan 🌊 (openclaw-bootstrap#165)
 **Files:**
 
 - New or extended test file
