@@ -374,6 +374,32 @@ export async function runPreparedReply(
     removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
   }
 
+  // --- Context-pressure awareness: inject [system:context-pressure] pre-drain ---
+  // Must be BEFORE buildQueuedSystemPrompt() which drains the event queue.
+  // Otherwise the event sits unseen until the next turn — one turn too late.
+  if (sessionEntry && sessionKey) {
+    const contextWindow = resolveMemoryFlushContextWindowTokens({
+      modelId: model,
+      agentCfgContextTokens: agentCfg?.contextTokens,
+    });
+    const { fired, band } = checkContextPressure({
+      sessionEntry,
+      sessionKey,
+      contextPressureThreshold: cfg.agents?.defaults?.continuation?.contextPressureThreshold,
+      contextWindowTokens: contextWindow,
+    });
+    if (fired && sessionStore?.[sessionKey]) {
+      sessionStore[sessionKey] = { ...sessionStore[sessionKey], lastContextPressureBand: band };
+      if (storePath) {
+        await updateSessionStore(storePath, (store) => {
+          if (store[sessionKey]) {
+            store[sessionKey] = { ...store[sessionKey], lastContextPressureBand: band };
+          }
+        });
+      }
+    }
+  }
+
   const queuedSystemPrompt = await buildQueuedSystemPrompt({
     cfg,
     sessionKey,
@@ -564,30 +590,6 @@ export async function runPreparedReply(
       ...(isReasoningTagProvider(provider) ? { enforceFinalTag: true } : {}),
     },
   };
-
-  // --- Context-pressure awareness: inject [system:context-pressure] pre-run ---
-  if (sessionEntry && sessionKey) {
-    const contextWindow = resolveMemoryFlushContextWindowTokens({
-      modelId: model,
-      agentCfgContextTokens: agentCfg?.contextTokens,
-    });
-    const { fired, band } = checkContextPressure({
-      sessionEntry,
-      sessionKey,
-      contextPressureThreshold: cfg.agents?.defaults?.continuation?.contextPressureThreshold,
-      contextWindowTokens: contextWindow,
-    });
-    if (fired && sessionStore?.[sessionKey]) {
-      sessionStore[sessionKey] = { ...sessionStore[sessionKey], lastContextPressureBand: band };
-      if (storePath) {
-        await updateSessionStore(storePath, (store) => {
-          if (store[sessionKey]) {
-            store[sessionKey] = { ...store[sessionKey], lastContextPressureBand: band };
-          }
-        });
-      }
-    }
-  }
 
   return runReplyAgent({
     commandBody: prefixedCommandBody,
