@@ -292,7 +292,12 @@ export type AgentDefaultsConfig = {
     maxDelayMs?: number;
     maxChainLength?: number;
     costCapTokens?: number;
-    /** Emit [system:context-pressure] when session token usage crosses this ratio (0.0–1.0). */
+    /**
+     * Context-pressure awareness threshold (0.0–1.0). When the session's token
+     * usage exceeds this fraction of the context window, a [system:context-pressure]
+     * event is injected pre-run so the agent can elect evacuation. Disabled when
+     * unset. Recommended: 0.8 (80%).
+     */
     contextPressureThreshold?: number;
   };
 };

@@ -143,6 +143,11 @@ export type SessionEntry = {
   fallbackNoticeActiveModel?: string;
   fallbackNoticeReason?: string;
   contextTokens?: number;
+  /**
+   * Last context-pressure band that fired (e.g. 80, 90, 95). Used to deduplicate
+   * pressure events — only re-fires when the session crosses into a higher band.
+   */
+  lastContextPressureBand?: number;
   compactionCount?: number;
   memoryFlushAt?: number;
   memoryFlushCompactionCount?: number;
