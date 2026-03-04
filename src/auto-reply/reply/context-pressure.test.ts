@@ -26,6 +26,7 @@ import { checkContextPressure } from "./context-pressure.js";
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
+/** Partial mock — SessionEntry has ~40 optional fields; we only set what the function reads. */
 function makeSessionEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
   return {
     totalTokens: 0,
@@ -448,6 +449,18 @@ describe("checkContextPressure", () => {
 
   it("does not fire for negative totalTokens", () => {
     const entry = makeSessionEntry({ totalTokens: -1000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(false);
+    expect(result.band).toBe(0);
+  });
+
+  it("does not fire for NaN totalTokens", () => {
+    const entry = makeSessionEntry({ totalTokens: NaN, totalTokensFresh: true });
     const result = checkContextPressure({
       sessionEntry: entry,
       sessionKey: SESSION_KEY,

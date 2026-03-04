@@ -35,7 +35,7 @@ export function checkContextPressure(
     !contextPressureThreshold ||
     contextWindowTokens <= 0 ||
     sessionEntry.totalTokens == null ||
-    !sessionEntry.totalTokens ||
+    sessionEntry.totalTokens <= 0 ||
     sessionEntry.totalTokensFresh === false
   ) {
     return { fired: false, band: 0 };
