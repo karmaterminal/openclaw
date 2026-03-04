@@ -31,6 +31,8 @@ export function checkContextPressure(
   // Guard: feature disabled or no usable data.
   // Note: !contextPressureThreshold is intentionally falsy for 0.0 — a threshold of 0%
   // ("fire on empty session") is not a useful configuration. Zod validates min(0).max(1).
+  // Negative totalTokens (data corruption) produces a negative ratio which falls below
+  // all band thresholds → band = 0 → no event. Safe by arithmetic, not by explicit guard.
   if (
     !contextPressureThreshold ||
     contextWindowTokens <= 0 ||
@@ -41,7 +43,9 @@ export function checkContextPressure(
     return { fired: false, band: 0 };
   }
 
-  const ratio = sessionEntry.totalTokens / contextWindowTokens;
+  // Clamp ratio to [0, ∞) — negative should not occur after the guard above,
+  // but defensive. Ratios > 1.0 are valid (token overrun) and map to band 95.
+  const ratio = Math.max(0, sessionEntry.totalTokens / contextWindowTokens);
   const thresholdPct = Math.round(contextPressureThreshold * 100);
   const band =
     ratio >= 0.95 ? 95 : ratio >= 0.9 ? 90 : ratio >= contextPressureThreshold ? thresholdPct : 0;
