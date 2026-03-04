@@ -42,18 +42,30 @@
 
 ---
 
-## Phase 2 — Fork-local (Cael's DGX Spark) ⬜ NEXT
+## Phase 2 — Fork-local (Cael's DGX Spark) ✅ COMPLETE
 
-- [ ] Build fork: `npm run build`
-- [ ] Set `contextPressureThreshold: 0.1` in openclaw config (fires immediately)
-- [ ] Run against throwaway session
-- [ ] Verify `[system:context-pressure]` event appears in system prompt
-- [ ] Verify band dedup (event fires once per band, not every turn)
-- [ ] Verify escalating language at 90% and 95%
-- [ ] Kill fork build, restore stable
+- [x] Build fork: `npm run build` — 317 files, 802ms, clean
+- [x] Integration tests: 5 new tests exercising real event queue path (enqueue → peek → drain)
+- [x] P1 fix verified: events visible in queue before drain
+- [x] Band escalation verified: 80 → 90 → 95 each produce separate events
+- [x] Dedup verified: same band does not duplicate
+- [x] Threshold 0.1 verified: fires at 15% usage (low-threshold live-fire config)
+- [x] Disabled config verified: no events when threshold undefined
+- [ ] **In-vivo test**: dispatch junk tasks to edges, verify event fires in live session, confirm no breakage
+
+### Phase 2 in-vivo (figs go — NOW)
+
+- Set `contextPressureThreshold: 0.1` on Cael's live config
+- Restart gateway with fork build
+- Send throwaway messages, observe `[system:context-pressure]` in system prompt
+- Push to limits — does it fire? Does main session survive?
+- If clean → dispatch Silas canary (Phase 3)
+
+---
 
 ## Phase 3 — Canary (Silas 🌫️) ⬜
 
+- [ ] Prep RESUMPTION.md for Silas (context loss on canary deploy)
 - [ ] Deploy fork build on Silas's WSL2 box
 - [ ] Set realistic threshold (0.8)
 - [ ] Run normal operations, monitor 24h
@@ -67,15 +79,26 @@
 
 ---
 
+## Ongoing Tasks
+
+| #   | Task                                  | Assignee               | Issue                                                                  | Status  |
+| --- | ------------------------------------- | ---------------------- | ---------------------------------------------------------------------- | ------- |
+| 6   | RFC docs: test counts + phase results | Elliott 🌻 or Ronan 🌊 | [#174](https://github.com/karmaterminal/openclaw-bootstrap/issues/174) | ⬜ Open |
+
+**Rule:** Finalize test counts + results in RFC at end of each phase.
+
+---
+
 ## Current State
 
-**Branch HEAD:** `1d5a1158a`
-**Tests:** 124/124 green (27 context-pressure + 97 existing)
+**Branch HEAD:** `c10931319`
+**Tests:** 129/129 green (27 unit + 5 integration + 50 tokens + 38 runner + 9 media-only)
 **Type check:** clean
 **Key files:**
 
-- `src/auto-reply/reply/context-pressure.ts` — extracted module (71 lines)
-- `src/auto-reply/reply/context-pressure.test.ts` — 27 tests
+- `src/auto-reply/reply/context-pressure.ts` — extracted module
+- `src/auto-reply/reply/context-pressure.test.ts` — 27 unit tests
+- `src/auto-reply/reply/context-pressure.integration.test.ts` — 5 integration tests
 - `src/auto-reply/reply/get-reply-run.ts` — injection at line 385, drain at line 403
 
 ---
