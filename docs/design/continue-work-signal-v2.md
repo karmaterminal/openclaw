@@ -12,7 +12,7 @@
 
 When an agent completes a turn — processes a message, heartbeat, or sub-agent result — it becomes inert until the next external event. There is no mechanism for an agent to signal _"I have more work to do — give me another turn."_
 
-This causes the **dwindle pattern**: agents with active work queues go idle between external events, losing momentum and context continuity. In our fleet of 4 persistent agents, the dwindle pattern costs 2–4 hours of productive capacity daily.
+This causes the **dwindle pattern**: agents with active work queues go idle between external events, losing momentum and context continuity. In persistent multi-agent deployments, the dwindle pattern costs hours of productive capacity daily.
 
 ## Solution
 
