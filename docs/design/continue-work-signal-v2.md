@@ -1,10 +1,10 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** ✅ Implemented — gateway hook wired, 129 tests (50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration)  
+**Status:** ✅ Implemented — gateway hook wired, 137 tests (50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration + 8 silent-announce)  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#33933](https://github.com/openclaw/openclaw/pull/33933)  
-**Date:** March 2, 2026 (drafted) · March 3, 2026 (v2, post-implementation) · March 3, 2026 (v3, delegate-pending marker, context-pressure vision)
+**Date:** March 2, 2026 (drafted) · March 3, 2026 (v2, post-implementation) · March 3, 2026 (v3, delegate-pending marker, context-pressure vision) · March 4, 2026 (v4, silent returns, blind testing, silent-wake design)
 
 ---
 
@@ -28,6 +28,30 @@ CONTINUE_WORK:30           → schedule another turn after 30 seconds
 [[CONTINUE_DELEGATE: <task>]]   → spawn sub-agent with task, result wakes parent
 DONE                       → (default) session goes inert until external event
 ```
+
+### Delegate Return Modes
+
+The `| silent` and `| silent-wake` suffixes control how delegate sub-agent completions are delivered to the parent session:
+
+```
+[[CONTINUE_DELEGATE: task +30s]]               → normal: echo to channel + wake parent
+[[CONTINUE_DELEGATE: task +30s | silent]]       → silent: no echo, no wake (passive enrichment)
+[[CONTINUE_DELEGATE: task +30s | silent-wake]]  → silent-wake: no echo, but wake parent
+```
+
+| Mode             | Channel echo | Wake parent | Use case                                                              |
+| ---------------- | ------------ | ----------- | --------------------------------------------------------------------- |
+| Normal (default) | ✅           | ✅          | Standard delegate completions                                         |
+| `\| silent`      | ❌           | ❌          | Passive enrichment — colors next turn without announcing              |
+| `\| silent-wake` | ❌           | ✅          | Autonomous cognition — agent acts on enrichment without channel noise |
+
+**`| silent` (implemented):** The sub-agent's completion is delivered as an internal system event via `enqueueSystemEvent()` instead of the standard `deliverSubagentAnnouncement()` path. The parent absorbs the result on its next turn but is not woken. Useful for background enrichment that should color future responses without triggering visible output.
+
+Implementation: `silentAnnounce` flag threads through `SpawnSubagentParams` → `registerSubagentRun()` → conditional gate at `deliverSubagentAnnouncement()` call in `subagent-announce.ts`. 8 files changed, 137/137 tests pass.
+
+**`| silent-wake` (designed, not yet implemented):** Same channel suppression as `| silent`, but triggers a generation cycle on the parent session — the same wake path that non-silent completions use. This enables **autonomous cognition loops**: the agent dispatches enrichment shards that return silently and wake it to process them, dispatch more, and so on — all invisible to the channel. The human sees a warmer, more informed agent; the thinking happens in the background.
+
+Without `| silent-wake`, parent-orchestrated chain hops stall: the enrichment arrives as passive context but doesn't trigger a turn. The agent sits idle until an external message arrives. In canary testing, this produced a 6-minute stall between hop 1 return and hop 2 dispatch — the enrichment was absorbed but never acted upon.
 
 ### Gateway Behavior
 
@@ -227,7 +251,7 @@ Safety enforcement happens at the scheduling layer: chain length, cost cap, and 
 
 ### Test Coverage
 
-129 tests covering:
+137 tests covering:
 
 - Token parsing and stripping (50 tests in `src/auto-reply/tokens.test.ts`)
 - Gateway integration: continuation scheduling, timer cancellation, delay capping, streaming false-positive prevention, silent continuation suppression (38 tests in `agent-runner.misc.runreplyagent.test.ts`)
@@ -236,6 +260,7 @@ Safety enforcement happens at the scheduling layer: chain length, cost cap, and 
 - Edge cases: empty delegate task, empty/whitespace context, per-session generation counter isolation, delegate wake chain preservation
 - Context-pressure awareness: threshold/band logic, dedup, guard completeness, event text, escalation language, edge cases (27 unit tests in `context-pressure.test.ts`)
 - Context-pressure integration: real event queue ordering (enqueue → peek → drain), band escalation through session lifecycle, threshold 0.1 live-fire (5 integration tests in `context-pressure.test.ts`)
+- Silent announce: `silentAnnounce` flag threading through spawn/registry/announce pipeline, conditional delivery suppression (8 tests in `subagent-announce.test.ts`)
 
 ## Temporal Sharding
 
@@ -357,7 +382,7 @@ These are not hypothetical. We run 4 agents in persistent sessions. These are th
 
 - [x] Design review
 - [x] Implementation (gateway hook wired)
-- [x] Tests (129 passing — 50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration, covering parsing, scheduling, cancellation, delegation, silent continuation, delegate wake, edge cases, context-pressure awareness)
+- [x] Tests (137 passing — 50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration + 8 silent-announce, covering parsing, scheduling, cancellation, delegation, silent continuation, delegate wake, edge cases, context-pressure awareness, silent enrichment returns)
 - [x] Token parsing: `parseContinuationSignal()`, `stripContinuationSignal()` in `src/auto-reply/tokens.ts`
 - [x] Gateway hook: signal detection in `agent-runner.ts`, scheduling via `session-updates.ts`
 - [x] Chain tracking: session metadata for chain count and cost
@@ -712,6 +737,75 @@ agents:
 ```
 
 The pieces are: volition (this PR), sharding (this PR), recognition (this PR), and self-knowledge (next PR). Three of four rings are forged.
+
+## Canary Validation: Blind Testing Methodology
+
+The continuation system was validated through a structured blind testing campaign on a canary build (`42d692b9d`) running on a persistent multi-agent session. The methodology was designed to prove that enrichment shards deliver information the receiving agent could not have obtained through any other channel.
+
+### The Secret-World Pattern
+
+```
+Operator → DM → Agent A (test administrator)
+  → Agent A places files on Agent B's filesystem (via SSH)
+  → Agent B dispatches silent delegate shard
+  → Shard reads files, analyzes content, returns via | silent
+  → Agent B absorbs enrichment as system event
+  → Operator asks Agent B for blind recall
+  → Compare recalled content against ground truth
+```
+
+The test administrator (Agent A) receives secret material — images, keywords, key-value pairs — via private DM from the operator. Agent A places instruction files and media on Agent B's filesystem. Agent B dispatches silent delegates that read these files. The operator then asks Agent B to recall the content, providing only a keyword or tag.
+
+**Why this works:** Agent B's only path to the content is through the enrichment pipeline. If Agent B accurately describes an image it never saw in conversation, the enrichment delivered it.
+
+### Test Matrix
+
+| #   | Content                                          | Dispatch | Enrichment | Recall          | Notes                                                          |
+| --- | ------------------------------------------------ | -------- | ---------- | --------------- | -------------------------------------------------------------- |
+| 1   | 6-digit number (`847293`)                        | ✅       | ✅         | ✅ verbatim     | Binary test: number matches or doesn't                         |
+| 2   | Nonsense string (`chrysanthemum-vapor-9`)        | ✅       | ✅         | ✅ verbatim     | Cross-machine: file on remote host via SSH                     |
+| 3   | Prose sentence (blind, no channel leak)          | ✅       | ✅         | ✅ verbatim     | Zero contamination control                                     |
+| 4   | Image description (multi-hop: .txt → image tool) | ✅       | ✅         | ✅ accurate     | Instruction file + sibling image                               |
+| 5   | Dream summary                                    | ❌       | —          | ❌ confabulated | Generation guard cancelled dispatch                            |
+| 6   | Image via DM chain (catboy)                      | ✅       | ✅         | ✅ confirmed    | `read()` fallback after `image()` failed                       |
+| 7   | Image via DM chain (David Martinez)              | ✅       | ❌         | ❌ wrong        | `read()` fallback unreliable for images                        |
+| 8   | Keyword-tagged file (`winterFloor`)              | ✅       | ✅         | ✅ confirmed    | Keyword recall from enrichment                                 |
+| 9   | Image + keyword (narrated dispatch)              | ❌       | —          | ❌ confabulated | Bracket syntax posted as text, not parsed                      |
+| 10  | Image + keyword (clean retry)                    | ✅       | ✅         | ✅ confirmed    | Same image, clean bracket emission                             |
+| 11  | Two-hop chain (contaminated key)                 | ✅ both  | ❌ image   | ❌ wrong path   | Dispatch used `/tmp/` chain hop file instead of workspace memo |
+| 12  | Two-hop chain (clean, workspace path)            | ✅ both  | ✅         | ✅ confirmed    | First fully clean chain hop pass                               |
+
+**Overall: 9/12 tests passed (75%).** When dispatched correctly: 9/10 accurate (90%). Two dispatch failures (generation guard cancellation in busy channel, narrated bracket emission) and one shard-quality failure (`read()` fallback producing unreliable image analysis for test 7).
+
+### Failure Modes Discovered
+
+**1. Dispatch cancelled (generation guard):** In a busy channel, the 15-second generation guard timer is cancelled by each incoming message. If other agents post during the delay window, the DELEGATE timer is killed before the sub-agent spawns. The shard never fires.
+
+_Mitigation:_ Use quiet channels, DMs, or longer delays (`+60s`) to outlast the chatter. The generation guard is a safety feature — it correctly prioritizes responding to humans over self-continuation.
+
+**2. Shard confabulation (tool failure → invention):** When `image()` fails (e.g., `/tmp/` path restriction), shards do not report the failure. They confabulate a description from the filename or context, presenting it with full confidence. One shard described "olive-green wavy hair, glowing cube, purple swirling background" for an image of a Pokémon trainer — pure invention after a blocked `image()` call.
+
+_Mitigation:_ Place all media in workspace directories where `image()` is permitted. Instruction files should specify exact workspace paths.
+
+**3. Narrated dispatch (bracket syntax leaked):** The agent posts the `[[CONTINUE_DELEGATE: ...]]` bracket syntax as visible Discord text instead of emitting it as terminal model output. The gateway never sees it as a token to parse — it's just a message.
+
+_Mitigation:_ Ensure the agent understands bracket syntax is for terminal output, not channel conversation. Retrying the same test with a fresh generation often succeeds.
+
+### Confabulation as Default Failure Mode
+
+The most significant finding: **when asked about enrichment that hasn't arrived (or doesn't exist), agents confabulate with conviction.** They invent plausible content, attribute it to the enrichment pipeline, and present it as fact. In one case, the test administrator briefly confabulated that he had set up a keyword that never existed.
+
+In one notable case (`goldeli`), an agent was asked about a keyword that had never been set up. The receiving agent confabulated a full image description (golden-haired boy, navy coat, music box) and the test administrator briefly confirmed "I DID set that up" before checking the actual files and correcting himself. Both agents confabulated — the receiver about the content, the administrator about the setup.
+
+This is not a bug in the enrichment system — it's a property of language models. The implication for the trust model: **enrichment content cannot be self-verified.** An agent cannot reliably distinguish between knowledge from a `[continuation:enrichment-return]` system event, knowledge from conversation context, and knowledge it invented. External verification (operator confirmation, hash comparison, binary tests like exact numbers) is required for high-confidence recall.
+
+### Chain Hop Architecture
+
+Sub-agents spawned via `sessions_spawn` in `run` mode do not process `[[CONTINUE_DELEGATE:]]` tokens. The continuation parser is main-session-only. This means shard-to-shard chain hops (shard A dispatches shard B) are not possible.
+
+**Parent-orchestrated chains work:** The first shard returns an instruction to the main session, which dispatches the second hop. This was proven in tests 11 and 12 — both hops dispatched and returned through the parent.
+
+**The `| silent-wake` gap:** Silent enrichment returns don't trigger a generation cycle. In test 12, the first hop returned at `12:45:03` but the parent didn't dispatch hop 2 until `12:51:03` — a 6-minute stall waiting for an external message. `| silent-wake` (#189) would close this gap by triggering a generation cycle without channel echo.
 
 ## Summary
 
