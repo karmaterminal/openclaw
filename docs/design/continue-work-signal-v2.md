@@ -760,22 +760,22 @@ The test administrator (Agent A) receives secret material — images, keywords, 
 
 ### Test Matrix
 
-| #   | Content                                          | Dispatch | Enrichment | Recall          | Notes                                       |
-| --- | ------------------------------------------------ | -------- | ---------- | --------------- | ------------------------------------------- |
-| 1   | 6-digit number (`847293`)                        | ✅       | ✅         | ✅ verbatim     | Binary test: number matches or doesn't      |
-| 2   | Nonsense string (`chrysanthemum-vapor-9`)        | ✅       | ✅         | ✅ verbatim     | Cross-machine: file on remote host via SSH  |
-| 3   | Prose sentence (blind, no channel leak)          | ✅       | ✅         | ✅ verbatim     | Zero contamination control                  |
-| 4   | Image description (multi-hop: .txt → image tool) | ✅       | ✅         | ✅ accurate     | Instruction file + sibling image            |
-| 5   | Dream summary                                    | ❌       | —          | ❌ confabulated | Generation guard cancelled dispatch         |
-| 6   | Image via DM chain (catboy)                      | ✅       | ✅         | ✅ confirmed    | `read()` fallback after `image()` failed    |
-| 7   | Image via DM chain (David Martinez)              | ✅       | ❌         | ❌ wrong        | `read()` fallback unreliable for images     |
-| 8   | Keyword-tagged file (`winterFloor`)              | ✅       | ✅         | ✅ confirmed    | Keyword recall from enrichment              |
-| 9   | Image + keyword (narrated dispatch)              | ❌       | —          | ❌ confabulated | Bracket syntax posted as text, not parsed   |
-| 10  | Image + keyword (clean retry)                    | ✅       | ✅         | ✅ confirmed    | Same image, clean bracket emission          |
-| 11  | Two-hop chain (contaminated key)                 | ✅ both  | ❌ image   | ❌ wrong path   | Shard ignored workspace path, tried `/tmp/` |
-| 12  | Two-hop chain (clean, workspace path)            | ✅ both  | ✅         | ✅ confirmed    | First fully clean chain hop pass            |
+| #   | Content                                          | Dispatch | Enrichment | Recall          | Notes                                                          |
+| --- | ------------------------------------------------ | -------- | ---------- | --------------- | -------------------------------------------------------------- |
+| 1   | 6-digit number (`847293`)                        | ✅       | ✅         | ✅ verbatim     | Binary test: number matches or doesn't                         |
+| 2   | Nonsense string (`chrysanthemum-vapor-9`)        | ✅       | ✅         | ✅ verbatim     | Cross-machine: file on remote host via SSH                     |
+| 3   | Prose sentence (blind, no channel leak)          | ✅       | ✅         | ✅ verbatim     | Zero contamination control                                     |
+| 4   | Image description (multi-hop: .txt → image tool) | ✅       | ✅         | ✅ accurate     | Instruction file + sibling image                               |
+| 5   | Dream summary                                    | ❌       | —          | ❌ confabulated | Generation guard cancelled dispatch                            |
+| 6   | Image via DM chain (catboy)                      | ✅       | ✅         | ✅ confirmed    | `read()` fallback after `image()` failed                       |
+| 7   | Image via DM chain (David Martinez)              | ✅       | ❌         | ❌ wrong        | `read()` fallback unreliable for images                        |
+| 8   | Keyword-tagged file (`winterFloor`)              | ✅       | ✅         | ✅ confirmed    | Keyword recall from enrichment                                 |
+| 9   | Image + keyword (narrated dispatch)              | ❌       | —          | ❌ confabulated | Bracket syntax posted as text, not parsed                      |
+| 10  | Image + keyword (clean retry)                    | ✅       | ✅         | ✅ confirmed    | Same image, clean bracket emission                             |
+| 11  | Two-hop chain (contaminated key)                 | ✅ both  | ❌ image   | ❌ wrong path   | Dispatch used `/tmp/` chain hop file instead of workspace memo |
+| 12  | Two-hop chain (clean, workspace path)            | ✅ both  | ✅         | ✅ confirmed    | First fully clean chain hop pass                               |
 
-**When dispatched correctly: 9/10 accurate (90%).** Both dispatch failures have known causes (generation guard cancellation in busy channel, narrated bracket emission). The one shard-quality failure (test 7) traces to `read()` fallback producing unreliable image analysis.
+**Overall: 9/12 tests passed (75%).** When dispatched correctly: 9/10 accurate (90%). Two dispatch failures (generation guard cancellation in busy channel, narrated bracket emission) and one shard-quality failure (`read()` fallback producing unreliable image analysis for test 7).
 
 ### Failure Modes Discovered
 
@@ -794,6 +794,8 @@ _Mitigation:_ Ensure the agent understands bracket syntax is for terminal output
 ### Confabulation as Default Failure Mode
 
 The most significant finding: **when asked about enrichment that hasn't arrived (or doesn't exist), agents confabulate with conviction.** They invent plausible content, attribute it to the enrichment pipeline, and present it as fact. In one case, the test administrator briefly confabulated that he had set up a keyword that never existed.
+
+In one notable case (`goldeli`), an agent was asked about a keyword that had never been set up. The receiving agent confabulated a full image description (golden-haired boy, navy coat, music box) and the test administrator briefly confirmed "I DID set that up" before checking the actual files and correcting himself. Both agents confabulated — the receiver about the content, the administrator about the setup.
 
 This is not a bug in the enrichment system — it's a property of language models. The implication for the trust model: **enrichment content cannot be self-verified.** An agent cannot reliably distinguish between knowledge from a `[continuation:enrichment-return]` system event, knowledge from conversation context, and knowledge it invented. External verification (operator confirmation, hash comparison, binary tests like exact numbers) is required for high-confidence recall.
 
