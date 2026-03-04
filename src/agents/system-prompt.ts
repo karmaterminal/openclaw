@@ -232,6 +232,8 @@ export function buildAgentSystemPrompt(params: {
     channel: string;
   };
   memoryCitationsMode?: MemoryCitationsMode;
+  /** Whether agent self-elected turn continuation is enabled. */
+  continuationEnabled?: boolean;
 }) {
   const acpEnabled = params.acpEnabled !== false;
   const sandboxedRuntime = params.sandboxInfo?.enabled === true;
@@ -671,6 +673,20 @@ export function buildAgentSystemPrompt(params: {
       "HEARTBEAT_OK",
       'OpenClaw treats a leading/trailing "HEARTBEAT_OK" as a heartbeat ack (and may discard it).',
       'If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text instead.',
+      "",
+    );
+  }
+
+  // Continuation tokens — only when the feature is enabled and not in subagent mode
+  if (!isMinimal && params.continuationEnabled) {
+    lines.push(
+      "## Continuation",
+      "You can elect to continue working after this turn ends.",
+      "- To request another turn: end your response with CONTINUE_WORK",
+      "- To delegate work to a sub-agent: end your response with [[CONTINUE_DELEGATE: task description]]",
+      "- To delay a delegate: [[CONTINUE_DELEGATE: task description +30s]]",
+      "The task text between the brackets is free-form — include context for your future self alongside the instruction.",
+      "Continuations are bounded: max chain length, cost cap, and min/max delay are enforced by the gateway.",
       "",
     );
   }
