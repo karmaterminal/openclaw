@@ -17,6 +17,7 @@ import {
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { peekSystemEventEntries, removeSystemEvents } from "../../infra/system-events.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
@@ -181,6 +182,8 @@ type RunPreparedReplyParams = {
   workspaceDir: string;
   abortedLastRun: boolean;
 };
+
+const cpLog = createSubsystemLogger("context-pressure");
 
 export async function runPreparedReply(
   params: RunPreparedReplyParams,
@@ -383,16 +386,23 @@ export async function runPreparedReply(
       agentCfgContextTokens: agentCfg?.contextTokens,
     });
     const cpThreshold = cfg.agents?.defaults?.continuation?.contextPressureThreshold;
-    // DEBUG: canary telemetry — remove after Phase 3
-    console.log(
-      `[context-pressure] sessionKey=${sessionKey} totalTokens=${sessionEntry.totalTokens} totalTokensFresh=${sessionEntry.totalTokensFresh} contextWindow=${contextWindow} threshold=${cpThreshold} lastBand=${sessionEntry.lastContextPressureBand}`,
-    );
+    cpLog.debug("check", {
+      sessionKey,
+      totalTokens: sessionEntry.totalTokens,
+      totalTokensFresh: sessionEntry.totalTokensFresh,
+      contextWindow,
+      threshold: cpThreshold,
+      lastBand: sessionEntry.lastContextPressureBand,
+    });
     const { fired, band } = checkContextPressure({
       sessionEntry,
       sessionKey,
       contextPressureThreshold: cpThreshold,
       contextWindowTokens: contextWindow,
     });
+    if (fired) {
+      cpLog.info("fired", { band, sessionKey });
+    }
     if (fired && sessionStore?.[sessionKey]) {
       sessionStore[sessionKey] = { ...sessionStore[sessionKey], lastContextPressureBand: band };
       if (storePath) {
