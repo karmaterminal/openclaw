@@ -17,6 +17,7 @@ import {
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { peekSystemEventEntries, removeSystemEvents } from "../../infra/system-events.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
@@ -402,6 +403,18 @@ export async function runPreparedReply(
           }
         });
       }
+      const pct =
+        contextWindow > 0 ? Math.round((sessionEntry.totalTokens / contextWindow) * 100) : 0;
+      const urgency =
+        band >= 95
+          ? "Compaction is imminent. Evacuate critical context now."
+          : band >= 90
+            ? "Context window nearly full. Strongly consider evacuating."
+            : `You are at ${pct}% of your context window. Consider preserving important context.`;
+      enqueueSystemEvent(`[system:context-pressure band=${band}] ${urgency}`, {
+        sessionKey,
+        contextKey: `context-pressure-band-${band}`,
+      });
     }
   }
 
