@@ -142,20 +142,52 @@ forgetfulness (Q47 A16) because it lives in _voluntas_ (appetite/will), not just
 
 ---
 
+## Phase 5 — Ambient Enrichment + PR Readiness ⬜
+
+**Context:** figs directive 2026-03-04 ~04:07 PST. Continuation is not just work loops — it's ambient
+intelligence. Agents schedule enrichment shards that color future turns. "My openclaw just does stuff."
+Not a whip — agency. The anti-whip framing (vs babyAGI, AutoGPT) must be prominent in the RFC.
+
+### PR Readiness Checklist
+
+- [ ] Full build (`npm run build`) clean on `feature/context-pressure` HEAD
+- [ ] All tests pass
+- [ ] RFC polish: verify anti-whip/alternatives section is prominent
+- [ ] RFC: add user story ("my openclaw just does stuff")
+- [ ] Close #175 with canary evidence (3 fires confirmed)
+- [ ] Squash or rebase into logical commit sequence
+- [ ] Remove WORKORDER.md before PR
+- [ ] PR description: clear, no internal references (no prince names, no "Thornfield")
+- [ ] Verify #186 scope is documented but NOT blocking PR
+
+### figs's vision (captured 04:07 PST)
+
+1. Agent knows it can continue (done: `2756b601f`)
+2. Not a whip — agent choice, volition to stop
+3. Schedule future enrichment shards that color turns below attention threshold
+4. Silent delivery for background shards (no Discord spam)
+5. User sees "my openclaw just does stuff" — amazing automation, simple as
+6. Makes compaction survival less damaging — gifts rehydrate
+7. Split thinking across time — "ask now, get gift later"
+
+---
+
 ## Current State
 
-**Branch HEAD (context-pressure):** `2756b601f` (merged: all Phase 3 work + system prompt injection)
+**Branch HEAD (context-pressure):** `a76f3e4d8` (WORKORDER update) → will be `HEAD` after this push
 **Branch HEAD (continue-work-v4):** `d17a52356` (RFC + delegate-pending fix)
-**Tests:** 136+ green (27 unit + 5 integration + 57 tokens + 38 runner + 9 media-only + 4 system-prompt stability)
-**Type check:** clean
+**Tests:** 136+ green (27 unit + 5 integration + 57 tokens + 38 runner + 9 media-only) + 43 system-prompt
+**Type check:** clean (upstream-only errors)
 **Canary (Silas):** stock `2026.3.3` (reverted from fork), threshold 0.14, 3 confirmed alarm fires
 **Key files:**
 
-- `src/auto-reply/reply/context-pressure.ts` — extracted module (71 lines)
+- `src/auto-reply/reply/context-pressure.ts` — extracted module (louder text + subsystem logging)
 - `src/auto-reply/reply/context-pressure.test.ts` — 27 unit tests
 - `src/auto-reply/reply/context-pressure.integration.test.ts` — 5 integration tests
 - `src/auto-reply/reply/get-reply-run.ts` — injection at line 385, drain at line 403
-- `src/auto-reply/reply/agent-runner-execution.ts` — delegate dispatch at line 931
+- `src/auto-reply/reply/agent-runner.ts` — delegate dispatch, doSpawn, setTimeout, delegate-pending
+- `src/agents/system-prompt.ts` — continuation token injection (line ~680)
+- `docs/design/continue-work-signal-v2.md` — RFC with dispatch trace + announce payload + phenomenology
 
 ---
 
