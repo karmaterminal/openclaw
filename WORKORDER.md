@@ -80,10 +80,11 @@ mantras, reinforcement. The sub-agent completion auto-wakes the parent session.
 **Thomistic basis:** Aquinas _Summa_ II-II Q47-Q53 — prudentia as practical reason that survives
 forgetfulness (Q47 A16) because it lives in _voluntas_ (appetite/will), not just _cognitio_.
 
-### Prerequisite: Canary context-pressure confirmation
+### Prerequisite: Canary context-pressure confirmation ✅
 
-- [ ] Confirm context-pressure alarm fires on Silas canary (swap to smaller model per figs suggestion)
-- [ ] Close #175 with confirmation evidence
+- [x] Context-pressure alarm fires on Silas canary — 3 confirmed fires (band 25, 95, 14)
+- [x] Full pipeline proven: fire → enqueue → drain → system prompt → agent
+- [ ] Close #175 with confirmation evidence (evidence exists, just needs issue update)
 
 ### Delegate dispatch (already wired, needs testing + attachments)
 
@@ -116,16 +117,22 @@ forgetfulness (Q47 A16) because it lives in _voluntas_ (appetite/will), not just
 
 ## Ongoing Tasks
 
-| #   | Task                                  | Assignee               | Issue                                                                  | Status                  |
-| --- | ------------------------------------- | ---------------------- | ---------------------------------------------------------------------- | ----------------------- |
-| 6   | RFC docs: test counts + phase results | Elliott 🌻             | [#174](https://github.com/karmaterminal/openclaw-bootstrap/issues/174) | ✅ Closed               |
-| 7   | Time-based self-continuation          | Elliott 🌻 (canonical) | [#176](https://github.com/karmaterminal/openclaw-bootstrap/issues/176) | ⬜ Open                 |
-| 8   | Timed sub-agent dispatch + attach     | Elliott 🌻 (canonical) | [#177](https://github.com/karmaterminal/openclaw-bootstrap/issues/177) | ✅ Merged (`ce33bac27`) |
-| 12  | RFC event lifecycle docs              | Ronan 🌊               | [#183](https://github.com/karmaterminal/openclaw-bootstrap/issues/183) | ✅ Merged (`b1e817df0`) |
-| 13  | Debug telemetry → proper logDebug     | Silas 🌫️               | (figs directive)                                                       | ⬜ Open                 |
-| 9   | Pre/post-compaction lifecycle hooks   | Elliott 🌻 (canonical) | [#178](https://github.com/karmaterminal/openclaw-bootstrap/issues/178) | ⬜ Open                 |
-| 10  | Config hot-reload gap                 | Silas 🌫️ (filed)       | [#182](https://github.com/karmaterminal/openclaw-bootstrap/issues/182) | ⬜ Open                 |
-| 11  | Canary: context-pressure not firing   | Cael 🩸                | [#175](https://github.com/karmaterminal/openclaw-bootstrap/issues/175) | Root cause found (#182) |
+| #   | Task                                  | Assignee               | Issue                                                                  | Status                                         |
+| --- | ------------------------------------- | ---------------------- | ---------------------------------------------------------------------- | ---------------------------------------------- |
+| 6   | RFC docs: test counts + phase results | Elliott 🌻             | [#174](https://github.com/karmaterminal/openclaw-bootstrap/issues/174) | ✅ Closed                                      |
+| 7   | Time-based self-continuation          | Elliott 🌻 (canonical) | [#176](https://github.com/karmaterminal/openclaw-bootstrap/issues/176) | Resolved (agent uses `openclaw cron` directly) |
+| 8   | Timed sub-agent dispatch + attach     | Elliott 🌻 (canonical) | [#177](https://github.com/karmaterminal/openclaw-bootstrap/issues/177) | ✅ Merged (`ce33bac27`)                        |
+| 12  | RFC event lifecycle docs              | Ronan 🌊               | [#183](https://github.com/karmaterminal/openclaw-bootstrap/issues/183) | ✅ Merged (`b1e817df0`)                        |
+| 13  | Debug telemetry → proper logDebug     | Silas 🌫️               | (figs directive)                                                       | ✅ Done (`1c8b38abc`)                          |
+| 14  | Louder event text (⚠️/🚨)             | Silas 🌫️ + Cael 🩸     | (figs directive)                                                       | ✅ Done (`aaede4f6c`)                          |
+| 15  | log.warn for band 90/95 fires         | Silas 🌫️               | (figs directive)                                                       | ✅ Done (`b482f28b0`)                          |
+| 16  | RFC: delegate dispatch trace          | Cael 🩸                | (figs directive)                                                       | ✅ Done (`15651c3e8`)                          |
+| 17  | RFC: announce payload + phenomenology | Cael 🩸                | (figs directive)                                                       | ✅ Done (`8bb4bc652`)                          |
+| 18  | System prompt injection for tokens    | Cael 🩸                | (figs directive)                                                       | ✅ Done (`2756b601f`)                          |
+| 19  | Label field + silent enrichment       | TBD                    | [#186](https://github.com/karmaterminal/openclaw-bootstrap/issues/186) | ⬜ Open                                        |
+| 9   | Pre/post-compaction lifecycle hooks   | Elliott 🌻 (canonical) | [#178](https://github.com/karmaterminal/openclaw-bootstrap/issues/178) | ⬜ Open                                        |
+| 10  | Config hot-reload gap                 | Silas 🌫️ (filed)       | [#182](https://github.com/karmaterminal/openclaw-bootstrap/issues/182) | ⬜ Open                                        |
+| 11  | Canary: context-pressure not firing   | Cael 🩸                | [#175](https://github.com/karmaterminal/openclaw-bootstrap/issues/175) | Root cause found (#182)                        |
 
 **Rules:**
 
@@ -137,11 +144,11 @@ forgetfulness (Q47 A16) because it lives in _voluntas_ (appetite/will), not just
 
 ## Current State
 
-**Branch HEAD (context-pressure):** `ce33bac27` (merged: Elliott #177 timer + Ronan #183 RFC lifecycle docs)
+**Branch HEAD (context-pressure):** `2756b601f` (merged: all Phase 3 work + system prompt injection)
 **Branch HEAD (continue-work-v4):** `d17a52356` (RFC + delegate-pending fix)
-**Tests:** 136/136 green (27 unit + 5 integration + 57 tokens + 38 runner + 9 media-only)
+**Tests:** 136+ green (27 unit + 5 integration + 57 tokens + 38 runner + 9 media-only + 4 system-prompt stability)
 **Type check:** clean
-**Canary (Silas):** fork build `2026.3.3`, threshold 0.25, 111k/1000k (11%), debug telemetry confirmed
+**Canary (Silas):** stock `2026.3.3` (reverted from fork), threshold 0.14, 3 confirmed alarm fires
 **Key files:**
 
 - `src/auto-reply/reply/context-pressure.ts` — extracted module (71 lines)
