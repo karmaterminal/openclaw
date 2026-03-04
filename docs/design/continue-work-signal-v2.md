@@ -770,7 +770,7 @@ The test administrator (Agent A) receives secret material — images, keywords, 
 | 6   | Image via DM chain (catboy)                      | ✅       | ✅         | ✅ confirmed    | `read()` fallback after `image()` failed                       |
 | 7   | Image via DM chain (David Martinez)              | ✅       | ❌         | ❌ wrong        | `read()` fallback unreliable for images                        |
 | 8   | Keyword-tagged file (`winterFloor`)              | ✅       | ✅         | ✅ confirmed    | Keyword recall from enrichment                                 |
-| 9   | Image + keyword (narrated dispatch)              | ❌       | —          | ❌ confabulated | Bracket syntax posted as text, not parsed                      |
+| 9   | Image + keyword (narrated dispatch)              | ❌       | —          | ❌ confabulated | Bracket posted as text; agent confabulated from keyword alone  |
 | 10  | Image + keyword (clean retry)                    | ✅       | ✅         | ✅ confirmed    | Same image, clean bracket emission                             |
 | 11  | Two-hop chain (contaminated key)                 | ✅ both  | ❌ image   | ❌ wrong path   | Dispatch used `/tmp/` chain hop file instead of workspace memo |
 | 12  | Two-hop chain (clean, workspace path)            | ✅ both  | ✅         | ✅ confirmed    | First fully clean chain hop pass                               |
