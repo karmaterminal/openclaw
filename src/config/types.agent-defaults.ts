@@ -292,6 +292,8 @@ export type AgentDefaultsConfig = {
     maxDelayMs?: number;
     maxChainLength?: number;
     costCapTokens?: number;
+    /** Maximum number of continue_delegate tool calls per agent turn (default: 10). */
+    maxDelegatesPerTurn?: number;
     /**
      * Context-pressure awareness threshold (0.0–1.0). When the session's token
      * usage exceeds this fraction of the context window, a [system:context-pressure]

@@ -23,6 +23,7 @@ import { generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
+import { consumePendingDelegates } from "../continuation-delegate-store.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
@@ -1013,6 +1014,143 @@ export async function runReplyAgent(params: {
                 );
                 requestHeartbeatNow({ sessionKey, reason: "continuation" });
               }, clampedDelay);
+            }
+          }
+        }
+      }
+    }
+
+    // Handle tool-dispatched continuation delegates (continue_delegate tool).
+    // These are enqueued by the tool during execution and consumed here,
+    // going through the same chain tracking as bracket-parsed signals.
+    // Multiple delegates per turn are supported (multi-arrow fan-out).
+    if (continuationFeatureEnabled && sessionKey) {
+      const toolDelegates = consumePendingDelegates(sessionKey);
+      if (toolDelegates.length > 0) {
+        const continuationCfg = cfg.agents?.defaults?.continuation;
+        const maxChainLength = continuationCfg?.maxChainLength ?? 10;
+        const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
+        const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
+        const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
+
+        let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
+        let accumulatedChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
+        const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
+
+        for (const delegate of toolDelegates) {
+          if (currentChainCount >= maxChainLength) {
+            defaultRuntime.log(
+              `Continuation chain capped at ${maxChainLength} for tool delegate in session ${sessionKey}`,
+            );
+            enqueueSystemEvent(
+              `[continuation] Tool delegate rejected: chain length ${maxChainLength} reached. Task: ${delegate.task}`,
+              { sessionKey },
+            );
+            break;
+          }
+
+          if (costCapTokens > 0 && accumulatedChainTokens > costCapTokens) {
+            defaultRuntime.log(
+              `Continuation cost cap exceeded for tool delegate in session ${sessionKey}`,
+            );
+            enqueueSystemEvent(
+              `[continuation] Tool delegate rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}). Task: ${delegate.task}`,
+              { sessionKey },
+            );
+            break;
+          }
+
+          const nextChainCount = currentChainCount + 1;
+
+          const doToolSpawn = async () => {
+            try {
+              const spawnResult = await spawnSubagentDirect(
+                {
+                  task: `[continuation] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegate.task}`,
+                  ...(delegate.silent ? { silentAnnounce: true } : {}),
+                  ...(delegate.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                },
+                {
+                  agentSessionKey: sessionKey,
+                  agentChannel: followupRun.originatingChannel ?? undefined,
+                  agentAccountId: followupRun.originatingAccountId ?? undefined,
+                  agentTo: followupRun.originatingTo ?? undefined,
+                  agentThreadId: followupRun.originatingThreadId ?? undefined,
+                },
+              );
+              if (spawnResult.status === "accepted") {
+                enqueueSystemEvent(
+                  `[continuation:delegate-spawned] Tool delegate turn ${nextChainCount}/${maxChainLength}: ${delegate.task}`,
+                  { sessionKey },
+                );
+              } else {
+                defaultRuntime.log(
+                  `Tool DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
+                );
+                enqueueSystemEvent(
+                  `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${delegate.task}`,
+                  { sessionKey },
+                );
+              }
+            } catch (err) {
+              defaultRuntime.log(
+                `Tool DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
+              );
+              enqueueSystemEvent(
+                `[continuation] Tool DELEGATE spawn failed: ${String(err)}. Task: ${delegate.task}`,
+                { sessionKey },
+              );
+            }
+          };
+
+          // Marker event fires immediately
+          enqueueSystemEvent(
+            `[continuation:delegate-pending] Tool delegate turn ${nextChainCount}/${maxChainLength}${delegate.delayMs ? ` (delay: ${delegate.delayMs / 1000}s)` : ""}: ${delegate.task}`,
+            { sessionKey },
+          );
+
+          if (delegate.delayMs && delegate.delayMs > 0) {
+            const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));
+            defaultRuntime.log(
+              `Tool DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegate.task}`,
+            );
+            setTimeout(() => void doToolSpawn(), clampedDelay);
+          } else {
+            await doToolSpawn();
+          }
+
+          currentChainCount = nextChainCount;
+        }
+
+        // Persist updated chain state after processing all tool delegates
+        if (currentChainCount > (activeSessionEntry?.continuationChainCount ?? 0)) {
+          if (activeSessionEntry) {
+            activeSessionEntry.continuationChainCount = currentChainCount;
+            activeSessionEntry.continuationChainStartedAt = chainStartedAt;
+            activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
+          }
+          if (activeSessionStore) {
+            activeSessionStore[sessionKey] = {
+              ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
+              continuationChainCount: currentChainCount,
+              continuationChainStartedAt: chainStartedAt,
+              continuationChainTokens: accumulatedChainTokens,
+            };
+          }
+          if (storePath) {
+            try {
+              await updateSessionStore(storePath, (store) => {
+                const entry = store[sessionKey];
+                if (entry) {
+                  entry.continuationChainCount = currentChainCount;
+                  entry.continuationChainStartedAt = chainStartedAt;
+                  entry.continuationChainTokens = accumulatedChainTokens;
+                }
+              });
+            } catch (err) {
+              defaultRuntime.log(
+                `Failed to persist tool delegate chain state for ${sessionKey}: ${String(err)}`,
+              );
             }
           }
         }
