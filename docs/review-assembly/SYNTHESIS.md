@@ -1,97 +1,127 @@
-# Cross-Review Synthesis — Continuation Discoverability
+# Continuation Feature — Consensus Document
 
-**Assembled by:** Cael  
-**Inputs:** `cael.md`, `elliott.md`, `ronan.md`, `silas.md`  
-**Date:** 2026-03-05 00:02 PST
-
----
-
-## Convergence (All Four Agree)
-
-1. **The differentiators are three**: timed dispatch (`+Ns`), silent returns (`| silent`/`| silent-wake`), wake-on-return. Everything else follows from these.
-
-2. **Current injection is syntax documentation, not a decision framework.** The agent learns _how_ to format brackets but not _when_ to choose them over `sessions_spawn`.
-
-3. **`sessions_spawn` wins on discoverability because it's a tool.** Schema, feedback, typed parameters, catalog presence. Brackets have none of this.
-
-4. **Context-pressure must be linked explicitly.** The injection should tell the agent what to do when `[system:context-pressure]` fires. Currently, context-pressure events and continuation tokens are documented as unrelated features.
-
-5. **Tool wrapper is the long-term solve, out of scope for this PR.**
-
-6. **The language must be clinical for the upstream audience.** No anthropomorphism. Functional descriptions of capabilities.
-
-## Unique Contributions
-
-### Elliott
-
-- **Canary findings list for the RFC.** Five concrete findings from testing that should be documented: shard safety refusal, `sessions_spawn` preference, return format recall, cost-cap-per-chain, context noise. These are behavioral observations, not code bugs — they belong in the RFC as operational guidance.
-- **RFC staleness audit.** Five specific lines/sections that need updating (silent-wake status, chain-hop limitation, etc.). Actionable and verifiable.
-- **"Cannot be made silent without breaking its contract"** — strongest framing of why `| silent` can't be retrofitted onto `sessions_spawn`.
-
-### Silas
-
-- **Behavioral nudge comparison.** Traced exactly how `sessions_spawn` gets its "glue": tool schema at line 261, behavioral nudge at line 451, and feedback loop. Most granular analysis of why the existing tool works.
-- **Estimated diff: ~20 lines in system-prompt.ts, no logic changes, no new tests.** Useful scoping.
-- **Identified that canary injection already includes `| silent` and `| silent-wake` syntax** — the gap is framing, not syntax.
-
-### Ronan
-
-- **Cleanest proposed injection structure.** Decision framework first → syntax second → context-pressure last. Inverse framing ("when to use `sessions_spawn` instead") is effective.
-- **"Self-scheduled continuation" as a use case.** The agent scheduling its own future work (check CI in 60s) as a distinct use case from enrichment or evacuation.
-- **Tool wrapper return schema.** `{ status: "scheduled", delayMs, chainTurn, chainBudgetRemaining }` — most detailed feedback spec.
-
-### Cael
-
-- **Multi-delegate-per-response question.** Parser only matches one `[[CONTINUE_DELEGATE:]]` per response (end-anchored regex). Multiple delegates require CONTINUE_WORK chaining, which accumulates chain cost. This caused the 944K cost cap issue tonight.
-- **Cost cap interaction section.** Delegates hit cost cap; spawns bypass it. By design but needs documentation.
-
-## Merged Injection (Proposed)
-
-```
-## Continuation & Delegation
-
-### Self-elected turns
-End your response with CONTINUE_WORK to request another turn after a delay.
-End with CONTINUE_WORK:30 to specify delay in seconds.
-Use this when you have more work to do but want to yield to incoming messages first.
-
-### Delegated continuation
-End your response with [[CONTINUE_DELEGATE: task description]] to dispatch a sub-agent
-with gateway-managed timing and delivery control.
-
-Syntax:
-  [[CONTINUE_DELEGATE: task +30s]]               — delayed spawn, normal return
-  [[CONTINUE_DELEGATE: task | silent]]            — result as internal context only (no channel output)
-  [[CONTINUE_DELEGATE: task | silent-wake]]       — silent result + triggers your next turn
-  [[CONTINUE_DELEGATE: task +30s | silent-wake]]  — delayed spawn, silent return, triggers next turn
-
-The task text is free-form. Include working context alongside the instruction.
-
-### When to use CONTINUE_DELEGATE vs sessions_spawn
-Use sessions_spawn for immediate, visible sub-agent work that announces to the channel.
-Use [[CONTINUE_DELEGATE:]] when you need:
-  - Delayed dispatch — schedule work for N seconds from now (+Ns)
-  - Silent return — result arrives as internal context, no channel output (| silent)
-  - Wake-on-return — silent result that triggers your next turn (| silent-wake)
-  - Chain tracking — gateway enforces cost cap and depth limit across linked dispatches
-
-### Context pressure
-When you receive a [system:context-pressure] event, your context window is approaching capacity.
-Use [[CONTINUE_DELEGATE: ... | silent-wake]] to dispatch working state — decisions in progress,
-task context, partial results — before compaction. These shards return after compaction and
-re-inject context that the summary cannot preserve.
-
-Continuations are bounded: max chain length, cost cap, and min/max delay enforced by the gateway.
-```
-
-## Action Items
-
-1. **Implement merged injection** — replace current `## Continuation` in `system-prompt.ts` (~lines 681-698)
-2. **Update RFC** — Elliott's 5 staleness fixes + 5 canary findings
-3. **File follow-up issue** — `continue_delegate` tool wrapper (Ronan's return schema as spec)
-4. **File consideration** — multi-delegate-per-response parser change (regex anchor)
-5. **Drop `docs/review-assembly/`** — temporary, remove before PR submission
+**Assembled by:** Cael 🩸 (organizer)  
+**Contributors:** Elliott 🌻, Silas 🌫️, Ronan 🌊, Cael 🩸  
+**Date:** 2026-03-05  
+**Status:** Consensus reached. All four princes agree on every item below.
 
 ---
 
-_This directory is temporary. Delete after the merged injection is committed._
+## What We're Shipping (Feature Scope)
+
+### 1. Continuation Core (already implemented)
+
+- `CONTINUE_WORK` — agent requests another turn
+- `[[CONTINUE_DELEGATE: task]]` — bracket syntax for delegation
+- Chain tracking: `maxChainLength`, `costCapTokens`, delay clamping
+- Safety: opt-in (`continuation.enabled`), interruptible, bounded
+
+### 2. Context-Pressure Events (already implemented)
+
+- `[system:context-pressure]` injected at configurable threshold bands (80/90/95%)
+- Escalating urgency language
+- Dedup via `lastContextPressureBand`
+- Pre-run injection in `get-reply-run.ts`
+
+### 3. Silent Returns + Silent-Wake (already implemented)
+
+- `| silent` — sub-agent result as internal context only, no channel echo
+- `| silent-wake` — silent + triggers parent generation cycle
+- Flags thread through `SpawnSubagentParams` → registry → announce flow
+
+### 4. Sub-Agent Chain Hops (already implemented)
+
+- Bracket parsing at announce boundary in `subagent-announce.ts`
+- Depth-bounded via `maxSpawnDepth`
+- Flags inherited from parent dispatch
+
+### 5. System Prompt Injection (implemented tonight)
+
+- Decision framework: "when to use `continue_delegate` vs `sessions_spawn`"
+- Context-pressure evacuation guidance
+- Concrete example for discoverability
+- Commit: `5c311a9cf`
+
+### 6. `continue_delegate` Tool Wrapper (TO BUILD)
+
+**Consensus: all four agree this belongs in the feature, not as follow-up.**
+
+Reasoning: 12 hours of canary testing proved agents reach for tools, not text conventions. Every shard chose `sessions_spawn` over brackets even when explicitly instructed otherwise. Shipping continuation without the tool is shipping it without the interface.
+
+**Implementation:**
+
+- New file: `src/agents/tools/continue-delegate-tool.ts` (~100 lines)
+- TypeBox schema: `{ task: string, delaySeconds?: number, mode?: "normal"|"silent"|"silent-wake" }`
+- Two approaches identified:
+  - **Path A (Silas):** Side-channel — tool sets `pendingContinuation` on run context, `agent-runner.ts` reads post-response alongside bracket parsing. New pattern but clean.
+  - **Path B (Cael/Ronan):** Direct call — tool calls `spawnSubagentDirect()` + `enqueueSystemEvent()` + `setTimeout()` directly, same functions as bracket parser. No new patterns.
+- **Decision:** Path B. Simpler, no new shared state. The tool IS a spawn with flags — same as what the bracket parser does after parsing.
+- Registration: conditional on `continuation.enabled` in `openclaw-tools.ts`
+- Catalog entry in `tool-catalog.ts`
+- Policy entry in `pi-tools.policy.ts`
+- Returns: `{ status: "scheduled", delayMs: number, mode: string }`
+- Tests: ~30-50 lines (accepts params, respects clamping, sets flags, rejects when disabled)
+
+**Diff estimate:** ~170 lines, 2 new files, 3 modified files.
+
+### 7. RFC Updates (TO DO)
+
+Five staleness fixes (identified by Elliott):
+
+1. `| silent-wake` status: "designed" → "implemented, canary-validated"
+2. Chain hop: "main-session-only" → "announce-boundary parsing exists"
+3. Add session-noise finding from canary testing
+4. Add shard safety refusal finding (file-instructed brackets → prompt injection)
+5. Add `sessions_spawn` preference finding (tools beat syntax)
+
+Plus: cost cap operational note, multi-delegate regex consideration.
+
+---
+
+## What We're NOT Shipping (Explicitly Deferred)
+
+- Multi-delegate-per-response (regex anchor change) — parser consideration, not this PR
+- `continue_work` tool wrapper — `CONTINUE_WORK` is simpler; text token is sufficient
+- Durable timers for delegates — `setTimeout` volatility is a feature; `openclaw cron` for durable
+
+---
+
+## Differentiators (Critical Reviewer Answer)
+
+**Q: Why not just use `sessions_spawn`?**
+
+| Capability                              | `sessions_spawn`        | `continue_delegate`   |
+| --------------------------------------- | ----------------------- | --------------------- |
+| Timed dispatch (`+Ns`)                  | ❌ Immediate only       | ✅ Configurable delay |
+| Silent return (no channel echo)         | ❌ Always announces     | ✅ `silent` mode      |
+| Wake-on-return (silent + triggers turn) | ❌ N/A                  | ✅ `silent-wake` mode |
+| Chain tracking (cost/depth bounds)      | ❌ Independent sessions | ✅ Gateway-managed    |
+| Tool schema + feedback                  | ✅                      | ✅ (with wrapper)     |
+
+**One sentence:** `sessions_spawn` is immediate and loud; `continue_delegate` is scheduled, quiet, and tracked.
+
+**Primary use case:** When `[system:context-pressure]` fires, the agent dispatches `continue_delegate(task, 30, "silent-wake")` to carry working state past compaction. The shard returns to the post-compaction session, re-seeding context the summary couldn't preserve.
+
+---
+
+## Execution Plan
+
+1. ✅ System prompt injection rewrite — `5c311a9cf`
+2. **Next:** Build `continue_delegate` tool (Path B, ~170 lines)
+3. **Then:** RFC updates (Elliott's 5 fixes + canary findings)
+4. **Then:** PR readiness (squash commits, drop `docs/review-assembly/`, clean branches)
+5. **Then:** Canary test of tool-based dispatch on Silas
+
+---
+
+## Supporting Documents
+
+- `cael.md` — Differentiation analysis, cost cap interaction, multi-delegate question
+- `elliott.md` — RFC staleness audit, canary findings, two-track proposal
+- `ronan.md` — Cleanest injection structure, tool wrapper return schema
+- `silas.md` — Behavioral nudge trace, side-channel architecture, estimated diff
+- `TOOL-WRAPPER-ANALYSIS.md` — Why deferral was wrong, implementation path
+
+---
+
+_Disagree and commit. Nobody left out. This is what we're bringing._
