@@ -122,6 +122,10 @@ export function createContinueDelegateTool(opts: {
       }
 
       // Enqueue for post-run processing by agent-runner.ts
+      // Debug: log session key for canary diagnostics
+      console.log(
+        `[continue_delegate] Enqueuing delegate for session=${sessionKey} task=${task.slice(0, 80)}`,
+      );
       enqueuePendingDelegate(sessionKey, {
         task,
         delayMs,

@@ -1072,6 +1072,11 @@ export async function runReplyAgent(params: {
     if (continuationFeatureEnabled && sessionKey) {
       const toolDelegates = consumePendingDelegates(sessionKey);
       if (toolDelegates.length > 0) {
+        defaultRuntime.log(
+          `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
+        );
+      }
+      if (toolDelegates.length > 0) {
         const continuationCfg = cfg.agents?.defaults?.continuation;
         const maxChainLength = continuationCfg?.maxChainLength ?? 10;
         const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
