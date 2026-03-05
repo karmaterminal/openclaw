@@ -1035,7 +1035,18 @@ export async function runReplyAgent(params: {
                 defaultRuntime.log(
                   `DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegateTask}`,
                 );
-                setTimeout(() => void doSpawn(), clampedDelay);
+                // Generation guard: if an external message arrives during the delay,
+                // bumpContinuationGeneration invalidates this timer — same as WORK timers.
+                const delegateGeneration = bumpContinuationGeneration(sessionKey);
+                setTimeout(() => {
+                  if (currentContinuationGeneration(sessionKey) !== delegateGeneration) {
+                    defaultRuntime.log(
+                      `DELEGATE timer cancelled (generation mismatch) for session ${sessionKey}`,
+                    );
+                    return;
+                  }
+                  void doSpawn();
+                }, clampedDelay);
               } else {
                 await doSpawn();
               }
@@ -1084,13 +1095,17 @@ export async function runReplyAgent(params: {
         const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
 
         let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
-        // Accumulate current turn's token usage into chain cost — same as bracket path.
+        // Accumulate current turn's token usage into chain cost.
+        // Skip if the bracket-signal path already accumulated this turn's tokens
+        // (both paths read from the same activeSessionEntry.continuationChainTokens).
+        const bracketAlreadyAccumulated = continuationSignal != null;
         const toolDelegateUsage = runResult.meta?.agentMeta?.usage;
-        const toolDelegateTurnTokens =
-          (toolDelegateUsage?.input ?? 0) +
-          (toolDelegateUsage?.output ?? 0) +
-          (toolDelegateUsage?.cacheRead ?? 0) +
-          (toolDelegateUsage?.cacheWrite ?? 0);
+        const toolDelegateTurnTokens = bracketAlreadyAccumulated
+          ? 0
+          : (toolDelegateUsage?.input ?? 0) +
+            (toolDelegateUsage?.output ?? 0) +
+            (toolDelegateUsage?.cacheRead ?? 0) +
+            (toolDelegateUsage?.cacheWrite ?? 0);
         let accumulatedChainTokens =
           (activeSessionEntry?.continuationChainTokens ?? 0) + toolDelegateTurnTokens;
         const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
@@ -1172,7 +1187,17 @@ export async function runReplyAgent(params: {
             defaultRuntime.log(
               `Tool DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegate.task}`,
             );
-            setTimeout(() => void doToolSpawn(), clampedDelay);
+            // Generation guard: same as bracket-path delegate timers
+            const toolDelegateGeneration = bumpContinuationGeneration(sessionKey);
+            setTimeout(() => {
+              if (currentContinuationGeneration(sessionKey) !== toolDelegateGeneration) {
+                defaultRuntime.log(
+                  `Tool DELEGATE timer cancelled (generation mismatch) for session ${sessionKey}`,
+                );
+                return;
+              }
+              void doToolSpawn();
+            }, clampedDelay);
           } else {
             await doToolSpawn();
           }

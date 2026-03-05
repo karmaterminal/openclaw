@@ -93,7 +93,7 @@ export function createContinueDelegateTool(opts: {
       const silentWake = modeRaw === "silent-wake" || isPostCompaction;
 
       // Check per-turn delegate limit
-      const maxPerTurn = opts.maxDelegatesPerTurn ?? 10;
+      const maxPerTurn = opts.maxDelegatesPerTurn ?? 5;
       const currentCount = pendingDelegateCount(sessionKey);
       if (currentCount >= maxPerTurn) {
         return jsonResult({
