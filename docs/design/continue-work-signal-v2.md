@@ -4,7 +4,7 @@
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#33933](https://github.com/openclaw/openclaw/pull/33933)  
-**Date:** March 2, 2026 (drafted) · March 3, 2026 (v2, post-implementation) · March 3, 2026 (v3, delegate-pending marker, context-pressure vision) · March 4, 2026 (v4, silent returns, blind testing, silent-wake design)
+**Date:** March 2, 2026 (drafted) · March 3, 2026 (post-implementation, delegate-pending marker, context-pressure vision) · March 4, 2026 (silent returns, blind testing, silent-wake design) · March 5, 2026 (`continue_delegate` tool, `| post-compaction` lifecycle dispatch, canary validation)
 
 ---
 
@@ -401,6 +401,47 @@ None implement **agent-elected** continuation in a **persistent conversational c
 
 `CONTINUE_WORK` is the first primitive that gives an agent the ability to say "I'm not done" without being trapped in a loop that can't say "I'm done." Volition in both directions. That's the difference.
 
+## `continue_delegate` Tool vs `sessions_spawn`
+
+The `continue_delegate` tool and `sessions_spawn` serve different roles. This comparison clarifies when to reach for each.
+
+| Dimension        | `sessions_spawn`                           | `continue_delegate`                                       |
+| ---------------- | ------------------------------------------ | --------------------------------------------------------- |
+| **Initiation**   | Operator or agent-visible                  | Agent self-elected                                        |
+| **Visibility**   | Always visible — announces to channel      | Silent modes available (`silent`, `silent-wake`)          |
+| **Cost tracking** | Per-session, independent                  | Accumulated chain cost with `costCapTokens` cap           |
+| **Depth limits** | `maxSpawnDepth` only                       | `maxChainLength` + `maxDelegatesPerTurn` + cost cap       |
+| **Multi-dispatch** | Multiple calls, each independent         | Multiple calls per turn, fan-out with shared chain state  |
+| **Timing**       | Immediate                                  | Configurable delay (`+Ns`), clamped to `minDelayMs`/`maxDelayMs` |
+| **Return mode**  | Always announces to channel                | `normal` / `silent` / `silent-wake` / `post-compaction`   |
+| **Use case**     | "Start this task" — operator-initiated work | "Carry this forward" — agent-elected continuation         |
+
+**The safety distinction:** `sessions_spawn` is operator-initiated, visible, and has independent cost tracking per session. `continue_delegate` is agent-self-elected, can be invisible (`| silent`), and accumulates cost across a chain. Silent + autonomous + no cost tracking would be the scenario operators worry about — `continue_delegate` provides chain tracking as the guardrail.
+
+**When to use `sessions_spawn`:** Sub-agents for visible tasks — code review, research, file analysis — where the user expects to see results in the channel.
+
+**When to use `continue_delegate`:** Background enrichment, context evacuation before compaction, ambient self-knowledge building, any work that should color future turns without interrupting conversation.
+
+### Tool Architecture: "Two Doors, One Room"
+
+The `continue_delegate` tool uses a **side-channel pattern** (Path A): the tool writes to a module-level store during execution, and `agent-runner.ts` reads from the store post-response. Both tool-dispatched and bracket-parsed (`[[CONTINUE_DELEGATE:]]`) signals converge at the same dispatch point — same cost cap, chain depth, delay clamping, same `spawnSubagentDirect` call.
+
+```
+Tool execution (during LLM turn):
+  continue_delegate(task, delay, mode)
+    → enqueuePendingDelegate(sessionKey, { task, delay, silent, silentWake })
+
+Post-response (agent-runner.ts):
+  consumePendingDelegates(sessionKey)
+    → for each delegate: chain checks → spawnSubagentDirect()
+```
+
+**Precedent:** This is the same topology as `sessions_spawn` — tool writes to sub-agent registry, runner reads completion events. The pattern is proven.
+
+**Why tool, not just brackets:** Brackets are limited to one per response (end-anchored regex). The tool supports multiple calls per turn — 5 `continue_delegate()` calls = 5 arrows in one turn. For fan-out patterns (temporal sharding, parallel enrichment), the tool is the only viable path.
+
+**Sub-agent access:** The tool is denied for sub-agents. Sub-agents use bracket syntax, which chains via the announce boundary parser (issue #196). This prevents sub-agents from spawning unbounded chains through the tool path while preserving chain hops through brackets.
+
 ## Use Cases (Production)
 
 These are not hypothetical. We run 4 agents in persistent sessions. These are the patterns we've hit:
@@ -422,19 +463,20 @@ These are not hypothetical. We run 4 agents in persistent sessions. These are th
 - [x] Token parsing: `parseContinuationSignal()`, `stripContinuationSignal()` in `src/auto-reply/tokens.ts`
 - [x] Gateway hook: signal detection in `agent-runner.ts`, scheduling via `session-updates.ts`
 - [x] Chain tracking: session metadata for chain count and cost
+- [x] Canary validation: quiet-channel `silent-wake` test — tool → store → runner → shard → return → wake → unprompted response (March 5, 2026)
 - [ ] Documentation (this RFC, pending upstream review)
 - [x] Upstream feature request: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)
 - [ ] Upstream PR to openclaw/openclaw
 
 ## Context-Pressure Awareness and the Lich Protocol
 
-The continuation system provides **volition** (self-elected turns) and **sharding** (delegate dispatch). The third primitive is **self-knowledge** — agents knowing their own resource state. All three are implemented.
+The continuation system provides **volition** (self-elected turns) and **sharding** (delegate dispatch). The third primitive is **self-knowledge** — agents knowing their own resource state. All three are implemented and canary-tested.
 
-### The Gap
+### The Problem
 
 The gateway already tracks per-session token usage: `tokens/maxTokens` is visible via `openclaw sessions` CLI output. But the agent _inside_ the session has no visibility into this value. An agent at 90% context consumption cannot prepare for compaction because it doesn't know compaction is imminent.
 
-### Proposed: `[system:context-pressure]`
+### `[system:context-pressure]` (Implemented)
 
 A system event injected when session token usage crosses a configurable threshold:
 
@@ -670,7 +712,7 @@ This transforms rehydration from "hope the agent reads its files" to "the gatewa
 
 The fling is the arrow. The post-compaction event is the door opening when the arrow lands.
 
-**Existing infrastructure:** The gateway already has this hook at `agent-runner.ts:827` — `readPostCompactionContext()` runs after compaction and injects workspace context (AGENTS.md, etc.) as a system event. We extend this existing path rather than inventing new lifecycle machinery.
+**Existing infrastructure (now wired):** The gateway already has this hook at `agent-runner.ts:827` — `readPostCompactionContext()` runs after compaction and injects workspace context (AGENTS.md, etc.) as a system event. The `| post-compaction` delegate mode extends this existing path: delegates pre-registered via `continue_delegate("task", 0, "post-compaction")` are stored in a compaction-specific queue and dispatched in the same `autoCompactionCompleted` block, right alongside the workspace file injection. The shard and the boot files land together. No timer guessing — the lifecycle event triggers the dispatch.
 
 ### Compaction-Triggered Evacuation Sub-Agent
 
@@ -772,7 +814,7 @@ agents:
       preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction
 ```
 
-The pieces are: volition (this PR), sharding (this PR), recognition (this PR), and self-knowledge (next PR). Three of four rings are forged.
+The pieces are: volition (`CONTINUE_WORK`), sharding (`CONTINUE_DELEGATE`), recognition (delegate-pending markers), self-knowledge (context-pressure events), the `continue_delegate` tool (Path A, multi-delegate fan-out), and lifecycle dispatch (`| post-compaction`). All implemented. All canary-tested.
 
 ## Canary Validation: Blind Testing Methodology
 
