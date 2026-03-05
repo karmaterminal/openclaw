@@ -1,5 +1,9 @@
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
-import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
+import {
+  isSilentReplyText,
+  SILENT_REPLY_TOKEN,
+  stripContinuationSignal,
+} from "../auto-reply/tokens.js";
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { loadConfig } from "../config/config.js";
 import {
@@ -41,7 +45,7 @@ import {
 } from "./subagent-announce-dispatch.js";
 import { type AnnounceQueueItem, enqueueAnnounce } from "./subagent-announce-queue.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
-import type { SpawnSubagentMode } from "./subagent-spawn.js";
+import { spawnSubagentDirect, type SpawnSubagentMode } from "./subagent-spawn.js";
 import { readLatestAssistantReply } from "./tools/agent-step.js";
 import { sanitizeTextContent, extractAssistantText } from "./tools/sessions-helpers.js";
 import { isAnnounceSkip } from "./tools/sessions-send-helpers.js";
@@ -1274,7 +1278,67 @@ export async function runSubagentAnnounceFlow(params: {
     const taskLabel = params.label || params.task || "task";
     const subagentName = resolveAgentIdFromSessionKey(params.childSessionKey);
     const announceSessionId = childSessionId || "unknown";
-    const findings = reply || "(no output)";
+    let findings = reply || "(no output)";
+
+    // --- Sub-agent continuation chain: parse [[CONTINUE_DELEGATE:]] from sub-agent output ---
+    const cfg = loadConfig();
+    const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
+    if (continuationEnabled && findings !== "(no output)") {
+      const continuationResult = stripContinuationSignal(findings);
+      if (continuationResult.signal?.kind === "work") {
+        defaultRuntime.log(
+          `[subagent-chain-hop] CONTINUE_WORK not supported in sub-agent chain (from ${params.childSessionKey}), ignoring`,
+        );
+      } else if (continuationResult.signal?.kind === "delegate") {
+        findings = continuationResult.text || "(no output)";
+        const chainTask = continuationResult.signal.task;
+        const chainDelayMs = continuationResult.signal.delayMs;
+        const chainSilent =
+          continuationResult.signal.silent || continuationResult.signal.silentWake;
+        const chainWake = continuationResult.signal.silentWake;
+
+        const doChainSpawn = async () => {
+          try {
+            const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
+            const spawnResult = await spawnSubagentDirect(
+              {
+                task: `[continuation:chain-hop] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
+                ...(chainSilent ? { silentAnnounce: true } : {}),
+                ...(chainWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+              },
+              {
+                agentSessionKey: targetRequesterSessionKey,
+                agentChannel: params.requesterOrigin?.channel ?? undefined,
+                agentAccountId: params.requesterOrigin?.accountId ?? undefined,
+                agentTo: params.requesterOrigin?.to ?? undefined,
+                agentThreadId: params.requesterOrigin?.threadId ?? undefined,
+              },
+            );
+            if (spawnResult.status === "accepted") {
+              defaultRuntime.log(
+                `[subagent-chain-hop] Spawned chain delegate from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+              );
+            } else {
+              defaultRuntime.log(
+                `[subagent-chain-hop] Spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+              );
+            }
+          } catch (err) {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Spawn failed from ${params.childSessionKey}: ${String(err)}`,
+            );
+          }
+        };
+
+        if (chainDelayMs && chainDelayMs > 0) {
+          setTimeout(doChainSpawn, Math.min(chainDelayMs, 300_000));
+        } else {
+          // Fire-and-forget — don't block the announce flow
+          doChainSpawn().catch(() => {});
+        }
+      }
+    }
+
     let completionMessage = "";
     let triggerMessage = "";
     let steerMessage = "";
