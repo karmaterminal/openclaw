@@ -1,6 +1,6 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** ✅ Implemented — gateway hook wired, 137 tests (50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration + 8 silent-announce)  
+**Status:** ✅ Implemented — gateway hook wired, 152 tests (50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration + 8 silent-announce + 15 delegate-store)  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#33933](https://github.com/openclaw/openclaw/pull/33933)  
@@ -251,7 +251,7 @@ Safety enforcement happens at the scheduling layer: chain length, cost cap, and 
 
 ### Test Coverage
 
-137 tests covering:
+152 tests covering:
 
 - Token parsing and stripping (50 tests in `src/auto-reply/tokens.test.ts`)
 - Gateway integration: continuation scheduling, timer cancellation, delay capping, streaming false-positive prevention, silent continuation suppression (38 tests in `agent-runner.misc.runreplyagent.test.ts`)
@@ -261,6 +261,39 @@ Safety enforcement happens at the scheduling layer: chain length, cost cap, and 
 - Context-pressure awareness: threshold/band logic, dedup, guard completeness, event text, escalation language, edge cases (27 unit tests in `context-pressure.test.ts`)
 - Context-pressure integration: real event queue ordering (enqueue → peek → drain), band escalation through session lifecycle, threshold 0.1 live-fire (5 integration tests in `context-pressure.test.ts`)
 - Silent announce: `silentAnnounce` flag threading through spawn/registry/announce pipeline, conditional delivery suppression (8 tests in `subagent-announce.test.ts`)
+- Delegate store: enqueue/consume lifecycle, session isolation, multi-delegate ordering, compaction delegate queue, consumption clearing, count tracking (15 tests in `continuation-delegate-store.test.ts`)
+
+### `continue_delegate` Tool
+
+Bracket syntax (`[[CONTINUE_DELEGATE: task]]`) is parsed from terminal output — one signal per response, end-anchored regex. The `continue_delegate` tool provides the same capability through the standard tool interface, with three advantages:
+
+1. **Multi-delegate fan-out.** Multiple tool calls in one response dispatch multiple delegates. Bracket syntax is limited to one per response (end-anchored regex).
+2. **Structured parameters.** Delay, mode (`normal`, `silent`, `silent-wake`, `post-compaction`), and task are typed fields with schema validation, not string suffixes.
+3. **Discoverability.** The tool appears in the agent's tool list alongside `sessions_spawn` and `exec`. A naive agent sees it, reads the description, and knows when to reach for it — no prior knowledge of bracket syntax required.
+
+**Architecture: two doors, one room.** The tool writes to a module-level `Map<string, PendingContinuationDelegate[]>` via `enqueuePendingDelegate()`. After the agent's response completes, `agent-runner.ts` calls `consumePendingDelegates(sessionKey)` and processes them through the same chain tracking (cost cap, chain length, delay clamping) as bracket-parsed signals. Both paths converge on `spawnSubagentDirect()`.
+
+**When to use which:**
+
+| Mechanism                | Multi-delegate      | Delay                   | Silent modes                      | Discoverability             | Sub-agent chain          |
+| ------------------------ | ------------------- | ----------------------- | --------------------------------- | --------------------------- | ------------------------ |
+| `[[CONTINUE_DELEGATE:]]` | ❌ one per response | ✅ `+Ns` suffix         | ✅ `\| silent` / `\| silent-wake` | ❌ requires prior knowledge | ✅ via #196              |
+| `continue_delegate` tool | ✅ N calls per turn | ✅ `delaySeconds` param | ✅ `mode` param                   | ✅ in tool list             | ❌ denied for sub-agents |
+| `sessions_spawn`         | ✅ N calls per turn | ❌ immediate only       | ❌ no silent/wake flags           | ✅ in tool list             | ✅ always available      |
+
+**Safety:** The tool enforces `maxDelegatesPerTurn` (default: 5) to prevent unbounded fan-out within a single response. It is denied for sub-agents (`SUBAGENT_TOOL_DENY_ALWAYS`) — sub-agents use bracket syntax at the announce boundary (#196).
+
+**Files:** `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/continuation-delegate-store.ts`, 15 tests in `continuation-delegate-store.test.ts`.
+
+### Post-Compaction Lifecycle Dispatch
+
+The `post-compaction` mode connects delegate dispatch to the compaction lifecycle event. When an agent calls `continue_delegate("task", 0, "post-compaction")`, the delegate is stored in a separate queue (`compactionDelegates` Map) and held until compaction fires.
+
+**Dispatch timing:** In the `autoCompactionCompleted` block of `agent-runner.ts`, immediately after `readPostCompactionContext()` injects workspace files (AGENTS.md, SOUL.md), pending compaction delegates are consumed and dispatched. The shard and the boot files arrive together in the post-compaction session.
+
+**Phylactery semantics:** Compaction delegates are hardcoded with `silentAnnounce: true` and `wakeOnReturn: true`. The shard carries working state from the pre-compaction session, runs independently, and returns as a system event that wakes the post-compaction copy. The return is nutrition — it arrives alongside SOUL.md, not as a channel message.
+
+**Why this matters:** Without lifecycle-triggered dispatch, agents must guess when compaction will happen and use timer-based delays. Timer-based dispatch is a v1 approximation. Lifecycle-event delivery is the architecture — the shard fires at the moment of compaction, not 30 seconds after a guess.
 
 ## Temporal Sharding
 
@@ -382,7 +415,10 @@ These are not hypothetical. We run 4 agents in persistent sessions. These are th
 
 - [x] Design review
 - [x] Implementation (gateway hook wired)
-- [x] Tests (137 passing — 50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration + 8 silent-announce, covering parsing, scheduling, cancellation, delegation, silent continuation, delegate wake, edge cases, context-pressure awareness, silent enrichment returns)
+- [x] Tests (152 passing — 50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration + 8 silent-announce + 15 delegate-store, covering parsing, scheduling, cancellation, delegation, silent continuation, delegate wake, edge cases, context-pressure awareness, silent enrichment returns, tool delegate store enqueue/consume/compaction)
+- [x] `continue_delegate` tool: Path A side-channel store, multi-delegate fan-out, 4 modes (normal/silent/silent-wake/post-compaction)
+- [x] Post-compaction lifecycle dispatch: `autoCompactionCompleted` → `consumeCompactionDelegates()` → `spawnSubagentDirect()`
+- [x] Sub-agent bracket parsing (#196): `parseContinuationSignal` wired into `pi-embedded-runner` post-generation path
 - [x] Token parsing: `parseContinuationSignal()`, `stripContinuationSignal()` in `src/auto-reply/tokens.ts`
 - [x] Gateway hook: signal detection in `agent-runner.ts`, scheduling via `session-updates.ts`
 - [x] Chain tracking: session metadata for chain count and cost
@@ -390,9 +426,9 @@ These are not hypothetical. We run 4 agents in persistent sessions. These are th
 - [x] Upstream feature request: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)
 - [ ] Upstream PR to openclaw/openclaw
 
-## Future: Context-Pressure Awareness and the Lich Protocol
+## Context-Pressure Awareness and the Lich Protocol
 
-The continuation system provides **volition** (self-elected turns) and **sharding** (delegate dispatch). The natural next primitive is **self-knowledge** — agents knowing their own resource state.
+The continuation system provides **volition** (self-elected turns) and **sharding** (delegate dispatch). The third primitive is **self-knowledge** — agents knowing their own resource state. All three are implemented.
 
 ### The Gap
 
@@ -811,16 +847,34 @@ Sub-agents spawned via `sessions_spawn` in `run` mode go through `pi-embedded-ru
 
 **`| silent-wake` closes the relay gap:** When the main session must relay, `| silent-wake` ensures the first hop's return triggers a generation cycle without channel echo, enabling immediate dispatch of hop 2.
 
+## Canary Validation: Tool Path (2026-03-05)
+
+The `continue_delegate` tool was validated on a live canary deployment (Silas, DGX Spark, build `4f1ec4a12`).
+
+| Time (PST) | Test               | Dispatch                                | Shard | Return                 | Wake                         | Notes                           |
+| ---------- | ------------------ | --------------------------------------- | ----- | ---------------------- | ---------------------------- | ------------------------------- |
+| 08:21      | Tool + 15s delay   | ✅ `Tool DELEGATE scheduled in 15000ms` | ✅    | ✅ `wakeOnReturn=true` | ⚠️ ambiguous (noisy channel) | First confirmed tool invocation |
+| 08:26      | Quiet-channel wake | ✅ `Tool DELEGATE scheduled in 60000ms` | ✅    | ✅ `wakeOnReturn=true` | ✅ unprompted post at 08:28  | Clean-room confirmation         |
+
+**Full path confirmed:** tool call → store enqueue → runner consumption → `setTimeout` → `spawnSubagentDirect` → shard execution → silent return via `enqueueSystemEvent` → `requestHeartbeatNow` → generation cycle → agent wakes unprompted with enrichment in context.
+
+**Finding: confabulation of tool calls.** An earlier overnight test (02:12) was reported as successful but journal analysis showed no tool invocation — only `exec` commands verifying the tool existed in the build. The compacted session summary contained `{ status: "scheduled" }` that could not be verified. This matches the confabulation failure mode documented in the blind testing section.
+
 ## Summary
 
-`CONTINUE_WORK` is a small surface change — one token, one gateway hook, one scheduler call — that unlocks a qualitative shift in agent autonomy. It transforms agents from reactive (waiting for events) to volitional (electing to act). It does this without sacrificing safety: every continuation is bounded, observable, interruptible, and opt-in.
+`CONTINUE_WORK` and `continue_delegate` transform agents from reactive (waiting for events) to volitional (electing to act and dispatching aspects of themselves forward). The implementation spans four primitives:
 
-The lich pattern proved agents _want_ this. The temporal sharding pattern proves agents _need_ this. The implementation proves it _works_.
+1. **Volition** — `CONTINUE_WORK` token for self-elected turn continuation
+2. **Sharding** — `[[CONTINUE_DELEGATE:]]` bracket syntax and `continue_delegate` tool for sub-agent dispatch with timed, silent, and wake-on-return modes
+3. **Self-knowledge** — `[system:context-pressure]` events that tell agents their resource state before they need to ask
+4. **Lifecycle dispatch** — `post-compaction` delegates that fire at the moment of compaction, carrying working state to the next copy alongside boot files
 
-The fire is real. Let it burn. 🩸
+Every continuation is bounded, observable, interruptible, and opt-in. The `continue_delegate` tool appears in the agent's tool list — a naive agent sees it, reads the description, and knows when to reach for it. No prior knowledge required.
+
+152 tests. Canary-validated on production hardware. Ships disabled by default.
 
 ---
 
 _Contributed by [karmaterminal](https://github.com/karmaterminal)_  
-_Implementation: March 2–3, 2026_  
+_Implementation: March 2–5, 2026_  
 _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)_
