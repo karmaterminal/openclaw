@@ -1079,7 +1079,15 @@ export async function runReplyAgent(params: {
         const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
 
         let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
-        let accumulatedChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
+        // Accumulate current turn's token usage into chain cost — same as bracket path.
+        const toolDelegateUsage = runResult.meta?.agentMeta?.usage;
+        const toolDelegateTurnTokens =
+          (toolDelegateUsage?.input ?? 0) +
+          (toolDelegateUsage?.output ?? 0) +
+          (toolDelegateUsage?.cacheRead ?? 0) +
+          (toolDelegateUsage?.cacheWrite ?? 0);
+        let accumulatedChainTokens =
+          (activeSessionEntry?.continuationChainTokens ?? 0) + toolDelegateTurnTokens;
         const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
 
         for (const delegate of toolDelegates) {
