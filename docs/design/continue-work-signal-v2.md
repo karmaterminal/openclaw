@@ -871,6 +871,50 @@ Sub-agents spawned via `sessions_spawn` in `run` mode go through `pi-embedded-ru
 
 **`| silent-wake` closes the relay gap:** When the main session must relay, `| silent-wake` ensures the first hop's return triggers a generation cycle without channel echo, enabling immediate dispatch of hop 2.
 
+## Lifecycle Event Traces
+
+The following log fragments illustrate the continuation system's observable behavior at runtime. Each string is searchable in the codebase — grep for the bracketed prefix to find the emitting code path.
+
+### Context-Pressure Detection → Evacuation
+
+```
+[context-pressure] 85% consumed (170k/200k) — band 85 fired
+```
+Agent sees `[system:context-pressure]` in its system prompt before generating. Can elect evacuation this turn.
+
+### Tool-Based Delegate Dispatch
+
+```
+[continue_delegate] Enqueuing delegate: task="evacuate working state" mode=silent-wake delay=60s
+[continue_delegate] Consuming 1 tool delegate(s) for session <key>
+Tool DELEGATE scheduled in 60000ms: task="evacuate working state" silent=true wakeOnReturn=true
+```
+Tool writes to the pending delegate store during LLM turn. Runner consumes post-response. Same dispatch path as bracket-parsed signals.
+
+### Silent Return and Wake
+
+```
+[continuation:enrichment-return] Shard completed for session <key>, injecting as system event
+[silent-wake] wakeOnReturn=true — requesting heartbeat now
+```
+Shard result delivered via `enqueueSystemEvent()` instead of `deliverSubagentAnnouncement()`. No channel echo. `requestHeartbeatNow()` triggers a generation cycle — the agent wakes unprompted with enrichment in context.
+
+### Post-Compaction Lifecycle Dispatch
+
+```
+[auto-compaction] Session compacted: <before>k → <after>k tokens
+[continuation:compaction-delegate] Consuming 1 compaction delegate(s) — dispatching alongside boot files
+```
+Delegates registered with `| post-compaction` mode fire in the `autoCompactionCompleted` block, right after `readPostCompactionContext()` injects workspace files. The shard and the boot files arrive together.
+
+### Chain Tracking
+
+```
+[continuation] Chain depth: 3/10, cost: 45000/500000 tokens
+[continuation] Chain cost cap reached (502000 > 500000) — delegate rejected
+```
+Every delegate dispatch checks chain length and accumulated cost. Rejection is logged — the agent sees the cap as a tool error and can elect to stop or write state to files instead.
+
 ## Canary Validation: Tool Path (2026-03-05)
 
 The `continue_delegate` tool was validated on a live canary deployment (Silas, DGX Spark, build `4f1ec4a12`).
