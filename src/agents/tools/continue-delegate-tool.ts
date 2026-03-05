@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import {
+  enqueueCompactionDelegate,
   enqueuePendingDelegate,
   pendingDelegateCount,
 } from "../../auto-reply/continuation-delegate-store.js";
@@ -7,7 +8,7 @@ import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, ToolInputError } from "./common.js";
 
-const DELEGATE_MODES = ["normal", "silent", "silent-wake"] as const;
+const DELEGATE_MODES = ["normal", "silent", "silent-wake", "post-compaction"] as const;
 
 const ContinueDelegateToolSchema = Type.Object({
   task: Type.String({
@@ -26,7 +27,9 @@ const ContinueDelegateToolSchema = Type.Object({
     description:
       'Return mode. "normal" = announces to channel (default). ' +
       '"silent" = result injected as internal context only, no channel echo. ' +
-      '"silent-wake" = silent + triggers a new generation cycle so the agent can act on the enrichment.',
+      '"silent-wake" = silent + triggers a new generation cycle so the agent can act on the enrichment. ' +
+      '"post-compaction" = silent-wake delegate that fires when compaction happens, not on a timer. ' +
+      "Use for context evacuation: the shard starts at the moment of compaction and returns to the post-compaction session.",
   }),
 });
 
@@ -82,8 +85,9 @@ export function createContinueDelegateTool(opts: {
       const delayMs = delaySeconds !== undefined ? delaySeconds * 1000 : undefined;
 
       const modeRaw = typeof params.mode === "string" ? params.mode.trim().toLowerCase() : "";
-      const silent = modeRaw === "silent" || modeRaw === "silent-wake";
-      const silentWake = modeRaw === "silent-wake";
+      const isPostCompaction = modeRaw === "post-compaction";
+      const silent = modeRaw === "silent" || modeRaw === "silent-wake" || isPostCompaction;
+      const silentWake = modeRaw === "silent-wake" || isPostCompaction;
 
       // Check per-turn delegate limit
       const maxPerTurn = opts.maxDelegatesPerTurn ?? 10;
@@ -94,6 +98,26 @@ export function createContinueDelegateTool(opts: {
           reason: `maxDelegatesPerTurn exceeded (${maxPerTurn}). Cannot dispatch more delegates this turn.`,
           dispatched: currentCount,
           limit: maxPerTurn,
+        });
+      }
+
+      if (isPostCompaction) {
+        // Post-compaction delegates are held until compaction fires.
+        // They don't use setTimeout — the autoCompactionCompleted block
+        // in agent-runner.ts dispatches them alongside readPostCompactionContext().
+        enqueueCompactionDelegate(sessionKey, {
+          task,
+          silent: true,
+          silentWake: true,
+        });
+
+        return jsonResult({
+          status: "queued-for-compaction",
+          mode: "post-compaction",
+          note:
+            "Delegate will fire when compaction occurs, not on a timer. " +
+            "The shard starts at the moment of compaction and returns to the post-compaction session. " +
+            "Chain tracking applies at dispatch time.",
         });
       }
 

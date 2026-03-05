@@ -23,7 +23,10 @@ import { generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
-import { consumePendingDelegates } from "../continuation-delegate-store.js";
+import {
+  consumeCompactionDelegates,
+  consumePendingDelegates,
+} from "../continuation-delegate-store.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
@@ -837,6 +840,48 @@ export async function runReplyAgent(params: {
           .catch(() => {
             // Silent failure — post-compaction context is best-effort
           });
+
+        // Dispatch compaction-triggered delegates (| post-compaction mode).
+        // These were pre-registered by the agent via continue_delegate tool
+        // when context-pressure warned about approaching compaction.
+        // They fire NOW — at the moment of compaction, not on a timer.
+        const compactionDelegates = consumeCompactionDelegates(sessionKey);
+        for (const delegate of compactionDelegates) {
+          defaultRuntime.log(
+            `Post-compaction delegate dispatch for session ${sessionKey}: ${delegate.task}`,
+          );
+          spawnSubagentDirect(
+            {
+              task: `[continuation:post-compaction] Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
+              silentAnnounce: true,
+              wakeOnReturn: true,
+            },
+            {
+              agentSessionKey: sessionKey,
+              agentChannel: followupRun.originatingChannel ?? undefined,
+              agentAccountId: followupRun.originatingAccountId ?? undefined,
+              agentTo: followupRun.originatingTo ?? undefined,
+              agentThreadId: followupRun.originatingThreadId ?? undefined,
+            },
+          )
+            .then((spawnResult) => {
+              if (spawnResult.status === "accepted") {
+                enqueueSystemEvent(
+                  `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${delegate.task}`,
+                  { sessionKey },
+                );
+              } else {
+                defaultRuntime.log(
+                  `Post-compaction delegate rejected (${spawnResult.status}) for session ${sessionKey}`,
+                );
+              }
+            })
+            .catch((err) => {
+              defaultRuntime.log(
+                `Post-compaction delegate failed for session ${sessionKey}: ${String(err)}`,
+              );
+            });
+        }
       }
 
       if (verboseEnabled) {

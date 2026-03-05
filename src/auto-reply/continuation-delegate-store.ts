@@ -54,3 +54,45 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
 export function pendingDelegateCount(sessionKey: string): number {
   return pendingDelegates.get(sessionKey)?.length ?? 0;
 }
+
+// ---------------------------------------------------------------------------
+// Post-compaction delegate queue
+//
+// Delegates registered with mode "post-compaction" are stored here instead of
+// the immediate pending queue. They fire when the `autoCompactionCompleted`
+// block runs in agent-runner.ts — right alongside readPostCompactionContext().
+// This is the lifecycle-triggered dispatch: no timer, no guessing. The shard
+// starts when compaction happens, not 30 seconds after dispatch.
+// ---------------------------------------------------------------------------
+
+const compactionDelegates = new Map<string, PendingContinuationDelegate[]>();
+
+/**
+ * Called by the `continue_delegate` tool when mode is "post-compaction".
+ * The delegate is held until compaction fires.
+ */
+export function enqueueCompactionDelegate(
+  sessionKey: string,
+  delegate: PendingContinuationDelegate,
+): void {
+  const existing = compactionDelegates.get(sessionKey) ?? [];
+  existing.push(delegate);
+  compactionDelegates.set(sessionKey, existing);
+}
+
+/**
+ * Called by `agent-runner.ts` when `autoCompactionCompleted` is true.
+ * Returns and removes all compaction-triggered delegates for the session.
+ */
+export function consumeCompactionDelegates(sessionKey: string): PendingContinuationDelegate[] {
+  const delegates = compactionDelegates.get(sessionKey) ?? [];
+  compactionDelegates.delete(sessionKey);
+  return delegates;
+}
+
+/**
+ * Returns the count of compaction-triggered delegates for a session.
+ */
+export function compactionDelegateCount(sessionKey: string): number {
+  return compactionDelegates.get(sessionKey)?.length ?? 0;
+}
