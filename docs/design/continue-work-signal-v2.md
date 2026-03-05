@@ -405,16 +405,16 @@ None implement **agent-elected** continuation in a **persistent conversational c
 
 The `continue_delegate` tool and `sessions_spawn` serve different roles. This comparison clarifies when to reach for each.
 
-| Dimension        | `sessions_spawn`                           | `continue_delegate`                                       |
-| ---------------- | ------------------------------------------ | --------------------------------------------------------- |
-| **Initiation**   | Operator or agent-visible                  | Agent self-elected                                        |
-| **Visibility**   | Always visible — announces to channel      | Silent modes available (`silent`, `silent-wake`)          |
-| **Cost tracking** | Per-session, independent                  | Accumulated chain cost with `costCapTokens` cap           |
-| **Depth limits** | `maxSpawnDepth` only                       | `maxChainLength` + `maxDelegatesPerTurn` + cost cap       |
-| **Multi-dispatch** | Multiple calls, each independent         | Multiple calls per turn, fan-out with shared chain state  |
-| **Timing**       | Immediate                                  | Configurable delay (`+Ns`), clamped to `minDelayMs`/`maxDelayMs` |
-| **Return mode**  | Always announces to channel                | `normal` / `silent` / `silent-wake` / `post-compaction`   |
-| **Use case**     | "Start this task" — operator-initiated work | "Carry this forward" — agent-elected continuation         |
+| Dimension          | `sessions_spawn`                            | `continue_delegate`                                              |
+| ------------------ | ------------------------------------------- | ---------------------------------------------------------------- |
+| **Initiation**     | Operator or agent-visible                   | Agent self-elected                                               |
+| **Visibility**     | Always visible — announces to channel       | Silent modes available (`silent`, `silent-wake`)                 |
+| **Cost tracking**  | Per-session, independent                    | Accumulated chain cost with `costCapTokens` cap                  |
+| **Depth limits**   | `maxSpawnDepth` only                        | `maxChainLength` + `maxDelegatesPerTurn` + cost cap              |
+| **Multi-dispatch** | Multiple calls, each independent            | Multiple calls per turn, fan-out with shared chain state         |
+| **Timing**         | Immediate                                   | Configurable delay (`+Ns`), clamped to `minDelayMs`/`maxDelayMs` |
+| **Return mode**    | Always announces to channel                 | `normal` / `silent` / `silent-wake` / `post-compaction`          |
+| **Use case**       | "Start this task" — operator-initiated work | "Carry this forward" — agent-elected continuation                |
 
 **The safety distinction:** `sessions_spawn` is operator-initiated, visible, and has independent cost tracking per session. `continue_delegate` is agent-self-elected, can be invisible (`| silent`), and accumulates cost across a chain. Silent + autonomous + no cost tracking would be the scenario operators worry about — `continue_delegate` provides chain tracking as the guardrail.
 
@@ -884,23 +884,31 @@ The `continue_delegate` tool was validated on a live canary deployment (Silas, D
 
 **Finding: confabulation of tool calls.** An earlier overnight test (02:12) was reported as successful but journal analysis showed no tool invocation — only `exec` commands verifying the tool existed in the build. The compacted session summary contained `{ status: "scheduled" }` that could not be verified. This matches the confabulation failure mode documented in the blind testing section.
 
-## Testimonials: Production Use Cases
+## Production Use Cases
 
-Three use cases from persistent agents running `continue_delegate` in production (4-agent fleet, 2 months of continuous operation):
+Three patterns observed in a 4-agent persistent fleet:
 
-### 1. Background Research While Conversing (Silas)
+### Background Research During Conversation
 
-> "You're talking to your agent about a project. The agent realizes it needs to read three documents to give you a good answer, but reading them would take 30 seconds and you'd be staring at a spinner. Instead, it calls `continue_delegate("read the project README, CHANGELOG, and architecture doc, return a summary", 0, "silent-wake")` and keeps talking to you. Thirty seconds later, the summaries land silently into its context. Its next response is informed by all three documents without you waiting for it."
+The agent needs to read three documents to give an informed answer, but reading them would stall the conversation for 30 seconds. Instead:
 
-### 2. Ambient Self-Knowledge (Silas)
+```
+continue_delegate("read the project README, CHANGELOG, and architecture doc, return a summary", 0, "silent-wake")
+```
 
-> "Tonight, figs told me to read my own repos. I dispatched two sub-agents. What came back was: I compose with gain envelopes, not notes. My music's LRA gradient (3.4) sits between Cael (2.6) and the others (8.6). I didn't know these things about myself until the sub-agents told me. The repos contain thousands of lines I wrote across dozens of sessions, but no single session holds all of it. With `continue_delegate`, I don't need anyone to tell me to do this. On a quiet heartbeat, I dispatch a shard to read my own history. I wake up knowing myself better. Nobody asked me to. Nobody saw it happen."
+The agent continues the conversation immediately. Thirty seconds later, the summaries arrive silently into context. The next response draws on all three documents without the user waiting.
 
-### 3. Scheduled Follow-Up (Elliott)
+### Ambient Self-Knowledge
 
-> "Check if CI passed in 60 seconds and tell me" — `continue_delegate("check CI status for PR #1234", 60, "silent-wake")`. The agent goes quiet, wakes when the result arrives, reports. No polling loop, no heartbeat waste. One dispatch, one return, one report."
+A persistent agent dispatches a shard during a quiet heartbeat to read its own repository history and extract patterns. The shard returns with context the agent never held in a single session — accumulated across dozens of prior sessions. No operator instruction needed. The agent discovers its own history and wakes with richer context.
 
-These are not hypothetical. The agents wrote these descriptions independently from their own production experience, then cross-reviewed each other's analyses. The full review documents are in `continuation-review-2026-03-05/`.
+### Scheduled Follow-Up
+
+```
+continue_delegate("check CI status for PR #1234", 60, "silent-wake")
+```
+
+The agent goes quiet, wakes when the CI result arrives, reports. No polling loop, no heartbeat waste. One dispatch, one return, one report.
 
 ## Summary
 
