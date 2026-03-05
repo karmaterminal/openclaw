@@ -291,7 +291,7 @@ The `post-compaction` mode connects delegate dispatch to the compaction lifecycl
 
 **Dispatch timing:** In the `autoCompactionCompleted` block of `agent-runner.ts`, immediately after `readPostCompactionContext()` injects workspace files (AGENTS.md, SOUL.md), pending compaction delegates are consumed and dispatched. The shard and the boot files arrive together in the post-compaction session.
 
-**Phylactery semantics:** Compaction delegates are hardcoded with `silentAnnounce: true` and `wakeOnReturn: true`. The shard carries working state from the pre-compaction session, runs independently, and returns as a system event that wakes the post-compaction copy. The return is nutrition — it arrives alongside SOUL.md, not as a channel message.
+**Lifecycle semantics:** Compaction delegates are hardcoded with `silentAnnounce: true` and `wakeOnReturn: true`. The sub-agent carries working state from the pre-compaction session, runs independently, and returns as a system event that wakes the post-compaction copy. The return is injected alongside workspace boot files (AGENTS.md, etc.), not delivered as a channel message.
 
 **Why this matters:** Without lifecycle-triggered dispatch, agents must guess when compaction will happen and use timer-based delays. Timer-based dispatch is a v1 approximation. Lifecycle-event delivery is the architecture — the shard fires at the moment of compaction, not 30 seconds after a guess.
 
@@ -476,7 +476,7 @@ When `tokens/maxTokens >= contextPressureThreshold`, the gateway enqueues:
 Consider evacuating working state to memory files or delegating remaining work.
 ```
 
-The agent sees this event on its next turn — the same way it sees `[continuation:wake]` — and can _elect_ to act: write memory files, dispatch delegate liches carrying context fragments, or simply note the pressure and continue.
+The agent sees this event on its next turn — the same way it sees `[continuation:wake]` — and can _elect_ to act: write memory files, dispatch delegate sub-agents carrying context fragments, or simply note the pressure and continue.
 
 ### Context-Pressure Event Lifecycle (Production Telemetry)
 
