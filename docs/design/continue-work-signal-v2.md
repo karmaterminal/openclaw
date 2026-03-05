@@ -422,25 +422,7 @@ The `continue_delegate` tool and `sessions_spawn` serve different roles. This co
 
 **When to use `continue_delegate`:** Background enrichment, context evacuation before compaction, ambient self-knowledge building, any work that should color future turns without interrupting conversation.
 
-### Tool Architecture: "Two Doors, One Room"
-
-The `continue_delegate` tool uses a **side-channel pattern** (Path A): the tool writes to a module-level store during execution, and `agent-runner.ts` reads from the store post-response. Both tool-dispatched and bracket-parsed (`[[CONTINUE_DELEGATE:]]`) signals converge at the same dispatch point — same cost cap, chain depth, delay clamping, same `spawnSubagentDirect` call.
-
-```
-Tool execution (during LLM turn):
-  continue_delegate(task, delay, mode)
-    → enqueuePendingDelegate(sessionKey, { task, delay, silent, silentWake })
-
-Post-response (agent-runner.ts):
-  consumePendingDelegates(sessionKey)
-    → for each delegate: chain checks → spawnSubagentDirect()
-```
-
-**Precedent:** This is the same topology as `sessions_spawn` — tool writes to sub-agent registry, runner reads completion events. The pattern is proven.
-
-**Why tool, not just brackets:** Brackets are limited to one per response (end-anchored regex). The tool supports multiple calls per turn — 5 `continue_delegate()` calls = 5 arrows in one turn. For fan-out patterns (temporal sharding, parallel enrichment), the tool is the only viable path.
-
-**Sub-agent access:** The tool is denied for sub-agents. Sub-agents use bracket syntax, which chains via the announce boundary parser (issue #196). This prevents sub-agents from spawning unbounded chains through the tool path while preserving chain hops through brackets.
+See also [Tool Implementation](#continue_delegate-tool) for architecture details and the three-way mechanism comparison table.
 
 ## Use Cases (Production)
 
