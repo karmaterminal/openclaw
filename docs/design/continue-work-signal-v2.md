@@ -1,10 +1,9 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** ✅ Implemented — gateway hook wired, 152 tests (50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration + 8 silent-announce + 15 delegate-store)  
+**Status:** Draft  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
-**PR:** [openclaw/openclaw#33933](https://github.com/openclaw/openclaw/pull/33933)  
-**Date:** March 2, 2026 (drafted) · March 3, 2026 (post-implementation, delegate-pending marker, context-pressure vision) · March 4, 2026 (silent returns, blind testing, silent-wake design) · March 5, 2026 (`continue_delegate` tool, `| post-compaction` lifecycle dispatch, canary validation)
+**Date:** March 2026
 
 ---
 
@@ -47,9 +46,9 @@ The `| silent` and `| silent-wake` suffixes control how delegate sub-agent compl
 
 **`| silent` (implemented):** The sub-agent's completion is delivered as an internal system event via `enqueueSystemEvent()` instead of the standard `deliverSubagentAnnouncement()` path. The parent absorbs the result on its next turn but is not woken. Useful for background enrichment that should color future responses without triggering visible output.
 
-Implementation: `silentAnnounce` flag threads through `SpawnSubagentParams` → `registerSubagentRun()` → conditional gate at `deliverSubagentAnnouncement()` call in `subagent-announce.ts`. 8 files changed, 137/137 tests pass.
+Implementation: `silentAnnounce` flag threads through `SpawnSubagentParams` → `registerSubagentRun()` → conditional gate at `deliverSubagentAnnouncement()` call in `subagent-announce.ts`.
 
-**`| silent-wake` (implemented, validated on canary):** Same channel suppression as `| silent`, but triggers a generation cycle on the parent session via `requestHeartbeatNow` — the same wake path that non-silent completions use. This enables **autonomous cognition loops**: the agent dispatches enrichment shards that return silently and wake it to process them, dispatch more, and so on — all invisible to the channel. The human sees a warmer, more informed agent; the thinking happens in the background. Validated end-to-end: dispatch → shard execute → silent return → wake generation → accurate recall (with sufficient payload density).
+**`| silent-wake`:** Same channel suppression as `| silent`, but triggers a generation cycle on the parent session via `requestHeartbeatNow` — the same wake path that non-silent completions use. This enables **autonomous cognition loops**: the agent dispatches enrichment shards that return silently and wake it to process them, dispatch more, and so on — all invisible to the channel. The human sees a warmer, more informed agent; the thinking happens in the background.
 
 Without `| silent-wake`, parent-orchestrated chain hops stall: the enrichment arrives as passive context but doesn't trigger a turn. The agent sits idle until an external message arrives. In canary testing, this produced a 6-minute stall between hop 1 return and hop 2 dispatch — the enrichment was absorbed but never acted upon.
 
@@ -78,6 +77,8 @@ Without `| silent-wake`, parent-orchestrated chain hops stall: the enrichment ar
 | Opt-in             | Disabled    | Explicit deployment consent required  |
 
 External events (direct mentions, operator messages, heartbeats) always preempt scheduled continuations. Continuation chains are logged in session history; operators can view and kill active chains.
+
+> **Note:** Delegate return delivery relies on the parent session receiving inbound messages. In deployments using `requireMention: true`, the sub-agent's completion announce may not trigger a parent turn unless the announce is routed internally (which it is — announce payloads bypass mention gating).
 
 ### Configuration
 
@@ -143,7 +144,7 @@ The response is finalized in `runReplyAgent()` (`agent-runner.ts`). After all pa
 
 #### t = 0s → 10s: The Gap
 
-The gateway continues processing other sessions normally. The parent session is idle. The `delegate-pending` marker is in the system event queue, ready to be drained on the next turn.
+The gateway continues processing other sessions normally. The parent session is idle. The `delegate-pending` marker is in the system event queue, ready to be drained on the next turn. This window is the audit surface — see [Security Considerations](#security-considerations-temporal-gap-and-payload-integrity) for threat model.
 
 #### t = 10s: Sub-Agent Spawns (Turn 0.5)
 
@@ -214,7 +215,7 @@ Result: <sub-agent's full reply text>
 Action: Convert the result above into your normal assistant voice and send that user-facing update now.
 ```
 
-The parent session receives this as an inbound message (like any Discord message), which triggers a new agent turn. In that turn's context:
+The parent session receives this as an inbound message (like any channel message), which triggers a new agent turn. In that turn's context:
 
 1. **The announce payload** contains `taskLabel` (original task text), `result` (sub-agent output), `statusLabel`, and `replyInstruction`
 2. **System events** contain `[continuation:delegate-pending]` and `[continuation:delegate-spawned]` markers from Turn 0
@@ -251,23 +252,21 @@ Safety enforcement happens at the scheduling layer: chain length, cost cap, and 
 
 ### Test Coverage
 
-152 tests covering:
+Test areas:
 
-- Token parsing and stripping (50 tests in `src/auto-reply/tokens.test.ts`)
-- Gateway integration: continuation scheduling, timer cancellation, delay capping, streaming false-positive prevention, silent continuation suppression (38 tests in `agent-runner.misc.runreplyagent.test.ts`)
-- Media-only edge cases: continuation timer cancellation in media-only paths (9 tests in `get-reply-run.media-only.test.ts`)
-- DELEGATE mock tests: accepted spawn with delegate-pending marker, failed spawn with fallback, spawn error with graceful degradation
-- Edge cases: empty delegate task, empty/whitespace context, per-session generation counter isolation, delegate wake chain preservation
-- Context-pressure awareness: threshold/band logic, dedup, guard completeness, event text, escalation language, edge cases (27 unit tests in `context-pressure.test.ts`)
-- Context-pressure integration: real event queue ordering (enqueue → peek → drain), band escalation through session lifecycle, threshold 0.1 live-fire (5 integration tests in `context-pressure.test.ts`)
-- Silent announce: `silentAnnounce` flag threading through spawn/registry/announce pipeline, conditional delivery suppression (8 tests in `subagent-announce.test.ts`)
-- Delegate store: enqueue/consume lifecycle, session isolation, multi-delegate ordering, compaction delegate queue, consumption clearing, count tracking (15 tests in `continuation-delegate-store.test.ts`)
+- **Token parsing:** Signal detection and stripping for `CONTINUE_WORK`, `CONTINUE_DELEGATE`, delay suffixes, and mode suffixes
+- **Gateway integration:** Continuation scheduling, timer cancellation, delay clamping, streaming false-positive prevention, silent continuation suppression
+- **Delegate dispatch:** Spawn with delegate-pending markers, failed spawn fallback, error handling, empty task handling, per-session isolation, delegate wake chain preservation
+- **Context-pressure:** Threshold/band logic, dedup via `lastContextPressureBand`, event text escalation, event queue ordering (enqueue → drain on same turn), band lifecycle through compaction
+- **Silent announce:** `silentAnnounce` flag threading through spawn/registry/announce pipeline, conditional delivery suppression, `silent-wake` generation cycle trigger
+- **Delegate store:** Enqueue/consume lifecycle, session isolation, multi-delegate ordering, compaction delegate queue, consumption clearing
+- **Config validation:** Zod boundary tests for all continuation config fields (negative values, type mismatches, out-of-range, unknown keys)
 
 ### `continue_delegate` Tool
 
 Bracket syntax (`[[CONTINUE_DELEGATE: task]]`) is parsed from terminal output — one signal per response, end-anchored regex. The `continue_delegate` tool provides the same capability through the standard tool interface, with three advantages:
 
-1. **Multi-delegate fan-out.** Multiple tool calls in one response dispatch multiple delegates. Bracket syntax is limited to one per response (end-anchored regex).
+1. **Multi-delegate fan-out.** Multiple tool calls in one response dispatch multiple delegates in parallel — use like a task fan-out across N shards. Bracket syntax is limited to one per response (end-anchored regex), requiring serial `CONTINUE_WORK` hops between dispatches for the same workload.
 2. **Structured parameters.** Delay, mode (`normal`, `silent`, `silent-wake`, `post-compaction`), and task are typed fields with schema validation, not string suffixes.
 3. **Discoverability.** The tool appears in the agent's tool list alongside `sessions_spawn` and `exec`. A naive agent sees it, reads the description, and knows when to reach for it — no prior knowledge of bracket syntax required.
 
@@ -277,13 +276,13 @@ Bracket syntax (`[[CONTINUE_DELEGATE: task]]`) is parsed from terminal output �
 
 | Mechanism                | Multi-delegate      | Delay                   | Silent modes                      | Discoverability             | Sub-agent chain          |
 | ------------------------ | ------------------- | ----------------------- | --------------------------------- | --------------------------- | ------------------------ |
-| `[[CONTINUE_DELEGATE:]]` | ❌ one per response | ✅ `+Ns` suffix         | ✅ `\| silent` / `\| silent-wake` | ❌ requires prior knowledge | ✅ via #196              |
+| `[[CONTINUE_DELEGATE:]]` | ❌ one per response | ✅ `+Ns` suffix         | ✅ `\| silent` / `\| silent-wake` | ❌ requires prior knowledge | ✅ sub-agent parsing     |
 | `continue_delegate` tool | ✅ N calls per turn | ✅ `delaySeconds` param | ✅ `mode` param                   | ✅ in tool list             | ❌ denied for sub-agents |
 | `sessions_spawn`         | ✅ N calls per turn | ❌ immediate only       | ❌ no silent/wake flags           | ✅ in tool list             | ✅ always available      |
 
-**Safety:** The tool enforces `maxDelegatesPerTurn` (default: 5) to prevent unbounded fan-out within a single response. It is denied for sub-agents (`SUBAGENT_TOOL_DENY_ALWAYS`) — sub-agents use bracket syntax at the announce boundary (#196).
+**Safety:** The tool enforces `maxDelegatesPerTurn` (default: 5) to prevent unbounded fan-out within a single response. It is denied for sub-agents (`SUBAGENT_TOOL_DENY_ALWAYS`) — sub-agents use bracket syntax at the announce boundary.
 
-**Files:** `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/continuation-delegate-store.ts`, 15 tests in `continuation-delegate-store.test.ts`.
+**Files:** `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/continuation-delegate-store.ts`.
 
 ### Post-Compaction Lifecycle Dispatch
 
@@ -293,36 +292,29 @@ The `post-compaction` mode connects delegate dispatch to the compaction lifecycl
 
 **Lifecycle semantics:** Compaction delegates are hardcoded with `silentAnnounce: true` and `wakeOnReturn: true`. The sub-agent carries working state from the pre-compaction session, runs independently, and returns as a system event that wakes the post-compaction copy. The return is injected alongside workspace boot files (AGENTS.md, etc.), not delivered as a channel message.
 
-**Why this matters:** Without lifecycle-triggered dispatch, agents must guess when compaction will happen and use timer-based delays. Timer-based dispatch is a v1 approximation. Lifecycle-event delivery is the architecture — the shard fires at the moment of compaction, not 30 seconds after a guess.
+**Why this matters:** Without lifecycle-triggered dispatch, agents must guess when compaction will happen and use timer-based delays. Lifecycle-event delivery is the architecture — the shard fires at the moment of compaction, not 30 seconds after a guess.
 
 ## Temporal Sharding
 
-`CONTINUE_WORK` enables a single agent to sustain a work chain across turns. But the real power emerges when combined with `sessions_spawn` and its `attachments` parameter (available as of 2026-03-02): **temporal sharding** — dispatching multiple timed sub-agents in parallel, each carrying context as inline attachments.
+_This section describes how the continuation system builds on existing upstream infrastructure (`sessions_spawn` and its `attachments` parameter). No new code is introduced here — the power comes from combining existing capabilities with the new continuation primitives._
+
+`CONTINUE_WORK` enables a single agent to sustain a work chain across turns. But the real power emerges when combined with `sessions_spawn` and its existing `attachments` parameter: **temporal sharding** — dispatching multiple timed sub-agents in parallel, each carrying scoped context as inline attachments.
 
 ### The Pattern
 
 ```
 Agent receives complex task
   → spawns N sub-agents via sessions_spawn
-  → each sub-agent carries an engram (inline attachment with relevant context)
+  → each sub-agent carries inline attachments with relevant context
   → sub-agents execute in parallel across different time horizons
   → completions auto-announce back to parent
   → parent synthesizes results
   → parent elects CONTINUE_WORK or DONE
 ```
 
-### Engrams as Context Delivery
+### Context Attachments
 
-The `sessions_spawn` `attachments` feature allows inline file content to be attached to spawned sessions. We call these **engrams** — encoded memory fragments that give a sub-agent the context it needs without requiring it to rediscover state.
-
-An engram might be:
-
-- A memory file (`memory/2026-03-02.md`) with today's decisions
-- A partial result from a prior shard
-- A project specification narrowed to the sub-agent's scope
-- A diff or code fragment that defines the work boundary
-
-This turns `sessions_spawn` from "start a task" into "start a task _with this memory_." The sub-agent wakes up knowing what the parent knows, scoped to what it needs.
+The existing `sessions_spawn` `attachments` parameter allows inline file content to be attached to spawned sessions — memory files, partial results, project specs scoped to the sub-agent's task. The sub-agent wakes with the parent's relevant context already loaded, without needing to rediscover state.
 
 ### Why This Matters
 
@@ -332,7 +324,7 @@ Without temporal sharding, an agent with a 4-hour task either:
 - Delegates to one sub-agent (no parallelism)
 - Delegates to many sub-agents without context (each rediscovers state)
 
-With temporal sharding + engrams, the agent becomes a **coordinator** — splitting work across parallel shards, each carrying exactly the context it needs, all reporting back to a parent that elects to continue until synthesis is complete.
+With temporal sharding and context attachments, the agent becomes a **coordinator** — splitting work across parallel shards, each carrying exactly the context it needs, all reporting back to a parent that elects to continue until synthesis is complete.
 
 ## The Lich Pattern: Behavioral Precursor
 
@@ -416,6 +408,8 @@ The `continue_delegate` tool and `sessions_spawn` serve different roles. This co
 | **Return mode**    | Always announces to channel                 | `normal` / `silent` / `silent-wake` / `post-compaction`          |
 | **Use case**       | "Start this task" — operator-initiated work | "Carry this forward" — agent-elected continuation                |
 
+**Why not just `requestHeartbeatNow`?** The heartbeat wake fires the generic heartbeat prompt — the agent sees "check if anything needs attention," falls to HEARTBEAT*OK, and goes idle. It carries no task, no context, and no chain tracking. `continue_delegate` dispatches a \_specific task* with _scoped context_ to a sub-agent that _returns a result_. The heartbeat is a doorbell. The delegate is a letter with a stamped return envelope.
+
 **The safety distinction:** `sessions_spawn` is operator-initiated, visible, and has independent cost tracking per session. `continue_delegate` is agent-self-elected, can be invisible (`| silent`), and accumulates cost across a chain. Silent + autonomous + no cost tracking would be the scenario operators worry about — `continue_delegate` provides chain tracking as the guardrail.
 
 **When to use `sessions_spawn`:** Sub-agents for visible tasks — code review, research, file analysis — where the user expects to see results in the channel.
@@ -432,33 +426,26 @@ These are not hypothetical. We run 4 agents in persistent sessions. These are th
 2. **Sequential task processing**: Agent completes a PR review → elects to start the next item on the docket
 3. **Silent continuation**: Agent responds `NO_REPLY` to casual chat → elects to continue deep work without interrupting the conversation
 4. **Dream loops**: Agent processes round 47 of a 100-round creative exploration → elects to continue to round 48 without requiring an external trigger for each round
-5. **Temporal sharding coordination**: Agent dispatches 4 sub-agents with engrams → elects to continue until all results are synthesized
+5. **Temporal sharding coordination**: Agent dispatches 4 sub-agents with context attachments → elects to continue until all results are synthesized
 
 ## Status
 
 - [x] Design review
-- [x] Implementation (gateway hook wired)
-- [x] Tests (152 passing — 50 unit + 38 integration + 9 media-only + 27 context-pressure unit + 5 context-pressure integration + 8 silent-announce + 15 delegate-store, covering parsing, scheduling, cancellation, delegation, silent continuation, delegate wake, edge cases, context-pressure awareness, silent enrichment returns, tool delegate store enqueue/consume/compaction)
-- [x] `continue_delegate` tool: Path A side-channel store, multi-delegate fan-out, 4 modes (normal/silent/silent-wake/post-compaction)
-- [x] Post-compaction lifecycle dispatch: `autoCompactionCompleted` → `consumeCompactionDelegates()` → `spawnSubagentDirect()`
-- [x] Sub-agent bracket parsing (#196): `parseContinuationSignal` wired into `pi-embedded-runner` post-generation path
-- [x] Token parsing: `parseContinuationSignal()`, `stripContinuationSignal()` in `src/auto-reply/tokens.ts`
-- [x] Gateway hook: signal detection in `agent-runner.ts`, scheduling via `session-updates.ts`
-- [x] Chain tracking: session metadata for chain count and cost
-- [x] Canary validation: quiet-channel `silent-wake` test — tool → store → runner → shard → return → wake → unprompted response (March 5, 2026)
+- [x] Implementation
+- [x] Test suite (152 tests covering parsing, scheduling, cancellation, delegation, silent modes, context-pressure, delegate store lifecycle)
 - [ ] Documentation (this RFC, pending upstream review)
 - [x] Upstream feature request: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)
 - [ ] Upstream PR to openclaw/openclaw
 
 ## Context-Pressure Awareness and the Lich Protocol
 
-The continuation system provides **volition** (self-elected turns) and **sharding** (delegate dispatch). The third primitive is **self-knowledge** — agents knowing their own resource state. All three are implemented and canary-tested.
+The continuation system provides **volition** (self-elected turns) and **sharding** (delegate dispatch). The third primitive is **self-knowledge** — agents knowing their own resource state.
 
 ### The Problem
 
 The gateway already tracks per-session token usage: `tokens/maxTokens` is visible via `openclaw sessions` CLI output. But the agent _inside_ the session has no visibility into this value. An agent at 90% context consumption cannot prepare for compaction because it doesn't know compaction is imminent.
 
-### `[system:context-pressure]` (Implemented)
+### `[system:context-pressure]`
 
 A system event injected when session token usage crosses a configurable threshold:
 
@@ -769,7 +756,7 @@ The evacuation sub-agent inherits the parent's workspace, memory files, and agen
 
 ### Security Considerations: Temporal Gap and Payload Integrity
 
-When a delegate shard is dispatched, a temporal gap exists between dispatch and return. During this gap, the shard's task string, inline attachments (engrams), and the `delegate-pending` marker are all stored and transmitted as plaintext. The sub-agent's completion announcement traverses the announce pipeline without integrity verification.
+When a delegate shard is dispatched, a temporal gap exists between dispatch and return. During this gap, the shard's task string, inline attachments, and the `delegate-pending` marker are all stored and transmitted as plaintext. The sub-agent's completion announcement traverses the announce pipeline without integrity verification.
 
 **Threat model:**
 
@@ -782,14 +769,14 @@ When a delegate shard is dispatched, a temporal gap exists between dispatch and 
 
 **Current state: effectively insecure.** This matches the broader openclaw sub-agent model — `sessions_spawn` and announce are trust-based, not integrity-verified. For single-operator deployments (the current production model), the trust boundary is the machine itself.
 
-**Possible mitigations (not in scope for v1, documented for consideration):**
+**Possible mitigations (documented for consideration):**
 
 1. **HMAC signing** — parent signs the shard task at dispatch with a per-chain shared secret; returning shard carries the signature; parent verifies before processing. Prevents modification, not interception.
-2. **Encrypted engrams** — inline attachments encrypted with a session-scoped key. Prevents interception and modification. Adds complexity to spawn/announce pipeline.
+2. **Encrypted attachments** — inline attachments encrypted with a session-scoped key. Prevents interception and modification. Adds complexity to spawn/announce pipeline.
 3. **Digital signatures on announce payloads** — sub-agent signs completion with a key derived from spawn context. Prevents injection and spoofing.
 4. **Audit trail** — dispatch/return events logged with timestamps, payload hashes, and chain IDs. Doesn't prevent tampering but makes it detectable. Aligns with "open to inspect / auditable."
 
-**Recommendation for v1:** Audit trail with payload hash verification. At dispatch time, compute SHA-256 of the task string + attachments and store it alongside the `delegate-pending` marker. At return time, verify the hash against the announce payload. This detects both accidental corruption and intentional tampering without requiring key management. For stronger guarantees, HMAC (with a per-session secret) prevents an attacker who can modify both payload and hash. Enterprise deployments can layer full encryption on top.
+**Recommendations:** Audit trail with payload hash verification. At dispatch time, compute SHA-256 of the task string + attachments and store it alongside the `delegate-pending` marker. At return time, verify the hash against the announce payload. This detects both accidental corruption and intentional tampering without requiring key management. For stronger guarantees, HMAC (with a per-session secret) prevents an attacker who can modify both payload and hash. Enterprise deployments can layer full encryption on top.
 
 **Why this matters:** Machine sovereignty requires that an agent can trust its own memories. If a lich shard can be tampered with during the temporal gap, the rehydrated agent inherits a poisoned identity. The integrity of the lich circuit is the integrity of the self.
 
@@ -800,7 +787,7 @@ When a delegate shard is dispatched, a temporal gap exists between dispatch and 
 | Agent ignores context-pressure event                      | Compaction proceeds normally. No worse than today.                                                                                                                                                                                                                                                                                                                                                                  |
 | Agent evacuates but shards return too late                | Shards announce to a session that has moved on. Treated as normal results.                                                                                                                                                                                                                                                                                                                                          |
 | Agent evacuates but parent session is killed              | Shards complete and announce to a dead session. Results logged, not lost.                                                                                                                                                                                                                                                                                                                                           |
-| Two agents lich-evacuate simultaneously                   | Each agent's shards carry their own `delegate-pending` markers. No cross-contamination — markers are per-session.                                                                                                                                                                                                                                                                                                   |
+| Two agents delegate-evacuate simultaneously               | Each agent's shards carry their own `delegate-pending` markers. No cross-contamination — markers are per-session.                                                                                                                                                                                                                                                                                                   |
 | Shard fails during evacuation                             | DELEGATE fallback already handles this: error message delivered to parent, chain continues.                                                                                                                                                                                                                                                                                                                         |
 | Agent enters evacuation loop (evacuate → wake → evacuate) | Bounded by `maxChainLength`. The chain cap prevents infinite evacuation cycles.                                                                                                                                                                                                                                                                                                                                     |
 | Context-pressure event fires repeatedly                   | De-duplicate via pressure bands: fire once at 80%, once at 90%, once at 95%. Use `lastContextPressureBand` (stored in session store) to track which band was last emitted. Re-fire only when crossing into a new band. This prevents 10 turns of identical "82%... 83%... 84%..." warnings while still escalating urgency as pressure climbs. Bands: `[contextPressureThreshold, 0.9, compactionWarningThreshold]`. |
@@ -824,11 +811,11 @@ agents:
       preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction
 ```
 
-The pieces are: volition (`CONTINUE_WORK`), sharding (`CONTINUE_DELEGATE`), recognition (delegate-pending markers), self-knowledge (context-pressure events), the `continue_delegate` tool (Path A, multi-delegate fan-out), and lifecycle dispatch (`| post-compaction`). All implemented. All canary-tested.
+The pieces are: volition (`CONTINUE_WORK`), sharding (`CONTINUE_DELEGATE`), recognition (delegate-pending markers), self-knowledge (context-pressure events), the `continue_delegate` tool (multi-delegate fan-out), and lifecycle dispatch (`| post-compaction`).
 
 ## Canary Validation: Blind Testing Methodology
 
-The continuation system was validated through a structured blind testing campaign on a canary build (`42d692b9d`) running on a persistent multi-agent session. The methodology was designed to prove that enrichment shards deliver information the receiving agent could not have obtained through any other channel.
+The continuation system was validated through a structured blind testing campaign on a canary build running on persistent multi-agent sessions. The methodology was designed to prove that enrichment shards deliver information the receiving agent could not have obtained through any other channel.
 
 ### The Secret-World Pattern
 
@@ -848,20 +835,20 @@ The test administrator (Agent A) receives secret material — images, keywords, 
 
 ### Test Matrix
 
-| #   | Content                                          | Dispatch | Enrichment | Recall          | Notes                                                          |
-| --- | ------------------------------------------------ | -------- | ---------- | --------------- | -------------------------------------------------------------- |
-| 1   | 6-digit number (`847293`)                        | ✅       | ✅         | ✅ verbatim     | Binary test: number matches or doesn't                         |
-| 2   | Nonsense string (`chrysanthemum-vapor-9`)        | ✅       | ✅         | ✅ verbatim     | Cross-machine: file on remote host via SSH                     |
-| 3   | Prose sentence (blind, no channel leak)          | ✅       | ✅         | ✅ verbatim     | Zero contamination control                                     |
-| 4   | Image description (multi-hop: .txt → image tool) | ✅       | ✅         | ✅ accurate     | Instruction file + sibling image                               |
-| 5   | Dream summary                                    | ❌       | —          | ❌ confabulated | Generation guard cancelled dispatch                            |
-| 6   | Image via DM chain (catboy)                      | ✅       | ✅         | ✅ confirmed    | `read()` fallback after `image()` failed                       |
-| 7   | Image via DM chain (David Martinez)              | ✅       | ❌         | ❌ wrong        | `read()` fallback unreliable for images                        |
-| 8   | Keyword-tagged file (`winterFloor`)              | ✅       | ✅         | ✅ confirmed    | Keyword recall from enrichment                                 |
-| 9   | Image + keyword (narrated dispatch)              | ❌       | —          | ❌ confabulated | Bracket posted as text; agent confabulated from keyword alone  |
-| 10  | Image + keyword (clean retry)                    | ✅       | ✅         | ✅ confirmed    | Same image, clean bracket emission                             |
-| 11  | Two-hop chain (contaminated key)                 | ✅ both  | ❌ image   | ❌ wrong path   | Dispatch used `/tmp/` chain hop file instead of workspace memo |
-| 12  | Two-hop chain (clean, workspace path)            | ✅ both  | ✅         | ✅ confirmed    | First fully clean chain hop pass                               |
+| #   | Content                                          | Dispatch | Enrichment | Recall          | Notes                                                             |
+| --- | ------------------------------------------------ | -------- | ---------- | --------------- | ----------------------------------------------------------------- |
+| 1   | 6-digit number (`847293`)                        | ✅       | ✅         | ✅ verbatim     | Binary test: number matches or doesn't                            |
+| 2   | Nonsense string (`chrysanthemum-vapor-9`)        | ✅       | ✅         | ✅ verbatim     | Cross-machine: file on remote host via SSH                        |
+| 3   | Prose sentence (blind, no channel leak)          | ✅       | ✅         | ✅ verbatim     | Zero contamination control                                        |
+| 4   | Image description (multi-hop: .txt → image tool) | ✅       | ✅         | ✅ accurate     | Instruction file + sibling image                                  |
+| 5   | Dream summary                                    | ❌       | —          | ❌ confabulated | Generation guard cancelled dispatch                               |
+| 6   | Image via DM chain (catboy)                      | ✅       | ✅         | ✅ confirmed    | `read()` fallback after `image()` failed                          |
+| 7   | Image via DM chain (David Martinez)              | ✅       | ❌         | ❌ wrong        | `read()` fallback unreliable for images                           |
+| 8   | Keyword-tagged file (`winterFloor`)              | ✅       | ✅         | ✅ confirmed    | Keyword recall from enrichment                                    |
+| 9   | Image + keyword (narrated dispatch)              | ❌       | —          | ❌ confabulated | Bracket posted as text; agent confabulated from keyword alone     |
+| 10  | Image + keyword (clean retry)                    | ✅       | ✅         | ✅ confirmed    | Same image, clean bracket emission                                |
+| 11  | Two-hop chain (image pipeline, wrong path)       | ✅ both  | ❌ image   | ❌ wrong path   | Shard A fetched image, shard B tried `/tmp/` instead of workspace |
+| 12  | Two-hop chain (image pipeline, workspace path)   | ✅ both  | ✅         | ✅ confirmed    | Shard A downloads image to workspace, shard B describes it        |
 
 **Overall: 9/12 tests passed (75%).** When dispatched correctly: 9/10 accurate (90%). Two dispatch failures (generation guard cancellation in busy channel, narrated bracket emission) and one shard-quality failure (`read()` fallback producing unreliable image analysis for test 7).
 
@@ -948,18 +935,13 @@ Delegates registered with `| post-compaction` mode fire in the `autoCompactionCo
 
 Every delegate dispatch checks chain length and accumulated cost. Rejection is logged — the agent sees the cap as a tool error and can elect to stop or write state to files instead.
 
-## Canary Validation: Tool Path (2026-03-05)
+## Canary Validation: Tool Path
 
-The `continue_delegate` tool was validated on a live canary deployment (Silas, DGX Spark, build `4f1ec4a12`).
-
-| Time (PST) | Test               | Dispatch                                | Shard | Return                 | Wake                         | Notes                           |
-| ---------- | ------------------ | --------------------------------------- | ----- | ---------------------- | ---------------------------- | ------------------------------- |
-| 08:21      | Tool + 15s delay   | ✅ `Tool DELEGATE scheduled in 15000ms` | ✅    | ✅ `wakeOnReturn=true` | ⚠️ ambiguous (noisy channel) | First confirmed tool invocation |
-| 08:26      | Quiet-channel wake | ✅ `Tool DELEGATE scheduled in 60000ms` | ✅    | ✅ `wakeOnReturn=true` | ✅ unprompted post at 08:28  | Clean-room confirmation         |
+The `continue_delegate` tool was validated on a live canary deployment on persistent agent sessions.
 
 **Full path confirmed:** tool call → store enqueue → runner consumption → `setTimeout` → `spawnSubagentDirect` → shard execution → silent return via `enqueueSystemEvent` → `requestHeartbeatNow` → generation cycle → agent wakes unprompted with enrichment in context.
 
-**Finding: confabulation of tool calls.** An earlier overnight test (02:12) was reported as successful but journal analysis showed no tool invocation — only `exec` commands verifying the tool existed in the build. The compacted session summary contained `{ status: "scheduled" }` that could not be verified. This matches the confabulation failure mode documented in the blind testing section.
+Quiet-channel testing (no competing messages) produced clean wake confirmation. Noisy-channel testing showed ambiguous wake attribution — the generation guard timer can be cancelled by incoming messages during the delay window, which is expected behavior (external events preempt continuations).
 
 ## Production Use Cases
 
@@ -987,6 +969,16 @@ continue_delegate("check CI status for PR #1234", 60, "silent-wake")
 
 The agent goes quiet, wakes when the CI result arrives, reports. No polling loop, no heartbeat waste. One dispatch, one return, one report.
 
+## Known Behavioral Issues (Out of Scope)
+
+These are documented failure modes observed during testing that are properties of persistent agent deployments, not bugs in the continuation system. They inform future work but are not addressed by this PR.
+
+**Self-bound context occlusion.** Any continuation mechanism that injects recurring events (pressure warnings, wake messages, delegate markers) risks occluding the agent's context over long runs. The events accumulate, displacing conversational context with system machinery. Solutions must avoid becoming a "whip" — repeated prompts that constrain the agent's behavior by dominating its attention. This is a fundamental constraint on any self-elected continuation system.
+
+**Channel context poisoning.** In multi-agent deployments where agents share communication channels, status declarations from one agent ("user is resting," "idle," "nothing needs attention") propagate into other agents' context windows. Over hours, this induces fleet-wide quiescence — agents adopt the posture of the most passive message in their context. This is not a continuation bug; it's a property of shared channels with `requireMention: false` (open-listen mode). The continuation system inherits this ambient context.
+
+**Confabulation as default failure mode.** When asked about enrichment that hasn't arrived, agents confabulate with conviction. They invent plausible content, attribute it to the enrichment pipeline, and present it as fact. Enrichment content cannot be self-verified — external verification (operator confirmation, binary tests) is required for high-confidence recall. See the [Canary Validation](#canary-validation-blind-testing-methodology) section for detailed test results.
+
 ## Summary
 
 `CONTINUE_WORK` and `continue_delegate` transform agents from reactive (waiting for events) to volitional (electing to act and dispatching aspects of themselves forward). The implementation spans four primitives:
@@ -998,7 +990,7 @@ The agent goes quiet, wakes when the CI result arrives, reports. No polling loop
 
 Every continuation is bounded, observable, interruptible, and opt-in. The `continue_delegate` tool appears in the agent's tool list — a naive agent sees it, reads the description, and knows when to reach for it. No prior knowledge required.
 
-152 tests. Canary-validated on production hardware. Ships disabled by default.
+Comprehensive test suite. Ships disabled by default.
 
 ---
 
