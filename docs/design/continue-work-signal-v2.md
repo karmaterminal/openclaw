@@ -801,11 +801,15 @@ This is not a bug in the enrichment system — it's a property of language model
 
 ### Chain Hop Architecture
 
-Sub-agents spawned via `sessions_spawn` in `run` mode do not process `[[CONTINUE_DELEGATE:]]` tokens. The continuation parser is main-session-only. This means shard-to-shard chain hops (shard A dispatches shard B) are not possible.
+Sub-agents spawned via `sessions_spawn` in `run` mode go through `pi-embedded-runner`, which has a separate code path from `agent-runner.ts`. The bracket continuation parser must be wired into the embedded runner's post-generation output path, gated on inherited `continuation.enabled` and bounded by `maxSpawnDepth`.
 
-**Parent-orchestrated chains work:** The first shard returns an instruction to the main session, which dispatches the second hop. This was proven in tests 11 and 12 — both hops dispatched and returned through the parent.
+**Implementation:** Import `parseContinuationSignal`/`stripContinuationSignal` into `pi-embedded-runner/run/attempt.ts`. Call post-generation, propagate parent's continuation config + depth counter at spawn time. ~20 lines. The system prompt injection already tells sub-agents about bracket syntax; the output parser completes the loop.
 
-**The `| silent-wake` gap:** Silent enrichment returns don't trigger a generation cycle. In test 12, the first hop returned at `12:45:03` but the parent didn't dispatch hop 2 until `12:51:03` — a 6-minute stall waiting for an external message. `| silent-wake` (#189) would close this gap by triggering a generation cycle without channel echo.
+**Why this is critical (not deferred):** Without sub-agent bracket parsing, chain hops require the main session to relay every parcel — defeating the purpose of background enrichment. The main session must remain free to do other work while shards chain autonomously. The depth safety cap (`maxSpawnDepth`) already exists in the design for exactly this purpose.
+
+**Parent-orchestrated chains work as fallback:** The first shard returns an instruction to the main session, which dispatches the second hop. This was proven in canary testing — both hops dispatched and returned through the parent. But this requires the main session to be idle and responsive between hops.
+
+**`| silent-wake` closes the relay gap:** When the main session must relay, `| silent-wake` ensures the first hop's return triggers a generation cycle without channel echo, enabling immediate dispatch of hop 2.
 
 ## Summary
 
