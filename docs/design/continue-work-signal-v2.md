@@ -145,6 +145,8 @@ The response is finalized in `runReplyAgent()` (`agent-runner.ts`). After all pa
 
 The gateway continues processing other sessions normally. The parent session is idle. The `delegate-pending` marker is in the system event queue, ready to be drained on the next turn.
 
+> **Audit surface:** During this gap, the task string, inline attachments, and the delegate-pending marker are all stored in plaintext. See [Security Considerations: Temporal Gap and Payload Integrity](#security-considerations-temporal-gap-and-payload-integrity) for threat model and mitigation recommendations.
+
 #### t = 10s: Sub-Agent Spawns (Turn 0.5)
 
 The `setTimeout` fires. `doSpawn()` calls `spawnSubagentDirect()` (line ~937):
