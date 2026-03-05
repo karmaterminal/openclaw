@@ -232,6 +232,8 @@ export function buildAgentSystemPrompt(params: {
     channel: string;
   };
   memoryCitationsMode?: MemoryCitationsMode;
+  /** Whether agent self-elected turn continuation is enabled. */
+  continuationEnabled?: boolean;
 }) {
   const acpEnabled = params.acpEnabled !== false;
   const sandboxedRuntime = params.sandboxInfo?.enabled === true;
@@ -671,6 +673,48 @@ export function buildAgentSystemPrompt(params: {
       "HEARTBEAT_OK",
       'OpenClaw treats a leading/trailing "HEARTBEAT_OK" as a heartbeat ack (and may discard it).',
       'If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text instead.',
+      "",
+    );
+  }
+
+  // Continuation tokens — only when the feature is enabled and not in subagent mode
+  if (!isMinimal && params.continuationEnabled) {
+    lines.push(
+      "## Continuation & Delegation",
+      "### Self-elected turns",
+      "End your response with CONTINUE_WORK to request another turn after a delay.",
+      "End with CONTINUE_WORK:30 to specify delay in seconds.",
+      "Use this for multi-step tasks (PR review, document analysis, sequential processing)",
+      "where you have more work to do but want to yield to incoming messages first.",
+      "",
+      "### Delegated continuation",
+      "End your response with [[CONTINUE_DELEGATE: task description]] to dispatch a sub-agent",
+      "with gateway-managed timing and delivery control.",
+      "",
+      "Syntax:",
+      "  [[CONTINUE_DELEGATE: task +30s]]               — delayed spawn, normal return",
+      "  [[CONTINUE_DELEGATE: task | silent]]            — result as internal context only (no channel output)",
+      "  [[CONTINUE_DELEGATE: task | silent-wake]]       — silent result + triggers your next turn",
+      "  [[CONTINUE_DELEGATE: task +30s | silent-wake]]  — delayed spawn, silent return, triggers next turn",
+      "",
+      "The task text is free-form. Include working context alongside the instruction.",
+      "Example: [[CONTINUE_DELEGATE: Read the project README and summarize architectural decisions +30s | silent]]",
+      "",
+      "### When to use CONTINUE_DELEGATE vs sessions_spawn",
+      "Use sessions_spawn for immediate, visible sub-agent work that announces to the channel.",
+      "Use [[CONTINUE_DELEGATE:]] when you need:",
+      "  - Delayed dispatch — schedule work for N seconds from now (+Ns)",
+      "  - Silent return — result arrives as internal context, no channel output (| silent)",
+      "  - Wake-on-return — silent result that triggers your next turn (| silent-wake)",
+      "  - Chain tracking — gateway enforces cost cap and depth limit across linked dispatches",
+      "",
+      "### Context pressure",
+      "When you receive a [system:context-pressure] event, your context window is approaching capacity.",
+      "Use [[CONTINUE_DELEGATE: ... | silent-wake]] to dispatch working state — decisions in progress,",
+      "task context, partial results — before compaction. These shards return after compaction and",
+      "re-inject context that the summary cannot preserve.",
+      "",
+      "Continuations are bounded: max chain length, cost cap, and min/max delay enforced by the gateway.",
       "",
     );
   }

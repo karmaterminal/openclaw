@@ -12,6 +12,7 @@ import {
 } from "../../infra/format-time/format-datetime.ts";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { drainSystemEventEntries } from "../../infra/system-events.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 
 export async function buildQueuedSystemPrompt(params: {
   cfg: OpenClawConfig;
@@ -83,13 +84,22 @@ export async function buildQueuedSystemPrompt(params: {
     );
   };
 
+  const sysEvtLog = createSubsystemLogger("system-events");
   const systemLines: string[] = [];
   const queued = drainSystemEventEntries(params.sessionKey);
+  if (queued.length > 0) {
+    sysEvtLog.debug("drain", {
+      sessionKey: params.sessionKey,
+      events: queued.length,
+      texts: queued.map((e) => e.text.substring(0, 80)),
+    });
+  }
   systemLines.push(
     ...queued
       .map((event) => {
         const compacted = compactSystemEvent(event.text);
         if (!compacted) {
+          sysEvtLog.debug("dropped by compactSystemEvent", { text: event.text.substring(0, 80) });
           return null;
         }
         return `[${formatSystemEventTimestamp(event.ts, params.cfg)}] ${compacted}`;
