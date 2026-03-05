@@ -588,6 +588,34 @@ Agent sees event as:
 
 The event is enqueued and drained on the **same turn** — the agent sees the advisory before generating its response. This is the "pre-run" injection that enables evacuation _this_ turn rather than discovering the pressure _next_ turn.
 
+#### Diagnostic Log Anchors
+
+The following log messages trace the lifecycle end-to-end. Each is grepable in the codebase to locate the relevant code path:
+
+| Log prefix                         | Emitted by                  | When                                                                       |
+| ---------------------------------- | --------------------------- | -------------------------------------------------------------------------- |
+| `[context-pressure:fire]`          | `context-pressure.ts`       | Context-pressure band crossed; includes band, ratio, token counts          |
+| `[system:context-pressure]`        | System event queue          | Injected into agent system prompt pre-run; agent-visible                   |
+| `[continue_delegate:enqueue]`      | `continue-delegate-tool.ts` | Tool call enqueues delegate for post-run consumption                       |
+| `[continuation:delegate-pending]`  | `agent-runner.ts`           | Marker event fired when delegates are queued (preserves chain identity)    |
+| `[continuation:delegate-spawned]`  | `agent-runner.ts`           | Sub-agent dispatched via `spawnSubagentDirect` after timer elapses         |
+| `[continuation/silent-wake]`       | `subagent-announce.ts`      | Shard returned with `wakeOnReturn=true`; about to trigger generation cycle |
+| `[continuation:enrichment-return]` | `subagent-announce.ts`      | Silent shard result enqueued as system event (no channel echo)             |
+| `requestHeartbeatNow`              | `heartbeat-wake.ts`         | Generation cycle triggered by silent-wake return                           |
+
+**Example: full delegate lifecycle in logs**
+
+```
+[continue_delegate:enqueue] session=agent:main silent=false silentWake=true delayMs=60000 task=check CI status
+[continuation:delegate-pending] 1 delegate(s) registered for agent:main
+  ... 60s elapses ...
+[continuation:delegate-spawned] task=check CI status delay=60000ms session=agent:main
+  ... shard executes and returns ...
+[continuation/silent-wake] wakeOnReturn=true target=agent:main silentAnnounce=true
+[continuation:enrichment-return] CI is green, all 152 tests passing
+  ... requestHeartbeatNow fires, agent wakes with enrichment in context ...
+```
+
 ### The Lich Circuit
 
 With context-pressure visibility, the full survival pattern becomes:

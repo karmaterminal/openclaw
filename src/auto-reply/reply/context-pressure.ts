@@ -1,5 +1,8 @@
 import type { SessionEntry } from "../../config/sessions.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+
+const log = createSubsystemLogger("continuation/context-pressure");
 
 export interface CheckContextPressureParams {
   sessionEntry: SessionEntry;
@@ -64,6 +67,10 @@ export function checkContextPressure(
       : band >= 90
         ? `⚠️ CONTEXT WINDOW NEARLY FULL — strongly consider evacuating working state via CONTINUE_DELEGATE or memory files. Compaction will occur soon.`
         : `⚠️ CONTEXT PRESSURE — acknowledge this event and begin planning evacuation. Save important state to memory files or prepare CONTINUE_DELEGATE shards.`;
+
+  log.debug(
+    `[context-pressure:fire] band=${band} ratio=${pct}% tokens=${tokensK}k/${windowK}k session=${sessionKey}`,
+  );
 
   enqueueSystemEvent(
     `[system:context-pressure] ${pct}% of context window consumed (${tokensK}k / ${windowK}k tokens). ${urgency}`,

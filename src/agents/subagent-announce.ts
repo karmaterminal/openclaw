@@ -1438,6 +1438,11 @@ export async function runSubagentAnnounceFlow(params: {
         });
       }
       // silent-wake: trigger generation cycle without channel echo
+      if (params.wakeOnReturn) {
+        defaultRuntime.log(
+          `[continuation/silent-wake] wakeOnReturn=true target=${targetRequesterSessionKey ?? "none"} silentAnnounce=${params.silentAnnounce}`,
+        );
+      }
       if (params.wakeOnReturn && targetRequesterSessionKey) {
         requestHeartbeatNow({
           sessionKey: targetRequesterSessionKey,

@@ -4,9 +4,12 @@ import {
   enqueuePendingDelegate,
   pendingDelegateCount,
 } from "../../auto-reply/continuation-delegate-store.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, ToolInputError } from "./common.js";
+
+const log = createSubsystemLogger("continuation/delegate-tool");
 
 const DELEGATE_MODES = ["normal", "silent", "silent-wake", "post-compaction"] as const;
 
@@ -122,6 +125,9 @@ export function createContinueDelegateTool(opts: {
       }
 
       // Enqueue for post-run processing by agent-runner.ts
+      log.debug(
+        `[continue_delegate:enqueue] session=${sessionKey} silent=${silent} silentWake=${silentWake} delayMs=${delayMs} task=${task.slice(0, 80)}`,
+      );
       enqueuePendingDelegate(sessionKey, {
         task,
         delayMs,
