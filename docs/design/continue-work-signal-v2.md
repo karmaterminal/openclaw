@@ -49,7 +49,7 @@ The `| silent` and `| silent-wake` suffixes control how delegate sub-agent compl
 
 Implementation: `silentAnnounce` flag threads through `SpawnSubagentParams` → `registerSubagentRun()` → conditional gate at `deliverSubagentAnnouncement()` call in `subagent-announce.ts`. 8 files changed, 137/137 tests pass.
 
-**`| silent-wake` (designed, not yet implemented):** Same channel suppression as `| silent`, but triggers a generation cycle on the parent session — the same wake path that non-silent completions use. This enables **autonomous cognition loops**: the agent dispatches enrichment shards that return silently and wake it to process them, dispatch more, and so on — all invisible to the channel. The human sees a warmer, more informed agent; the thinking happens in the background.
+**`| silent-wake` (implemented, validated on canary):** Same channel suppression as `| silent`, but triggers a generation cycle on the parent session via `requestHeartbeatNow` — the same wake path that non-silent completions use. This enables **autonomous cognition loops**: the agent dispatches enrichment shards that return silently and wake it to process them, dispatch more, and so on — all invisible to the channel. The human sees a warmer, more informed agent; the thinking happens in the background. Validated end-to-end: dispatch → shard execute → silent return → wake generation → accurate recall (with sufficient payload density).
 
 Without `| silent-wake`, parent-orchestrated chain hops stall: the enrichment arrives as passive context but doesn't trigger a turn. The agent sits idle until an external message arrives. In canary testing, this produced a 6-minute stall between hop 1 return and hop 2 dispatch — the enrichment was absorbed but never acted upon.
 
