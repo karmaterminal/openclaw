@@ -719,6 +719,24 @@ export function buildAgentSystemPrompt(params: {
     );
   }
 
+  // Sub-agent chain-hop bracket template — lighter injection for minimal/subagent mode
+  if (isMinimal && params.continuationEnabled) {
+    lines.push(
+      "## Chain Delegation",
+      "To dispatch a follow-up sub-agent from your output, end your ENTIRE response with:",
+      "  [[CONTINUE_DELEGATE: task description]]",
+      "",
+      "Optional modifiers:",
+      "  [[CONTINUE_DELEGATE: task +30s]]          — delayed spawn",
+      "  [[CONTINUE_DELEGATE: task | silent]]       — silent return (no channel output)",
+      "  [[CONTINUE_DELEGATE: task | silent-wake]]  — silent return + triggers parent turn",
+      "",
+      "Emit exactly ONE bracket per response. Do not nest brackets inside brackets.",
+      "The gateway handles chain tracking and depth limits.",
+      "",
+    );
+  }
+
   lines.push(
     "## Runtime",
     buildRuntimeLine(runtimeInfo, runtimeChannel, runtimeCapabilities, params.defaultThinkLevel),

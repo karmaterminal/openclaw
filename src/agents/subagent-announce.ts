@@ -1064,6 +1064,30 @@ export function buildSubagentSystemPrompt(params: {
     );
   }
 
+  // Continuation chaining — inject bracket template when continuation is enabled
+  const cfg = loadConfig();
+  const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
+  if (continuationEnabled && canSpawn) {
+    lines.push(
+      "## Continuation Chaining",
+      "To dispatch a follow-up sub-agent from your output, end your ENTIRE response with:",
+      "  [[CONTINUE_DELEGATE: task description]]",
+      "",
+      "Optional modifiers (append inside the brackets):",
+      "  +30s           — delay spawn by N seconds",
+      "  | silent        — result as internal context only (no channel output)",
+      "  | silent-wake   — silent result + triggers parent's next turn",
+      "",
+      "Example: [[CONTINUE_DELEGATE: Summarize the findings from step 1 +10s | silent]]",
+      "",
+      "Rules:",
+      "- Emit exactly ONE [[CONTINUE_DELEGATE:]] per response, as the LAST line",
+      "- Do NOT nest brackets inside brackets",
+      "- The gateway handles chain tracking, cost caps, and depth limits",
+      "",
+    );
+  }
+
   lines.push(
     "## Session Context",
     ...[
