@@ -1396,7 +1396,7 @@ export async function runSubagentAnnounceFlow(params: {
           | { allowed: false; reason: "cost-cap"; chainTokens: number; costCapTokens: number }
           | { allowed: true; nextChainHop: number };
 
-        if (nextChainHop > maxChainLength) {
+        if (nextChainHop >= maxChainLength) {
           chainGuardResult = {
             allowed: false,
             reason: "chain-length",

@@ -1329,7 +1329,7 @@ export async function runReplyAgent(params: {
             try {
               const spawnResult = await spawnSubagentDirect(
                 {
-                  task: `[continuation] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegate.task}`,
+                  task: `[continuation:chain-hop:${nextChainCount}] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegate.task}`,
                   ...(delegate.silent ? { silentAnnounce: true } : {}),
                   ...(delegate.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                 },
