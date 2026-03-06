@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  enqueueCompactionDelegate,
-  consumeCompactionDelegates,
-  compactionDelegateCount,
+  consumeStagedPostCompactionDelegates,
   enqueuePendingDelegate,
   consumePendingDelegates,
   pendingDelegateCount,
+  stagePostCompactionDelegate,
+  stagedPostCompactionDelegateCount,
 } from "./continuation-delegate-store.js";
 
 describe("continuation-delegate-store", () => {
@@ -13,8 +13,8 @@ describe("continuation-delegate-store", () => {
   beforeEach(() => {
     consumePendingDelegates("test-session");
     consumePendingDelegates("other-session");
-    consumeCompactionDelegates("test-session");
-    consumeCompactionDelegates("other-session");
+    consumeStagedPostCompactionDelegates("test-session");
+    consumeStagedPostCompactionDelegates("other-session");
   });
 
   it("returns empty array when no delegates pending", () => {
@@ -105,83 +105,82 @@ describe("continuation-delegate-store", () => {
   });
 });
 
-describe("compaction-delegate-store", () => {
+describe("post-compaction delegate staging", () => {
   beforeEach(() => {
-    consumeCompactionDelegates("test-session");
-    consumeCompactionDelegates("other-session");
+    consumeStagedPostCompactionDelegates("test-session");
+    consumeStagedPostCompactionDelegates("other-session");
   });
 
-  it("returns empty array when no compaction delegates pending", () => {
-    expect(consumeCompactionDelegates("test-session")).toEqual([]);
+  it("returns empty array when no staged delegates are pending", () => {
+    expect(consumeStagedPostCompactionDelegates("test-session")).toEqual([]);
   });
 
-  it("enqueues and consumes a compaction delegate", () => {
-    enqueueCompactionDelegate("test-session", {
+  it("stages and consumes a post-compaction delegate", () => {
+    stagePostCompactionDelegate("test-session", {
       task: "carry working state past compaction",
-      silent: true,
-      silentWake: true,
+      createdAt: 123,
     });
 
-    const delegates = consumeCompactionDelegates("test-session");
+    const delegates = consumeStagedPostCompactionDelegates("test-session");
     expect(delegates).toHaveLength(1);
     expect(delegates[0].task).toBe("carry working state past compaction");
-    expect(delegates[0].silentWake).toBe(true);
+    expect(delegates[0].createdAt).toBe(123);
   });
 
-  it("consumes removes compaction delegates from store", () => {
-    enqueueCompactionDelegate("test-session", { task: "task 1" });
+  it("consuming removes staged delegates from store", () => {
+    stagePostCompactionDelegate("test-session", { task: "task 1", createdAt: 1 });
 
-    const first = consumeCompactionDelegates("test-session");
+    const first = consumeStagedPostCompactionDelegates("test-session");
     expect(first).toHaveLength(1);
 
-    const second = consumeCompactionDelegates("test-session");
+    const second = consumeStagedPostCompactionDelegates("test-session");
     expect(second).toEqual([]);
   });
 
-  it("supports multiple compaction delegates per session", () => {
-    enqueueCompactionDelegate("test-session", { task: "shard 1" });
-    enqueueCompactionDelegate("test-session", { task: "shard 2" });
-    enqueueCompactionDelegate("test-session", { task: "shard 3" });
+  it("supports multiple staged delegates per session", () => {
+    stagePostCompactionDelegate("test-session", { task: "shard 1", createdAt: 1 });
+    stagePostCompactionDelegate("test-session", { task: "shard 2", createdAt: 2 });
+    stagePostCompactionDelegate("test-session", { task: "shard 3", createdAt: 3 });
 
-    const delegates = consumeCompactionDelegates("test-session");
+    const delegates = consumeStagedPostCompactionDelegates("test-session");
     expect(delegates).toHaveLength(3);
     expect(delegates.map((d) => d.task)).toEqual(["shard 1", "shard 2", "shard 3"]);
   });
 
-  it("isolates compaction delegates by session key", () => {
-    enqueueCompactionDelegate("test-session", { task: "session A" });
-    enqueueCompactionDelegate("other-session", { task: "session B" });
+  it("isolates staged delegates by session key", () => {
+    stagePostCompactionDelegate("test-session", { task: "session A", createdAt: 1 });
+    stagePostCompactionDelegate("other-session", { task: "session B", createdAt: 1 });
 
-    expect(consumeCompactionDelegates("test-session")).toHaveLength(1);
-    expect(consumeCompactionDelegates("other-session")).toHaveLength(1);
+    expect(consumeStagedPostCompactionDelegates("test-session")).toHaveLength(1);
+    expect(consumeStagedPostCompactionDelegates("other-session")).toHaveLength(1);
   });
 
-  it("compaction delegates are separate from immediate delegates", () => {
+  it("staged delegates are separate from immediate delegates", () => {
     enqueuePendingDelegate("test-session", { task: "immediate task" });
-    enqueueCompactionDelegate("test-session", { task: "compaction task" });
+    stagePostCompactionDelegate("test-session", { task: "compaction task", createdAt: 1 });
 
     expect(pendingDelegateCount("test-session")).toBe(1);
-    expect(compactionDelegateCount("test-session")).toBe(1);
+    expect(stagedPostCompactionDelegateCount("test-session")).toBe(1);
 
     const immediate = consumePendingDelegates("test-session");
     expect(immediate).toHaveLength(1);
     expect(immediate[0].task).toBe("immediate task");
 
-    const compaction = consumeCompactionDelegates("test-session");
+    const compaction = consumeStagedPostCompactionDelegates("test-session");
     expect(compaction).toHaveLength(1);
     expect(compaction[0].task).toBe("compaction task");
   });
 
-  it("compactionDelegateCount reflects current queue depth", () => {
-    expect(compactionDelegateCount("test-session")).toBe(0);
+  it("stagedPostCompactionDelegateCount reflects current queue depth", () => {
+    expect(stagedPostCompactionDelegateCount("test-session")).toBe(0);
 
-    enqueueCompactionDelegate("test-session", { task: "task 1" });
-    expect(compactionDelegateCount("test-session")).toBe(1);
+    stagePostCompactionDelegate("test-session", { task: "task 1", createdAt: 1 });
+    expect(stagedPostCompactionDelegateCount("test-session")).toBe(1);
 
-    enqueueCompactionDelegate("test-session", { task: "task 2" });
-    expect(compactionDelegateCount("test-session")).toBe(2);
+    stagePostCompactionDelegate("test-session", { task: "task 2", createdAt: 2 });
+    expect(stagedPostCompactionDelegateCount("test-session")).toBe(2);
 
-    consumeCompactionDelegates("test-session");
-    expect(compactionDelegateCount("test-session")).toBe(0);
+    consumeStagedPostCompactionDelegates("test-session");
+    expect(stagedPostCompactionDelegateCount("test-session")).toBe(0);
   });
 });

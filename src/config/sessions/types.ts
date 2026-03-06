@@ -65,6 +65,11 @@ export type AcpSessionRuntimeOptions = {
   backendExtras?: Record<string, string>;
 };
 
+export type SessionPostCompactionDelegate = {
+  task: string;
+  createdAt: number;
+};
+
 export type SessionEntry = {
   /**
    * Last delivered heartbeat payload (used to suppress duplicate heartbeat notifications).
@@ -151,6 +156,8 @@ export type SessionEntry = {
   compactionCount?: number;
   memoryFlushAt?: number;
   memoryFlushCompactionCount?: number;
+  /** Delegates waiting to fire when the next compaction completes. */
+  pendingPostCompactionDelegates?: SessionPostCompactionDelegate[];
   cliSessionIds?: Record<string, string>;
   claudeCliSessionId?: string;
   label?: string;
@@ -175,12 +182,6 @@ export type SessionEntry = {
   continuationChainStartedAt?: number;
   /** Accumulated token usage across the current continuation chain. Reset on external message. */
   continuationChainTokens?: number;
-  /** Pre-registered post-compaction delegates. Survive across turns until compaction fires. */
-  pendingPostCompactionDelegates?: Array<{
-    task: string;
-    createdAt: number;
-    mode?: "silent-wake";
-  }>;
 };
 
 function normalizeRuntimeField(value: string | undefined): string | undefined {

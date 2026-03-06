@@ -630,6 +630,7 @@ async function sendAnnounce(item: AnnounceQueueItem) {
       to: requesterIsSubagent ? undefined : origin?.to,
       threadId: requesterIsSubagent ? undefined : threadId,
       deliver: !requesterIsSubagent,
+      continuationTrigger: "delegate-return",
       internalEvents: item.internalEvents,
       idempotencyKey,
     },
@@ -889,6 +890,7 @@ async function sendSubagentAnnounceDirectly(params: {
             message: params.triggerMessage,
             deliver: shouldDeliverExternally,
             bestEffortDeliver: params.bestEffortDeliver,
+            continuationTrigger: "delegate-return",
             internalEvents: params.internalEvents,
             channel: shouldDeliverExternally ? directChannel : undefined,
             accountId: shouldDeliverExternally ? directOrigin?.accountId : undefined,
@@ -1584,18 +1586,6 @@ export async function runSubagentAnnounceFlow(params: {
     ];
     triggerMessage = buildAnnounceSteerMessage(internalEvents);
     steerMessage = triggerMessage;
-
-    // Mark delegate return so the inbound message handler can distinguish
-    // the completion announcement from a real user message (P0-1/P1-1 fix).
-    // Only enqueue when a reply cycle will fire (non-silent, or silent-wake).
-    // Silent non-wake returns don't trigger runReplyAgent, so the marker would
-    // persist and misclassify the next real user message as a delegate wake.
-    const willTriggerReplyCycle = !params.silentAnnounce || params.wakeOnReturn;
-    if (targetRequesterSessionKey && willTriggerReplyCycle) {
-      enqueueSystemEvent("[continuation:delegate-returned]", {
-        sessionKey: targetRequesterSessionKey,
-      });
-    }
 
     // --- Silent announce gate: inject as system event, skip channel delivery ---
     if (params.silentAnnounce) {

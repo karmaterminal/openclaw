@@ -243,25 +243,19 @@ export async function runPreparedReply(
   const wasMentioned = ctx.WasMentioned === true;
   const isHeartbeat = opts?.isHeartbeat === true;
   // Structured continuation trigger — the primary wake classification signal.
-  // Set by heartbeat-runner for wake paths (work-wake, delegate-return) and
-  // threaded through request options.  For non-silent delegate returns that
-  // enter through the normal inbound message pipeline, we fall back to the
-  // one-shot [continuation:delegate-returned] system event (consumed same-turn,
-  // not vulnerable to the buildQueuedSystemPrompt drain that killed delegate-pending).
+  // Heartbeat wakes thread this through getReply options. Direct announce turns
+  // use the gateway `agent` path, so they no longer rely on prompt-visible
+  // control tokens in the system-event queue.
   const continuationTrigger = opts?.continuationTrigger;
-  // Fallback: check one-shot delegate-returned marker for non-heartbeat paths
-  const hasDelegateReturnedEvent =
-    !continuationTrigger &&
-    sessionKey != null &&
-    peekSystemEventEntries(sessionKey)?.some((e) =>
-      e.text?.startsWith("[continuation:delegate-returned]"),
-    );
-  const isDelegateWake =
-    continuationTrigger === "delegate-return" || (hasDelegateReturnedEvent ?? false);
+  const isDelegateWake = continuationTrigger === "delegate-return";
   const isContinuationWake = continuationTrigger === "work-wake" || isDelegateWake;
-  // Clear delegate-pending flag and consume one-shot markers when a return is processed.
+  // Clear delegate-pending flag when a structured delegate return is processed.
   if (isDelegateWake && sessionKey) {
     clearDelegatePending(sessionKey);
+  }
+  if (sessionKey) {
+    // Legacy cleanup: older builds enqueued this as control-plane state. Remove
+    // it before queued prompt drain so it cannot leak into model-visible text.
     removeSystemEvents(
       sessionKey,
       (e) => e.text?.startsWith("[continuation:delegate-returned]") ?? false,

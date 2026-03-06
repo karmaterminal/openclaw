@@ -1,3 +1,5 @@
+import type { SessionPostCompactionDelegate } from "../config/sessions.js";
+
 /**
  * Module-level store for `continue_delegate` tool calls.
  *
@@ -56,43 +58,33 @@ export function pendingDelegateCount(sessionKey: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Post-compaction delegate queue
+// Post-compaction delegate staging
 //
-// Delegates registered with mode "post-compaction" are stored here instead of
-// the immediate pending queue. They fire when the `autoCompactionCompleted`
-// block runs in agent-runner.ts — right alongside readPostCompactionContext().
-// This is the lifecycle-triggered dispatch: no timer, no guessing. The shard
-// starts when compaction happens, not 30 seconds after dispatch.
+// `post-compaction` delegates stay turn-local until the run succeeds. If the
+// same run compacts, agent-runner dispatches them immediately. Otherwise the
+// successful run persists them onto SessionEntry for a later compaction cycle.
+// Failed turns simply drop this staged state in finally.
 // ---------------------------------------------------------------------------
 
-const compactionDelegates = new Map<string, PendingContinuationDelegate[]>();
+const stagedPostCompactionDelegates = new Map<string, SessionPostCompactionDelegate[]>();
 
-/**
- * Called by the `continue_delegate` tool when mode is "post-compaction".
- * The delegate is held until compaction fires.
- */
-export function enqueueCompactionDelegate(
+export function stagePostCompactionDelegate(
   sessionKey: string,
-  delegate: PendingContinuationDelegate,
+  delegate: SessionPostCompactionDelegate,
 ): void {
-  const existing = compactionDelegates.get(sessionKey) ?? [];
+  const existing = stagedPostCompactionDelegates.get(sessionKey) ?? [];
   existing.push(delegate);
-  compactionDelegates.set(sessionKey, existing);
+  stagedPostCompactionDelegates.set(sessionKey, existing);
 }
 
-/**
- * Called by `agent-runner.ts` when `autoCompactionCompleted` is true.
- * Returns and removes all compaction-triggered delegates for the session.
- */
-export function consumeCompactionDelegates(sessionKey: string): PendingContinuationDelegate[] {
-  const delegates = compactionDelegates.get(sessionKey) ?? [];
-  compactionDelegates.delete(sessionKey);
+export function consumeStagedPostCompactionDelegates(
+  sessionKey: string,
+): SessionPostCompactionDelegate[] {
+  const delegates = stagedPostCompactionDelegates.get(sessionKey) ?? [];
+  stagedPostCompactionDelegates.delete(sessionKey);
   return delegates;
 }
 
-/**
- * Returns the count of compaction-triggered delegates for a session.
- */
-export function compactionDelegateCount(sessionKey: string): number {
-  return compactionDelegates.get(sessionKey)?.length ?? 0;
+export function stagedPostCompactionDelegateCount(sessionKey: string): number {
+  return stagedPostCompactionDelegates.get(sessionKey)?.length ?? 0;
 }

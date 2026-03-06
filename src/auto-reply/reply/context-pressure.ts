@@ -47,20 +47,20 @@ export function checkContextPressure(
   }
 
   // Clamp ratio to [0, ∞) — negative should not occur after the guard above,
-  // but defensive. Ratios > 1.0 are valid (token overrun) and map to band 95.
+  // but defensive. Ratios > 1.0 are valid (token overrun).
   const ratio = Math.max(0, sessionEntry.totalTokens / contextWindowTokens);
   const thresholdPct = Math.round(contextPressureThreshold * 100);
-  // Evaluate custom threshold first so values in (0.9, 1] aren't shadowed by
-  // the fixed 90/95 bands.  When thresholdPct >= 90 the custom band subsumes
-  // the fixed bands; otherwise the fixed bands fire at their own marks.
-  const band =
-    ratio >= 0.95
-      ? 95
-      : ratio >= 0.9 && thresholdPct < 90
-        ? 90
-        : ratio >= contextPressureThreshold
-          ? thresholdPct
-          : 0;
+  const bandThresholds = [
+    { threshold: contextPressureThreshold, band: thresholdPct },
+    ...(contextPressureThreshold < 0.9 ? [{ threshold: 0.9, band: 90 }] : []),
+    ...(Math.max(contextPressureThreshold, 0.9) < 0.95 ? [{ threshold: 0.95, band: 95 }] : []),
+  ];
+  let band = 0;
+  for (const candidate of bandThresholds) {
+    if (ratio >= candidate.threshold) {
+      band = candidate.band;
+    }
+  }
 
   if (band === 0 || band === (sessionEntry.lastContextPressureBand ?? 0)) {
     return { fired: false, band };
