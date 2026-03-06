@@ -5,6 +5,7 @@ import {
   pendingDelegateCount,
   stagedPostCompactionDelegateCount,
 } from "../../auto-reply/continuation-delegate-store.js";
+import { loadConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
@@ -102,8 +103,12 @@ export function createContinueDelegateTool(opts: {
       const silent = modeRaw === "silent" || modeRaw === "silent-wake" || isPostCompaction;
       const silentWake = modeRaw === "silent-wake" || isPostCompaction;
 
-      // Check per-turn delegate limit
-      const maxPerTurn = opts.maxDelegatesPerTurn ?? 5;
+      // Check per-turn delegate limit.
+      // Read from loadConfig() at execute time so hot-reloaded config applies (P2 fix).
+      const maxPerTurn =
+        loadConfig().agents?.defaults?.continuation?.maxDelegatesPerTurn ??
+        opts.maxDelegatesPerTurn ??
+        5;
       const currentCount =
         pendingDelegateCount(sessionKey) + stagedPostCompactionDelegateCount(sessionKey);
       if (currentCount >= maxPerTurn) {
