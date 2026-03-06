@@ -1583,7 +1583,11 @@ export async function runSubagentAnnounceFlow(params: {
 
     // Mark delegate return so the inbound message handler can distinguish
     // the completion announcement from a real user message (P0-1/P1-1 fix).
-    if (targetRequesterSessionKey) {
+    // Only enqueue when a reply cycle will fire (non-silent, or silent-wake).
+    // Silent non-wake returns don't trigger runReplyAgent, so the marker would
+    // persist and misclassify the next real user message as a delegate wake.
+    const willTriggerReplyCycle = !params.silentAnnounce || params.wakeOnReturn;
+    if (targetRequesterSessionKey && willTriggerReplyCycle) {
       enqueueSystemEvent("[continuation:delegate-returned]", {
         sessionKey: targetRequesterSessionKey,
       });
