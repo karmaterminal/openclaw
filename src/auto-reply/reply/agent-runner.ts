@@ -11,7 +11,6 @@ import {
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
   resolveSessionTranscriptPath,
-  resolveStorePath,
   type SessionEntry,
   updateSessionStore,
   updateSessionStoreEntry,
@@ -1158,19 +1157,6 @@ export async function runReplyAgent(params: {
                 },
               );
               if (spawnResult.status === "accepted") {
-                // Store initial chain hop index (1) on the spawned shard for per-chain depth tracking
-                if (spawnResult.childSessionKey) {
-                  const childAgentId = resolveAgentIdFromSessionKey(spawnResult.childSessionKey);
-                  const childStorePath = resolveStorePath(cfg?.session?.store, {
-                    agentId: childAgentId,
-                  });
-                  void updateSessionStore(childStorePath, (store) => {
-                    const childEntry = store[spawnResult.childSessionKey!];
-                    if (childEntry) {
-                      childEntry.continuationChainCount = 1;
-                    }
-                  });
-                }
                 enqueueSystemEvent(
                   `[continuation:delegate-spawned] Tool delegate turn ${nextChainCount}/${maxChainLength}: ${delegate.task}`,
                   { sessionKey },

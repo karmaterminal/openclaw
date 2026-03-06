@@ -15,7 +15,6 @@ import {
   resolveAgentIdFromSessionKey,
   resolveMainSessionKey,
   resolveStorePath,
-  updateSessionStore,
 } from "../config/sessions.js";
 import { callGateway } from "../gateway/call.js";
 import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
@@ -1333,11 +1332,12 @@ export async function runSubagentAnnounceFlow(params: {
         const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
         const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
 
-        // --- Per-chain hop guard: depth tracked on each shard, cost tracked on parent ---
-        // Chain hop index: read from the COMPLETING shard's session entry (per-chain depth).
-        // Cost tokens: read from the PARENT session entry (global accumulation).
-        const childEntry = loadSessionEntryByKey(params.childSessionKey);
-        const childChainHop = childEntry?.continuationChainCount ?? 0;
+        // --- Per-chain hop guard: depth encoded in task prefix, cost tracked on parent ---
+        // Chain hop index: parsed from the completing shard's task prefix [continuation:chain-hop:N].
+        // This avoids store timing races — the hop index travels IN the task string.
+        const childTask = params.task ?? "";
+        const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
+        const childChainHop = hopMatch ? parseInt(hopMatch[1], 10) : 0;
         const nextChainHop = childChainHop + 1;
 
         // Check chain depth (per-chain, from child's hop index)
@@ -1387,7 +1387,7 @@ export async function runSubagentAnnounceFlow(params: {
               const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
               const spawnResult = await spawnSubagentDirect(
                 {
-                  task: `[continuation:chain-hop] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
+                  task: `[continuation:chain-hop:${nextChainHop}] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
                   ...(chainSilent ? { silentAnnounce: true } : {}),
                   ...(chainWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                 },
@@ -1400,19 +1400,6 @@ export async function runSubagentAnnounceFlow(params: {
                 },
               );
               if (spawnResult.status === "accepted") {
-                // Store chain hop index on the new child's session entry for per-chain tracking
-                if (spawnResult.childSessionKey) {
-                  const newChildAgentId = resolveAgentIdFromSessionKey(spawnResult.childSessionKey);
-                  const newChildStorePath = resolveStorePath(cfg?.session?.store, {
-                    agentId: newChildAgentId,
-                  });
-                  void updateSessionStore(newChildStorePath, (store) => {
-                    const newChildEntry = store[spawnResult.childSessionKey!];
-                    if (newChildEntry) {
-                      newChildEntry.continuationChainCount = nextChainHop;
-                    }
-                  });
-                }
                 defaultRuntime.log(
                   `[subagent-chain-hop] Spawned chain delegate (${nextChainHop}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
                 );
