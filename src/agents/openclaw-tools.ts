@@ -195,8 +195,6 @@ export function createOpenClawTools(options?: {
       ? [
           createContinueDelegateTool({
             agentSessionKey: options?.agentSessionKey,
-            maxDelegatesPerTurn:
-              options?.config?.agents?.defaults?.continuation?.maxDelegatesPerTurn,
           }),
         ]
       : []),

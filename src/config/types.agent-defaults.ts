@@ -292,7 +292,12 @@ export type AgentDefaultsConfig = {
     maxDelayMs?: number;
     maxChainLength?: number;
     costCapTokens?: number;
-    /** Maximum number of continue_delegate tool calls per agent turn (default: 10). */
+    /**
+     * Additional generation increments allowed for same-session timer batches
+     * before a delayed continuation is considered stale (default: 300).
+     */
+    generationGuardTolerance?: number;
+    /** Maximum number of continue_delegate tool calls per agent turn (default: 5). */
     maxDelegatesPerTurn?: number;
     /**
      * Context-pressure awareness threshold (0.0–1.0). When the session's token

@@ -77,6 +77,30 @@ describe("continuation config schema validation", () => {
   });
 
   /* ---------------------------------------------------------------- */
+  /*  generationGuardTolerance: z.number().int().nonnegative()         */
+  /* ---------------------------------------------------------------- */
+
+  it("accepts generationGuardTolerance = 300", () => {
+    const result = parseContinuation({ generationGuardTolerance: 300 });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts generationGuardTolerance = 0", () => {
+    const result = parseContinuation({ generationGuardTolerance: 0 });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects generationGuardTolerance = -1", () => {
+    const result = parseContinuation({ generationGuardTolerance: -1 });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects generationGuardTolerance = 3.5", () => {
+    const result = parseContinuation({ generationGuardTolerance: 3.5 });
+    expect(result.success).toBe(false);
+  });
+
+  /* ---------------------------------------------------------------- */
   /*  costCapTokens: z.number().int().nonnegative().optional()         */
   /* ---------------------------------------------------------------- */
 

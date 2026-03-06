@@ -1,7 +1,7 @@
 import {
-  bumpContinuationGeneration,
-  currentContinuationGeneration,
-} from "../auto-reply/reply/agent-runner.js";
+  isContinuationGenerationCurrent,
+  scheduleContinuationGeneration,
+} from "../auto-reply/reply/continuation-generation.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import {
   isSilentReplyText,
@@ -1444,9 +1444,9 @@ export async function runSubagentAnnounceFlow(params: {
           if (chainDelayMs && chainDelayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, chainDelayMs));
             // Generation guard: cancel if parent session receives new input during delay
-            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            const hopGeneration = scheduleContinuationGeneration(targetRequesterSessionKey);
             setTimeout(() => {
-              if (currentContinuationGeneration(targetRequesterSessionKey) !== hopGeneration) {
+              if (!isContinuationGenerationCurrent(targetRequesterSessionKey, hopGeneration)) {
                 defaultRuntime.log(
                   `[subagent-chain-hop] Timer cancelled (generation mismatch) for ${targetRequesterSessionKey}`,
                 );

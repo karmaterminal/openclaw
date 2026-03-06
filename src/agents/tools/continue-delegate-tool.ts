@@ -5,6 +5,7 @@ import {
   compactionDelegateCount,
   pendingDelegateCount,
 } from "../../auto-reply/continuation-delegate-store.js";
+import { loadConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
@@ -55,10 +56,7 @@ const ContinueDelegateToolSchema = Type.Object({
  * The tool can be called multiple times per turn (multi-delegate fan-out).
  * Each call enqueues independently. No single-per-response regex limitation.
  */
-export function createContinueDelegateTool(opts: {
-  agentSessionKey?: string;
-  maxDelegatesPerTurn?: number;
-}): AnyAgentTool {
+export function createContinueDelegateTool(opts: { agentSessionKey?: string }): AnyAgentTool {
   return {
     label: "Continuation",
     name: "continue_delegate",
@@ -95,7 +93,7 @@ export function createContinueDelegateTool(opts: {
       const silentWake = modeRaw === "silent-wake" || isPostCompaction;
 
       // Check per-turn delegate limit
-      const maxPerTurn = opts.maxDelegatesPerTurn ?? 5;
+      const maxPerTurn = loadConfig().agents?.defaults?.continuation?.maxDelegatesPerTurn ?? 5;
       const currentCount = pendingDelegateCount(sessionKey) + compactionDelegateCount(sessionKey);
       if (currentCount >= maxPerTurn) {
         return jsonResult({

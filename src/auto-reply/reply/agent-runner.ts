@@ -55,6 +55,12 @@ import {
 import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
+import {
+  currentContinuationGeneration,
+  invalidateContinuationGeneration,
+  isContinuationGenerationCurrent,
+  scheduleContinuationGeneration,
+} from "./continuation-generation.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
@@ -66,29 +72,6 @@ import { createTypingSignaler } from "./typing-mode.js";
 import type { TypingController } from "./typing.js";
 
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
-
-// Track pending continuation timers so they can be cancelled when an external
-// message arrives during the delay window (prevents ghost continuations).
-// Each entry includes a generation counter to guard against same-tick races:
-// the timer callback verifies its generation matches the current value before
-// scheduling the wake. An external message bumps the generation, invalidating
-// any in-flight callbacks without needing clearTimeout races.
-const continuationGenerations = new Map<string, number>();
-
-export function currentContinuationGeneration(sessionKey: string): number {
-  return continuationGenerations.get(sessionKey) ?? 0;
-}
-
-export function bumpContinuationGeneration(sessionKey: string): number {
-  const next = currentContinuationGeneration(sessionKey) + 1;
-  continuationGenerations.set(sessionKey, next);
-  return next;
-}
-
-// clearContinuationGeneration intentionally removed: clearing the map entry
-// resets the counter to 0, creating a generation-reuse window where a new
-// chain's value can collide with a stale in-flight timer. All paths now use
-// bumpContinuationGeneration instead.
 
 /**
  * Cancel any pending continuation timer for the given session AND reset
@@ -110,8 +93,8 @@ export function cancelContinuationTimer(
 ): void {
   // Only bump when a generation exists — avoids unbounded map growth
   // from sessions that never use continuation.
-  if (continuationGenerations.has(sessionKey)) {
-    bumpContinuationGeneration(sessionKey);
+  if (currentContinuationGeneration(sessionKey) > 0) {
+    invalidateContinuationGeneration(sessionKey);
   }
 
   // Reset chain metadata so stale counters don't block future chains.
@@ -228,15 +211,15 @@ export async function runReplyAgent(params: {
       activeSessionEntry.continuationChainStartedAt = undefined;
       activeSessionEntry.continuationChainTokens = undefined;
     }
-    // Cancel any pending continuation timer by bumping the generation counter.
+    // Cancel any pending continuation timer by jumping past the live tolerance window.
     // Only bump when a generation exists (active/pending chain) to avoid
     // unbounded map growth from sessions that never use continuation.
-    const hasGenerationEntry = continuationGenerations.has(sessionKey);
+    const hasGenerationEntry = currentContinuationGeneration(sessionKey) > 0;
     defaultRuntime.log(
       `[continuation-guard] New message on ${sessionKey}: hadActiveChain=${hadActiveChain} hasGenerationEntry=${hasGenerationEntry}`,
     );
     if (hadActiveChain || hasGenerationEntry) {
-      const newGen = bumpContinuationGeneration(sessionKey);
+      const newGen = invalidateContinuationGeneration(sessionKey);
       defaultRuntime.log(`[continuation-guard] Bumped generation to ${newGen} for ${sessionKey}`);
     }
     if (hadActiveChain && activeSessionStore && activeSessionEntry) {
@@ -924,10 +907,7 @@ export async function runReplyAgent(params: {
           defaultRuntime.log(
             `Continuation chain capped at ${maxChainLength} for session ${sessionKey}`,
           );
-          // Bump (not clear) to invalidate stale timers without reuse risk.
-          // Clearing would reset to 0, letting a new chain's generation collide
-          // with a stale in-flight timer's captured value.
-          bumpContinuationGeneration(sessionKey);
+          invalidateContinuationGeneration(sessionKey);
         } else {
           // Accumulate token usage for cost cap
           const usage = runResult.meta?.agentMeta?.usage;
@@ -943,7 +923,7 @@ export async function runReplyAgent(params: {
             defaultRuntime.log(
               `Continuation cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}) for session ${sessionKey}`,
             );
-            bumpContinuationGeneration(sessionKey);
+            invalidateContinuationGeneration(sessionKey);
           } else {
             // Persist chain state for both DELEGATE and WORK paths
             const nextChainCount = currentChainCount + 1;
@@ -1041,10 +1021,10 @@ export async function runReplyAgent(params: {
                   `DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegateTask}`,
                 );
                 // Generation guard: if an external message arrives during the delay,
-                // bumpContinuationGeneration invalidates this timer — same as WORK timers.
-                const delegateGeneration = bumpContinuationGeneration(sessionKey);
+                // invalidateContinuationGeneration invalidates this timer — same as WORK timers.
+                const delegateGeneration = scheduleContinuationGeneration(sessionKey);
                 setTimeout(() => {
-                  if (currentContinuationGeneration(sessionKey) !== delegateGeneration) {
+                  if (!isContinuationGenerationCurrent(sessionKey, delegateGeneration)) {
                     defaultRuntime.log(
                       `DELEGATE timer cancelled (generation mismatch) for session ${sessionKey}`,
                     );
@@ -1061,9 +1041,9 @@ export async function runReplyAgent(params: {
               const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, requestedDelay));
 
               // Schedule continuation with generation guard
-              const generation = bumpContinuationGeneration(sessionKey);
+              const generation = scheduleContinuationGeneration(sessionKey);
               setTimeout(() => {
-                if (currentContinuationGeneration(sessionKey) !== generation) {
+                if (!isContinuationGenerationCurrent(sessionKey, generation)) {
                   return; // External message arrived — cancel
                 }
                 enqueueSystemEvent(
@@ -1193,7 +1173,7 @@ export async function runReplyAgent(params: {
               `Tool DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegate.task}`,
             );
             // Generation guard: same as bracket-path delegate timers
-            const toolDelegateGeneration = bumpContinuationGeneration(sessionKey);
+            const toolDelegateGeneration = scheduleContinuationGeneration(sessionKey);
             defaultRuntime.log(
               `[continuation-guard] Tool delegate timer set with generation=${toolDelegateGeneration} for ${sessionKey}`,
             );
@@ -1202,7 +1182,7 @@ export async function runReplyAgent(params: {
               defaultRuntime.log(
                 `[continuation-guard] Timer fired: stored=${toolDelegateGeneration} current=${currentGen} for ${sessionKey}`,
               );
-              if (currentGen !== toolDelegateGeneration) {
+              if (!isContinuationGenerationCurrent(sessionKey, toolDelegateGeneration)) {
                 defaultRuntime.log(
                   `Tool DELEGATE timer cancelled (generation mismatch) for session ${sessionKey}`,
                 );
