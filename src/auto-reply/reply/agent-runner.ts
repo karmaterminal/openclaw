@@ -231,8 +231,13 @@ export async function runReplyAgent(params: {
     // Cancel any pending continuation timer by bumping the generation counter.
     // Only bump when a generation exists (active/pending chain) to avoid
     // unbounded map growth from sessions that never use continuation.
-    if (hadActiveChain || continuationGenerations.has(sessionKey)) {
-      bumpContinuationGeneration(sessionKey);
+    const hasGenerationEntry = continuationGenerations.has(sessionKey);
+    defaultRuntime.log(
+      `[continuation-guard] New message on ${sessionKey}: hadActiveChain=${hadActiveChain} hasGenerationEntry=${hasGenerationEntry}`,
+    );
+    if (hadActiveChain || hasGenerationEntry) {
+      const newGen = bumpContinuationGeneration(sessionKey);
+      defaultRuntime.log(`[continuation-guard] Bumped generation to ${newGen} for ${sessionKey}`);
     }
     if (hadActiveChain && activeSessionStore && activeSessionEntry) {
       activeSessionStore[sessionKey] = {
@@ -1189,8 +1194,15 @@ export async function runReplyAgent(params: {
             );
             // Generation guard: same as bracket-path delegate timers
             const toolDelegateGeneration = bumpContinuationGeneration(sessionKey);
+            defaultRuntime.log(
+              `[continuation-guard] Tool delegate timer set with generation=${toolDelegateGeneration} for ${sessionKey}`,
+            );
             setTimeout(() => {
-              if (currentContinuationGeneration(sessionKey) !== toolDelegateGeneration) {
+              const currentGen = currentContinuationGeneration(sessionKey);
+              defaultRuntime.log(
+                `[continuation-guard] Timer fired: stored=${toolDelegateGeneration} current=${currentGen} for ${sessionKey}`,
+              );
+              if (currentGen !== toolDelegateGeneration) {
                 defaultRuntime.log(
                   `Tool DELEGATE timer cancelled (generation mismatch) for session ${sessionKey}`,
                 );
