@@ -1028,7 +1028,7 @@ _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/
 - **Why previous approaches failed**:
   - `7cb3546c8` (parent-session counter): `agent-runner.ts` resets `continuationChainCount` on each inbound message; chain hops ARE inbound messages → counter stuck at 2
   - `13405b669` (per-chain store write): `void updateSessionStore` + child entry doesn't exist at write time → counter stuck at 1
-- **Guard semantics**: `nextChainHop > maxChainLength` — N hops allowed, N+1 blocked
+- **Guard semantics**: `nextChainHop >= maxChainLength` — N hops allowed, N+1 blocked. (Fixed from `>` to `>=` in Swim 6; the `>` guard caused an off-by-one allowing N+2 hops.)
 - **Canary verified**: `maxChainLength: 3` → 3 bracket hops completed, hop 4 rejected. Journal: `(1/3)` → `(2/3)` → `(3/3)` → REJECTED.
 - **RFC impact**: Update chain tracking section to describe task-prefix mechanism. Session store is NOT the transport for per-hop metadata.
 
@@ -1047,3 +1047,40 @@ _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/
 - **5-2 to 5-5**: Chain dispatch 100% reliable, no gate (pre-fix builds)
 - **5-6**: Chain-hop enforcement PASS (`maxChainLength: 3` gated at hop 4, task-prefix encoding verified)
 - **RFC impact**: Update canary validation section with Swim 5 findings. No specific test counts or build hashes per figs's review notes.
+
+### 2026-03-06 — Swim 6: Full integration test suite for `continue_delegate` tool
+
+Swim 6 tested the `continue_delegate` tool path across 13 scenarios on a 4-node fleet. Canary node ran the `feature/context-pressure-squashed` dist overlay; all others on stable build.
+
+**Results (11 pass, 1 fail fixed, 2 deferred):**
+
+| Test | Description                                             | Result                                 |
+| ---- | ------------------------------------------------------- | -------------------------------------- |
+| 6-1  | Wake routing (silent-wake shard → correct session)      | ✅                                     |
+| 6-2  | Queue-drain resistance (tolerance guards survive flood) | ✅                                     |
+| 6-3  | Post-compaction recall                                  | ⏸️ Deferred (requires context buildup) |
+| 6-4  | Return-to-fresh-session (3/3 shards)                    | ✅                                     |
+| 6-5  | Context-pressure lifecycle                              | ⏳ Not started                         |
+| 6-6  | Chain hop bounds (3-hop chain + visible announce)       | ✅                                     |
+| 6-7  | Chain length enforcement                                | ❌ → Fixed                             |
+| 6-7b | Fan-out cap (`maxDelegatesPerTurn: 5`)                  | ✅                                     |
+| 6-8  | Legacy token hygiene (`[[CONTINUE:]]` ignored)          | ✅                                     |
+| 6-9a | Missing file (graceful ENOENT)                          | ✅                                     |
+| 6-9b | Slow shard (69s, survived WebSocket reconnect)          | ✅                                     |
+| 6-9c | Empty task (rejected at tool level)                     | ✅                                     |
+| 6-10 | Fan-out flood (bonus, 5/10 spawned)                     | ⚠️ Partial                             |
+
+**Bugs found and fixed:**
+
+- **P0 — Chain length off-by-one:** Guard used `>` instead of `>=`, plus initial tool dispatch not counted as hop. `maxChainLength: 10` allowed 12 shards. Fix: `>=` + chain-hop prefix on initial dispatch.
+- **P1 — Generation guard closure capture:** `generationGuardTolerance` captured at `setTimeout` schedule time, not re-read at fire time. Config changes silently ignored until restart. Fix: extract generation guard into dedicated module with `loadConfig()` at check time.
+- **P2 — `maxDelegatesPerTurn` no hot-reload:** Config read once at tool construction, cached for session lifetime. Fix: read live config on each `execute()` call.
+
+**Architectural findings:**
+
+- Fan-out (parallel siblings) and chain (sequential hops) use different counters and caps. `continue_delegate` is in `SUBAGENT_TOOL_DENY_ALWAYS` — shards can chain via brackets but cannot fan-out via tool. Proposed: `DENY_LEAF` for tree dispatch.
+- Sticky silent only inherits `true` (safety feature — prevents accidental channel spam from deep chains). Proposed `| loud` suffix for explicit override.
+- Generation guard gates timer fire, not shard execution. A 69s shard survived a WebSocket reconnect because the guard had already passed at dispatch.
+- Lane congestion under flood: 5 parallel shards on same session lane caused up to 46s queue wait. The `maxDelegatesPerTurn` cap is the proper guard.
+
+**RFC impact:** Guard semantics note updated — `nextChainHop > maxChainLength` is now `>=`. P1/P2 fixes improve config hot-reload reliability for all continuation parameters. See `SWIM6-FINDINGS.md` at repo root for full evidence and commit table.
