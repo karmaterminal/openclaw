@@ -189,6 +189,7 @@ export const AgentDefaultsSchema = z
         maxChainLength: z.number().int().positive().optional(),
         costCapTokens: z.number().int().nonnegative().optional(),
         maxDelegatesPerTurn: z.number().int().positive().optional(),
+        generationGuardTolerance: z.number().int().nonnegative().optional(),
         contextPressureThreshold: z.number().min(0).max(1).optional(),
       })
       .strict()

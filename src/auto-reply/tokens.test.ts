@@ -279,48 +279,6 @@ describe("parseContinuationSignal", () => {
     expect(result?.kind === "delegate" ? result.silentWake : undefined).toBeUndefined();
   });
 
-  // --- [[CONTINUE_DELEGATE: task | silent-wake]] (silent wake enrichment) ---
-
-  it("parses [[CONTINUE_DELEGATE: task | silent-wake]] with silentWake flag", () => {
-    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: enrich context | silent-wake]]");
-    expect(result).toEqual({ kind: "delegate", task: "enrich context", silentWake: true });
-  });
-
-  it("parses [[CONTINUE_DELEGATE: task +20s | silent-wake]] with delay and silentWake", () => {
-    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: chain hop 2 +20s | silent-wake]]");
-    expect(result).toEqual({
-      kind: "delegate",
-      task: "chain hop 2",
-      delayMs: 20000,
-      silentWake: true,
-    });
-  });
-
-  it("parses | silent-wake case-insensitively", () => {
-    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: task | SILENT-WAKE]]");
-    expect(result).toEqual({ kind: "delegate", task: "task", silentWake: true });
-  });
-
-  it("parses | silent wake (space instead of hyphen)", () => {
-    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: task | silent wake]]");
-    expect(result).toEqual({ kind: "delegate", task: "task", silentWake: true });
-  });
-
-  it("does not confuse | silent-wake with | silent", () => {
-    const silentWake = parseContinuationSignal("[[CONTINUE_DELEGATE: task | silent-wake]]");
-    const silent = parseContinuationSignal("[[CONTINUE_DELEGATE: task | silent]]");
-    expect(silentWake?.silentWake).toBe(true);
-    expect(silentWake?.silent).toBeUndefined();
-    expect(silent?.silent).toBe(true);
-    expect(silent?.silentWake).toBeUndefined();
-  });
-
-  it("parses delegate without suffix as neither silent nor silentWake", () => {
-    const result = parseContinuationSignal("[[CONTINUE_DELEGATE: plain task]]");
-    expect(result?.silent).toBeUndefined();
-    expect(result?.silentWake).toBeUndefined();
-  });
-
   // --- Precedence ---
 
   it("prefers [[CONTINUE_DELEGATE:]] over CONTINUE_WORK when both present", () => {

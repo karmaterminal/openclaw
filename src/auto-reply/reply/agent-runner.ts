@@ -75,11 +75,11 @@ const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 // any in-flight callbacks without needing clearTimeout races.
 const continuationGenerations = new Map<string, number>();
 
-function currentContinuationGeneration(sessionKey: string): number {
+export function currentContinuationGeneration(sessionKey: string): number {
   return continuationGenerations.get(sessionKey) ?? 0;
 }
 
-function bumpContinuationGeneration(sessionKey: string): number {
+export function bumpContinuationGeneration(sessionKey: string): number {
   const next = currentContinuationGeneration(sessionKey) + 1;
   continuationGenerations.set(sessionKey, next);
   return next;
@@ -115,17 +115,22 @@ export function cancelContinuationTimer(
   }
 
   // Reset chain metadata so stale counters don't block future chains.
-  if (sessionCtx?.sessionEntry && (sessionCtx.sessionEntry.continuationChainCount ?? 0) > 0) {
+  // Check both chain count and chain tokens — chain count may be on child shards
+  // (via task prefix), but tokens accumulate on the parent session.
+  const hasChainState =
+    (sessionCtx?.sessionEntry?.continuationChainCount ?? 0) > 0 ||
+    (sessionCtx?.sessionEntry?.continuationChainTokens ?? 0) > 0;
+  if (sessionCtx?.sessionEntry && hasChainState) {
     sessionCtx.sessionEntry.continuationChainCount = 0;
     sessionCtx.sessionEntry.continuationChainStartedAt = undefined;
     sessionCtx.sessionEntry.continuationChainTokens = undefined;
   }
-  if (
-    sessionCtx?.sessionStore?.[sessionKey] &&
-    (sessionCtx.sessionStore[sessionKey].continuationChainCount ?? 0) > 0
-  ) {
+  const storeEntry = sessionCtx?.sessionStore?.[sessionKey];
+  const storeHasChainState =
+    (storeEntry?.continuationChainCount ?? 0) > 0 || (storeEntry?.continuationChainTokens ?? 0) > 0;
+  if (storeEntry && storeHasChainState && sessionCtx.sessionStore) {
     sessionCtx.sessionStore[sessionKey] = {
-      ...sessionCtx.sessionStore[sessionKey],
+      ...storeEntry,
       continuationChainCount: 0,
       continuationChainStartedAt: undefined,
       continuationChainTokens: undefined,
@@ -134,7 +139,9 @@ export function cancelContinuationTimer(
   if (sessionCtx?.storePath) {
     void updateSessionStore(sessionCtx.storePath, (store) => {
       const entry = store[sessionKey];
-      if (entry && (entry.continuationChainCount ?? 0) > 0) {
+      const entryHasChainState =
+        (entry?.continuationChainCount ?? 0) > 0 || (entry?.continuationChainTokens ?? 0) > 0;
+      if (entry && entryHasChainState) {
         entry.continuationChainCount = 0;
         entry.continuationChainStartedAt = undefined;
         entry.continuationChainTokens = undefined;
@@ -231,8 +238,13 @@ export async function runReplyAgent(params: {
     // Cancel any pending continuation timer by bumping the generation counter.
     // Only bump when a generation exists (active/pending chain) to avoid
     // unbounded map growth from sessions that never use continuation.
-    if (hadActiveChain || continuationGenerations.has(sessionKey)) {
-      bumpContinuationGeneration(sessionKey);
+    const hasGenerationEntry = continuationGenerations.has(sessionKey);
+    defaultRuntime.log(
+      `[continuation-guard] New message on ${sessionKey}: hadActiveChain=${hadActiveChain} hasGenerationEntry=${hasGenerationEntry}`,
+    );
+    if (hadActiveChain || hasGenerationEntry) {
+      const newGen = bumpContinuationGeneration(sessionKey);
+      defaultRuntime.log(`[continuation-guard] Bumped generation to ${newGen} for ${sessionKey}`);
     }
     if (hadActiveChain && activeSessionStore && activeSessionEntry) {
       activeSessionStore[sessionKey] = {
@@ -846,7 +858,16 @@ export async function runReplyAgent(params: {
         // when context-pressure warned about approaching compaction.
         // They fire NOW — at the moment of compaction, not on a timer.
         const compactionDelegates = consumeCompactionDelegates(sessionKey);
-        for (const delegate of compactionDelegates) {
+        const compactionCfg = cfg.agents?.defaults?.continuation;
+        const maxCompactionDelegates = compactionCfg?.maxDelegatesPerTurn ?? 5;
+        for (let i = 0; i < compactionDelegates.length; i++) {
+          if (i >= maxCompactionDelegates) {
+            defaultRuntime.log(
+              `Post-compaction delegate limit reached (${maxCompactionDelegates}) for session ${sessionKey}, ${compactionDelegates.length - i} dropped`,
+            );
+            break;
+          }
+          const delegate = compactionDelegates[i];
           defaultRuntime.log(
             `Post-compaction delegate dispatch for session ${sessionKey}: ${delegate.task}`,
           );
@@ -924,13 +945,10 @@ export async function runReplyAgent(params: {
           // with a stale in-flight timer's captured value.
           bumpContinuationGeneration(sessionKey);
         } else {
-          // Accumulate token usage for cost cap
+          // Accumulate token usage for cost cap (input + output only, excludes
+          // cache reads/writes which inflate with inherited system prompt context).
           const usage = runResult.meta?.agentMeta?.usage;
-          const turnTokens =
-            (usage?.input ?? 0) +
-            (usage?.output ?? 0) +
-            (usage?.cacheRead ?? 0) +
-            (usage?.cacheWrite ?? 0);
+          const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
           const previousChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
           const accumulatedChainTokens = previousChainTokens + turnTokens;
 
@@ -1035,7 +1053,21 @@ export async function runReplyAgent(params: {
                 defaultRuntime.log(
                   `DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegateTask}`,
                 );
-                setTimeout(() => void doSpawn(), clampedDelay);
+                // Generation guard: if an external message arrives during the delay,
+                // bumpContinuationGeneration invalidates this timer — same as WORK timers.
+                const delegateGeneration = bumpContinuationGeneration(sessionKey);
+                const genTolerance = continuationCfg?.generationGuardTolerance ?? 0;
+                setTimeout(() => {
+                  const currentGen = currentContinuationGeneration(sessionKey);
+                  const drift = currentGen - delegateGeneration;
+                  if (drift > genTolerance) {
+                    defaultRuntime.log(
+                      `DELEGATE timer cancelled (generation drift ${drift} > tolerance ${genTolerance}) for session ${sessionKey}`,
+                    );
+                    return;
+                  }
+                  void doSpawn();
+                }, clampedDelay);
               } else {
                 await doSpawn();
               }
@@ -1084,13 +1116,16 @@ export async function runReplyAgent(params: {
         const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
 
         let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
-        // Accumulate current turn's token usage into chain cost — same as bracket path.
+        // Accumulate current turn's token usage into chain cost.
+        // Skip if the bracket-signal path already accumulated this turn's tokens
+        // (both paths read from the same activeSessionEntry.continuationChainTokens).
+        const bracketAlreadyAccumulated = continuationSignal != null;
         const toolDelegateUsage = runResult.meta?.agentMeta?.usage;
-        const toolDelegateTurnTokens =
-          (toolDelegateUsage?.input ?? 0) +
-          (toolDelegateUsage?.output ?? 0) +
-          (toolDelegateUsage?.cacheRead ?? 0) +
-          (toolDelegateUsage?.cacheWrite ?? 0);
+        // Count only input + output tokens for cost cap (excludes cache reads/writes
+        // which inflate the count with inherited system prompt context).
+        const toolDelegateTurnTokens = bracketAlreadyAccumulated
+          ? 0
+          : (toolDelegateUsage?.input ?? 0) + (toolDelegateUsage?.output ?? 0);
         let accumulatedChainTokens =
           (activeSessionEntry?.continuationChainTokens ?? 0) + toolDelegateTurnTokens;
         const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
@@ -1172,7 +1207,26 @@ export async function runReplyAgent(params: {
             defaultRuntime.log(
               `Tool DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegate.task}`,
             );
-            setTimeout(() => void doToolSpawn(), clampedDelay);
+            // Generation guard: same as bracket-path delegate timers
+            const toolDelegateGeneration = bumpContinuationGeneration(sessionKey);
+            const toolGenTolerance = continuationCfg?.generationGuardTolerance ?? 0;
+            defaultRuntime.log(
+              `[continuation-guard] Tool delegate timer set with generation=${toolDelegateGeneration} tolerance=${toolGenTolerance} for ${sessionKey}`,
+            );
+            setTimeout(() => {
+              const currentGen = currentContinuationGeneration(sessionKey);
+              const drift = currentGen - toolDelegateGeneration;
+              defaultRuntime.log(
+                `[continuation-guard] Timer fired: stored=${toolDelegateGeneration} current=${currentGen} drift=${drift} tolerance=${toolGenTolerance} for ${sessionKey}`,
+              );
+              if (drift > toolGenTolerance) {
+                defaultRuntime.log(
+                  `Tool DELEGATE timer cancelled (generation drift ${drift} > tolerance ${toolGenTolerance}) for session ${sessionKey}`,
+                );
+                return;
+              }
+              void doToolSpawn();
+            }, clampedDelay);
           } else {
             await doToolSpawn();
           }
@@ -1233,6 +1287,12 @@ export async function runReplyAgent(params: {
   } finally {
     blockReplyPipeline?.stop();
     typing.markRunComplete();
+    // Drain any stale delegates from a failed turn — they must not leak
+    // into the next successful turn for the same session.
+    if (sessionKey) {
+      consumePendingDelegates(sessionKey);
+      consumeCompactionDelegates(sessionKey);
+    }
     // Safety net: the dispatcher's onIdle callback normally fires
     // markDispatchIdle(), but if the dispatcher exits early, errors,
     // or the reply path doesn't go through it cleanly, the second

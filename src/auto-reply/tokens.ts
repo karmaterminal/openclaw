@@ -154,7 +154,12 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
       taskBody = taskBody.slice(0, -delayMatch[0].length).trimEnd();
     }
     if (taskBody) {
-      return { kind: "delegate", task: taskBody, delayMs, silent, silentWake };
+      // Truncate overly long task strings to prevent context-dumping patterns.
+      // Same limit as the continue_delegate tool schema (4096 chars).
+      const maxTaskLength = 4096;
+      const truncatedTask =
+        taskBody.length > maxTaskLength ? taskBody.slice(0, maxTaskLength) : taskBody;
+      return { kind: "delegate", task: truncatedTask, delayMs, silent, silentWake };
     }
   }
 

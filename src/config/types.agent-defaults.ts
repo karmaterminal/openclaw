@@ -295,6 +295,14 @@ export type AgentDefaultsConfig = {
     /** Maximum number of continue_delegate tool calls per agent turn (default: 10). */
     maxDelegatesPerTurn?: number;
     /**
+     * Generation guard tolerance for timed delegates (default: 0).
+     * The generation guard cancels a pending delegate timer when the session's
+     * generation counter drifts more than this threshold. 0 = strict (any message
+     * cancels). Higher values let delegates survive in busy channels where
+     * incidental traffic would otherwise preempt every timer.
+     */
+    generationGuardTolerance?: number;
+    /**
      * Context-pressure awareness threshold (0.0–1.0). When the session's token
      * usage exceeds this fraction of the context window, a [system:context-pressure]
      * event is injected pre-run so the agent can elect evacuation. Disabled when
