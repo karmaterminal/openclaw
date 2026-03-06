@@ -70,4 +70,14 @@
 - 📝 Shards unreliably emit flat brackets — system prompt injection needs exact template
 - 📝 `continue_delegate` tool denied for sub-agents — brackets are only chain-hop path
 
+### Run 6: FULL CHAIN — 3 hops ✅ (after /reset + flat task + new build)
+
+- Build: `80ea0a366` with sub-agent bracket injection
+- `/reset` cleared stale DM session context
+- Hop 1: tool dispatch from main session ✅
+- Hop 2: bracket chain from hop 1 shard ✅
+- Hop 3: bracket chain from hop 2 shard ✅ — terminated cleanly
+- System prompt injection worked — shards discovered bracket syntax from template
+- **Full #196 chain path confirmed live: tool → brackets → brackets → done**
+
 ## Test 5-2: Silent-Wake Enrichment + Blind Recall — Not yet started

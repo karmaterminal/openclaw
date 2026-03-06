@@ -15,6 +15,7 @@ import {
   resolveAgentIdFromSessionKey,
   resolveMainSessionKey,
   resolveStorePath,
+  updateSessionStore,
 } from "../config/sessions.js";
 import { callGateway } from "../gateway/call.js";
 import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
@@ -1332,24 +1333,54 @@ export async function runSubagentAnnounceFlow(params: {
         const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
         const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
 
-        const parentEntry = loadSessionEntryByKey(targetRequesterSessionKey);
-        const parentChainCount = parentEntry?.continuationChainCount ?? 0;
-        const parentChainTokens = parentEntry?.continuationChainTokens ?? 0;
+        // --- Per-chain hop guard: depth tracked on each shard, cost tracked on parent ---
+        // Chain hop index: read from the COMPLETING shard's session entry (per-chain depth).
+        // Cost tokens: read from the PARENT session entry (global accumulation).
+        const childEntry = loadSessionEntryByKey(params.childSessionKey);
+        const childChainHop = childEntry?.continuationChainCount ?? 0;
+        const nextChainHop = childChainHop + 1;
 
-        if (parentChainCount >= maxChainLength) {
-          defaultRuntime.log(
-            `[subagent-chain-hop] Chain length ${parentChainCount} >= ${maxChainLength}, rejecting hop from ${params.childSessionKey}`,
-          );
-        } else if (costCapTokens > 0 && parentChainTokens > costCapTokens) {
-          defaultRuntime.log(
-            `[subagent-chain-hop] Cost cap exceeded (${parentChainTokens} > ${costCapTokens}), rejecting hop from ${params.childSessionKey}`,
-          );
+        // Check chain depth (per-chain, from child's hop index)
+        let chainGuardResult:
+          | { allowed: false; reason: "chain-length"; chainCount: number; maxChainLength: number }
+          | { allowed: false; reason: "cost-cap"; chainTokens: number; costCapTokens: number }
+          | { allowed: true; nextChainHop: number };
+
+        if (nextChainHop > maxChainLength) {
+          chainGuardResult = {
+            allowed: false,
+            reason: "chain-length",
+            chainCount: nextChainHop,
+            maxChainLength,
+          };
         } else {
-          // Increment parent chain count for this hop
-          const nextChainCount = parentChainCount + 1;
-          if (parentEntry) {
-            parentEntry.continuationChainCount = nextChainCount;
+          // Check cost cap atomically from parent session (global budget)
+          const parentEntry = loadSessionEntryByKey(targetRequesterSessionKey);
+          const parentChainTokens = parentEntry?.continuationChainTokens ?? 0;
+          if (costCapTokens > 0 && parentChainTokens > costCapTokens) {
+            chainGuardResult = {
+              allowed: false,
+              reason: "cost-cap",
+              chainTokens: parentChainTokens,
+              costCapTokens,
+            };
+          } else {
+            chainGuardResult = { allowed: true, nextChainHop };
           }
+        }
+
+        if (!chainGuardResult.allowed) {
+          if (chainGuardResult.reason === "chain-length") {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Chain length ${chainGuardResult.chainCount} >= ${chainGuardResult.maxChainLength}, rejecting hop from ${params.childSessionKey}`,
+            );
+          } else {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Cost cap exceeded (${chainGuardResult.chainTokens} > ${chainGuardResult.costCapTokens}), rejecting hop from ${params.childSessionKey}`,
+            );
+          }
+        } else {
+          const nextChainHop = chainGuardResult.nextChainHop;
 
           const doChainSpawn = async () => {
             try {
@@ -1369,8 +1400,21 @@ export async function runSubagentAnnounceFlow(params: {
                 },
               );
               if (spawnResult.status === "accepted") {
+                // Store chain hop index on the new child's session entry for per-chain tracking
+                if (spawnResult.childSessionKey) {
+                  const newChildAgentId = resolveAgentIdFromSessionKey(spawnResult.childSessionKey);
+                  const newChildStorePath = resolveStorePath(cfg?.session?.store, {
+                    agentId: newChildAgentId,
+                  });
+                  void updateSessionStore(newChildStorePath, (store) => {
+                    const newChildEntry = store[spawnResult.childSessionKey!];
+                    if (newChildEntry) {
+                      newChildEntry.continuationChainCount = nextChainHop;
+                    }
+                  });
+                }
                 defaultRuntime.log(
-                  `[subagent-chain-hop] Spawned chain delegate (${nextChainCount}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+                  `[subagent-chain-hop] Spawned chain delegate (${nextChainHop}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
                 );
               } else {
                 defaultRuntime.log(
