@@ -1,3 +1,7 @@
+import {
+  bumpContinuationGeneration,
+  currentContinuationGeneration,
+} from "../auto-reply/reply/agent-runner.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import {
   isSilentReplyText,
@@ -1297,44 +1301,82 @@ export async function runSubagentAnnounceFlow(params: {
           continuationResult.signal.silent || continuationResult.signal.silentWake;
         const chainWake = continuationResult.signal.silentWake;
 
-        const doChainSpawn = async () => {
-          try {
-            const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
-            const spawnResult = await spawnSubagentDirect(
-              {
-                task: `[continuation:chain-hop] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
-                ...(chainSilent ? { silentAnnounce: true } : {}),
-                ...(chainWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
-              },
-              {
-                agentSessionKey: targetRequesterSessionKey,
-                agentChannel: params.requesterOrigin?.channel ?? undefined,
-                agentAccountId: params.requesterOrigin?.accountId ?? undefined,
-                agentTo: params.requesterOrigin?.to ?? undefined,
-                agentThreadId: params.requesterOrigin?.threadId ?? undefined,
-              },
-            );
-            if (spawnResult.status === "accepted") {
-              defaultRuntime.log(
-                `[subagent-chain-hop] Spawned chain delegate from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+        // --- P0-3: Enforce parent session's chain bounds before spawning ---
+        const continuationCfg = cfg?.agents?.defaults?.continuation;
+        const maxChainLength = continuationCfg?.maxChainLength ?? 10;
+        const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
+        const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
+        const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
+
+        const parentEntry = loadSessionEntryByKey(targetRequesterSessionKey);
+        const parentChainCount = parentEntry?.continuationChainCount ?? 0;
+        const parentChainTokens = parentEntry?.continuationChainTokens ?? 0;
+
+        if (parentChainCount >= maxChainLength) {
+          defaultRuntime.log(
+            `[subagent-chain-hop] Chain length ${parentChainCount} >= ${maxChainLength}, rejecting hop from ${params.childSessionKey}`,
+          );
+        } else if (costCapTokens > 0 && parentChainTokens > costCapTokens) {
+          defaultRuntime.log(
+            `[subagent-chain-hop] Cost cap exceeded (${parentChainTokens} > ${costCapTokens}), rejecting hop from ${params.childSessionKey}`,
+          );
+        } else {
+          // Increment parent chain count for this hop
+          const nextChainCount = parentChainCount + 1;
+          if (parentEntry) {
+            parentEntry.continuationChainCount = nextChainCount;
+          }
+
+          const doChainSpawn = async () => {
+            try {
+              const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
+              const spawnResult = await spawnSubagentDirect(
+                {
+                  task: `[continuation:chain-hop] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
+                  ...(chainSilent ? { silentAnnounce: true } : {}),
+                  ...(chainWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                },
+                {
+                  agentSessionKey: targetRequesterSessionKey,
+                  agentChannel: params.requesterOrigin?.channel ?? undefined,
+                  agentAccountId: params.requesterOrigin?.accountId ?? undefined,
+                  agentTo: params.requesterOrigin?.to ?? undefined,
+                  agentThreadId: params.requesterOrigin?.threadId ?? undefined,
+                },
               );
-            } else {
+              if (spawnResult.status === "accepted") {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Spawned chain delegate (${nextChainCount}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+                );
+              } else {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+                );
+              }
+            } catch (err) {
               defaultRuntime.log(
-                `[subagent-chain-hop] Spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+                `[subagent-chain-hop] Spawn failed from ${params.childSessionKey}: ${String(err)}`,
               );
             }
-          } catch (err) {
-            defaultRuntime.log(
-              `[subagent-chain-hop] Spawn failed from ${params.childSessionKey}: ${String(err)}`,
-            );
-          }
-        };
+          };
 
-        if (chainDelayMs && chainDelayMs > 0) {
-          setTimeout(doChainSpawn, Math.min(chainDelayMs, 300_000));
-        } else {
-          // Fire-and-forget — don't block the announce flow
-          doChainSpawn().catch(() => {});
+          if (chainDelayMs && chainDelayMs > 0) {
+            const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, chainDelayMs));
+            // Generation guard: cancel if parent session receives new input during delay
+            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            setTimeout(() => {
+              if (currentContinuationGeneration(targetRequesterSessionKey) !== hopGeneration) {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Timer cancelled (generation mismatch) for ${targetRequesterSessionKey}`,
+                );
+                return;
+              }
+              doChainSpawn().catch(() => {});
+            }, clampedDelay);
+          } else {
+            // Fire-and-forget — don't block the announce flow
+            doChainSpawn().catch(() => {});
+          }
         }
       }
     }

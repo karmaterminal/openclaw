@@ -75,11 +75,11 @@ const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 // any in-flight callbacks without needing clearTimeout races.
 const continuationGenerations = new Map<string, number>();
 
-function currentContinuationGeneration(sessionKey: string): number {
+export function currentContinuationGeneration(sessionKey: string): number {
   return continuationGenerations.get(sessionKey) ?? 0;
 }
 
-function bumpContinuationGeneration(sessionKey: string): number {
+export function bumpContinuationGeneration(sessionKey: string): number {
   const next = currentContinuationGeneration(sessionKey) + 1;
   continuationGenerations.set(sessionKey, next);
   return next;

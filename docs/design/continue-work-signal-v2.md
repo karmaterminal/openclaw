@@ -245,6 +245,17 @@ Session metadata carries:
 
 Safety enforcement happens at the scheduling layer: chain length, cost cap, and cooldown are all checked before any continuation is enqueued.
 
+#### Chain-Hop Budget Inheritance
+
+When a sub-agent's output triggers a chain hop (a new sub-agent spawned from the announce boundary via `[[CONTINUE_DELEGATE:]]`), the child inherits the parent session's accumulated chain state:
+
+- **Chain count**: the hop increments the parent's `continuationChainCount`. If the parent has used 3 of a `maxChainLength: 5` budget, the hop brings it to 4. The child does not start a new chain.
+- **Token budget**: the hop checks the parent's accumulated `continuationChainTokens` against `costCapTokens` before dispatching. The child's token usage adds to the same accumulator.
+- **Delay bounds**: the hop's delay is clamped to the parent session's configured `minDelayMs` / `maxDelayMs`, not hardcoded values.
+- **Generation guard**: the hop's `setTimeout` callback checks the parent session's generation counter before spawning, preventing orphan spawns after preemption.
+
+Total chain cost is bounded by the original `costCapTokens` regardless of hop depth. A chain cannot amplify its budget by spawning children — each hop consumes from the same finite pool. The alternative (each hop starting fresh) would allow multiplicative cost amplification: a chain of depth N could consume N × `costCapTokens`, defeating the purpose of the cap as a safety rail.
+
 ### Token Interaction
 
 | Combination                      | Behavior                                     |
