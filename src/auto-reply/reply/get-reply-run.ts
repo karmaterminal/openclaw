@@ -250,7 +250,30 @@ export async function runPreparedReply(
     peekSystemEventEntries(sessionKey)?.some((e) =>
       e.text?.startsWith("[continuation:delegate-pending]"),
     );
-  const isDelegateWake = !isHeartbeat && hasDelegatePending;
+  // isDelegateWake must distinguish between "this message IS the delegate's
+  // completion announcement" vs "this is a real user message that arrived while
+  // a delegate is in flight." The old heuristic (hasDelegatePending alone)
+  // incorrectly classified ALL messages during delegate execution as wakes,
+  // masking the generation guard (P0-1/P1-1).
+  //
+  // Fix: check for [continuation:delegate-returned] which is enqueued by the
+  // announce pipeline just before triggering the completion message/heartbeat.
+  // [continuation:delegate-pending] persists from dispatch; delegate-returned
+  // is fresh evidence that THIS message is the actual return.
+  const hasDelegateReturned =
+    sessionKey != null &&
+    peekSystemEventEntries(sessionKey)?.some((e) =>
+      e.text?.startsWith("[continuation:delegate-returned]"),
+    );
+  const isDelegateWake = hasDelegatePending && hasDelegateReturned;
+  // Consume the one-shot delegate-returned marker so it doesn't persist
+  // and cause the next real user message to be misclassified.
+  if (hasDelegateReturned && sessionKey) {
+    removeSystemEvents(
+      sessionKey,
+      (e) => e.text?.startsWith("[continuation:delegate-returned]") ?? false,
+    );
+  }
   const { typingPolicy, suppressTyping } = resolveRunTypingPolicy({
     requestedPolicy: opts?.typingPolicy,
     suppressTyping: opts?.suppressTyping === true,

@@ -1471,6 +1471,14 @@ export async function runSubagentAnnounceFlow(params: {
     triggerMessage = buildAnnounceSteerMessage(internalEvents);
     steerMessage = triggerMessage;
 
+    // Mark delegate return so the inbound message handler can distinguish
+    // the completion announcement from a real user message (P0-1/P1-1 fix).
+    if (targetRequesterSessionKey) {
+      enqueueSystemEvent("[continuation:delegate-returned]", {
+        sessionKey: targetRequesterSessionKey,
+      });
+    }
+
     // --- Silent announce gate: inject as system event, skip channel delivery ---
     if (params.silentAnnounce) {
       const rendered = formatAgentInternalEventsForPrompt(internalEvents);
