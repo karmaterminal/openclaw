@@ -1,0 +1,96 @@
+ Yes. If you’re willing to tear it up a bit, I’d align the whole feature around three layers:
+
+  - system-events are model-visible prompt context only
+  - request metadata identifies why this specific turn exists
+  - SessionEntry holds cross-turn lifecycle state that must survive compaction / later turns
+
+  That keeps the docs/design/continue-work-signal-v2.md fundamentals intact while fixing the brittle parts.
+
+  Shape I’d use
+
+  1. Request-scoped trigger metadata
+     Add a structured trigger like continuationTrigger?: "work-wake" | "delegate-return".
+  2. Session-scoped lifecycle state
+     Put only cross-turn state on SessionEntry: post-compaction delegate queue, last context-pressure band, maybe counts/timestamps if needed.
+  3. Prompt events stay descriptive
+     Keep [system:context-pressure], post-compaction context, enrichment returns, delegate-pending notices for the model. Stop using them to decide reset
+     behavior.
+
+  Per finding
+
+  1. delegate-return wake collapse
+     Fix: use structured trigger metadata, not queue text.
+
+     Why this matches repo patterns:
+      - Heartbeat already has a real wake reason in src/infra/heartbeat-wake.ts / src/infra/heartbeat-runner.ts.
+      - non-silent delegate completion already goes through callGateway({ method: "agent", ... }) in src/agents/subagent-announce.ts:1624.
+
+     Concrete path:
+      - extend src/auto-reply/types.ts with something like continuationTrigger?: "work-wake" | "delegate-return"
+      - in src/infra/heartbeat-runner.ts, map heartbeat reason === "continuation" to "work-wake" and reason === "silent-wake-enrichment" to "delegate-return"
+      - for non-silent delegate returns, add the same trigger to the agent request path in src/commands/agent/types.ts, src/gateway/protocol/schema/agent.ts, src/
+        gateway/server-methods/agent.ts, and src/commands/agent.ts
+      - read only that trigger in src/auto-reply/reply/get-reply-run.ts
+
+     I would not keep trying to infer this from peekSystemEventEntries().
+  2. post-compaction delegates being dropped
+     Fix: move that queue out of the module map and into SessionEntry.
+
+     Why this matches repo patterns:
+      - compaction lifecycle state already lives on the session entry: compactionCount, memoryFlushCompactionCount
+      - cross-turn semantics should not depend on a process-local map
+
+     Concrete path:
+      - add pendingPostCompactionDelegates?: ... to src/config/sessions/types.ts
+      - in src/agents/tools/continue-delegate-tool.ts, enqueue post-compaction delegates with updateSessionStoreEntry() instead of enqueueCompactionDelegate()
+      - in src/auto-reply/reply/agent-runner.ts, inside the autoCompactionCompleted block, atomically read-and-clear that array before dispatching
+      - clear it on /new / reset in src/auto-reply/reply/session.ts
+
+     This preserves the design doc’s lifecycle semantics much better than the current in-memory map.
+  3. contextPressureThreshold > 0.90 ignored
+     Fix: compute the bands in ascending lifecycle order, not hardcoded 95 -> 90 -> threshold.
+
+     The clean rule is:
+      - configured threshold is always the first band
+      - 90 is only an additional band if 0.90 > configuredThreshold
+      - 95 is only an additional band if 0.95 > max(configuredThreshold, 0.90 if kept)
+
+     So with 0.94, the bands are just 94, 95, not 90, 95, 94.
+
+     I’d implement that directly in src/auto-reply/reply/context-pressure.ts rather than trying to patch the current ternary.
+  4. context-pressure never re-arms
+     Fix: clear lastContextPressureBand on every compaction lifecycle reset and session reset.
+
+     Best places:
+      - src/auto-reply/reply/session-updates.ts:272 inside incrementCompactionCount()
+      - src/auto-reply/reply/session.ts:381 when /new or /reset rebuilds session state
+
+     That is the same lifecycle boundary the design doc describes.
+
+  If you want to stay especially faithful to continue-work-signal-v2
+
+  I’d also add the explicit post-compaction system event the doc already describes around docs/design/continue-work-signal-v2.md:703.
+
+  Right now readPostCompactionContext() in src/auto-reply/reply/post-compaction-context.ts injects AGENTS content, but not an explicit lifecycle event. If you’re
+  already touching the compaction block, emitting something like:
+
+  - compaction happened
+  - before/after token counts
+  - how many post-compaction delegates were released
+
+  would align the implementation more tightly with the doc and make rehydration cleaner.
+
+  Net effect
+
+  This preserves the intended flow:
+
+  - pre-compaction agent sees pressure
+  - agent silently registers evacuation work
+  - compaction happens
+  - post-compaction delegates are released from lifecycle state
+  - their returns wake the compacted main session through structured trigger metadata
+  - the main session gets silent enrichment plus post-compaction context
+
+  So the fundamentals stay the same. The fix is mostly about putting each piece of state in the right layer.
+
+  If you want, I can turn this into a concrete patch plan next, file by file.
