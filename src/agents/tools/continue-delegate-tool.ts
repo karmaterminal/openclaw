@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import {
   enqueueCompactionDelegate,
   enqueuePendingDelegate,
+  compactionDelegateCount,
   pendingDelegateCount,
 } from "../../auto-reply/continuation-delegate-store.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -17,6 +18,7 @@ const ContinueDelegateToolSchema = Type.Object({
   task: Type.String({
     description:
       "The task for the delegated sub-agent. Be specific — this is the only context the shard receives.",
+    maxLength: 4096,
   }),
   delaySeconds: Type.Optional(
     Type.Number({
@@ -94,7 +96,7 @@ export function createContinueDelegateTool(opts: {
 
       // Check per-turn delegate limit
       const maxPerTurn = opts.maxDelegatesPerTurn ?? 5;
-      const currentCount = pendingDelegateCount(sessionKey);
+      const currentCount = pendingDelegateCount(sessionKey) + compactionDelegateCount(sessionKey);
       if (currentCount >= maxPerTurn) {
         return jsonResult({
           status: "error",

@@ -1258,6 +1258,12 @@ export async function runReplyAgent(params: {
   } finally {
     blockReplyPipeline?.stop();
     typing.markRunComplete();
+    // Drain any stale delegates from a failed turn — they must not leak
+    // into the next successful turn for the same session.
+    if (sessionKey) {
+      consumePendingDelegates(sessionKey);
+      consumeCompactionDelegates(sessionKey);
+    }
     // Safety net: the dispatcher's onIdle callback normally fires
     // markDispatchIdle(), but if the dispatcher exits early, errors,
     // or the reply path doesn't go through it cleanly, the second
