@@ -1039,3 +1039,11 @@ _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/
 - **Scope**: Works for CONTINUE_WORK path (`agent-runner.ts:939-972`) and tool-delegate path (`agent-runner.ts:1115`). Not wired for bracket chain-hop path (`subagent-announce.ts`).
 - **Goal**: Parity with `sessions_spawn` — if spawn shows cost, delegate should too.
 - **RFC impact**: Document honestly. Chain-length guard is primary recursion safety. Cost cap tracks tool-path spend; bracket chain cost tracking is follow-up.
+
+### 2026-03-05 ~21:38 PST — Canary test results (Swim 5, tests 5-0 through 5-6)
+
+- **5-0**: Generation guard PASS (P0-1 + P0-4 isDelegateWake fix)
+- **5-1**: Chain-hop bounds PARTIAL PASS (bracket reliability confirmed, shards prefer tools over brackets)
+- **5-2 to 5-5**: Chain dispatch 100% reliable, no gate (pre-fix builds)
+- **5-6**: Chain-hop enforcement PASS (`maxChainLength: 3` gated at hop 4, task-prefix encoding verified)
+- **RFC impact**: Update canary validation section with Swim 5 findings. No specific test counts or build hashes per figs's review notes.
