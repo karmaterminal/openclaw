@@ -80,4 +80,53 @@
 - System prompt injection worked — shards discovered bracket syntax from template
 - **Full #196 chain path confirmed live: tool → brackets → brackets → done**
 
-## Test 5-2: Silent-Wake Enrichment + Blind Recall — Not yet started
+## Tests 5-2 through 5-5: Chain Dispatch Reliability (old build)
+
+Tests run on pre-fix builds (`7cb3546c8` / `13405b669`). All hops completed, no gate hit.
+
+| Test | Hops Requested | Completed | Gate Hit | Build |
+| ---- | -------------- | --------- | -------- | ----- |
+| 5-2  | 5              | 5/5       | No       | old   |
+| 5-3  | 10             | 10/10     | No       | old   |
+| 5-4  | 10             | 10/10     | No       | old   |
+| 5-5  | 10             | 10/10     | No       | old   |
+
+**Finding**: Chain dispatch is 100% reliable. `maxChainLength` not enforced due to:
+
+- `7cb3546c8`: parent-session counter reset on every inbound message (counter stuck at `(2/3)`)
+- `13405b669`: `void updateSessionStore` fire-and-forget + child entry doesn't exist at write time (counter stuck at `(1/3)`)
+
+## Test 5-6: Chain-Hop Enforcement (P0-5 fix) — PASS ✅
+
+**Build**: `fec5e4bfc` (task-prefix encoding)
+**Config**: `maxChainLength: 3`, `maxSpawnDepth: 5`
+**Dispatch**: `continue_delegate` tool, +5s, silent
+**Requested**: 10 hops
+
+### Results
+
+- **Hop 1** (tool dispatch, chain-hop:0): ✅
+- **Hop 2** (bracket, chain-hop:1): ✅
+- **Hop 3** (bracket, chain-hop:2): ✅
+- **Hop 4** (bracket, chain-hop:3): ✅
+- **Hop 5**: ❌ — **REJECTED** `Chain length 4 >= 3`
+
+Journal evidence:
+
+```
+21:33:25 chain delegate (1/3) — hop 2
+21:33:35 chain delegate (2/3) — hop 3
+21:33:45 chain delegate (3/3) — hop 4
+21:33:49 Chain length 4 >= 3, rejecting hop
+```
+
+**Total reach**: 4 (1 tool + 3 bracket) — exactly as configured.
+
+**Fix**: Hop index encoded in task prefix as `[continuation:chain-hop:N]`, parsed by regex in announce handler. No session store dependency, no timing races.
+
+### Verdict
+
+- **P0-5 chain-hop enforcement: PASS** ✅
+- **Task-prefix encoding: VERIFIED** — counter climbs correctly, gate fires at boundary
+
+## Test 5-7: Silent-Wake Enrichment + Blind Recall — Not yet started
