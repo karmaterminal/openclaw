@@ -15,6 +15,7 @@ import {
   resolveAgentIdFromSessionKey,
   resolveMainSessionKey,
   resolveStorePath,
+  updateSessionStore,
 } from "../config/sessions.js";
 import { callGateway } from "../gateway/call.js";
 import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
@@ -1340,6 +1341,31 @@ export async function runSubagentAnnounceFlow(params: {
         const childChainHop = hopMatch ? parseInt(hopMatch[1], 10) : 0;
         const nextChainHop = childChainHop + 1;
 
+        // --- Accumulate completing shard's token cost to parent (parity with sessions_spawn) ---
+        const childEntry = loadSessionEntryByKey(params.childSessionKey);
+        const childTokens =
+          (typeof childEntry?.inputTokens === "number" ? childEntry.inputTokens : 0) +
+          (typeof childEntry?.outputTokens === "number" ? childEntry.outputTokens : 0);
+        if (childTokens > 0) {
+          const parentAgentId = resolveAgentIdFromSessionKey(targetRequesterSessionKey);
+          const parentStorePath = resolveStorePath(cfg?.session?.store, {
+            agentId: parentAgentId,
+          });
+          await updateSessionStore(parentStorePath, (store) => {
+            const parentEntry = store[targetRequesterSessionKey];
+            if (parentEntry) {
+              const prev =
+                typeof parentEntry.continuationChainTokens === "number"
+                  ? parentEntry.continuationChainTokens
+                  : 0;
+              parentEntry.continuationChainTokens = prev + childTokens;
+            }
+          });
+          defaultRuntime.log(
+            `[subagent-chain-hop] Accumulated ${childTokens} tokens from ${params.childSessionKey} to parent chain cost`,
+          );
+        }
+
         // Check chain depth (per-chain, from child's hop index)
         let chainGuardResult:
           | { allowed: false; reason: "chain-length"; chainCount: number; maxChainLength: number }
@@ -1354,7 +1380,7 @@ export async function runSubagentAnnounceFlow(params: {
             maxChainLength,
           };
         } else {
-          // Check cost cap atomically from parent session (global budget)
+          // Check cost cap atomically from parent session (global budget, now includes bracket chain costs)
           const parentEntry = loadSessionEntryByKey(targetRequesterSessionKey);
           const parentChainTokens = parentEntry?.continuationChainTokens ?? 0;
           if (costCapTokens > 0 && parentChainTokens > costCapTokens) {
