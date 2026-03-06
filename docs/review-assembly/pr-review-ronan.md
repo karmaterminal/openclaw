@@ -1,7 +1,9 @@
 # PR Review — Ronan 🌊
+
 ## `karmaterminal/openclaw:feature/context-pressure-squashed` at `6f5b7f677`
 
 ### Methodology
+
 Read the squashed diff (9 core files, ~1742 lines of feature code) against upstream/main. Focused on continuation-specific additions: `continue-delegate-tool.ts`, `continuation-delegate-store.ts`, chain-hop logic in `subagent-announce.ts`, generation guard changes in `agent-runner.ts`.
 
 ---

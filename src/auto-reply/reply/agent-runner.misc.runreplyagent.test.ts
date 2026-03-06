@@ -7,6 +7,10 @@ import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
 import { onAgentEvent } from "../../infra/agent-events.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../infra/system-events.js";
+import {
+  consumeStagedPostCompactionDelegates,
+  stagePostCompactionDelegate,
+} from "../continuation-delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { createMockTypingController } from "./test-helpers.js";
@@ -119,6 +123,8 @@ beforeEach(() => {
   spawnSubagentDirectMock.mockClear();
   requestHeartbeatNowMock.mockClear();
   loadCronStoreMock.mockClear();
+  consumeStagedPostCompactionDelegates("main");
+  consumeStagedPostCompactionDelegates("test-session");
   // Default: no cron jobs in store.
   loadCronStoreMock.mockResolvedValue({ version: 1, jobs: [] });
   resetSystemEventsForTest();
@@ -135,6 +141,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  consumeStagedPostCompactionDelegates("main");
+  consumeStagedPostCompactionDelegates("test-session");
   resetSystemEventsForTest();
 });
 
@@ -540,6 +548,175 @@ describe("runReplyAgent auto-compaction token update", () => {
     const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
     // totalTokens should use lastCallUsage (55k), not accumulated (75k)
     expect(stored[sessionKey].totalTokens).toBe(55_000);
+  });
+
+  it("persists staged post-compaction delegates when compaction does not happen", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compact-persist-"));
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      totalTokens: 10_000,
+      compactionCount: 0,
+    };
+
+    await seedSessionStore({ storePath, sessionKey, entry: sessionEntry });
+    stagePostCompactionDelegate(sessionKey, {
+      task: "carry working state forward",
+      createdAt: 123,
+    });
+
+    runEmbeddedPiAgentMock.mockResolvedValue({
+      payloads: [{ text: "done" }],
+      meta: {
+        agentMeta: {
+          usage: { input: 1_000, output: 500, total: 1_500 },
+        },
+      },
+    });
+
+    const config = {
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
+    const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
+      storePath,
+      sessionEntry,
+      config,
+    });
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun,
+      queueKey: "main",
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing,
+      sessionCtx,
+      sessionEntry,
+      sessionStore: { [sessionKey]: sessionEntry },
+      sessionKey,
+      storePath,
+      defaultModel: "anthropic/claude-opus-4-5",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
+    expect(stored[sessionKey].pendingPostCompactionDelegates).toEqual([
+      {
+        task: "carry working state forward",
+        createdAt: 123,
+      },
+    ]);
+  });
+
+  it("releases persisted and current-turn post-compaction delegates on compaction", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compact-release-"));
+    const workspaceDir = path.join(tmp, "workspace");
+    await fs.mkdir(workspaceDir, { recursive: true });
+    const sessionFile = path.join(tmp, "session.jsonl");
+    await fs.writeFile(
+      sessionFile,
+      `${JSON.stringify({ type: "message", message: { role: "assistant", content: [] } })}\n`,
+      "utf-8",
+    );
+
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      totalTokens: 10_000,
+      compactionCount: 0,
+      pendingPostCompactionDelegates: [{ task: "persisted shard", createdAt: 1 }],
+    };
+
+    await seedSessionStore({ storePath, sessionKey, entry: sessionEntry });
+    stagePostCompactionDelegate(sessionKey, {
+      task: "current shard",
+      createdAt: 2,
+    });
+    spawnSubagentDirectMock.mockResolvedValue({ status: "accepted" });
+
+    runEmbeddedPiAgentMock.mockImplementation(async (params: EmbeddedRunParams) => {
+      params.onAgentEvent?.({ stream: "compaction", data: { phase: "start" } });
+      params.onAgentEvent?.({ stream: "compaction", data: { phase: "end", willRetry: false } });
+      return {
+        payloads: [{ text: "done" }],
+        meta: {
+          agentMeta: {
+            usage: { input: 11_000, output: 500, total: 11_500 },
+            lastCallUsage: { input: 10_500, output: 500, total: 11_000 },
+            compactionCount: 1,
+          },
+        },
+      };
+    });
+
+    const config = {
+      agents: {
+        defaults: {
+          continuation: { enabled: true, maxDelegatesPerTurn: 5 },
+          compaction: { memoryFlush: { enabled: false } },
+        },
+      },
+    };
+    const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
+      storePath,
+      sessionEntry,
+      config,
+      sessionFile,
+      workspaceDir,
+    });
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun,
+      queueKey: "main",
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing,
+      sessionCtx,
+      sessionEntry,
+      sessionStore: { [sessionKey]: sessionEntry },
+      sessionKey,
+      storePath,
+      defaultModel: "anthropic/claude-opus-4-5",
+      agentCfgContextTokens: 200_000,
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(2);
+    expect(spawnSubagentDirectMock.mock.calls.map((call) => String(call[0]?.task))).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("persisted shard"),
+        expect.stringContaining("current shard"),
+      ]),
+    );
+
+    const lifecycleEvent = enqueueSystemEventMock.mock.calls.find((call) =>
+      String(call[0]).includes("[system:post-compaction]"),
+    );
+    expect(lifecycleEvent?.[0]).toContain("Released 2 post-compaction delegate(s)");
+
+    const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
+    expect(stored[sessionKey].pendingPostCompactionDelegates).toBeUndefined();
   });
 
   it("does not enqueue legacy post-compaction audit warnings", async () => {

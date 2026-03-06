@@ -12,6 +12,7 @@ import {
   resolveSessionFilePathOptions,
   resolveSessionTranscriptPath,
   type SessionEntry,
+  type SessionPostCompactionDelegate,
   updateSessionStore,
   updateSessionStoreEntry,
 } from "../../config/sessions.js";
@@ -24,7 +25,7 @@ import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
-  consumeCompactionDelegates,
+  consumeStagedPostCompactionDelegates,
   consumePendingDelegates,
 } from "../continuation-delegate-store.js";
 import {
@@ -101,6 +102,133 @@ export function bumpContinuationGeneration(sessionKey: string): number {
   const next = currentContinuationGeneration(sessionKey) + 1;
   continuationGenerations.set(sessionKey, next);
   return next;
+}
+
+function syncPendingPostCompactionDelegates(params: {
+  sessionEntry?: SessionEntry;
+  sessionStore?: Record<string, SessionEntry>;
+  sessionKey: string;
+  delegates: SessionPostCompactionDelegate[] | undefined;
+}) {
+  if (params.sessionEntry) {
+    params.sessionEntry.pendingPostCompactionDelegates = params.delegates;
+  }
+  if (params.sessionStore?.[params.sessionKey]) {
+    params.sessionStore[params.sessionKey] = {
+      ...params.sessionStore[params.sessionKey],
+      pendingPostCompactionDelegates: params.delegates,
+    };
+  }
+}
+
+async function persistPendingPostCompactionDelegates(params: {
+  sessionEntry?: SessionEntry;
+  sessionStore?: Record<string, SessionEntry>;
+  sessionKey: string;
+  storePath?: string;
+  delegates: SessionPostCompactionDelegate[];
+}): Promise<SessionPostCompactionDelegate[]> {
+  if (params.delegates.length === 0) {
+    return params.sessionEntry?.pendingPostCompactionDelegates ?? [];
+  }
+
+  const localExisting = params.sessionEntry?.pendingPostCompactionDelegates ?? [];
+  const combinedLocal = [...localExisting, ...params.delegates];
+
+  if (!params.storePath) {
+    syncPendingPostCompactionDelegates({
+      sessionEntry: params.sessionEntry,
+      sessionStore: params.sessionStore,
+      sessionKey: params.sessionKey,
+      delegates: combinedLocal,
+    });
+    return combinedLocal;
+  }
+
+  const persisted = await updateSessionStore(params.storePath, (store) => {
+    const current =
+      store[params.sessionKey] ??
+      params.sessionStore?.[params.sessionKey] ??
+      params.sessionEntry ??
+      undefined;
+    const combined = [...(current?.pendingPostCompactionDelegates ?? []), ...params.delegates];
+    if (current) {
+      store[params.sessionKey] = {
+        ...current,
+        pendingPostCompactionDelegates: combined,
+      };
+    }
+    return combined;
+  });
+
+  syncPendingPostCompactionDelegates({
+    sessionEntry: params.sessionEntry,
+    sessionStore: params.sessionStore,
+    sessionKey: params.sessionKey,
+    delegates: persisted.length > 0 ? persisted : combinedLocal,
+  });
+  return persisted.length > 0 ? persisted : combinedLocal;
+}
+
+async function takePendingPostCompactionDelegates(params: {
+  sessionEntry?: SessionEntry;
+  sessionStore?: Record<string, SessionEntry>;
+  sessionKey: string;
+  storePath?: string;
+}): Promise<SessionPostCompactionDelegate[]> {
+  const localDelegates = params.sessionEntry?.pendingPostCompactionDelegates ?? [];
+
+  if (!params.storePath) {
+    syncPendingPostCompactionDelegates({
+      sessionEntry: params.sessionEntry,
+      sessionStore: params.sessionStore,
+      sessionKey: params.sessionKey,
+      delegates: undefined,
+    });
+    return localDelegates;
+  }
+
+  const persisted = await updateSessionStore(params.storePath, (store) => {
+    const current =
+      store[params.sessionKey] ??
+      params.sessionStore?.[params.sessionKey] ??
+      params.sessionEntry ??
+      undefined;
+    const delegates = current?.pendingPostCompactionDelegates ?? [];
+    if (current && delegates.length > 0) {
+      store[params.sessionKey] = {
+        ...current,
+        pendingPostCompactionDelegates: undefined,
+      };
+    }
+    return delegates;
+  });
+
+  syncPendingPostCompactionDelegates({
+    sessionEntry: params.sessionEntry,
+    sessionStore: params.sessionStore,
+    sessionKey: params.sessionKey,
+    delegates: undefined,
+  });
+  return persisted.length > 0 ? persisted : localDelegates;
+}
+
+function buildPostCompactionLifecycleEvent(params: {
+  compactionCount?: number;
+  releasedDelegates: number;
+  droppedDelegates: number;
+}): string {
+  const parts = [
+    `[system:post-compaction] Session compacted at ${new Date().toISOString()}.`,
+    typeof params.compactionCount === "number"
+      ? `Compaction count: ${params.compactionCount}.`
+      : undefined,
+    `Released ${params.releasedDelegates} post-compaction delegate(s) into the fresh session.`,
+    params.droppedDelegates > 0
+      ? `${params.droppedDelegates} delegate(s) exceeded the release limit and were dropped.`
+      : undefined,
+  ].filter(Boolean);
+  return parts.join(" ");
 }
 
 // clearContinuationGeneration intentionally removed: clearing the map entry
@@ -853,12 +981,6 @@ export async function runReplyAgent(params: {
     }
 
     if (autoCompactionCompleted) {
-      // Reset context-pressure band so advisories re-arm for the next fill cycle.
-      // After compaction, token count drops and the agent should see fresh warnings.
-      if (activeSessionEntry) {
-        activeSessionEntry.lastContextPressureBand = 0;
-      }
-
       const count = await incrementRunCompactionCount({
         sessionEntry: activeSessionEntry,
         sessionStore: activeSessionStore,
@@ -870,6 +992,40 @@ export async function runReplyAgent(params: {
 
       // Inject post-compaction workspace context for the next agent turn
       if (sessionKey) {
+        const stagedCompactionDelegates = consumeStagedPostCompactionDelegates(sessionKey);
+        let persistedCompactionDelegates: SessionPostCompactionDelegate[] = [];
+        try {
+          persistedCompactionDelegates = await takePendingPostCompactionDelegates({
+            sessionEntry: activeSessionEntry,
+            sessionStore: activeSessionStore,
+            sessionKey,
+            storePath,
+          });
+        } catch (err) {
+          defaultRuntime.log(
+            `Failed to load post-compaction delegates for ${sessionKey}: ${String(err)}`,
+          );
+        }
+        const allCompactionDelegates = [
+          ...persistedCompactionDelegates,
+          ...stagedCompactionDelegates,
+        ];
+        const compactionCfg = cfg.agents?.defaults?.continuation;
+        const maxCompactionDelegates = compactionCfg?.maxDelegatesPerTurn ?? 5;
+        const releasedCompactionDelegates = allCompactionDelegates.slice(0, maxCompactionDelegates);
+        const droppedCompactionDelegates = Math.max(
+          0,
+          allCompactionDelegates.length - releasedCompactionDelegates.length,
+        );
+        enqueueSystemEvent(
+          buildPostCompactionLifecycleEvent({
+            compactionCount: count,
+            releasedDelegates: releasedCompactionDelegates.length,
+            droppedDelegates: droppedCompactionDelegates,
+          }),
+          { sessionKey },
+        );
+
         const workspaceDir = process.cwd();
         readPostCompactionContext(workspaceDir, cfg)
           .then((contextContent) => {
@@ -882,29 +1038,7 @@ export async function runReplyAgent(params: {
           });
 
         // Dispatch compaction-triggered delegates (| post-compaction mode).
-        // Post-compaction delegates are persisted on SessionEntry so they survive
-        // across turns until compaction fires (Codex 5.4 architecture fix).
-        // Read and clear atomically before dispatching.
-        const compactionDelegates = activeSessionEntry?.pendingPostCompactionDelegates ?? [];
-        if (activeSessionEntry) {
-          activeSessionEntry.pendingPostCompactionDelegates = undefined;
-        }
-        // Also drain any legacy in-memory compaction delegates (migration path).
-        const legacyDelegates = consumeCompactionDelegates(sessionKey);
-        const allCompactionDelegates = [
-          ...compactionDelegates.map((d) => ({ task: d.task, silent: true, silentWake: true })),
-          ...legacyDelegates,
-        ];
-        const compactionCfg = cfg.agents?.defaults?.continuation;
-        const maxCompactionDelegates = compactionCfg?.maxDelegatesPerTurn ?? 5;
-        for (let i = 0; i < allCompactionDelegates.length; i++) {
-          if (i >= maxCompactionDelegates) {
-            defaultRuntime.log(
-              `Post-compaction delegate limit reached (${maxCompactionDelegates}) for session ${sessionKey}, ${allCompactionDelegates.length - i} dropped`,
-            );
-            break;
-          }
-          const delegate = allCompactionDelegates[i];
+        for (const delegate of releasedCompactionDelegates) {
           defaultRuntime.log(
             `Post-compaction delegate dispatch for session ${sessionKey}: ${delegate.task}`,
           );
@@ -1305,6 +1439,25 @@ export async function runReplyAgent(params: {
       }
     }
 
+    if (!autoCompactionCompleted && continuationFeatureEnabled && sessionKey) {
+      const stagedCompactionDelegates = consumeStagedPostCompactionDelegates(sessionKey);
+      if (stagedCompactionDelegates.length > 0) {
+        try {
+          await persistPendingPostCompactionDelegates({
+            sessionEntry: activeSessionEntry,
+            sessionStore: activeSessionStore,
+            sessionKey,
+            storePath,
+            delegates: stagedCompactionDelegates,
+          });
+        } catch (err) {
+          defaultRuntime.log(
+            `Failed to persist post-compaction delegates for ${sessionKey}: ${String(err)}`,
+          );
+        }
+      }
+    }
+
     // Silent continuations should produce no user-visible output.
     if (wasSilentContinuation) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
@@ -1327,7 +1480,7 @@ export async function runReplyAgent(params: {
     // into the next successful turn for the same session.
     if (sessionKey) {
       consumePendingDelegates(sessionKey);
-      consumeCompactionDelegates(sessionKey);
+      consumeStagedPostCompactionDelegates(sessionKey);
     }
     // Safety net: the dispatcher's onIdle callback normally fires
     // markDispatchIdle(), but if the dispatcher exits early, errors,

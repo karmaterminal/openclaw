@@ -1,13 +1,10 @@
 import { Type } from "@sinclair/typebox";
 import {
+  stagePostCompactionDelegate,
   enqueuePendingDelegate,
-  compactionDelegateCount,
   pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
 } from "../../auto-reply/continuation-delegate-store.js";
-import { loadConfig } from "../../config/config.js";
-import { resolveAgentIdFromSessionKey } from "../../config/sessions/main-session.js";
-import { resolveStorePath } from "../../config/sessions/paths.js";
-import { updateSessionStore } from "../../config/sessions/store.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
@@ -107,7 +104,8 @@ export function createContinueDelegateTool(opts: {
 
       // Check per-turn delegate limit
       const maxPerTurn = opts.maxDelegatesPerTurn ?? 5;
-      const currentCount = pendingDelegateCount(sessionKey) + compactionDelegateCount(sessionKey);
+      const currentCount =
+        pendingDelegateCount(sessionKey) + stagedPostCompactionDelegateCount(sessionKey);
       if (currentCount >= maxPerTurn) {
         return jsonResult({
           status: "error",
@@ -118,26 +116,12 @@ export function createContinueDelegateTool(opts: {
       }
 
       if (isPostCompaction) {
-        // Post-compaction delegates persist on SessionEntry so they survive
-        // across turns until compaction actually fires (unlike the old in-memory
-        // Map which was drained in `finally` at the end of each turn).
-        const cfg = loadConfig();
-        const agentId = resolveAgentIdFromSessionKey(sessionKey);
-        const storePath = resolveStorePath(cfg.session?.store, { agentId });
-        if (storePath) {
-          await updateSessionStore(storePath, (store) => {
-            const entry = store[sessionKey];
-            if (entry) {
-              const pending = entry.pendingPostCompactionDelegates ?? [];
-              pending.push({
-                task,
-                createdAt: Date.now(),
-                mode: "silent-wake",
-              });
-              entry.pendingPostCompactionDelegates = pending;
-            }
-          });
-        }
+        // Stage for the current turn. agent-runner commits successful turns to
+        // SessionEntry so failed runs do not leak stale compaction delegates.
+        stagePostCompactionDelegate(sessionKey, {
+          task,
+          createdAt: Date.now(),
+        });
 
         return jsonResult({
           status: "queued-for-compaction",

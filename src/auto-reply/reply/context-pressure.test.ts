@@ -411,6 +411,34 @@ describe("checkContextPressure", () => {
     expect(result.band).toBe(0);
   });
 
+  it("respects thresholds above 90% without collapsing to the 90 band", () => {
+    const entry = makeSessionEntry({ totalTokens: 94_000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.94,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(true);
+    expect(result.band).toBe(94);
+  });
+
+  it("does not backslide from a custom 94% band to 90% on later turns", () => {
+    const entry = makeSessionEntry({
+      totalTokens: 91_000,
+      totalTokensFresh: true,
+      lastContextPressureBand: 94,
+    });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.94,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(false);
+    expect(result.band).toBe(0);
+  });
+
   /* ---------------------------------------------------------------- */
   /*  Session reset (band clears)                                     */
   /* ---------------------------------------------------------------- */
