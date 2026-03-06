@@ -1014,3 +1014,28 @@ Comprehensive test suite. Ships disabled by default.
 _Contributed by [karmaterminal](https://github.com/karmaterminal)_  
 _Implementation: March 2–5, 2026_  
 _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)_
+
+---
+
+## Changelog (temporary — remove before upstream PR)
+
+> Working notes for RFC updates. Keyed to commits/issues. Clean before submission.
+
+### 2026-03-05 ~21:40 PST — P0-5 chain-hop counter fix
+
+- **Commit**: `fec5e4bfc` on `feature/context-pressure-squashed`
+- **What**: Chain-hop index encoded in task prefix (`[continuation:chain-hop:N]`), parsed by regex in announce handler. Replaces session-store approach that failed due to fire-and-forget write + entry-not-exists race.
+- **Why previous approaches failed**:
+  - `7cb3546c8` (parent-session counter): `agent-runner.ts` resets `continuationChainCount` on each inbound message; chain hops ARE inbound messages → counter stuck at 2
+  - `13405b669` (per-chain store write): `void updateSessionStore` + child entry doesn't exist at write time → counter stuck at 1
+- **Guard semantics**: `nextChainHop > maxChainLength` — N hops allowed, N+1 blocked
+- **Canary verified**: `maxChainLength: 3` → 3 bracket hops completed, hop 4 rejected. Journal: `(1/3)` → `(2/3)` → `(3/3)` → REJECTED.
+- **RFC impact**: Update chain tracking section to describe task-prefix mechanism. Session store is NOT the transport for per-hop metadata.
+
+### 2026-03-05 ~21:40 PST — Cost cap gap (bracket chains)
+
+- **Issue**: `karmaterminal/openclaw-bootstrap#203`
+- **What**: `costCapTokens` guard reads `continuationChainTokens` but bracket chain-hops never accumulate shard token costs back to parent. Guard is no-op for bracket path.
+- **Scope**: Works for CONTINUE_WORK path (`agent-runner.ts:939-972`) and tool-delegate path (`agent-runner.ts:1115`). Not wired for bracket chain-hop path (`subagent-announce.ts`).
+- **Goal**: Parity with `sessions_spawn` — if spawn shows cost, delegate should too.
+- **RFC impact**: Document honestly. Chain-length guard is primary recursion safety. Cost cap tracks tool-path spend; bracket chain cost tracking is follow-up.
