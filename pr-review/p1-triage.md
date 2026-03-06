@@ -15,16 +15,20 @@
 
 ---
 
-## P1-1: `isDelegateWake` misclassifies user messages as continuation wakes
+## ~~P1-1~~ → P0-4: `isDelegateWake` misclassifies user messages as continuation wakes
+
+**PROMOTED TO P0** — swim 5 test 5-0 proved this is load-bearing for P0-1 generation guard.
 
 **Reported by:** Silas Claude (P1), Cael Claude (P1-1), Cael Codex (P1), Cael Copilot (implicit in P0-1 discussion)  
-**Convergence:** 4/4 reviewers flagged this.
+**Convergence:** 4/4 reviewers flagged this. **Swim 5 test 5-0 confirmed it live.**
 
-**Issue:** `isDelegateWake` checks for `[continuation:delegate-pending]` in the system event queue. That marker persists after scheduling, so any non-heartbeat message arriving while a delegate is pending gets classified as a continuation wake. Chain state isn't reset, preemption is skipped.
+**Issue:** `isDelegateWake` checks for `[continuation:delegate-pending]` in the system event queue (`get-reply-run.ts` line ~641). That marker persists after scheduling, so any non-heartbeat message arriving while a delegate is pending gets classified as `isContinuationWake = true`. This propagates to `runReplyAgent` as `isContinuationEvent = true`, which causes the generation bump guard at `agent-runner.ts:220` to be **skipped entirely**. The P0-1 generation guard is correct code that never executes because this heuristic prevents it.
 
-**Verdict: (a) Fix before PR.**
+**Swim 5 evidence:** figs DM'd Silas "hey" during a +30s delegate delay window. "hey" was classified as `isDelegateWake` because `[continuation:delegate-pending]` was in the queue. Generation bump skipped. Timer fired uncancelled. Shard completed despite preemption message arriving.
 
-This violates the RFC's stated safety constraint ("External events always preempt"). The fix is bounded: either (i) tag the delegate-pending marker with the expected child session key and verify the incoming message source, or (ii) use a dedicated `[continuation:delegate-returned]` marker set only at actual completion (in the announce pipeline), and check for that instead of `delegate-pending`. Option (ii) is cleaner — it's a few lines in `subagent-announce.ts` and `get-reply-run.ts`.
+**Verdict: (a) Fix before PR — CRITICAL.**
+
+This violates the RFC's stated safety constraint ("External events always preempt"). The fix: either (i) tag the delegate-pending marker with the expected child session key and verify the incoming message source, or (ii) use a dedicated `[continuation:delegate-returned]` marker set only at actual completion (in the announce pipeline), and check for that instead of `delegate-pending`. Option (ii) is cleaner — a few lines in `subagent-announce.ts` and `get-reply-run.ts`.
 
 ---
 
@@ -129,16 +133,16 @@ Add `maxLength: 4096` to the TypeBox schema. For bracket syntax, truncate at par
 
 ## Summary
 
-| ID   | Finding                                    | Verdict           | Effort          |
-| ---- | ------------------------------------------ | ----------------- | --------------- |
-| P1-1 | `isDelegateWake` misclassification         | **(a) Fix**       | ~20 lines       |
-| P1-2 | Stale delegate leak on error/early-return  | **(a) Fix**       | ~5 lines        |
-| P1-3 | `continuationGenerations` unbounded growth | **(c) Follow-up** | ~30 lines       |
-| P1-4 | Compaction delegates bypass limits         | **(a) Fix**       | ~10 lines       |
-| P1-5 | Chain-hop delay ignores config bounds      | **(a) Fix**       | ~3 lines        |
-| P1-6 | Cache tokens inflate cost accounting       | **(b) Document**  | ~2 lines in RFC |
-| P1-7 | Silent announce bypasses dedup             | **(c) Follow-up** | ~15 lines       |
-| P1-8 | No task string length validation           | **(a) Fix**       | ~5 lines        |
+| ID       | Finding                                          | Verdict                | Effort          |
+| -------- | ------------------------------------------------ | ---------------------- | --------------- |
+| **P0-4** | `isDelegateWake` misclassification (blocks P0-1) | **(a) Fix — CRITICAL** | ~20 lines       |
+| P1-2     | Stale delegate leak on error/early-return        | **(a) Fix**            | ~5 lines        |
+| P1-3     | `continuationGenerations` unbounded growth       | **(c) Follow-up**      | ~30 lines       |
+| P1-4     | Compaction delegates bypass limits               | **(a) Fix**            | ~10 lines       |
+| P1-5     | Chain-hop delay ignores config bounds            | **(a) Fix**            | ~3 lines        |
+| P1-6     | Cache tokens inflate cost accounting             | **(b) Document**       | ~2 lines in RFC |
+| P1-7     | Silent announce bypasses dedup                   | **(c) Follow-up**      | ~15 lines       |
+| P1-8     | No task string length validation                 | **(a) Fix**            | ~5 lines        |
 
 **Fix before PR:** P1-1, P1-2, P1-4, P1-5, P1-8 (~43 lines total)  
 **Document:** P1-6  
