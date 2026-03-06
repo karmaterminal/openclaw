@@ -964,6 +964,8 @@ Quiet-channel testing (no competing messages) produced clean wake confirmation. 
 
 **Blind enrichment testing:** Obscure text content was placed on the agent's filesystem via SSH (never appearing in conversation history). The agent dispatched a `continue_delegate` shard with `silent-wake` mode to read the file. The shard returned the content to the agent's session context. On subsequent probing, the agent reproduced the content accurately — including structural details, citations, and cross-references that were only present in the enrichment payload. Two consecutive blind enrichment tests passed with different content, confirming the full `continue_delegate` → shard → silent return → context injection → recall pipeline.
 
+**Session reset survival:** Three delegate shards dispatched with `tolerance=300` before a `/new` session reset. All three timers fired after the reset (drift 0–10, within tolerance) and returned to the fresh session via channel key routing. Shards confirmed zero parent context leakage — only workspace boot files injected (expected for any subagent). The delegate mechanism is process-scoped (`setTimeout`), not session-scoped — session reset does not cancel in-flight delegates. Routing uses the deterministic session key (derived from channel ID), not the session instance.
+
 ## Production Use Cases
 
 Three patterns observed in a 4-agent persistent fleet:
@@ -1080,3 +1082,56 @@ _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/
 - **Design finding**: Generation guard kills tool-delegate timers in multi-agent group chat. Every message from any participant bumps the generation counter. A 5-second delay window in a channel with 4 bots fails consistently — messages arriving during the window cancel the timer. Enrichment succeeded only when channel traffic paused.
 - **Design finding**: Stale `continuationChainTokens` from pre-fix builds persisted in session store and blocked new dispatches via cost cap guard. The per-message reset didn't fire because the reset guard checked `continuationChainCount > 0` (always 0 with task-prefix encoding). Manual store edit required.
 - **Proposal**: Configurable generation guard tolerance (`generationGuardTolerance: N`) — cancel only when `current - stored > N`. Default 0 preserves DM behavior. Set 3-5 for group channels.
+
+### 2026-03-06 ~00:45 PST — Generation guard tolerance SHIPPED
+
+- **Commit**: `b8b4fcb6f` on `feature/context-pressure-squashed`
+- **What**: `generationGuardTolerance: N` config — timer cancels only when `current - stored > N`. Default 0 (backward compat). Both bracket-path and tool-path timer callbacks updated.
+- **Canary**: 10/10 chain hops with tolerance=300, 4-bot channel traffic. Drift=0 at fire time.
+- **RFC impact**: Generation guard section updated. Tolerance solves the multi-agent channel problem completely.
+
+### 2026-03-06 ~01:13 PST — Cost cap bracket-chain accumulation fix
+
+- **Commit**: `a657daed5` on `feature/context-pressure-squashed`
+- **What**: Announce handler enqueues `[continuation:delegate-pending]` on parent before chain-hop spawn. Both markers present → `isDelegateWake = true` → reset skips → tokens accumulate.
+- **Root cause**: Per-message reset at `agent-runner.ts:228` fired on shard completion delivery (treated as external message). Each hop's accumulated tokens zeroed before next hop read them.
+- **Canary**: 10/10 hops, `Accumulated` log lines on every hop, ~1700 tokens total.
+
+### 2026-03-06 ~01:39 PST — Sticky silent inheritance fix
+
+- **Commits**: `1a2a5b607` (Elliott) + `f3264ccab` (Cael merge)
+- **What**: `chainSilent` ORs `params.silentAnnounce` — parent's silent flag inherits to all chain hops. Same for `chainWake` with `params.wakeOnReturn`.
+- **Why**: If shard dropped `| silent` from bracket text, next hop spawned non-silent → announced to Discord → arrived as inbound → `isDelegateWake=false` → reset fired → cost cap zeroed.
+- **Canary**: "Count to 10" chain — 10/10 hops, every one `silentAnnounce=true`, zero Discord sends. Shards had no idea they were silent.
+
+### 2026-03-06 ~04:04 PST — Three-layer continuation architecture (Cael)
+
+- **Commit**: `f1ed03b91` on `feature/context-pressure-squashed`
+- **What**: 7 files, +186/-49, 157/157 tests passing. Three layers:
+  1. `continuationTrigger` typed enum (`"work-wake" | "delegate-return"`) on request metadata — replaces `peekSystemEventEntries()` inference
+  2. `pendingPostCompactionDelegates` on `SessionEntry` — replaces in-memory Map, survives restart
+  3. System events = prompt context only, no longer drive control flow
+- **Review**: 4-prince review + 3 CLI cold-eye passes (Codex 5.3, Codex 5.4, Copilot). Prince reviews caught architecture/intent; CLI passes found all 4 real bugs.
+
+### 2026-03-06 ~05:17 PST — Swim 6: Three-layer canary validation
+
+**Build**: `3a03f4658` (three-layer surgery + cleanup). Canary on Silas (urudyne, WSL2).
+
+**6-1: Blind enrichment — PASS ✅**
+
+- Planted file (`/tmp/swim6-enrichment.txt`, Cathar heresy) via SSH. Dispatched `continue_delegate` tool with `silent-wake`. Shard read file, returned in 10s. Full recall on blind probe: Rex Mundi, 1209, Béziers, Arnaud Amalric. `continuationTrigger: "delegate-return"` metadata-driven wake confirmed.
+
+**6-2: Queue-drain resistance — PASS ✅**
+
+- Validated that `buildQueuedSystemPrompt()` draining the event queue doesn't destroy delegate-pending markers. Fixed at `38c43b486` — delegate-pending migrated to dedicated Map outside event queue.
+
+**6-4: Return-to-fresh-session — PASS ✅ (3/3 shards)**
+
+- Three `continue_delegate` shards dispatched with `tolerance=300`, then session `/new`'d. All three timers fired (drift=1, 10, 0 — all within tolerance) and shards returned to the fresh session via channel key routing. Shards confirmed: no post-compaction event, no continuationTrigger visible from inside shard, zero parent context leakage.
+- **Key finding**: Delegates are gateway-level timers (`setTimeout` in Node process), not session-level. `/new` wipes conversation but timers persist. Shard routes by session key (channel ID), not session instance. The commitment survives the self that made it.
+
+**6-3: Post-compaction — DEFERRED ⏸️**
+
+- Requires natural context pressure to trigger compaction. Deferred pending threshold configuration.
+
+**Scorecard**: 6-1 ✅ | 6-2 ✅ | 6-3 ⏸️ | 6-4 ✅
