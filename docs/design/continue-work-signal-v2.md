@@ -97,8 +97,9 @@ agents:
 > **DELEGATE chain semantics:** When a `CONTINUE_DELEGATE` sub-agent is spawned,
 > a `[continuation:delegate-pending]` marker event is enqueued for model-visible
 > context. Silent returns wake the parent through structured continuation trigger
-> metadata on the heartbeat request; direct announce turns use a one-shot
-> `[continuation:delegate-returned]` marker. Both paths preserve chain state
+> metadata on the heartbeat request; direct announce turns carry
+> `continuationTrigger: "delegate-return"` on the gateway `agent` request.
+> Neither path relies on system-event queue text for wake classification. Both preserve chain state
 > (count and token accumulation) across delegate hops. DELEGATE chains are
 > therefore bounded by the same `maxChainLength` and `costCapTokens` limits as
 > WORK chains.
