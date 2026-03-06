@@ -1,6 +1,7 @@
 import {
   bumpContinuationGeneration,
   currentContinuationGeneration,
+  setDelegatePending,
 } from "../auto-reply/reply/agent-runner.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import {
@@ -1432,10 +1433,9 @@ export async function runSubagentAnnounceFlow(params: {
           // Mark delegate-pending on the parent so isDelegateWake is true when
           // the chain-hop shard completes — prevents per-message reset from
           // zeroing continuationChainTokens between hops.
-          enqueueSystemEvent(
-            `[continuation:delegate-pending] Chain hop ${nextChainHop}/${maxChainLength}: ${chainTask.slice(0, 100)}`,
-            { sessionKey: targetRequesterSessionKey },
-          );
+          // Uses a dedicated per-session flag (not the system event queue)
+          // so it survives buildQueuedSystemPrompt draining on intervening turns.
+          setDelegatePending(targetRequesterSessionKey);
 
           const doChainSpawn = async () => {
             try {

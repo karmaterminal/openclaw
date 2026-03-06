@@ -36,6 +36,10 @@ import {
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { cancelContinuationTimer } from "./agent-runner.js";
+import {
+  hasDelegatePending as hasDelegatePendingFn,
+  clearDelegatePending,
+} from "./agent-runner.js";
 import { runReplyAgent } from "./agent-runner.js";
 import { applySessionHints } from "./body.js";
 import type { buildCommandContext } from "./commands.js";
@@ -245,11 +249,7 @@ export async function runPreparedReply(
   // a delegate sub-agent is spawned and consumed here so the chain-reset logic
   // treats the sub-agent's completion announcement like a continuation wake
   // rather than external user input.
-  const hasDelegatePending =
-    sessionKey != null &&
-    peekSystemEventEntries(sessionKey)?.some((e) =>
-      e.text?.startsWith("[continuation:delegate-pending]"),
-    );
+  const hasDelegatePendingFlag = sessionKey != null && hasDelegatePendingFn(sessionKey);
   // isDelegateWake must distinguish between "this message IS the delegate's
   // completion announcement" vs "this is a real user message that arrived while
   // a delegate is in flight." The old heuristic (hasDelegatePending alone)
@@ -265,14 +265,16 @@ export async function runPreparedReply(
     peekSystemEventEntries(sessionKey)?.some((e) =>
       e.text?.startsWith("[continuation:delegate-returned]"),
     );
-  const isDelegateWake = hasDelegatePending && hasDelegateReturned;
+  const isDelegateWake = hasDelegatePendingFlag && hasDelegateReturned;
   // Consume the one-shot delegate-returned marker so it doesn't persist
   // and cause the next real user message to be misclassified.
+  // Also clear the delegate-pending flag — it has served its purpose.
   if (hasDelegateReturned && sessionKey) {
     removeSystemEvents(
       sessionKey,
       (e) => e.text?.startsWith("[continuation:delegate-returned]") ?? false,
     );
+    clearDelegatePending(sessionKey);
   }
   const { typingPolicy, suppressTyping } = resolveRunTypingPolicy({
     requestedPolicy: opts?.typingPolicy,

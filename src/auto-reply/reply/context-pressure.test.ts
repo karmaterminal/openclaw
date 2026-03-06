@@ -470,4 +470,68 @@ describe("checkContextPressure", () => {
     expect(result.fired).toBe(false);
     expect(result.band).toBe(0);
   });
+
+  it("custom threshold above 0.9 is not shadowed by fixed 90 band", () => {
+    // At 92% usage with threshold 0.92, should fire at custom band 92, not fixed band 90
+    const entry = makeSessionEntry({ totalTokens: 92000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.92,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(true);
+    expect(result.band).toBe(92);
+  });
+
+  it("custom threshold 0.94 at 91% does not fire (below threshold)", () => {
+    const entry = makeSessionEntry({ totalTokens: 91000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.94,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(false);
+    expect(result.band).toBe(0);
+  });
+
+  it("fixed 95 band still fires above custom threshold in (0.9, 0.95)", () => {
+    const entry = makeSessionEntry({ totalTokens: 96000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.92,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(true);
+    expect(result.band).toBe(95);
+  });
+
+  it("band resets allow re-fire after compaction", () => {
+    const entry = makeSessionEntry({
+      totalTokens: 92000,
+      totalTokensFresh: true,
+      lastContextPressureBand: 0,
+    });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result.fired).toBe(true);
+    expect(result.band).toBe(90);
+    // After compaction resets the band to 0 and tokens drop:
+    entry.lastContextPressureBand = 0;
+    entry.totalTokens = 82000;
+    const result2 = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(result2.fired).toBe(true);
+    expect(result2.band).toBe(80);
+  });
 });

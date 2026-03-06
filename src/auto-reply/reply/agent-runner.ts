@@ -75,6 +75,24 @@ const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 // any in-flight callbacks without needing clearTimeout races.
 const continuationGenerations = new Map<string, number>();
 
+// Per-session delegate-pending flags.  Lives outside the system-event queue
+// so it is NOT drained by buildQueuedSystemPrompt on intervening turns.
+// Set by subagent-announce when a delegate is spawned; cleared when the
+// delegate's completion is detected in get-reply-run.
+const delegatePendingFlags = new Map<string, boolean>();
+
+export function setDelegatePending(sessionKey: string): void {
+  delegatePendingFlags.set(sessionKey, true);
+}
+
+export function hasDelegatePending(sessionKey: string): boolean {
+  return delegatePendingFlags.get(sessionKey) === true;
+}
+
+export function clearDelegatePending(sessionKey: string): void {
+  delegatePendingFlags.delete(sessionKey);
+}
+
 export function currentContinuationGeneration(sessionKey: string): number {
   return continuationGenerations.get(sessionKey) ?? 0;
 }
@@ -150,6 +168,10 @@ export function cancelContinuationTimer(
       // Best-effort — chain state will be reset on next runReplyAgent entry.
     });
   }
+
+  // Clear delegate-pending flag — no delegate should be considered in-flight
+  // after explicit cancellation.
+  clearDelegatePending(sessionKey);
 }
 
 export async function runReplyAgent(params: {
@@ -831,6 +853,12 @@ export async function runReplyAgent(params: {
     }
 
     if (autoCompactionCompleted) {
+      // Reset context-pressure band so advisories re-arm for the next fill cycle.
+      // After compaction, token count drops and the agent should see fresh warnings.
+      if (activeSessionEntry) {
+        activeSessionEntry.lastContextPressureBand = 0;
+      }
+
       const count = await incrementRunCompactionCount({
         sessionEntry: activeSessionEntry,
         sessionStore: activeSessionStore,
@@ -1039,12 +1067,11 @@ export async function runReplyAgent(params: {
                 }
               };
 
-              // Marker event fires immediately — parent session knows a delegate
-              // is pending regardless of timer delay.
-              enqueueSystemEvent(
-                `[continuation:delegate-pending] Delegated turn ${nextChainCount}/${maxChainLength}${delegateDelayMs ? ` (delay: ${delegateDelayMs / 1000}s)` : ""}: ${delegateTask}`,
-                { sessionKey },
-              );
+              // Mark delegate-pending via dedicated flag (not system event queue)
+              // so it survives buildQueuedSystemPrompt draining on intervening turns.
+              if (sessionKey) {
+                setDelegatePending(sessionKey);
+              }
 
               if (delegateDelayMs && delegateDelayMs > 0) {
                 // Timed dispatch: spawn after delay. Timer does not survive
@@ -1196,11 +1223,11 @@ export async function runReplyAgent(params: {
             }
           };
 
-          // Marker event fires immediately
-          enqueueSystemEvent(
-            `[continuation:delegate-pending] Tool delegate turn ${nextChainCount}/${maxChainLength}${delegate.delayMs ? ` (delay: ${delegate.delayMs / 1000}s)` : ""}: ${delegate.task}`,
-            { sessionKey },
-          );
+          // Mark delegate-pending via dedicated flag (not system event queue)
+          // so it survives buildQueuedSystemPrompt draining on intervening turns.
+          if (sessionKey) {
+            setDelegatePending(sessionKey);
+          }
 
           if (delegate.delayMs && delegate.delayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));
