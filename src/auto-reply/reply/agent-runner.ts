@@ -882,20 +882,29 @@ export async function runReplyAgent(params: {
           });
 
         // Dispatch compaction-triggered delegates (| post-compaction mode).
-        // These were pre-registered by the agent via continue_delegate tool
-        // when context-pressure warned about approaching compaction.
-        // They fire NOW — at the moment of compaction, not on a timer.
-        const compactionDelegates = consumeCompactionDelegates(sessionKey);
+        // Post-compaction delegates are persisted on SessionEntry so they survive
+        // across turns until compaction fires (Codex 5.4 architecture fix).
+        // Read and clear atomically before dispatching.
+        const compactionDelegates = activeSessionEntry?.pendingPostCompactionDelegates ?? [];
+        if (activeSessionEntry) {
+          activeSessionEntry.pendingPostCompactionDelegates = undefined;
+        }
+        // Also drain any legacy in-memory compaction delegates (migration path).
+        const legacyDelegates = consumeCompactionDelegates(sessionKey);
+        const allCompactionDelegates = [
+          ...compactionDelegates.map((d) => ({ task: d.task, silent: true, silentWake: true })),
+          ...legacyDelegates,
+        ];
         const compactionCfg = cfg.agents?.defaults?.continuation;
         const maxCompactionDelegates = compactionCfg?.maxDelegatesPerTurn ?? 5;
-        for (let i = 0; i < compactionDelegates.length; i++) {
+        for (let i = 0; i < allCompactionDelegates.length; i++) {
           if (i >= maxCompactionDelegates) {
             defaultRuntime.log(
-              `Post-compaction delegate limit reached (${maxCompactionDelegates}) for session ${sessionKey}, ${compactionDelegates.length - i} dropped`,
+              `Post-compaction delegate limit reached (${maxCompactionDelegates}) for session ${sessionKey}, ${allCompactionDelegates.length - i} dropped`,
             );
             break;
           }
-          const delegate = compactionDelegates[i];
+          const delegate = allCompactionDelegates[i];
           defaultRuntime.log(
             `Post-compaction delegate dispatch for session ${sessionKey}: ${delegate.task}`,
           );

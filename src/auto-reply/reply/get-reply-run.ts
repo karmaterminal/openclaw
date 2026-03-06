@@ -36,10 +36,7 @@ import {
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { cancelContinuationTimer } from "./agent-runner.js";
-import {
-  hasDelegatePending as hasDelegatePendingFn,
-  clearDelegatePending,
-} from "./agent-runner.js";
+import { clearDelegatePending } from "./agent-runner.js";
 import { runReplyAgent } from "./agent-runner.js";
 import { applySessionHints } from "./body.js";
 import type { buildCommandContext } from "./commands.js";
@@ -245,36 +242,30 @@ export async function runPreparedReply(
   const isGroupChat = sessionCtx.ChatType === "group";
   const wasMentioned = ctx.WasMentioned === true;
   const isHeartbeat = opts?.isHeartbeat === true;
-  // Detect in-flight DELEGATE continuation — the marker event is enqueued when
-  // a delegate sub-agent is spawned and consumed here so the chain-reset logic
-  // treats the sub-agent's completion announcement like a continuation wake
-  // rather than external user input.
-  const hasDelegatePendingFlag = sessionKey != null && hasDelegatePendingFn(sessionKey);
-  // isDelegateWake must distinguish between "this message IS the delegate's
-  // completion announcement" vs "this is a real user message that arrived while
-  // a delegate is in flight." The old heuristic (hasDelegatePending alone)
-  // incorrectly classified ALL messages during delegate execution as wakes,
-  // masking the generation guard (P0-1/P1-1).
-  //
-  // Fix: check for [continuation:delegate-returned] which is enqueued by the
-  // announce pipeline just before triggering the completion message/heartbeat.
-  // [continuation:delegate-pending] persists from dispatch; delegate-returned
-  // is fresh evidence that THIS message is the actual return.
-  const hasDelegateReturned =
+  // Structured continuation trigger — the primary wake classification signal.
+  // Set by heartbeat-runner for wake paths (work-wake, delegate-return) and
+  // threaded through request options.  For non-silent delegate returns that
+  // enter through the normal inbound message pipeline, we fall back to the
+  // one-shot [continuation:delegate-returned] system event (consumed same-turn,
+  // not vulnerable to the buildQueuedSystemPrompt drain that killed delegate-pending).
+  const continuationTrigger = opts?.continuationTrigger;
+  // Fallback: check one-shot delegate-returned marker for non-heartbeat paths
+  const hasDelegateReturnedEvent =
+    !continuationTrigger &&
     sessionKey != null &&
     peekSystemEventEntries(sessionKey)?.some((e) =>
       e.text?.startsWith("[continuation:delegate-returned]"),
     );
-  const isDelegateWake = hasDelegatePendingFlag && hasDelegateReturned;
-  // Consume the one-shot delegate-returned marker so it doesn't persist
-  // and cause the next real user message to be misclassified.
-  // Also clear the delegate-pending flag — it has served its purpose.
-  if (hasDelegateReturned && sessionKey) {
+  const isDelegateWake =
+    continuationTrigger === "delegate-return" || (hasDelegateReturnedEvent ?? false);
+  const isContinuationWake = continuationTrigger === "work-wake" || isDelegateWake;
+  // Clear delegate-pending flag and consume one-shot markers when a return is processed.
+  if (isDelegateWake && sessionKey) {
+    clearDelegatePending(sessionKey);
     removeSystemEvents(
       sessionKey,
       (e) => e.text?.startsWith("[continuation:delegate-returned]") ?? false,
     );
-    clearDelegatePending(sessionKey);
   }
   const { typingPolicy, suppressTyping } = resolveRunTypingPolicy({
     requestedPolicy: opts?.typingPolicy,
@@ -390,15 +381,16 @@ export async function runPreparedReply(
   const isMainSession = !isGroupSession && sessionKey === normalizeMainKey(sessionCfg?.mainKey);
   // Peek system events BEFORE buildQueuedSystemPrompt drains them.
   // This detects continuation wakes so runReplyAgent can skip chain-state reset.
-  const hasContinuationSystemEvent = peekSystemEventEntries(sessionKey)?.some((e) =>
-    e.text?.startsWith("[continuation:wake]"),
-  );
+  // Also check the structured trigger for work-wake (set by heartbeat-runner).
+  const hasContinuationSystemEvent =
+    continuationTrigger === "work-wake" ||
+    peekSystemEventEntries(sessionKey)?.some((e) => e.text?.startsWith("[continuation:wake]"));
   // On non-heartbeat external input, discard any stale [continuation:wake] events
   // so they aren't injected into the user's prompt by buildQueuedSystemPrompt.
   // This completes preemption: timer is cancelled, chain state is reset, AND
   // any already-enqueued wake events are dropped.
-  // Skip when a delegate completion is in-flight — chain state must survive.
-  if (!isHeartbeat && !isDelegateWake && hasContinuationSystemEvent) {
+  // Skip when a continuation wake is in progress — chain state must survive.
+  if (!isContinuationWake && hasContinuationSystemEvent) {
     removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
   }
 
@@ -660,6 +652,6 @@ export async function runPreparedReply(
     sessionCtx,
     shouldInjectGroupIntro,
     typingMode,
-    isContinuationWake: (isHeartbeat && hasContinuationSystemEvent) || isDelegateWake,
+    isContinuationWake,
   });
 }

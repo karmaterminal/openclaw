@@ -175,6 +175,12 @@ export type SessionEntry = {
   continuationChainStartedAt?: number;
   /** Accumulated token usage across the current continuation chain. Reset on external message. */
   continuationChainTokens?: number;
+  /** Pre-registered post-compaction delegates. Survive across turns until compaction fires. */
+  pendingPostCompactionDelegates?: Array<{
+    task: string;
+    createdAt: number;
+    mode?: "silent-wake";
+  }>;
 };
 
 function normalizeRuntimeField(value: string | undefined): string | undefined {
