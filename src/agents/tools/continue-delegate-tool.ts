@@ -54,6 +54,12 @@ const ContinueDelegateToolSchema = Type.Object({
  *
  * The tool can be called multiple times per turn (multi-delegate fan-out).
  * Each call enqueues independently. No single-per-response regex limitation.
+ *
+ * NOTE: Delayed fan-out (multiple delegates with delaySeconds > 0) is subject
+ * to the generation guard — each scheduled timer checks that the session's
+ * generation counter hasn't advanced. In busy channels, intervening messages
+ * may cancel earlier timers. Use delaySeconds: 0 for reliable parallel fan-out,
+ * or set generationGuardTolerance >= N-1 for N delayed delegates.
  */
 export function createContinueDelegateTool(opts: {
   agentSessionKey?: string;
@@ -66,7 +72,9 @@ export function createContinueDelegateTool(opts: {
       "Dispatch a continuation delegate — a sub-agent that carries a task and returns " +
       "results to this session. Tracked by the continuation chain (cost caps, depth " +
       'limits). Use "silent-wake" mode for background enrichment that wakes you when ' +
-      "it returns. Can be called multiple times per turn for parallel fan-out.",
+      "it returns. Can be called multiple times per turn for parallel fan-out. " +
+      "Note: delayed delegates (delaySeconds > 0) share the generation guard — " +
+      "use delay 0 for reliable parallel dispatch.",
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

@@ -1472,12 +1472,16 @@ export async function runSubagentAnnounceFlow(params: {
 
           if (chainDelayMs && chainDelayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, chainDelayMs));
-            // Generation guard: cancel if parent session receives new input during delay
+            // Generation guard: cancel if parent session receives new input during delay.
+            // Honors generationGuardTolerance (same as agent-runner delegate timers).
             const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            const tolerance = continuationCfg?.generationGuardTolerance ?? 0;
             setTimeout(() => {
-              if (currentContinuationGeneration(targetRequesterSessionKey) !== hopGeneration) {
+              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+              const drift = currentGen - hopGeneration;
+              if (drift > tolerance) {
                 defaultRuntime.log(
-                  `[subagent-chain-hop] Timer cancelled (generation mismatch) for ${targetRequesterSessionKey}`,
+                  `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${tolerance}) for ${targetRequesterSessionKey}`,
                 );
                 return;
               }
