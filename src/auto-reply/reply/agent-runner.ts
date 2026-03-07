@@ -94,6 +94,7 @@ export function clearDelegatePending(sessionKey: string): void {
 
 // Re-export for external consumers (subagent-announce, etc.)
 export { currentContinuationGeneration } from "./continuation-generation.js";
+import { resolveMaxDelegatesPerTurn } from "./continuation-runtime.js";
 
 function syncPendingPostCompactionDelegates(params: {
   sessionEntry?: SessionEntry;
@@ -1260,6 +1261,22 @@ export async function runReplyAgent(params: {
     // Multiple delegates per turn are supported (multi-arrow fan-out).
     if (continuationFeatureEnabled && sessionKey) {
       const toolDelegates = consumePendingDelegates(sessionKey);
+      // Secondary enforcement: trim queued delegates to live maxDelegatesPerTurn.
+      // Primary enforcement is in the tool's execute(); this guards against stale
+      // queued delegates from older code or races (Workstream D, WORKORDER6).
+      const liveMaxPerTurn = resolveMaxDelegatesPerTurn();
+      if (toolDelegates.length > liveMaxPerTurn) {
+        const rejected = toolDelegates.splice(liveMaxPerTurn);
+        defaultRuntime.log(
+          `[continue_delegate] Secondary enforcement: ${rejected.length} delegate(s) exceed live maxDelegatesPerTurn=${liveMaxPerTurn}, rejected`,
+        );
+        for (const r of rejected) {
+          enqueueSystemEvent(
+            `[continuation] Delegate rejected by secondary enforcement (maxDelegatesPerTurn=${liveMaxPerTurn}): ${r.task}`,
+            { sessionKey },
+          );
+        }
+      }
       if (toolDelegates.length > 0) {
         defaultRuntime.log(
           `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
