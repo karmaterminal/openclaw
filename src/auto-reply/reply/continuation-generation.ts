@@ -1,19 +1,13 @@
-import { loadConfig } from "../../config/config.js";
+import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
 
-const DEFAULT_GENERATION_GUARD_TOLERANCE = 0;
 const continuationGenerations = new Map<string, number>();
 
 /**
  * Read generationGuardTolerance from live config at call time.
- * This is the core P1 fix: tolerance is resolved when the timer fires,
- * not when it was scheduled. Hot-reload changes take effect immediately.
+ * Delegates to the single normalization authority in continuation-runtime.
  */
 function resolveGenerationGuardTolerance(): number {
-  const configured = loadConfig().agents?.defaults?.continuation?.generationGuardTolerance;
-  if (typeof configured !== "number" || !Number.isFinite(configured) || configured < 0) {
-    return DEFAULT_GENERATION_GUARD_TOLERANCE;
-  }
-  return Math.max(0, Math.trunc(configured));
+  return resolveContinuationRuntimeConfig().generationGuardTolerance;
 }
 
 export function currentContinuationGeneration(sessionKey: string): number {
