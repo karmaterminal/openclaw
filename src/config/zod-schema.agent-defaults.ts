@@ -190,7 +190,11 @@ export const AgentDefaultsSchema = z
         costCapTokens: z.number().int().nonnegative().optional(),
         maxDelegatesPerTurn: z.number().int().positive().optional(),
         generationGuardTolerance: z.number().int().nonnegative().optional(),
-        contextPressureThreshold: z.number().min(0).max(1).optional(),
+        contextPressureThreshold: z
+          .number()
+          .gt(0, "contextPressureThreshold must be > 0 (0 would fire on empty sessions)")
+          .max(1)
+          .optional(),
       })
       .strict()
       .optional(),
