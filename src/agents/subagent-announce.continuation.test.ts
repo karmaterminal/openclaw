@@ -107,7 +107,10 @@ vi.mock("./subagent-registry.js", () => ({
   countPendingDescendantRuns: (key: string) => mocked.countPendingDescendantRunsMock(key),
   countPendingDescendantRunsExcludingRun: () => 0,
   isSubagentSessionRunActive: (key: string) => mocked.isSubagentSessionRunActiveMock(key),
+  listSubagentRunsForRequester: () => [],
+  replaceSubagentRunAfterSteer: () => true,
   resolveRequesterForChildSession: (key: string) => mocked.resolveRequesterForChildSessionMock(key),
+  shouldIgnorePostCompletionAnnounceForSession: () => false,
 }));
 
 vi.mock("../plugins/hook-runner-global.js", () => ({

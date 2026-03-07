@@ -57,8 +57,12 @@ vi.mock("./pi-embedded.js", () => ({
 vi.mock("./subagent-registry.js", () => ({
   countActiveDescendantRuns: () => 0,
   countPendingDescendantRuns: () => 0,
+  countPendingDescendantRunsExcludingRun: () => 0,
   isSubagentSessionRunActive: () => true,
+  listSubagentRunsForRequester: () => [],
+  replaceSubagentRunAfterSteer: () => true,
   resolveRequesterForChildSession: () => null,
+  shouldIgnorePostCompletionAnnounceForSession: () => false,
 }));
 
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";

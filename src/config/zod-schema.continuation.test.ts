@@ -14,7 +14,7 @@ function parseContinuation(continuation: unknown) {
 
 describe("continuation config schema validation", () => {
   /* ---------------------------------------------------------------- */
-  /*  contextPressureThreshold: z.number().min(0).max(1).optional()   */
+  /*  contextPressureThreshold: z.number().gt(0).max(1).optional()    */
   /* ---------------------------------------------------------------- */
 
   it("accepts contextPressureThreshold = 0.8", () => {
@@ -22,9 +22,9 @@ describe("continuation config schema validation", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts contextPressureThreshold = 0 (falsy but valid)", () => {
+  it("rejects contextPressureThreshold = 0", () => {
     const result = parseContinuation({ contextPressureThreshold: 0 });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
   it("accepts contextPressureThreshold = 1.0 (upper bound)", () => {

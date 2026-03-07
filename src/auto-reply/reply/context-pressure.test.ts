@@ -70,7 +70,7 @@ describe("checkContextPressure", () => {
     expect(events).toHaveLength(0);
   });
 
-  it("does not fire when contextPressureThreshold is 0", () => {
+  it("fires when contextPressureThreshold is 0 if called directly", () => {
     const entry = makeSessionEntry({ totalTokens: 90_000, totalTokensFresh: true });
     const result = checkContextPressure({
       sessionEntry: entry,
@@ -78,8 +78,8 @@ describe("checkContextPressure", () => {
       contextPressureThreshold: 0,
       contextWindowTokens: CONTEXT_WINDOW,
     });
-    expect(result.fired).toBe(false);
-    expect(result.band).toBe(0);
+    expect(result.fired).toBe(true);
+    expect(result.band).toBe(90);
   });
 
   /* ---------------------------------------------------------------- */

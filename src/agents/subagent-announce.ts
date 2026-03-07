@@ -65,7 +65,8 @@ import { isAnnounceSkip } from "./tools/sessions-send-helpers.js";
 
 const FAST_TEST_MODE = process.env.OPENCLAW_TEST_FAST === "1";
 const FAST_TEST_RETRY_INTERVAL_MS = 8;
-const DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS = 90_000;
+const FAST_TEST_REPLY_CHANGE_WAIT_MS = 20;
+const DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS = 60_000;
 const MAX_TIMER_SAFE_TIMEOUT_MS = 2_147_000_000;
 const GATEWAY_TIMEOUT_PATTERN = /gateway timeout/i;
 const continuationGuardLog = createSubsystemLogger("continuation/guard");
@@ -1096,7 +1097,11 @@ function buildAnnounceReplyInstruction(params: {
   requesterIsSubagent: boolean;
   announceType: SubagentAnnounceType;
   expectsCompletionMessage?: boolean;
+  silentEnrichment?: boolean;
 }): string {
+  if (params.silentEnrichment) {
+    return `This is a silent enrichment return from a background ${params.announceType}. Absorb the context into your working knowledge — do NOT send a user-facing message. Reply ONLY: ${SILENT_REPLY_TOKEN}`;
+  }
   if (params.requesterIsSubagent) {
     return `Convert this completion into a concise internal orchestration update for your parent agent in your own words. Keep this internal context private (don't mention system/log/stats/session details or announce type). If this result is duplicate or no update is needed, reply ONLY: ${SILENT_REPLY_TOKEN}.`;
   }
@@ -1381,6 +1386,15 @@ export async function runSubagentAnnounceFlow(params: {
       }
     }
 
+    if (requesterDepth >= 1 && reply?.trim()) {
+      const minReplyChangeWaitMs = FAST_TEST_MODE ? FAST_TEST_REPLY_CHANGE_WAIT_MS : 250;
+      reply = await waitForSubagentOutputChange({
+        sessionKey: params.childSessionKey,
+        baselineReply: reply,
+        maxWaitMs: Math.max(minReplyChangeWaitMs, Math.min(params.timeoutMs, 2_000)),
+      });
+    }
+
     const announceId = buildAnnounceIdFromChildRun({
       childSessionKey: params.childSessionKey,
       childRunId: params.childRunId,
@@ -1662,6 +1676,7 @@ export async function runSubagentAnnounceFlow(params: {
       requesterIsSubagent,
       announceType,
       expectsCompletionMessage,
+      silentEnrichment: params.silentAnnounce === true,
     });
     const statsLine = await buildCompactAnnounceStatsLine({
       sessionKey: params.childSessionKey,

@@ -32,12 +32,11 @@ export function checkContextPressure(
   const { sessionEntry, sessionKey, contextPressureThreshold, contextWindowTokens } = params;
 
   // Guard: feature disabled or no usable data.
-  // Note: !contextPressureThreshold is intentionally falsy for 0.0 — a threshold of 0%
-  // ("fire on empty session") is not a useful configuration. Zod validates min(0).max(1).
+  // Zod rejects 0 because "fire on empty session" is not a useful configuration.
   // Negative totalTokens (data corruption) produces a negative ratio which falls below
   // all band thresholds → band = 0 → no event. Safe by arithmetic, not by explicit guard.
   if (
-    !contextPressureThreshold ||
+    contextPressureThreshold == null ||
     contextWindowTokens <= 0 ||
     sessionEntry.totalTokens == null ||
     sessionEntry.totalTokens <= 0 ||
