@@ -10,6 +10,10 @@ const mocked = vi.hoisted(() => ({
   ),
   generationState: new Map<string, number>(),
   setDelegatePendingMock: vi.fn(),
+  countActiveDescendantRunsMock: vi.fn(() => 0),
+  countPendingDescendantRunsMock: vi.fn(() => 0),
+  isSubagentSessionRunActiveMock: vi.fn(() => true),
+  resolveRequesterForChildSessionMock: vi.fn(() => null),
 }));
 
 let sessionStore: Record<string, Record<string, unknown>> = {};
@@ -93,11 +97,14 @@ vi.mock("./pi-embedded.js", () => ({
 }));
 
 vi.mock("./subagent-registry.js", () => ({
-  countActiveDescendantRuns: () => 0,
-  countPendingDescendantRuns: () => 0,
+  countActiveDescendantRuns: (...args: unknown[]) => mocked.countActiveDescendantRunsMock(...args),
+  countPendingDescendantRuns: (...args: unknown[]) =>
+    mocked.countPendingDescendantRunsMock(...args),
   countPendingDescendantRunsExcludingRun: () => 0,
-  isSubagentSessionRunActive: () => true,
-  resolveRequesterForChildSession: () => null,
+  isSubagentSessionRunActive: (...args: unknown[]) =>
+    mocked.isSubagentSessionRunActiveMock(...args),
+  resolveRequesterForChildSession: (...args: unknown[]) =>
+    mocked.resolveRequesterForChildSessionMock(...args),
 }));
 
 vi.mock("../plugins/hook-runner-global.js", () => ({
@@ -121,6 +128,10 @@ describe("subagent announce continuation chaining", () => {
     mocked.readLatestAssistantReplyMock.mockReset().mockResolvedValue("raw subagent reply");
     mocked.generationState.clear();
     mocked.setDelegatePendingMock.mockReset();
+    mocked.countActiveDescendantRunsMock.mockReset().mockReturnValue(0);
+    mocked.countPendingDescendantRunsMock.mockReset().mockReturnValue(0);
+    mocked.isSubagentSessionRunActiveMock.mockReset().mockReturnValue(true);
+    mocked.resolveRequesterForChildSessionMock.mockReset().mockReturnValue(null);
     sessionStore = {
       "agent:main:main": {
         sessionId: "parent-session",
@@ -151,6 +162,8 @@ describe("subagent announce continuation chaining", () => {
     childTaskPrefix: string;
     reply: string;
     maxChainLength?: number;
+    costCapTokens?: number;
+    requesterSessionKey?: string;
   }) {
     sessionStore[params.childSessionKey] = {
       sessionId: `${params.childSessionKey}-session`,
@@ -165,6 +178,21 @@ describe("subagent announce continuation chaining", () => {
             continuation: {
               ...configOverride.agents?.defaults?.continuation,
               maxChainLength: params.maxChainLength,
+              ...(typeof params.costCapTokens === "number"
+                ? { costCapTokens: params.costCapTokens }
+                : {}),
+            },
+          },
+        },
+      };
+    } else if (typeof params.costCapTokens === "number") {
+      configOverride = {
+        ...configOverride,
+        agents: {
+          defaults: {
+            continuation: {
+              ...configOverride.agents?.defaults?.continuation,
+              costCapTokens: params.costCapTokens,
             },
           },
         },
@@ -174,7 +202,7 @@ describe("subagent announce continuation chaining", () => {
     return await runSubagentAnnounceFlow({
       childSessionKey: params.childSessionKey,
       childRunId: `${params.childSessionKey}-run`,
-      requesterSessionKey: "agent:main:main",
+      requesterSessionKey: params.requesterSessionKey ?? "agent:main:main",
       requesterDisplayKey: "main",
       requesterOrigin: { channel: "discord", to: "channel:123" },
       task: `${params.childTaskPrefix} delegated task`,
@@ -187,6 +215,20 @@ describe("subagent announce continuation chaining", () => {
       outcome: { status: "ok" },
     });
   }
+
+  it("seeds bracket-origin delegates with hop 1 when no prior chain-hop prefix exists", async () => {
+    await runContinuationAnnounce({
+      childSessionKey: "agent:main:subagent:worker-origin",
+      childTaskPrefix: "",
+      reply: "step complete\n[[CONTINUE_DELEGATE: do step 1]]",
+      maxChainLength: 2,
+    });
+
+    expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(mocked.spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      task: expect.stringContaining("[continuation:chain-hop:1]"),
+    });
+  });
 
   it("propagates canonical chain-hop metadata for the next spawned child", async () => {
     await runContinuationAnnounce({
@@ -202,7 +244,7 @@ describe("subagent announce continuation chaining", () => {
     });
   });
 
-  it("rejects the hop after the configured maxChainLength is reached", async () => {
+  it("rejects the next hop when the current shard already sits at maxChainLength", async () => {
     await runContinuationAnnounce({
       childSessionKey: "agent:main:subagent:worker-2",
       childTaskPrefix: "[continuation:chain-hop:2]",
@@ -210,6 +252,50 @@ describe("subagent announce continuation chaining", () => {
       maxChainLength: 2,
     });
 
+    expect(mocked.spawnSubagentDirectMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects chain-hop fan-out when parent chain tokens already exceed costCapTokens", async () => {
+    sessionStore["agent:main:main"] = {
+      sessionId: "parent-session",
+      continuationChainTokens: 11,
+    };
+
+    await runContinuationAnnounce({
+      childSessionKey: "agent:main:subagent:worker-cost-cap",
+      childTaskPrefix: "[continuation:chain-hop:1]",
+      reply: "step complete\n[[CONTINUE_DELEGATE: do costed step]]",
+      maxChainLength: 3,
+      costCapTokens: 10,
+    });
+
+    expect(mocked.spawnSubagentDirectMock).not.toHaveBeenCalled();
+  });
+
+  it("reroutes to the live grandparent before applying chain cost guards", async () => {
+    sessionStore["agent:main:main"] = {
+      sessionId: "grandparent-session",
+      continuationChainTokens: 11,
+    };
+    sessionStore["agent:main:subagent:parent"] = {};
+    mocked.isSubagentSessionRunActiveMock.mockReturnValue(false);
+    mocked.resolveRequesterForChildSessionMock.mockReturnValue({
+      requesterSessionKey: "agent:main:main",
+      requesterOrigin: { channel: "discord", to: "channel:999" },
+    });
+
+    await runContinuationAnnounce({
+      childSessionKey: "agent:main:subagent:worker-grandchild",
+      childTaskPrefix: "[continuation:chain-hop:1]",
+      reply: "step complete\n[[CONTINUE_DELEGATE: do rerouted step]]",
+      maxChainLength: 3,
+      costCapTokens: 10,
+      requesterSessionKey: "agent:main:subagent:parent",
+    });
+
+    expect(mocked.resolveRequesterForChildSessionMock).toHaveBeenCalledWith(
+      "agent:main:subagent:parent",
+    );
     expect(mocked.spawnSubagentDirectMock).not.toHaveBeenCalled();
   });
 
