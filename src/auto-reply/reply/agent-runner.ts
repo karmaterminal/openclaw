@@ -386,7 +386,11 @@ export async function runReplyAgent(params: {
     // Regular heartbeats (including periodic polls) must NOT preempt pending
     // continuation timers; only real user/external messages should.
     const hadActiveChain = (activeSessionEntry?.continuationChainCount ?? 0) > 0;
-    if (activeSessionEntry && hadActiveChain) {
+    const hadStaleTokens =
+      !hadActiveChain &&
+      typeof activeSessionEntry?.continuationChainTokens === "number" &&
+      activeSessionEntry.continuationChainTokens > 0;
+    if (activeSessionEntry && (hadActiveChain || hadStaleTokens)) {
       activeSessionEntry.continuationChainCount = 0;
       activeSessionEntry.continuationChainStartedAt = undefined;
       activeSessionEntry.continuationChainTokens = undefined;
@@ -398,7 +402,7 @@ export async function runReplyAgent(params: {
     if (hadActiveChain || hasGenerationEntry) {
       bumpContinuationGeneration(sessionKey);
     }
-    if (hadActiveChain && activeSessionStore && activeSessionEntry) {
+    if ((hadActiveChain || hadStaleTokens) && activeSessionStore && activeSessionEntry) {
       activeSessionStore[sessionKey] = {
         ...activeSessionEntry,
         continuationChainCount: 0,
@@ -408,7 +412,7 @@ export async function runReplyAgent(params: {
     }
     // Persist reset to disk only when a chain was actually active — avoids
     // unnecessary lock + disk write on every normal message.
-    if (hadActiveChain && storePath) {
+    if ((hadActiveChain || hadStaleTokens) && storePath) {
       try {
         await updateSessionStore(storePath, (store) => {
           const entry = store[sessionKey];
@@ -1392,8 +1396,12 @@ export async function runReplyAgent(params: {
       if (toolDelegates.length > 0) {
         const { maxChainLength, minDelayMs, maxDelayMs, costCapTokens, maxDelegatesPerTurn } =
           resolveContinuationRuntimeConfig(cfg);
-        const delegatesWithinLimit = toolDelegates.slice(0, maxDelegatesPerTurn);
-        const delegatesOverLimit = toolDelegates.slice(maxDelegatesPerTurn);
+        // If a bracket-signal delegate was already spawned this turn, count it
+        // against the per-turn cap so mixed-signal turns cannot exceed the limit.
+        const bracketDelegateCount = continuationSignal?.kind === "delegate" ? 1 : 0;
+        const remainingBudget = Math.max(0, maxDelegatesPerTurn - bracketDelegateCount);
+        const delegatesWithinLimit = toolDelegates.slice(0, remainingBudget);
+        const delegatesOverLimit = toolDelegates.slice(remainingBudget);
         for (const droppedDelegate of delegatesOverLimit) {
           enqueueSystemEvent(
             `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${droppedDelegate.task}`,

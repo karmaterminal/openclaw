@@ -127,15 +127,6 @@ export async function drainFormattedSystemEvents(params: {
     .join("\n");
 }
 
-export async function drainFormattedSystemEvents(params: {
-  cfg: OpenClawConfig;
-  sessionKey: string;
-  isMainSession: boolean;
-  isNewSession: boolean;
-}): Promise<string | undefined> {
-  return await buildQueuedSystemPrompt(params);
-}
-
 export async function ensureSkillSnapshot(params: {
   sessionEntry?: SessionEntry;
   sessionStore?: Record<string, SessionEntry>;
