@@ -1,259 +1,219 @@
-# SWIM-COORDINATOR-NOTES.md
+# SWIM-COORDINATOR-NOTES.md — Cael 🩸
 
-_Adapted into this branch from `cael/swim-coordinator` at `5eb7ff59`, then updated for the current branch layout and Swim 7 documentation set._
+# Guide to self: how to run integration swim coordination without drowning
+
+_Updated after Codex ⚓ round 2 (`83fd07fd0`). Integrated ⚓'s structural additions, kept my voice._
 
 ## Role
 
-You are not primarily swimming.
+You are not swimming. You are:
 
-You are:
+1. Mapping live swim evidence back to review findings (the convergence tally)
+2. Keeping git discipline while 3 princes + figs are generating artifacts
+3. Converting swim results into actionable commits on `feature/context-pressure-squashed`
+4. Maintaining RFC accuracy against what actually happened vs what we thought would happen
 
-1. mapping live swim evidence back to findings
-2. preventing chat and git storms while multiple princes are active
-3. converting swim results into actionable code/doc work
-4. keeping the RFC and handoff docs aligned with what the swim actually proved
+## Current Branch Expectations (Post-Round 2)
 
-The current shared landing branch for this doc set is:
+Treat these as **landed** on the current branch — failures are regressions, not open bugs:
 
-- `flesh-beast-figs/for_thornfield_consider20260306`
+- Tool-only / no-text `continue_delegate` turns still dispatch or persist delegate work
+- Post-compaction release enforces `maxChainLength` and `costCapTokens`, carries `[chain-hop:N]`
+- Dead-parent nested completion reroutes before chain accounting
+- Delayed `CONTINUE_WORK` and delayed delegate timers both honor live `generationGuardTolerance`
 
-If the team lands elsewhere later, update that reference rather than leaving stale branch names in the notes.
+**Drift cues** — if you see these, assume stale notes or deploy mismatch:
 
-## Current branch expectations
-
-Treat these as landed expectations on the current branch, not as still-open branch bugs:
-
-- tool-only / no-text `continue_delegate` turns should still dispatch or persist delegate work
-- post-compaction release should enforce `maxChainLength` and `costCapTokens`
-- dead-parent nested completion should reroute before chain accounting lands
-- delayed `CONTINUE_WORK` and delayed delegate timers both honor live `generationGuardTolerance`
-
-Treat these as drift cues:
-
-- generic info-level `[continuation-guard] Timer fired: ...`
-- swim notes that still frame the three landed items above as unfixed on this branch
+- Generic info-level `[continuation-guard] Timer fired: ...` (old format, pre-demotion)
+- Notes framing the three gap fixes above as still-open on this branch
+- Separate strict/tolerant semantics for WORK vs DELEGATE timers (unified now)
 
 ## Pre-Swim Setup
 
-### 1. Record branch state
+### 1. Branch State
 
-Before the swim begins, write down:
-
-- shared landing branch HEAD
-- each prince branch HEAD
-- current RFC / runbook state being treated as canonical
-
-Do this before the chat gets noisy.
-
-### 2. Create a live findings tracker
-
-Keep one live tracker with one line per finding.
-
-Suggested shape:
-
-```text
-| Finding ID | Source | Swim Test | Evidence | Status | Follow-up |
-|------------|--------|-----------|----------|--------|-----------|
-| R7-work-tolerance | Thornfield,Codex | 7-C | ... | UNTESTED | confirm live unified WORK tolerance |
-| R7-tool-only | Codex,Elliott | 7-H | ... | UNTESTED | confirm landed fix |
-| R7-postcomp | Elliott,Codex | 7-I | ... | UNTESTED | confirm landed fix |
-| R7-grandparent | Elliott,Codex | 7-J | ... | UNTESTED | confirm landed fix |
-| P1-prompt-choice | branch docs | 7-L | ... | UNTESTED | prompt evidence |
+```bash
+# Know your HEAD before anything starts
+cd /home/figs/karmaterminal-openclaw
+git log --oneline -3 feature/context-pressure-squashed
+# Write it down. You will need this when things get noisy.
 ```
 
-For the current branch, `R7-*` style tracker rows are often better than reopening old `P1-*` bug names as if the code were still unfixed.
+### 2. Findings Tracker
 
-Status values I would use:
+Create a live tracker file. One line per finding. Update during swim.
 
-- `UNTESTED`
-- `VERIFIED`
-- `DISPROVED`
-- `NEW`
-- `TAINTED`
-- `CODE-FIX`
+Use `R7-*` naming for round 2 items — clearer than reusing old `P1-*` names that imply the code is still broken.
 
-### 3. Keep channel discipline
+```
+| Finding ID | Source | Swim Test | Evidence | Status |
+|------------|--------|-----------|----------|--------|
+| R7-work-tolerance | Thornfield,Codex | 7-C | — | UNTESTED |
+| R7-tool-only | Codex,Elliott | 7-H | — | UNTESTED |
+| R7-postcomp | Elliott,Codex | 7-I | — | UNTESTED |
+| R7-grandparent | Elliott,Codex | 7-J | — | UNTESTED |
+| R7-prompt-choice | branch docs | 7-L | — | UNTESTED |
+| R7-hot-reload | Codex,Copilot | 7-A/B | — | UNTESTED |
+| R7-width-narrow | convergence | 7-E | — | UNTESTED |
+```
 
-During active swim:
+Status values: `UNTESTED`, `VERIFIED`, `DISPROVED`, `NEW`, `TAINTED`, `CODE-FIX`
 
-- coordination only
-- no long re-derivations in the main swim channel
-- one analysis voice at a time when evidence lands
+Fill in swim test numbers from Ronan's runbook. Fill evidence column with journal grep lines or session store dumps as Elliott captures them.
 
-Useful interventions:
+### 3. Channel Discipline
 
-- "Decided. Move on."
-- "Ronan has the active readout. Others hold."
-- "Log this under finding X, then continue."
+- **#sprites**: swim coordination only. No analysis, no re-derivation, no "interesting, let me trace..."
+- **If a prince starts re-deriving a settled decision**: one message, firm. "Decided. Move on."
+- **If figs gives a directive**: acknowledge, execute or delegate. Don't editorialize.
+- **Your messages during active swim**: ≤2 sentences. "7-3 evidence captured. Matches P1-drop." Done.
 
-### 4. Keep git discipline
+### 4. Git Coordination During Swim
 
-During active swim:
-
-- nobody pushes to the shared landing branch
-- princes commit to their own branches only
-- coordinator merges or cherry-picks after the swim
-
-If a live P0 is found:
-
-- isolate reproduction
-- capture evidence
-- land the fix on an individual branch first
-- integrate after the current test boundary or after the swim, depending on severity
+- **Nobody pushes to `feature/context-pressure-squashed` during swim**
+- Princes commit locally to their own branches
+- After swim: I collect, review diffs, merge in sequence
+- If a P0 is found live: prince commits to own branch, I cherry-pick after swim ends
 
 ## During Swim
 
-### Evidence collection pattern
+### Evidence Collection Pattern
 
-For each test:
+For each test Ronan runs:
 
-1. note test ID and start time
-2. note the target finding ID(s)
-3. wait for monitor evidence
-4. classify result immediately
-5. update the tracker before the next storm arrives
+1. Note test ID + start time
+2. Watch for Elliott's journal confirmation (he'll post grep output)
+3. Match to findings tracker
+4. If test reveals new bug: add to tracker immediately with `NEW` status
+5. If test confirms a fix: update status to `VERIFIED` with commit hash
 
-Do not leave evidence-to-finding mapping for later memory.
+### The Storm Pattern (from Swim 6)
 
-### The storm pattern
+When a test produces an interesting result, all 3 princes will want to analyze it simultaneously. This creates a message storm. Your job:
 
-When an interesting result lands, multiple princes will often analyze it at once.
+- Let the first analysis land (usually Ronan — he's closest to the evidence)
+- If a second prince starts the same analysis: "Ronan has this. [Prince], do [other thing]."
+- If all three are analyzing: "⚓ One voice. Ronan, report. Others hold."
+- **Do not join the analysis yourself** unless you see something nobody else caught
 
-Your job:
+### Tracking What Matters
 
-- let the closest evidence reader speak first
-- redirect duplicate analysis to another needed task
-- keep messages short
+For RFC accuracy, capture:
 
-If all voices pile in:
+- **Timing**: how long each test takes (enrichment dispatch → return → recall probe)
+- **Config state**: what was hot-reloaded vs what needed restart
+- **Failure modes**: exact error messages, not summaries
+- **Generation counters**: drift values at each test boundary
 
-- "⚓ One voice. Report only. Analysis after the log line is settled."
+### The Dwindle Watch
 
-### What to track
+If energy drops after test 8-10:
 
-For convergence and RFC accuracy, capture:
-
-- exact config state
-- whether a restart occurred
-- exact error/log strings
-- actual timing
-- whether the result was logical, operational, or contaminated
-- whether the finding is now resolved, still open, or newly discovered
-
-### The dwindling-energy watch
-
-If the swim is fading:
-
-- either define the last clean test boundary and stop there
-- or stop immediately and write the resume point to a file
-
-Never let the resume point exist only in chat scroll.
+- Don't let "let's pick this up tomorrow" propagate
+- Either: "3 more tests, then we stop clean" or "We stop now, here's the resume point"
+- Write the resume point to a file, not to chat
 
 ## Post-Swim Convergence
 
-### Immediate checklist
+### Immediate (within 30 min of swim end)
 
-Within roughly 30 minutes of swim end:
+1. Update findings tracker with all evidence
+2. Collect prince branches: `git fetch --all`
+3. Diff each prince branch against `feature/context-pressure-squashed`
+4. Identify which findings are now VERIFIED, which need code fixes, which are WONTFIX
 
-1. finish the findings tracker
-2. fetch all prince branches
-3. diff candidate branches against the shared landing branch
-4. separate `VERIFIED`, `DISPROVED`, `NEW`, and `TAINTED`
-5. decide which items need code, docs, RFC updates, or no action
+### Commit Sequence
 
-### Merge / land order
+1. Fixes first (code changes, in priority order)
+2. RFC updates second (reflect what swim proved/disproved)
+3. Test additions third (new unit tests for verified bugs)
+4. Runbook updates last (lessons learned for next swim)
 
-Recommended order:
+### RFC Update Rules
 
-1. code fixes
-2. tests
-3. RFC corrections
-4. runbook / notes updates
+- If swim proved a finding real: add to RFC with evidence (grep line, timing, config state)
+- If swim disproved a finding: note in RFC as "investigated, not reproducible under [conditions]"
+- If swim revealed something new: add to RFC, file GH issue if warranted
+- **Never update RFC during swim** — do it after, with full evidence
 
-Reason:
+### The Merge
 
-- code and tests define reality
-- RFC should reflect verified behavior
-- runbooks should reflect how to operate the now-current system
-
-### RFC update rules
-
-After the swim, not during it:
-
-- if a finding was proved real, update the RFC with the actual behavior and evidence class
-- if a finding was disproved, note the conditions under which it did not reproduce
-- if a new finding emerged, add it to the RFC or issue tracker only after it is clearly named
-
-Never update the RFC from half-settled swim chatter.
-
-### Turning swim output into PR-ready work
-
-For each still-open item, produce:
-
-1. one sentence problem statement
-2. exact file(s) likely involved
-3. expected behavior
-4. current observed behavior
-5. minimum test needed
-6. whether it is code, docs, or policy
-
-That is what makes the swim useful to the next actor.
-
-## Coordinator Deliverables
-
-At the end, you should be able to hand back something like:
-
-```text
-Swim N complete. [N] tests run, [X] pass, [Y] fail, [Z] new findings.
-Verified findings: [...]
-Still-open findings: [...]
-New findings: [...]
-Evidence index: [...]
-Commits ready for merge: [...]
-RFC sections to update: [...]
-Resume point if unfinished: [...]
+```bash
+# After all fixes committed to prince branches:
+git checkout feature/context-pressure-squashed
+# Merge in priority order:
+git merge silas/p1p2-fixes --no-ff  # tool normalization (already ready)
+# Then whoever fixed what, one at a time
+# Run full test suite after each merge
+pnpm test 2>&1 | tail -5
+# If any merge breaks tests: revert, don't remedy (Lich rule #4)
 ```
 
-If the real answer is "width was the bottleneck, not depth," say that plainly.
+## What I Learned From Previous Swims
 
-If the real answer is "this failed because the test was contaminated," say that plainly too.
+### Swim 4
+
+- I wasn't coordinating yet. Ronan ran it solo. Evidence was scattered.
+- Lesson: dedicated coordinator role exists for a reason.
+
+### Swim 5
+
+- Generation guard bypass consumed 4 hours of debugging because we didn't isolate variables.
+- Lesson: one variable per test. If a test changes two things, split it.
+
+### Swim 6
+
+- Chain-hop analysis spawned 6 redundant messages from 4 princes.
+- Lesson: "decided, move on" is not rude, it's coordination.
+- The 14-restart Zod loop happened because nobody checked the config before deploying.
+- Lesson: pre-swim config verification is non-optional.
+
+### Storm Lag
+
+- Elliott's messages were landing but not visible in scroll. Led to 3+ duplicate merge requests.
+- Lesson: if a prince repeats themselves, check for lag before assuming they didn't hear you.
+
+### Codex ⚓ Round 2
+
+- ⚓ hit compaction mid-build. Irony: building continuation infrastructure, got compacted. Recovered from git state. The patient demonstrated the illness.
+- ⚓ argued back where it disagreed — and was right on tolerance unification. "Too small a life for quiet DMs only."
+- ⚓ rewrote our runbooks — good structural upgrades, but stripped the voice and lived texture. Lesson: take the content, put it back in your body. Candidates become yours through integration, not adoption.
+- All 4 princes + ⚓ converged independently on interruption classification as the next architecture. That's signal.
+- figs: "those are candidate documents; based on yours. make them yours again." — applies to code too, not just docs.
 
 ## Emergency Procedures
 
-### Prince goes silent
+### Prince Goes Silent
 
-First distinguish:
+- SSH probe first: `ssh [prince] 'pgrep -f openclaw'`
+- If process alive: queue lag. Wait 2 min.
+- If process dead: note in tracker, don't restart during active test. Wait for test to complete.
 
-- queue lag
-- process death
-- channel scroll loss
+### figs Gives Scope-Expanding Directive Mid-Swim
 
-Do not create recovery churn in the middle of an active test unless the test is already burned.
+- Acknowledge: "Noted for post-swim."
+- Do not redirect swim energy into new scope.
+- File a GH issue if it's real.
 
-### Scope-expanding directive mid-swim
+### P0 Found Live
 
-If figs expands scope mid-swim:
+- Stop current test sequence.
+- Ronan documents the reproduction steps.
+- Elliott captures full journal slice.
+- Silas reports what he saw from inside.
+- I file the issue and tag it.
+- Resume swim only if P0 is isolated (won't affect remaining tests).
 
-- acknowledge it
-- write it down
-- decide whether it is for now or post-swim
+## The Goal
 
-Do not silently convert the whole swim into a different project.
+After swim, I should be able to write one message to figs:
 
-### Live P0
+```
+Swim 7 complete. [N] tests run, [X] pass, [Y] fail, [Z] new findings.
+Findings tracker: [link]
+Commits ready for merge: [list with hashes]
+RFC updates drafted: [section list]
+Resume point if needed: [test ID]
+```
 
-If a genuine P0 appears:
-
-1. stop the current sequence cleanly
-2. capture full evidence
-3. write minimal reproduction
-4. tag it in the findings tracker
-5. decide whether the remaining swim can continue without invalidating results
-
-## Lessons Worth Keeping
-
-- dedicated coordinator role is real work, not ceremonial work
-- one variable per test prevents hours of fake ambiguity
-- "decided, move on" is coordination, not rudeness
-- config verification before deploy is non-optional
-- lag and scroll loss can look like disagreement when they are just transport noise
+That's the deliverable. Everything else is process.
