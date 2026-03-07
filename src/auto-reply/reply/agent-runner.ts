@@ -27,6 +27,7 @@ import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
   consumeStagedPostCompactionDelegates,
+  stagePostCompactionDelegate,
   consumePendingDelegates,
   pendingDelegateCount,
   stagedPostCompactionDelegateCount,
@@ -493,11 +494,15 @@ export async function runReplyAgent(params: {
     activeSessionEntry.updatedAt = updatedAt;
     activeSessionStore[sessionKey] = activeSessionEntry;
     if (storePath) {
-      await updateSessionStoreEntry({
-        storePath,
-        sessionKey,
-        update: async () => ({ updatedAt }),
-      });
+      try {
+        await updateSessionStoreEntry({
+          storePath,
+          sessionKey,
+          update: async () => ({ updatedAt }),
+        });
+      } catch (err) {
+        defaultRuntime.log(`Failed to persist session touch for ${sessionKey}: ${String(err)}`);
+      }
     }
   };
 
@@ -701,14 +706,20 @@ export async function runReplyAgent(params: {
       activeSessionEntry.updatedAt = updatedAt;
       activeSessionStore[sessionKey] = activeSessionEntry;
       if (storePath) {
-        await updateSessionStoreEntry({
-          storePath,
-          sessionKey,
-          update: async () => ({
-            groupActivationNeedsSystemIntro: false,
-            updatedAt,
-          }),
-        });
+        try {
+          await updateSessionStoreEntry({
+            storePath,
+            sessionKey,
+            update: async () => ({
+              groupActivationNeedsSystemIntro: false,
+              updatedAt,
+            }),
+          });
+        } catch (err) {
+          defaultRuntime.log(
+            `Failed to persist group activation intro state for ${sessionKey}: ${String(err)}`,
+          );
+        }
       }
     }
 
@@ -768,15 +779,21 @@ export async function runReplyAgent(params: {
         activeSessionStore[sessionKey] = fallbackStateEntry;
       }
       if (sessionKey && storePath) {
-        await updateSessionStoreEntry({
-          storePath,
-          sessionKey,
-          update: async () => ({
-            fallbackNoticeSelectedModel: fallbackTransition.nextState.selectedModel,
-            fallbackNoticeActiveModel: fallbackTransition.nextState.activeModel,
-            fallbackNoticeReason: fallbackTransition.nextState.reason,
-          }),
-        });
+        try {
+          await updateSessionStoreEntry({
+            storePath,
+            sessionKey,
+            update: async () => ({
+              fallbackNoticeSelectedModel: fallbackTransition.nextState.selectedModel,
+              fallbackNoticeActiveModel: fallbackTransition.nextState.activeModel,
+              fallbackNoticeReason: fallbackTransition.nextState.reason,
+            }),
+          });
+        } catch (err) {
+          defaultRuntime.log(
+            `Failed to persist fallback notice state for ${sessionKey}: ${String(err)}`,
+          );
+        }
       }
     }
     const cliSessionId = isCliProvider(providerUsed, cfg)
@@ -1049,7 +1066,7 @@ export async function runReplyAgent(params: {
         const compactionChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
         let dispatchedCompactionDelegates = 0;
 
-        const workspaceDir = process.cwd();
+        const workspaceDir = followupRun.run.workspaceDir ?? process.cwd();
         readPostCompactionContext(workspaceDir, cfg)
           .then((contextContent) => {
             if (contextContent) {
@@ -1122,8 +1139,10 @@ export async function runReplyAgent(params: {
               }
             })
             .catch((err) => {
+              // Re-stage so the delegate can be retried on the next compaction cycle.
+              stagePostCompactionDelegate(sessionKey, delegate);
               defaultRuntime.log(
-                `Post-compaction delegate failed for session ${sessionKey}: ${String(err)}`,
+                `Post-compaction delegate failed for session ${sessionKey} (re-staged): ${String(err)}`,
               );
             });
         }
@@ -1577,8 +1596,12 @@ export async function runReplyAgent(params: {
             delegates: stagedCompactionDelegates,
           });
         } catch (err) {
+          // Re-stage consumed delegates so they survive for the next attempt.
+          for (const delegate of stagedCompactionDelegates) {
+            stagePostCompactionDelegate(sessionKey, delegate);
+          }
           defaultRuntime.log(
-            `Failed to persist post-compaction delegates for ${sessionKey}: ${String(err)}`,
+            `Failed to persist post-compaction delegates for ${sessionKey} (re-staged ${stagedCompactionDelegates.length}): ${String(err)}`,
           );
         }
       }

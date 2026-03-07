@@ -1212,12 +1212,19 @@ async function wakeSubagentRunAfterDescendants(params: {
     return false;
   }
 
-  const { replaceSubagentRunAfterSteer } = await loadSubagentRegistryRuntime();
-  return replaceSubagentRunAfterSteer({
-    previousRunId: params.runId,
-    nextRunId: wakeRunId,
-    preserveFrozenResultFallback: true,
-  });
+  try {
+    const { replaceSubagentRunAfterSteer } = await loadSubagentRegistryRuntime();
+    return replaceSubagentRunAfterSteer({
+      previousRunId: params.runId,
+      nextRunId: wakeRunId,
+      preserveFrozenResultFallback: true,
+    });
+  } catch (err) {
+    defaultRuntime.log(
+      `[subagent-descendant-wake] Failed to persist wake reroute for ${params.runId}: ${String(err)}`,
+    );
+    return false;
+  }
 }
 
 export async function runSubagentAnnounceFlow(params: {
@@ -1538,19 +1545,26 @@ export async function runSubagentAnnounceFlow(params: {
           const parentStorePath = resolveStorePath(cfg?.session?.store, {
             agentId: parentAgentId,
           });
-          await updateSessionStore(parentStorePath, (store) => {
-            const parentEntry = store[targetRequesterSessionKey];
-            if (parentEntry) {
-              const prev =
-                typeof parentEntry.continuationChainTokens === "number"
-                  ? parentEntry.continuationChainTokens
-                  : 0;
-              parentEntry.continuationChainTokens = prev + childTokens;
-            }
-          });
-          defaultRuntime.log(
-            `[subagent-chain-hop] Accumulated ${childTokens} tokens from ${params.childSessionKey} to parent chain cost`,
-          );
+          try {
+            await updateSessionStore(parentStorePath, (store) => {
+              const parentEntry = store[targetRequesterSessionKey];
+              if (parentEntry) {
+                const prev =
+                  typeof parentEntry.continuationChainTokens === "number"
+                    ? parentEntry.continuationChainTokens
+                    : 0;
+                parentEntry.continuationChainTokens = prev + childTokens;
+              }
+            });
+            defaultRuntime.log(
+              `[subagent-chain-hop] Accumulated ${childTokens} tokens from ${params.childSessionKey} to parent chain cost`,
+            );
+          } catch (err) {
+            // Non-fatal: token accounting failure must not block announcement delivery.
+            defaultRuntime.log(
+              `[subagent-chain-hop] Failed to persist token accumulation for ${targetRequesterSessionKey}: ${String(err)}`,
+            );
+          }
         }
 
         // Check chain depth (per-chain, from child's hop index)
