@@ -6,7 +6,8 @@ import {
 import { createContinueDelegateTool } from "./continue-delegate-tool.js";
 
 // Mock config for hot-reload testing
-const loadConfigMock = vi.fn(() => ({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const loadConfigMock = vi.fn((): any => ({
   agents: { defaults: { continuation: { maxDelegatesPerTurn: 5 } } },
 }));
 
@@ -15,9 +16,8 @@ vi.mock("../../config/config.js", () => ({
 }));
 
 /** Extract the JSON payload from a tool result. */
-function parseResult(result: {
-  content: Array<{ type: string; text: string }>;
-}): Record<string, unknown> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseResult(result: any): Record<string, unknown> {
   const textPart = result.content.find((c: { type: string }) => c.type === "text");
   return JSON.parse(textPart!.text);
 }
