@@ -1082,7 +1082,11 @@ function buildAnnounceReplyInstruction(params: {
   requesterIsSubagent: boolean;
   announceType: SubagentAnnounceType;
   expectsCompletionMessage?: boolean;
+  silentEnrichment?: boolean;
 }): string {
+  if (params.silentEnrichment) {
+    return `This is a silent enrichment return from a background ${params.announceType}. Absorb the context into your working knowledge — do NOT send a user-facing message. Reply ONLY: ${SILENT_REPLY_TOKEN}`;
+  }
   if (params.requesterIsSubagent) {
     return `Convert this completion into a concise internal orchestration update for your parent agent in your own words. Keep this internal context private (don't mention system/log/stats/session details or announce type). If this result is duplicate or no update is needed, reply ONLY: ${SILENT_REPLY_TOKEN}.`;
   }
@@ -1651,6 +1655,7 @@ export async function runSubagentAnnounceFlow(params: {
       requesterIsSubagent,
       announceType,
       expectsCompletionMessage,
+      silentEnrichment: params.silentAnnounce === true,
     });
     const statsLine = await buildCompactAnnounceStatsLine({
       sessionKey: params.childSessionKey,

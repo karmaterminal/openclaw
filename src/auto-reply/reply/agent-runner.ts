@@ -385,7 +385,13 @@ export async function runReplyAgent(params: {
     // Regular heartbeats (including periodic polls) must NOT preempt pending
     // continuation timers; only real user/external messages should.
     const hadActiveChain = (activeSessionEntry?.continuationChainCount ?? 0) > 0;
-    if (activeSessionEntry && hadActiveChain) {
+    // Also detect stale token budget from announce-side chain-hop accumulation
+    // where tokens are set without incrementing the chain count.
+    const hadStaleTokens =
+      !hadActiveChain &&
+      typeof activeSessionEntry?.continuationChainTokens === "number" &&
+      activeSessionEntry.continuationChainTokens > 0;
+    if (activeSessionEntry && (hadActiveChain || hadStaleTokens)) {
       activeSessionEntry.continuationChainCount = 0;
       activeSessionEntry.continuationChainStartedAt = undefined;
       activeSessionEntry.continuationChainTokens = undefined;
@@ -397,7 +403,7 @@ export async function runReplyAgent(params: {
     if (hadActiveChain || hasGenerationEntry) {
       bumpContinuationGeneration(sessionKey);
     }
-    if (hadActiveChain && activeSessionStore && activeSessionEntry) {
+    if ((hadActiveChain || hadStaleTokens) && activeSessionStore && activeSessionEntry) {
       activeSessionStore[sessionKey] = {
         ...activeSessionEntry,
         continuationChainCount: 0,
@@ -407,7 +413,7 @@ export async function runReplyAgent(params: {
     }
     // Persist reset to disk only when a chain was actually active — avoids
     // unnecessary lock + disk write on every normal message.
-    if (hadActiveChain && storePath) {
+    if ((hadActiveChain || hadStaleTokens) && storePath) {
       try {
         await updateSessionStore(storePath, (store) => {
           const entry = store[sessionKey];
