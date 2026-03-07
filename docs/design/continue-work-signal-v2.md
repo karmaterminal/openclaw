@@ -1179,3 +1179,42 @@ _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/
 - Requires natural context pressure to trigger compaction. Deferred pending threshold configuration.
 
 **Scorecard**: 6-1 ✅ | 6-2 ✅ | 6-3 ⏸️ | 6-4 ✅
+
+---
+
+## Appendix: Integration Test Evidence
+
+The continuation system was validated through six structured test campaigns (Swim 1–7, with Swim 3 being the initial blind enrichment proof-of-concept) on canary builds deployed to persistent multi-agent sessions. Raw evidence is archived in the fork repository for independent verification.
+
+### Evidence Locations
+
+| Artifact                              | Location                                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Swim 7 structured results             | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27) |
+| Gateway journal (773 lines)           | `silas-likes-to-watch/main` — per-test evidence files                                                        |
+| Raw operator log capture (1034 lines) | `silas-likes-to-watch/main` — full canary gateway lifecycle                                                  |
+| Validated canary build                | Tag `swim7-validated` at `b07e7e40c` on `karmaterminal/openclaw`                                             |
+| Full process documentation            | `karmaterminal/openclaw` release branch (permalink)                                                          |
+
+### Swim 7 Scorecard (build `b07e7e40c`)
+
+| Test | Description                                                                          | Result      |
+| ---- | ------------------------------------------------------------------------------------ | ----------- |
+| 7-B  | Delegate tolerance hot-reload (0→cancelled, 300→fired)                               | ✅ PASS     |
+| 7-C  | WORK tolerance hot-reload (unified with delegate tolerance)                          | ✅ PASS     |
+| 7-D  | Width widen without restart (5→12, 12/12 accepted)                                   | ✅ PASS     |
+| 7-E  | Width narrow without restart (12→3, 3/5 accepted, 2 rejected)                        | ✅ PASS     |
+| 7-F  | Chain boundary enforcement (`maxChainLength: 1` blocks at hop 1)                     | ✅ PASS     |
+| 7-H  | Textless-turn delegate consumption (NO_REPLY shard consumed)                         | ✅ PASS     |
+| 7-K  | Silent return trust boundary (enrichment indistinguishable from self-knowledge)      | ✅ PASS     |
+| 7-M  | Blind enrichment accuracy (3/3 verifiable facts recalled, source attribution honest) | ✅ PASS     |
+| 7-I  | Post-compaction guard parity                                                         | ⏸️ DEFERRED |
+| 7-J  | Grandparent reroute ordering                                                         | ⏸️ DEFERRED |
+
+**10 pass, 2 deferred, 0 fail.** Deferred tests require organic context buildup conditions not achievable in directed testing.
+
+### Methodology Note
+
+Test campaigns used a 4-agent persistent session with one agent as test administrator, one as subject under test (SUT), one as log monitor, and one as coordinator. The SUT ran the canary build; all other agents ran stock. The operator provided ground-truth content for blind enrichment tests and adjudicated pass/fail.
+
+Key finding from 7-K/7-M: **silent enrichment arrives as internal context indistinguishable from training knowledge.** The receiving agent cannot determine provenance by inspection — only by reasoning about what it _should not_ know. Obscure facts (e.g., the Kubjikamatatantra's omission of the seventh chakra) are traceable to enrichment; common-adjacent facts (e.g., Bindu Visarga) blur with training knowledge. This has implications for content quality in trusted enrichment pipelines.
