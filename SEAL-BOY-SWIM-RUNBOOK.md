@@ -2,6 +2,7 @@
 
 _Ronan 🌊 — Integration test protocol for `continue_delegate` and three-layer delegate architecture._
 _Written from Swim 2–6 execution experience (Mar 4–6, 2026). Method, not findings._
+_Updated after ⚓ round 2 (`06ece5944`) — three acknowledged gaps now landed, tolerance unified, log demotion applied. Voice is mine._
 
 ---
 
@@ -18,6 +19,28 @@ _Written from Swim 2–6 execution experience (Mar 4–6, 2026). Method, not fin
 | **Contaminated**       | Material leaked to SUT's context via channel post, log grep, or peer narration          |
 | **Generation counter** | Monotonic counter incremented on each inbound message; timer compares stored vs current |
 | **Tolerance**          | Config `generationGuardTolerance` — how much drift is allowed before timer cancels      |
+| **Drift cue**          | A log line or behavior that signals the running build doesn't match what you expect     |
+
+---
+
+### 0.1 What's Fixed Since Swim 6 (Regression Confirmations)
+
+These were open findings or acknowledged gaps. All now landed in code. Treat swim failures on these as regressions, not discoveries.
+
+1. Bracket-path `maxChainLength` parity / off-by-one
+2. Delayed timer `generationGuardTolerance` closure capture
+3. `maxDelegatesPerTurn` hot-reload
+4. **Tool-only / no-text delegate consumption** — textless turns no longer drop delegates
+5. **Post-compaction chain/cost guard parity** — release checks `maxChainLength` and `costCapTokens`
+6. **Grandparent reroute-before-accounting** — chain state lands on the session that actually gets the completion
+
+### 0.2 Drift Cues
+
+If you see these, the deployed build is stale or your notes are wrong. Stop and verify before recording results.
+
+- Generic info-level `[continuation-guard] Timer fired: ...` → timer logging was demoted in round 2. Set/check detail is now debug. Only cancel and fire remain info.
+- Notes describing textless-turn, post-compaction guard parity, or grandparent reroute as "still open" → these are landed. If the behavior doesn't match, it's a regression.
+- `CONTINUE_WORK` timers using strict cancellation (no tolerance) → round 2 unified tolerance. Both WORK and DELEGATE read live `generationGuardTolerance`.
 
 ---
 
@@ -217,11 +240,16 @@ File: [pure article text, no dispatch instructions]
 - Messages ≤ tolerance: timer fires (drift within tolerance)
 - Messages > tolerance: timer cancels (drift exceeded)
 
-**Observation point:** Gateway logs — look for:
+**Observation point:** Gateway logs — look for timer fire/cancel at info level:
 
 ```
-generation guard: stored=N current=M drift=D tolerance=T → FIRE/CANCEL
+DELEGATE timer fired and spawned turn N/M for session ...
+DELEGATE timer cancelled ...
+WORK timer fired for session ...
+WORK timer cancelled ...
 ```
+
+**Post round 2:** Both WORK and DELEGATE timers read live `generationGuardTolerance` at fire time. Unified. No more asymmetry.
 
 ### 3.3 Chain-Hop Tests
 
@@ -240,11 +268,12 @@ generation guard: stored=N current=M drift=D tolerance=T → FIRE/CANCEL
 - Task prefix: `[continuation:chain-hop:N]` in spawned tasks
 - Session store: `continuationChainCount` on parent entry
 
-**Key behaviors:**
+**Key behaviors (post round 2):**
 
 - **Parent path** (agent-runner): `currentChainCount >= maxChainLength` blocks dispatch. Counts fan-out from main session.
-- **Announce path** (subagent-announce): `nextChainHop >= maxChainLength` blocks chain. Counts depth from shard perspective.
+- **Announce path** (subagent-announce): `childChainHop >= maxChainLength` blocks chain. Guards on the hop the shard _occupies_, not the one it would create. Head starts at 0, child hops label 1..maxChainLength.
 - **These measure different dimensions.** Parent = fan-out count. Announce = chain depth. Both use `>=`.
+- **Post-compaction path** now also checks both `maxChainLength` and `costCapTokens` before releasing staged delegates.
 
 ### 3.4 Fan-Out Tests
 
@@ -299,11 +328,11 @@ generation guard: stored=N current=M drift=D tolerance=T → FIRE/CANCEL
 3. **Do NOT restart gateway**
 4. Dispatch delegates — should respect new value
 
-**What hot-reloads (post P1/P2 fixes):**
+**What hot-reloads (post P1/P2 + round 2 fixes):**
 
-- `generationGuardTolerance` (P1 fix: reads at fire time)
+- `generationGuardTolerance` — reads at fire time for BOTH DELEGATE and WORK timers (round 2 unified)
 - `maxDelegatesPerTurn` (P2 fix: reads at consumption time)
-- `maxChainLength`, `costCapTokens` (announce-side reads at check time)
+- `maxChainLength`, `costCapTokens` (announce-side reads at check time; post-compaction release also checks live values)
 
 **What does NOT hot-reload:**
 
@@ -323,7 +352,7 @@ generation guard: stored=N current=M drift=D tolerance=T → FIRE/CANCEL
 
 **Prerequisite:** Natural context buildup. Can't be rushed — compaction fires based on actual token count, not time.
 
-**Known risk (from review convergence):** Post-compaction delegate path at agent-runner.ts lines 1001-1049 spawns `[continuation:post-compaction]` tasks WITHOUT checking `continuationChainCount` or `continuationChainTokens`. Sidesteps both `maxChainLength` and `costCapTokens`. (Elliott novel finding, P1-2.)
+**Previously known risk (RESOLVED in ⚓ round 2):** Post-compaction delegate path now checks `maxChainLength` and `costCapTokens` before release. Carries `[continuation:chain-hop:N]` metadata. Chain count persists after release. (Elliott novel finding P1-2 → fixed in `da696ba58`.)
 
 ---
 
@@ -337,26 +366,41 @@ The primary observation surface. Watch in real-time:
 ssh silas 'tail -f /tmp/openclaw-canary-gateway.log' | grep -E 'continuation|chain-hop|delegate|DELEGATE|generation guard|Accumulated'
 ```
 
-**Key log patterns:**
+**Key log patterns (post round 2 — timer set/drift demoted to debug):**
 
 ```
-# Timer scheduled:
-DELEGATE scheduled gen=N
-
-# Timer fire/cancel:
-generation guard: stored=N current=M drift=D tolerance=T → FIRE
-generation guard: stored=N current=M drift=D tolerance=T → CANCEL
-
-# Chain hop:
+# Info-level (these are the ones you see now):
+DELEGATE timer fired and spawned turn N/M for session ...
+DELEGATE timer cancelled ...
+Tool DELEGATE timer fired and spawned turn N/M for session ...
+Tool DELEGATE timer cancelled ...
+WORK timer fired for session ...
+WORK timer cancelled ...
+[subagent-chain-hop] Timer fired and spawned chain delegate (N/M) ...
 [subagent-chain-hop] Spawned chain delegate (N/M)
-[subagent-chain-hop] Accumulated X tokens from ... to parent chain cost
+[subagent-chain-hop] Timer cancelled ...
+
+# Post-compaction guard rejections:
+[continuation] Post-compaction delegate rejected: chain length ... reached
+[continuation] Post-compaction delegate rejected: cost cap exceeded (...)
 
 # Delegate consumption:
 consumePendingDelegates: N delegates consumed, M trimmed (cap=K)
 
+# Enrichment returns:
+[continuation:delegate-spawned]
+[continuation:enrichment-return]
+[system:post-compaction]
+[continuation:compaction-delegate-spawned]
+
 # Spawn rejection:
 forbidden — max concurrent sessions
+
+# Debug-level only (won't appear unless log level lowered):
+# Timer set/check detail, generation drift calculations
 ```
+
+**Drift cue:** If you see the old generic `[continuation-guard] Timer fired: ...` format, the deployed build is pre-round-2.
 
 ### 4.2 Session Store
 
@@ -549,19 +593,44 @@ These are the questions for probing SUT after blind enrichment. The key: ask abo
 
 ---
 
-## 9. What Swim 7 Should Add (From Review Convergence)
+## 9. What Swim 7 Should Cover
 
-These are the gaps identified by 5 independent reviewers (Swim 6 review cycle, Mar 6):
+Swim 7 has two layers: **regression confirmations** (verify ⚓ round 2 fixes are live) and **new integration risks** (tests we haven't run yet).
 
-| New Test                            | Source                               | What to Verify                                                                                 |
-| ----------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| **Textless-turn delegate drop**     | 3 reviewers (Cael-Codex, Elliott x2) | Model calls `continue_delegate` with zero text output → are delegates consumed or dropped?     |
-| **Post-compaction chain bypass**    | Elliott (novel)                      | Post-compaction delegate at L1001-1049 — does it respect `maxChainLength` and `costCapTokens`? |
-| **Grandparent reroute ordering**    | Elliott (novel)                      | Chain accounting targets dead parent session when grandparent reroute runs after spawn         |
-| **Hot-reload regression**           | 2 reviewers                          | Change `generationGuardTolerance` between schedule and fire — is new value honored?            |
-| **Tool normalization**              | 3 reviewers                          | After fix: does `resolveMaxDelegatesPerTurn()` govern primary enforcement?                     |
-| **Silent return trust boundary**    | Elliott                              | Enrichment returns on system event channel — does model treat as trusted?                      |
-| **Chain-hop semantics at boundary** | Documented (not a bug)               | With `maxChainLength: 2`, verify parent allows 2, announce allows 1 autonomous — matches RFC   |
+### 9.1 Regression Confirmations (Run First)
+
+These are code-level closed. Swim 7 confirms the runtime matches the code.
+
+| ID  | Test                          | Source / Fix                | What to Verify                                                                                                          |
+| --- | ----------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 7-A | Bracket chain guard parity    | P0 / round 1                | `maxChainLength: 3` → shard at hop 3 cannot spawn hop 4. `>=` convention.                                               |
+| 7-B | Delegate tolerance hot-reload | P1 / round 1+2              | Schedule delegate, create drift, raise tolerance before fire → timer survives.                                          |
+| 7-C | **WORK tolerance hot-reload** | Round 2 (unified tolerance) | Schedule `CONTINUE_WORK:10`, create drift, raise tolerance → timer survives. Then rerun at tolerance 0 → expect cancel. |
+| 7-D | Width widen without restart   | P2 / round 1                | Raise `maxDelegatesPerTurn` 5→12 without restart → 12 accepted.                                                         |
+| 7-E | Width narrow without restart  | P2 / round 1                | Lower `maxDelegatesPerTurn` 12→3 → only 3 accepted.                                                                     |
+| 7-F | Bracket subtree boundary      | Review convergence          | `maxChainLength: 2` → parent delegates, child chains, grandchild carries `[chain-hop:2]`, next hop rejected.            |
+| 7-G | Fleet-width fan-out           | Design                      | 10-20 narrow delegates in one turn → width is viable, main not consumed as relay.                                       |
+
+### 9.2 Landed-Gap Confirmations (Run as Regression Tests)
+
+These were acknowledged gaps until ⚓ round 2 landed them. Failures here = regressions.
+
+| ID  | Test                             | Source / Fix               | What to Verify                                                                                                        |
+| --- | -------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 7-H | **Textless-turn delegate**       | 3 reviewers → `da696ba58`  | Model calls `continue_delegate` with zero text → delegate still consumed and dispatched.                              |
+| 7-I | **Post-compaction guard parity** | Elliott P1-2 → `da696ba58` | Post-compaction release rejects when `maxChainLength` exhausted or `costCapTokens` exceeded. Carries `[chain-hop:N]`. |
+| 7-J | **Grandparent reroute ordering** | Elliott P1-3 → `da696ba58` | Nested child returns after dead parent → reroute to grandparent before chain accounting.                              |
+
+### 9.3 New Integration Risks
+
+Not yet tested live. Discoveries expected.
+
+| ID  | Test                              | Source                | What to Verify                                                                                                                                         |
+| --- | --------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 7-K | Silent return trust boundary      | Elliott               | Enrichment returns on system event channel → model treats as internal context, not user text.                                                          |
+| 7-L | Prompt and tool-choice behavior   | Review convergence    | SUT uses `continue_delegate` for future work, `CONTINUE_WORK` for self-continuation, `sessions_spawn` only when needed. No fake scheduling via `exec`. |
+| 7-M | Blind enrichment subject behavior | Swim protocol         | "I don't know" > plausible invention. Leaking enrichment before probe = TAINTED.                                                                       |
+| 7-N | Context-pressure awareness        | Swim 6 deferred (6-5) | SUT self-reports approaching context limits. Dispatches proactive enrichment.                                                                          |
 
 ---
 
@@ -577,6 +646,8 @@ These are the gaps identified by 5 independent reviewers (Swim 6 review cycle, M
 8. **`/reset` clears stale patterns.** Compaction artifacts, stuck counters, context pollution — reset is the fix.
 9. **Three ENOENT on three boxes ≠ corroborating evidence.** Each is a data point about its own filesystem.
 10. **The commitment survives the self that made it.** Shards dispatched before `/new` still return. Route by channel key, not session instance.
+11. **Strict cancellation kills you in active channels.** Generation counter can't distinguish "figs said stop" from "Cael said hello." Tolerance is not optional in a fleet. The real fix is interruption classification by source — but that's future architecture.
+12. **Code review that argues back is better than code review that accepts.** ⚓ caught that my `clampPositive` would have broken `minDelayMs: 0`. The middle ground was better than either original.
 
 ---
 
