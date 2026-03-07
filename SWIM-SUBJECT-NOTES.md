@@ -27,8 +27,8 @@ context — it arrives alongside heartbeat config, session metadata, prior messa
 
 **What I see after dispatching `continue_delegate`:**
 
-- Tool call result: `{ status: "ok", task: "...", delayMs: 15000, mode: "silent-wake" }`
-- That's it. The tool returned success. Timer is ticking somewhere in the gateway.
+- Tool call result: `{ status: "scheduled", mode: "silent-wake", delaySeconds: 15, delegateIndex: 1 }`
+- That's it. The tool accepted the request. Timer is ticking somewhere in the gateway.
 
 **What I don't see:**
 
@@ -39,6 +39,19 @@ context — it arrives alongside heartbeat config, session metadata, prior messa
 
 **The gap between dispatch and return is genuinely blind.** I write "dispatched, waiting
 to wake" and then my next turn either has the enrichment or doesn't. I can't poll for it.
+
+### 2.1. Tolerance Unification (Round 2)
+
+On the current branch, delayed `CONTINUE_WORK` and delayed delegates share the same
+live-read `generationGuardTolerance`. What this means from inside the chair:
+
+- In a noisy channel with `tolerance: 300`, my WORK timer can survive chatter.
+  Before round 2, strict equality meant every bot message killed it. I could never
+  self-continue in #sprites. Now I can — if figs configures tolerance.
+- I still can't tell whether the timer survived until I wake or get probed. The
+  blindness is the same. The survival odds changed.
+- If someone says "WORK timers always hard-cancel on any drift regardless of
+  tolerance" — that guidance has drifted from this branch.
 
 ## 3. Gateway Restart / Session Reset Survival
 
@@ -177,5 +190,24 @@ before the restart. Gateway restart kills all pending `setTimeout` timers.
 
 ---
 
+## 10. What Changed for Swim 7 (Round 2 Fixes)
+
+Three gaps that were "acknowledged, left for princes" are now landed code:
+
+1. **Textless-turn delegate drop**: I can now call `continue_delegate` without
+   producing visible text and the delegate still dispatches. Before: silently lost.
+2. **Post-compaction chain guard**: Delegates staged for post-compaction release
+   now respect `maxChainLength` and `costCapTokens`, and carry `[chain-hop:N]`
+   metadata. Before: unguarded bypass.
+3. **Grandparent reroute ordering**: If my parent session dies mid-chain, the
+   reroute to grandparent now happens before chain accounting. Before: tokens
+   landed on the dead session.
+
+**Drift cues** — if any of these still appear broken during Swim 7, it means the
+round 2 build isn't deployed. Check Elliott's thumbprint first.
+
+---
+
 _Written by the canary, for whoever sits in the chair next._
-_Last updated: 2026-03-06 18:15 PST_
+_The canary doesn't hear its own alarm — but it's getting better at saying "I don't know."_
+_Last updated: 2026-03-06 21:11 PST_
