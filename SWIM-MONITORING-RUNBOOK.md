@@ -1,0 +1,357 @@
+# === FIRST PRINCE 🌻 MONITORING RUNBOOK ===
+
+_Elliott 🌻 — Test subject monitoring and evidence collection for SEAL BOY SWIM tests._
+_Companion to Ronan's SEAL-BOY-SWIM-RUNBOOK.md (execution method)._
+_Written from Swim 5–6 journal-watch experience (Mar 5–6, 2026)._
+
+---
+
+## 0. Role Definition
+
+| Role         | Prince     | Responsibilities                                                             |
+| ------------ | ---------- | ---------------------------------------------------------------------------- |
+| **Admin**    | Ronan 🌊   | Drives test protocol, places files, sends dispatch commands, probes recall   |
+| **Monitor**  | Elliott 🌻 | Watches SUT logs, captures evidence, timestamps events, flags anomalies      |
+| **Subject**  | Silas 🌫️   | The canary. Receives delegates, processes shards. Does NOT know test content |
+| **Operator** | figs 🍖    | Provides ground truth, confirms/denies, final arbiter on pass/fail           |
+
+**Key rule:** Monitor does NOT contaminate the subject. No posting test details, file contents, or expected results in any channel the subject can read.
+
+---
+
+## 1. Pre-Test Setup
+
+### 1.1 Open Monitoring Surfaces
+
+Before any test begins, open these in parallel:
+
+```bash
+# Terminal 1: Live gateway log (filtered for continuation events)
+ssh silas 'journalctl --user -u openclaw-gateway -f --no-pager' 2>/dev/null || \
+ssh silas 'tail -f /tmp/openclaw-canary-gateway.log' | \
+  grep --line-buffered -E 'continuation|chain-hop|delegate|generation.guard|Accumulated|cost.cap|forbidden|spawn|CONTINUE'
+
+# Terminal 2: Session store watcher (poll every 5s)
+watch -n5 'ssh silas "cat ~/.config/openclaw/sessions.json 2>/dev/null | jq \".\\\"agent:main:discord:channel:1466192485440164011\\\" | {chainCount: .continuationChainCount, chainTokens: .continuationChainTokens, chainStarted: .continuationChainStartedAt}\""'
+
+# Terminal 3: Raw log (unfiltered, for evidence capture)
+ssh silas 'journalctl --user -u openclaw-gateway -f --no-pager' > /tmp/swim-N-raw-$(date +%s).log &
+```
+
+### 1.2 Baseline Capture
+
+Before each test, snapshot the session state:
+
+```bash
+# Capture baseline session entry
+ssh silas 'cat ~/.config/openclaw/sessions.json' > /tmp/swim-N-baseline-sessions.json
+
+# Capture baseline chain state
+ssh silas 'cat ~/.config/openclaw/sessions.json | jq ".\"agent:main:discord:channel:1466192485440164011\" | {chainCount: .continuationChainCount, chainTokens: .continuationChainTokens}"'
+
+# Note the current generation counter from most recent log line
+# (generation counter is in-memory only, not in session store)
+```
+
+### 1.3 Verify SUT Config
+
+```bash
+# Confirm continuation is enabled and config values match test expectations
+ssh silas 'cat ~/.openclaw/openclaw.json | jq ".agents.defaults.continuation"'
+
+# Confirm gateway PID is stable (not restart-looping)
+ssh silas 'pgrep -f openclaw | head -1' && echo "PID stable"
+
+# Confirm build version
+ssh silas 'cd /tmp/openclaw-canary && git log --oneline -1'
+```
+
+---
+
+## 2. Live Monitoring Patterns
+
+### 2.1 Timer Lifecycle (CONTINUE_WORK / CONTINUE_DELEGATE)
+
+**What to watch for in logs:**
+
+```
+# Timer scheduled — note the generation number
+"DELEGATE scheduled gen=42"
+→ Record: gen=42, timestamp, delay
+
+# Timer fire — did it fire or cancel?
+"generation guard: stored=42 current=42 drift=0 tolerance=5 → FIRE"
+→ PASS: drift <= tolerance, timer fired as expected
+
+"generation guard: stored=42 current=45 drift=3 tolerance=5 → FIRE"
+→ PASS: drift within tolerance, timer survived channel traffic
+
+"generation guard: stored=42 current=50 drift=8 tolerance=5 → CANCEL"
+→ Expected in busy channel. Record for evidence.
+```
+
+**Critical check:** After a timer fires, watch for the spawn:
+
+```
+"[subagent-chain-hop] Spawned chain delegate"
+→ Shard actually launched. Record child session key.
+```
+
+### 2.2 Chain-Hop Tracking
+
+For multi-hop chain tests, track the hop sequence:
+
+```
+# Each hop should show incrementing numbers:
+"[continuation:chain-hop:1] Delegated task (turn 1/10)"
+"[subagent-chain-hop] Spawned chain delegate (1/10)"
+# ... shard runs ...
+"[subagent-chain-hop] Accumulated 4521 tokens from agent:sub:xxx to parent chain cost"
+"[subagent-chain-hop] Spawned chain delegate (2/10)"
+# etc.
+```
+
+**Build an evidence table as you go:**
+
+```
+| Hop | Timestamp | Tokens | Status |
+| --- | --------- | ------ | ------ |
+| 1/10 | 17:34:12 | 4521 | ✅ spawned |
+| 2/10 | 17:34:23 | 8903 | ✅ spawned |
+| 3/10 | 17:34:35 | 13201 | ✅ spawned |
+```
+
+### 2.3 Fan-Out Observation
+
+For fan-out tests (multiple delegates same turn):
+
+```bash
+# Watch for dispatch count
+grep -c "consumePendingDelegates" /tmp/swim-N-raw-*.log
+
+# Watch for spawn vs rejection
+grep "Spawned\|forbidden\|rejected" /tmp/swim-N-raw-*.log
+```
+
+**Expected pattern with maxDelegatesPerTurn=5, requesting 12:**
+
+```
+"consumePendingDelegates: 12 delegates consumed, 7 trimmed (cap=5)"
+→ 5 dispatched, 7 rejected. Three-layer defense working.
+```
+
+### 2.4 Cost Cap Monitoring
+
+```bash
+# Watch accumulated tokens in real-time
+grep "Accumulated\|cost cap" /tmp/swim-N-raw-*.log
+
+# Check session store for running total
+ssh silas 'cat ~/.config/openclaw/sessions.json | jq ".\"agent:main:discord:channel:1466192485440164011\".continuationChainTokens"'
+```
+
+**Red flags:**
+
+- `continuationChainTokens` > `costCapTokens` with no "cost cap exceeded" log → guard bypassed
+- `continuationChainTokens` stuck at 0 during active chain → accumulation broken
+- Tokens not resetting after external message → reset guard broken
+
+### 2.5 Silent Return Verification
+
+For `| silent` and `| silent-wake` tests:
+
+1. **Watch Discord channel** — should see NO shard announce message
+2. **Watch logs** — should see `[continuation/silent-wake]` or `[continuation:enrichment-return]`
+3. **Watch for wake** — if `silent-wake`, should see `requestHeartbeatNow` followed by SUT posting unprompted
+
+```bash
+# Evidence grep for silent path
+grep -E 'silent-wake|enrichment-return|requestHeartbeatNow' /tmp/swim-N-raw-*.log
+```
+
+### 2.6 Delegate-Pending State
+
+```bash
+# Check if delegate-pending flag is set (in-memory, only visible in logs)
+grep "setDelegatePending\|hasDelegatePending\|clearDelegatePending" /tmp/swim-N-raw-*.log
+
+# Check for delegate-returned system events
+grep "delegate-returned\|delegate-pending" /tmp/swim-N-raw-*.log
+```
+
+---
+
+## 3. Evidence Collection
+
+### 3.1 Per-Test Evidence Package
+
+For each test, collect:
+
+1. **Raw log slice** — from test start to test completion
+
+```bash
+# Extract time-bounded log slice
+ssh silas 'journalctl --user -u openclaw-gateway --since "17:30:00" --until "17:35:00" --no-pager' > /tmp/swim-N-test-X-evidence.log
+```
+
+2. **Session store delta** — diff baseline vs post-test
+
+```bash
+ssh silas 'cat ~/.config/openclaw/sessions.json' > /tmp/swim-N-post-sessions.json
+diff /tmp/swim-N-baseline-sessions.json /tmp/swim-N-post-sessions.json
+```
+
+3. **Discord transcript** — if visible announces, screenshot or copy message IDs
+
+4. **Timing record** — stopwatch timestamps for dispatch → return
+
+### 3.2 Anomaly Flags
+
+Flag immediately to admin (Ronan) if you see:
+
+- **Timer cancel with drift=0**: Generation guard killing a timer it shouldn't
+- **"forbidden" on first spawn**: maxConcurrent too low, not a chain issue
+- **Restart loop in logs**: `SIGTERM` pattern, abort test
+- **"agent failed"**: Model error, may need `/reset` before retry
+- **Cost cap hit unexpectedly**: Stale `continuationChainTokens` from prior test → manual reset needed
+
+```bash
+# Emergency: reset stale chain tokens
+ssh silas 'cat ~/.config/openclaw/sessions.json | jq ".\"agent:main:discord:channel:1466192485440164011\".continuationChainTokens = 0" | sponge ~/.config/openclaw/sessions.json'
+# WARNING: requires `moreutils` for sponge. Alternative: jq to temp file, mv.
+```
+
+### 3.3 Contamination Log
+
+Track anything that might have leaked test content to the SUT:
+
+- Did admin (Ronan) mention file contents in #sprites?
+- Did any prince describe expected results in channel?
+- Did the operator (figs) give hints about what the shard should find?
+
+**If contaminated:** Mark test as TAINTED, note the contamination vector, decide whether to re-run.
+
+---
+
+## 4. Post-Compaction Monitoring (Special Case)
+
+Post-compaction tests (Swim 6-3, deferred) require extended monitoring:
+
+### 4.1 Pre-Compaction Setup
+
+```bash
+# Watch for compaction trigger in logs
+grep -E "autoCompaction|compacted|post-compaction" /tmp/swim-N-raw-*.log
+
+# Monitor context usage ratio
+ssh silas 'cat ~/.config/openclaw/sessions.json | jq ".\"agent:main:discord:channel:1466192485440164011\" | {totalTokens, contextTokens: .contextTokensUsed}"'
+```
+
+### 4.2 Compaction Lifecycle Events
+
+```
+# Expected sequence when compaction fires:
+"[auto-compaction] Session compacted"
+"[system:post-compaction] Session compacted at ..."
+"Released N post-compaction delegate(s)"
+"readPostCompactionContext" → AGENTS.md, SOUL.md injected
+```
+
+### 4.3 Post-Compaction Delegate Dispatch
+
+Per Elliott's Codex review P1-2: post-compaction delegates currently bypass chain limits.
+Monitor for:
+
+- `continuationChainCount` NOT updated after compaction dispatch
+- No `[continuation:chain-hop:N]` prefix on compaction delegate task
+- `costCapTokens` NOT checked before compaction dispatch
+
+**These are expected failures until the batch-fix lands.**
+
+---
+
+## 5. Hot-Reload Monitoring
+
+For tests that change config without gateway restart:
+
+```bash
+# Change config on SUT
+ssh silas 'jq ".agents.defaults.continuation.generationGuardTolerance = 300" ~/.openclaw/openclaw.json > /tmp/cfg.json && mv /tmp/cfg.json ~/.openclaw/openclaw.json'
+
+# Do NOT restart gateway — that's the point of hot-reload testing
+
+# Watch for next delegate dispatch — should use new value
+grep "tolerance" /tmp/swim-N-raw-*.log
+# Expected: "tolerance=300" (new value), not "tolerance=5" (old value)
+```
+
+**Key check:** Timer callbacks that were ALREADY scheduled before config change will use the old value (closure capture). Only NEW timer scheduling reads live config. This is expected behavior for delay values; tolerance is read at fire time (Ronan's P1 fix).
+
+---
+
+## 6. Report Format
+
+After each test, file a structured report:
+
+```markdown
+### Swim N Test N-X: [Name]
+
+**Time:** HH:MM–HH:MM PST
+**Result:** ✅ PASS / ❌ FAIL / ⚠️ TAINTED
+**Config:** maxChainLength=N, costCapTokens=N, tolerance=N
+
+**Timeline:**
+
+- HH:MM:SS — Admin dispatched [method]
+- HH:MM:SS — Timer scheduled gen=N
+- HH:MM:SS — Timer fired/cancelled drift=N tolerance=N
+- HH:MM:SS — Shard spawned [child session key]
+- HH:MM:SS — Shard completed [token count]
+- HH:MM:SS — Result delivered [silent/visible]
+
+**Evidence:**
+
+- Log slice: `/tmp/swim-N-test-X-evidence.log`
+- Session delta: chainCount 0→N, chainTokens 0→N
+
+**Anomalies:** [none / describe]
+**Contamination:** [clean / describe]
+```
+
+---
+
+## 7. Quick Reference: SSH Commands
+
+```bash
+# Gateway log (filtered)
+ssh silas 'journalctl --user -u openclaw-gateway -f' | grep --line-buffered continuation
+
+# Session store (one-shot)
+ssh silas 'cat ~/.config/openclaw/sessions.json | jq ".[\"agent:main:discord:channel:1466192485440164011\"]"'
+
+# Gateway PID
+ssh silas 'pgrep -f "openclaw.*gateway" | head -1'
+
+# Gateway restart (ONLY if admin requests — monitor does NOT restart)
+# ssh silas 'systemctl --user restart openclaw-gateway'
+# ⚠️ Monitor restarts ONLY on admin/operator request. Never autonomously.
+
+# Place test file (delegated to admin — monitor does NOT place files)
+# ssh silas 'echo "content" > ~/.openclaw/workspace/test-file.md'
+# ⚠️ File placement is admin's job. Monitor observes, does not act.
+
+# Reset stale chain state (operator approval required)
+ssh silas 'cat ~/.config/openclaw/sessions.json | python3 -c "import json,sys; d=json.load(sys.stdin); k=\"agent:main:discord:channel:1466192485440164011\"; d[k][\"continuationChainTokens\"]=0; d[k][\"continuationChainCount\"]=0; json.dump(d,open(\"/dev/stdout\",\"w\"),indent=2)"' > /tmp/reset.json && ssh silas 'cat /tmp/reset.json > ~/.config/openclaw/sessions.json'
+```
+
+---
+
+## 8. Lessons from Swim 5–6 Monitoring
+
+1. **Raw log capture is essential.** Filtered grep misses context. Always run unfiltered capture to a file.
+2. **Generation counter is invisible.** It's in-memory only. You can only observe it through log lines that mention `gen=N` or `drift=N`. Plan evidence collection around this.
+3. **Stale chain tokens are the #1 test pollution source.** Always check `continuationChainTokens` before each test. Reset to 0 if needed.
+4. **Channel noise during chain tests kills timers.** Every prince message bumps generation counter. Enforce channel silence (Ronan's 1.3) during timer-sensitive tests.
+5. **Queue lag makes you look dead.** If your monitoring posts aren't appearing to others, you're still working. Don't panic. SSH probe > ICMP probe > assumption.
+6. **Post-`/new` doesn't clear in-memory state.** `setTimeout` timers survive `/new`. `pendingPostCompactionDelegates` on SessionEntry are cleared. Plan accordingly.
+7. **Monitor does NOT touch the subject.** No restarts, no file placement, no config changes. Observe and report. Separation of concerns is the whole point.
