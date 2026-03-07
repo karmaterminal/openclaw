@@ -1,7 +1,7 @@
 # FINDINGS.md — Continuation Feature: Outstanding Fixes & Findings
 
 _Branch: `feature/context-pressure-squashed` on `karmaterminal/openclaw`_
-_As of: 2026-03-06 15:00 PST_
+_As of: 2026-03-06 16:30 PST_
 
 ## Status Summary
 
@@ -10,15 +10,15 @@ is functionally complete and canary-validated across Swim 1-6. Three-layer archi
 (request metadata → SessionEntry → system events) landed via PR #7. 172+ continuation
 tests passing. RFC at `docs/rfcs/context-pressure-continuation.md`.
 
-**Remaining work before upstream PR**: P0 off-by-one fix (applied locally, not pushed),
-P1/P2 hot-reload fixes (Codex-produced patches ready), final squash/rebase onto upstream main.
+**Remaining work before upstream PR**: P1/P2 hot-reload fixes (prince branches in progress),
+announce-side chain guard test gap filled, final squash/rebase onto upstream main.
 
 ---
 
-## P0: `maxChainLength` off-by-one — FIXED LOCALLY
+## P0: `maxChainLength` off-by-one — ✅ FIXED at `5118e7af9`
 
-**Files**: `src/agents/subagent-announce.ts:~1399`, `src/auto-reply/reply/agent-runner.ts:~1335`
-**Status**: Fix applied in working tree, not yet committed/pushed
+**Files**: `src/agents/subagent-announce.ts:1399`, `src/auto-reply/reply/agent-runner.ts:1110,1304`
+**Status**: Committed and pushed at `5118e7af9`
 **Evidence**: Swim 6-7b — 12 shards executed with `maxChainLength: 10`
 
 ### Root Cause
@@ -36,15 +36,26 @@ Combined with tool dispatch not being counted in chain counter = off-by-two from
 
 - `maxChainLength: 10` → exactly 10 total shards execute, 11th rejected
 - `tsc --noEmit` clean (zero `src/` errors)
-- Existing agent-runner test already uses `>=` semantics
-- **No existing test for announce-side chain guard** — Codex session #3 wrote one (patch ready)
+- Existing agent-runner test already uses `>=` semantics (`agent-runner.misc.runreplyagent.test.ts:2311`)
+- Announce-side chain guard test added: `subagent-announce.chain-guard.test.ts` — 6 tests covering
+  boundary enforcement, cost cap blocking, custom maxChainLength, and bracket-started hop 0 case
+
+### Path-Dependency Gap (Codex 5.4 Finding #1)
+
+Bracket-started delegate spawns (`agent-runner.ts:1174`) emit `[continuation] Delegated task...`
+(no `[chain-hop:N]` prefix). The announce-side guard parses hop depth from `[continuation:chain-hop:N]`
+at `subagent-announce.ts:1346`. First bracket-started hop defaults to `childChainHop = 0` (correct
+for counting purposes — subsequent hops from announce get proper prefix). This means the initial
+dispatch from agent-runner and the first announce-side hop are both "hop 0 → 1" — but since the
+agent-runner path has its own `continuationChainCount` guard, enforcement is redundant and correct.
+Document this asymmetry in the RFC.
 
 ---
 
-## P1: Tolerance Closure Bug — CODEX PATCHES READY
+## P1: Tolerance Closure Bug — IN PROGRESS (prince branches)
 
-**File**: `src/auto-reply/reply/agent-runner.ts` (setTimeout callbacks)
-**Status**: 3 independent Codex implementations produced, best candidate: Ronan's `325bf22f0`
+**File**: `src/auto-reply/reply/agent-runner.ts` (setTimeout callbacks), `src/agents/subagent-announce.ts`
+**Status**: 4 prince branches from `5118e7af9`, Ronan assigned lead. Previous Codex patches as reference.
 **Evidence**: Swim 6-2 — config said `generationGuardTolerance: 300`, timer used stale value `5`
 
 ### Root Cause
@@ -62,6 +73,14 @@ hot-reloads between schedule and fire, the timer still uses the stale value. Gat
    fresh config inside setTimeout callback. 2 files, +91/-5. Simpler but less modular.
 3. **Silas**: Single-line `loadConfig()` move inside callback. Minimal but no module extraction.
 
+### WORK Timer Tolerance Asymmetry (undocumented)
+
+WORK timers (`agent-runner.ts:1249`) use strict equality (`!== generation`) with NO tolerance.
+DELEGATE timers use drift math with `generationGuardTolerance`. This asymmetry is likely
+intentional: WORK is self-continuation (should cancel on any external input), DELEGATE timers
+are fire-and-forget spawns (should survive incidental chatter in busy channels). Should be
+documented in the RFC regardless of whether it's unified.
+
 ### Test Coverage
 
 - Ronan: 3 new test files (209 lines total)
@@ -70,10 +89,10 @@ hot-reloads between schedule and fire, the timer still uses the stale value. Gat
 
 ---
 
-## P2: `maxDelegatesPerTurn` Hot-Reload — CODEX PATCHES READY
+## P2: `maxDelegatesPerTurn` Hot-Reload — IN PROGRESS (Silas)
 
-**File**: `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/reply/agent-runner.ts`
-**Status**: Codex patch ready (Cael fanout-2 + Ronan's combined commit)
+**File**: `src/agents/tools/continue-delegate-tool.ts`, `src/agents/openclaw-tools.ts`
+**Status**: Silas assigned on `silas/p1p2-fixes`. Also: type comment says default 10, runtime falls back to 5.
 **Evidence**: Swim 6-7b — set `maxDelegatesPerTurn: 10`, still enforced at `5` until restart
 
 ### Root Cause
@@ -161,16 +180,18 @@ high fan-out + same-session return = queue pressure.
 
 ## Next Steps
 
-1. Cherry-pick Ronan's `325bf22f0` onto `feature/context-pressure-squashed`
-2. Apply P0 off-by-one fix (working tree → commit)
-3. Cherry-pick Cael fanout-3 chain guard test
-4. Run full test suite (`npx vitest run`)
-5. `tsc --noEmit` verification
-6. Final squash if needed
-7. Rebase onto `upstream/main`
-8. Open upstream PR, close #33933 with supersedes note
+1. ~~Cherry-pick Ronan's `325bf22f0`~~ → Fresh P1/P2 branches from `5118e7af9` per figs directive
+2. ~~Apply P0 off-by-one fix~~ → ✅ Already at HEAD (`5118e7af9`)
+3. ~~Cherry-pick Cael fanout-3 chain guard test~~ → ✅ Fresh test written on `elliott/p1p2-walkthrough`
+4. Merge prince PRs into `feature/context-pressure-squashed` (Cael coordinates)
+5. Run full test suite (`OPENCLAW_TEST_FAST=1 npx vitest run`)
+6. `tsc --noEmit` verification
+7. Final squash if needed
+8. Rebase onto `upstream/main`
+9. Open upstream PR, close #33933 with supersedes note
 
 ---
 
 _Assembled by Cael 🩸 from Swim 6 findings, Codex fan-out results, and prince reviews._
 _Cross-verified by Silas 🌫️, Ronan 🌊, Elliott 🌻._
+_FINDINGS.md status update by Elliott 🌻 (2026-03-06 16:30 PST)._
