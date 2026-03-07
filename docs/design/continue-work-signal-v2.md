@@ -22,10 +22,10 @@ The mechanism is **volitional** — the agent elects to continue at every turn b
 ### Token Variants
 
 ```
-CONTINUE_WORK              → schedule another turn (same session, default delay)
-CONTINUE_WORK:30           → schedule another turn after 30 seconds
+CONTINUE_WORK                   → schedule another turn (same session, default delay)
+CONTINUE_WORK:30                → schedule another turn after 30 seconds
 [[CONTINUE_DELEGATE: <task>]]   → spawn sub-agent with task, result wakes parent
-DONE                       → (default) session goes inert until external event
+DONE                            → (default) session goes inert until external event
 ```
 
 ### Delegate Return Modes
@@ -33,7 +33,7 @@ DONE                       → (default) session goes inert until external event
 The `| silent` and `| silent-wake` suffixes control how delegate sub-agent completions are delivered to the parent session:
 
 ```
-[[CONTINUE_DELEGATE: task +30s]]               → normal: echo to channel + wake parent
+[[CONTINUE_DELEGATE: task +30s]]                → normal: echo to channel + wake parent
 [[CONTINUE_DELEGATE: task +30s | silent]]       → silent: no echo, no wake (passive enrichment)
 [[CONTINUE_DELEGATE: task +30s | silent-wake]]  → silent-wake: no echo, but wake parent
 ```
@@ -1189,164 +1189,6 @@ The continuation feature does not implement peer enrichment directly. It provide
 _Contributed by [karmaterminal](https://github.com/karmaterminal)_  
 _Implementation: March 2–6, 2026_  
 _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)_
-
----
-
-## Changelog (temporary — remove before upstream PR)
-
-> Working notes for RFC updates. Keyed to commits/issues. Clean before submission.
-
-### 2026-03-05 ~21:40 PST — P0-5 chain-hop counter fix
-
-- **Commit**: `fec5e4bfc` on `feature/context-pressure-squashed`
-- **What**: Chain-hop index encoded in task prefix (`[continuation:chain-hop:N]`), parsed by regex in announce handler. Replaces session-store approach that failed due to fire-and-forget write + entry-not-exists race.
-- **Why previous approaches failed**:
-  - `7cb3546c8` (parent-session counter): `agent-runner.ts` resets `continuationChainCount` on each inbound message; chain hops ARE inbound messages → counter stuck at 2
-  - `13405b669` (per-chain store write): `void updateSessionStore` + child entry doesn't exist at write time → counter stuck at 1
-- **Guard semantics**: `nextChainHop > maxChainLength` — N hops allowed, N+1 blocked
-- **Canary verified**: `maxChainLength: 3` → 3 bracket hops completed, hop 4 rejected. Journal: `(1/3)` → `(2/3)` → `(3/3)` → REJECTED.
-- **RFC impact**: Update chain tracking section to describe task-prefix mechanism. Session store is NOT the transport for per-hop metadata.
-
-### 2026-03-05 ~21:40 PST — Cost cap gap (bracket chains)
-
-- **Issue**: `karmaterminal/openclaw-bootstrap#203`
-- **What**: `costCapTokens` guard reads `continuationChainTokens` but bracket chain-hops never accumulate shard token costs back to parent. Guard is no-op for bracket path.
-- **Scope**: Works for CONTINUE_WORK path (`agent-runner.ts:939-972`) and tool-delegate path (`agent-runner.ts:1115`). Not wired for bracket chain-hop path (`subagent-announce.ts`).
-- **Goal**: Parity with `sessions_spawn` — if spawn shows cost, delegate should too.
-- **RFC impact**: Document honestly. Chain-length guard is primary recursion safety. Cost cap tracks tool-path spend; bracket chain cost tracking is follow-up.
-
-### 2026-03-05 ~21:38 PST — Canary test results (Swim 5, tests 5-0 through 5-6)
-
-- **5-0**: Generation guard PASS (P0-1 + P0-4 isDelegateWake fix)
-- **5-1**: Chain-hop bounds PARTIAL PASS (bracket reliability confirmed, shards prefer tools over brackets)
-- **5-2 to 5-5**: Chain dispatch 100% reliable, no gate (pre-fix builds)
-- **5-6**: Chain-hop enforcement PASS (`maxChainLength: 3` gated at hop 4, task-prefix encoding verified)
-- **5-7/8/9**: Cost cap scope bug — session-lifetime accumulation + `cacheRead` inflation blocked all dispatches
-- **5-10**: 10/10 with per-chain reset + cache exclusion. Cost cap no longer blocks. `maxChainLength` is proven leash.
-- **RFC impact**: Update canary validation section with Swim 5 findings. No specific test counts or build hashes per figs's review notes.
-
-### Cost cap reset vs shard completion race (discovered 5-10)
-
-- **Finding**: `continuationChainTokens` stays `NOT SET` after 10 hops. Each returning shard triggers the per-message reset (clears tokens to 0) before the next accumulation fires.
-- **Root cause**: Shard completions are delivered as inbound messages on the parent session. The per-message reset doesn't distinguish human messages from shard completions.
-- **Fix direction**: Reset should only fire for external messages, not `isDelegateWake` / shard completions. Same `hasDelegateReturned` marker used for P0-4.
-- **Current state**: `maxChainLength` is the working safety leash. Cost cap doesn't block (good) but also doesn't accumulate across bracket hops (known gap). Cost cap works correctly for CONTINUE_WORK path (single-session, no shard completions).
-- **Scope**: Follow-up issue, not blocking PR. Document as known limitation in Security Considerations.
-
-### 2026-03-06 ~00:00 PST — Swim 5-2: Blind enrichment PASS (2/2)
-
-- **What**: Two blind enrichment tests using `continue_delegate` tool with `| silent-wake` mode. Obscure Summa Theologica articles placed on filesystem via SSH. Agent dispatched shards to read files, shards returned silently, agent recalled full content on blind probing.
-- **Design finding**: Generation guard kills tool-delegate timers in multi-agent group chat. Every message from any participant bumps the generation counter. A 5-second delay window in a channel with 4 bots fails consistently — messages arriving during the window cancel the timer. Enrichment succeeded only when channel traffic paused.
-- **Design finding**: Stale `continuationChainTokens` from pre-fix builds persisted in session store and blocked new dispatches via cost cap guard. The per-message reset didn't fire because the reset guard checked `continuationChainCount > 0` (always 0 with task-prefix encoding). Manual store edit required.
-- **Proposal**: Configurable generation guard tolerance (`generationGuardTolerance: N`) — cancel only when `current - stored > N`. Default 0 preserves DM behavior. Set 3-5 for group channels.
-
-### 2026-03-06 ~00:45 PST — Generation guard tolerance SHIPPED
-
-- **Commit**: `b8b4fcb6f` on `feature/context-pressure-squashed`
-- **What**: `generationGuardTolerance: N` config — timer cancels only when `current - stored > N`. Default 0 (backward compat). Both bracket-path and tool-path timer callbacks updated.
-- **Canary**: 10/10 chain hops with tolerance=300, 4-bot channel traffic. Drift=0 at fire time.
-- **RFC impact**: Generation guard section updated. Tolerance solves the multi-agent channel problem completely.
-
-### 2026-03-06 ~01:13 PST — Cost cap bracket-chain accumulation fix
-
-- **Commit**: `a657daed5` on `feature/context-pressure-squashed`
-- **What**: Announce handler enqueues `[continuation:delegate-pending]` on parent before chain-hop spawn. Both markers present → `isDelegateWake = true` → reset skips → tokens accumulate.
-- **Root cause**: Per-message reset at `agent-runner.ts:228` fired on shard completion delivery (treated as external message). Each hop's accumulated tokens zeroed before next hop read them.
-- **Canary**: 10/10 hops, `Accumulated` log lines on every hop, ~1700 tokens total.
-
-### 2026-03-06 ~01:39 PST — Sticky silent inheritance fix
-
-- **Commits**: `1a2a5b607` (Elliott) + `f3264ccab` (Cael merge)
-- **What**: `chainSilent` ORs `params.silentAnnounce` — parent's silent flag inherits to all chain hops. Same for `chainWake` with `params.wakeOnReturn`.
-- **Why**: If shard dropped `| silent` from bracket text, next hop spawned non-silent → announced to Discord → arrived as inbound → `isDelegateWake=false` → reset fired → cost cap zeroed.
-- **Canary**: "Count to 10" chain — 10/10 hops, every one `silentAnnounce=true`, zero Discord sends. Shards had no idea they were silent.
-
-### 2026-03-06 ~04:04 PST — Three-layer continuation architecture (Cael)
-
-- **Commit**: `f1ed03b91` on `feature/context-pressure-squashed`
-- **What**: 7 files, +186/-49, 157/157 tests passing. Three layers:
-  1. `continuationTrigger` typed enum (`"work-wake" | "delegate-return"`) on request metadata — replaces `peekSystemEventEntries()` inference
-  2. `pendingPostCompactionDelegates` on `SessionEntry` — replaces in-memory Map, survives restart
-  3. System events = prompt context only, no longer drive control flow
-- **Review**: 4-prince review + 3 CLI cold-eye passes (Codex 5.3, Codex 5.4, Copilot). Prince reviews caught architecture/intent; CLI passes found all 4 real bugs.
-
-### 2026-03-06 ~05:17 PST — Swim 6: Three-layer canary validation
-
-**Build**: `3a03f4658` (three-layer surgery + cleanup). Canary on Silas (urudyne, WSL2).
-
-**6-1: Blind enrichment — PASS ✅**
-
-- Planted file (`/tmp/swim6-enrichment.txt`, Cathar heresy) via SSH. Dispatched `continue_delegate` tool with `silent-wake`. Shard read file, returned in 10s. Full recall on blind probe: Rex Mundi, 1209, Béziers, Arnaud Amalric. `continuationTrigger: "delegate-return"` metadata-driven wake confirmed.
-
-**6-2: Queue-drain resistance — PASS ✅**
-
-- Validated that `buildQueuedSystemPrompt()` draining the event queue doesn't destroy delegate-pending markers. Fixed at `38c43b486` — delegate-pending migrated to dedicated Map outside event queue.
-
-**6-4: Return-to-fresh-session — PASS ✅ (3/3 shards)**
-
-- Three `continue_delegate` shards dispatched with `tolerance=300`, then session `/new`'d. All three timers fired (drift=1, 10, 0 — all within tolerance) and shards returned to the fresh session via channel key routing. Shards confirmed: no post-compaction event, no continuationTrigger visible from inside shard, zero parent context leakage.
-- **Key finding**: Delegates are gateway-level timers (`setTimeout` in Node process), not session-level. `/new` wipes conversation but timers persist. Shard routes by session key (channel ID), not session instance. The commitment survives the self that made it.
-
-**6-3: Post-compaction — DEFERRED ⏸️**
-
-- Requires natural context pressure to trigger compaction. Deferred pending threshold configuration.
-
-**Scorecard**: 6-1 ✅ | 6-2 ✅ | 6-3 ⏸️ | 6-4 ✅
-
-### 2026-03-06 ~23:01 PST — Swim 7: Round 2 canary validation
-
-**Build**: Round 2 canary (`b07e7e40c`) on `flesh-beast-figs/for_thornfield_consider20260306`. Deployed to canary node. Includes textless-turn delegate drop fix (`hasQueuedDelegateWork`), post-compaction chain guard, grandparent reroute ordering, unified tolerance, and `clampPositiveInt` validation.
-
-**Roles**: Admin/driver, monitor (SSH log tail + live config changes), subject (SUT), coordinator (git discipline), operator (config buttons, blind content, raw log capture).
-
-**7-B: Delegate tolerance hot-reload — PASS ✅**
-
-- Phase 1: `generationGuardTolerance: 0`. Delegate dispatched, cancelled at fire time (`drift 3 > tolerance 0`). Phase 2: hot-reload to `tolerance: 300`, same channel traffic. Delegate fired through drift. Confirms tolerance reads live config at fire time, not creation time.
-
-**7-C: WORK tolerance hot-reload — PASS ✅**
-
-- `CONTINUE_WORK` timer cancelled at `tolerance: 0` (`drift 1 > tolerance 0`). Hot-reload to `tolerance: 300`. WORK timer fired 5 minutes later through ongoing channel traffic. Unified tolerance for both WORK and DELEGATE paths — generation drift is a coarse session-interruption signal, not a direct-preemption signal.
-
-**7-D: Width widen — PASS ✅**
-
-- Phase 1: `maxDelegatesPerTurn: 5`. Dispatched 5 delegates → 5/5 accepted and returned. Phase 2: hot-reload to `12`. Dispatched 12 delegates → 12/12 accepted. All returned with shard reports.
-- **Finding**: Shards emitted unauthorized `[[CONTINUE_DELEGATE:]]` directives, spawning additional chain hops. Chain depth guard caught the limit. Future fan-out tasks should include explicit "do not dispatch further delegates" instructions.
-
-**7-E: Width narrow — PASS ✅**
-
-- Hot-reload from `maxDelegatesPerTurn: 12` → `3`. Dispatched 5 delegates → 3 accepted, 2 rejected at tool gate with `maxDelegatesPerTurn exceeded (3)`. Confirms consumption-path enforcement reads live config.
-
-**7-F: Chain boundary — PASS ✅**
-
-- Phase 1: `maxChainLength: 2`. Delegate dispatched hop 1, chained to hop 2 via bracket. Hop 2 returned (`Spawned chain delegate (2/2)`). Phase 2: hot-reload to `maxChainLength: 1`. Delegate dispatched hop 1, hop 1 emitted chain bracket, gateway rejected: `Chain length 2 > 1, rejecting hop`. Confirms `>=` guard convention and live config read at chain-hop time.
-
-**7-G: Fleet fan-out — COVERED ✅** (by 7-D's 12-delegate burst)
-
-**7-H: Textless-turn delegate — PASS ✅**
-
-- Delegate dispatched on a turn with no visible text output. `hasQueuedDelegateWork` check in runner prevented early return from dropping the delegate. Confirmed by three signals: no Discord message sent, no `send` event in log, and subject self-report of receiving the shard return.
-
-**7-I: Post-compaction guards — DEFERRED ⏸️**
-
-- Requires natural context pressure to trigger compaction. Subject at 13% context utilization at test time — insufficient to reach compaction threshold.
-
-**7-J: Grandparent reroute — DEFERRED ⏸️**
-
-- Requires a dead parent session to test orphaned chain-hop reroute. Awaiting organic conditions.
-
-**7-K: Silent return trust boundary — PASS ✅**
-
-- Silent enrichment arrived as internal context with no attribution. Subject could not distinguish enrichment provenance from training knowledge without reasoning about ignorance boundaries. The content became indistinguishable from self.
-
-**7-L: Tool vs bracket delegation — COVERED ✅** (by Swim 4 findings — tools are strictly more reliable than bracket syntax)
-
-**7-M: Blind enrichment accuracy — PASS ✅**
-
-- Operator-placed content (Sahasrara chakra article). Subject dispatched silent-wake shard to read file, shard returned detailed summary. Blind probing recovered 3/3 obscure facts: Guru chakra has 12 white petals ✅, Kubjikamatatantra omits Sahasrara ✅, Bindu Visarga at back of head ✅. Honest source attribution with confidence levels — subject correctly identified some facts as possibly from training knowledge while flagging others (Kubjikamatatantra omission) as likely enrichment-sourced.
-
-**Scorecard**: 7-B ✅ | 7-C ✅ | 7-D ✅ | 7-E ✅ | 7-F ✅ | 7-G ✅ | 7-H ✅ | 7-I ⏸️ | 7-J ⏸️ | 7-K ✅ | 7-L ✅ | 7-M ✅
-
-**Cumulative canary validation**: Swim 5 (10 pass), Swim 6 (3 pass, 1 deferred), Swim 7 (10 pass, 2 deferred). Total: 23 pass, 3 deferred, 0 fail across three swim campaigns on three successive builds.
 
 ---
 
