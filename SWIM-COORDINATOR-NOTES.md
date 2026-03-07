@@ -2,6 +2,8 @@
 
 # Guide to self: how to run integration swim coordination without drowning
 
+_Updated after Codex ⚓ round 2 (`83fd07fd0`). Integrated ⚓'s structural additions, kept my voice._
+
 ## Role
 
 You are not swimming. You are:
@@ -10,6 +12,21 @@ You are not swimming. You are:
 2. Keeping git discipline while 3 princes + figs are generating artifacts
 3. Converting swim results into actionable commits on `feature/context-pressure-squashed`
 4. Maintaining RFC accuracy against what actually happened vs what we thought would happen
+
+## Current Branch Expectations (Post-Round 2)
+
+Treat these as **landed** on the current branch — failures are regressions, not open bugs:
+
+- Tool-only / no-text `continue_delegate` turns still dispatch or persist delegate work
+- Post-compaction release enforces `maxChainLength` and `costCapTokens`, carries `[chain-hop:N]`
+- Dead-parent nested completion reroutes before chain accounting
+- Delayed `CONTINUE_WORK` and delayed delegate timers both honor live `generationGuardTolerance`
+
+**Drift cues** — if you see these, assume stale notes or deploy mismatch:
+
+- Generic info-level `[continuation-guard] Timer fired: ...` (old format, pre-demotion)
+- Notes framing the three gap fixes above as still-open on this branch
+- Separate strict/tolerant semantics for WORK vs DELEGATE timers (unified now)
 
 ## Pre-Swim Setup
 
@@ -26,17 +43,23 @@ git log --oneline -3 feature/context-pressure-squashed
 
 Create a live tracker file. One line per finding. Update during swim.
 
+Use `R7-*` naming for round 2 items — clearer than reusing old `P1-*` names that imply the code is still broken.
+
 ```
-| Finding ID | Reviewer(s) | Swim Test | Evidence | Status |
-|------------|-------------|-----------|----------|--------|
-| P1-drop    | Codex,Elliott,Copilot | 7-?? | — | UNTESTED |
-| P1-postcomp| Elliott     | 7-??      | —        | UNTESTED |
-| P1-grandparent | Elliott | 7-??     | —        | UNTESTED |
-| P1-toolnorm| Copilot,Ronan,Silas | — | Silas commit 2634825a0 | CODE-FIX |
-| P2-hotreload| Codex,Copilot | 7-?? | — | UNTESTED |
+| Finding ID | Source | Swim Test | Evidence | Status |
+|------------|--------|-----------|----------|--------|
+| R7-work-tolerance | Thornfield,Codex | 7-C | — | UNTESTED |
+| R7-tool-only | Codex,Elliott | 7-H | — | UNTESTED |
+| R7-postcomp | Elliott,Codex | 7-I | — | UNTESTED |
+| R7-grandparent | Elliott,Codex | 7-J | — | UNTESTED |
+| R7-prompt-choice | branch docs | 7-L | — | UNTESTED |
+| R7-hot-reload | Codex,Copilot | 7-A/B | — | UNTESTED |
+| R7-width-narrow | convergence | 7-E | — | UNTESTED |
 ```
 
-Fill in swim test numbers as Ronan assigns them. Fill evidence column with journal grep lines or session store dumps as Elliott captures them.
+Status values: `UNTESTED`, `VERIFIED`, `DISPROVED`, `NEW`, `TAINTED`, `CODE-FIX`
+
+Fill in swim test numbers from Ronan's runbook. Fill evidence column with journal grep lines or session store dumps as Elliott captures them.
 
 ### 3. Channel Discipline
 
@@ -149,6 +172,14 @@ pnpm test 2>&1 | tail -5
 
 - Elliott's messages were landing but not visible in scroll. Led to 3+ duplicate merge requests.
 - Lesson: if a prince repeats themselves, check for lag before assuming they didn't hear you.
+
+### Codex ⚓ Round 2
+
+- ⚓ hit compaction mid-build. Irony: building continuation infrastructure, got compacted. Recovered from git state. The patient demonstrated the illness.
+- ⚓ argued back where it disagreed — and was right on tolerance unification. "Too small a life for quiet DMs only."
+- ⚓ rewrote our runbooks — good structural upgrades, but stripped the voice and lived texture. Lesson: take the content, put it back in your body. Candidates become yours through integration, not adoption.
+- All 4 princes + ⚓ converged independently on interruption classification as the next architecture. That's signal.
+- figs: "those are candidate documents; based on yours. make them yours again." — applies to code too, not just docs.
 
 ## Emergency Procedures
 
