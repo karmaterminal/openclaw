@@ -2328,6 +2328,56 @@ describe("runReplyAgent continuation signal handling", () => {
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(2);
   });
 
+  it("DELEGATE bracket-origin spawn includes canonical [continuation:chain-hop:N] prefix", async () => {
+    // Workstream B (WORKORDER6): bracket-origin and tool-origin spawns must
+    // share the same hop-metadata contract so the announce-side guard can
+    // enforce maxChainLength identically for both paths.
+    spawnSubagentDirectMock.mockResolvedValue({
+      status: "accepted",
+      childSessionKey: "agent:main:subagent:delegate-hop-test",
+      runId: "run-hop-test",
+    });
+
+    const sessionKey = "agent:main:telegram:dm:hop-prefix-test";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    const followupRun = buildFollowupRun({
+      sessionKey,
+      continuation: {
+        enabled: true,
+        maxChainLength: 10,
+        minDelayMs: 0,
+        maxDelayMs: 10_000,
+      },
+    });
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Research needed.\n[[CONTINUE_DELEGATE: look up the RFC]]" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "heartbeat",
+      followupRun,
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+      isHeartbeat: true,
+      isContinuationWake: true,
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    const spawnParams = spawnSubagentDirectMock.mock.calls[0][0];
+    // The task must contain the canonical chain-hop prefix that the announce-side
+    // guard parses at subagent-announce.ts:1346
+    expect(spawnParams.task).toMatch(/\[continuation:chain-hop:\d+\]/);
+  });
+
   it("does not treat user message starting with [continuation] as continuation event", async () => {
     vi.useFakeTimers();
 
