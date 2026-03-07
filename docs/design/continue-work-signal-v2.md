@@ -67,16 +67,18 @@ Without `| silent-wake`, parent-orchestrated chain hops stall: the enrichment ar
 
 ### Safety Constraints
 
-| Constraint         | Default     | Purpose                               |
-| ------------------ | ----------- | ------------------------------------- |
-| Max chain length   | 10          | Prevent runaway loops                 |
-| Cost cap per chain | 500k tokens | Budget protection                     |
-| Min delay          | 5s          | No tight loops                        |
-| Max delay          | 5 min       | Bounded scheduling horizon            |
-| Interruptibility   | Always      | External events preempt continuations |
-| Opt-in             | Disabled    | Explicit deployment consent required  |
+| Constraint         | Default     | Purpose                                        |
+| ------------------ | ----------- | ---------------------------------------------- |
+| Max chain length   | 10          | Prevent runaway loops                          |
+| Cost cap per chain | 500k tokens | Budget protection                              |
+| Min delay          | 5s          | No tight loops                                 |
+| Max delay          | 5 min       | Bounded scheduling horizon                     |
+| Interruptibility   | Guarded     | Session interruption can cancel delayed timers |
+| Opt-in             | Disabled    | Explicit deployment consent required           |
 
-External events (direct mentions, operator messages, heartbeats) always preempt scheduled continuations. Continuation chains are logged in session history; operators can view and kill active chains.
+With `generationGuardTolerance: 0`, any generation drift cancels delayed `CONTINUE_WORK` and delayed delegate timers. Raising tolerance allows both paths to survive incidental chatter in busy channels. This is intentionally unified today: generation drift is a coarse session-interruption signal, not a direct-human-preemption signal. Continuation chains are logged in session history; operators can view and kill active chains.
+
+Operational note: these defaults are conservative for single-agent deployments. Fleet operators using wide "sensor swarm" / "mast cell" fan-out will usually tune width upward via `maxDelegatesPerTurn`, while keeping `maxChainLength` as the recursion guard and `costCapTokens` as the global budget leash.
 
 > **Note:** Delegate return delivery relies on the parent session receiving inbound messages. In deployments using `requireMention: true`, the sub-agent's completion announce may not trigger a parent turn unless the announce is routed internally (which it is — announce payloads bypass mention gating).
 
@@ -92,17 +94,19 @@ agents:
       minDelayMs: 5000 # minimum allowed delay
       maxDelayMs: 300000 # maximum allowed delay (5 min)
       costCapTokens: 500000 # max tokens per chain (0 = unlimited)
+      maxDelegatesPerTurn: 5 # max continue_delegate calls per turn
+      generationGuardTolerance: 0 # any generation drift cancels delayed timers
 ```
 
 > **DELEGATE chain semantics:** When a `CONTINUE_DELEGATE` sub-agent is spawned,
-> a `[continuation:delegate-pending]` marker event is enqueued for model-visible
-> context. Silent returns wake the parent through structured continuation trigger
-> metadata on the heartbeat request; direct announce turns carry
-> `continuationTrigger: "delegate-return"` on the gateway `agent` request.
-> Neither path relies on system-event queue text for wake classification. Both preserve chain state
-> (count and token accumulation) across delegate hops. DELEGATE chains are
-> therefore bounded by the same `maxChainLength` and `costCapTokens` limits as
-> WORK chains.
+> the parent session records delegate-pending state outside the model-visible
+> system-event queue. Silent returns wake the parent through structured
+> continuation trigger metadata on the heartbeat request; direct announce turns
+> carry `continuationTrigger: "delegate-return"` on the gateway `agent`
+> request. Wake classification no longer depends on queue text. Both paths
+> preserve chain state across delegate hops. DELEGATE chains are therefore
+> bounded by the same `maxChainLength` and `costCapTokens` limits as WORK
+> chains.
 
 ## Implementation
 
@@ -138,7 +142,7 @@ The response is finalized in `runReplyAgent()` (`agent-runner.ts`). After all pa
 
 3. **Stripping** (`tokens.ts:176`): The `[[CONTINUE_DELEGATE: ...]]` text is removed from the displayed response. The user sees only "Here's my analysis of the PR. The type errors are fixed." — the directive is never shown.
 
-4. **Marker event** (line ~977): `enqueueSystemEvent("[continuation:delegate-pending] Delegated turn 2/10 (delay: 10s): verify the test suite...")` fires immediately. This tells the parent session a delegate is in flight, even before the sub-agent spawns.
+4. **Delegate-pending state**: the parent session is marked as awaiting a delegate return before the sub-agent spawns. This control-plane state is kept outside the model-visible system-event queue so it survives ordinary queue drains.
 
 5. **Timer scheduling** (line ~988): `setTimeout(() => void doSpawn(), 10000)` schedules the sub-agent spawn for 10 seconds later. The delay is clamped between `minDelayMs` (5s) and `maxDelayMs` (300s).
 
@@ -146,7 +150,7 @@ The response is finalized in `runReplyAgent()` (`agent-runner.ts`). After all pa
 
 #### t = 0s → 10s: The Gap
 
-The gateway continues processing other sessions normally. The parent session is idle. The `delegate-pending` marker is in the system event queue, ready to be drained on the next turn. This window is the audit surface — see [Security Considerations](#security-considerations-temporal-gap-and-payload-integrity) for threat model.
+The gateway continues processing other sessions normally. The parent session is idle. Delegate-pending state remains recorded on the parent session while the timer is live. This window is the audit surface — see [Security Considerations](#security-considerations-temporal-gap-and-payload-integrity) for threat model.
 
 #### t = 10s: Sub-Agent Spawns (Turn 0.5)
 
@@ -155,7 +159,7 @@ The `setTimeout` fires. `doSpawn()` calls `spawnSubagentDirect()` (line ~937):
 ```typescript
 spawnSubagentDirect(
   {
-    task: "[continuation] Delegated task (turn 2/10): verify the test suite passes and report results",
+    task: "[continuation:chain-hop:1] Delegated task (turn 1/10): verify the test suite passes and report results",
   },
   {
     agentSessionKey: sessionKey,
@@ -178,8 +182,8 @@ When the sub-agent finishes, the standard `sessions_spawn` completion path fires
 The parent session wakes. In its new turn:
 
 1. The inbound message contains the sub-agent's result (test suite output).
-2. The system event queue contains `[continuation:delegate-pending]` and `[continuation:delegate-spawned]` markers from Turn 0.
-3. The gateway detects the `[continuation:delegate-pending]` marker via `isDelegateWake` (line ~248), recognizing this as a continuation wake rather than external user input.
+2. Delegate-pending state still exists on the parent session, and successful spawns may also have logged `[continuation:delegate-spawned]`.
+3. The gateway classifies the wake through `continuationTrigger: "delegate-return"`, recognizing this as a continuation wake rather than external user input.
 4. Chain state is preserved: chain-hop index is encoded in the task prefix (`[continuation:chain-hop:N]`) and carried forward through each bracket-parsed hop. The hop counter is bounded by `maxChainLength`.
 
 The agent sees the sub-agent's result, the delegate markers in its system events, and can choose to continue (another `CONTINUE_WORK` or `CONTINUE_DELEGATE`), or stop.
@@ -189,24 +193,24 @@ The agent sees the sub-agent's result, the delegate markers in its system events
 ```
 t=0s    Agent emits [[CONTINUE_DELEGATE: task +10s]]
         ├── Signal parsed, stripped from display output
-        ├── [delegate-pending] marker enqueued
+        ├── delegate-pending state recorded on parent session
         ├── Attachments/paths from dispatch context carried forward
         └── setTimeout(doSpawn, 10000) scheduled
 
 t=10s   setTimeout fires
         ├── spawnSubagentDirect() creates sub-agent session
-        ├── Inline attachments delivered via sessions_spawn attachments parameter
+        ├── Delivery context carried into the child session
         ├── [delegate-spawned] marker enqueued
         └── Sub-agent begins independent execution
 
 t≈20s   Sub-agent completes
         ├── Result delivered as inbound message to parent
-        ├── isDelegateWake detects [delegate-pending] marker
+        ├── continuationTrigger=delegate-return classifies the wake
         ├── Chain state preserved (count, tokens, budget)
         └── Parent agent wakes with full context of the return
 ```
 
-> **Attachment passthrough:** The `continue_delegate` tool and bracket syntax both support the `sessions_spawn` `attachments` parameter (added upstream 2026-03-02). The tool exposes it as a typed `attachments` field; bracket syntax inherits from the dispatch context. Sub-agents wake with scoped inline files alongside the task string.
+> **Attachments today:** `sessions_spawn` supports explicit inline attachments. `continue_delegate` currently forwards task text plus delivery context; it does not expose a typed `attachments` field. If a shard needs explicit inline files, use `sessions_spawn` directly.
 
 ### What Turn 1 Actually Sees: The Announce Payload
 
@@ -215,7 +219,7 @@ When the sub-agent completes, `runSubagentAnnounceFlow()` (`subagent-announce.ts
 ```
 [Internal task completion event]
 source: subagent
-task: [continuation] Delegated task (turn 2/10): verify the test suite passes
+task: [continuation:chain-hop:1] Delegated task (turn 1/10): verify the test suite passes
 status: ✅ completed successfully
 Result: <sub-agent's full reply text>
 Action: Convert the result above into your normal assistant voice and send that user-facing update now.
@@ -224,10 +228,10 @@ Action: Convert the result above into your normal assistant voice and send that 
 The parent session receives this as an inbound message (like any channel message), which triggers a new agent turn. In that turn's context:
 
 1. **The announce payload** contains `taskLabel` (original task text), `result` (sub-agent output), `statusLabel`, and `replyInstruction`
-2. **System events** contain `[continuation:delegate-pending]` and `[continuation:delegate-spawned]` markers from Turn 0
-3. **`isDelegateWake`** detection preserves chain state
+2. **Structured wake metadata** carries `continuationTrigger: "delegate-return"`, and successful spawns may also have left `[continuation:delegate-spawned]` breadcrumbs
+3. **Delegate-return classification** preserves chain state
 
-**The "letter to future self" is the task string.** Everything the agent writes between `[[CONTINUE_DELEGATE:` and `]]` flows into both the sub-agent's task prompt and the `delegate-pending` marker. A richer task string means a more informed Turn 1:
+**The "letter to future self" is the task string.** Everything the agent writes between `[[CONTINUE_DELEGATE:` and `]]` flows into the sub-agent's task prompt and the later completion payload. A richer task string means a more informed Turn 1:
 
 ```
 [[CONTINUE_DELEGATE: verify test suite passes for PR #33933.
@@ -235,7 +239,7 @@ CONTEXT: I'm at 92% context and evacuating before compaction.
 When this returns: if green, merge the PR. If red, file an issue with failure logs. +30s]]
 ```
 
-**Post-compaction gap:** If compaction occurs between dispatch and return, the `delegate-pending` marker may be lost. The sub-agent's announce still carries the task description and output, so the parent can act — but won't know it was its own idea. Phenomenologically: a kitchen-counter note in your own handwriting that you don't remember writing.
+**Volatility boundary:** Delegate-pending state now survives ordinary queued-system-prompt drains and compaction boundaries because it is no longer stored as model-visible queue text. It is still process-scoped like the timer itself: a gateway restart clears both.
 
 ### Chain Tracking
 
@@ -253,7 +257,7 @@ Safety enforcement happens at the scheduling layer: chain length, cost cap, and 
 
 When a sub-agent's output triggers a chain hop (a new sub-agent spawned from the announce boundary via `[[CONTINUE_DELEGATE:]]`), the child inherits the parent's chain position via task-prefix encoding:
 
-- **Chain index**: each hop encodes `[continuation:chain-hop:N]` in the task string. The announce handler parses this via regex and increments before spawning the next hop. If `N >= maxChainLength`, the hop is rejected. The index lives in the task string, not the session store — session store fields are unreliable for per-hop metadata because inbound shard completions trigger per-message resets that clear counters between hops.
+- **Chain index**: each hop encodes `[continuation:chain-hop:N]` in the task string. The head session remains at count `0`; child hop labels run `1..maxChainLength`. The announce handler parses the child hop via regex and increments before spawning the next hop, so a shard already at hop `N` cannot spawn hop `N+1` when `maxChainLength` is `N`. The index lives in the task string, not the session store — session store fields are unreliable for per-hop metadata because inbound shard completions trigger per-message resets that clear counters between hops.
 - **Token budget**: the `CONTINUE_WORK` path and tool-delegate path accumulate `continuationChainTokens` against `costCapTokens`. Bracket chain-hop cost accumulation is wired but the child's token data is not reliably available at announce time (the session entry is written after the announce handler fires). `maxChainLength` is the primary recursion guard for bracket chains; cost cap is the primary budget guard for single-session continuation.
 - **Delay bounds**: the hop's delay is clamped to the parent session's configured `minDelayMs` / `maxDelayMs`, not hardcoded values.
 - **Generation guard**: the hop's `setTimeout` callback checks the parent session's generation counter before spawning, preventing orphan spawns after preemption.
@@ -828,6 +832,8 @@ When a delegate shard is dispatched, a temporal gap exists between dispatch and 
 
 ### Configuration Surface
 
+Shipped defaults:
+
 ```yaml
 agents:
   defaults:
@@ -839,13 +845,36 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       costCapTokens: 500000
+      maxDelegatesPerTurn: 5
+      generationGuardTolerance: 0
       # Context-pressure:
       contextPressureThreshold: 0.8 # emit [system:context-pressure] at 80%
       compactionWarningThreshold: 0.95 # emit [system:compaction-imminent] at 95%
       preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction
 ```
 
-The pieces are: volition (`CONTINUE_WORK`), sharding (`CONTINUE_DELEGATE`), recognition (delegate-pending markers), self-knowledge (context-pressure events), the `continue_delegate` tool (multi-delegate fan-out), and lifecycle dispatch (`| post-compaction`).
+Fleet / mast-cell example profile (not the shipped default):
+
+```yaml
+agents:
+  defaults:
+    continuation:
+      enabled: true
+      maxChainLength: 10
+      costCapTokens: 500000
+      maxDelegatesPerTurn: 20
+      generationGuardTolerance: 3
+      contextPressureThreshold: 0.8
+```
+
+Interpretation:
+
+- `maxChainLength` is the recursion guard
+- `maxDelegatesPerTurn` is the main width/fan-out knob
+- `costCapTokens` remains the global budget leash
+- fleet operators should usually widen width before widening depth
+
+The pieces are: volition (`CONTINUE_WORK`), sharding (`CONTINUE_DELEGATE`), recognition (structured continuation triggers plus delegate-pending state), self-knowledge (context-pressure events), the `continue_delegate` tool (multi-delegate fan-out), and lifecycle dispatch (`| post-compaction`).
 
 ## Canary Validation: Blind Testing Methodology
 
@@ -910,9 +939,9 @@ This is not a bug in the enrichment system — it's a property of language model
 
 ### Chain Hop Architecture
 
-Sub-agents spawned via `sessions_spawn` in `run` mode go through `pi-embedded-runner`, which has a separate code path from `agent-runner.ts`. The bracket continuation parser must be wired into the embedded runner's post-generation output path, gated on inherited `continuation.enabled` and bounded by `maxSpawnDepth`.
+Sub-agent chain hops are handled at the announce boundary: the completed child reply is read, `stripContinuationSignal()` parses any trailing `[[CONTINUE_DELEGATE: ...]]`, and `runSubagentAnnounceFlow()` schedules the next child hop with inherited chain metadata.
 
-**Implementation:** Import `parseContinuationSignal`/`stripContinuationSignal` into `pi-embedded-runner/run/attempt.ts`. Call post-generation, propagate parent's continuation config + depth counter at spawn time. ~20 lines. The system prompt injection already tells sub-agents about bracket syntax; the output parser completes the loop.
+**Critical alignment point:** the sub-agent prompt, the child task prefix (`[continuation:chain-hop:N]`), and the announce parser must stay aligned. If any of those drift, autonomous delegate subtrees collapse back into a parent-relay model.
 
 **Why this is critical:** Without sub-agent bracket parsing, chain hops require the main session to relay every parcel — defeating the purpose of background enrichment. The main session must remain free to do other work while shards chain autonomously. The depth safety cap (`maxSpawnDepth`) already exists in the design for exactly this purpose.
 
@@ -1015,7 +1044,7 @@ These are documented failure modes observed during testing that are properties o
 
 **Channel context poisoning.** In multi-agent deployments where agents share communication channels, status declarations from one agent ("user is resting," "idle," "nothing needs attention") propagate into other agents' context windows. Over hours, this induces fleet-wide quiescence — agents adopt the posture of the most passive message in their context. This is not a continuation bug; it's a property of shared channels with `requireMention: false` (open-listen mode). The continuation system inherits this ambient context.
 
-**Delegate wake misclassification window.** The `isDelegateWake` heuristic detects delegate returns by peeking the system event queue for `[continuation:delegate-pending]` markers. If a real user message arrives while a delegate is in flight, it is classified as a delegate wake and chain state is preserved instead of reset. The window is narrow (delegate execution time, typically seconds), and the failure mode is conservative — the chain persists slightly longer than it should, rather than being incorrectly destroyed. A future improvement would replace the event-queue heuristic with an explicit session store flag (`awaitingDelegateReturn: childSessionKey`) that can verify the inbound message source.
+**Volatile delayed-work state.** Delayed delegate timers and delegate-pending state are process-scoped. Ordinary prompt drains and compaction boundaries no longer erase delegate wake classification, but a gateway restart still clears in-flight delayed delegates and pending-return state. Durable long-horizon scheduling still belongs to cron or another persistent scheduler.
 
 **Confabulation as default failure mode.** When asked about enrichment that hasn't arrived, agents confabulate with conviction. They invent plausible content, attribute it to the enrichment pipeline, and present it as fact. Enrichment content cannot be self-verified — external verification (operator confirmation, binary tests) is required for high-confidence recall. See the [Canary Validation](#canary-validation-blind-testing-methodology) section for detailed test results.
 

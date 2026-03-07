@@ -5,7 +5,7 @@ import {
   pendingDelegateCount,
   stagedPostCompactionDelegateCount,
 } from "../../auto-reply/continuation-delegate-store.js";
-import { loadConfig } from "../../config/config.js";
+import { resolveMaxDelegatesPerTurn } from "../../auto-reply/reply/continuation-runtime.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
@@ -18,7 +18,7 @@ const DELEGATE_MODES = ["normal", "silent", "silent-wake", "post-compaction"] as
 const ContinueDelegateToolSchema = Type.Object({
   task: Type.String({
     description:
-      "The task for the delegated sub-agent. Be specific — this is the only context the shard receives.",
+      "The delegated sub-agent's task. Treat this like a letter to your future self: include scope, chunk/range, desired return shape, and what the parent should do with the result.",
     maxLength: 4096,
   }),
   delaySeconds: Type.Optional(
@@ -32,8 +32,8 @@ const ContinueDelegateToolSchema = Type.Object({
   mode: optionalStringEnum(DELEGATE_MODES, {
     description:
       'Return mode. "normal" = announces to channel (default). ' +
-      '"silent" = result injected as internal context only, no channel echo. ' +
-      '"silent-wake" = silent + triggers a new generation cycle so the agent can act on the enrichment. ' +
+      '"silent" = result injected as internal context only, no channel echo; use for ambient enrichment and future recall. ' +
+      '"silent-wake" = silent + triggers a new generation cycle so the agent can act on the enrichment immediately. ' +
       '"post-compaction" = silent-wake delegate that fires when compaction happens, not on a timer. ' +
       "Use for context evacuation: the shard starts at the moment of compaction and returns to the post-compaction session.",
   }),
@@ -62,20 +62,18 @@ const ContinueDelegateToolSchema = Type.Object({
  * may cancel earlier timers. Use delaySeconds: 0 for reliable parallel fan-out,
  * or set generationGuardTolerance >= N-1 for N delayed delegates.
  */
-export function createContinueDelegateTool(opts: {
-  agentSessionKey?: string;
-  maxDelegatesPerTurn?: number;
-}): AnyAgentTool {
+export function createContinueDelegateTool(opts: { agentSessionKey?: string }): AnyAgentTool {
   return {
     label: "Continuation",
     name: "continue_delegate",
     description:
-      "Dispatch a continuation delegate — a sub-agent that carries a task and returns " +
-      "results to this session. Tracked by the continuation chain (cost caps, depth " +
-      'limits). Use "silent-wake" mode for background enrichment that wakes you when ' +
-      "it returns. Can be called multiple times per turn for parallel fan-out. " +
-      "Note: delayed delegates (delaySeconds > 0) share the generation guard — " +
-      "use delay 0 for reliable parallel dispatch.",
+      "Schedule a continuation delegate — a background sub-agent that can run now, later, " +
+      "or at compaction, then return visibly or silently to this session. Use for ambient " +
+      "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
+      'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
+      "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
+      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
+      "Note: delayed delegates share the same generation guard as delayed CONTINUE_WORK — use delay 0 for reliable parallel dispatch in noisy channels, or raise generationGuardTolerance.",
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -103,12 +101,8 @@ export function createContinueDelegateTool(opts: {
       const silent = modeRaw === "silent" || modeRaw === "silent-wake" || isPostCompaction;
       const silentWake = modeRaw === "silent-wake" || isPostCompaction;
 
-      // Check per-turn delegate limit.
-      // Read from loadConfig() at execute time so hot-reloaded config applies (P2 fix).
-      const maxPerTurn =
-        loadConfig().agents?.defaults?.continuation?.maxDelegatesPerTurn ??
-        opts.maxDelegatesPerTurn ??
-        5;
+      // Check per-turn delegate limit
+      const maxPerTurn = resolveMaxDelegatesPerTurn();
       const currentCount =
         pendingDelegateCount(sessionKey) + stagedPostCompactionDelegateCount(sessionKey);
       if (currentCount >= maxPerTurn) {

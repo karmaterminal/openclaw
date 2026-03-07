@@ -22,11 +22,14 @@ import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnosti
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
   consumeStagedPostCompactionDelegates,
   consumePendingDelegates,
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
 } from "../continuation-delegate-store.js";
 import {
   buildFallbackClearedNotice,
@@ -56,12 +59,7 @@ import {
 import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
-import {
-  currentContinuationGeneration,
-  invalidateContinuationGeneration,
-  isContinuationGenerationCurrent,
-  scheduleContinuationGeneration,
-} from "./continuation-generation.js";
+import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
@@ -73,6 +71,15 @@ import { createTypingSignaler } from "./typing-mode.js";
 import type { TypingController } from "./typing.js";
 
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
+const continuationGuardLog = createSubsystemLogger("continuation/guard");
+
+// Track pending continuation timers so they can be cancelled when an external
+// message arrives during the delay window (prevents ghost continuations).
+// Each entry includes a generation counter to guard against same-tick races:
+// the timer callback verifies its generation matches the current value before
+// scheduling the wake. An external message bumps the generation, invalidating
+// any in-flight callbacks without needing clearTimeout races.
+const continuationGenerations = new Map<string, number>();
 
 // Per-session delegate-pending flags.  Lives outside the system-event queue
 // so it is NOT drained by buildQueuedSystemPrompt on intervening turns.
@@ -92,9 +99,15 @@ export function clearDelegatePending(sessionKey: string): void {
   delegatePendingFlags.delete(sessionKey);
 }
 
-// Re-export for external consumers (subagent-announce, etc.)
-export { currentContinuationGeneration } from "./continuation-generation.js";
-import { resolveMaxDelegatesPerTurn } from "./continuation-runtime.js";
+export function currentContinuationGeneration(sessionKey: string): number {
+  return continuationGenerations.get(sessionKey) ?? 0;
+}
+
+export function bumpContinuationGeneration(sessionKey: string): number {
+  const next = currentContinuationGeneration(sessionKey) + 1;
+  continuationGenerations.set(sessionKey, next);
+  return next;
+}
 
 function syncPendingPostCompactionDelegates(params: {
   sessionEntry?: SessionEntry;
@@ -217,7 +230,7 @@ function buildPostCompactionLifecycleEvent(params: {
       : undefined,
     `Released ${params.releasedDelegates} post-compaction delegate(s) into the fresh session.`,
     params.droppedDelegates > 0
-      ? `${params.droppedDelegates} delegate(s) exceeded the release limit and were dropped.`
+      ? `${params.droppedDelegates} delegate(s) were not released into the fresh session.`
       : undefined,
   ].filter(Boolean);
   return parts.join(" ");
@@ -226,7 +239,7 @@ function buildPostCompactionLifecycleEvent(params: {
 // clearContinuationGeneration intentionally removed: clearing the map entry
 // resets the counter to 0, creating a generation-reuse window where a new
 // chain's value can collide with a stale in-flight timer. All paths now use
-// invalidateContinuationGeneration (jumps past tolerance window) instead.
+// bumpContinuationGeneration instead.
 
 /**
  * Cancel any pending continuation timer for the given session AND reset
@@ -246,10 +259,10 @@ export function cancelContinuationTimer(
     storePath?: string;
   },
 ): void {
-  // Only invalidate when a generation exists — avoids unbounded map growth
+  // Only bump when a generation exists — avoids unbounded map growth
   // from sessions that never use continuation.
-  if (currentContinuationGeneration(sessionKey) > 0) {
-    invalidateContinuationGeneration(sessionKey);
+  if (continuationGenerations.has(sessionKey)) {
+    bumpContinuationGeneration(sessionKey);
   }
 
   // Reset chain metadata so stale counters don't block future chains.
@@ -378,15 +391,11 @@ export async function runReplyAgent(params: {
       activeSessionEntry.continuationChainTokens = undefined;
     }
     // Cancel any pending continuation timer by bumping the generation counter.
-    // Only invalidate when a generation exists (active/pending chain) to avoid
+    // Only bump when a generation exists (active/pending chain) to avoid
     // unbounded map growth from sessions that never use continuation.
-    const hasGenerationEntry = currentContinuationGeneration(sessionKey) > 0;
-    defaultRuntime.log(
-      `[continuation-guard] New message on ${sessionKey}: hadActiveChain=${hadActiveChain} hasGenerationEntry=${hasGenerationEntry}`,
-    );
+    const hasGenerationEntry = continuationGenerations.has(sessionKey);
     if (hadActiveChain || hasGenerationEntry) {
-      const newGen = invalidateContinuationGeneration(sessionKey);
-      defaultRuntime.log(`[continuation-guard] Bumped generation to ${newGen} for ${sessionKey}`);
+      bumpContinuationGeneration(sessionKey);
     }
     if (hadActiveChain && activeSessionStore && activeSessionEntry) {
       activeSessionStore[sessionKey] = {
@@ -778,10 +787,16 @@ export async function runReplyAgent(params: {
       cliSessionId,
     });
 
+    const hasQueuedDelegateWork =
+      continuationFeatureEnabled &&
+      !!sessionKey &&
+      (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
+
     // Drain any late tool/block deliveries before deciding there's "nothing to send".
     // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
-    // keep the typing indicator stuck.
-    if (payloadArray.length === 0) {
+    // keep the typing indicator stuck. A tool-only continuation turn may have no visible
+    // text while still needing delegate consumption/persistence below.
+    if (payloadArray.length === 0 && !hasQueuedDelegateWork) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
@@ -816,8 +831,8 @@ export async function runReplyAgent(params: {
     if (replyPayloads.length === 0) {
       // If the agent replied with only a continuation signal (e.g. bare CONTINUE_WORK),
       // the signal was stripped and all payloads became empty. We still need to process
-      // the continuation below, so only return early when there's no signal.
-      if (!continuationSignal) {
+      // the continuation below. Tool-only delegate turns also pass through here.
+      if (!continuationSignal && !hasQueuedDelegateWork) {
         return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
       }
     }
@@ -1002,21 +1017,22 @@ export async function runReplyAgent(params: {
           ...persistedCompactionDelegates,
           ...stagedCompactionDelegates,
         ];
-        const compactionCfg = cfg.agents?.defaults?.continuation;
-        const maxCompactionDelegates = compactionCfg?.maxDelegatesPerTurn ?? 5;
+        const {
+          maxChainLength: maxCompactionChainLength,
+          maxDelegatesPerTurn: maxCompactionDelegates,
+          costCapTokens: compactionCostCapTokens,
+        } = resolveContinuationRuntimeConfig(cfg);
         const releasedCompactionDelegates = allCompactionDelegates.slice(0, maxCompactionDelegates);
-        const droppedCompactionDelegates = Math.max(
+        let droppedCompactionDelegates = Math.max(
           0,
           allCompactionDelegates.length - releasedCompactionDelegates.length,
         );
-        enqueueSystemEvent(
-          buildPostCompactionLifecycleEvent({
-            compactionCount: count,
-            releasedDelegates: releasedCompactionDelegates.length,
-            droppedDelegates: droppedCompactionDelegates,
-          }),
-          { sessionKey },
-        );
+        const originalCompactionChainCount = activeSessionEntry?.continuationChainCount ?? 0;
+        let currentCompactionChainCount = originalCompactionChainCount;
+        const compactionChainStartedAt =
+          activeSessionEntry?.continuationChainStartedAt ?? Date.now();
+        const compactionChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
+        let dispatchedCompactionDelegates = 0;
 
         const workspaceDir = process.cwd();
         readPostCompactionContext(workspaceDir, cfg)
@@ -1031,12 +1047,42 @@ export async function runReplyAgent(params: {
 
         // Dispatch compaction-triggered delegates (| post-compaction mode).
         for (const delegate of releasedCompactionDelegates) {
+          if (currentCompactionChainCount >= maxCompactionChainLength) {
+            droppedCompactionDelegates += 1;
+            defaultRuntime.log(
+              `Post-compaction delegate rejected: chain length ${currentCompactionChainCount} >= ${maxCompactionChainLength} for session ${sessionKey}`,
+            );
+            enqueueSystemEvent(
+              `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${delegate.task}`,
+              { sessionKey },
+            );
+            continue;
+          }
+
+          if (compactionCostCapTokens > 0 && compactionChainTokens > compactionCostCapTokens) {
+            droppedCompactionDelegates += 1;
+            defaultRuntime.log(
+              `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}) for session ${sessionKey}`,
+            );
+            enqueueSystemEvent(
+              `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${delegate.task}`,
+              { sessionKey },
+            );
+            continue;
+          }
+
+          const nextCompactionChainCount = currentCompactionChainCount + 1;
           defaultRuntime.log(
             `Post-compaction delegate dispatch for session ${sessionKey}: ${delegate.task}`,
           );
+          currentCompactionChainCount = nextCompactionChainCount;
+          dispatchedCompactionDelegates += 1;
           spawnSubagentDirect(
             {
-              task: `[continuation:post-compaction] Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
+              task:
+                `[continuation:post-compaction] ` +
+                `[continuation:chain-hop:${nextCompactionChainCount}] ` +
+                `Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
               silentAnnounce: true,
               wakeOnReturn: true,
             },
@@ -1066,6 +1112,47 @@ export async function runReplyAgent(params: {
               );
             });
         }
+
+        enqueueSystemEvent(
+          buildPostCompactionLifecycleEvent({
+            compactionCount: count,
+            releasedDelegates: dispatchedCompactionDelegates,
+            droppedDelegates: droppedCompactionDelegates,
+          }),
+          { sessionKey },
+        );
+
+        if (currentCompactionChainCount > originalCompactionChainCount) {
+          if (activeSessionEntry) {
+            activeSessionEntry.continuationChainCount = currentCompactionChainCount;
+            activeSessionEntry.continuationChainStartedAt = compactionChainStartedAt;
+            activeSessionEntry.continuationChainTokens = compactionChainTokens;
+          }
+          if (activeSessionStore) {
+            activeSessionStore[sessionKey] = {
+              ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
+              continuationChainCount: currentCompactionChainCount,
+              continuationChainStartedAt: compactionChainStartedAt,
+              continuationChainTokens: compactionChainTokens,
+            };
+          }
+          if (storePath) {
+            try {
+              await updateSessionStore(storePath, (store) => {
+                const entry = store[sessionKey];
+                if (entry) {
+                  entry.continuationChainCount = currentCompactionChainCount;
+                  entry.continuationChainStartedAt = compactionChainStartedAt;
+                  entry.continuationChainTokens = compactionChainTokens;
+                }
+              });
+            } catch (err) {
+              defaultRuntime.log(
+                `Failed to persist post-compaction delegate chain state for ${sessionKey}: ${String(err)}`,
+              );
+            }
+          }
+        }
       }
 
       if (verboseEnabled) {
@@ -1088,12 +1175,8 @@ export async function runReplyAgent(params: {
     // continuationSignal is only set when continuationFeatureEnabled === true (checked
     // at parse time), so no redundant enabled re-check is needed here.
     if (continuationSignal && sessionKey) {
-      const continuationCfg = cfg.agents?.defaults?.continuation;
-      const maxChainLength = continuationCfg?.maxChainLength ?? 10;
-      const defaultDelayMs = continuationCfg?.defaultDelayMs ?? 15_000;
-      const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
-      const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
-      const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
+      const { maxChainLength, defaultDelayMs, minDelayMs, maxDelayMs, costCapTokens } =
+        resolveContinuationRuntimeConfig(cfg);
 
       {
         // continuation scheduling block
@@ -1103,7 +1186,10 @@ export async function runReplyAgent(params: {
           defaultRuntime.log(
             `Continuation chain capped at ${maxChainLength} for session ${sessionKey}`,
           );
-          invalidateContinuationGeneration(sessionKey);
+          // Bump (not clear) to invalidate stale timers without reuse risk.
+          // Clearing would reset to 0, letting a new chain's generation collide
+          // with a stale in-flight timer's captured value.
+          bumpContinuationGeneration(sessionKey);
         } else {
           // Accumulate token usage for cost cap (input + output only, excludes
           // cache reads/writes which inflate with inherited system prompt context).
@@ -1116,7 +1202,7 @@ export async function runReplyAgent(params: {
             defaultRuntime.log(
               `Continuation cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}) for session ${sessionKey}`,
             );
-            invalidateContinuationGeneration(sessionKey);
+            bumpContinuationGeneration(sessionKey);
           } else {
             // Persist chain state for both DELEGATE and WORK paths
             const nextChainCount = currentChainCount + 1;
@@ -1156,10 +1242,12 @@ export async function runReplyAgent(params: {
               const delegateTask = continuationSignal.task;
               const delegateDelayMs = continuationSignal.delayMs;
 
-              const doSpawn = async () => {
+              const doSpawn = async (timerTriggered = false) => {
                 try {
                   const spawnResult = await spawnSubagentDirect(
                     {
+                      // The spawned child carries its current chain position in-band.
+                      // Announce-side chain hops parse this prefix as the canonical hop source.
                       task: `[continuation:chain-hop:${nextChainCount}] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegateTask}`,
                       ...(continuationSignal.silent ? { silentAnnounce: true } : {}),
                       ...(continuationSignal.silentWake
@@ -1175,6 +1263,11 @@ export async function runReplyAgent(params: {
                     },
                   );
                   if (spawnResult.status === "accepted") {
+                    if (timerTriggered) {
+                      defaultRuntime.log(
+                        `DELEGATE timer fired and spawned turn ${nextChainCount}/${maxChainLength} for session ${sessionKey}: ${delegateTask}`,
+                      );
+                    }
                     enqueueSystemEvent(
                       `[continuation:delegate-spawned] Spawned turn ${nextChainCount}/${maxChainLength}: ${delegateTask}`,
                       { sessionKey },
@@ -1209,20 +1302,26 @@ export async function runReplyAgent(params: {
                 // Timed dispatch: spawn after delay. Timer does not survive
                 // gateway restart — acceptable for v1 (see #176 for durable timers).
                 const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
-                defaultRuntime.log(
-                  `DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegateTask}`,
-                );
                 // Generation guard: if an external message arrives during the delay,
-                // invalidateContinuationGeneration jumps past the tolerance window.
-                const delegateGeneration = scheduleContinuationGeneration(sessionKey);
+                // bumpContinuationGeneration invalidates this timer — same as WORK timers.
+                const delegateGeneration = bumpContinuationGeneration(sessionKey);
+                continuationGuardLog.debug(
+                  `[continuation-guard] DELEGATE timer set: generation=${delegateGeneration} delayMs=${clampedDelay} session=${sessionKey}`,
+                );
                 setTimeout(() => {
-                  if (!isContinuationGenerationCurrent(sessionKey, delegateGeneration)) {
+                  const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+                  const currentGen = currentContinuationGeneration(sessionKey);
+                  const drift = currentGen - delegateGeneration;
+                  continuationGuardLog.debug(
+                    `[continuation-guard] DELEGATE timer check: stored=${delegateGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
+                  );
+                  if (drift > generationGuardTolerance) {
                     defaultRuntime.log(
-                      `DELEGATE timer cancelled (generation mismatch) for session ${sessionKey}`,
+                      `DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
                     );
                     return;
                   }
-                  void doSpawn();
+                  void doSpawn(true);
                 }, clampedDelay);
               } else {
                 await doSpawn();
@@ -1232,14 +1331,27 @@ export async function runReplyAgent(params: {
               const requestedDelay = continuationSignal.delayMs ?? defaultDelayMs;
               const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, requestedDelay));
 
-              // Schedule continuation with generation guard (WORK uses strict equality —
-              // self-continuation should stop on any external input, unlike DELEGATE
-              // timers which honor generationGuardTolerance for noisy channels).
-              const generation = scheduleContinuationGeneration(sessionKey);
+              // Schedule continuation with the same live-read guard used for
+              // delegate timers. In busy channels, generation drift reflects
+              // generic session interruption, not just direct human preemption.
+              const generation = bumpContinuationGeneration(sessionKey);
+              continuationGuardLog.debug(
+                `[continuation-guard] WORK timer set: generation=${generation} delayMs=${clampedDelay} session=${sessionKey}`,
+              );
               setTimeout(() => {
-                if (currentContinuationGeneration(sessionKey) !== generation) {
-                  return; // External message arrived — cancel (strict, no tolerance)
+                const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+                const currentGen = currentContinuationGeneration(sessionKey);
+                const drift = currentGen - generation;
+                continuationGuardLog.debug(
+                  `[continuation-guard] WORK timer check: stored=${generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
+                );
+                if (drift > generationGuardTolerance) {
+                  defaultRuntime.log(
+                    `WORK timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
+                  );
+                  return;
                 }
+                defaultRuntime.log(`WORK timer fired for session ${sessionKey}`);
                 enqueueSystemEvent(
                   `[continuation:wake] Turn ${nextChainCount}/${maxChainLength}. ` +
                     `Chain started at ${new Date(chainStartedAt).toISOString()}. ` +
@@ -1261,33 +1373,22 @@ export async function runReplyAgent(params: {
     // Multiple delegates per turn are supported (multi-arrow fan-out).
     if (continuationFeatureEnabled && sessionKey) {
       const toolDelegates = consumePendingDelegates(sessionKey);
-      // Secondary enforcement: trim queued delegates to live maxDelegatesPerTurn.
-      // Primary enforcement is in the tool's execute(); this guards against stale
-      // queued delegates from older code or races (Workstream D, WORKORDER6).
-      const liveMaxPerTurn = resolveMaxDelegatesPerTurn();
-      if (toolDelegates.length > liveMaxPerTurn) {
-        const rejected = toolDelegates.splice(liveMaxPerTurn);
-        defaultRuntime.log(
-          `[continue_delegate] Secondary enforcement: ${rejected.length} delegate(s) exceed live maxDelegatesPerTurn=${liveMaxPerTurn}, rejected`,
-        );
-        for (const r of rejected) {
-          enqueueSystemEvent(
-            `[continuation] Delegate rejected by secondary enforcement (maxDelegatesPerTurn=${liveMaxPerTurn}): ${r.task}`,
-            { sessionKey },
-          );
-        }
-      }
       if (toolDelegates.length > 0) {
         defaultRuntime.log(
           `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
         );
       }
       if (toolDelegates.length > 0) {
-        const continuationCfg = cfg.agents?.defaults?.continuation;
-        const maxChainLength = continuationCfg?.maxChainLength ?? 10;
-        const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
-        const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
-        const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
+        const { maxChainLength, minDelayMs, maxDelayMs, costCapTokens, maxDelegatesPerTurn } =
+          resolveContinuationRuntimeConfig(cfg);
+        const delegatesWithinLimit = toolDelegates.slice(0, maxDelegatesPerTurn);
+        const delegatesOverLimit = toolDelegates.slice(maxDelegatesPerTurn);
+        for (const droppedDelegate of delegatesOverLimit) {
+          enqueueSystemEvent(
+            `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${droppedDelegate.task}`,
+            { sessionKey },
+          );
+        }
 
         let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
         // Accumulate current turn's token usage into chain cost.
@@ -1304,7 +1405,7 @@ export async function runReplyAgent(params: {
           (activeSessionEntry?.continuationChainTokens ?? 0) + toolDelegateTurnTokens;
         const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
 
-        for (const delegate of toolDelegates) {
+        for (const delegate of delegatesWithinLimit) {
           if (currentChainCount >= maxChainLength) {
             defaultRuntime.log(
               `Continuation chain capped at ${maxChainLength} for tool delegate in session ${sessionKey}`,
@@ -1329,7 +1430,7 @@ export async function runReplyAgent(params: {
 
           const nextChainCount = currentChainCount + 1;
 
-          const doToolSpawn = async () => {
+          const doToolSpawn = async (timerTriggered = false) => {
             try {
               const spawnResult = await spawnSubagentDirect(
                 {
@@ -1346,6 +1447,11 @@ export async function runReplyAgent(params: {
                 },
               );
               if (spawnResult.status === "accepted") {
+                if (timerTriggered) {
+                  defaultRuntime.log(
+                    `Tool DELEGATE timer fired and spawned turn ${nextChainCount}/${maxChainLength} for session ${sessionKey}: ${delegate.task}`,
+                  );
+                }
                 enqueueSystemEvent(
                   `[continuation:delegate-spawned] Tool delegate turn ${nextChainCount}/${maxChainLength}: ${delegate.task}`,
                   { sessionKey },
@@ -1378,23 +1484,25 @@ export async function runReplyAgent(params: {
 
           if (delegate.delayMs && delegate.delayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));
-            defaultRuntime.log(
-              `Tool DELEGATE scheduled in ${clampedDelay}ms for session ${sessionKey}: ${delegate.task}`,
-            );
-            // Generation guard: same as bracket-path delegate timers.
-            // Tolerance is read at fire time via isContinuationGenerationCurrent (P1 fix).
-            const toolDelegateGeneration = scheduleContinuationGeneration(sessionKey);
-            defaultRuntime.log(
-              `[continuation-guard] Tool delegate timer set with generation=${toolDelegateGeneration} for ${sessionKey}`,
+            // Generation guard: same as bracket-path delegate timers
+            const toolDelegateGeneration = bumpContinuationGeneration(sessionKey);
+            continuationGuardLog.debug(
+              `[continuation-guard] Tool DELEGATE timer set: generation=${toolDelegateGeneration} delayMs=${clampedDelay} session=${sessionKey}`,
             );
             setTimeout(() => {
-              if (!isContinuationGenerationCurrent(sessionKey, toolDelegateGeneration)) {
+              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+              const currentGen = currentContinuationGeneration(sessionKey);
+              const drift = currentGen - toolDelegateGeneration;
+              continuationGuardLog.debug(
+                `[continuation-guard] Tool DELEGATE timer check: stored=${toolDelegateGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
+              );
+              if (drift > generationGuardTolerance) {
                 defaultRuntime.log(
-                  `Tool DELEGATE timer cancelled (generation mismatch) for session ${sessionKey}`,
+                  `Tool DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
                 );
                 return;
               }
-              void doToolSpawn();
+              void doToolSpawn(true);
             }, clampedDelay);
           } else {
             await doToolSpawn();

@@ -1,8 +1,9 @@
-import { setDelegatePending } from "../auto-reply/reply/agent-runner.js";
 import {
-  isContinuationGenerationCurrent,
-  scheduleContinuationGeneration,
-} from "../auto-reply/reply/continuation-generation.js";
+  bumpContinuationGeneration,
+  currentContinuationGeneration,
+  setDelegatePending,
+} from "../auto-reply/reply/agent-runner.js";
+import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import {
   isSilentReplyText,
@@ -23,6 +24,7 @@ import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
 import { createBoundDeliveryRouter } from "../infra/outbound/bound-delivery-router.js";
 import type { ConversationRef } from "../infra/outbound/session-binding-service.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { normalizeAccountId, normalizeMainKey } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
@@ -61,6 +63,7 @@ const FAST_TEST_RETRY_INTERVAL_MS = 8;
 const FAST_TEST_REPLY_CHANGE_WAIT_MS = 20;
 const DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS = 60_000;
 const MAX_TIMER_SAFE_TIMEOUT_MS = 2_147_000_000;
+const continuationGuardLog = createSubsystemLogger("continuation/guard");
 let subagentRegistryRuntimePromise: Promise<
   typeof import("./subagent-registry-runtime.js")
 > | null = null;
@@ -1077,6 +1080,9 @@ export function buildSubagentSystemPrompt(params: {
       "To dispatch a follow-up sub-agent from your output, end your ENTIRE response with:",
       "  [[CONTINUE_DELEGATE: task description]]",
       "",
+      "Use this when your branch of work should continue or fan out without asking the parent",
+      "to relay every hop. This keeps the parent/main session free while your subtree runs.",
+      "",
       "Optional modifiers (append inside the brackets):",
       "  +30s           — delay spawn by N seconds",
       "  | silent        — result as internal context only (no channel output)",
@@ -1087,6 +1093,8 @@ export function buildSubagentSystemPrompt(params: {
       "Rules:",
       "- Emit exactly ONE [[CONTINUE_DELEGATE:]] per response, as the LAST line",
       "- Do NOT nest brackets inside brackets",
+      "- Use `| silent` for enrichment that should only color the parent's future context",
+      "- Use `| silent-wake` when the return should enrich the parent and wake it to act",
       "- The gateway handles chain tracking, cost caps, and depth limits",
       "",
     );
@@ -1286,6 +1294,36 @@ export async function runSubagentAnnounceFlow(params: {
       return false;
     }
 
+    let requesterIsSubagent = requesterDepth >= 1;
+    // If the requester subagent has already finished, bubble the announce to its
+    // requester (typically main) so descendant completion is not silently lost.
+    // Resolve this BEFORE continuation-chain accounting so token/cost tracking
+    // lands on the session that will actually receive the completion.
+    if (requesterIsSubagent) {
+      const { isSubagentSessionRunActive, resolveRequesterForChildSession } =
+        await loadSubagentRegistryRuntime();
+      if (!isSubagentSessionRunActive(targetRequesterSessionKey)) {
+        const parentSessionEntry = loadSessionEntryByKey(targetRequesterSessionKey);
+        const parentSessionAlive =
+          parentSessionEntry &&
+          typeof parentSessionEntry.sessionId === "string" &&
+          parentSessionEntry.sessionId.trim();
+
+        if (!parentSessionAlive) {
+          const fallback = resolveRequesterForChildSession(targetRequesterSessionKey);
+          if (!fallback?.requesterSessionKey) {
+            shouldDeleteChildSession = false;
+            return false;
+          }
+          targetRequesterSessionKey = fallback.requesterSessionKey;
+          targetRequesterOrigin =
+            normalizeDeliveryContext(fallback.requesterOrigin) ?? targetRequesterOrigin;
+          requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey);
+          requesterIsSubagent = requesterDepth >= 1;
+        }
+      }
+    }
+
     if (requesterDepth >= 1 && reply?.trim()) {
       const minReplyChangeWaitMs = FAST_TEST_MODE ? FAST_TEST_REPLY_CHANGE_WAIT_MS : 250;
       reply = await waitForSubagentOutputChange({
@@ -1336,11 +1374,8 @@ export async function runSubagentAnnounceFlow(params: {
           continuationResult.signal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
 
         // --- P0-3: Enforce parent session's chain bounds before spawning ---
-        const continuationCfg = cfg?.agents?.defaults?.continuation;
-        const maxChainLength = continuationCfg?.maxChainLength ?? 10;
-        const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
-        const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
-        const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
+        const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs } =
+          resolveContinuationRuntimeConfig(cfg);
 
         // --- Per-chain hop guard: depth encoded in task prefix, cost tracked on parent ---
         // Chain hop index: parsed from the completing shard's task prefix [continuation:chain-hop:N].
@@ -1396,7 +1431,11 @@ export async function runSubagentAnnounceFlow(params: {
           | { allowed: false; reason: "cost-cap"; chainTokens: number; costCapTokens: number }
           | { allowed: true; nextChainHop: number };
 
-        if (nextChainHop >= maxChainLength) {
+        // Repo convention: reject once the current count/hop has reached the
+        // configured max. `childChainHop` is the hop the completing shard
+        // already occupies, so a child already at hop N cannot spawn hop N+1
+        // when `maxChainLength` is N.
+        if (childChainHop >= maxChainLength) {
           chainGuardResult = {
             allowed: false,
             reason: "chain-length",
@@ -1422,7 +1461,7 @@ export async function runSubagentAnnounceFlow(params: {
         if (!chainGuardResult.allowed) {
           if (chainGuardResult.reason === "chain-length") {
             defaultRuntime.log(
-              `[subagent-chain-hop] Chain length ${chainGuardResult.chainCount} >= ${chainGuardResult.maxChainLength}, rejecting hop from ${params.childSessionKey}`,
+              `[subagent-chain-hop] Chain length ${chainGuardResult.chainCount} > ${chainGuardResult.maxChainLength}, rejecting hop from ${params.childSessionKey}`,
             );
           } else {
             defaultRuntime.log(
@@ -1439,7 +1478,7 @@ export async function runSubagentAnnounceFlow(params: {
           // so it survives buildQueuedSystemPrompt draining on intervening turns.
           setDelegatePending(targetRequesterSessionKey);
 
-          const doChainSpawn = async () => {
+          const doChainSpawn = async (timerTriggered = false) => {
             try {
               const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
               const spawnResult = await spawnSubagentDirect(
@@ -1458,7 +1497,9 @@ export async function runSubagentAnnounceFlow(params: {
               );
               if (spawnResult.status === "accepted") {
                 defaultRuntime.log(
-                  `[subagent-chain-hop] Spawned chain delegate (${nextChainHop}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+                  timerTriggered
+                    ? `[subagent-chain-hop] Timer fired and spawned chain delegate (${nextChainHop}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`
+                    : `[subagent-chain-hop] Spawned chain delegate (${nextChainHop}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
                 );
               } else {
                 defaultRuntime.log(
@@ -1475,16 +1516,25 @@ export async function runSubagentAnnounceFlow(params: {
           if (chainDelayMs && chainDelayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, chainDelayMs));
             // Generation guard: cancel if parent session receives new input during delay.
-            // Tolerance read at fire time via isContinuationGenerationCurrent (P1 fix).
-            const hopGeneration = scheduleContinuationGeneration(targetRequesterSessionKey);
+            // Honors generationGuardTolerance (same as agent-runner delegate timers).
+            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            continuationGuardLog.debug(
+              `[continuation-guard] Chain-hop timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
+            );
             setTimeout(() => {
-              if (!isContinuationGenerationCurrent(targetRequesterSessionKey, hopGeneration)) {
+              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+              const drift = currentGen - hopGeneration;
+              continuationGuardLog.debug(
+                `[continuation-guard] Chain-hop timer check: stored=${hopGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${targetRequesterSessionKey}`,
+              );
+              if (drift > generationGuardTolerance) {
                 defaultRuntime.log(
-                  `[subagent-chain-hop] Timer cancelled (generation mismatch) for ${targetRequesterSessionKey}`,
+                  `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
                 );
                 return;
               }
-              doChainSpawn().catch(() => {});
+              doChainSpawn(true).catch(() => {});
             }, clampedDelay);
           } else {
             // Fire-and-forget — don't block the announce flow
@@ -1498,45 +1548,6 @@ export async function runSubagentAnnounceFlow(params: {
     let triggerMessage = "";
     let steerMessage = "";
     let internalEvents: AgentInternalEvent[] = [];
-
-    let requesterIsSubagent = requesterDepth >= 1;
-    // If the requester subagent has already finished, bubble the announce to its
-    // requester (typically main) so descendant completion is not silently lost.
-    // BUT: only fallback if the parent SESSION is deleted, not just if the current
-    // run ended. A parent waiting for child results has no active run but should
-    // still receive the announce — injecting will start a new agent turn.
-    if (requesterIsSubagent) {
-      const { isSubagentSessionRunActive, resolveRequesterForChildSession } =
-        await loadSubagentRegistryRuntime();
-      if (!isSubagentSessionRunActive(targetRequesterSessionKey)) {
-        // Parent run has ended. Check if parent SESSION still exists.
-        // If it does, the parent may be waiting for child results — inject there.
-        const parentSessionEntry = loadSessionEntryByKey(targetRequesterSessionKey);
-        const parentSessionAlive =
-          parentSessionEntry &&
-          typeof parentSessionEntry.sessionId === "string" &&
-          parentSessionEntry.sessionId.trim();
-
-        if (!parentSessionAlive) {
-          // Parent session is truly gone — fallback to grandparent
-          const fallback = resolveRequesterForChildSession(targetRequesterSessionKey);
-          if (!fallback?.requesterSessionKey) {
-            // Without a requester fallback we cannot safely deliver this nested
-            // completion. Keep cleanup retryable so a later registry restore can
-            // recover and re-announce instead of silently dropping the result.
-            shouldDeleteChildSession = false;
-            return false;
-          }
-          targetRequesterSessionKey = fallback.requesterSessionKey;
-          targetRequesterOrigin =
-            normalizeDeliveryContext(fallback.requesterOrigin) ?? targetRequesterOrigin;
-          requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey);
-          requesterIsSubagent = requesterDepth >= 1;
-        }
-        // If parent session is alive (just has no active run), continue with parent
-        // as target. Injecting the announce will start a new agent turn for processing.
-      }
-    }
 
     let remainingActiveSubagentRuns = 0;
     try {
