@@ -104,6 +104,75 @@ agents:
 > therefore bounded by the same `maxChainLength` and `costCapTokens` limits as
 > WORK chains.
 
+### Operator Configuration Profiles
+
+The shipped defaults are conservative — designed for single-agent deployments where safety is the primary concern. Fleet operators running multi-agent configurations should tune for their workload pattern.
+
+#### Shipped Defaults (Single Agent / Safety-First)
+
+```yaml
+agents:
+  defaults:
+    continuation:
+      enabled: false
+      maxChainLength: 10
+      maxDelegatesPerTurn: 5
+      costCapTokens: 500000
+      generationGuardTolerance: 0
+      defaultDelayMs: 15000
+      minDelayMs: 5000
+      maxDelayMs: 300000
+```
+
+This profile is appropriate for new deployments and operators who want to enable continuation with minimal risk. Fan-out is limited to 5 delegates per turn, generation guard is strict (any counter drift cancels), and the cost cap provides a hard ceiling per chain.
+
+#### Fleet Multi-Agent Profile
+
+```yaml
+agents:
+  defaults:
+    continuation:
+      enabled: true
+      maxChainLength: 10
+      maxDelegatesPerTurn: 20
+      costCapTokens: 1000000
+      generationGuardTolerance: 300
+      defaultDelayMs: 15000
+      minDelayMs: 5000
+      maxDelayMs: 300000
+```
+
+For deployments with multiple bot accounts in shared channels (e.g., 4 agents in one Discord channel). Key differences:
+
+- **`generationGuardTolerance: 300`** — Multi-agent channels produce generation counter drift as each agent's messages increment the counter. A tolerance of 300 absorbs this drift while still catching genuine stale wakes.
+- **`maxDelegatesPerTurn: 20`** — Enables the sensor fan-out pattern (see below). A coordinator delegate can dispatch 20 worker shards in a single turn for parallel processing.
+- **`costCapTokens: 1000000`** — Higher ceiling to accommodate wide fan-outs where 20 sensors each consume a modest token budget.
+- **`maxChainLength: 10`** — Unchanged. Fan-out is a width question, not a depth question. Depth 2–3 is sufficient for most patterns (main → coordinator → sensors).
+
+#### Sensor Fan-Out Pattern ("Mast Cells")
+
+The primary motivation for raising `maxDelegatesPerTurn` above the default:
+
+```
+main session (active conversation)
+ └─ delegate (coordinator)
+     ├─ sensor 1 → reads chunk 1 → returns summary (silent)
+     ├─ sensor 2 → reads chunk 2 → returns summary (silent)
+     ├─ sensor 3 → reads chunk 3 → returns summary (silent)
+     └─ ... up to maxDelegatesPerTurn
+     ← collapse: coordinator synthesizes, returns | loud to main
+```
+
+Use cases:
+
+- **Document analysis** — Large document split into N chunks, each processed by a sensor shard that returns a summary. Coordinator synthesizes.
+- **Research fan-out** — Multiple independent web searches dispatched in parallel. Results collapse into a briefing.
+- **Ambient monitoring** — Disposable sensor shards that check conditions and return `| silent` — informing the main session's future context without interrupting it.
+
+The safety net is `costCapTokens`, not `maxDelegatesPerTurn`. Individual sensor shards are cheap (short prompts, focused tasks). The operator caps total spend, and the architecture handles width freely within that budget.
+
+All configuration values are hot-reloadable — modify `openclaw.json` and changes take effect at the next enforcement point (tool execution, timer callback, consumption loop) without gateway restart. This is enforced by `resolveContinuationRuntimeConfig()` calling `loadConfig()` at use time, not at startup.
+
 ## Implementation
 
 ### Architecture
