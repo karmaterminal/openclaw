@@ -239,6 +239,7 @@ describe("subagent announce formatting", () => {
         message?: string;
         sessionKey?: string;
         internalEvents?: Array<{ type?: string; taskLabel?: string }>;
+        continuationTrigger?: string;
       };
     };
     const msg = call?.params?.message as string;
@@ -257,6 +258,7 @@ describe("subagent announce formatting", () => {
     expect(msg).toContain("Keep this internal context private");
     expect(call?.params?.internalEvents?.[0]?.type).toBe("task_completion");
     expect(call?.params?.internalEvents?.[0]?.taskLabel).toBe("do thing");
+    expect(call?.params?.continuationTrigger).toBe("delegate-return");
   });
 
   it("includes success status when outcome is ok", async () => {
@@ -1294,11 +1296,16 @@ describe("subagent announce formatting", () => {
     });
     expect(agentSpy.mock.calls[0]?.[0]).toMatchObject({
       method: "agent",
-      params: { sessionKey: "agent:main:main" },
+      params: { sessionKey: "agent:main:main", continuationTrigger: "delegate-return" },
     });
     expect(agentSpy.mock.calls[0]?.[0]).toMatchObject({
       method: "agent",
-      params: { channel: "whatsapp", to: "+1555", deliver: true },
+      params: {
+        channel: "whatsapp",
+        to: "+1555",
+        deliver: true,
+        continuationTrigger: "delegate-return",
+      },
     });
   });
 
@@ -1336,6 +1343,7 @@ describe("subagent announce formatting", () => {
       params: {
         sessionKey: "agent:main:main",
         deliver: false,
+        continuationTrigger: "delegate-return",
       },
     });
   });
