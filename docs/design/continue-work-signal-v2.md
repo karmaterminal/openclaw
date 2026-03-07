@@ -258,6 +258,21 @@ When a sub-agent's output triggers a chain hop (a new sub-agent spawned from the
 - **Delay bounds**: the hop's delay is clamped to the parent session's configured `minDelayMs` / `maxDelayMs`, not hardcoded values.
 - **Generation guard**: the hop's `setTimeout` callback checks the parent session's generation counter before spawning, preventing orphan spawns after preemption.
 
+#### Generation Guard Tolerance Asymmetry
+
+`CONTINUE_WORK` timers use **strict equality** (`!==`) — any generation drift cancels the timer. `CONTINUE_DELEGATE` timers (bracket-path, tool-path, and chain-hop) use **tolerance-aware comparison** (`drift > generationGuardTolerance`).
+
+This asymmetry is intentional:
+
+- **WORK timers** schedule the _same agent's_ next turn. If someone talks to you, you should stop and listen — the human's message is more important than your planned continuation. Strict cancellation ensures responsiveness.
+- **DELEGATE timers** spawn _separate sub-agents_ carrying committed tasks. These are fire-and-forget obligations that should survive incidental channel traffic in multi-agent environments, while still cancelling on genuine preemption (e.g., operator `/stop`).
+
+The `generationGuardTolerance` config (default: `0`) only applies to DELEGATE-family timers. WORK timers are always strict. In single-agent deployments (tolerance `0`), both paths behave identically. In multi-agent channels (tolerance `300`), delegates survive chatter while WORK continuations remain responsive.
+
+#### `maxDelegatesPerTurn` Hot-Reload
+
+The `continue_delegate` tool reads `maxDelegatesPerTurn` from `loadConfig()` at **execute time**, not at tool construction time. This means config hot-reloads take effect immediately without gateway restart. The fallback chain is: live config → construction-time opts → hardcoded default of `5`.
+
 `maxChainLength` bounds bracket chain depth. `costCapTokens` bounds single-session continuation and tool-delegate cost. A future improvement would pass token counts through the completion event payload to enable reliable cost accumulation across bracket hops.
 
 ### Token Interaction
