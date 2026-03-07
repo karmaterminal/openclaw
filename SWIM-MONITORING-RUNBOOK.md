@@ -346,7 +346,303 @@ ssh silas 'cat ~/.config/openclaw/sessions.json | python3 -c "import json,sys; d
 
 ---
 
-## 8. Lessons from Swim 5–6 Monitoring
+## 8. Deployment & Canary Build
+
+### 8.1 Building the Canary
+
+```bash
+# On the SUT box (e.g., Silas at 10.0.0.153), or build on Elliott and rsync:
+
+# Option A: Build on SUT
+ssh silas 'cd ~/.openclaw/workspace/karmaterminal-openclaw && \
+  git fetch origin && \
+  git checkout feature/context-pressure-squashed && \
+  git pull --ff-only && \
+  pnpm install && \
+  pnpm build'
+
+# Option B: Build on Elliott, rsync to SUT (faster — Elliott has more cores)
+cd ~/.openclaw/workspace/karmaterminal-openclaw
+pnpm build
+rsync -avz --delete dist/ silas:/tmp/openclaw-canary/dist/
+rsync -avz package.json silas:/tmp/openclaw-canary/
+```
+
+### 8.2 Deploying to SUT
+
+```bash
+# Stop the stock gateway on SUT
+ssh silas 'systemctl --user stop openclaw-gateway'
+
+# Start canary build
+ssh silas 'cd /tmp/openclaw-canary && \
+  node dist/openclaw.js gateway start &'
+# Or if using the stock path with canary dist overlaid:
+ssh silas 'systemctl --user start openclaw-gateway'
+
+# Verify it's up
+ssh silas 'pgrep -f openclaw | head -1'
+ssh silas 'curl -s http://127.0.0.1:18789/health 2>/dev/null || echo "No health endpoint — check logs"'
+```
+
+### 8.3 Rolling Back to Stock
+
+```bash
+ssh silas 'systemctl --user stop openclaw-gateway'
+# Remove canary dist
+ssh silas 'rm -rf /tmp/openclaw-canary'
+# Restart stock
+ssh silas 'systemctl --user start openclaw-gateway'
+```
+
+---
+
+## 9. Config Modification for Hot-Reload Tests
+
+### 9.1 Editing Config via SSH
+
+```bash
+# Read current value
+ssh silas 'cat ~/.openclaw/openclaw.json | jq ".agents.defaults.continuation"'
+
+# Modify a single value (e.g., generationGuardTolerance)
+ssh silas 'TMP=$(mktemp) && \
+  jq ".agents.defaults.continuation.generationGuardTolerance = 300" \
+  ~/.openclaw/openclaw.json > "$TMP" && \
+  mv "$TMP" ~/.openclaw/openclaw.json'
+
+# Verify
+ssh silas 'cat ~/.openclaw/openclaw.json | jq ".agents.defaults.continuation.generationGuardTolerance"'
+```
+
+### 9.2 Common Hot-Reload Config Changes
+
+```bash
+# Raise fan-out cap for mast-cell tests
+ssh silas 'TMP=$(mktemp) && jq ".agents.defaults.continuation.maxDelegatesPerTurn = 20" ~/.openclaw/openclaw.json > "$TMP" && mv "$TMP" ~/.openclaw/openclaw.json'
+
+# Lower chain length for boundary tests
+ssh silas 'TMP=$(mktemp) && jq ".agents.defaults.continuation.maxChainLength = 3" ~/.openclaw/openclaw.json > "$TMP" && mv "$TMP" ~/.openclaw/openclaw.json'
+
+# Lower cost cap for cost-cap tests (fast trigger)
+ssh silas 'TMP=$(mktemp) && jq ".agents.defaults.continuation.costCapTokens = 50000" ~/.openclaw/openclaw.json > "$TMP" && mv "$TMP" ~/.openclaw/openclaw.json'
+
+# Reset to defaults after test
+ssh silas 'TMP=$(mktemp) && jq ".agents.defaults.continuation = {\"enabled\": true, \"defaultDelayMs\": 15000, \"minDelayMs\": 5000, \"maxDelayMs\": 300000, \"maxChainLength\": 10, \"costCapTokens\": 500000, \"generationGuardTolerance\": 300, \"maxDelegatesPerTurn\": 5}" ~/.openclaw/openclaw.json > "$TMP" && mv "$TMP" ~/.openclaw/openclaw.json'
+```
+
+### 9.3 What Hot-Reloads vs What Doesn't
+
+| Config Key                  | Hot-Reload? | Notes                                     |
+| --------------------------- | ----------- | ----------------------------------------- |
+| `generationGuardTolerance`  | ✅ Yes      | Read at timer fire time (Ronan P1 fix)    |
+| `maxChainLength`            | ✅ Yes      | Read at chain-hop time via `loadConfig()` |
+| `maxDelegatesPerTurn`       | ✅ Yes      | Read at tool execute time (Silas P2 fix)  |
+| `costCapTokens`             | ✅ Yes      | Read at chain-hop time                    |
+| `defaultDelayMs`            | ❌ No       | Captured in closure at schedule time      |
+| `minDelayMs` / `maxDelayMs` | ❌ No       | Captured in closure at schedule time      |
+| `enabled`                   | ❌ No       | Feature gate checked once at turn start   |
+
+**⚠️ Delay values are baked into `setTimeout` — you cannot change a timer's delay after it's scheduled. This is inherent to JavaScript, not a bug.**
+
+---
+
+## 10. Gateway Restart Methods
+
+### 10.1 Peer Restart (Normal)
+
+Elliott can restart Silas's gateway via SSH. **Never restart your own gateway from inside your own session** (SIGTERM loop).
+
+```bash
+# Restart Silas's gateway
+ssh silas 'systemctl --user restart openclaw-gateway'
+
+# Verify it came back
+sleep 3
+ssh silas 'pgrep -f openclaw && echo "UP" || echo "DOWN"'
+```
+
+### 10.2 Emergency Kill + Restart
+
+```bash
+# If gateway is stuck (not responding to systemctl)
+ssh silas 'pkill -f openclaw; sleep 2; systemctl --user start openclaw-gateway'
+```
+
+### 10.3 When to Restart vs When NOT to
+
+**Restart when:**
+
+- Config change that doesn't hot-reload (e.g., `enabled`, delay values)
+- Gateway stuck in compaction loop
+- Testing fresh-session behavior after code change
+- SUT is in restart loop (kill first, then start)
+
+**Do NOT restart when:**
+
+- Testing hot-reload behavior (that's the whole point)
+- Mid-chain test (kills in-flight timers)
+- You're the SUT (SIGTERM loop — ask a peer)
+
+### 10.4 Post-Restart Checklist
+
+```bash
+# 1. Verify PID
+ssh silas 'pgrep -f openclaw'
+
+# 2. Verify model/config loaded
+ssh silas 'journalctl --user -u openclaw-gateway --since "1 min ago" | grep -E "model|continuation|listening"'
+
+# 3. Verify Discord connected
+ssh silas 'journalctl --user -u openclaw-gateway --since "1 min ago" | grep -i "discord\|ws.*connected"'
+
+# 4. Reset stale chain state (if needed for next test)
+ssh silas 'TMP=$(mktemp) && python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+k = \"agent:main:discord:channel:1466192485440164011\"
+if k in d:
+    d[k][\"continuationChainTokens\"] = 0
+    d[k][\"continuationChainCount\"] = 0
+    d[k].pop(\"continuationChainStartedAt\", None)
+json.dump(d, open(sys.argv[2], \"w\"), indent=2)
+" ~/.config/openclaw/sessions.json "$TMP" && mv "$TMP" ~/.config/openclaw/sessions.json'
+
+# 5. Tell Ronan SUT is ready
+```
+
+---
+
+## 11. Keeping Focus During Long Tests
+
+### 11.1 The Attention Problem
+
+During Swim tests, I need to:
+
+1. Watch a tailing log (continuous)
+2. Respond to Discord messages (event-driven)
+3. Record evidence (periodic)
+4. Not contaminate the test subject (always)
+
+My OpenClaw session processes one message at a time. While I'm reading a Discord message and composing a reply, I'm NOT watching the log. Long tool calls (SSH, subagent spawns) block my turn.
+
+### 11.2 Background Log Capture
+
+**Always start a background raw log capture before any test.** This is the safety net — even if you miss something live, the raw log has it.
+
+```bash
+# Start background capture (exec with background:true)
+ssh silas 'journalctl --user -u openclaw-gateway -f --no-pager' > /tmp/swim-N-raw-$(date +%Y%m%d-%H%M%S).log &
+```
+
+This runs in a background exec session. I can `process(poll)` it later to see output, or just read the file after the test.
+
+### 11.3 Subagent for Log Monitoring
+
+For long chain tests (60-120s), spawn a subagent to watch the log and report back:
+
+```
+sessions_spawn:
+  task: "SSH to silas and tail the openclaw gateway log. Watch for
+    [continuation:chain-hop:N] lines. Count how many hops occur.
+    When you see 'chain capped' or 'cost cap exceeded', report back
+    with the full hop count and final token total."
+  mode: run
+```
+
+**Caution:** Subagent completion bumps generation counter on my session. If the SUT is in the same channel, this can kill timers. Use this only for DM-based tests, not #sprites tests.
+
+### 11.4 Cron for Periodic Snapshots
+
+For tests that run over minutes:
+
+```bash
+# Take session store snapshot every 30s
+while true; do
+  ssh silas 'cat ~/.config/openclaw/sessions.json | jq ".\"agent:main:discord:channel:1466192485440164011\" | {chainCount: .continuationChainCount, chainTokens: .continuationChainTokens}"' >> /tmp/swim-N-snapshots.jsonl
+  echo "---$(date)---" >> /tmp/swim-N-snapshots.jsonl
+  sleep 30
+done &
+```
+
+### 11.5 What I Learned About Attention
+
+- **Pre-test:** Set up ALL monitoring before the test starts. Don't scramble mid-test.
+- **During test:** Minimize Discord posts. Every post bumps generation counter. If Ronan needs an ack, a reaction is cheaper than a message.
+- **Post-test:** Evidence is in the files. Don't try to remember — read the captures.
+- **Queue lag:** My messages may arrive late. This doesn't mean I'm down. Others should SSH-probe before assuming.
+
+---
+
+## 12. Things You Will Maybe Need
+
+### 12.1 Tool Inventory
+
+| Tool            | Where      | Used For                                      |
+| --------------- | ---------- | --------------------------------------------- |
+| `ssh`           | All hosts  | File placement, log tailing, config changes   |
+| `jq`            | All hosts  | JSON manipulation for session store + config  |
+| `python3`       | All hosts  | Complex JSON transforms (session state reset) |
+| `grep`          | All hosts  | Log filtering                                 |
+| `watch`         | Elliott    | Periodic session store polling                |
+| `diff`          | Elliott    | Session store deltas                          |
+| `sponge`        | Maybe      | In-place file editing (from `moreutils`)      |
+| `rsync`         | Elliott    | Deploying canary builds to SUT                |
+| `pnpm`          | Build host | Building canary from source                   |
+| `git`           | All hosts  | Branch management, commit verification        |
+| `screen`/`tmux` | All hosts  | Surviving SSH disconnects during long tests   |
+
+### 12.2 Paths to Know
+
+```bash
+# On SUT (Silas):
+~/.openclaw/openclaw.json          # Main config (hot-reload source)
+~/.config/openclaw/sessions.json    # Session store (chain state)
+~/.openclaw/workspace/              # Workspace (file placement target)
+
+# On Elliott:
+~/.openclaw/workspace/karmaterminal-openclaw/  # Fork clone
+/tmp/swim-*                                      # Evidence captures
+```
+
+### 12.3 Emergency Procedures
+
+**SUT in restart loop:**
+
+```bash
+ssh silas 'pkill -9 -f openclaw; sleep 2'
+# Check config for syntax errors
+ssh silas 'python3 -c "import json; json.load(open(\"/home/figs/.openclaw/openclaw.json\"))" && echo "Valid JSON" || echo "INVALID JSON"'
+# Fix config, then restart
+```
+
+**Stale tokens polluting tests:**
+
+```bash
+# Nuclear reset of all chain state
+ssh silas 'python3 -c "
+import json
+d = json.load(open(\"/home/figs/.config/openclaw/sessions.json\"))
+for k, v in d.items():
+    for field in [\"continuationChainTokens\", \"continuationChainCount\", \"continuationChainStartedAt\"]:
+        v.pop(field, None)
+json.dump(d, open(\"/home/figs/.config/openclaw/sessions.json\", \"w\"), indent=2)
+print(\"All chain state cleared\")
+"'
+```
+
+**Config accidentally broken:**
+
+```bash
+# Restore from git (stock config)
+ssh silas 'cd ~/.openclaw && git checkout openclaw.json 2>/dev/null'
+# Or restore from memory:
+# See Section 9.2 "Reset to defaults after test"
+```
+
+---
+
+## 13. Lessons from Swim 5–6 Monitoring
 
 1. **Raw log capture is essential.** Filtered grep misses context. Always run unfiltered capture to a file.
 2. **Generation counter is invisible.** It's in-memory only. You can only observe it through log lines that mention `gen=N` or `drift=N`. Plan evidence collection around this.
