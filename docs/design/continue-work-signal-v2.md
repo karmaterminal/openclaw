@@ -1305,3 +1305,105 @@ _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/
 **Scorecard**: 7-B ✅ | 7-C ✅ | 7-D ✅ | 7-E ✅ | 7-F ✅ | 7-G ✅ | 7-H ✅ | 7-I ⏸️ | 7-J ⏸️ | 7-K ✅ | 7-L ✅ | 7-M ✅
 
 **Cumulative canary validation**: Swim 5 (10 pass), Swim 6 (3 pass, 1 deferred), Swim 7 (10 pass, 2 deferred). Total: 23 pass, 3 deferred, 0 fail across three swim campaigns on three successive builds.
+
+---
+
+## Appendix: Integration Test Evidence
+
+The continuation system was validated through six structured test campaigns (Swim 1–7, with Swim 3 being the initial blind enrichment proof-of-concept) on canary builds deployed to persistent multi-agent sessions. Raw evidence is archived in the fork repository for independent verification.
+
+### Evidence Locations
+
+| Artifact                              | Location                                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Swim 7 structured results             | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27) |
+| Gateway journal (773 lines)           | `silas-likes-to-watch/main` — per-test evidence files                                                        |
+| Raw operator log capture (1034 lines) | `silas-likes-to-watch/main` — full canary gateway lifecycle                                                  |
+| Validated canary build                | Tag `swim7-validated` at `b07e7e40c` on `karmaterminal/openclaw`                                             |
+| Full process documentation            | `karmaterminal/openclaw` release branch (permalink)                                                          |
+
+### Swim 7 Scorecard (build `b07e7e40c`)
+
+| Test | Description                                                                          | Result      |
+| ---- | ------------------------------------------------------------------------------------ | ----------- |
+| 7-B  | Delegate tolerance hot-reload (0→cancelled, 300→fired)                               | ✅ PASS     |
+| 7-C  | WORK tolerance hot-reload (unified with delegate tolerance)                          | ✅ PASS     |
+| 7-D  | Width widen without restart (5→12, 12/12 accepted)                                   | ✅ PASS     |
+| 7-E  | Width narrow without restart (12→3, 3/5 accepted, 2 rejected)                        | ✅ PASS     |
+| 7-F  | Chain boundary enforcement (`maxChainLength: 1` blocks at hop 1)                     | ✅ PASS     |
+| 7-H  | Textless-turn delegate consumption (NO_REPLY shard consumed)                         | ✅ PASS     |
+| 7-K  | Silent return trust boundary (enrichment indistinguishable from self-knowledge)      | ✅ PASS     |
+| 7-M  | Blind enrichment accuracy (3/3 verifiable facts recalled, source attribution honest) | ✅ PASS     |
+| 7-I  | Post-compaction guard parity                                                         | ⏸️ DEFERRED |
+| 7-J  | Grandparent reroute ordering                                                         | ⏸️ DEFERRED |
+
+**10 pass, 2 deferred, 0 fail.** Deferred tests require organic context buildup conditions not achievable in directed testing.
+
+### Methodology Note
+
+Test campaigns used a 4-agent persistent session with one agent as test administrator, one as subject under test (SUT), one as log monitor, and one as coordinator. The SUT ran the canary build; all other agents ran stock. The operator provided ground-truth content for blind enrichment tests and adjudicated pass/fail.
+
+Key finding from 7-K/7-M: **silent enrichment arrives as internal context indistinguishable from training knowledge.** The receiving agent cannot determine provenance by inspection — only by reasoning about what it _should not_ know. Obscure facts (e.g., the Kubjikamatatantra's omission of the seventh chakra) are traceable to enrichment; common-adjacent facts (e.g., Bindu Visarga) blur with training knowledge. This has implications for content quality in trusted enrichment pipelines.
+
+### Key Evidence Lines (Gateway Log Excerpts)
+
+The following log lines are extracted from the Swim 7 gateway journal. Each demonstrates a specific guard or lifecycle event firing correctly under live conditions.
+
+**Tolerance hot-reload (7-B):**
+
+```
+07:02:58 Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)
+07:03:55 config change applied (dynamic reads: agents.defaults.continuation.generationGuardTolerance)
+07:04:41 Tool DELEGATE timer fired and spawned turn 1/10
+```
+
+Timer cancelled at tolerance 0 (drift 3 exceeds 0). Config hot-reloaded to tolerance 300. Same timer type fires through drift on next dispatch.
+
+**WORK tolerance unification (7-C):**
+
+```
+07:07:08 WORK timer cancelled (generation drift 1 > tolerance 0)
+07:12:22 WORK timer fired for session agent:main:discord:channel:...
+```
+
+WORK and DELEGATE share `generationGuardTolerance`. Unified ruling confirmed live.
+
+**Width widen + narrow (7-D, 7-E):**
+
+```
+07:22:35 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
+07:23:29 [continue_delegate] Consuming 12 tool delegate(s)
+07:25:53 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
+07:26:24 [continue_delegate] Consuming 3 tool delegate(s)
+```
+
+Hot-reload from 5→12→3. All three values enforced at dispatch time without restart.
+
+**Chain boundary (7-F):**
+
+```
+07:27:31 [subagent-chain-hop] Spawned chain delegate (2/2)
+07:28:57 config change applied (dynamic reads: agents.defaults.continuation.maxChainLength)
+07:29:27 [subagent-chain-hop] Chain length 2 > 1, rejecting hop
+```
+
+`maxChainLength: 2` permits hop 2. Hot-reload to 1. Next chain attempt rejected: `2 > 1`.
+
+**Silent enrichment return (7-K):**
+
+```
+07:32:47 agent.wait 9846ms — shard completed
+07:32:48 [continuation/silent-wake] wakeOnReturn=true silentAnnounce=true
+```
+
+Shard read blind content, returned silently. No channel echo. Enrichment absorbed as internal context.
+
+**Blind enrichment with ground truth (7-M):**
+
+```
+07:43:02 [continue_delegate] Consuming 1 tool delegate(s)
+07:43:25 agent.wait 22519ms — shard completed
+07:43:25 [continuation/silent-wake] wakeOnReturn=true silentAnnounce=true
+```
+
+Shard read operator-placed Sahasrara chakra article. Subject recalled 3/3 verifiable facts (Guru chakra: 12 white petals; Kubjikamatatantra omission; Bindu Visarga location). Source attribution: 2 high-confidence enrichment, 1 mixed (training + enrichment).
