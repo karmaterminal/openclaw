@@ -5,7 +5,7 @@ import {
   pendingDelegateCount,
   stagedPostCompactionDelegateCount,
 } from "../../auto-reply/continuation-delegate-store.js";
-import { resolveContinuationRuntimeConfig } from "../../auto-reply/reply/continuation-runtime.js";
+import { resolveMaxDelegatesPerTurn } from "../../auto-reply/reply/continuation-runtime.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
@@ -73,7 +73,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
       "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
       "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
-      "Note: delayed delegates (delaySeconds > 0) share the generation guard — use delay 0 for reliable parallel dispatch.",
+      "Note: delayed delegates share the same generation guard as delayed CONTINUE_WORK — use delay 0 for reliable parallel dispatch in noisy channels, or raise generationGuardTolerance.",
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -102,7 +102,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       const silentWake = modeRaw === "silent-wake" || isPostCompaction;
 
       // Check per-turn delegate limit
-      const { maxDelegatesPerTurn: maxPerTurn } = resolveContinuationRuntimeConfig();
+      const maxPerTurn = resolveMaxDelegatesPerTurn();
       const currentCount =
         pendingDelegateCount(sessionKey) + stagedPostCompactionDelegateCount(sessionKey);
       if (currentCount >= maxPerTurn) {
