@@ -10,10 +10,16 @@ const mocked = vi.hoisted(() => ({
   ),
   generationState: new Map<string, number>(),
   setDelegatePendingMock: vi.fn(),
-  countActiveDescendantRunsMock: vi.fn(() => 0),
-  countPendingDescendantRunsMock: vi.fn(() => 0),
-  isSubagentSessionRunActiveMock: vi.fn(() => true),
-  resolveRequesterForChildSessionMock: vi.fn(() => null),
+  countActiveDescendantRunsMock: vi.fn((_key?: string) => 0),
+  countPendingDescendantRunsMock: vi.fn((_key?: string) => 0),
+  isSubagentSessionRunActiveMock: vi.fn((_key?: string) => true),
+  resolveRequesterForChildSessionMock: vi.fn(
+    (_key?: string) =>
+      null as {
+        requesterSessionKey: string;
+        requesterOrigin: { channel: string; to: string };
+      } | null,
+  ),
 }));
 
 let sessionStore: Record<string, Record<string, unknown>> = {};
@@ -62,7 +68,7 @@ vi.mock("../config/sessions.js", async (importOriginal) => {
 });
 
 vi.mock("./subagent-spawn.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./subagent-spawn.js")>("./subagent-spawn.js");
+  const actual = await importOriginal<typeof import("./subagent-spawn.js")>();
   return {
     ...actual,
     spawnSubagentDirect: (...args: unknown[]) => mocked.spawnSubagentDirectMock(...args),
@@ -97,14 +103,11 @@ vi.mock("./pi-embedded.js", () => ({
 }));
 
 vi.mock("./subagent-registry.js", () => ({
-  countActiveDescendantRuns: (...args: unknown[]) => mocked.countActiveDescendantRunsMock(...args),
-  countPendingDescendantRuns: (...args: unknown[]) =>
-    mocked.countPendingDescendantRunsMock(...args),
+  countActiveDescendantRuns: (key: string) => mocked.countActiveDescendantRunsMock(key),
+  countPendingDescendantRuns: (key: string) => mocked.countPendingDescendantRunsMock(key),
   countPendingDescendantRunsExcludingRun: () => 0,
-  isSubagentSessionRunActive: (...args: unknown[]) =>
-    mocked.isSubagentSessionRunActiveMock(...args),
-  resolveRequesterForChildSession: (...args: unknown[]) =>
-    mocked.resolveRequesterForChildSessionMock(...args),
+  isSubagentSessionRunActive: (key: string) => mocked.isSubagentSessionRunActiveMock(key),
+  resolveRequesterForChildSession: (key: string) => mocked.resolveRequesterForChildSessionMock(key),
 }));
 
 vi.mock("../plugins/hook-runner-global.js", () => ({

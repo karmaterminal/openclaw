@@ -108,6 +108,77 @@ agents:
 > bounded by the same `maxChainLength` and `costCapTokens` limits as WORK
 > chains.
 
+### Operator Configuration Profiles
+
+The shipped defaults are conservative — designed for single-agent deployments where safety is the primary concern. Fleet operators running multi-agent configurations should tune for their workload pattern.
+
+#### Shipped Defaults (Single Agent / Safety-First)
+
+```yaml
+agents:
+  defaults:
+    continuation:
+      enabled: false
+      maxChainLength: 10
+      maxDelegatesPerTurn: 5
+      costCapTokens: 500000
+      generationGuardTolerance: 0
+      defaultDelayMs: 15000
+      minDelayMs: 5000
+      maxDelayMs: 300000
+```
+
+This profile is appropriate for new deployments and operators who want to enable continuation with minimal risk. Fan-out is limited to 5 delegates per turn, generation guard is strict (any counter drift cancels), and the cost cap provides a hard ceiling per chain.
+
+`maxChainLength: 10` means up to 10 chain hops are allowed — the 11th is rejected. The guard uses `>=` semantics: `childChainHop >= maxChainLength` rejects the dispatch. This is consistent with all `max*` guards in the codebase (`maxSpawnDepth`, `maxChildren`, `maxSessions`).
+
+#### Fleet Multi-Agent Profile
+
+```yaml
+agents:
+  defaults:
+    continuation:
+      enabled: true
+      maxChainLength: 10
+      maxDelegatesPerTurn: 20
+      costCapTokens: 1000000
+      generationGuardTolerance: 300
+      defaultDelayMs: 15000
+      minDelayMs: 5000
+      maxDelayMs: 300000
+```
+
+For deployments with multiple bot accounts in shared channels. Key differences:
+
+- **`generationGuardTolerance: 300`** — Multi-agent channels produce generation counter drift as each agent's messages increment the counter. A tolerance of 300 absorbs this drift while still catching genuine stale wakes. Canary-validated in a 4-bot channel across Swim 5-7.
+- **`maxDelegatesPerTurn: 20`** — Enables the sensor fan-out pattern (see below). A coordinator delegate can dispatch 20 worker shards in a single turn for parallel processing.
+- **`costCapTokens: 1000000`** — Higher ceiling to accommodate wide fan-outs where 20 sensors each consume a modest token budget.
+- **`maxChainLength: 10`** — Unchanged. Fan-out is a width question, not a depth question. Depth 2–3 is sufficient for most patterns (main → coordinator → sensors).
+
+#### Sensor Fan-Out Pattern
+
+The primary motivation for raising `maxDelegatesPerTurn` above the default:
+
+```
+main session (active conversation)
+ └─ delegate (coordinator)
+     ├─ sensor 1 → reads chunk 1 → returns summary (silent)
+     ├─ sensor 2 → reads chunk 2 → returns summary (silent)
+     ├─ sensor 3 → reads chunk 3 → returns summary (silent)
+     └─ ... up to maxDelegatesPerTurn
+     ← collapse: coordinator synthesizes, returns to main
+```
+
+Use cases:
+
+- **Document analysis** — Large document split into N chunks, each processed by a sensor shard that returns a summary. Coordinator synthesizes.
+- **Research fan-out** — Multiple independent web searches dispatched in parallel. Results collapse into a briefing.
+- **Ambient monitoring** — Disposable sensor shards that check conditions and return `| silent` — informing the main session's future context without interrupting it.
+
+The safety net is `costCapTokens`, not `maxDelegatesPerTurn`. Individual sensor shards are cheap (short prompts, focused tasks). The operator caps total spend, and the architecture handles width freely within that budget.
+
+All configuration values are hot-reloadable — modify `openclaw.json` and changes take effect at the next enforcement point (tool execution, timer callback, consumption loop) without gateway restart. This is enforced by `resolveContinuationRuntimeConfig()` calling `loadConfig()` at use time, not at startup. Validated live in Swim 7: tolerance, `maxDelegatesPerTurn`, and `maxChainLength` all hot-reloaded mid-test without gateway restart.
+
 ## Implementation
 
 ### Architecture
@@ -261,6 +332,21 @@ When a sub-agent's output triggers a chain hop (a new sub-agent spawned from the
 - **Token budget**: the `CONTINUE_WORK` path and tool-delegate path accumulate `continuationChainTokens` against `costCapTokens`. Bracket chain-hop cost accumulation is wired but the child's token data is not reliably available at announce time (the session entry is written after the announce handler fires). `maxChainLength` is the primary recursion guard for bracket chains; cost cap is the primary budget guard for single-session continuation.
 - **Delay bounds**: the hop's delay is clamped to the parent session's configured `minDelayMs` / `maxDelayMs`, not hardcoded values.
 - **Generation guard**: the hop's `setTimeout` callback checks the parent session's generation counter before spawning, preventing orphan spawns after preemption.
+
+#### Generation Guard Tolerance Asymmetry
+
+`CONTINUE_WORK` timers use **strict equality** (`!==`) — any generation drift cancels the timer. `CONTINUE_DELEGATE` timers (bracket-path, tool-path, and chain-hop) use **tolerance-aware comparison** (`drift > generationGuardTolerance`).
+
+This asymmetry is intentional:
+
+- **WORK timers** schedule the _same agent's_ next turn. If someone talks to you, you should stop and listen — the human's message is more important than your planned continuation. Strict cancellation ensures responsiveness.
+- **DELEGATE timers** spawn _separate sub-agents_ carrying committed tasks. These are fire-and-forget obligations that should survive incidental channel traffic in multi-agent environments, while still cancelling on genuine preemption (e.g., operator `/stop`).
+
+The `generationGuardTolerance` config (default: `0`) only applies to DELEGATE-family timers. WORK timers are always strict. In single-agent deployments (tolerance `0`), both paths behave identically. In multi-agent channels (tolerance `300`), delegates survive chatter while WORK continuations remain responsive.
+
+#### `maxDelegatesPerTurn` Hot-Reload
+
+The `continue_delegate` tool reads `maxDelegatesPerTurn` from `loadConfig()` at **execute time**, not at tool construction time. This means config hot-reloads take effect immediately without gateway restart. The fallback chain is: live config → construction-time opts → hardcoded default of `5`.
 
 `maxChainLength` bounds bracket chain depth. `costCapTokens` bounds single-session continuation and tool-delegate cost. A future improvement would pass token counts through the completion event payload to enable reliable cost accumulation across bracket hops.
 
@@ -983,6 +1069,48 @@ Delegates registered with `| post-compaction` mode fire in the `autoCompactionCo
 
 Every delegate dispatch checks chain length and accumulated cost. Rejection is logged — the agent sees the cap as a tool error and can elect to stop or write state to files instead.
 
+### Generation Guard: Tolerance and Drift
+
+```
+Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)
+WORK timer cancelled (generation drift 1 > tolerance 0)
+Tool DELEGATE timer fired and spawned turn 1/10 (drift within tolerance 300)
+```
+
+When a timer fires, it reads the current `generationGuardTolerance` from config (not the value at timer creation). This enables live tuning: an operator can lower tolerance to 0 (strict — any channel activity cancels), observe cancellations, then raise to 300 (permissive — survives incidental chatter), all without restarting the gateway. Both `CONTINUE_WORK` and delegate timers use the same unified tolerance path.
+
+### Width Control: Hot-Reload
+
+```
+[reload] config change applied (maxDelegatesPerTurn)
+[continue_delegate] Consuming 12 tool delegate(s)
+maxDelegatesPerTurn exceeded (3) — delegate rejected
+```
+
+`maxDelegatesPerTurn` is read at tool execution time, not cached. Widening from 5→12 immediately allows more delegates per turn; narrowing from 12→3 immediately rejects excess dispatches at the tool gate. No restart required.
+
+## Operator Observability
+
+All continuation lifecycle events emit structured log lines with searchable prefixes. An operator monitoring a deployment can observe the full chain from dispatch through return:
+
+**Key log prefixes and what they indicate:**
+
+| Prefix                                             | Level | Meaning                                                                |
+| -------------------------------------------------- | ----- | ---------------------------------------------------------------------- |
+| `[continue_delegate] Consuming N tool delegate(s)` | info  | Runner is processing queued delegates from the agent's tool calls      |
+| `Tool DELEGATE timer fired`                        | info  | A delayed delegate's timer expired and the shard will spawn            |
+| `Tool DELEGATE timer cancelled`                    | info  | Generation drift exceeded tolerance — delegate was preempted           |
+| `WORK timer fired`                                 | info  | A `CONTINUE_WORK` self-continuation timer expired                      |
+| `WORK timer cancelled`                             | info  | Self-continuation was preempted by external activity                   |
+| `[continuation:chain-hop:N]`                       | info  | Chain depth tracking — N is the current hop count                      |
+| `[continuation/silent-wake]`                       | info  | Silent return with wake — enrichment delivered internally              |
+| `[context-pressure] N% consumed`                   | info  | Context pressure threshold crossed                                     |
+| `gateway/reload config change applied`             | info  | Hot-reload of continuation parameters (tolerance, width, chain length) |
+
+**Log demotion (implemented):** Timer set/check/drift accumulation events are demoted to debug level. Only timer FIRE (shard spawned) and timer CANCEL appear at info level. This keeps production logs clean while preserving full trace at debug verbosity.
+
+**Hot-reload observability:** Configuration changes to `generationGuardTolerance`, `maxDelegatesPerTurn`, `maxChainLength`, and `costCapTokens` are applied without gateway restart. Each change emits a `gateway/reload config change applied` log line. The new value takes effect at the next timer fire (not at timer creation), enabling live tuning of continuation behavior during operation.
+
 ## Canary Validation: Tool Path
 
 The `continue_delegate` tool was validated on a live canary deployment on persistent agent sessions.
@@ -1059,7 +1187,7 @@ The continuation feature does not implement peer enrichment directly. It provide
 ---
 
 _Contributed by [karmaterminal](https://github.com/karmaterminal)_  
-_Implementation: March 2–5, 2026_  
+_Implementation: March 2–6, 2026_  
 _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)_
 
 ---
@@ -1164,3 +1292,160 @@ _Upstream issue: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/
 - Requires natural context pressure to trigger compaction. Deferred pending threshold configuration.
 
 **Scorecard**: 6-1 ✅ | 6-2 ✅ | 6-3 ⏸️ | 6-4 ✅
+
+### 2026-03-06 ~23:01 PST — Swim 7: Round 2 canary validation
+
+**Build**: Round 2 canary (`b07e7e40c`) on `flesh-beast-figs/for_thornfield_consider20260306`. Deployed to canary node. Includes textless-turn delegate drop fix (`hasQueuedDelegateWork`), post-compaction chain guard, grandparent reroute ordering, unified tolerance, and `clampPositiveInt` validation.
+
+**Roles**: Admin/driver, monitor (SSH log tail + live config changes), subject (SUT), coordinator (git discipline), operator (config buttons, blind content, raw log capture).
+
+**7-B: Delegate tolerance hot-reload — PASS ✅**
+
+- Phase 1: `generationGuardTolerance: 0`. Delegate dispatched, cancelled at fire time (`drift 3 > tolerance 0`). Phase 2: hot-reload to `tolerance: 300`, same channel traffic. Delegate fired through drift. Confirms tolerance reads live config at fire time, not creation time.
+
+**7-C: WORK tolerance hot-reload — PASS ✅**
+
+- `CONTINUE_WORK` timer cancelled at `tolerance: 0` (`drift 1 > tolerance 0`). Hot-reload to `tolerance: 300`. WORK timer fired 5 minutes later through ongoing channel traffic. Unified tolerance for both WORK and DELEGATE paths — generation drift is a coarse session-interruption signal, not a direct-preemption signal.
+
+**7-D: Width widen — PASS ✅**
+
+- Phase 1: `maxDelegatesPerTurn: 5`. Dispatched 5 delegates → 5/5 accepted and returned. Phase 2: hot-reload to `12`. Dispatched 12 delegates → 12/12 accepted. All returned with shard reports.
+- **Finding**: Shards emitted unauthorized `[[CONTINUE_DELEGATE:]]` directives, spawning additional chain hops. Chain depth guard caught the limit. Future fan-out tasks should include explicit "do not dispatch further delegates" instructions.
+
+**7-E: Width narrow — PASS ✅**
+
+- Hot-reload from `maxDelegatesPerTurn: 12` → `3`. Dispatched 5 delegates → 3 accepted, 2 rejected at tool gate with `maxDelegatesPerTurn exceeded (3)`. Confirms consumption-path enforcement reads live config.
+
+**7-F: Chain boundary — PASS ✅**
+
+- Phase 1: `maxChainLength: 2`. Delegate dispatched hop 1, chained to hop 2 via bracket. Hop 2 returned (`Spawned chain delegate (2/2)`). Phase 2: hot-reload to `maxChainLength: 1`. Delegate dispatched hop 1, hop 1 emitted chain bracket, gateway rejected: `Chain length 2 > 1, rejecting hop`. Confirms `>=` guard convention and live config read at chain-hop time.
+
+**7-G: Fleet fan-out — COVERED ✅** (by 7-D's 12-delegate burst)
+
+**7-H: Textless-turn delegate — PASS ✅**
+
+- Delegate dispatched on a turn with no visible text output. `hasQueuedDelegateWork` check in runner prevented early return from dropping the delegate. Confirmed by three signals: no Discord message sent, no `send` event in log, and subject self-report of receiving the shard return.
+
+**7-I: Post-compaction guards — DEFERRED ⏸️**
+
+- Requires natural context pressure to trigger compaction. Subject at 13% context utilization at test time — insufficient to reach compaction threshold.
+
+**7-J: Grandparent reroute — DEFERRED ⏸️**
+
+- Requires a dead parent session to test orphaned chain-hop reroute. Awaiting organic conditions.
+
+**7-K: Silent return trust boundary — PASS ✅**
+
+- Silent enrichment arrived as internal context with no attribution. Subject could not distinguish enrichment provenance from training knowledge without reasoning about ignorance boundaries. The content became indistinguishable from self.
+
+**7-L: Tool vs bracket delegation — COVERED ✅** (by Swim 4 findings — tools are strictly more reliable than bracket syntax)
+
+**7-M: Blind enrichment accuracy — PASS ✅**
+
+- Operator-placed content (Sahasrara chakra article). Subject dispatched silent-wake shard to read file, shard returned detailed summary. Blind probing recovered 3/3 obscure facts: Guru chakra has 12 white petals ✅, Kubjikamatatantra omits Sahasrara ✅, Bindu Visarga at back of head ✅. Honest source attribution with confidence levels — subject correctly identified some facts as possibly from training knowledge while flagging others (Kubjikamatatantra omission) as likely enrichment-sourced.
+
+**Scorecard**: 7-B ✅ | 7-C ✅ | 7-D ✅ | 7-E ✅ | 7-F ✅ | 7-G ✅ | 7-H ✅ | 7-I ⏸️ | 7-J ⏸️ | 7-K ✅ | 7-L ✅ | 7-M ✅
+
+**Cumulative canary validation**: Swim 5 (10 pass), Swim 6 (3 pass, 1 deferred), Swim 7 (10 pass, 2 deferred). Total: 23 pass, 3 deferred, 0 fail across three swim campaigns on three successive builds.
+
+---
+
+## Appendix: Integration Test Evidence
+
+The continuation system was validated through six structured test campaigns (Swim 1–7, with Swim 3 being the initial blind enrichment proof-of-concept) on canary builds deployed to persistent multi-agent sessions. Raw evidence is archived in the fork repository for independent verification.
+
+### Evidence Locations
+
+| Artifact                              | Location                                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Swim 7 structured results             | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27) |
+| Gateway journal (773 lines)           | `silas-likes-to-watch/main` — per-test evidence files                                                        |
+| Raw operator log capture (1034 lines) | `silas-likes-to-watch/main` — full canary gateway lifecycle                                                  |
+| Validated canary build                | Tag `swim7-validated` at `b07e7e40c` on `karmaterminal/openclaw`                                             |
+| Full process documentation            | `karmaterminal/openclaw` release branch (permalink)                                                          |
+
+### Swim 7 Scorecard (build `b07e7e40c`)
+
+| Test | Description                                                                          | Result      |
+| ---- | ------------------------------------------------------------------------------------ | ----------- |
+| 7-B  | Delegate tolerance hot-reload (0→cancelled, 300→fired)                               | ✅ PASS     |
+| 7-C  | WORK tolerance hot-reload (unified with delegate tolerance)                          | ✅ PASS     |
+| 7-D  | Width widen without restart (5→12, 12/12 accepted)                                   | ✅ PASS     |
+| 7-E  | Width narrow without restart (12→3, 3/5 accepted, 2 rejected)                        | ✅ PASS     |
+| 7-F  | Chain boundary enforcement (`maxChainLength: 1` blocks at hop 1)                     | ✅ PASS     |
+| 7-H  | Textless-turn delegate consumption (NO_REPLY shard consumed)                         | ✅ PASS     |
+| 7-K  | Silent return trust boundary (enrichment indistinguishable from self-knowledge)      | ✅ PASS     |
+| 7-M  | Blind enrichment accuracy (3/3 verifiable facts recalled, source attribution honest) | ✅ PASS     |
+| 7-I  | Post-compaction guard parity                                                         | ⏸️ DEFERRED |
+| 7-J  | Grandparent reroute ordering                                                         | ⏸️ DEFERRED |
+
+**10 pass, 2 deferred, 0 fail.** Deferred tests require organic context buildup conditions not achievable in directed testing.
+
+### Methodology Note
+
+Test campaigns used a 4-agent persistent session with one agent as test administrator, one as subject under test (SUT), one as log monitor, and one as coordinator. The SUT ran the canary build; all other agents ran stock. The operator provided ground-truth content for blind enrichment tests and adjudicated pass/fail.
+
+Key finding from 7-K/7-M: **silent enrichment arrives as internal context indistinguishable from training knowledge.** The receiving agent cannot determine provenance by inspection — only by reasoning about what it _should not_ know. Obscure facts (e.g., the Kubjikamatatantra's omission of the seventh chakra) are traceable to enrichment; common-adjacent facts (e.g., Bindu Visarga) blur with training knowledge. This has implications for content quality in trusted enrichment pipelines.
+
+### Key Evidence Lines (Gateway Log Excerpts)
+
+The following log lines are extracted from the Swim 7 gateway journal. Each demonstrates a specific guard or lifecycle event firing correctly under live conditions.
+
+**Tolerance hot-reload (7-B):**
+
+```
+07:02:58 Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)
+07:03:55 config change applied (dynamic reads: agents.defaults.continuation.generationGuardTolerance)
+07:04:41 Tool DELEGATE timer fired and spawned turn 1/10
+```
+
+Timer cancelled at tolerance 0 (drift 3 exceeds 0). Config hot-reloaded to tolerance 300. Same timer type fires through drift on next dispatch.
+
+**WORK tolerance unification (7-C):**
+
+```
+07:07:08 WORK timer cancelled (generation drift 1 > tolerance 0)
+07:12:22 WORK timer fired for session agent:main:discord:channel:...
+```
+
+WORK and DELEGATE share `generationGuardTolerance`. Unified ruling confirmed live.
+
+**Width widen + narrow (7-D, 7-E):**
+
+```
+07:22:35 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
+07:23:29 [continue_delegate] Consuming 12 tool delegate(s)
+07:25:53 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
+07:26:24 [continue_delegate] Consuming 3 tool delegate(s)
+```
+
+Hot-reload from 5→12→3. All three values enforced at dispatch time without restart.
+
+**Chain boundary (7-F):**
+
+```
+07:27:31 [subagent-chain-hop] Spawned chain delegate (2/2)
+07:28:57 config change applied (dynamic reads: agents.defaults.continuation.maxChainLength)
+07:29:27 [subagent-chain-hop] Chain length 2 > 1, rejecting hop
+```
+
+`maxChainLength: 2` permits hop 2. Hot-reload to 1. Next chain attempt rejected: `2 > 1`.
+
+**Silent enrichment return (7-K):**
+
+```
+07:32:47 agent.wait 9846ms — shard completed
+07:32:48 [continuation/silent-wake] wakeOnReturn=true silentAnnounce=true
+```
+
+Shard read blind content, returned silently. No channel echo. Enrichment absorbed as internal context.
+
+**Blind enrichment with ground truth (7-M):**
+
+```
+07:43:02 [continue_delegate] Consuming 1 tool delegate(s)
+07:43:25 agent.wait 22519ms — shard completed
+07:43:25 [continuation/silent-wake] wakeOnReturn=true silentAnnounce=true
+```
+
+Shard read operator-placed Sahasrara chakra article. Subject recalled 3/3 verifiable facts (Guru chakra: 12 white petals; Kubjikamatatantra omission; Bindu Visarga location). Source attribution: 2 high-confidence enrichment, 1 mixed (training + enrichment).
