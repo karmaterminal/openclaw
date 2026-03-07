@@ -1052,7 +1052,7 @@ Tool writes to the pending delegate store during LLM turn. Runner consumes post-
 
 Shard result delivered via `enqueueSystemEvent()` instead of `deliverSubagentAnnouncement()`. No channel echo. `requestHeartbeatNow()` triggers a generation cycle — the agent wakes unprompted with enrichment in context.
 
-### Post-Compaction Lifecycle Dispatch
+### Post-Compaction Lifecycle Dispatch (Diagnostic Trace)
 
 ```
 [auto-compaction] Session compacted: <before>k → <after>k tokens
@@ -1061,7 +1061,7 @@ Shard result delivered via `enqueueSystemEvent()` instead of `deliverSubagentAnn
 
 Delegates registered with `| post-compaction` mode fire in the `autoCompactionCompleted` block, right after `readPostCompactionContext()` injects workspace files. The shard and the boot files arrive together.
 
-### Chain Tracking
+### Chain Depth and Cost Tracking
 
 ```
 [continuation] Chain depth: 3/10, cost: 45000/500000 tokens
