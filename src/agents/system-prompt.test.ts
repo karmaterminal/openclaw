@@ -225,6 +225,56 @@ describe("buildAgentSystemPrompt", () => {
     );
   });
 
+  it("surfaces continue_delegate as the first-class background delegation tool", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      continuationEnabled: true,
+      toolNames: ["continue_delegate", "sessions_spawn", "exec"],
+    });
+
+    expect(prompt).toContain(
+      "- continue_delegate: Schedule a background delegate sub-agent that can return later, silently, or at compaction",
+    );
+    expect(prompt).toContain(
+      "For background, delayed, silent, or compaction-aware delegate work, prefer `continue_delegate` over shell sleeps, ad-hoc `openclaw ...` CLI calls, or manual relay patterns.",
+    );
+    expect(prompt).toContain(
+      "If `continue_delegate` is available, prefer it for most main-session delegate work:",
+    );
+    expect(prompt).toContain(
+      "Delegates let the main session stay free while background shards do legwork.",
+    );
+    expect(prompt).toContain(
+      "Use `continue_delegate` (or [[CONTINUE_DELEGATE:]] when the tool is unavailable) when you need:",
+    );
+    expect(prompt).toContain(
+      "Compaction handoff — preserve working state or partial results across compaction",
+    );
+    expect(prompt).toContain(
+      "Do not use `exec`, shell sleeps, or manual `openclaw ...` commands to imitate delayed",
+    );
+  });
+
+  it("teaches minimal continuation prompts to keep delegate trees off the parent relay path", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+    });
+
+    expect(prompt).toContain("## Chain Delegation");
+    expect(prompt).toContain(
+      "Use this to keep a delegate tree moving without asking the parent to relay every hop.",
+    );
+    expect(prompt).toContain("The parent/main session stays free while your branch keeps working.");
+    expect(prompt).toContain(
+      "Use `| silent` when the result should only enrich the parent's future context.",
+    );
+    expect(prompt).toContain(
+      "Use `| silent-wake` when the result should enrich the parent and wake it to act.",
+    );
+  });
+
   it("lists available tools when provided", () => {
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/openclaw",

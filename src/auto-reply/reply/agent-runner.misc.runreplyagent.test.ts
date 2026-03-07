@@ -8,12 +8,18 @@ import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
 import { onAgentEvent } from "../../infra/agent-events.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../infra/system-events.js";
 import {
+  consumePendingDelegates,
   consumeStagedPostCompactionDelegates,
+  enqueuePendingDelegate,
   stagePostCompactionDelegate,
 } from "../continuation-delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { createMockTypingController } from "./test-helpers.js";
+
+const { loadConfigMock } = vi.hoisted(() => ({
+  loadConfigMock: vi.fn(),
+}));
 
 const runEmbeddedPiAgentMock = vi.fn();
 const runCliAgentMock = vi.fn();
@@ -23,6 +29,7 @@ const enqueueSystemEventMock = vi.fn();
 const peekSystemEventEntriesMock = vi.fn().mockReturnValue([]);
 const spawnSubagentDirectMock = vi.fn();
 const requestHeartbeatNowMock = vi.fn();
+let liveConfigOverride: Record<string, unknown> = {};
 
 vi.mock("../../agents/model-fallback.js", () => ({
   runWithModelFallback: (params: {
@@ -50,6 +57,15 @@ vi.mock("../../agents/cli-runner.js", async () => {
   return {
     ...actual,
     runCliAgent: (params: unknown) => runCliAgentMock(params),
+  };
+});
+
+vi.mock("../../config/config.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../../config/config.js")>("../../config/config.js");
+  return {
+    ...actual,
+    loadConfig: () => loadConfigMock(),
   };
 });
 
@@ -105,6 +121,7 @@ vi.mock("../../infra/heartbeat-wake.js", () => ({
 }));
 
 import { runReplyAgent } from "./agent-runner.js";
+import { bumpContinuationGeneration } from "./agent-runner.js";
 
 type RunWithModelFallbackParams = {
   provider: string;
@@ -123,6 +140,11 @@ beforeEach(() => {
   spawnSubagentDirectMock.mockClear();
   requestHeartbeatNowMock.mockClear();
   loadCronStoreMock.mockClear();
+  loadConfigMock.mockClear();
+  liveConfigOverride = {};
+  loadConfigMock.mockImplementation(() => liveConfigOverride);
+  consumePendingDelegates("main");
+  consumePendingDelegates("test-session");
   consumeStagedPostCompactionDelegates("main");
   consumeStagedPostCompactionDelegates("test-session");
   // Default: no cron jobs in store.
@@ -141,6 +163,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  consumePendingDelegates("main");
+  consumePendingDelegates("test-session");
   consumeStagedPostCompactionDelegates("main");
   consumeStagedPostCompactionDelegates("test-session");
   resetSystemEventsForTest();
@@ -2151,6 +2175,7 @@ describe("runReplyAgent continuation signal handling", () => {
     // Verify the spawn params contain the full multiline task
     const spawnParams = spawnSubagentDirectMock.mock.calls[0][0];
     const spawnCtx = spawnSubagentDirectMock.mock.calls[0][1];
+    expect(spawnParams.task).toContain("[continuation:chain-hop:1]");
     expect(spawnParams.task).toContain("Build the flux capacitor");
     expect(spawnParams.task).toContain("1.21 gigawatts");
     expect(spawnCtx.agentSessionKey).toBe(sessionKey);
@@ -2239,6 +2264,100 @@ describe("runReplyAgent continuation signal handling", () => {
     expect(hasContinuationEnqueueCall()).toBe(false);
 
     // The spawn should have been called instead
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DELEGATE: delayed bracket spawn reads generationGuardTolerance at fire time", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "agent:main:telegram:dm:delegate-live-tolerance";
+    const sessionEntry = { sessionId: "session", updatedAt: Date.now() } as SessionEntry;
+
+    liveConfigOverride = {
+      agents: { defaults: { continuation: { enabled: true, generationGuardTolerance: 0 } } },
+    };
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Queue delegate.\n[[CONTINUE_DELEGATE: inspect logs +1s]]" }],
+      meta: {},
+    });
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "accepted",
+      childSessionKey: "agent:main:subagent:delegate-live-tolerance",
+      runId: "run-live-tolerance",
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+          generationGuardTolerance: 0,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+    });
+
+    bumpContinuationGeneration(sessionKey);
+    bumpContinuationGeneration(sessionKey);
+    bumpContinuationGeneration(sessionKey);
+    liveConfigOverride = {
+      agents: { defaults: { continuation: { enabled: true, generationGuardTolerance: 3 } } },
+    };
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DELEGATE: delayed tool spawn reads generationGuardTolerance at fire time", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "agent:main:telegram:dm:tool-live-tolerance";
+    const sessionEntry = { sessionId: "session", updatedAt: Date.now() } as SessionEntry;
+
+    liveConfigOverride = {
+      agents: { defaults: { continuation: { enabled: true, generationGuardTolerance: 0 } } },
+    };
+
+    enqueuePendingDelegate(sessionKey, {
+      task: "inspect shard health",
+      delayMs: 1_000,
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "accepted",
+      childSessionKey: "agent:main:subagent:tool-live-tolerance",
+      runId: "run-tool-live-tolerance",
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+          generationGuardTolerance: 0,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+    });
+
+    bumpContinuationGeneration(sessionKey);
+    bumpContinuationGeneration(sessionKey);
+    bumpContinuationGeneration(sessionKey);
+    liveConfigOverride = {
+      agents: { defaults: { continuation: { enabled: true, generationGuardTolerance: 3 } } },
+    };
+
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
   });
 

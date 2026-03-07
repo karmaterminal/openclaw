@@ -292,7 +292,7 @@ export type AgentDefaultsConfig = {
     maxDelayMs?: number;
     maxChainLength?: number;
     costCapTokens?: number;
-    /** Maximum number of continue_delegate tool calls per agent turn (default: 10). */
+    /** Maximum number of continue_delegate tool calls per agent turn (default: 5). */
     maxDelegatesPerTurn?: number;
     /**
      * Generation guard tolerance for timed delegates (default: 0).

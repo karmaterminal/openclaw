@@ -3,6 +3,7 @@ import {
   currentContinuationGeneration,
   setDelegatePending,
 } from "../auto-reply/reply/agent-runner.js";
+import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import {
   isSilentReplyText,
@@ -1077,6 +1078,9 @@ export function buildSubagentSystemPrompt(params: {
       "To dispatch a follow-up sub-agent from your output, end your ENTIRE response with:",
       "  [[CONTINUE_DELEGATE: task description]]",
       "",
+      "Use this when your branch of work should continue or fan out without asking the parent",
+      "to relay every hop. This keeps the parent/main session free while your subtree runs.",
+      "",
       "Optional modifiers (append inside the brackets):",
       "  +30s           — delay spawn by N seconds",
       "  | silent        — result as internal context only (no channel output)",
@@ -1087,6 +1091,8 @@ export function buildSubagentSystemPrompt(params: {
       "Rules:",
       "- Emit exactly ONE [[CONTINUE_DELEGATE:]] per response, as the LAST line",
       "- Do NOT nest brackets inside brackets",
+      "- Use `| silent` for enrichment that should only color the parent's future context",
+      "- Use `| silent-wake` when the return should enrich the parent and wake it to act",
       "- The gateway handles chain tracking, cost caps, and depth limits",
       "",
     );
@@ -1336,11 +1342,8 @@ export async function runSubagentAnnounceFlow(params: {
           continuationResult.signal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
 
         // --- P0-3: Enforce parent session's chain bounds before spawning ---
-        const continuationCfg = cfg?.agents?.defaults?.continuation;
-        const maxChainLength = continuationCfg?.maxChainLength ?? 10;
-        const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
-        const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
-        const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
+        const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs } =
+          resolveContinuationRuntimeConfig(cfg);
 
         // --- Per-chain hop guard: depth encoded in task prefix, cost tracked on parent ---
         // Chain hop index: parsed from the completing shard's task prefix [continuation:chain-hop:N].
@@ -1396,7 +1399,9 @@ export async function runSubagentAnnounceFlow(params: {
           | { allowed: false; reason: "cost-cap"; chainTokens: number; costCapTokens: number }
           | { allowed: true; nextChainHop: number };
 
-        if (nextChainHop >= maxChainLength) {
+        // `nextChainHop` is the position the next spawned child would occupy.
+        // Allow hops 1..maxChainLength and reject maxChainLength + 1.
+        if (nextChainHop > maxChainLength) {
           chainGuardResult = {
             allowed: false,
             reason: "chain-length",
@@ -1422,7 +1427,7 @@ export async function runSubagentAnnounceFlow(params: {
         if (!chainGuardResult.allowed) {
           if (chainGuardResult.reason === "chain-length") {
             defaultRuntime.log(
-              `[subagent-chain-hop] Chain length ${chainGuardResult.chainCount} >= ${chainGuardResult.maxChainLength}, rejecting hop from ${params.childSessionKey}`,
+              `[subagent-chain-hop] Chain length ${chainGuardResult.chainCount} > ${chainGuardResult.maxChainLength}, rejecting hop from ${params.childSessionKey}`,
             );
           } else {
             defaultRuntime.log(
@@ -1477,13 +1482,13 @@ export async function runSubagentAnnounceFlow(params: {
             // Generation guard: cancel if parent session receives new input during delay.
             // Honors generationGuardTolerance (same as agent-runner delegate timers).
             const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
-            const tolerance = continuationCfg?.generationGuardTolerance ?? 0;
             setTimeout(() => {
+              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
               const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
               const drift = currentGen - hopGeneration;
-              if (drift > tolerance) {
+              if (drift > generationGuardTolerance) {
                 defaultRuntime.log(
-                  `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${tolerance}) for ${targetRequesterSessionKey}`,
+                  `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
                 );
                 return;
               }

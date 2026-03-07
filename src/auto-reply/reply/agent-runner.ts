@@ -56,6 +56,7 @@ import {
 import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
+import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
@@ -1010,8 +1011,8 @@ export async function runReplyAgent(params: {
           ...persistedCompactionDelegates,
           ...stagedCompactionDelegates,
         ];
-        const compactionCfg = cfg.agents?.defaults?.continuation;
-        const maxCompactionDelegates = compactionCfg?.maxDelegatesPerTurn ?? 5;
+        const { maxDelegatesPerTurn: maxCompactionDelegates } =
+          resolveContinuationRuntimeConfig(cfg);
         const releasedCompactionDelegates = allCompactionDelegates.slice(0, maxCompactionDelegates);
         const droppedCompactionDelegates = Math.max(
           0,
@@ -1096,12 +1097,8 @@ export async function runReplyAgent(params: {
     // continuationSignal is only set when continuationFeatureEnabled === true (checked
     // at parse time), so no redundant enabled re-check is needed here.
     if (continuationSignal && sessionKey) {
-      const continuationCfg = cfg.agents?.defaults?.continuation;
-      const maxChainLength = continuationCfg?.maxChainLength ?? 10;
-      const defaultDelayMs = continuationCfg?.defaultDelayMs ?? 15_000;
-      const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
-      const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
-      const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
+      const { maxChainLength, defaultDelayMs, minDelayMs, maxDelayMs, costCapTokens } =
+        resolveContinuationRuntimeConfig(cfg);
 
       {
         // continuation scheduling block
@@ -1171,7 +1168,9 @@ export async function runReplyAgent(params: {
                 try {
                   const spawnResult = await spawnSubagentDirect(
                     {
-                      task: `[continuation] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegateTask}`,
+                      // The spawned child carries its current chain position in-band.
+                      // Announce-side chain hops parse this prefix as the canonical hop source.
+                      task: `[continuation:chain-hop:${nextChainCount}] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegateTask}`,
                       ...(continuationSignal.silent ? { silentAnnounce: true } : {}),
                       ...(continuationSignal.silentWake
                         ? { silentAnnounce: true, wakeOnReturn: true }
@@ -1226,13 +1225,13 @@ export async function runReplyAgent(params: {
                 // Generation guard: if an external message arrives during the delay,
                 // bumpContinuationGeneration invalidates this timer — same as WORK timers.
                 const delegateGeneration = bumpContinuationGeneration(sessionKey);
-                const genTolerance = continuationCfg?.generationGuardTolerance ?? 0;
                 setTimeout(() => {
+                  const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
                   const currentGen = currentContinuationGeneration(sessionKey);
                   const drift = currentGen - delegateGeneration;
-                  if (drift > genTolerance) {
+                  if (drift > generationGuardTolerance) {
                     defaultRuntime.log(
-                      `DELEGATE timer cancelled (generation drift ${drift} > tolerance ${genTolerance}) for session ${sessionKey}`,
+                      `DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
                     );
                     return;
                   }
@@ -1279,11 +1278,16 @@ export async function runReplyAgent(params: {
         );
       }
       if (toolDelegates.length > 0) {
-        const continuationCfg = cfg.agents?.defaults?.continuation;
-        const maxChainLength = continuationCfg?.maxChainLength ?? 10;
-        const minDelayMs = continuationCfg?.minDelayMs ?? 5_000;
-        const maxDelayMs = continuationCfg?.maxDelayMs ?? 300_000;
-        const costCapTokens = continuationCfg?.costCapTokens ?? 500_000;
+        const { maxChainLength, minDelayMs, maxDelayMs, costCapTokens, maxDelegatesPerTurn } =
+          resolveContinuationRuntimeConfig(cfg);
+        const delegatesWithinLimit = toolDelegates.slice(0, maxDelegatesPerTurn);
+        const delegatesOverLimit = toolDelegates.slice(maxDelegatesPerTurn);
+        for (const droppedDelegate of delegatesOverLimit) {
+          enqueueSystemEvent(
+            `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${droppedDelegate.task}`,
+            { sessionKey },
+          );
+        }
 
         let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
         // Accumulate current turn's token usage into chain cost.
@@ -1300,7 +1304,7 @@ export async function runReplyAgent(params: {
           (activeSessionEntry?.continuationChainTokens ?? 0) + toolDelegateTurnTokens;
         const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
 
-        for (const delegate of toolDelegates) {
+        for (const delegate of delegatesWithinLimit) {
           if (currentChainCount >= maxChainLength) {
             defaultRuntime.log(
               `Continuation chain capped at ${maxChainLength} for tool delegate in session ${sessionKey}`,
@@ -1379,19 +1383,16 @@ export async function runReplyAgent(params: {
             );
             // Generation guard: same as bracket-path delegate timers
             const toolDelegateGeneration = bumpContinuationGeneration(sessionKey);
-            const toolGenTolerance = continuationCfg?.generationGuardTolerance ?? 0;
-            defaultRuntime.log(
-              `[continuation-guard] Tool delegate timer set with generation=${toolDelegateGeneration} tolerance=${toolGenTolerance} for ${sessionKey}`,
-            );
             setTimeout(() => {
+              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
               const currentGen = currentContinuationGeneration(sessionKey);
               const drift = currentGen - toolDelegateGeneration;
               defaultRuntime.log(
-                `[continuation-guard] Timer fired: stored=${toolDelegateGeneration} current=${currentGen} drift=${drift} tolerance=${toolGenTolerance} for ${sessionKey}`,
+                `[continuation-guard] Timer fired: stored=${toolDelegateGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} for ${sessionKey}`,
               );
-              if (drift > toolGenTolerance) {
+              if (drift > generationGuardTolerance) {
                 defaultRuntime.log(
-                  `Tool DELEGATE timer cancelled (generation drift ${drift} > tolerance ${toolGenTolerance}) for session ${sessionKey}`,
+                  `Tool DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
                 );
                 return;
               }
