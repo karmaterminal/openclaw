@@ -1,6 +1,6 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** Draft  
+**Status:** Implementation Complete  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **Date:** March 2026
@@ -541,10 +541,10 @@ These are not hypothetical. We run 4 agents in persistent sessions. These are th
 
 - [x] Design review
 - [x] Implementation
-- [x] Test suite (152 tests covering parsing, scheduling, cancellation, delegation, silent modes, context-pressure, delegate store lifecycle)
-- [ ] Documentation (this RFC, pending upstream review)
+- [x] Test suite (172 tests covering parsing, scheduling, cancellation, delegation, silent modes, context-pressure, delegate store lifecycle, config validation)
+- [x] Documentation (this RFC)
+- [x] Canary validation (Swim 5–7: 23 pass, 3 deferred, 0 fail across 3 canary builds)
 - [x] Upstream feature request: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)
-- [ ] Upstream PR to openclaw/openclaw
 
 ## Context-Pressure Awareness and the Lich Protocol
 
@@ -967,7 +967,9 @@ The test administrator (Agent A) receives secret material — images, keywords, 
 
 **Why this works:** Agent B's only path to the content is through the enrichment pipeline. If Agent B accurately describes an image it never saw in conversation, the enrichment delivered it.
 
-### Test Matrix
+### Test Matrix (Early Validation — Swim 4)
+
+_This matrix reflects initial blind enrichment testing. Swim 7 (below) supersedes with comprehensive validation of tolerance, hot-reload, chain guards, and enrichment accuracy under controlled conditions._
 
 | #   | Content                                          | Dispatch | Enrichment | Recall          | Notes                                                             |
 | --- | ------------------------------------------------ | -------- | ---------- | --------------- | ----------------------------------------------------------------- |
@@ -992,7 +994,7 @@ The test administrator (Agent A) receives secret material — images, keywords, 
 
 _Mitigation:_ Use quiet channels, DMs, or longer delays (`+60s`) to outlast the chatter. The generation guard is a safety feature — it correctly prioritizes responding to humans over self-continuation. A configurable tolerance threshold (`current - stored > N` instead of `stored !== current`) would allow delegates to survive incidental traffic in multi-agent channels while still cancelling on genuine preemption. Default tolerance of 0 preserves current behavior for single-user deployments.
 
-**2. Shard confabulation (tool failure → invention):** When `image()` fails (e.g., `/tmp/` path restriction), shards do not report the failure. They confabulate a description from the filename or context, presenting it with full confidence. One shard described "olive-green wavy hair, glowing cube, purple swirling background" for an image of a Pokémon trainer — pure invention after a blocked `image()` call.
+**2. Shard confabulation (tool failure → invention):** When `image()` fails (e.g., `/tmp/` path restriction), shards do not report the failure. They confabulate a description from the filename or context, presenting it with full confidence. One shard described "olive-green wavy hair, glowing cube, purple swirling background" for an image — which turned out to be an accurate description of the actual image content (a Pokémon character with those features). This illustrates how confabulation assessment itself can confabulate: the evaluator assumed invention because the shard lacked tool access, but the shard had reconstructed the correct answer from contextual cues. The failure mode is real (shards will invent when truly blocked), but ground-truth verification is essential before scoring a result as confabulated.
 
 _Mitigation:_ Place all media in workspace directories where `image()` is permitted. Instruction files should specify exact workspace paths.
 
