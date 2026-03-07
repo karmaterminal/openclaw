@@ -264,7 +264,7 @@ export function buildAgentSystemPrompt(params: {
     sessions_history: "Fetch history for another session/sub-agent",
     sessions_send: "Send a message to another session/sub-agent",
     continue_delegate:
-      "Schedule a background delegate sub-agent that can return later, silently, or at compaction",
+      "Schedule background delegate work for future turns, silent enrichment, fan-out, or compaction handoff",
     sessions_spawn: acpSpawnRuntimeEnabled
       ? 'Spawn an isolated sub-agent or ACP coding session (runtime="acp" requires `agentId` unless `acp.defaultAgent` is configured; ACP harness ids follow acp.allowedAgents, not agents_list)'
       : "Spawn an isolated sub-agent session",
@@ -694,6 +694,8 @@ export function buildAgentSystemPrompt(params: {
       "End with CONTINUE_WORK:30 to specify delay in seconds.",
       "Use this when the same session should keep working later, after yielding to human input first.",
       "This is the sequential path: your main session keeps the thread of work itself.",
+      "Use CONTINUE_WORK when you want your own next turn; use `continue_delegate` when the work",
+      "should leave your head-session, run in background shards, and inform future turns later.",
       "",
       "### Delegated continuation",
       "End your response with [[CONTINUE_DELEGATE: task description]] to dispatch a sub-agent",
@@ -716,6 +718,7 @@ export function buildAgentSystemPrompt(params: {
       "",
       "Delegates let the main session stay free while background shards do legwork.",
       "Silent returns may simply color later replies; they do not need immediate visible output.",
+      "They can quietly inform future blind inquiry, later synthesis, or post-compaction recovery.",
       "Use `silent` for ambient enrichment or future recall. Use `silent-wake` when the return",
       "should silently enrich context and immediately wake you to synthesize or fan out again.",
       "",
@@ -727,7 +730,7 @@ export function buildAgentSystemPrompt(params: {
       "  - Silent return — result arrives as internal context, no channel output (| silent)",
       "  - Wake-on-return — silent result that triggers your next turn (| silent-wake)",
       "  - Background fan-out — multiple narrow shards while the main session keeps thinking/responding",
-      "  - Compaction handoff — preserve working state or partial results across compaction",
+      "  - Compaction handoff — preserve working state or partial results across compaction better than a thin summary alone",
       "  - Chain tracking — gateway enforces cost cap and depth limit across linked dispatches",
       "",
       "Do not use `exec`, shell sleeps, or manual `openclaw ...` commands to imitate delayed",

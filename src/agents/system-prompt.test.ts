@@ -233,7 +233,7 @@ describe("buildAgentSystemPrompt", () => {
     });
 
     expect(prompt).toContain(
-      "- continue_delegate: Schedule a background delegate sub-agent that can return later, silently, or at compaction",
+      "- continue_delegate: Schedule background delegate work for future turns, silent enrichment, fan-out, or compaction handoff",
     );
     expect(prompt).toContain(
       "For background, delayed, silent, or compaction-aware delegate work, prefer `continue_delegate` over shell sleeps, ad-hoc `openclaw ...` CLI calls, or manual relay patterns.",
@@ -242,13 +242,19 @@ describe("buildAgentSystemPrompt", () => {
       "If `continue_delegate` is available, prefer it for most main-session delegate work:",
     );
     expect(prompt).toContain(
+      "Use CONTINUE_WORK when you want your own next turn; use `continue_delegate` when the work",
+    );
+    expect(prompt).toContain(
       "Delegates let the main session stay free while background shards do legwork.",
+    );
+    expect(prompt).toContain(
+      "They can quietly inform future blind inquiry, later synthesis, or post-compaction recovery.",
     );
     expect(prompt).toContain(
       "Use `continue_delegate` (or [[CONTINUE_DELEGATE:]] when the tool is unavailable) when you need:",
     );
     expect(prompt).toContain(
-      "Compaction handoff — preserve working state or partial results across compaction",
+      "Compaction handoff — preserve working state or partial results across compaction better than a thin summary alone",
     );
     expect(prompt).toContain(
       "Do not use `exec`, shell sleeps, or manual `openclaw ...` commands to imitate delayed",

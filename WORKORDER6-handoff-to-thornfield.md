@@ -21,7 +21,7 @@ Completed validation:
 
 - bracket-origin delegate spawns now carry canonical `[continuation:chain-hop:N]` metadata
 - tool-origin and bracket-origin delegates now share the same announce-side hop contract
-- announce-side chain enforcement now matches the intended semantics: hops `1..maxChainLength` are allowed, the next hop is rejected once it would exceed the cap
+- announce-side chain enforcement now matches the intended semantics: the head session starts at count `0`, child hop labels run `1..maxChainLength`, and a shard at hop `N` cannot spawn hop `N+1` when `maxChainLength` is `N`
 
 Why this matters:
 

@@ -67,16 +67,16 @@ Without `| silent-wake`, parent-orchestrated chain hops stall: the enrichment ar
 
 ### Safety Constraints
 
-| Constraint         | Default     | Purpose                               |
-| ------------------ | ----------- | ------------------------------------- |
-| Max chain length   | 10          | Prevent runaway loops                 |
-| Cost cap per chain | 500k tokens | Budget protection                     |
-| Min delay          | 5s          | No tight loops                        |
-| Max delay          | 5 min       | Bounded scheduling horizon            |
-| Interruptibility   | Always      | External events preempt continuations |
-| Opt-in             | Disabled    | Explicit deployment consent required  |
+| Constraint         | Default     | Purpose                                        |
+| ------------------ | ----------- | ---------------------------------------------- |
+| Max chain length   | 10          | Prevent runaway loops                          |
+| Cost cap per chain | 500k tokens | Budget protection                              |
+| Min delay          | 5s          | No tight loops                                 |
+| Max delay          | 5 min       | Bounded scheduling horizon                     |
+| Interruptibility   | Guarded     | Session interruption can cancel delayed timers |
+| Opt-in             | Disabled    | Explicit deployment consent required           |
 
-External events (direct mentions, operator messages, heartbeats) always preempt scheduled continuations. Continuation chains are logged in session history; operators can view and kill active chains.
+With `generationGuardTolerance: 0`, any generation drift cancels delayed `CONTINUE_WORK` and delayed delegate timers. Raising tolerance allows both paths to survive incidental chatter in busy channels. This is intentionally unified today: generation drift is a coarse session-interruption signal, not a direct-human-preemption signal. Continuation chains are logged in session history; operators can view and kill active chains.
 
 Operational note: these defaults are conservative for single-agent deployments. Fleet operators using wide "sensor swarm" / "mast cell" fan-out will usually tune width upward via `maxDelegatesPerTurn`, while keeping `maxChainLength` as the recursion guard and `costCapTokens` as the global budget leash.
 
@@ -95,7 +95,7 @@ agents:
       maxDelayMs: 300000 # maximum allowed delay (5 min)
       costCapTokens: 500000 # max tokens per chain (0 = unlimited)
       maxDelegatesPerTurn: 5 # max continue_delegate calls per turn
-      generationGuardTolerance: 0 # strict cancellation in busy channels
+      generationGuardTolerance: 0 # any generation drift cancels delayed timers
 ```
 
 > **DELEGATE chain semantics:** When a `CONTINUE_DELEGATE` sub-agent is spawned,
@@ -257,7 +257,7 @@ Safety enforcement happens at the scheduling layer: chain length, cost cap, and 
 
 When a sub-agent's output triggers a chain hop (a new sub-agent spawned from the announce boundary via `[[CONTINUE_DELEGATE:]]`), the child inherits the parent's chain position via task-prefix encoding:
 
-- **Chain index**: each hop encodes `[continuation:chain-hop:N]` in the task string. The announce handler parses this via regex and increments before spawning the next hop. Hops `1..maxChainLength` are allowed; the next hop is rejected once it would exceed `maxChainLength`. The index lives in the task string, not the session store — session store fields are unreliable for per-hop metadata because inbound shard completions trigger per-message resets that clear counters between hops.
+- **Chain index**: each hop encodes `[continuation:chain-hop:N]` in the task string. The head session remains at count `0`; child hop labels run `1..maxChainLength`. The announce handler parses the child hop via regex and increments before spawning the next hop, so a shard already at hop `N` cannot spawn hop `N+1` when `maxChainLength` is `N`. The index lives in the task string, not the session store — session store fields are unreliable for per-hop metadata because inbound shard completions trigger per-message resets that clear counters between hops.
 - **Token budget**: the `CONTINUE_WORK` path and tool-delegate path accumulate `continuationChainTokens` against `costCapTokens`. Bracket chain-hop cost accumulation is wired but the child's token data is not reliably available at announce time (the session entry is written after the announce handler fires). `maxChainLength` is the primary recursion guard for bracket chains; cost cap is the primary budget guard for single-session continuation.
 - **Delay bounds**: the hop's delay is clamped to the parent session's configured `minDelayMs` / `maxDelayMs`, not hardcoded values.
 - **Generation guard**: the hop's `setTimeout` callback checks the parent session's generation counter before spawning, preventing orphan spawns after preemption.
