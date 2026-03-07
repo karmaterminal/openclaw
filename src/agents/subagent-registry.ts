@@ -407,6 +407,8 @@ function startSubagentAnnounceCleanupFlow(runId: string, entry: SubagentRunRecor
     outcome: entry.outcome,
     spawnMode: entry.spawnMode,
     expectsCompletionMessage: entry.expectsCompletionMessage,
+    silentAnnounce: entry.silentAnnounce,
+    wakeOnReturn: entry.wakeOnReturn,
   })
     .then((didAnnounce) => {
       void finalizeSubagentCleanup(runId, entry.cleanup, didAnnounce);
@@ -977,6 +979,8 @@ export function registerSubagentRun(params: {
   attachmentsDir?: string;
   attachmentsRootDir?: string;
   retainAttachmentsOnKeep?: boolean;
+  silentAnnounce?: boolean;
+  wakeOnReturn?: boolean;
 }) {
   const now = Date.now();
   const cfg = loadConfig();
@@ -1007,6 +1011,8 @@ export function registerSubagentRun(params: {
     attachmentsDir: params.attachmentsDir,
     attachmentsRootDir: params.attachmentsRootDir,
     retainAttachmentsOnKeep: params.retainAttachmentsOnKeep,
+    silentAnnounce: params.silentAnnounce,
+    wakeOnReturn: params.wakeOnReturn,
   });
   ensureListener();
   persistSubagentRuns();
