@@ -396,14 +396,19 @@ export async function runPreparedReply(
   // This completes preemption: timer is cancelled, chain state is reset, AND
   // any already-enqueued wake events are dropped.
   // Skip when a continuation wake is in progress — chain state must survive.
-  if (!isContinuationWake && hasContinuationSystemEvent) {
+  // Skip heartbeat polls — they must not preempt a pending wake event that
+  // hasn't been consumed yet; the dedicated work-wake run handles it.
+  if (!isContinuationWake && !isHeartbeat && hasContinuationSystemEvent) {
     removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
   }
 
   // --- Context-pressure awareness: inject [system:context-pressure] pre-drain ---
   // Must be BEFORE drainFormattedSystemEvents() which drains the event queue.
   // Otherwise the event sits unseen until the next turn — one turn too late.
-  if (sessionEntry && sessionKey) {
+  // Only active when continuation is explicitly enabled — context-pressure is a
+  // continuation feature and should not inject events when the feature is off.
+  const continuationEnabled = cfg.agents?.defaults?.continuation?.enabled !== false;
+  if (continuationEnabled && sessionEntry && sessionKey) {
     const contextWindow = resolveMemoryFlushContextWindowTokens({
       modelId: model,
       agentCfgContextTokens: agentCfg?.contextTokens,
@@ -433,11 +438,16 @@ export async function runPreparedReply(
     if (fired && sessionStore?.[sessionKey]) {
       sessionStore[sessionKey] = { ...sessionStore[sessionKey], lastContextPressureBand: band };
       if (storePath) {
-        await updateSessionStore(storePath, (store) => {
-          if (store[sessionKey]) {
-            store[sessionKey] = { ...store[sessionKey], lastContextPressureBand: band };
-          }
-        });
+        try {
+          await updateSessionStore(storePath, (store) => {
+            if (store[sessionKey]) {
+              store[sessionKey] = { ...store[sessionKey], lastContextPressureBand: band };
+            }
+          });
+        } catch {
+          // Best-effort: band metadata shouldn't fail the user turn.
+          cpLog.debug("band-persist-failed", { sessionKey, band });
+        }
       }
     }
   }
@@ -507,9 +517,13 @@ export async function runPreparedReply(
       sessionEntry.updatedAt = Date.now();
       sessionStore[sessionKey] = sessionEntry;
       if (storePath) {
-        await updateSessionStore(storePath, (store) => {
-          store[sessionKey] = sessionEntry;
-        });
+        try {
+          await updateSessionStore(storePath, (store) => {
+            store[sessionKey] = sessionEntry;
+          });
+        } catch (err) {
+          logVerbose(`failed to persist xhigh downgrade for ${sessionKey}: ${String(err)}`);
+        }
       }
     }
   }
