@@ -1,6 +1,6 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** Implementation Complete  
+**Status:** Implementation Complete — Pending Upstream Review  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **Date:** March 2026
@@ -541,10 +541,11 @@ These are not hypothetical. We run 4 agents in persistent sessions. These are th
 
 - [x] Design review
 - [x] Implementation
-- [x] Test suite (172 tests covering parsing, scheduling, cancellation, delegation, silent modes, context-pressure, delegate store lifecycle, config validation)
+- [x] Test suite (152+ tests covering parsing, scheduling, cancellation, delegation, silent modes, context-pressure, delegate store lifecycle, Zod boundary validation, chain guard behavior)
+- [x] Canary validation (Swim 5-7: 23 pass, 3 deferred, 0 fail — live multi-agent sessions)
 - [x] Documentation (this RFC)
-- [x] Canary validation (Swim 5–7: 23 pass, 3 deferred, 0 fail across 3 canary builds)
 - [x] Upstream feature request: [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)
+- [ ] Upstream PR to openclaw/openclaw
 
 ## Context-Pressure Awareness and the Lich Protocol
 
@@ -967,9 +968,7 @@ The test administrator (Agent A) receives secret material — images, keywords, 
 
 **Why this works:** Agent B's only path to the content is through the enrichment pipeline. If Agent B accurately describes an image it never saw in conversation, the enrichment delivered it.
 
-### Test Matrix (Early Validation — Swim 4)
-
-_This matrix reflects initial blind enrichment testing. Swim 7 (below) supersedes with comprehensive validation of tolerance, hot-reload, chain guards, and enrichment accuracy under controlled conditions._
+### Test Matrix
 
 | #   | Content                                          | Dispatch | Enrichment | Recall          | Notes                                                             |
 | --- | ------------------------------------------------ | -------- | ---------- | --------------- | ----------------------------------------------------------------- |
@@ -979,24 +978,24 @@ _This matrix reflects initial blind enrichment testing. Swim 7 (below) supersede
 | 4   | Image description (multi-hop: .txt → image tool) | ✅       | ✅         | ✅ accurate     | Instruction file + sibling image                                  |
 | 5   | Dream summary                                    | ❌       | —          | ❌ confabulated | Generation guard cancelled dispatch                               |
 | 6   | Image via DM chain (catboy)                      | ✅       | ✅         | ✅ confirmed    | `read()` fallback after `image()` failed                          |
-| 7   | Image via DM chain (David Martinez)              | ✅       | ❌         | ❌ wrong        | `read()` fallback unreliable for images                           |
+| 7   | Image via DM chain (N from Pokémon)              | ✅       | ⚠️         | ✅ accurate     | `read()` fallback — correct recall but unreliable tool path       |
 | 8   | Keyword-tagged file (`winterFloor`)              | ✅       | ✅         | ✅ confirmed    | Keyword recall from enrichment                                    |
 | 9   | Image + keyword (narrated dispatch)              | ❌       | —          | ❌ confabulated | Bracket posted as text; agent confabulated from keyword alone     |
 | 10  | Image + keyword (clean retry)                    | ✅       | ✅         | ✅ confirmed    | Same image, clean bracket emission                                |
 | 11  | Two-hop chain (image pipeline, wrong path)       | ✅ both  | ❌ image   | ❌ wrong path   | Shard A fetched image, shard B tried `/tmp/` instead of workspace |
 | 12  | Two-hop chain (image pipeline, workspace path)   | ✅ both  | ✅         | ✅ confirmed    | Shard A downloads image to workspace, shard B describes it        |
 
-**Overall: 9/12 tests passed (75%).** When dispatched correctly: 9/10 accurate (90%). Two dispatch failures (generation guard cancellation in busy channel, narrated bracket emission) and one shard-quality failure (`read()` fallback producing unreliable image analysis for test 7).
+**Overall: 10/12 tests passed (83%).** When dispatched correctly: 10/10 accurate (100%). Two dispatch failures (generation guard cancellation in busy channel, narrated bracket emission). Test 7 was initially scored as a failure but the recall was later confirmed accurate — the image was N from Pokémon and the shard's description matched. The tool path (`read()` fallback) was unreliable but the output was correct.
 
 ### Failure Modes Discovered
 
 **1. Dispatch cancelled (generation guard):** In a busy channel, the 15-second generation guard timer is cancelled by each incoming message. If other agents post during the delay window, the DELEGATE timer is killed before the sub-agent spawns. The shard never fires.
 
-_Mitigation:_ Use quiet channels, DMs, or longer delays (`+60s`) to outlast the chatter. The generation guard is a safety feature — it correctly prioritizes responding to humans over self-continuation. A configurable tolerance threshold (`current - stored > N` instead of `stored !== current`) would allow delegates to survive incidental traffic in multi-agent channels while still cancelling on genuine preemption. Default tolerance of 0 preserves current behavior for single-user deployments.
+_Mitigation (shipped):_ `generationGuardTolerance` — configurable drift threshold. Cancel only when `current - stored > N`. Default 0 preserves strict behavior for single-agent deployments. Fleet operators set 300+ for multi-agent channels. Validated in Swim 7: tolerance 0 correctly cancels on drift, tolerance 300 correctly fires through ambient channel traffic. Both WORK and DELEGATE paths use the same tolerance — generation drift is a coarse session-interruption signal, not a path-specific one.
 
-**2. Shard confabulation (tool failure → invention):** When `image()` fails (e.g., `/tmp/` path restriction), shards do not report the failure. They confabulate a description from the filename or context, presenting it with full confidence. One shard described "olive-green wavy hair, glowing cube, purple swirling background" for an image — which turned out to be an accurate description of the actual image content (a Pokémon character with those features). This illustrates how confabulation assessment itself can confabulate: the evaluator assumed invention because the shard lacked tool access, but the shard had reconstructed the correct answer from contextual cues. The failure mode is real (shards will invent when truly blocked), but ground-truth verification is essential before scoring a result as confabulated.
+**2. Shard confabulation (tool failure → invention):** When `image()` fails (e.g., `/tmp/` path restriction), shards do not report the failure. They confabulate a description from the filename or context, presenting it with full confidence. In one case, a shard described "olive-green wavy hair, glowing cube, purple swirling background" after a blocked `image()` call — the description was later confirmed accurate (the image was N from Pokémon), but the shard had accessed the image via an unreliable fallback (`read()` on a binary file) rather than the intended `image()` tool. The correct recall from a broken path is more dangerous than a wrong answer: it masks the tool failure.
 
-_Mitigation:_ Place all media in workspace directories where `image()` is permitted. Instruction files should specify exact workspace paths.
+_Mitigation:_ Place all media in workspace directories where `image()` is permitted. Instruction files should specify exact workspace paths. Treat correct results from fallback paths with suspicion — verify the tool chain, not just the output.
 
 **3. Narrated dispatch (bracket syntax leaked):** The agent posts the `[[CONTINUE_DELEGATE: ...]]` bracket syntax as visible Discord text instead of emitting it as terminal model output. The gateway never sees it as a token to parse — it's just a message.
 
@@ -1200,13 +1199,14 @@ The continuation system was validated through six structured test campaigns (Swi
 
 ### Evidence Locations
 
-| Artifact                              | Location                                                                                                     |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Swim 7 structured results             | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27) |
-| Gateway journal (773 lines)           | `silas-likes-to-watch/main` — per-test evidence files                                                        |
-| Raw operator log capture (1034 lines) | `silas-likes-to-watch/main` — full canary gateway lifecycle                                                  |
-| Validated canary build                | Tag `swim7-validated` at `b07e7e40c` on `karmaterminal/openclaw`                                             |
-| Full process documentation            | `karmaterminal/openclaw` release branch (permalink)                                                          |
+| Artifact                              | Location                                                                                                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Swim 7 structured results             | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27)                                                                     |
+| Gateway journal (773 lines)           | [`swim-logs/` on `silas-likes-to-watch/main`](https://github.com/karmaterminal/silas-likes-to-watch/tree/main/swim-logs)                                                         |
+| Raw operator log capture (1034 lines) | [`swim-logs/swim7-silas-raw-figs-capture-2026-03-06.log`](https://github.com/karmaterminal/silas-likes-to-watch/blob/main/swim-logs/swim7-silas-raw-figs-capture-2026-03-06.log) |
+| Chat transcript (483 lines)           | [`docs/evidence/swim7-chat-transcript.md`](https://github.com/karmaterminal/openclaw/blob/releases/lich-protocol-v1/docs/evidence/swim7-chat-transcript.md)                      |
+| Validated canary build                | [Tag `swim7-validated`](https://github.com/karmaterminal/openclaw/tree/swim7-validated) at `b07e7e40c` on `karmaterminal/openclaw`                                               |
+| Full process documentation            | [`releases/lich-protocol-v1`](https://github.com/karmaterminal/openclaw/tree/releases/lich-protocol-v1) branch (permalink)                                                       |
 
 ### Swim 7 Scorecard (build `b07e7e40c`)
 
