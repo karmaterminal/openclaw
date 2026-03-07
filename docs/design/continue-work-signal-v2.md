@@ -149,6 +149,15 @@ For deployments with multiple bot accounts in shared channels (e.g., 4 agents in
 - **`costCapTokens: 1000000`** — Higher ceiling to accommodate wide fan-outs where 20 sensors each consume a modest token budget.
 - **`maxChainLength: 10`** — Unchanged. Fan-out is a width question, not a depth question. Depth 2–3 is sufficient for most patterns (main → coordinator → sensors).
 
+> **`maxChainLength` semantics note:** The parent dispatch path (agent-runner) and
+> the chain-hop path (subagent-announce) both enforce `>= maxChainLength` but count
+> from different bases. The parent path tracks sequential dispatch count from the
+> main session (fan-out width). The announce path tracks chain depth via the
+> `[continuation:chain-hop:N]` task prefix. In practice, `maxChainLength: N` allows
+> N direct parent dispatches and N-1 autonomous chain hops from any completing shard.
+> For deployments at N ≥ 10, this difference is invisible. The announce path is the
+> conservative safety boundary.
+
 #### Sensor Fan-Out Pattern ("Mast Cells")
 
 The primary motivation for raising `maxDelegatesPerTurn` above the default:
