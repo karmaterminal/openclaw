@@ -824,6 +824,7 @@ export async function runEmbeddedAttempt(
       contextFiles,
       bootstrapTruncationWarningLines: bootstrapPromptWarning.lines,
       memoryCitationsMode: params.config?.memory?.citations,
+      continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
     });
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
@@ -1022,7 +1023,7 @@ export async function runEmbeddedAttempt(
           modelBaseUrl,
           providerBaseUrl,
         });
-        activeSession.agent.streamFn = createOllamaStreamFn(ollamaBaseUrl, params.model.headers);
+        activeSession.agent.streamFn = createOllamaStreamFn(ollamaBaseUrl);
       } else if (params.model.api === "openai-responses" && params.provider === "openai") {
         const wsApiKey = await params.authStorage.getApiKey(params.provider);
         if (wsApiKey) {

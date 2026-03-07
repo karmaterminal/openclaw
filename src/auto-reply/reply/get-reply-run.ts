@@ -16,6 +16,8 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
+import { peekSystemEventEntries, removeSystemEvents } from "../../infra/system-events.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
@@ -33,18 +35,22 @@ import {
 } from "../thinking.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import { cancelContinuationTimer } from "./agent-runner.js";
+import { clearDelegatePending } from "./agent-runner.js";
 import { runReplyAgent } from "./agent-runner.js";
 import { applySessionHints } from "./body.js";
 import type { buildCommandContext } from "./commands.js";
+import { checkContextPressure } from "./context-pressure.js";
 import type { InlineDirectives } from "./directive-handling.js";
 import { buildGroupChatContext, buildGroupIntro } from "./groups.js";
 import { buildInboundMetaSystemPrompt, buildInboundUserContextPrefix } from "./inbound-meta.js";
+import { resolveMemoryFlushContextWindowTokens } from "./memory-flush.js";
 import type { createModelSelectionState } from "./model-selection.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { resolveQueueSettings } from "./queue.js";
 import { routeReply } from "./route-reply.js";
 import { buildBareSessionResetPrompt } from "./session-reset-prompt.js";
-import { buildQueuedSystemPrompt, ensureSkillSnapshot } from "./session-updates.js";
+import { drainFormattedSystemEvents, ensureSkillSnapshot } from "./session-updates.js";
 import { resolveTypingMode } from "./typing-mode.js";
 import { resolveRunTypingPolicy } from "./typing-policy.js";
 import type { TypingController } from "./typing.js";
@@ -178,6 +184,8 @@ type RunPreparedReplyParams = {
   abortedLastRun: boolean;
 };
 
+const cpLog = createSubsystemLogger("context-pressure");
+
 export async function runPreparedReply(
   params: RunPreparedReplyParams,
 ): Promise<ReplyPayload | ReplyPayload[] | undefined> {
@@ -234,6 +242,25 @@ export async function runPreparedReply(
   const isGroupChat = sessionCtx.ChatType === "group";
   const wasMentioned = ctx.WasMentioned === true;
   const isHeartbeat = opts?.isHeartbeat === true;
+  // Structured continuation trigger — the primary wake classification signal.
+  // Heartbeat wakes thread this through getReply options. Direct announce turns
+  // use the gateway `agent` path, so they no longer rely on prompt-visible
+  // control tokens in the system-event queue.
+  const continuationTrigger = opts?.continuationTrigger;
+  const isDelegateWake = continuationTrigger === "delegate-return";
+  const isContinuationWake = continuationTrigger === "work-wake" || isDelegateWake;
+  // Clear delegate-pending flag when a structured delegate return is processed.
+  if (isDelegateWake && sessionKey) {
+    clearDelegatePending(sessionKey);
+  }
+  if (sessionKey) {
+    // Legacy cleanup: older builds enqueued this as control-plane state. Remove
+    // it before queued prompt drain so it cannot leak into model-visible text.
+    removeSystemEvents(
+      sessionKey,
+      (e) => e.text?.startsWith("[continuation:delegate-returned]") ?? false,
+    );
+  }
   const { typingPolicy, suppressTyping } = resolveRunTypingPolicy({
     requestedPolicy: opts?.typingPolicy,
     suppressTyping: opts?.suppressTyping === true,
@@ -283,6 +310,14 @@ export async function runPreparedReply(
     !baseBodyTrimmedRaw &&
     hasControlCommand(commandSource, cfg)
   ) {
+    // Unauthorized command still represents user input — cancel pending timers,
+    // reset chain metadata, and drain stale wake events (this returns before
+    // the later removeSystemEvents cleanup runs).
+    // Skip when this is a delegate completion wake — chain state must survive.
+    if (sessionKey && !isHeartbeat && !isDelegateWake) {
+      cancelContinuationTimer(sessionKey, { sessionEntry, sessionStore, storePath });
+      removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
+    }
     typing.cleanup();
     return undefined;
   }
@@ -309,6 +344,12 @@ export async function runPreparedReply(
     sessionCtx.MediaPath || (sessionCtx.MediaPaths && sessionCtx.MediaPaths.length > 0),
   );
   if (!baseBodyTrimmed && !hasMediaAttachment) {
+    // Empty inbound text still represents user input — cancel pending timers.
+    // Skip when this is a delegate completion wake — chain state must survive.
+    if (sessionKey && !isHeartbeat && !isDelegateWake) {
+      cancelContinuationTimer(sessionKey, { sessionEntry, sessionStore, storePath });
+      removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
+    }
     await typing.onReplyStart();
     logVerbose("Inbound body empty after normalization; skipping agent run");
     typing.cleanup();
@@ -332,15 +373,88 @@ export async function runPreparedReply(
   });
   const isGroupSession = sessionEntry?.chatType === "group" || sessionEntry?.chatType === "channel";
   const isMainSession = !isGroupSession && sessionKey === normalizeMainKey(sessionCfg?.mainKey);
-  const queuedSystemPrompt = await buildQueuedSystemPrompt({
+  // Extract first-token think hint from the user body BEFORE prepending system events.
+  // If done after, the System: prefix becomes parts[0] and silently shadows any
+  // low|medium|high shorthand the user typed.
+  if (!resolvedThinkLevel && prefixedBodyBase) {
+    const parts = prefixedBodyBase.split(/\s+/);
+    const maybeLevel = normalizeThinkLevel(parts[0]);
+    if (maybeLevel && (maybeLevel !== "xhigh" || supportsXHighThinking(provider, model))) {
+      resolvedThinkLevel = maybeLevel;
+      prefixedBodyBase = parts.slice(1).join(" ").trim();
+    }
+  }
+
+  // Peek system events BEFORE drainFormattedSystemEvents drains them.
+  // This detects continuation wakes so runReplyAgent can skip chain-state reset.
+  // Also check the structured trigger for work-wake (set by heartbeat-runner).
+  const hasContinuationSystemEvent =
+    continuationTrigger === "work-wake" ||
+    peekSystemEventEntries(sessionKey)?.some((e) => e.text?.startsWith("[continuation:wake]"));
+  // On non-heartbeat external input, discard any stale [continuation:wake] events
+  // so they aren't injected into the user's prompt by drainFormattedSystemEvents.
+  // This completes preemption: timer is cancelled, chain state is reset, AND
+  // any already-enqueued wake events are dropped.
+  // Skip when a continuation wake is in progress — chain state must survive.
+  if (!isContinuationWake && hasContinuationSystemEvent) {
+    removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
+  }
+
+  // --- Context-pressure awareness: inject [system:context-pressure] pre-drain ---
+  // Must be BEFORE drainFormattedSystemEvents() which drains the event queue.
+  // Otherwise the event sits unseen until the next turn — one turn too late.
+  if (sessionEntry && sessionKey) {
+    const contextWindow = resolveMemoryFlushContextWindowTokens({
+      modelId: model,
+      agentCfgContextTokens: agentCfg?.contextTokens,
+    });
+    const cpThreshold = cfg.agents?.defaults?.continuation?.contextPressureThreshold;
+    cpLog.debug("check", {
+      sessionKey,
+      totalTokens: sessionEntry.totalTokens,
+      totalTokensFresh: sessionEntry.totalTokensFresh,
+      contextWindow,
+      threshold: cpThreshold,
+      lastBand: sessionEntry.lastContextPressureBand,
+    });
+    const { fired, band } = checkContextPressure({
+      sessionEntry,
+      sessionKey,
+      contextPressureThreshold: cpThreshold,
+      contextWindowTokens: contextWindow,
+    });
+    if (fired) {
+      if (band >= 90) {
+        cpLog.warn("fired", { band, sessionKey });
+      } else {
+        cpLog.info("fired", { band, sessionKey });
+      }
+    }
+    if (fired && sessionStore?.[sessionKey]) {
+      sessionStore[sessionKey] = { ...sessionStore[sessionKey], lastContextPressureBand: band };
+      if (storePath) {
+        await updateSessionStore(storePath, (store) => {
+          if (store[sessionKey]) {
+            store[sessionKey] = { ...store[sessionKey], lastContextPressureBand: band };
+          }
+        });
+      }
+    }
+  }
+
+  // Drain system events once, then prepend to each path's body independently.
+  // The queue/steer path uses effectiveBaseBody (unstripped, no session hints) to match
+  // main's pre-PR behavior; the immediate-run path uses prefixedBodyBase (post-hints,
+  // post-think-hint-strip) so the run sees the cleaned-up body.
+  const eventsBlock = await drainFormattedSystemEvents({
     cfg,
     sessionKey,
     isMainSession,
     isNewSession,
   });
-  if (queuedSystemPrompt) {
-    extraSystemPromptParts.push(queuedSystemPrompt);
-  }
+  const prependEvents = (body: string) => (eventsBlock ? `${eventsBlock}\n\n${body}` : body);
+  const bodyWithEvents = prependEvents(effectiveBaseBody);
+  prefixedBodyBase = prependEvents(prefixedBodyBase);
   prefixedBodyBase = appendUntrustedContext(prefixedBodyBase, sessionCtx.UntrustedContext);
   const threadStarterBody = ctx.ThreadStarterBody?.trim();
   const threadHistoryBody = ctx.ThreadHistoryBody?.trim();
@@ -371,20 +485,18 @@ export async function runPreparedReply(
   let prefixedCommandBody = mediaNote
     ? [mediaNote, mediaReplyHint, prefixedBody ?? ""].filter(Boolean).join("\n").trim()
     : prefixedBody;
-  if (!resolvedThinkLevel && prefixedCommandBody) {
-    const parts = prefixedCommandBody.split(/\s+/);
-    const maybeLevel = normalizeThinkLevel(parts[0]);
-    if (maybeLevel && (maybeLevel !== "xhigh" || supportsXHighThinking(provider, model))) {
-      resolvedThinkLevel = maybeLevel;
-      prefixedCommandBody = parts.slice(1).join(" ").trim();
-    }
-  }
   if (!resolvedThinkLevel) {
     resolvedThinkLevel = await modelState.resolveDefaultThinkingLevel();
   }
   if (resolvedThinkLevel === "xhigh" && !supportsXHighThinking(provider, model)) {
     const explicitThink = directives.hasThinkDirective && directives.thinkLevel !== undefined;
     if (explicitThink) {
+      // Unsupported xhigh directive still represents user input — cancel pending timers.
+      // Skip when this is a delegate completion wake — chain state must survive.
+      if (sessionKey && !isHeartbeat && !isDelegateWake) {
+        cancelContinuationTimer(sessionKey, { sessionEntry, sessionStore, storePath });
+        removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
+      }
       typing.cleanup();
       return {
         text: `Thinking level "xhigh" is only supported for ${formatXHighModelHint()}. Use /think high or switch to one of those models.`,
@@ -422,7 +534,9 @@ export async function runPreparedReply(
     sessionEntry,
     resolveSessionFilePathOptions({ agentId, storePath }),
   );
-  const queueBodyBase = [threadContextNote, effectiveBaseBody].filter(Boolean).join("\n\n");
+  // Use bodyWithEvents (events prepended, but no session hints / untrusted context) so
+  // deferred turns receive system events while keeping the same scope as effectiveBaseBody did.
+  const queueBodyBase = [threadContextNote, bodyWithEvents].filter(Boolean).join("\n\n");
   const queuedBody = mediaNote
     ? [mediaNote, mediaReplyHint, queueBodyBase].filter(Boolean).join("\n").trim()
     : queueBodyBase;
@@ -542,5 +656,6 @@ export async function runPreparedReply(
     sessionCtx,
     shouldInjectGroupIntro,
     typingMode,
+    isContinuationWake,
   });
 }
