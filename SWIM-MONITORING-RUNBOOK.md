@@ -368,6 +368,48 @@ rsync -avz --delete dist/ silas:/tmp/openclaw-canary/dist/
 rsync -avz package.json silas:/tmp/openclaw-canary/
 ```
 
+### 8.2 Verifying the Canary (Feature Thumbprint)
+
+`openclaw --version` and `systemctl` report the installed package version, NOT the canary build. If you rsync'd a canary dist over the stock install, the version string is the stock version. Don't trust it.
+
+**Identify canary by feature presence, not version:**
+
+```bash
+# Thumbprint 1: continuation-generation module exists (Ronan P1)
+ssh silas 'ls dist/auto-reply/reply/continuation-generation.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
+
+# Thumbprint 2: continuation-runtime module exists (Ronan config normalization)
+ssh silas 'ls dist/auto-reply/reply/continuation-runtime.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
+
+# Thumbprint 3: continue_delegate tool registered
+ssh silas 'grep -l "continue_delegate" dist/agents/tools/*.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
+
+# Thumbprint 4: context-pressure system event
+ssh silas 'grep -l "context-pressure" dist/auto-reply/reply/get-reply-run.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
+
+# Thumbprint 5: git SHA of the source (if built in-place)
+ssh silas 'cd /tmp/openclaw-canary 2>/dev/null && git log --oneline -1 || echo "No git repo — rsync deploy"'
+```
+
+**Quick one-liner LGTM check:**
+
+```bash
+ssh silas 'test -f dist/auto-reply/reply/continuation-generation.js && \
+  test -f dist/auto-reply/reply/continuation-runtime.js && \
+  grep -q "continue_delegate" dist/agents/tools/continue-delegate-tool.js 2>/dev/null && \
+  echo "🌊🩲 CANARY CONFIRMED — swim-ready" || echo "❌ STOCK BUILD — do not swim"'
+```
+
+**Runtime verification (after gateway starts):**
+
+```bash
+# Check if continuation feature loaded in logs
+ssh silas 'journalctl --user -u openclaw-gateway --since "5 min ago" | grep -i "continuation" | head -3'
+
+# Check if the continue_delegate tool appears in tool catalog
+ssh silas 'journalctl --user -u openclaw-gateway --since "5 min ago" | grep "continue_delegate" | head -1'
+```
+
 ### 8.2 Deploying to SUT
 
 ```bash
