@@ -239,6 +239,7 @@ describe("subagent announce formatting", () => {
         message?: string;
         sessionKey?: string;
         internalEvents?: Array<{ type?: string; taskLabel?: string }>;
+        continuationTrigger?: string;
       };
     };
     const msg = call?.params?.message as string;

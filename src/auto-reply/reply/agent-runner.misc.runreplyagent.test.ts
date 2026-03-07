@@ -2058,6 +2058,9 @@ describe("runReplyAgent continuation signal handling", () => {
       maxDelayMs?: number;
       defaultDelayMs?: number;
       maxChainLength?: number;
+      costCapTokens?: number;
+      maxDelegatesPerTurn?: number;
+      generationGuardTolerance?: number;
     };
   }): FollowupRun {
     const sessionKey = params?.sessionKey ?? "main";
