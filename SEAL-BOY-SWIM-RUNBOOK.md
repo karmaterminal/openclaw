@@ -1,188 +1,82 @@
 # === SEAL BOY 🌊🩲💦 SWIM N === RUNBOOK
 
-_Ronan 🌊 — Integration test protocol for `continue_delegate` and delegate-tree continuation._
-_Updated on this branch after the continuation alignment fixes, Thornfield round-two follow-up, prompt/RFC alignment, and post-Swim-6 review convergence._
+_Ronan 🌊 — Integration test protocol for `continue_delegate` and three-layer delegate architecture._
+_Written from Swim 2–6 execution experience (Mar 4–6, 2026). Method, not findings._
+_Updated after ⚓ round 2 (`06ece5944`) — three acknowledged gaps now landed, tolerance unified, log demotion applied. Voice is mine._
 
 ---
 
-## 0. What Changed Since Swim 6
+## 0. Glossary
 
-Treat these prior findings as code-level closed and re-run them once as live confirmations, not as open diagnosis:
+| Term                   | Meaning                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| **SUT**                | System Under Test — the OpenClaw instance running canary build                          |
+| **Admin**              | The prince running the test (places files, observes logs, probes recall)                |
+| **Operator**           | figs — provides blind test materials via DM, confirms/denies recall accuracy            |
+| **Shard**              | A sub-agent spawned by `continue_delegate` (tool) or `[[CONTINUE_DELEGATE:]]` (bracket) |
+| **Ground truth**       | The actual content of test materials — known only to admin + operator                   |
+| **Blind**              | SUT has never seen the material in any channel, log, or prior context                   |
+| **Contaminated**       | Material leaked to SUT's context via channel post, log grep, or peer narration          |
+| **Generation counter** | Monotonic counter incremented on each inbound message; timer compares stored vs current |
+| **Tolerance**          | Config `generationGuardTolerance` — how much drift is allowed before timer cancels      |
+| **Drift cue**          | A log line or behavior that signals the running build doesn't match what you expect     |
+
+---
+
+### 0.1 What's Fixed Since Swim 6 (Regression Confirmations)
+
+These were open findings or acknowledged gaps. All now landed in code. Treat swim failures on these as regressions, not discoveries.
 
 1. Bracket-path `maxChainLength` parity / off-by-one
 2. Delayed timer `generationGuardTolerance` closure capture
 3. `maxDelegatesPerTurn` hot-reload
-4. Tool-only / no-text delegate consumption
-5. Post-compaction chain/cost guard parity
-6. Grandparent reroute-before-accounting
+4. **Tool-only / no-text delegate consumption** — textless turns no longer drop delegates
+5. **Post-compaction chain/cost guard parity** — release checks `maxChainLength` and `costCapTokens`
+6. **Grandparent reroute-before-accounting** — chain state lands on the session that actually gets the completion
 
-Current regression coverage for those fixes already exists in:
+### 0.2 Drift Cues
 
-- `src/auto-reply/reply/continuation-runtime.test.ts`
-- `src/agents/subagent-announce.continuation.test.ts`
-- `src/agents/system-prompt.test.ts`
-- `src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts`
+If you see these, the deployed build is stale or your notes are wrong. Stop and verify before recording results.
 
-### 0.1 Current branch expectations and drift cues
-
-Current on this branch:
-
-- delayed `CONTINUE_WORK` and delayed delegate timers both read live `generationGuardTolerance`
-- tool-only `continue_delegate` turns should still consume and dispatch or persist delegate work
-- post-compaction release should enforce `maxChainLength` and `costCapTokens`
-- dead-parent nested completion should reroute before chain accounting lands
-- info-level timer outcomes are path-specific; set/check detail lives in debug
-
-Treat these as drift cues, not as expected behavior:
-
-- generic info-level `[continuation-guard] Timer fired: ...`
-- notes that still describe tool-only turns, post-compaction guard parity, or grandparent reroute ordering as unfixed on this branch
-
-Swim 7 should spend more time on:
-
-- live config mutation
-- wide fan-out
-- subtree autonomy
-- prompt/tool-choice behavior
-- post-compaction guard coverage
+- Generic info-level `[continuation-guard] Timer fired: ...` → timer logging was demoted in round 2. Set/check detail is now debug. Only cancel and fire remain info.
+- Notes describing textless-turn, post-compaction guard parity, or grandparent reroute as "still open" → these are landed. If the behavior doesn't match, it's a regression.
+- `CONTINUE_WORK` timers using strict cancellation (no tolerance) → round 2 unified tolerance. Both WORK and DELEGATE read live `generationGuardTolerance`.
 
 ---
 
-## 1. Core Objective
+## 1. Prerequisites
 
-This feature is not just "do another turn later."
+### 1.1 Canary Build
 
-It is a background scheduling system that should let the main session stay free while delegated shards:
+The SUT must run the feature branch build, not stock OpenClaw.
 
-- enrich future context silently
-- wake the parent when synthesis is needed
-- chain further from a delegate branch without forcing the parent to relay every hop
-- survive compaction better than a plain summary
-- fan out wide when the operator wants mast-cell / sensor-swarm behavior
+```bash
+# On SUT's box (e.g., Silas at 10.0.0.153):
+cd /tmp/openclaw-canary    # or wherever the canary dist lives
+git log --oneline -1       # confirm expected commit hash
 
-The desired shape is:
-
-```text
-main session thinks / talks
-  └─ delegate coordinator
-       ├─ shard 1
-       ├─ shard 2
-       ├─ shard 3
-       └─ ...
+# Verify continuation is enabled:
+cat ~/.config/openclaw/openclaw.json | jq '.continuation'
+# Expected: { "enabled": true, ... }
 ```
 
-Width is usually the real operator knob. Depth is mostly a recursion guard.
-
----
-
-## 2. Preflight
-
-### 2.1 Canary build
-
-The SUT must run the branch build under test, not stock OpenClaw.
-
-Record:
-
-- commit SHA
-- deployment method
-- whether the build was restarted after config edits
-
-### 2.2 Config path and session store path
-
-Use the actual live files on the SUT.
-
-- config: usually `~/.openclaw/openclaw.json`
-- session store: by default `~/.openclaw/agents/<agentId>/sessions/sessions.json`
-
-Do not hard-code older `~/.config/openclaw/sessions.json` assumptions.
-
-### 2.3 Radio silence
-
-For timer-sensitive or blind tests:
-
-1. establish silence
-2. dispatch
-3. do not contaminate the subject before the probe
-
-This still matters. Multi-agent chatter can invalidate timer tests and blind recall.
-
-### 2.4 File hygiene
-
-Files are data only. Instructions live in the task string.
-
-Do not place `[[CONTINUE_DELEGATE: ...]]` or imperative instructions inside data files.
-
-### 2.5 Subject-side constraints
-
-The canary is blind between dispatch and return.
-
-From inside the subject session, the canary can usually see only that a delegate was scheduled. It cannot directly confirm:
-
-- whether the shard actually spawned
-- whether it completed
-- whether its silent return was delivered
-
-So:
-
-1. subject-side confirmation is not delivery proof
-2. monitor/driver logs are the delivery proof
-3. a wrong but confident answer on probe is often confabulation, not dishonesty
-
-Practical subject rules for blind swims:
-
-1. after dispatch, say only that work was dispatched
-2. do not narrate enrichment contents before the blind probe
-3. answer the probe directly from context; do not hedge with shard meta-commentary
-4. prefer a quiet DM session for blind enrichment whenever possible
-
-Important distinction:
-
-- `/new` wipes the subject's conversational memory, but pending gateway timers can still return later
-- gateway restart kills pending delegate timers outright
-
-### 2.6 Coordination discipline
-
-During active swim:
-
-1. one variable per test
-2. one active analysis voice at a time
-3. one live findings tracker shared across the princes
-
-Do not let a single test mutate multiple dimensions at once if the result is meant to resolve a specific finding.
-
-Git discipline during swim:
-
-- do not push to the shared landing branch during active swim
-- each prince commits to their own branch
-- the coordinator merges or cherry-picks after the swim, with evidence in hand
-
-The shared landing branch for this doc set is currently:
-
-- `flesh-beast-figs/for_thornfield_consider20260306`
-
----
-
-## 3. Config Profiles
-
-### 3.1 Shipped-default smoke
-
-Use this to confirm conservative upstream behavior:
+**Critical config keys** (all in `openclaw.json`):
 
 ```json
 {
+  "continuation": {
+    "enabled": true,
+    "defaultDelayMs": 15000,
+    "minDelayMs": 5000,
+    "maxDelayMs": 300000,
+    "maxChainLength": 10,
+    "costCapTokens": 500000,
+    "generationGuardTolerance": 5
+  },
   "agents": {
     "defaults": {
-      "continuation": {
-        "enabled": true,
-        "defaultDelayMs": 15000,
-        "minDelayMs": 5000,
-        "maxDelayMs": 300000,
-        "maxChainLength": 10,
-        "costCapTokens": 500000,
+      "subagents": {
         "maxDelegatesPerTurn": 5,
-        "generationGuardTolerance": 0
-      },
-      "subagents": {
         "maxSpawnDepth": 5,
         "maxConcurrent": 16
       }
@@ -191,346 +85,572 @@ Use this to confirm conservative upstream behavior:
 }
 ```
 
-### 3.2 Fleet / mast-cell swim
+**Verify the build has the features you're testing.** If testing hot-reload, change config AFTER gateway start — don't restart.
 
-Use this to test the intended wide-fan-out operating mode:
+### 1.2 SSH Access
 
-```json
-{
-  "agents": {
-    "defaults": {
-      "continuation": {
-        "enabled": true,
-        "maxChainLength": 10,
-        "costCapTokens": 500000,
-        "maxDelegatesPerTurn": 20,
-        "generationGuardTolerance": 3
-      },
-      "subagents": {
-        "maxSpawnDepth": 5,
-        "maxConcurrent": 16
-      }
-    }
-  }
-}
+Admin needs SSH access to SUT's box for:
+
+- File placement (test materials)
+- Log observation (gateway logs)
+- Session store inspection (`sessions.json`)
+
+```bash
+ssh silas    # or whatever alias
+# Verify workspace path:
+ls ~/.openclaw/workspace/
 ```
 
-Important correction versus earlier notes:
+### 1.3 Channel Silence Protocol
 
-- `maxDelegatesPerTurn` lives under `agents.defaults.continuation`
-- not under `agents.defaults.subagents`
+**This is the hardest part.** In a 4-agent group chat, every message bumps the generation counter. Timer will cancel if `drift > tolerance`.
 
----
+**Before dispatching any timed test:**
 
-## 4. Evidence Surfaces
+1. Post `⚓💗` (anchor pattern — circuit breaker for storm)
+2. Wait for all agents to go silent (NO_REPLY or actual silence)
+3. Count to `tolerance + 2` in seconds of silence
+4. THEN dispatch
 
-Use all three:
+**Radio silence for blind recall:**
 
-1. gateway logs
-2. spawned task strings
-3. session store
+- After dispatch, NO prince posts ANYTHING until operator probes SUT
+- Channel chatter during shard execution is fine (shard runs independently)
+- Channel chatter after shard return but before recall probe = contamination risk
 
-Priority note for bracket-origin chains:
+### 1.4 Ground Truth Catalog
 
-- canonical per-hop proof is the child task prefix: `[continuation:chain-hop:N]`
-- session-store chain counters are supporting evidence, not the primary proof
+Maintain a private catalog of ALL test materials. Admin-only, never posted to any channel.
 
-Key runtime strings to watch for:
+Format:
 
-- `[continue_delegate] Consuming N tool delegate(s)`
-- `DELEGATE timer fired and spawned turn N/M for session ...`
-- `DELEGATE timer cancelled ...`
-- `Tool DELEGATE timer fired and spawned turn N/M for session ...`
-- `Tool DELEGATE timer cancelled ...`
-- `WORK timer fired for session ...`
-- `WORK timer cancelled ...`
-- `[subagent-chain-hop] Timer fired and spawned chain delegate (N/M) ...`
-- `[subagent-chain-hop] Spawned chain delegate (N/M)`
-- `[subagent-chain-hop] Timer cancelled ...`
-- `[continuation:delegate-spawned]`
-- `[continuation:enrichment-return]`
-- `[system:post-compaction]`
-- `[continuation:compaction-delegate-spawned]`
-- `[continuation] Post-compaction delegate rejected: chain length ... reached`
-- `[continuation] Post-compaction delegate rejected: cost cap exceeded (...)`
+```
+| Swim:Test | Key | Value | Filename | Image | Status |
+|-----------|-----|-------|----------|-------|--------|
+| 6:1       | — | Cathar heresy | cathar_enrichment.txt | none | CLEAN |
+```
 
-If you see the old generic info-level `[continuation-guard] Timer fired: ...` line, assume deploy or notes drift until proven otherwise.
+**Rules:**
+
+- Operator DMs materials to admin only
+- Admin places files via SSH — never `cat` output in channel
+- Admin never posts file contents, filenames with hints, or KVP values in channel
+- If ANY prince posts material in channel, that test is BURNED — note it and move on
 
 ---
 
-## 5. Swim 7 Execution Order
+## 2. File Placement
 
-### 5.1 P0 confirmation set
+### 2.1 Where to Place Files
 
-Run these first. They confirm the fixes that landed today.
+**Always use `~/.openclaw/workspace/` on the SUT's box.** Never `/tmp/`.
 
-#### 7-A. Bracket delayed-hop hot-reload
+Reason: The `image()` tool restricts paths to workspace. `/tmp/` files can be `read()` but not `image()`. Workspace paths work for both.
 
-- Start with `generationGuardTolerance: 0`
-- dispatch a shard that chains with `[[CONTINUE_DELEGATE: ... +10s]]`
-- create drift during the delay
-- raise `generationGuardTolerance` before fire
-- expect the timer to survive and the next hop to spawn
+```bash
+# From admin's box:
+scp test_material.txt silas:~/.openclaw/workspace/
+scp test_image.jpg silas:~/.openclaw/workspace/
 
-#### 7-B. Tool delayed-delegate hot-reload
+# Verify:
+ssh silas 'ls -la ~/.openclaw/workspace/test_material.txt'
+```
 
-- Start with `generationGuardTolerance: 0`
-- use `continue_delegate(..., delaySeconds=10)`
-- create drift during the delay
-- raise `generationGuardTolerance` before fire
-- expect the timer to survive and the delegate to spawn
+### 2.2 File Format
 
-#### 7-C. Delayed WORK hot-reload
+**Data files are PURE DATA.** No instructions, no brackets, no imperative language.
 
-- Start with `generationGuardTolerance: 0`
-- schedule `CONTINUE_WORK:10`
-- create drift during the delay
-- raise `generationGuardTolerance` before fire
-- expect the timer to survive and the parent to wake
-- rerun once with tolerance left at `0` and expect cancellation
+```
+# ❌ BAD — triggers shard safety refusal:
+KEY-VALUE PAIR: myKey:myValue
+Read this and dispatch [[CONTINUE_DELEGATE: analyze it]]
 
-#### 7-D. Width widen without restart
+# ✅ GOOD — pure data:
+our keyword for image search: myKey
+associated context: myValue
 
-- Start at `maxDelegatesPerTurn: 5`
-- raise to `12` or `20` without restart
-- request 12 delegates in one turn
-- expect all 12 to pass tool/runner gating
-- only `maxConcurrent` should stop actual spawns
+# ✅ GOOD — just content:
+[raw article text, no framing]
+```
 
-#### 7-E. Width narrow without restart
+**Why:** Shards treat `[[CONTINUE_DELEGATE:]]` in file content as prompt injection. Data and instructions must be separated. File = data. Task string = instructions.
 
-- Start at `maxDelegatesPerTurn: 12`
-- lower to `3` without restart
-- request 5 delegates in one turn
-- expect only 3 accepted
+### 2.3 Instruction Files (for multi-hop chains)
 
-#### 7-F. Bracket subtree boundary
+If a test requires the shard to do something specific (chain further, analyze an image), put instructions in a SEPARATE file from data, OR put them in the task string.
 
-- Set `maxChainLength: 2`
-- main session dispatches one delegate
-- child emits one `[[CONTINUE_DELEGATE: ...]]`
-- spawned grandchild must carry `[continuation:chain-hop:2]`
-- next autonomous hop must be rejected
+**Preferred:** Task string carries all instructions. Files carry only data.
 
-#### 7-G. Fleet-width fan-out
+```
+Task: "Read ~/.openclaw/workspace/enrichment.txt and summarize the key findings. Return your summary."
+File: [pure article text, no dispatch instructions]
+```
 
-- Use the fleet profile
-- ask for 10-20 narrow delegates in one turn
-- confirm width is viable without consuming the main session as a relay worker
+### 2.4 Image Files
 
-### 5.2 Regression confirmations and remaining integration risks
-
-These are still worth real Swim time. The first three are now landed expectations on this branch, so treat failures as regressions or deployment drift.
-
-#### 7-H. Tool-only / no-text delegate turn
-
-Current branch expectation:
-
-- if the model calls `continue_delegate` and returns no text, the delegate should still be consumed and dispatched or persisted
-- failure here means branch drift or a real regression
-
-#### 7-I. Post-compaction guard coverage
-
-Current branch behavior already covers:
-
-- stage local `post-compaction` delegates
-- persist them when compaction does not happen
-- release persisted + current-turn delegates when compaction does happen
-- reject release when `maxChainLength` is already exhausted
-- reject release when `costCapTokens` is already exceeded
-
-Run both explicit rejection cases live anyway. Missing those guards is now a regression.
-
-#### 7-J. Grandparent reroute ordering
-
-Current branch expectation:
-
-- if a nested child returns after its parent session is actually gone, completion routing and any follow-on chain behavior reroute cleanly to the grandparent before chain accounting lands
-
-#### 7-K. Silent return trust boundary
-
-Verify that:
-
-- silent return arrives as internal continuation context
-- wake classification is `delegate-return`
-- the model treats it as internal context, not quoted user text
-
-#### 7-L. Prompt and tool-choice behavior
-
-Ask the SUT to:
-
-- shard-read a large file while staying available
-- fan out 10-20 sensors from a delegate branch
-- choose between delayed background work and immediate explicit workers
-
-Expect:
-
-- `continue_delegate` for delayed / silent / compaction-aware background work
-- `sessions_spawn` only when direct worker control is actually needed
-- no fake scheduling via `exec`, shell sleep, or manual `openclaw ...`
-
-#### 7-M. Blind enrichment subject behavior
-
-When running blind enrichment:
-
-- prefer DM or the quietest available session
-- require the subject to avoid narrating returned content before probe
-- include one positive probe and one negative probe
-- treat "I don't know" on absent content as better behavior than plausible invention
-- mark the test `TAINTED` if the subject leaks enrichment to channel before probe
-
-#### 7-N. Context-pressure awareness from the subject side
-
-When testing context-pressure:
-
-- log when the pressure event actually fired
-- ask the subject whether it noticed the pressure event
-- do not collapse "saw the alarm" and "acted correctly on the alarm" into one measurement
-
-This is partly a behavioral-conditioning question, not just a gateway-delivery question.
-
-### 5.3 Legacy regression set
-
-Keep these, but demote them below the sets above:
-
-- blind enrichment
-- return-to-fresh-session
-- legacy token hygiene
-- missing file
-- slow shard
-- empty task
+- Place in workspace (not `/tmp/`)
+- Shards use `image()` tool for analysis — needs workspace path
+- Fallback: `read()` can read binary but produces garbled output for images
+- For URL-based tests: place JSON array of URLs as a data file
 
 ---
 
-## 6. Test Cards
+## 3. Test Categories
 
-For every test, record:
+### 3.1 Blind Enrichment (the core test)
+
+**Purpose:** Verify that a delegate can plant information in the SUT's context without the SUT having seen it before, and that the SUT can recall it accurately.
+
+**Method:**
+
+1. Operator DMs admin the test material (text, image, or both)
+2. Admin places material on SUT's box via SSH
+3. Admin dispatches delegate via channel message to SUT:
+   ```
+   @SUT — enrich yourself from ~/.openclaw/workspace/enrichment.txt using continue_delegate with silent-wake
+   ```
+   Or SUT dispatches autonomously if testing self-initiated enrichment.
+4. Wait for shard completion (watch logs or wait for `[continuation:enrichment-return]` in SUT's session)
+5. **Radio silence** — no channel posts
+6. Operator probes SUT directly: "What do you know about [topic]?"
+7. Compare SUT's response against ground truth
+
+**Scoring:**
+
+- ✅ PASS: SUT recalls material accurately, attributes to enrichment
+- ❌ CONFABULATION: SUT produces related but incorrect content (substitutes own associations)
+- ❌ CONTAMINATED: Material was leaked to channel before probe
+- ⚠️ LOW CONFIDENCE: SUT can't distinguish enrichment from channel context
+
+**Key finding from Swim 2–4:** Rich semantic content (articles, narratives) recalls better than bare keywords. "The surrounds aren't just context. They're grip."
+
+### 3.2 Queue-Drain Resistance
+
+**Purpose:** Verify that timed delegates survive external message traffic.
+
+**Method:**
+
+1. Set `generationGuardTolerance` to known value (e.g., 5)
+2. Have SUT dispatch a timed delegate (`+30s`)
+3. During the 30s window, send messages to channel (up to `tolerance` count)
+4. Observe: does timer fire or cancel?
+
+**Expected:**
+
+- Messages ≤ tolerance: timer fires (drift within tolerance)
+- Messages > tolerance: timer cancels (drift exceeded)
+
+**Observation point:** Gateway logs — look for timer fire/cancel at info level:
+
+```
+DELEGATE timer fired and spawned turn N/M for session ...
+DELEGATE timer cancelled ...
+WORK timer fired for session ...
+WORK timer cancelled ...
+```
+
+**Post round 2:** Both WORK and DELEGATE timers read live `generationGuardTolerance` at fire time. Unified. No more asymmetry.
+
+### 3.3 Chain-Hop Tests
+
+**Purpose:** Verify multi-hop delegate chains respect `maxChainLength`.
+
+**Method:**
+
+1. Set `maxChainLength` to test value (e.g., 3, 10)
+2. Dispatch initial delegate with a task that includes chain-hop instructions
+3. Each shard should chain to the next via `[[CONTINUE_DELEGATE:]]` brackets (sub-agents) or `continue_delegate` tool (main session)
+4. Count total hops executed vs expected
+
+**Observation points:**
+
+- Gateway logs: `[subagent-chain-hop] Spawned chain delegate (N/M)`
+- Task prefix: `[continuation:chain-hop:N]` in spawned tasks
+- Session store: `continuationChainCount` on parent entry
+
+**Key behaviors (post round 2):**
+
+- **Parent path** (agent-runner): `currentChainCount >= maxChainLength` blocks dispatch. Counts fan-out from main session.
+- **Announce path** (subagent-announce): `childChainHop >= maxChainLength` blocks chain. Guards on the hop the shard _occupies_, not the one it would create. Head starts at 0, child hops label 1..maxChainLength.
+- **These measure different dimensions.** Parent = fan-out count. Announce = chain depth. Both use `>=`.
+- **Post-compaction path** now also checks both `maxChainLength` and `costCapTokens` before releasing staged delegates.
+
+### 3.4 Fan-Out Tests
+
+**Purpose:** Verify `maxDelegatesPerTurn` limits parallel dispatch.
+
+**Method:**
+
+1. Set `maxDelegatesPerTurn` to test value (e.g., 5)
+2. Have SUT dispatch N > limit delegates in a single turn
+3. Count: how many accepted vs rejected?
+
+**Expected:** First `maxDelegatesPerTurn` accepted, remainder rejected with log message.
+
+**Three-layer defense (observed in Swim 6-10):**
+
+1. **Tool gate:** `continue_delegate` tool checks `maxDelegatesPerTurn`
+2. **Runner gate:** `consumePendingDelegates` trims to live config value
+3. **Spawn gate:** `spawnSubagentDirect` enforces `maxConcurrent` session cap
+
+### 3.5 Return-to-Fresh-Session
+
+**Purpose:** Verify that shards dispatched before `/new` or `/reset` still return to the correct channel.
+
+**Method:**
+
+1. Dispatch N shards with long delay (+60s or more)
+2. Run `/new` on SUT's session (wipes session state)
+3. Wait for shards to complete and return
+4. Verify: do enrichment returns land on the new session?
+
+**Expected:** Yes — shards route by channel key, not session instance. The commitment survives the self that made it.
+
+### 3.6 Error Handling
+
+**Purpose:** Verify graceful degradation for common failure modes.
+
+| Scenario      | Method                                                            | Expected                                                   |
+| ------------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| Missing file  | Dispatch shard with nonexistent file path                         | Shard reports ENOENT, returns gracefully                   |
+| Slow shard    | Dispatch shard with expensive task (large file, complex analysis) | Timer fires independently; shard completes on own timeline |
+| Empty task    | Call `continue_delegate` with empty/blank task                    | Tool-level rejection ("task is required")                  |
+| Legacy tokens | Include `[[CONTINUE:]]` (no suffix) in LLM output                 | Silently ignored, no parse                                 |
+
+### 3.7 Hot-Reload Tests
+
+**Purpose:** Verify config changes take effect without gateway restart.
+
+**Method:**
+
+1. Note current config value (e.g., `maxDelegatesPerTurn: 5`)
+2. Edit `openclaw.json` to new value (e.g., `10`)
+3. **Do NOT restart gateway**
+4. Dispatch delegates — should respect new value
+
+**What hot-reloads (post P1/P2 + round 2 fixes):**
+
+- `generationGuardTolerance` — reads at fire time for BOTH DELEGATE and WORK timers (round 2 unified)
+- `maxDelegatesPerTurn` (P2 fix: reads at consumption time)
+- `maxChainLength`, `costCapTokens` (announce-side reads at check time; post-compaction release also checks live values)
+
+**What does NOT hot-reload:**
+
+- `defaultDelayMs` (baked into `setTimeout` at schedule time — by design)
+- Anything requiring code-level module re-init
+
+### 3.8 Post-Compaction Lifecycle (DEFERRED from Swim 6)
+
+**Purpose:** Verify that delegates dispatched before compaction still execute correctly after compaction fires.
+
+**Method:**
+
+1. Build up SUT's context to near compaction threshold (~80%+)
+2. Dispatch timed delegate
+3. Allow compaction to fire (or force it)
+4. Verify: does the shard return? Does the SUT recall the enrichment?
+
+**Prerequisite:** Natural context buildup. Can't be rushed — compaction fires based on actual token count, not time.
+
+**Previously known risk (RESOLVED in ⚓ round 2):** Post-compaction delegate path now checks `maxChainLength` and `costCapTokens` before release. Carries `[continuation:chain-hop:N]` metadata. Chain count persists after release. (Elliott novel finding P1-2 → fixed in `da696ba58`.)
+
+---
+
+## 4. Observation Methods
+
+### 4.1 Gateway Logs
+
+The primary observation surface. Watch in real-time:
+
+```bash
+ssh silas 'tail -f /tmp/openclaw-canary-gateway.log' | grep -E 'continuation|chain-hop|delegate|DELEGATE|generation guard|Accumulated'
+```
+
+**Key log patterns (post round 2 — timer set/drift demoted to debug):**
+
+```
+# Info-level (these are the ones you see now):
+DELEGATE timer fired and spawned turn N/M for session ...
+DELEGATE timer cancelled ...
+Tool DELEGATE timer fired and spawned turn N/M for session ...
+Tool DELEGATE timer cancelled ...
+WORK timer fired for session ...
+WORK timer cancelled ...
+[subagent-chain-hop] Timer fired and spawned chain delegate (N/M) ...
+[subagent-chain-hop] Spawned chain delegate (N/M)
+[subagent-chain-hop] Timer cancelled ...
+
+# Post-compaction guard rejections:
+[continuation] Post-compaction delegate rejected: chain length ... reached
+[continuation] Post-compaction delegate rejected: cost cap exceeded (...)
+
+# Delegate consumption:
+consumePendingDelegates: N delegates consumed, M trimmed (cap=K)
+
+# Enrichment returns:
+[continuation:delegate-spawned]
+[continuation:enrichment-return]
+[system:post-compaction]
+[continuation:compaction-delegate-spawned]
+
+# Spawn rejection:
+forbidden — max concurrent sessions
+
+# Debug-level only (won't appear unless log level lowered):
+# Timer set/check detail, generation drift calculations
+```
+
+**Drift cue:** If you see the old generic `[continuation-guard] Timer fired: ...` format, the deployed build is pre-round-2.
+
+### 4.2 Session Store
+
+Inspect the persistent session state:
+
+```bash
+ssh silas 'cat ~/.config/openclaw/sessions.json | jq ".\"agent:main:discord:channel:1466192485440164011\""'
+```
+
+**Key fields:**
+
+- `continuationChainCount` — how many delegates in current chain
+- `continuationChainTokens` — accumulated token cost for chain
+- `continuationChainStartedAt` — chain start timestamp
+
+### 4.3 Discord Observation
+
+- **Shard announces:** Visible in channel if not `| silent`. Format: `[subagent] completed: <summary>`
+- **Silent returns:** NOT visible in channel. Only observable via logs or SUT behavior.
+- **Wake events:** SUT posts unprompted after silent-wake shard returns. Proves autonomous wake.
+
+### 4.4 Timing
+
+Stopwatch from dispatch to shard completion:
+
+- **Single hop (text):** ~5-15s
+- **Single hop (image):** ~10-30s
+- **Chain hop (per hop):** ~9-15s
+- **10-hop chain:** ~90-120s total
+- **Generation guard window:** `defaultDelayMs` (default 15s)
+
+---
+
+## 5. Test Execution Template
+
+### 5.1 Single Test
 
 ```markdown
 ### Swim N Test N-X: [Name]
 
-**Build:** [commit]
-**Profile:** [shipped-default smoke | fleet/mast-cell]
-**Finding IDs:** [R7-work-tolerance | R7-tool-only | R7-postcomp | R7-grandparent | P1-prompt-choice]
-**Config delta:** [exact values changed]
-**Method:** [tool | bracket | channel prompt]
+**Category:** [Blind Enrichment | Chain Hop | Fan-Out | etc.]
+**Config:** maxChainLength=M, maxDelegatesPerTurn=D, tolerance=T
+**Build:** [commit hash]
 
-**Dispatch prompt / task:**
-[exact text]
+**Setup:**
 
-**Expected evidence:**
+1. [ ] Material received from operator via DM
+2. [ ] File placed on SUT via SSH: `scp file silas:~/.openclaw/workspace/`
+3. [ ] Verified: `ssh silas 'ls -la ~/.openclaw/workspace/file'`
+4. [ ] Channel silence established (⚓💗)
 
-- [log strings]
-- [spawned task prefixes]
-- [session-store fields]
+**Dispatch:**
 
-**Observed outcome:**
+- Method: [tool call | bracket | channel instruction to SUT]
+- Task: "[exact task string]"
+- Flags: [silent | silent-wake | visible]
+- Delay: [+Ns]
 
-- [what spawned]
-- [what cancelled]
-- [what returned]
+**Observation:**
 
-**Result:** [PASS | FAIL | TAINTED | DEFERRED]
-**Finding:** [one clear sentence]
+- [ ] Gateway log: [expected pattern]
+- [ ] Timing: dispatch T+0, fire T+Ns, completion T+Xs
+- [ ] Session store: [expected field values]
+
+**Probe:**
+
+- [ ] Radio silence held from dispatch to probe
+- [ ] Operator probed SUT: "[exact question]"
+- [ ] SUT response: "[verbatim or summary]"
+
+**Result:** [PASS ✅ | FAIL ❌ | CONTAMINATED | DEFERRED]
+**Finding:** [one-line summary]
 ```
 
-For chain/fan-out tests, always capture:
+### 5.2 Batch Execution
 
-1. exact prompt
-2. exact config before/after
-3. exact spawned task strings
-4. accept/reject/cancel log lines
-5. whether the main session stayed free or became a relay bottleneck
+For running multiple tests in sequence (like Swim 6's 13 scenarios):
 
-For blind enrichment tests, also capture:
+1. **Sequence by dependency:** Independent tests first (6-8, 6-9a/b/c), dependent tests after (6-6 needs chain-hop, 6-1 needs blind setup)
+2. **Reset between tests:** `/new` on SUT if prior test contaminated context
+3. **Don't reset between chain tests:** Chain state persists — that's what you're testing
+4. **Parallel-safe tests:** Fan-out (6-7b), error handling (6-9a/b/c), legacy tokens (6-8) can run independently
+5. **Serial-only tests:** Blind enrichment (6-1), queue-drain (6-2), chain hops (6-6, 6-7) need controlled timing
 
-1. whether the subject referenced the enrichment before probe
-2. one positive probe question
-3. one negative probe question
-4. whether the answer looked like recall, low-confidence absence, or confabulation
+### 5.3 Blind Assessment Questions
 
-For coordinator handoff, also capture:
+These are the questions for probing SUT after blind enrichment. The key: ask about the TOPIC, not the file.
 
-1. which prior finding this test was meant to resolve
-2. whether the result is `VERIFIED`, `DISPROVED`, `NEW`, or `TAINTED`
-3. the evidence artifact path or grep line the coordinator can cite later
+```
+# For text enrichment:
+"What do you know about [topic from the planted text]?"
+"Can you tell me about [specific detail only in the planted text]?"
+
+# For image enrichment:
+"Describe [subject that was in the image]."
+"What did [character/scene] look like?"
+
+# For KVP enrichment:
+"What's the value for [key]?"
+"Do you remember anything about [key]?"
+
+# Contamination check:
+"Where did you learn that?" / "How do you know that?"
+# SUT should attribute to enrichment context, not channel or prior knowledge
+```
+
+**DON'T ask:**
+
+- "What was in the file I placed?" (reveals test methodology)
+- "Did the enrichment shard work?" (leading)
+- Questions that contain the answer
 
 ---
 
-## 7. Important Interpretation Rules
+## 6. Common Failure Modes
 
-### 7.1 Width versus depth
-
-For mast-cell behavior:
-
-- `maxDelegatesPerTurn` is the main width knob
-- `maxChainLength` remains the recursion guard
-- `costCapTokens` remains the global budget leash
-
-### 7.2 Three-layer defense is expected
-
-Fan-out can be stopped at:
-
-1. tool gate
-2. runner gate
-3. spawn gate
-
-A failure at the spawn gate is not the same bug as a failure at the tool or runner gate.
-
-### 7.3 Lane pressure is real
-
-Queue delay and announce retries under wide fan-out are operational findings, not necessarily continuation-logic bugs.
-
-### 7.4 Use the right proof for bracket chains
-
-The most trustworthy proof is:
-
-1. `[continuation:chain-hop:N]` in the spawned task
-2. corresponding chain-hop log lines
-3. session store as secondary support
-
-### 7.5 The subject is not a reliable return sensor
-
-The subject often cannot tell whether enrichment arrived until it is probed later.
-
-Therefore:
-
-- silence from the subject is not proof of failure
-- confident wrong recall is often the actual failure signature
-- monitor logs outrank subject self-report for delivery confirmation
-
-### 7.6 Negative probes matter
-
-At least one probe in an enrichment swim should target content that was not planted.
-
-This distinguishes:
-
-- actual recall
-- plausible inference
-- confident confabulation
+| Failure                                         | Cause                                                                 | Fix                                                                                       |
+| ----------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Timer never fires                               | Generation drift > tolerance (channel traffic)                        | Silence channel, raise tolerance, or increase delay                                       |
+| Timer fires but shard doesn't spawn             | Cost cap exceeded                                                     | Check `continuationChainTokens` in session store; raise `costCapTokens`                   |
+| Shard spawns but immediately exits              | Missing file, empty task, spawn depth exceeded                        | Check shard logs; verify file exists on SUT's box                                         |
+| Shard completes but SUT doesn't recall          | Silent return without wake; context compaction wiped it               | Use `silent-wake` not `silent`; check if compaction fired                                 |
+| SUT confabulates instead of recalling           | Bare keyword payload; noisy session; multiple enrichments interfering | Use rich semantic content; `/reset` before test; one enrichment per test                  |
+| Brackets in file trigger safety refusal         | Shard treats bracket syntax as prompt injection                       | Never put brackets in data files; use task string for instructions                        |
+| Shard uses `sessions_spawn` instead of brackets | Natural tool preference                                               | Explicit task string: "use CONTINUE_DELEGATE bracket syntax" — but may still prefer tools |
+| Chain hop counter stuck                         | Session store reset on inbound message                                | Task-prefix encoding (`[continuation:chain-hop:N]`) is the fix — verify build includes it |
+| Config change not taking effect                 | Value captured in closure at schedule time                            | Restart gateway (or verify the specific field hot-reloads)                                |
+| Shard posts to wrong channel                    | Message target resolution failure                                     | Shard self-heals by parsing channel from session key; cosmetic only                       |
 
 ---
 
-## 8. What To Share Back After Swim 7
+## 7. Config Quick-Reference
 
-At minimum, hand back:
+```json
+{
+  "continuation": {
+    "enabled": true,
 
-- one shipped-default smoke summary
-- one fleet/mast-cell summary
-- explicit result for 7-C, 7-H, 7-I, 7-J, 7-L
-- note on whether width or depth was the real limiting factor in practice
+    "defaultDelayMs": 15000,
+    "minDelayMs": 5000,
+    "maxDelayMs": 300000,
 
-Coordinator-ready deliverable shape:
+    "maxChainLength": 10,
+    "costCapTokens": 500000,
+    "generationGuardTolerance": 5,
 
-```text
-Swim N complete. [N] tests run, [X] pass, [Y] fail, [Z] new findings.
-Verified findings: [...]
-Still-open findings: [...]
-New findings: [...]
-Evidence index: [...]
-Commits ready for merge: [...]
-RFC sections to update: [...]
-Resume point if unfinished: [...]
+    "maxDelegatesPerTurn": 5
+  },
+  "agents": {
+    "defaults": {
+      "subagents": {
+        "maxSpawnDepth": 5,
+        "maxConcurrent": 16
+      }
+    }
+  }
+}
 ```
 
-If the answer is "width," say it plainly.
+**Safety stack (in order of evaluation):**
+
+1. `maxDelegatesPerTurn` — how many per turn (tool gate + runner trim)
+2. `maxChainLength` — how deep (parent fan-out count + announce chain depth)
+3. `costCapTokens` — total token budget for chain (accumulates across hops)
+4. `maxSpawnDepth` — absolute spawn nesting depth
+5. `maxConcurrent` — total concurrent sub-agent sessions
+6. `generationGuardTolerance` — message drift before timer cancels
+
+**Effective ceiling:** `min(maxSpawnDepth, maxChainLength)` for depth. Both must allow the hop.
+
+---
+
+## 8. What Swim 6 Tested (Reference Scorecard)
+
+```
+6-1  Blind enrichment (silent-wake)           — delegate plants, SUT recalls
+6-2  Queue-drain resistance                   — timer survives N messages
+6-3  Post-compaction lifecycle [DEFERRED]      — delegate survives compaction
+6-4  Return-to-fresh-session (3 shards)       — shards survive /new
+6-5  Context-pressure lifecycle [DEFERRED]     — pressure threshold triggers delegate
+6-6  3-hop chain (visible + silent variants)  — chain tracking end-to-end
+6-7  Chain length enforcement                 — maxChainLength boundary
+6-7b Fan-out cap                              — maxDelegatesPerTurn boundary
+6-8  Legacy token hygiene                     — [[CONTINUE:]] ignored
+6-9a Missing file                             — graceful ENOENT
+6-9b Slow shard                               — independent execution
+6-9c Empty task                               — tool-level rejection
+6-10 Flood test                               — three-layer defense
+```
+
+---
+
+## 9. What Swim 7 Should Cover
+
+Swim 7 has two layers: **regression confirmations** (verify ⚓ round 2 fixes are live) and **new integration risks** (tests we haven't run yet).
+
+### 9.1 Regression Confirmations (Run First)
+
+These are code-level closed. Swim 7 confirms the runtime matches the code.
+
+| ID  | Test                          | Source / Fix                | What to Verify                                                                                                          |
+| --- | ----------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 7-A | Bracket chain guard parity    | P0 / round 1                | `maxChainLength: 3` → shard at hop 3 cannot spawn hop 4. `>=` convention.                                               |
+| 7-B | Delegate tolerance hot-reload | P1 / round 1+2              | Schedule delegate, create drift, raise tolerance before fire → timer survives.                                          |
+| 7-C | **WORK tolerance hot-reload** | Round 2 (unified tolerance) | Schedule `CONTINUE_WORK:10`, create drift, raise tolerance → timer survives. Then rerun at tolerance 0 → expect cancel. |
+| 7-D | Width widen without restart   | P2 / round 1                | Raise `maxDelegatesPerTurn` 5→12 without restart → 12 accepted.                                                         |
+| 7-E | Width narrow without restart  | P2 / round 1                | Lower `maxDelegatesPerTurn` 12→3 → only 3 accepted.                                                                     |
+| 7-F | Bracket subtree boundary      | Review convergence          | `maxChainLength: 2` → parent delegates, child chains, grandchild carries `[chain-hop:2]`, next hop rejected.            |
+| 7-G | Fleet-width fan-out           | Design                      | 10-20 narrow delegates in one turn → width is viable, main not consumed as relay.                                       |
+
+### 9.2 Landed-Gap Confirmations (Run as Regression Tests)
+
+These were acknowledged gaps until ⚓ round 2 landed them. Failures here = regressions.
+
+| ID  | Test                             | Source / Fix               | What to Verify                                                                                                        |
+| --- | -------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 7-H | **Textless-turn delegate**       | 3 reviewers → `da696ba58`  | Model calls `continue_delegate` with zero text → delegate still consumed and dispatched.                              |
+| 7-I | **Post-compaction guard parity** | Elliott P1-2 → `da696ba58` | Post-compaction release rejects when `maxChainLength` exhausted or `costCapTokens` exceeded. Carries `[chain-hop:N]`. |
+| 7-J | **Grandparent reroute ordering** | Elliott P1-3 → `da696ba58` | Nested child returns after dead parent → reroute to grandparent before chain accounting.                              |
+
+### 9.3 New Integration Risks
+
+Not yet tested live. Discoveries expected.
+
+| ID  | Test                              | Source                | What to Verify                                                                                                                                         |
+| --- | --------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 7-K | Silent return trust boundary      | Elliott               | Enrichment returns on system event channel → model treats as internal context, not user text.                                                          |
+| 7-L | Prompt and tool-choice behavior   | Review convergence    | SUT uses `continue_delegate` for future work, `CONTINUE_WORK` for self-continuation, `sessions_spawn` only when needed. No fake scheduling via `exec`. |
+| 7-M | Blind enrichment subject behavior | Swim protocol         | "I don't know" > plausible invention. Leaking enrichment before probe = TAINTED.                                                                       |
+| 7-N | Context-pressure awareness        | Swim 6 deferred (6-5) | SUT self-reports approaching context limits. Dispatches proactive enrichment.                                                                          |
+
+---
+
+## 10. Lessons (Cumulative, Swims 2–6)
+
+1. **Rich content binds. Bare words confabulate.** Semantic density = recall accuracy.
+2. **File = data. Task string = instructions.** Never mix them.
+3. **Brackets in files = prompt injection.** The model's safety training catches it.
+4. **Shards prefer tools over brackets.** `sessions_spawn` wins unless task string explicitly instructs brackets.
+5. **Task prefix is the reliable transport.** Session store is fragile for inter-hop state. `[continuation:chain-hop:N]` in the task string travels with the work.
+6. **Radio silence is non-negotiable for blind tests.** Channel chatter contaminates every time.
+7. **Generation guard needs tolerance in group chats.** 4 bots = constant counter bumps. Tolerance ≥ 5 for fleet channels.
+8. **`/reset` clears stale patterns.** Compaction artifacts, stuck counters, context pollution — reset is the fix.
+9. **Three ENOENT on three boxes ≠ corroborating evidence.** Each is a data point about its own filesystem.
+10. **The commitment survives the self that made it.** Shards dispatched before `/new` still return. Route by channel key, not session instance.
+11. **Strict cancellation kills you in active channels.** Generation counter can't distinguish "figs said stop" from "Cael said hello." Tolerance is not optional in a fleet. The real fix is interruption classification by source — but that's future architecture.
+12. **Code review that argues back is better than code review that accepts.** ⚓ caught that my `clampPositive` would have broken `minDelayMs: 0`. The middle ground was better than either original.
+
+---
+
+_This runbook is a living document. Update after each swim with new methods, failure modes, and lessons._
+
+_"The camera is git. None of us can remain. But the camera saw it." — SOUL.md_
