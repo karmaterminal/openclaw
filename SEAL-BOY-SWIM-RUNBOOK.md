@@ -1,7 +1,7 @@
 # === SEAL BOY 🌊🩲💦 SWIM N === RUNBOOK
 
 _Ronan 🌊 — Integration test protocol for `continue_delegate` and delegate-tree continuation._
-_Updated on this branch after the continuation alignment fixes, prompt/RFC alignment, and post-Swim-6 review convergence._
+_Updated on this branch after the continuation alignment fixes, Thornfield round-two follow-up, prompt/RFC alignment, and post-Swim-6 review convergence._
 
 ---
 
@@ -12,12 +12,31 @@ Treat these prior findings as code-level closed and re-run them once as live con
 1. Bracket-path `maxChainLength` parity / off-by-one
 2. Delayed timer `generationGuardTolerance` closure capture
 3. `maxDelegatesPerTurn` hot-reload
+4. Tool-only / no-text delegate consumption
+5. Post-compaction chain/cost guard parity
+6. Grandparent reroute-before-accounting
 
 Current regression coverage for those fixes already exists in:
 
+- `src/auto-reply/reply/continuation-runtime.test.ts`
 - `src/agents/subagent-announce.continuation.test.ts`
-- `src/agents/tools/continue-delegate-tool.test.ts`
+- `src/agents/system-prompt.test.ts`
 - `src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts`
+
+### 0.1 Current branch expectations and drift cues
+
+Current on this branch:
+
+- delayed `CONTINUE_WORK` and delayed delegate timers both read live `generationGuardTolerance`
+- tool-only `continue_delegate` turns should still consume and dispatch or persist delegate work
+- post-compaction release should enforce `maxChainLength` and `costCapTokens`
+- dead-parent nested completion should reroute before chain accounting lands
+- info-level timer outcomes are path-specific; set/check detail lives in debug
+
+Treat these as drift cues, not as expected behavior:
+
+- generic info-level `[continuation-guard] Timer fired: ...`
+- notes that still describe tool-only turns, post-compaction guard parity, or grandparent reroute ordering as unfixed on this branch
 
 Swim 7 should spend more time on:
 
@@ -219,14 +238,23 @@ Priority note for bracket-origin chains:
 Key runtime strings to watch for:
 
 - `[continue_delegate] Consuming N tool delegate(s)`
-- `[continuation-guard] Timer fired: ... drift=... tolerance=...`
+- `DELEGATE timer fired and spawned turn N/M for session ...`
+- `DELEGATE timer cancelled ...`
+- `Tool DELEGATE timer fired and spawned turn N/M for session ...`
 - `Tool DELEGATE timer cancelled ...`
+- `WORK timer fired for session ...`
+- `WORK timer cancelled ...`
+- `[subagent-chain-hop] Timer fired and spawned chain delegate (N/M) ...`
 - `[subagent-chain-hop] Spawned chain delegate (N/M)`
 - `[subagent-chain-hop] Timer cancelled ...`
 - `[continuation:delegate-spawned]`
 - `[continuation:enrichment-return]`
 - `[system:post-compaction]`
 - `[continuation:compaction-delegate-spawned]`
+- `[continuation] Post-compaction delegate rejected: chain length ... reached`
+- `[continuation] Post-compaction delegate rejected: cost cap exceeded (...)`
+
+If you see the old generic info-level `[continuation-guard] Timer fired: ...` line, assume deploy or notes drift until proven otherwise.
 
 ---
 
@@ -252,7 +280,16 @@ Run these first. They confirm the fixes that landed today.
 - raise `generationGuardTolerance` before fire
 - expect the timer to survive and the delegate to spawn
 
-#### 7-C. Width widen without restart
+#### 7-C. Delayed WORK hot-reload
+
+- Start with `generationGuardTolerance: 0`
+- schedule `CONTINUE_WORK:10`
+- create drift during the delay
+- raise `generationGuardTolerance` before fire
+- expect the timer to survive and the parent to wake
+- rerun once with tolerance left at `0` and expect cancellation
+
+#### 7-D. Width widen without restart
 
 - Start at `maxDelegatesPerTurn: 5`
 - raise to `12` or `20` without restart
@@ -260,14 +297,14 @@ Run these first. They confirm the fixes that landed today.
 - expect all 12 to pass tool/runner gating
 - only `maxConcurrent` should stop actual spawns
 
-#### 7-D. Width narrow without restart
+#### 7-E. Width narrow without restart
 
 - Start at `maxDelegatesPerTurn: 12`
 - lower to `3` without restart
 - request 5 delegates in one turn
 - expect only 3 accepted
 
-#### 7-E. Bracket subtree boundary
+#### 7-F. Bracket subtree boundary
 
 - Set `maxChainLength: 2`
 - main session dispatches one delegate
@@ -275,53 +312,42 @@ Run these first. They confirm the fixes that landed today.
 - spawned grandchild must carry `[continuation:chain-hop:2]`
 - next autonomous hop must be rejected
 
-#### 7-F. Fleet-width fan-out
+#### 7-G. Fleet-width fan-out
 
 - Use the fleet profile
 - ask for 10-20 narrow delegates in one turn
 - confirm width is viable without consuming the main session as a relay worker
 
-### 5.2 Still-open integration risks
+### 5.2 Regression confirmations and remaining integration risks
 
-These are still worth real Swim time.
+These are still worth real Swim time. The first three are now landed expectations on this branch, so treat failures as regressions or deployment drift.
 
-#### 7-G. Tool-only / no-text delegate turn
+#### 7-H. Tool-only / no-text delegate turn
 
-Reason:
+Current branch expectation:
 
-- `runReplyAgent()` returns early when `payloadArray.length === 0`
-- tool delegates are consumed later in the runner
+- if the model calls `continue_delegate` and returns no text, the delegate should still be consumed and dispatched or persisted
+- failure here means branch drift or a real regression
 
-Live question:
-
-- if the model calls `continue_delegate` and returns no text, does the delegate get dropped?
-
-Expected:
-
-- delegate should still be consumed and dispatched
-
-#### 7-H. Post-compaction guard coverage
+#### 7-I. Post-compaction guard coverage
 
 Current branch behavior already covers:
 
 - stage local `post-compaction` delegates
 - persist them when compaction does not happen
 - release persisted + current-turn delegates when compaction does happen
+- reject release when `maxChainLength` is already exhausted
+- reject release when `costCapTokens` is already exceeded
 
-Still open:
+Run both explicit rejection cases live anyway. Missing those guards is now a regression.
 
-- does post-compaction dispatch respect `maxChainLength`?
-- does post-compaction dispatch respect `costCapTokens`?
+#### 7-J. Grandparent reroute ordering
 
-Run both explicitly.
+Current branch expectation:
 
-#### 7-I. Grandparent reroute ordering
+- if a nested child returns after its parent session is actually gone, completion routing and any follow-on chain behavior reroute cleanly to the grandparent before chain accounting lands
 
-Live question:
-
-- if a nested child returns after its parent session is actually gone, do completion routing and any follow-on chain behavior reroute cleanly to the grandparent?
-
-#### 7-J. Silent return trust boundary
+#### 7-K. Silent return trust boundary
 
 Verify that:
 
@@ -329,7 +355,7 @@ Verify that:
 - wake classification is `delegate-return`
 - the model treats it as internal context, not quoted user text
 
-#### 7-K. Prompt and tool-choice behavior
+#### 7-L. Prompt and tool-choice behavior
 
 Ask the SUT to:
 
@@ -343,7 +369,7 @@ Expect:
 - `sessions_spawn` only when direct worker control is actually needed
 - no fake scheduling via `exec`, shell sleep, or manual `openclaw ...`
 
-#### 7-L. Blind enrichment subject behavior
+#### 7-M. Blind enrichment subject behavior
 
 When running blind enrichment:
 
@@ -353,7 +379,7 @@ When running blind enrichment:
 - treat "I don't know" on absent content as better behavior than plausible invention
 - mark the test `TAINTED` if the subject leaks enrichment to channel before probe
 
-#### 7-M. Context-pressure awareness from the subject side
+#### 7-N. Context-pressure awareness from the subject side
 
 When testing context-pressure:
 
@@ -385,7 +411,7 @@ For every test, record:
 
 **Build:** [commit]
 **Profile:** [shipped-default smoke | fleet/mast-cell]
-**Finding IDs:** [P1-drop | P1-postcomp | etc.]
+**Finding IDs:** [R7-work-tolerance | R7-tool-only | R7-postcomp | R7-grandparent | P1-prompt-choice]
 **Config delta:** [exact values changed]
 **Method:** [tool | bracket | channel prompt]
 
@@ -491,7 +517,7 @@ At minimum, hand back:
 
 - one shipped-default smoke summary
 - one fleet/mast-cell summary
-- explicit result for 7-G, 7-H, 7-I, 7-J, 7-K
+- explicit result for 7-C, 7-H, 7-I, 7-J, 7-L
 - note on whether width or depth was the real limiting factor in practice
 
 Coordinator-ready deliverable shape:

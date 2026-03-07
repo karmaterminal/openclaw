@@ -19,6 +19,20 @@ The current shared landing branch for this doc set is:
 
 If the team lands elsewhere later, update that reference rather than leaving stale branch names in the notes.
 
+## Current branch expectations
+
+Treat these as landed expectations on the current branch, not as still-open branch bugs:
+
+- tool-only / no-text `continue_delegate` turns should still dispatch or persist delegate work
+- post-compaction release should enforce `maxChainLength` and `costCapTokens`
+- dead-parent nested completion should reroute before chain accounting lands
+- delayed `CONTINUE_WORK` and delayed delegate timers both honor live `generationGuardTolerance`
+
+Treat these as drift cues:
+
+- generic info-level `[continuation-guard] Timer fired: ...`
+- swim notes that still frame the three landed items above as unfixed on this branch
+
 ## Pre-Swim Setup
 
 ### 1. Record branch state
@@ -40,11 +54,14 @@ Suggested shape:
 ```text
 | Finding ID | Source | Swim Test | Evidence | Status | Follow-up |
 |------------|--------|-----------|----------|--------|-----------|
-| P1-drop | Codex,Elliott | 7-G | ... | UNTESTED | add runner test |
-| P1-postcomp | Elliott | 7-H | ... | UNTESTED | clarify semantics |
-| P1-grandparent | Elliott | 7-I | ... | UNTESTED | nested reroute fix? |
-| P1-prompt-choice | branch docs | 7-K | ... | UNTESTED | prompt evidence |
+| R7-work-tolerance | Thornfield,Codex | 7-C | ... | UNTESTED | confirm live unified WORK tolerance |
+| R7-tool-only | Codex,Elliott | 7-H | ... | UNTESTED | confirm landed fix |
+| R7-postcomp | Elliott,Codex | 7-I | ... | UNTESTED | confirm landed fix |
+| R7-grandparent | Elliott,Codex | 7-J | ... | UNTESTED | confirm landed fix |
+| P1-prompt-choice | branch docs | 7-L | ... | UNTESTED | prompt evidence |
 ```
+
+For the current branch, `R7-*` style tracker rows are often better than reopening old `P1-*` bug names as if the code were still unfixed.
 
 Status values I would use:
 

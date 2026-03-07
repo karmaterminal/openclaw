@@ -33,6 +33,21 @@ These older assumptions should be dropped:
 
 Current monitoring should key off the actual runtime strings and artifacts.
 
+### 1.1 Current branch expectations and drift cues
+
+Current on this branch:
+
+- delayed `CONTINUE_WORK` and delayed delegate timers both honor live `generationGuardTolerance`
+- tool-only `continue_delegate` turns should still consume and dispatch or persist delegate work
+- post-compaction release should enforce `maxChainLength` and `costCapTokens`
+- dead-parent nested completion should reroute before chain accounting lands
+- info-level timer outcomes are path-specific; set/check lines are debug-only
+
+Treat these as drift cues:
+
+- generic info-level `[continuation-guard] Timer fired: ...`
+- notes that still present tool-only/no-text, post-compaction guard parity, or grandparent reroute ordering as unfixed on this branch
+
 ---
 
 ## 2. Pre-Test Setup
@@ -100,21 +115,33 @@ Also capture:
 
 Do not monitor against guessed phrases from older notes. Watch for these exact families.
 
-### 3.1 Tool delegate flow
+### 3.1 Main-session delegate flow
 
 ```text
+[continuation:delegate-spawned] Spawned turn N/M: ...
+DELEGATE timer cancelled ...
+DELEGATE timer fired and spawned turn N/M for session ...
 [continue_delegate] Consuming N tool delegate(s) for session ...
 [continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (...)
 [continuation] Tool delegate rejected: chain length ... reached
 [continuation] Tool delegate rejected: cost cap exceeded (...)
 [continuation:delegate-spawned] Tool delegate turn N/M: ...
 Tool DELEGATE timer cancelled ...
-[continuation-guard] Timer fired: stored=... current=... drift=... tolerance=...
+Tool DELEGATE timer fired and spawned turn N/M for session ...
 ```
 
-### 3.2 Bracket-origin subtree flow
+### 3.2 WORK continuation flow
 
 ```text
+WORK timer cancelled ...
+WORK timer fired for session ...
+[continuation:wake] Turn N/M. Chain started at ...
+```
+
+### 3.3 Bracket-origin subtree flow
+
+```text
+[subagent-chain-hop] Timer fired and spawned chain delegate (N/M) ...
 [subagent-chain-hop] Spawned chain delegate (N/M) ...
 [subagent-chain-hop] Chain length ... rejecting hop ...
 [subagent-chain-hop] Cost cap exceeded (...) ...
@@ -122,7 +149,7 @@ Tool DELEGATE timer cancelled ...
 [subagent-chain-hop] Accumulated ... tokens ...
 ```
 
-### 3.3 Silent return / wake flow
+### 3.4 Silent return / wake flow
 
 ```text
 [continuation:enrichment-return] ...
@@ -130,13 +157,17 @@ Tool DELEGATE timer cancelled ...
 
 For silent-wake paths, also look for the parent waking afterward rather than a visible shard announce.
 
-### 3.4 Post-compaction flow
+### 3.5 Post-compaction flow
 
 ```text
 [system:post-compaction] Session compacted at ...
 Released N post-compaction delegate(s) into the fresh session.
 [continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ...
+[continuation] Post-compaction delegate rejected: chain length ... reached
+[continuation] Post-compaction delegate rejected: cost cap exceeded (...)
 ```
+
+If you instead see the old generic info-level `[continuation-guard] Timer fired: ...` line, assume stale deploy or stale notes until proven otherwise.
 
 ---
 
@@ -145,7 +176,7 @@ Released N post-compaction delegate(s) into the fresh session.
 ### Directly observable
 
 - spawned task prefixes
-- timer fire/cancel logs
+- path-specific timer fire/cancel logs
 - accept/reject logs
 - session-store chain counters
 - post-compaction lifecycle event text
@@ -206,18 +237,18 @@ Group-chat debate adds noise and makes the subject's recall less clean, even if 
 
 ### 6.1 Hot-reload confirmations
 
-For 7-A and 7-B:
+For 7-A, 7-B, and 7-C:
 
 - record config before change
 - record the exact moment of change
-- verify the later fire log reflects the new tolerance
-- verify the spawn actually happens
+- verify the later fire/cancel decision reflects the new tolerance
+- verify the resulting spawn or wake actually happens
 
-If the timer survives but no spawn happens, that is not a hot-reload pass.
+If the timer survives but no spawn or wake happens, that is not a hot-reload pass.
 
 ### 6.2 Width widen / narrow
 
-For 7-C and 7-D:
+For 7-D and 7-E:
 
 - capture the requested delegate count
 - capture tool/runner acceptance count
@@ -230,38 +261,54 @@ Important distinction:
 
 ### 6.3 Bracket subtree boundary
 
-For 7-E:
+For 7-F:
 
 - capture every spawned task string
 - verify `[continuation:chain-hop:2]` appears on the grandchild
 - verify the next hop rejection happens at the correct boundary
 
-### 6.4 Tool-only / no-text delegate turn
+### 6.4 Fleet-width fan-out
 
-This is a likely real bug target.
+For 7-G:
+
+- capture requested width versus accepted width
+- distinguish runner acceptance from spawn-gate `forbidden`
+- record whether the main session stayed free or became a relay bottleneck
+
+### 6.5 Tool-only / no-text delegate turn
+
+This is a landed fix on this branch. Treat failure as regression or deploy drift.
 
 Monitor for:
 
 - no visible assistant text
-- no delegate consumption
-- no rejection log
-- no spawn
+- delegate consumption still happens
+- eventual spawn or persisted delegate evidence exists
 
-If all four line up, capture it as a likely runner early-return defect.
+If it still drops silently, capture it as a regression against the current branch.
 
-### 6.5 Post-compaction guard coverage
+### 6.6 Post-compaction guard coverage
 
 Current branch should already show:
 
 - staged delegates persist when compaction does not happen
 - persisted + current-turn delegates release when compaction does happen
+- explicit rejection when chain length is already exhausted
+- explicit rejection when cost cap is already exceeded
 
-Still monitor for guard coverage:
+If either rejection path is missing when configured to trip, capture it as regression or drift.
 
-- no chain-length rejection even when chain should already be exhausted
-- no cost-cap rejection even when chain token total should already exceed cap
+### 6.7 Grandparent reroute ordering
 
-### 6.6 Prompt/tool-choice behavior
+This is also a landed fix on this branch.
+
+Monitor for:
+
+- nested child returns after parent session is actually gone
+- completion routes to the live grandparent
+- any follow-on chain accounting/evidence lands on the live recipient, not the dead parent
+
+### 6.8 Prompt/tool-choice behavior
 
 For prompt-level swims, monitor whether the SUT:
 
@@ -360,6 +407,9 @@ ssh silas 'grep -q "maxDelegatesPerTurn" dist/agents/tools/continue-delegate-too
 ssh silas 'grep -q "post-compaction" dist/agents/tools/continue-delegate-tool.js && echo ok'
 ssh silas 'grep -q "\\[continuation:chain-hop:" dist/auto-reply/reply/agent-runner.js && echo ok'
 ssh silas 'grep -q "delegate-return" dist/agents/subagent-announce.js && echo ok'
+ssh silas 'grep -q "WORK timer fired for session" dist/auto-reply/reply/agent-runner.js && echo ok'
+ssh silas 'grep -q "Tool DELEGATE timer fired and spawned turn" dist/auto-reply/reply/agent-runner.js && echo ok'
+ssh silas 'grep -q "Timer fired and spawned chain delegate" dist/agents/subagent-announce.js && echo ok'
 ```
 
 These better reflect the current implementation than the older `continuation-generation` thumbprint idea.
@@ -401,6 +451,7 @@ ssh silas 'TMP=$(mktemp) && jq ".agents.defaults.continuation.costCapTokens = 50
 Important current expectations:
 
 - `generationGuardTolerance` hot-reloads
+- delayed `CONTINUE_WORK` and delayed delegate timers both read the live tolerance at fire time
 - `maxDelegatesPerTurn` hot-reloads
 - `maxChainLength` and `costCapTokens` are read at guard time on the announce path
 - delay values already baked into existing timers do not retroactively change
@@ -427,7 +478,7 @@ Suggested summary:
 **Time:** HH:MM-HH:MM
 **Build:** [commit]
 **Profile:** [shipped-default smoke | fleet/mast-cell]
-**Finding IDs:** [P1-drop | P1-postcomp | etc.]
+**Finding IDs:** [R7-work-tolerance | R7-tool-only | R7-postcomp | R7-grandparent | P1-prompt-choice]
 **Result:** [PASS | FAIL | TAINTED]
 
 **Key evidence:**
@@ -450,6 +501,7 @@ If a test resolves an existing review finding, say so explicitly in the summary.
 Escalate quickly if you see:
 
 - timer fire with the wrong tolerance after a live config edit
+- old generic info-level `[continuation-guard] Timer fired: ...` log lines
 - delegate consumption count inconsistent with requested width
 - bracket hop spawned without `[continuation:chain-hop:N]`
 - no post-compaction lifecycle event when compaction clearly happened

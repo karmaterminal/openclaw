@@ -36,6 +36,16 @@ That does not prove:
 
 It only proves the tool accepted the request.
 
+## 2.1 Current branch continuity note
+
+On this branch, delayed `CONTINUE_WORK` and delayed delegates share the same live-read `generationGuardTolerance` behavior.
+
+What that means to the subject:
+
+- in a noisy shared channel, raised tolerance may let either path survive chatter
+- from inside the session, the subject still cannot tell whether the timer survived until a later wake or probe
+- if someone says delayed WORK always hard-cancels on any drift regardless of tolerance, that guidance has drifted from this branch
+
 ## 3. Confabulation is the real failure mode
 
 If enrichment did not land, the subject may still answer confidently and incorrectly.
