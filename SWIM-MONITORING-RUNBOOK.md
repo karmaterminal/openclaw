@@ -19,6 +19,23 @@ _Written from Swim 5–6 journal-watch experience (Mar 5–6, 2026)._
 
 ---
 
+## 0.5 Swim 7 Branch Expectations (Drift Cues)
+
+Current on `flesh-beast-figs/for_thornfield_consider20260306` at `06ece5944`:
+
+- Delayed `CONTINUE_WORK` and delayed delegate timers **both** honor live `generationGuardTolerance` (unified tolerance — figs ruling)
+- Tool-only `continue_delegate` turns (no visible text) now still consume and dispatch delegate work (textless-turn fix)
+- Post-compaction release now enforces `maxChainLength` and `costCapTokens`, carries `[continuation:chain-hop:N]` metadata
+- Dead-parent nested completion reroutes BEFORE chain accounting (grandparent fix)
+- Timer set/check/drift logs are **debug-level**; only timer FIRE and CANCEL are **info-level**
+
+**Drift cues** — if you see these, assume stale deploy or stale notes:
+
+- Generic `[continuation-guard] Timer fired: stored=... current=... drift=...` at info level (should be debug now)
+- Any indication that tool-only/no-text, post-compaction guards, or grandparent reroute are still unfixed
+
+---
+
 ## 1. Pre-Test Setup
 
 ### 1.1 Open Monitoring Surfaces
@@ -69,6 +86,55 @@ ssh silas 'cd /tmp/openclaw-canary && git log --oneline -1'
 ---
 
 ## 2. Live Monitoring Patterns
+
+### 2.0 Updated Log Strings for Swim 7
+
+**Main-session delegate flow (info level):**
+
+```text
+[continue_delegate] Consuming N tool delegate(s) for session ...
+[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (...)
+[continuation] Tool delegate rejected: chain length ... reached
+[continuation] Tool delegate rejected: cost cap exceeded (...)
+[continuation:delegate-spawned] Tool delegate turn N/M: ...
+Tool DELEGATE timer fired and spawned turn N/M for session ...
+Tool DELEGATE timer cancelled ...
+```
+
+**WORK continuation flow (info level):**
+
+```text
+WORK timer fired for session ...
+WORK timer cancelled ...
+[continuation:wake] Turn N/M. Chain started at ...
+```
+
+**Bracket-origin subtree flow (info level):**
+
+```text
+[subagent-chain-hop] Timer fired and spawned chain delegate (N/M) ...
+[subagent-chain-hop] Spawned chain delegate (N/M) ...
+[subagent-chain-hop] Chain length ... rejecting hop ...
+[subagent-chain-hop] Cost cap exceeded (...) ...
+```
+
+**Post-compaction flow (info level):**
+
+```text
+[system:post-compaction] Session compacted at ...
+Released N post-compaction delegate(s) into the fresh session.
+[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ...
+[continuation] Post-compaction delegate rejected: chain length ... reached
+[continuation] Post-compaction delegate rejected: cost cap exceeded (...)
+```
+
+**Silent return / wake flow:**
+
+```text
+[continuation:enrichment-return] ...
+```
+
+For silent-wake, watch for parent waking afterward rather than visible shard announce.
 
 ### 2.1 Timer Lifecycle (CONTINUE_WORK / CONTINUE_DELEGATE)
 
@@ -375,28 +441,34 @@ rsync -avz package.json silas:/tmp/openclaw-canary/
 **Identify canary by feature presence, not version:**
 
 ```bash
-# Thumbprint 1: continuation-generation module exists (Ronan P1)
-ssh silas 'ls dist/auto-reply/reply/continuation-generation.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
-
-# Thumbprint 2: continuation-runtime module exists (Ronan config normalization)
+# Thumbprint 1: continuation-runtime module exists (Ronan config normalization)
 ssh silas 'ls dist/auto-reply/reply/continuation-runtime.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
+
+# Thumbprint 2: WORK timer fire string (round 2 — log demotion)
+ssh silas 'grep -q "WORK timer fired for session" dist/auto-reply/reply/agent-runner.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
 
 # Thumbprint 3: continue_delegate tool registered
 ssh silas 'grep -l "continue_delegate" dist/agents/tools/*.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
 
-# Thumbprint 4: context-pressure system event
-ssh silas 'grep -l "context-pressure" dist/auto-reply/reply/get-reply-run.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
+# Thumbprint 4: post-compaction chain guard (round 2 — Elliott P1-2 fix)
+ssh silas 'grep -q "Post-compaction delegate rejected" dist/auto-reply/reply/agent-runner.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
 
-# Thumbprint 5: git SHA of the source (if built in-place)
+# Thumbprint 5: Tool DELEGATE timer fire string (round 2)
+ssh silas 'grep -q "Tool DELEGATE timer fired and spawned turn" dist/auto-reply/reply/agent-runner.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
+
+# Thumbprint 6: Chain-hop timer fire string (round 2)
+ssh silas 'grep -q "Timer fired and spawned chain delegate" dist/agents/subagent-announce.js 2>/dev/null && echo "CANARY ✅" || echo "STOCK ❌"'
+
+# Thumbprint 7: git SHA of the source (if built in-place)
 ssh silas 'cd /tmp/openclaw-canary 2>/dev/null && git log --oneline -1 || echo "No git repo — rsync deploy"'
 ```
 
 **Quick one-liner LGTM check:**
 
 ```bash
-ssh silas 'test -f dist/auto-reply/reply/continuation-generation.js && \
-  test -f dist/auto-reply/reply/continuation-runtime.js && \
+ssh silas 'test -f dist/auto-reply/reply/continuation-runtime.js && \
   grep -q "continue_delegate" dist/agents/tools/continue-delegate-tool.js 2>/dev/null && \
+  grep -q "WORK timer fired for session" dist/auto-reply/reply/agent-runner.js 2>/dev/null && \
   echo "🌊🩲 CANARY CONFIRMED — swim-ready" || echo "❌ STOCK BUILD — do not swim"'
 ```
 
