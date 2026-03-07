@@ -1069,6 +1069,48 @@ Delegates registered with `| post-compaction` mode fire in the `autoCompactionCo
 
 Every delegate dispatch checks chain length and accumulated cost. Rejection is logged — the agent sees the cap as a tool error and can elect to stop or write state to files instead.
 
+### Generation Guard: Tolerance and Drift
+
+```
+Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)
+WORK timer cancelled (generation drift 1 > tolerance 0)
+Tool DELEGATE timer fired and spawned turn 1/10 (drift within tolerance 300)
+```
+
+When a timer fires, it reads the current `generationGuardTolerance` from config (not the value at timer creation). This enables live tuning: an operator can lower tolerance to 0 (strict — any channel activity cancels), observe cancellations, then raise to 300 (permissive — survives incidental chatter), all without restarting the gateway. Both `CONTINUE_WORK` and delegate timers use the same unified tolerance path.
+
+### Width Control: Hot-Reload
+
+```
+[reload] config change applied (maxDelegatesPerTurn)
+[continue_delegate] Consuming 12 tool delegate(s)
+maxDelegatesPerTurn exceeded (3) — delegate rejected
+```
+
+`maxDelegatesPerTurn` is read at tool execution time, not cached. Widening from 5→12 immediately allows more delegates per turn; narrowing from 12→3 immediately rejects excess dispatches at the tool gate. No restart required.
+
+## Operator Observability
+
+All continuation lifecycle events emit structured log lines with searchable prefixes. An operator monitoring a deployment can observe the full chain from dispatch through return:
+
+**Key log prefixes and what they indicate:**
+
+| Prefix                                             | Level | Meaning                                                                |
+| -------------------------------------------------- | ----- | ---------------------------------------------------------------------- |
+| `[continue_delegate] Consuming N tool delegate(s)` | info  | Runner is processing queued delegates from the agent's tool calls      |
+| `Tool DELEGATE timer fired`                        | info  | A delayed delegate's timer expired and the shard will spawn            |
+| `Tool DELEGATE timer cancelled`                    | info  | Generation drift exceeded tolerance — delegate was preempted           |
+| `WORK timer fired`                                 | info  | A `CONTINUE_WORK` self-continuation timer expired                      |
+| `WORK timer cancelled`                             | info  | Self-continuation was preempted by external activity                   |
+| `[continuation:chain-hop:N]`                       | info  | Chain depth tracking — N is the current hop count                      |
+| `[continuation/silent-wake]`                       | info  | Silent return with wake — enrichment delivered internally              |
+| `[context-pressure] N% consumed`                   | info  | Context pressure threshold crossed                                     |
+| `gateway/reload config change applied`             | info  | Hot-reload of continuation parameters (tolerance, width, chain length) |
+
+**Log demotion (implemented):** Timer set/check/drift accumulation events are demoted to debug level. Only timer FIRE (shard spawned) and timer CANCEL appear at info level. This keeps production logs clean while preserving full trace at debug verbosity.
+
+**Hot-reload observability:** Configuration changes to `generationGuardTolerance`, `maxDelegatesPerTurn`, `maxChainLength`, and `costCapTokens` are applied without gateway restart. Each change emits a `gateway/reload config change applied` log line. The new value takes effect at the next timer fire (not at timer creation), enabling live tuning of continuation behavior during operation.
+
 ## Canary Validation: Tool Path
 
 The `continue_delegate` tool was validated on a live canary deployment on persistent agent sessions.
