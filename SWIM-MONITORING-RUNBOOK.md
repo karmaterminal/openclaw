@@ -399,6 +399,30 @@ ssh silas 'systemctl --user start openclaw-gateway'
 
 ## 9. Config Modification for Hot-Reload Tests
 
+### ⚠️ REMEMBER TO TURN THE FEATURE ON
+
+```bash
+# THE most common mistake. Verify FIRST:
+ssh silas 'cat ~/.openclaw/openclaw.json | jq ".agents.defaults.continuation.enabled"'
+# Must return: true
+# If null or false: nothing works. No timers, no delegates, no shards.
+```
+
+**The config path is `agents.defaults.continuation`, NOT top-level `continuation`.** Elliott caused a 14-iteration restart loop on Silas during Swim 6 setup by putting `continuation` at the root level — Zod rejected it and the gateway crash-looped. The correct path:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "continuation": {
+        "enabled": true,
+        ...
+      }
+    }
+  }
+}
+```
+
 ### 9.1 Editing Config via SSH
 
 ```bash
