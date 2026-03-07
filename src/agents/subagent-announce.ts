@@ -1,8 +1,8 @@
+import { setDelegatePending } from "../auto-reply/reply/agent-runner.js";
 import {
-  bumpContinuationGeneration,
-  currentContinuationGeneration,
-  setDelegatePending,
-} from "../auto-reply/reply/agent-runner.js";
+  isContinuationGenerationCurrent,
+  scheduleContinuationGeneration,
+} from "../auto-reply/reply/continuation-generation.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import {
   isSilentReplyText,
@@ -1475,15 +1475,12 @@ export async function runSubagentAnnounceFlow(params: {
           if (chainDelayMs && chainDelayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, chainDelayMs));
             // Generation guard: cancel if parent session receives new input during delay.
-            // Honors generationGuardTolerance (same as agent-runner delegate timers).
-            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
-            const tolerance = continuationCfg?.generationGuardTolerance ?? 0;
+            // Tolerance read at fire time via isContinuationGenerationCurrent (P1 fix).
+            const hopGeneration = scheduleContinuationGeneration(targetRequesterSessionKey);
             setTimeout(() => {
-              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
-              const drift = currentGen - hopGeneration;
-              if (drift > tolerance) {
+              if (!isContinuationGenerationCurrent(targetRequesterSessionKey, hopGeneration)) {
                 defaultRuntime.log(
-                  `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${tolerance}) for ${targetRequesterSessionKey}`,
+                  `[subagent-chain-hop] Timer cancelled (generation mismatch) for ${targetRequesterSessionKey}`,
                 );
                 return;
               }
