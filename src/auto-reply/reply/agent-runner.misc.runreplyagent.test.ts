@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
 import { onAgentEvent } from "../../infra/agent-events.js";
@@ -40,26 +40,14 @@ vi.mock("../../agents/model-fallback.js", () => ({
   }) => runWithModelFallbackMock(params),
 }));
 
-vi.mock("../../agents/pi-embedded.js", async () => {
-  const actual = await vi.importActual<typeof import("../../agents/pi-embedded.js")>(
-    "../../agents/pi-embedded.js",
-  );
-  return {
-    ...actual,
-    queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),
-    runEmbeddedPiAgent: (params: unknown) => runEmbeddedPiAgentMock(params),
-  };
-});
+vi.mock("../../agents/pi-embedded.js", () => ({
+  queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),
+  runEmbeddedPiAgent: (params: unknown) => runEmbeddedPiAgentMock(params),
+}));
 
-vi.mock("../../agents/cli-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../../agents/cli-runner.js")>(
-    "../../agents/cli-runner.js",
-  );
-  return {
-    ...actual,
-    runCliAgent: (params: unknown) => runCliAgentMock(params),
-  };
-});
+vi.mock("../../agents/cli-runner.js", () => ({
+  runCliAgent: (params: unknown) => runCliAgentMock(params),
+}));
 
 vi.mock("../../config/config.js", async () => {
   const actual =
@@ -67,6 +55,23 @@ vi.mock("../../config/config.js", async () => {
   return {
     ...actual,
     loadConfig: () => loadConfigMock(),
+  };
+});
+
+vi.mock("./continuation-runtime.js", async () => {
+  const actual = await vi.importActual<typeof import("./continuation-runtime.js")>(
+    "./continuation-runtime.js",
+  );
+  return {
+    ...actual,
+    resolveContinuationRuntimeConfig: (
+      cfg?: Parameters<typeof actual.resolveContinuationRuntimeConfig>[0],
+    ) =>
+      actual.resolveContinuationRuntimeConfig(
+        (cfg ?? liveConfigOverride) as Parameters<
+          typeof actual.resolveContinuationRuntimeConfig
+        >[0],
+      ),
   };
 });
 
@@ -83,14 +88,10 @@ vi.mock("../../runtime.js", async () => {
   };
 });
 
-vi.mock("./queue.js", async () => {
-  const actual = await vi.importActual<typeof import("./queue.js")>("./queue.js");
-  return {
-    ...actual,
-    enqueueFollowupRun: vi.fn(),
-    scheduleFollowupDrain: vi.fn(),
-  };
-});
+vi.mock("./queue.js", () => ({
+  enqueueFollowupRun: vi.fn(),
+  scheduleFollowupDrain: vi.fn(),
+}));
 
 const loadCronStoreMock = vi.fn();
 vi.mock("../../cron/store.js", async () => {
@@ -121,14 +122,44 @@ vi.mock("../../infra/heartbeat-wake.js", () => ({
   requestHeartbeatNow: (...args: unknown[]) => requestHeartbeatNowMock(...args),
 }));
 
-import { runReplyAgent } from "./agent-runner.js";
-import { bumpContinuationGeneration } from "./agent-runner.js";
-
 type RunWithModelFallbackParams = {
   provider: string;
   model: string;
   run: (provider: string, model: string) => Promise<unknown>;
 };
+
+let agentRunnerModulePromise: Promise<typeof import("./agent-runner.js")> | undefined;
+let agentRunnerModule: typeof import("./agent-runner.js") | undefined;
+
+async function loadAgentRunnerModule() {
+  if (!agentRunnerModulePromise) {
+    agentRunnerModulePromise = import("./agent-runner.js").then((module) => {
+      agentRunnerModule = module;
+      return module;
+    });
+  }
+  return await agentRunnerModulePromise;
+}
+
+async function runReplyAgent(
+  ...args: Parameters<(typeof import("./agent-runner.js"))["runReplyAgent"]>
+) {
+  const module = await loadAgentRunnerModule();
+  return await module.runReplyAgent(...args);
+}
+
+function bumpContinuationGeneration(
+  ...args: Parameters<(typeof import("./agent-runner.js"))["bumpContinuationGeneration"]>
+) {
+  if (!agentRunnerModule) {
+    throw new Error("agent-runner module not loaded");
+  }
+  return agentRunnerModule.bumpContinuationGeneration(...args);
+}
+
+beforeAll(async () => {
+  await loadAgentRunnerModule();
+});
 
 beforeEach(() => {
   runEmbeddedPiAgentMock.mockClear();
@@ -243,7 +274,6 @@ describe("runReplyAgent onAgentRunStart", () => {
       resolvedBlockStreamingBreak: "message_end",
       shouldInjectGroupIntro: false,
       typingMode: "instant",
-      isContinuationWake: true,
     });
   }
 
@@ -371,6 +401,7 @@ describe("runReplyAgent authProfileId fallback scoping", () => {
       resolvedBlockStreamingBreak: "message_end",
       shouldInjectGroupIntro: false,
       typingMode: "instant",
+      isContinuationWake: true,
     });
 
     expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
@@ -873,6 +904,7 @@ describe("runReplyAgent auto-compaction token update", () => {
       updatedAt: Date.now(),
       totalTokens: 10_000,
       compactionCount: 0,
+      continuationChainCount: 1,
       continuationChainTokens: 11,
       pendingPostCompactionDelegates: [{ task: "budget shard", createdAt: 1 }],
     };
@@ -932,6 +964,7 @@ describe("runReplyAgent auto-compaction token update", () => {
       resolvedBlockStreamingBreak: "message_end",
       shouldInjectGroupIntro: false,
       typingMode: "instant",
+      isContinuationWake: true,
     });
 
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
