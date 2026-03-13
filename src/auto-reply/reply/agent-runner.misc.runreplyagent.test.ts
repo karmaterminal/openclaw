@@ -30,6 +30,7 @@ const peekSystemEventEntriesMock = vi.fn().mockReturnValue([]);
 const spawnSubagentDirectMock = vi.fn();
 const requestHeartbeatNowMock = vi.fn();
 let liveConfigOverride: Record<string, unknown> = {};
+let previousAnthropicApiKey: string | undefined;
 
 vi.mock("../../agents/model-fallback.js", () => ({
   runWithModelFallback: (params: {
@@ -143,6 +144,8 @@ beforeEach(() => {
   loadConfigMock.mockClear();
   liveConfigOverride = {};
   loadConfigMock.mockImplementation(() => liveConfigOverride);
+  previousAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
   consumePendingDelegates("main");
   consumePendingDelegates("test-session");
   consumeStagedPostCompactionDelegates("main");
@@ -163,6 +166,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  if (typeof previousAnthropicApiKey === "string") {
+    process.env.ANTHROPIC_API_KEY = previousAnthropicApiKey;
+  } else {
+    delete process.env.ANTHROPIC_API_KEY;
+  }
   consumePendingDelegates("main");
   consumePendingDelegates("test-session");
   consumeStagedPostCompactionDelegates("main");
@@ -180,7 +188,7 @@ describe("runReplyAgent onAgentRunStart", () => {
     };
   }) {
     const provider = params?.provider ?? "anthropic";
-    const model = params?.model ?? "claude";
+    const model = params?.model ?? "claude-opus-4-5";
     const typing = createMockTypingController();
     const sessionCtx = {
       Provider: "webchat",
@@ -200,7 +208,7 @@ describe("runReplyAgent onAgentRunStart", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider,
         model,
         thinkLevel: "low",
@@ -314,7 +322,7 @@ describe("runReplyAgent authProfileId fallback scoping", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude-opus",
         authProfileId: "anthropic:openclaw",
@@ -429,9 +437,9 @@ describe("runReplyAgent auto-compaction token update", () => {
         sessionFile: params.sessionFile ?? "/tmp/session.jsonl",
         workspaceDir: params.workspaceDir ?? "/tmp",
         config: params.config ?? {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -1054,9 +1062,9 @@ describe("runReplyAgent block streaming", () => {
             },
           },
         },
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -1156,9 +1164,9 @@ describe("runReplyAgent block streaming", () => {
             },
           },
         },
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -1227,7 +1235,7 @@ describe("runReplyAgent claude-cli routing", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "claude-cli",
         model: "opus-4.5",
         thinkLevel: "low",
@@ -1327,9 +1335,9 @@ describe("runReplyAgent messaging tool suppression", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -1550,9 +1558,9 @@ describe("runReplyAgent reminder commitment guard", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -1771,9 +1779,9 @@ describe("runReplyAgent fallback reasoning tags", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -1892,9 +1900,9 @@ describe("runReplyAgent response usage footer", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -1937,7 +1945,7 @@ describe("runReplyAgent response usage footer", () => {
       meta: {
         agentMeta: {
           provider: "anthropic",
-          model: "claude",
+          model: "claude-opus-4-5",
           usage: { input: 12, output: 3 },
         },
       },
@@ -1956,7 +1964,7 @@ describe("runReplyAgent response usage footer", () => {
       meta: {
         agentMeta: {
           provider: "anthropic",
-          model: "claude",
+          model: "claude-opus-4-5",
           usage: { input: 12, output: 3 },
         },
       },
@@ -2001,9 +2009,9 @@ describe("runReplyAgent transient HTTP retry", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -2076,9 +2084,9 @@ describe("runReplyAgent billing error classification", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
@@ -2103,7 +2111,7 @@ describe("runReplyAgent billing error classification", () => {
       isStreaming: false,
       typing,
       sessionCtx,
-      defaultModel: "anthropic/claude",
+      defaultModel: "anthropic/claude-opus-4-5",
       resolvedVerboseLevel: "off",
       isNewSession: false,
       blockStreamingEnabled: false,
@@ -2150,9 +2158,9 @@ describe("runReplyAgent continuation signal handling", () => {
             },
           },
         },
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
-        model: "claude",
+        model: "claude-opus-4-5",
         thinkLevel: "low",
         verboseLevel: "off",
         elevatedLevel: "off",
