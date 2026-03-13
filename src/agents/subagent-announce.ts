@@ -1363,7 +1363,7 @@ export async function runSubagentAnnounceFlow(params: {
       // Best-effort only.
     }
 
-    let requesterIsSubagent = requesterDepth >= 1;
+    let requesterIsSubagent = requesterIsInternalSession();
     // If the requester subagent has already finished, bubble the announce to its
     // requester (typically main) so descendant completion is not silently lost.
     // Resolve this BEFORE continuation-chain accounting so token/cost tracking
@@ -1388,7 +1388,7 @@ export async function runSubagentAnnounceFlow(params: {
           targetRequesterOrigin =
             normalizeDeliveryContext(fallback.requesterOrigin) ?? targetRequesterOrigin;
           requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey);
-          requesterIsSubagent = requesterDepth >= 1;
+          requesterIsSubagent = requesterIsInternalSession();
         }
       }
     }
