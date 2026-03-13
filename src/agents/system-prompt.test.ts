@@ -262,6 +262,10 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain(
       "Do not use `exec`, shell sleeps, or manual `openclaw ...` commands to imitate delayed",
     );
+    expect(prompt).toContain("### Cooperative yield");
+    expect(prompt).toContain(
+      "If `sessions_yield` is available, use it to end your turn immediately after dispatching",
+    );
   });
 
   it("teaches minimal continuation prompts to keep delegate trees off the parent relay path", () => {
