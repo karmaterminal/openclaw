@@ -432,7 +432,12 @@ describe("resolveMemoryFlushContextWindowTokens", () => {
 
 describe("incrementCompactionCount", () => {
   it("increments compaction count", async () => {
-    const entry = { sessionId: "s1", updatedAt: Date.now(), compactionCount: 2 } as SessionEntry;
+    const entry = {
+      sessionId: "s1",
+      updatedAt: Date.now(),
+      compactionCount: 2,
+      lastContextPressureBand: 90,
+    } as SessionEntry;
     const { storePath, sessionKey, sessionStore } = await createCompactionSessionFixture(entry);
 
     const count = await incrementCompactionCount({
@@ -445,6 +450,7 @@ describe("incrementCompactionCount", () => {
 
     const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
     expect(stored[sessionKey].compactionCount).toBe(3);
+    expect(stored[sessionKey].lastContextPressureBand).toBeUndefined();
   });
 
   it("updates totalTokens when tokensAfter is provided", async () => {

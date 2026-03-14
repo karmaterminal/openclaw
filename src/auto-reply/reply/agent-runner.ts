@@ -836,12 +836,27 @@ export async function runReplyAgent(params: {
     const continuationFeatureEnabled = cfg.agents?.defaults?.continuation?.enabled === true;
     let continuationSignal: ContinuationSignal | null = null;
     if (continuationFeatureEnabled && payloadArray.length > 0) {
-      const lastPayload = payloadArray[payloadArray.length - 1];
-      if (lastPayload.text) {
-        const continuationResult = stripContinuationSignal(lastPayload.text);
+      // Find the last payload with text content — tool-call payloads may follow
+      // the text payload, pushing the bracket token out of the final position.
+      // This is critical for subagent chain-hops where the bracket is the ONLY
+      // continuation path (continue_delegate tool is denied for subagents).
+      let lastTextPayload: (typeof payloadArray)[number] | undefined;
+      for (let i = payloadArray.length - 1; i >= 0; i--) {
+        if (payloadArray[i].text) {
+          lastTextPayload = payloadArray[i];
+          break;
+        }
+      }
+      if (lastTextPayload?.text) {
+        const continuationResult = stripContinuationSignal(lastTextPayload.text);
         if (continuationResult.signal) {
           continuationSignal = continuationResult.signal;
-          lastPayload.text = continuationResult.text;
+          lastTextPayload.text = continuationResult.text;
+          continuationGuardLog.debug(
+            `[continuation:parse] signal detected: kind=${continuationResult.signal.kind} ` +
+              `task=${continuationResult.signal.task?.slice(0, 80)} delayMs=${continuationResult.signal.delayMs} ` +
+              `payloads=${payloadArray.length} textPayloadIdx=${payloadArray.indexOf(lastTextPayload)} session=${sessionKey}`,
+          );
         }
       }
     }
@@ -1174,7 +1189,11 @@ export async function runReplyAgent(params: {
           maxDelegatesPerTurn: maxCompactionDelegates,
           costCapTokens: compactionCostCapTokens,
         } = resolveContinuationRuntimeConfig(cfg);
-        const releasedCompactionDelegates = allCompactionDelegates.slice(0, maxCompactionDelegates);
+        // Account for bracket delegate spawned this turn so combined count
+        // cannot exceed maxDelegatesPerTurn.
+        const bracketDelegateOffset = continuationSignal?.kind === "delegate" ? 1 : 0;
+        const compactionBudget = Math.max(0, maxCompactionDelegates - bracketDelegateOffset);
+        const releasedCompactionDelegates = allCompactionDelegates.slice(0, compactionBudget);
         let droppedCompactionDelegates = Math.max(
           0,
           allCompactionDelegates.length - releasedCompactionDelegates.length,
@@ -1349,6 +1368,7 @@ export async function runReplyAgent(params: {
     // Handle continuation signal (CONTINUE_WORK / CONTINUE_DELEGATE)
     // continuationSignal is only set when continuationFeatureEnabled === true (checked
     // at parse time), so no redundant enabled re-check is needed here.
+    let bracketTokensAccumulated = false;
     if (continuationSignal && sessionKey) {
       const { maxChainLength, defaultDelayMs, minDelayMs, maxDelayMs, costCapTokens } =
         resolveContinuationRuntimeConfig(cfg);
@@ -1376,6 +1396,7 @@ export async function runReplyAgent(params: {
           const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
           const previousChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
           const accumulatedChainTokens = previousChainTokens + turnTokens;
+          bracketTokensAccumulated = true;
 
           if (costCapTokens > 0 && accumulatedChainTokens > costCapTokens) {
             defaultRuntime.log(
@@ -1598,7 +1619,7 @@ export async function runReplyAgent(params: {
         // Accumulate current turn's token usage into chain cost.
         // Skip if the bracket-signal path already accumulated this turn's tokens
         // (both paths read from the same activeSessionEntry.continuationChainTokens).
-        const bracketAlreadyAccumulated = continuationSignal != null;
+        const bracketAlreadyAccumulated = bracketTokensAccumulated;
         const toolDelegateUsage = runResult.meta?.agentMeta?.usage;
         // Count only input + output tokens for cost cap (excludes cache reads/writes
         // which inflate the count with inherited system prompt context).
@@ -1770,7 +1791,7 @@ export async function runReplyAgent(params: {
       }
     }
 
-    if (!autoCompactionCompleted && continuationFeatureEnabled && sessionKey) {
+    if (!autoCompactionCount && continuationFeatureEnabled && sessionKey) {
       const stagedCompactionDelegates = consumeStagedPostCompactionDelegates(sessionKey);
       if (stagedCompactionDelegates.length > 0) {
         try {

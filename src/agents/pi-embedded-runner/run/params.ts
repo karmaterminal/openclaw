@@ -67,6 +67,8 @@ export type RunEmbeddedPiAgentParams = {
   disableMessageTool?: boolean;
   /** Allow runtime plugins for this run to late-bind the gateway subagent. */
   allowGatewaySubagentBinding?: boolean;
+  /** Whether this run drains continue_delegate work staged during the turn. */
+  drainsContinuationDelegateQueue?: boolean;
   sessionFile: string;
   workspaceDir: string;
   agentDir?: string;

@@ -312,7 +312,7 @@ export type AgentDefaultsConfig = {
      */
     generationGuardTolerance?: number;
     /**
-     * Context-pressure awareness threshold (0.0–1.0). When the session's token
+     * Context-pressure awareness threshold (exclusive (0.0, 1.0]). When the session's token
      * usage exceeds this fraction of the context window, a [system:context-pressure]
      * event is injected pre-run so the agent can elect evacuation. Disabled when
      * unset. Recommended: 0.8 (80%).

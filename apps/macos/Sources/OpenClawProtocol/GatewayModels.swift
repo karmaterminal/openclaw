@@ -535,6 +535,7 @@ public struct AgentParams: Codable, Sendable {
     public let timeout: Int?
     public let besteffortdeliver: Bool?
     public let lane: String?
+    public let continuationtrigger: String?
     public let extrasystemprompt: String?
     public let internalevents: [[String: AnyCodable]]?
     public let inputprovenance: [String: AnyCodable]?
@@ -564,6 +565,7 @@ public struct AgentParams: Codable, Sendable {
         timeout: Int?,
         besteffortdeliver: Bool?,
         lane: String?,
+        continuationtrigger: String?,
         extrasystemprompt: String?,
         internalevents: [[String: AnyCodable]]?,
         inputprovenance: [String: AnyCodable]?,
@@ -592,6 +594,7 @@ public struct AgentParams: Codable, Sendable {
         self.timeout = timeout
         self.besteffortdeliver = besteffortdeliver
         self.lane = lane
+        self.continuationtrigger = continuationtrigger
         self.extrasystemprompt = extrasystemprompt
         self.internalevents = internalevents
         self.inputprovenance = inputprovenance
@@ -622,6 +625,7 @@ public struct AgentParams: Codable, Sendable {
         case timeout
         case besteffortdeliver = "bestEffortDeliver"
         case lane
+        case continuationtrigger = "continuationTrigger"
         case extrasystemprompt = "extraSystemPrompt"
         case internalevents = "internalEvents"
         case inputprovenance = "inputProvenance"

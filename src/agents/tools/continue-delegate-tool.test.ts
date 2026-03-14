@@ -1,33 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   consumePendingDelegates,
   consumeStagedPostCompactionDelegates,
 } from "../../auto-reply/continuation-delegate-store.js";
-
-const { loadConfigMock } = vi.hoisted(() => ({
-  loadConfigMock: vi.fn(),
-}));
-
-vi.mock("../../config/config.js", async () => {
-  const actual =
-    await vi.importActual<typeof import("../../config/config.js")>("../../config/config.js");
-  return {
-    ...actual,
-    loadConfig: () => loadConfigMock(),
-  };
-});
+import {
+  setRuntimeConfigSnapshot,
+  clearRuntimeConfigSnapshot,
+} from "../../config/config.js";
 
 import { createContinueDelegateTool } from "./continue-delegate-tool.js";
 
 describe("continue_delegate tool", () => {
-  let liveConfigOverride: Record<string, unknown>;
-
   beforeEach(() => {
     consumePendingDelegates("test-session");
     consumeStagedPostCompactionDelegates("test-session");
-    liveConfigOverride = {};
-    loadConfigMock.mockReset();
-    loadConfigMock.mockImplementation(() => liveConfigOverride);
+    clearRuntimeConfigSnapshot();
+  });
+
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
   });
 
   async function executeTool(
@@ -39,14 +30,14 @@ describe("continue_delegate tool", () => {
   }
 
   it("reads maxDelegatesPerTurn at execute time instead of tool construction time", async () => {
-    liveConfigOverride = {
+    setRuntimeConfigSnapshot({
       agents: { defaults: { continuation: { maxDelegatesPerTurn: 5 } } },
-    };
+    } as any);
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
-    liveConfigOverride = {
+    setRuntimeConfigSnapshot({
       agents: { defaults: { continuation: { maxDelegatesPerTurn: 10 } } },
-    };
+    } as any);
 
     for (let index = 0; index < 10; index += 1) {
       const result = await executeTool(tool, index, { task: `delegate ${index + 1}` });
@@ -61,9 +52,9 @@ describe("continue_delegate tool", () => {
   });
 
   it("re-reads maxDelegatesPerTurn on each call", async () => {
-    liveConfigOverride = {
+    setRuntimeConfigSnapshot({
       agents: { defaults: { continuation: { maxDelegatesPerTurn: 10 } } },
-    };
+    } as any);
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
     for (let index = 0; index < 5; index += 1) {
@@ -71,9 +62,9 @@ describe("continue_delegate tool", () => {
       expect(result).toMatchObject({ status: "scheduled" });
     }
 
-    liveConfigOverride = {
+    setRuntimeConfigSnapshot({
       agents: { defaults: { continuation: { maxDelegatesPerTurn: 5 } } },
-    };
+    } as any);
 
     const overflow = await executeTool(tool, 5, { task: "delegate 6" });
     expect(overflow).toMatchObject({
@@ -83,6 +74,8 @@ describe("continue_delegate tool", () => {
   });
 
   it("uses the runtime default of 5 when maxDelegatesPerTurn is unset", async () => {
+    // No config snapshot set — loadConfig falls back to empty config,
+    // continuation-runtime resolves the default (5).
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
     for (let index = 0; index < 5; index += 1) {
