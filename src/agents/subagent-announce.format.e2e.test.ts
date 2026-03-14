@@ -241,6 +241,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("sends instructional message to main agent with status and findings", async () => {
+    configOverride = {
+      ...configOverride,
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
     sessionStore = {
       "agent:main:subagent:test": {
         sessionId: "child-session-123",
@@ -288,6 +292,23 @@ describe("subagent announce formatting", () => {
     expect(call?.params?.internalEvents?.[0]?.type).toBe("task_completion");
     expect(call?.params?.internalEvents?.[0]?.taskLabel).toBe("do thing");
     expect(call?.params?.continuationTrigger).toBe("delegate-return");
+  });
+
+  it("omits continuationTrigger when continuation is disabled", async () => {
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-no-continuation-trigger",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      ...defaultOutcomeAnnounce,
+    });
+
+    const call = agentSpy.mock.calls[0]?.[0] as {
+      params?: {
+        continuationTrigger?: string;
+      };
+    };
+    expect(call?.params?.continuationTrigger).toBeUndefined();
   });
 
   it("includes success status when outcome is ok", async () => {
@@ -1319,6 +1340,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("prefers direct delivery first for completion-mode and then queues on direct failure", async () => {
+    configOverride = {
+      ...configOverride,
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
     embeddedRunMock.isEmbeddedPiRunActive.mockReturnValue(true);
     embeddedRunMock.isEmbeddedPiRunStreaming.mockReturnValue(false);
     sessionStore = {
@@ -1366,6 +1391,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("falls back to internal requester-session injection when completion route is missing", async () => {
+    configOverride = {
+      ...configOverride,
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
     embeddedRunMock.isEmbeddedPiRunActive.mockReturnValue(false);
     embeddedRunMock.isEmbeddedPiRunStreaming.mockReturnValue(false);
     sessionStore = {

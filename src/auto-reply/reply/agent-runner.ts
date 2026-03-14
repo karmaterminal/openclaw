@@ -1316,6 +1316,7 @@ export async function runReplyAgent(params: {
                     );
                   }
                 } catch (err) {
+                  clearDelegatePending(sessionKey);
                   defaultRuntime.log(
                     `DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
                   );
@@ -1350,6 +1351,7 @@ export async function runReplyAgent(params: {
                     `[continuation-guard] DELEGATE timer check: stored=${delegateGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
                   );
                   if (drift > generationGuardTolerance) {
+                    clearDelegatePending(sessionKey);
                     defaultRuntime.log(
                       `DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
                     );
@@ -1504,6 +1506,7 @@ export async function runReplyAgent(params: {
                 );
               }
             } catch (err) {
+              clearDelegatePending(sessionKey);
               defaultRuntime.log(
                 `Tool DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
               );
@@ -1535,6 +1538,7 @@ export async function runReplyAgent(params: {
                 `[continuation-guard] Tool DELEGATE timer check: stored=${toolDelegateGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
               );
               if (drift > generationGuardTolerance) {
+                clearDelegatePending(sessionKey);
                 defaultRuntime.log(
                   `Tool DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
                 );

@@ -407,7 +407,7 @@ export async function runPreparedReply(
   // Otherwise the event sits unseen until the next turn — one turn too late.
   // Only active when continuation is explicitly enabled — context-pressure is a
   // continuation feature and should not inject events when the feature is off.
-  const continuationEnabled = cfg.agents?.defaults?.continuation?.enabled !== false;
+  const continuationEnabled = cfg.agents?.defaults?.continuation?.enabled === true;
   if (continuationEnabled && sessionEntry && sessionKey) {
     const contextWindow = resolveMemoryFlushContextWindowTokens({
       modelId: model,

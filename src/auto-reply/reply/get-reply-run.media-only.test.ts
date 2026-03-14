@@ -33,9 +33,13 @@ vi.mock("../../process/command-queue.js", () => ({
   getQueueSize: vi.fn().mockReturnValue(0),
 }));
 
-vi.mock("../../routing/session-key.js", () => ({
-  normalizeMainKey: vi.fn().mockReturnValue("main"),
-}));
+vi.mock("../../routing/session-key.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../routing/session-key.js")>();
+  return {
+    ...actual,
+    normalizeMainKey: vi.fn().mockReturnValue("main"),
+  };
+});
 
 vi.mock("../../utils/provider-utils.js", () => ({
   isReasoningTagProvider: vi.fn().mockReturnValue(false),
@@ -53,6 +57,10 @@ vi.mock("./agent-runner.js", () => ({
 
 vi.mock("./body.js", () => ({
   applySessionHints: vi.fn().mockImplementation(async ({ baseBody }) => baseBody),
+}));
+
+vi.mock("./context-pressure.js", () => ({
+  checkContextPressure: vi.fn().mockReturnValue({ fired: false, band: 0 }),
 }));
 
 vi.mock("./groups.js", () => ({
@@ -87,6 +95,7 @@ vi.mock("./typing-mode.js", () => ({
 }));
 
 import { runReplyAgent } from "./agent-runner.js";
+import { checkContextPressure } from "./context-pressure.js";
 import { routeReply } from "./route-reply.js";
 import { drainFormattedSystemEvents } from "./session-updates.js";
 import { resolveTypingMode } from "./typing-mode.js";
@@ -167,6 +176,7 @@ describe("runPreparedReply media-only handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetSystemEventsForTest();
+    vi.mocked(checkContextPressure).mockReturnValue({ fired: false, band: 0 });
   });
 
   it("allows media-only prompts and preserves thread context in queued followups", async () => {
@@ -426,6 +436,32 @@ describe("runPreparedReply media-only handling", () => {
 
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call?.isContinuationWake).toBe(false);
+  });
+
+  it("does not check context pressure unless continuation is explicitly enabled", async () => {
+    await runPreparedReply(
+      baseParams({
+        sessionEntry: {
+          sessionId: "session",
+          updatedAt: Date.now(),
+          totalTokens: 180_000,
+          totalTokensFresh: 180_000,
+        } as never,
+        cfg: {
+          session: {},
+          channels: {},
+          agents: {
+            defaults: {
+              continuation: {
+                contextPressureThreshold: 0.8,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(vi.mocked(checkContextPressure)).not.toHaveBeenCalled();
   });
 
   it("drops legacy delegate-returned markers instead of classifying them as wakes", async () => {

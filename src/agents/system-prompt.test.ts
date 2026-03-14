@@ -264,7 +264,7 @@ describe("buildAgentSystemPrompt", () => {
     );
     expect(prompt).toContain("### Cooperative yield");
     expect(prompt).toContain(
-      "If `sessions_yield` is available, use it to end your turn immediately after dispatching",
+      "Use `sessions_yield` to end your turn immediately, aborting any queued tool calls.",
     );
   });
 

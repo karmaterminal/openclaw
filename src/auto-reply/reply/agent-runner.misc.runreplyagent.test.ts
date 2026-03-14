@@ -157,6 +157,15 @@ function bumpContinuationGeneration(
   return agentRunnerModule.bumpContinuationGeneration(...args);
 }
 
+function hasDelegatePending(
+  ...args: Parameters<(typeof import("./agent-runner.js"))["hasDelegatePending"]>
+) {
+  if (!agentRunnerModule) {
+    throw new Error("agent-runner module not loaded");
+  }
+  return agentRunnerModule.hasDelegatePending(...args);
+}
+
 beforeAll(async () => {
   await loadAgentRunnerModule();
 });
@@ -2559,6 +2568,33 @@ describe("runReplyAgent continuation signal handling", () => {
     );
   });
 
+  it("DELEGATE: clears delegate-pending state when bracket spawn fails", async () => {
+    const sessionKey = "agent:main:telegram:dm:delegate-failure-clears-pending";
+    const sessionEntry = { sessionId: "session", updatedAt: Date.now() } as SessionEntry;
+
+    spawnSubagentDirectMock.mockRejectedValueOnce(new Error("Agent not available"));
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Delegating now.\n[[CONTINUE_DELEGATE: inspect failure path]]" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+    });
+
+    expect(hasDelegatePending(sessionKey)).toBe(false);
+  });
+
   it("DELEGATE: no continuation timer scheduled", async () => {
     vi.useFakeTimers();
     const delegateTask = "Autonomous background work";
@@ -2679,6 +2715,39 @@ describe("runReplyAgent continuation signal handling", () => {
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
   });
 
+  it("DELEGATE: clears delegate-pending state when bracket timer is cancelled", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "agent:main:telegram:dm:delegate-cancel-clears-pending";
+    const sessionEntry = { sessionId: "session", updatedAt: Date.now() } as SessionEntry;
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Queue delegate.\n[[CONTINUE_DELEGATE: inspect logs +1s]]" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+          generationGuardTolerance: 0,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+    });
+
+    expect(hasDelegatePending(sessionKey)).toBe(true);
+    bumpContinuationGeneration(sessionKey);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(hasDelegatePending(sessionKey)).toBe(false);
+  });
+
   it("DELEGATE: delayed tool spawn reads generationGuardTolerance at fire time", async () => {
     vi.useFakeTimers();
     const sessionKey = "agent:main:telegram:dm:tool-live-tolerance";
@@ -2726,6 +2795,73 @@ describe("runReplyAgent continuation signal handling", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DELEGATE: clears delegate-pending state when tool spawn fails", async () => {
+    const sessionKey = "agent:main:telegram:dm:tool-failure-clears-pending";
+    const sessionEntry = { sessionId: "session", updatedAt: Date.now() } as SessionEntry;
+
+    enqueuePendingDelegate(sessionKey, {
+      task: "inspect tool failure path",
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+    spawnSubagentDirectMock.mockRejectedValueOnce(new Error("Tool delegate unavailable"));
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+    });
+
+    expect(hasDelegatePending(sessionKey)).toBe(false);
+  });
+
+  it("DELEGATE: clears delegate-pending state when tool timer is cancelled", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "agent:main:telegram:dm:tool-cancel-clears-pending";
+    const sessionEntry = { sessionId: "session", updatedAt: Date.now() } as SessionEntry;
+
+    enqueuePendingDelegate(sessionKey, {
+      task: "inspect tool timer cancellation",
+      delayMs: 1_000,
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+          generationGuardTolerance: 0,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+    });
+
+    expect(hasDelegatePending(sessionKey)).toBe(true);
+    bumpContinuationGeneration(sessionKey);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(hasDelegatePending(sessionKey)).toBe(false);
   });
 
   it("DELEGATE: persists chain count so maxChainLength is enforced", async () => {

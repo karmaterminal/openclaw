@@ -635,6 +635,7 @@ async function resolveSubagentCompletionOrigin(params: {
 
 async function sendAnnounce(item: AnnounceQueueItem) {
   const cfg = loadConfig();
+  const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
   const announceTimeoutMs = resolveSubagentAnnounceTimeoutMs(cfg);
   const requesterIsSubagent = isInternalAnnounceRequesterSession(item.sessionKey);
   const origin = item.origin;
@@ -657,7 +658,7 @@ async function sendAnnounce(item: AnnounceQueueItem) {
       to: requesterIsSubagent ? undefined : origin?.to,
       threadId: requesterIsSubagent ? undefined : threadId,
       deliver: !requesterIsSubagent,
-      continuationTrigger: "delegate-return",
+      continuationTrigger: continuationEnabled ? "delegate-return" : undefined,
       internalEvents: item.internalEvents,
       inputProvenance: {
         kind: "inter_session",
@@ -801,6 +802,7 @@ async function sendSubagentAnnounceDirectly(params: {
     };
   }
   const cfg = loadConfig();
+  const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
   const announceTimeoutMs = resolveSubagentAnnounceTimeoutMs(cfg);
   const canonicalRequesterSessionKey = resolveRequesterStoreKey(
     cfg,
@@ -851,7 +853,7 @@ async function sendSubagentAnnounceDirectly(params: {
             message: params.triggerMessage,
             deliver: shouldDeliverExternally,
             bestEffortDeliver: params.bestEffortDeliver,
-            continuationTrigger: "delegate-return",
+            continuationTrigger: continuationEnabled ? "delegate-return" : undefined,
             internalEvents: params.internalEvents,
             channel: shouldDeliverExternally ? directChannel : undefined,
             accountId: shouldDeliverExternally ? effectiveDirectOrigin?.accountId : undefined,
