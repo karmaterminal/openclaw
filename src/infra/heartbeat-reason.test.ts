@@ -20,6 +20,7 @@ describe("heartbeat-reason", () => {
     expect(resolveHeartbeatReasonKind("exec-event")).toBe("exec-event");
     expect(resolveHeartbeatReasonKind("wake")).toBe("wake");
     expect(resolveHeartbeatReasonKind("continuation")).toBe("wake");
+    expect(resolveHeartbeatReasonKind("silent-wake-enrichment")).toBe("wake");
     expect(resolveHeartbeatReasonKind("acp:spawn:stream")).toBe("wake");
     expect(resolveHeartbeatReasonKind("cron:job-1")).toBe("cron");
     expect(resolveHeartbeatReasonKind("hook:wake")).toBe("hook");
@@ -38,6 +39,7 @@ describe("heartbeat-reason", () => {
     expect(isHeartbeatEventDrivenReason("cron:job-1")).toBe(true);
     expect(isHeartbeatEventDrivenReason("wake")).toBe(true);
     expect(isHeartbeatEventDrivenReason("continuation")).toBe(true);
+    expect(isHeartbeatEventDrivenReason("silent-wake-enrichment")).toBe(true);
     expect(isHeartbeatEventDrivenReason("acp:spawn:stream")).toBe(true);
     expect(isHeartbeatEventDrivenReason("hook:gmail:sync")).toBe(true);
     expect(isHeartbeatEventDrivenReason("interval")).toBe(false);
