@@ -12,7 +12,7 @@ Scope:
 Why this exists:
 
 - `continuationChainCount` is currently overloaded
-  - it tracks accepted hops
+  - it tracks accepted chain-hop labels
   - it also implicitly reserves future delayed hops
 - that conflation causes the remaining partials:
   - delayed delegates can consume chain capacity before they spawn
@@ -30,24 +30,25 @@ Reason:
 
 ## Invariants
 
-1. `SessionEntry.continuationChainCount` means accepted hops only.
-2. Delayed delegate reservations are tracked separately from accepted hops.
-3. Admission checks use:
-   - `acceptedHops + delayedReservationCount`
+1. `SessionEntry.continuationChainCount` means the highest accepted chain-hop label in the current chain.
+2. Delayed delegate reservations are tracked separately from accepted hop labels.
+3. Admission checks use the highest allocated hop label:
+   - `max(continuationChainCount, highestOutstandingReservation.plannedHop)`
 4. Immediate delegates:
-   - increment accepted hop count only after `spawnSubagentDirect(...)` returns `status === "accepted"`
+   - allocate the next hop label from the highest currently allocated hop
+   - persist `continuationChainCount` only after `spawnSubagentDirect(...)` returns `status === "accepted"`
 5. Delayed delegates:
-   - reserve capacity immediately
-   - do not increment accepted hop count until timer fire returns `status === "accepted"`
+   - reserve the next hop label immediately
+   - do not persist that hop label onto `continuationChainCount` until timer fire returns `status === "accepted"`
 6. Cancelled / rejected / failed delayed delegates:
    - release the reservation
-   - do not increment accepted hop count
+   - do not advance `continuationChainCount` unless a later accepted hop already moved past them
 7. External input preemption clears:
    - delegate-pending flags
    - delayed reservations for that session
 8. `continuationChainTokens` remain real spent cost, not reserved future cost.
    - current-turn parent tokens are still counted when the delegate is scheduled
-   - only hop count is deferred
+   - only accepted-hop persistence is deferred
 
 ## Storage Model
 
@@ -104,17 +105,17 @@ Primary file:
 Wherever delayed delegates are admitted, calculate:
 
 ```ts
-const acceptedHops = activeSessionEntry?.continuationChainCount ?? 0;
-const reservedHops = delayedContinuationReservationCount(sessionKey);
-const effectiveHopCount = acceptedHops + reservedHops;
+const acceptedHop = activeSessionEntry?.continuationChainCount ?? 0;
+const highestReservedHop = highestDelayedContinuationReservationHop(sessionKey);
+const allocatedHop = Math.max(acceptedHop, highestReservedHop);
 ```
 
-Use `effectiveHopCount` for:
+Use `allocatedHop` for:
 
 - `maxChainLength` admission
 - computing `plannedHop`
 
-Do not use `continuationChainCount` alone for delayed-delegate admission.
+Do not use `continuationChainCount + reservationCount`; it over-allocates once lower delayed hops coexist with later accepted higher hops.
 
 ### Bracket delegate path
 
@@ -123,7 +124,7 @@ Immediate delegate (`delayMs <= 0`):
 - current behavior target:
   - `spawnSubagentDirect(...)`
   - if accepted:
-    - persist `continuationChainCount = nextHop`
+    - persist `continuationChainCount = max(existingAcceptedHop, plannedHop)`
   - else:
     - do not persist hop increment
 
@@ -148,7 +149,7 @@ Timer fire:
   - clear delegate-pending if no remaining in-flight delegates
 - else call `spawnSubagentDirect(...)`
 - if accepted:
-  - persist `continuationChainCount = max(existingAccepted, reservation.plannedHop)`
+  - persist `continuationChainCount = max(existingAcceptedHop, reservation.plannedHop)`
 - else:
   - no hop increment
 
@@ -159,8 +160,8 @@ Exact same semantics as bracket delayed delegates, but reservation source is `"t
 Important:
 
 - `currentChainCount` in the tool loop must stop being used as a fake accepted counter for delayed delegates
-- for delayed tool delegates, only the reservation count moves immediately
-- accepted count moves only on timer fire success
+- for delayed tool delegates, only the reservation store moves immediately
+- accepted-hop persistence moves only on timer fire success
 
 ### Cancel / reset paths
 
@@ -239,6 +240,7 @@ Must add or update tests for:
 8. delayed reservations count against `maxChainLength` for later turns before they fire
 9. external input reset clears delayed reservations
 10. `finally` cleanup does not erase delayed reservations that should remain armed
+11. later immediate delegates allocate from the highest outstanding hop label, not `accepted + reservationCount`
 
 Secondary store test file:
 
@@ -254,9 +256,9 @@ Must add:
 
 The implementation is complete only when all of the following are true:
 
-1. `continuationChainCount` means accepted hops only in all delayed delegate paths.
+1. `continuationChainCount` means highest accepted hop label in all delayed delegate paths.
 2. No delayed delegate path persists an accepted hop before spawn acceptance.
-3. A delayed reservation blocks later delayed-delegate admission against `maxChainLength`.
+3. Delayed reservation admission uses the highest allocated hop label, not `accepted + reservationCount`.
 4. Cancelling or failing a delayed delegate releases capacity.
 5. A later successful delayed delegate timer increments accepted hop count exactly once.
 6. `cancelContinuationTimer(...)` clears delayed reservations.
@@ -303,11 +305,10 @@ The RFC must be updated in the same pass as the implementation. These are the co
 
 Where the RFC currently treats `continuationChainCount` as the chain-depth source for delayed delegate scheduling, change the language to:
 
-- `continuationChainCount` = accepted hops only
-- delayed delegates reserve capacity in a separate reservation store until timer fire
-- `maxChainLength` admission for delayed delegates uses:
-  - accepted hops
-  - plus outstanding delayed reservations
+- `continuationChainCount` = highest accepted hop label only
+- delayed delegates reserve future hop labels in a separate reservation store until timer fire
+- `maxChainLength` admission for delayed delegates uses the highest allocated hop label:
+  - `max(continuationChainCount, highestOutstandingReservation.plannedHop)`
 
 Sections likely affected:
 
@@ -326,7 +327,8 @@ Any wording like:
 must become:
 
 - reservation created at schedule time
-- hop accepted only after `spawnSubagentDirect(...)` returns `status === "accepted"`
+- accepted-hop persistence happens only after `spawnSubagentDirect(...)` returns `status === "accepted"`
+- later immediate delegates allocate from the highest outstanding hop label, not from `accepted + reservationCount`
 
 ### 3. Update volatile-state description
 
@@ -380,7 +382,7 @@ The RFC should explicitly keep these out of scope for this pass:
 
 After the code lands, the RFC should be true under source inspection for all of the following:
 
-- delayed delegate scheduling does not increment accepted hop count
-- accepted hop count increments only on accepted spawn
-- delayed reservations count against future `maxChainLength` admission
+- delayed delegate scheduling does not advance persisted accepted-hop state
+- accepted-hop persistence happens only on accepted spawn
+- delayed reservations count against future `maxChainLength` admission through highest-allocated-hop math
 - delayed reservation state is process-scoped, not persisted on `SessionEntry`

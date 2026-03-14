@@ -27,7 +27,12 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
+  addDelayedContinuationReservation,
+  clearDelayedContinuationReservations,
   consumeStagedPostCompactionDelegates,
+  delayedContinuationReservationCount,
+  highestDelayedContinuationReservationHop,
+  takeDelayedContinuationReservation,
   stagePostCompactionDelegate,
   consumePendingDelegates,
   pendingDelegateCount,
@@ -100,6 +105,12 @@ export function hasDelegatePending(sessionKey: string): boolean {
 
 export function clearDelegatePending(sessionKey: string): void {
   delegatePendingFlags.delete(sessionKey);
+}
+
+function clearDelegatePendingIfNoDelayedReservations(sessionKey: string): void {
+  if (delayedContinuationReservationCount(sessionKey) === 0) {
+    clearDelegatePending(sessionKey);
+  }
 }
 
 export function currentContinuationGeneration(sessionKey: string): number {
@@ -268,6 +279,8 @@ export function cancelContinuationTimer(
     bumpContinuationGeneration(sessionKey);
   }
 
+  clearDelayedContinuationReservations(sessionKey);
+
   // Reset chain metadata so stale counters don't block future chains.
   // Check both chain count and chain tokens — chain count may be on child shards
   // (via task prefix), but tokens accumulate on the parent session.
@@ -392,6 +405,7 @@ export async function runReplyAgent(params: {
       !hadActiveChain &&
       typeof activeSessionEntry?.continuationChainTokens === "number" &&
       activeSessionEntry.continuationChainTokens > 0;
+    const hadDelayedReservations = delayedContinuationReservationCount(sessionKey) > 0;
     if (activeSessionEntry && (hadActiveChain || hadStaleTokens)) {
       activeSessionEntry.continuationChainCount = 0;
       activeSessionEntry.continuationChainStartedAt = undefined;
@@ -401,8 +415,12 @@ export async function runReplyAgent(params: {
     // Only bump when a generation exists (active/pending chain) to avoid
     // unbounded map growth from sessions that never use continuation.
     const hasGenerationEntry = continuationGenerations.has(sessionKey);
-    if (hadActiveChain || hasGenerationEntry) {
+    if (hadActiveChain || hasGenerationEntry || hadDelayedReservations) {
       bumpContinuationGeneration(sessionKey);
+    }
+    if (hadDelayedReservations) {
+      clearDelayedContinuationReservations(sessionKey);
+      clearDelegatePending(sessionKey);
     }
     if ((hadActiveChain || hadStaleTokens) && activeSessionStore && activeSessionEntry) {
       activeSessionStore[sessionKey] = {
@@ -656,6 +674,47 @@ export async function runReplyAgent(params: {
         `Role ordering conflict (${reason}). Restarting session ${sessionKey} -> ${nextSessionId}.`,
       cleanupTranscripts: true,
     });
+  const persistContinuationChainState = async (params: {
+    count: number;
+    startedAt: number;
+    tokens: number;
+  }): Promise<void> => {
+    if (!sessionKey) {
+      return;
+    }
+    if (activeSessionEntry) {
+      activeSessionEntry.continuationChainCount = params.count;
+      activeSessionEntry.continuationChainStartedAt = params.startedAt;
+      activeSessionEntry.continuationChainTokens = params.tokens;
+    }
+    if (activeSessionStore) {
+      const existingEntry = activeSessionStore[sessionKey] ?? activeSessionEntry;
+      if (existingEntry) {
+        activeSessionStore[sessionKey] = {
+          ...existingEntry,
+          continuationChainCount: params.count,
+          continuationChainStartedAt: params.startedAt,
+          continuationChainTokens: params.tokens,
+        };
+      }
+    }
+    if (storePath) {
+      try {
+        await updateSessionStore(storePath, (store) => {
+          const entry = store[sessionKey];
+          if (entry) {
+            entry.continuationChainCount = params.count;
+            entry.continuationChainStartedAt = params.startedAt;
+            entry.continuationChainTokens = params.tokens;
+          }
+        });
+      } catch (err) {
+        defaultRuntime.log(
+          `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
+        );
+      }
+    }
+  };
   try {
     const runStartedAt = Date.now();
     const runOutcome = await runAgentTurnWithFallback({
@@ -1238,8 +1297,12 @@ export async function runReplyAgent(params: {
       {
         // continuation scheduling block
         const currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
+        const allocatedChainHop = Math.max(
+          currentChainCount,
+          highestDelayedContinuationReservationHop(sessionKey),
+        );
 
-        if (currentChainCount >= maxChainLength) {
+        if (allocatedChainHop >= maxChainLength) {
           defaultRuntime.log(
             `Continuation chain capped at ${maxChainLength} for session ${sessionKey}`,
           );
@@ -1261,23 +1324,30 @@ export async function runReplyAgent(params: {
             );
             bumpContinuationGeneration(sessionKey);
           } else {
-            const nextChainCount = currentChainCount + 1;
+            const nextChainCount = allocatedChainHop + 1;
             const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
             if (continuationSignal.kind === "delegate") {
               const delegateTask = continuationSignal.task;
               const delegateDelayMs = continuationSignal.delayMs;
 
-              const doSpawn = async (timerTriggered = false) => {
+              const doSpawn = async (
+                plannedHop: number,
+                task: string,
+                options?: {
+                  timerTriggered?: boolean;
+                  silent?: boolean;
+                  silentWake?: boolean;
+                  startedAt?: number;
+                },
+              ) => {
                 try {
                   const spawnResult = await spawnSubagentDirect(
                     {
                       // The spawned child carries its current chain position in-band.
                       // Announce-side chain hops parse this prefix as the canonical hop source.
-                      task: `[continuation:chain-hop:${nextChainCount}] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegateTask}`,
-                      ...(continuationSignal.silent ? { silentAnnounce: true } : {}),
-                      ...(continuationSignal.silentWake
-                        ? { silentAnnounce: true, wakeOnReturn: true }
-                        : {}),
+                      task: `[continuation:chain-hop:${plannedHop}] Delegated task (turn ${plannedHop}/${maxChainLength}): ${task}`,
+                      ...(options?.silent ? { silentAnnounce: true } : {}),
+                      ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                     },
                     {
                       agentSessionKey: sessionKey,
@@ -1288,13 +1358,18 @@ export async function runReplyAgent(params: {
                     },
                   );
                   if (spawnResult.status === "accepted") {
-                    if (timerTriggered) {
+                    if (options?.timerTriggered) {
                       defaultRuntime.log(
-                        `DELEGATE timer fired and spawned turn ${nextChainCount}/${maxChainLength} for session ${sessionKey}: ${delegateTask}`,
+                        `DELEGATE timer fired and spawned turn ${plannedHop}/${maxChainLength} for session ${sessionKey}: ${task}`,
                       );
                     }
+                    await persistContinuationChainState({
+                      count: Math.max(activeSessionEntry?.continuationChainCount ?? 0, plannedHop),
+                      startedAt: options?.startedAt ?? chainStartedAt,
+                      tokens: accumulatedChainTokens,
+                    });
                     enqueueSystemEvent(
-                      `[continuation:delegate-spawned] Spawned turn ${nextChainCount}/${maxChainLength}: ${delegateTask}`,
+                      `[continuation:delegate-spawned] Spawned turn ${plannedHop}/${maxChainLength}: ${task}`,
                       { sessionKey },
                     );
                     return true;
@@ -1303,18 +1378,19 @@ export async function runReplyAgent(params: {
                       `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
                     );
                     enqueueSystemEvent(
-                      `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${delegateTask}`,
+                      `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${task}`,
                       { sessionKey },
                     );
+                    clearDelegatePendingIfNoDelayedReservations(sessionKey);
                     return false;
                   }
                 } catch (err) {
-                  clearDelegatePending(sessionKey);
+                  clearDelegatePendingIfNoDelayedReservations(sessionKey);
                   defaultRuntime.log(
                     `DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
                   );
                   enqueueSystemEvent(
-                    `[continuation] DELEGATE spawn failed: ${String(err)}. Original task: ${delegateTask}`,
+                    `[continuation] DELEGATE spawn failed: ${String(err)}. Original task: ${task}`,
                     { sessionKey },
                   );
                   return false;
@@ -1328,126 +1404,70 @@ export async function runReplyAgent(params: {
               }
 
               if (delegateDelayMs && delegateDelayMs > 0) {
-                if (activeSessionEntry) {
-                  activeSessionEntry.continuationChainCount = nextChainCount;
-                  activeSessionEntry.continuationChainStartedAt = chainStartedAt;
-                  activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
-                }
-                if (activeSessionStore) {
-                  activeSessionStore[sessionKey] = {
-                    ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
-                    continuationChainCount: nextChainCount,
-                    continuationChainStartedAt: chainStartedAt,
-                    continuationChainTokens: accumulatedChainTokens,
-                  };
-                }
-                // Persist to disk so delayed delegate reservations survive across turns.
-                if (storePath) {
-                  try {
-                    await updateSessionStore(storePath, (store) => {
-                      const entry = store[sessionKey];
-                      if (entry) {
-                        entry.continuationChainCount = nextChainCount;
-                        entry.continuationChainStartedAt = chainStartedAt;
-                        entry.continuationChainTokens = accumulatedChainTokens;
-                      }
-                    });
-                  } catch (err) {
-                    defaultRuntime.log(
-                      `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
-                    );
-                  }
-                }
                 // Timed dispatch: spawn after delay. Timer does not survive
                 // gateway restart — acceptable for v1 (see #176 for durable timers).
                 const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
                 // Generation guard: if an external message arrives during the delay,
                 // bumpContinuationGeneration invalidates this timer — same as WORK timers.
                 const delegateGeneration = bumpContinuationGeneration(sessionKey);
+                const reservationId = generateSecureUuid();
+                addDelayedContinuationReservation(sessionKey, {
+                  id: reservationId,
+                  source: "bracket",
+                  task: delegateTask,
+                  createdAt: chainStartedAt,
+                  fireAt: Date.now() + clampedDelay,
+                  generation: delegateGeneration,
+                  plannedHop: nextChainCount,
+                  silent: continuationSignal.silent,
+                  silentWake: continuationSignal.silentWake,
+                });
+                await persistContinuationChainState({
+                  count: currentChainCount,
+                  startedAt: chainStartedAt,
+                  tokens: accumulatedChainTokens,
+                });
                 continuationGuardLog.debug(
                   `[continuation-guard] DELEGATE timer set: generation=${delegateGeneration} delayMs=${clampedDelay} session=${sessionKey}`,
                 );
                 setTimeout(() => {
+                  const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
+                  if (!reservation) {
+                    return;
+                  }
                   const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
                   const currentGen = currentContinuationGeneration(sessionKey);
-                  const drift = currentGen - delegateGeneration;
+                  const drift = currentGen - reservation.generation;
                   continuationGuardLog.debug(
-                    `[continuation-guard] DELEGATE timer check: stored=${delegateGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
+                    `[continuation-guard] DELEGATE timer check: stored=${reservation.generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
                   );
                   if (drift > generationGuardTolerance) {
-                    clearDelegatePending(sessionKey);
+                    clearDelegatePendingIfNoDelayedReservations(sessionKey);
                     defaultRuntime.log(
                       `DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
                     );
                     return;
                   }
-                  void doSpawn(true);
+                  void doSpawn(reservation.plannedHop, reservation.task, {
+                    timerTriggered: true,
+                    silent: reservation.silent,
+                    silentWake: reservation.silentWake,
+                    startedAt: reservation.createdAt,
+                  });
                 }, clampedDelay);
               } else {
-                const accepted = await doSpawn();
-                if (accepted) {
-                  if (activeSessionEntry) {
-                    activeSessionEntry.continuationChainCount = nextChainCount;
-                    activeSessionEntry.continuationChainStartedAt = chainStartedAt;
-                    activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
-                  }
-                  if (activeSessionStore) {
-                    activeSessionStore[sessionKey] = {
-                      ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
-                      continuationChainCount: nextChainCount,
-                      continuationChainStartedAt: chainStartedAt,
-                      continuationChainTokens: accumulatedChainTokens,
-                    };
-                  }
-                  if (storePath) {
-                    try {
-                      await updateSessionStore(storePath, (store) => {
-                        const entry = store[sessionKey];
-                        if (entry) {
-                          entry.continuationChainCount = nextChainCount;
-                          entry.continuationChainStartedAt = chainStartedAt;
-                          entry.continuationChainTokens = accumulatedChainTokens;
-                        }
-                      });
-                    } catch (err) {
-                      defaultRuntime.log(
-                        `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
-                      );
-                    }
-                  }
-                }
+                await doSpawn(nextChainCount, delegateTask, {
+                  silent: continuationSignal.silent,
+                  silentWake: continuationSignal.silentWake,
+                  startedAt: chainStartedAt,
+                });
               }
             } else {
-              if (activeSessionEntry) {
-                activeSessionEntry.continuationChainCount = nextChainCount;
-                activeSessionEntry.continuationChainStartedAt = chainStartedAt;
-                activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
-              }
-              if (activeSessionStore) {
-                activeSessionStore[sessionKey] = {
-                  ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
-                  continuationChainCount: nextChainCount,
-                  continuationChainStartedAt: chainStartedAt,
-                  continuationChainTokens: accumulatedChainTokens,
-                };
-              }
-              // Persist chain state for WORK paths before the timer fires.
-              if (storePath) {
-                try {
-                  await updateSessionStore(storePath, (store) => {
-                    const entry = store[sessionKey];
-                    if (entry) {
-                      entry.continuationChainCount = nextChainCount;
-                      entry.continuationChainStartedAt = chainStartedAt;
-                      entry.continuationChainTokens = accumulatedChainTokens;
-                    }
-                  });
-                } catch (err) {
-                  defaultRuntime.log(
-                    `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
-                  );
-                }
-              }
+              await persistContinuationChainState({
+                count: nextChainCount,
+                startedAt: chainStartedAt,
+                tokens: accumulatedChainTokens,
+              });
               // WORK: schedule a continuation turn after delay
               const requestedDelay = continuationSignal.delayMs ?? defaultDelayMs;
               const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, requestedDelay));
@@ -1531,7 +1551,11 @@ export async function runReplyAgent(params: {
         const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
 
         for (const delegate of delegatesWithinLimit) {
-          if (currentChainCount >= maxChainLength) {
+          const allocatedChainHop = Math.max(
+            currentChainCount,
+            highestDelayedContinuationReservationHop(sessionKey),
+          );
+          if (allocatedChainHop >= maxChainLength) {
             defaultRuntime.log(
               `Continuation chain capped at ${maxChainLength} for tool delegate in session ${sessionKey}`,
             );
@@ -1553,15 +1577,24 @@ export async function runReplyAgent(params: {
             break;
           }
 
-          const nextChainCount = currentChainCount + 1;
+          const nextChainCount = allocatedChainHop + 1;
 
-          const doToolSpawn = async (timerTriggered = false) => {
+          const doToolSpawn = async (
+            plannedHop: number,
+            task: string,
+            options?: {
+              timerTriggered?: boolean;
+              silent?: boolean;
+              silentWake?: boolean;
+              startedAt?: number;
+            },
+          ) => {
             try {
               const spawnResult = await spawnSubagentDirect(
                 {
-                  task: `[continuation:chain-hop:${nextChainCount}] Delegated task (turn ${nextChainCount}/${maxChainLength}): ${delegate.task}`,
-                  ...(delegate.silent ? { silentAnnounce: true } : {}),
-                  ...(delegate.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                  task: `[continuation:chain-hop:${plannedHop}] Delegated task (turn ${plannedHop}/${maxChainLength}): ${task}`,
+                  ...(options?.silent ? { silentAnnounce: true } : {}),
+                  ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                 },
                 {
                   agentSessionKey: sessionKey,
@@ -1572,13 +1605,19 @@ export async function runReplyAgent(params: {
                 },
               );
               if (spawnResult.status === "accepted") {
-                if (timerTriggered) {
+                if (options?.timerTriggered) {
                   defaultRuntime.log(
-                    `Tool DELEGATE timer fired and spawned turn ${nextChainCount}/${maxChainLength} for session ${sessionKey}: ${delegate.task}`,
+                    `Tool DELEGATE timer fired and spawned turn ${plannedHop}/${maxChainLength} for session ${sessionKey}: ${task}`,
                   );
                 }
+                currentChainCount = Math.max(currentChainCount, plannedHop);
+                await persistContinuationChainState({
+                  count: currentChainCount,
+                  startedAt: options?.startedAt ?? chainStartedAt,
+                  tokens: accumulatedChainTokens,
+                });
                 enqueueSystemEvent(
-                  `[continuation:delegate-spawned] Tool delegate turn ${nextChainCount}/${maxChainLength}: ${delegate.task}`,
+                  `[continuation:delegate-spawned] Tool delegate turn ${plannedHop}/${maxChainLength}: ${task}`,
                   { sessionKey },
                 );
                 return true;
@@ -1587,18 +1626,19 @@ export async function runReplyAgent(params: {
                   `Tool DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
                 );
                 enqueueSystemEvent(
-                  `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${delegate.task}`,
+                  `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${task}`,
                   { sessionKey },
                 );
+                clearDelegatePendingIfNoDelayedReservations(sessionKey);
                 return false;
               }
             } catch (err) {
-              clearDelegatePending(sessionKey);
+              clearDelegatePendingIfNoDelayedReservations(sessionKey);
               defaultRuntime.log(
                 `Tool DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
               );
               enqueueSystemEvent(
-                `[continuation] Tool DELEGATE spawn failed: ${String(err)}. Task: ${delegate.task}`,
+                `[continuation] Tool DELEGATE spawn failed: ${String(err)}. Task: ${task}`,
                 { sessionKey },
               );
               return false;
@@ -1615,64 +1655,57 @@ export async function runReplyAgent(params: {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));
             // Generation guard: same as bracket-path delegate timers
             const toolDelegateGeneration = bumpContinuationGeneration(sessionKey);
+            const reservationId = generateSecureUuid();
+            addDelayedContinuationReservation(sessionKey, {
+              id: reservationId,
+              source: "tool",
+              task: delegate.task,
+              createdAt: chainStartedAt,
+              fireAt: Date.now() + clampedDelay,
+              generation: toolDelegateGeneration,
+              plannedHop: nextChainCount,
+              silent: delegate.silent,
+              silentWake: delegate.silentWake,
+            });
+            await persistContinuationChainState({
+              count: currentChainCount,
+              startedAt: chainStartedAt,
+              tokens: accumulatedChainTokens,
+            });
             continuationGuardLog.debug(
               `[continuation-guard] Tool DELEGATE timer set: generation=${toolDelegateGeneration} delayMs=${clampedDelay} session=${sessionKey}`,
             );
             setTimeout(() => {
+              const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
+              if (!reservation) {
+                return;
+              }
               const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
               const currentGen = currentContinuationGeneration(sessionKey);
-              const drift = currentGen - toolDelegateGeneration;
+              const drift = currentGen - reservation.generation;
               continuationGuardLog.debug(
-                `[continuation-guard] Tool DELEGATE timer check: stored=${toolDelegateGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
+                `[continuation-guard] Tool DELEGATE timer check: stored=${reservation.generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
               );
               if (drift > generationGuardTolerance) {
-                clearDelegatePending(sessionKey);
+                clearDelegatePendingIfNoDelayedReservations(sessionKey);
                 defaultRuntime.log(
                   `Tool DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
                 );
                 return;
               }
-              void doToolSpawn(true);
-            }, clampedDelay);
-            currentChainCount = nextChainCount;
-          } else {
-            const accepted = await doToolSpawn();
-            if (accepted) {
-              currentChainCount = nextChainCount;
-            }
-          }
-        }
-
-        // Persist updated chain state after processing all tool delegates
-        if (currentChainCount > (activeSessionEntry?.continuationChainCount ?? 0)) {
-          if (activeSessionEntry) {
-            activeSessionEntry.continuationChainCount = currentChainCount;
-            activeSessionEntry.continuationChainStartedAt = chainStartedAt;
-            activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
-          }
-          if (activeSessionStore) {
-            activeSessionStore[sessionKey] = {
-              ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
-              continuationChainCount: currentChainCount,
-              continuationChainStartedAt: chainStartedAt,
-              continuationChainTokens: accumulatedChainTokens,
-            };
-          }
-          if (storePath) {
-            try {
-              await updateSessionStore(storePath, (store) => {
-                const entry = store[sessionKey];
-                if (entry) {
-                  entry.continuationChainCount = currentChainCount;
-                  entry.continuationChainStartedAt = chainStartedAt;
-                  entry.continuationChainTokens = accumulatedChainTokens;
-                }
+              void doToolSpawn(reservation.plannedHop, reservation.task, {
+                timerTriggered: true,
+                silent: reservation.silent,
+                silentWake: reservation.silentWake,
+                startedAt: reservation.createdAt,
               });
-            } catch (err) {
-              defaultRuntime.log(
-                `Failed to persist tool delegate chain state for ${sessionKey}: ${String(err)}`,
-              );
-            }
+            }, clampedDelay);
+          } else {
+            await doToolSpawn(nextChainCount, delegate.task, {
+              silent: delegate.silent,
+              silentWake: delegate.silentWake,
+              startedAt: chainStartedAt,
+            });
           }
         }
       }

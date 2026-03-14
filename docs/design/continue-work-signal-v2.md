@@ -104,9 +104,13 @@ agents:
 > continuation trigger metadata on the heartbeat request; direct announce turns
 > carry `continuationTrigger: "delegate-return"` on the gateway `agent`
 > request. Wake classification no longer depends on queue text. Both paths
-> preserve chain state across delegate hops. DELEGATE chains are therefore
-> bounded by the same `maxChainLength` and `costCapTokens` limits as WORK
-> chains.
+> preserve chain state across delegate hops. Delayed bracket/tool delegates
+> reserve future hop labels in a process-scoped reservation store; the session
+> entry's `continuationChainCount` advances only after accepted spawns and
+> reflects the highest accepted hop label. Admission uses the highest currently
+> allocated hop label across accepted state plus outstanding reservations.
+> DELEGATE chains are therefore bounded by the same `maxChainLength` and
+> `costCapTokens` limits as WORK chains.
 
 ### Operator Configuration Profiles
 
@@ -215,7 +219,7 @@ The response is finalized in `runReplyAgent()` (`agent-runner.ts`). After all pa
 
 4. **Delegate-pending state**: the parent session is marked as awaiting a delegate return before the sub-agent spawns. This control-plane state is kept outside the model-visible system-event queue so it survives ordinary queue drains.
 
-5. **Timer scheduling** (line ~988): `setTimeout(() => void doSpawn(), 10000)` schedules the sub-agent spawn for 10 seconds later. The delay is clamped between `minDelayMs` (5s) and `maxDelayMs` (300s).
+5. **Reservation + timer scheduling**: for delayed delegates, the gateway records an in-memory reservation carrying the `plannedHop`, task, fire time, and generation guard, then arms `setTimeout(...)` for 10 seconds later. The delay is clamped between `minDelayMs` (5s) and `maxDelayMs` (300s). This reserves future chain capacity immediately without persisting the accepted hop yet.
 
 > **Note:** The timer is volatile — it does not survive a gateway restart. This is intentional: restart = clean slate. Agents that need durable scheduling use the `openclaw cron` tool directly.
 
@@ -242,7 +246,7 @@ spawnSubagentDirect(
 );
 ```
 
-The sub-agent session is created with a new `sessionKey`. It inherits the parent's channel context (so it can deliver results to the same conversation). On successful spawn, a `[continuation:delegate-spawned]` event is enqueued.
+The sub-agent session is created with a new `sessionKey`. It inherits the parent's channel context (so it can deliver results to the same conversation). On successful spawn, a `[continuation:delegate-spawned]` event is enqueued, and the parent persists `continuationChainCount = max(existingAcceptedHop, plannedHop)`. Delayed scheduling alone does not advance the accepted-hop field.
 
 The sub-agent runs independently — it has its own context window, its own turn, its own tools. It does its work (in this case, running the test suite).
 
@@ -265,11 +269,13 @@ The agent sees the sub-agent's result, the delegate markers in its system events
 t=0s    Agent emits [[CONTINUE_DELEGATE: task +10s]]
         ├── Signal parsed, stripped from display output
         ├── delegate-pending state recorded on parent session
+        ├── delayed reservation created with plannedHop=1
         ├── Attachments/paths from dispatch context carried forward
         └── setTimeout(doSpawn, 10000) scheduled
 
 t=10s   setTimeout fires
         ├── spawnSubagentDirect() creates sub-agent session
+        ├── accepted hop label persisted onto continuationChainCount
         ├── Delivery context carried into the child session
         ├── [delegate-spawned] marker enqueued
         └── Sub-agent begins independent execution
@@ -310,19 +316,21 @@ CONTEXT: I'm at 92% context and evacuating before compaction.
 When this returns: if green, merge the PR. If red, file an issue with failure logs. +30s]]
 ```
 
-**Volatility boundary:** Delegate-pending state now survives ordinary queued-system-prompt drains and compaction boundaries because it is no longer stored as model-visible queue text. It is still process-scoped like the timer itself: a gateway restart clears both.
+**Volatility boundary:** Delegate-pending state and the delayed-reservation store now survive ordinary queued-system-prompt drains and compaction boundaries because they are no longer stored as model-visible queue text. They are still process-scoped like the timer itself: a gateway restart clears all three together.
 
 ### Chain Tracking
 
 Session metadata carries:
 
-- `continuationChainCount` — incremented on each `CONTINUE_WORK`, reset on external message
+- `continuationChainCount` — highest accepted hop label in the current chain, reset on external message
 - `continuationChainStartedAt` — timestamp when the current chain began
 - `continuationChainTokens` — accumulated token usage within the chain, reset on external message
 
+Delayed delegates reserve future hop labels in a separate module-level reservation store. Those reservations are process-scoped and are not persisted on `SessionEntry`.
+
 For bracket chain-hops, the hop index is encoded in the task prefix (`[continuation:chain-hop:N]`) rather than session store fields, because inbound messages — including shard completions — trigger per-message resets that clear session-level counters between hops.
 
-Safety enforcement happens at the scheduling layer: chain length, cost cap, and cooldown are all checked before any continuation is enqueued.
+Safety enforcement happens at the scheduling layer: chain length, cost cap, and cooldown are all checked before any continuation is enqueued. For delayed delegates, hop allocation uses the highest currently allocated hop label across `continuationChainCount` plus outstanding reservations. Scheduling a delayed delegate does not itself advance the persisted accepted-hop field.
 
 #### Chain-Hop Budget Inheritance
 
@@ -333,16 +341,17 @@ When a sub-agent's output triggers a chain hop (a new sub-agent spawned from the
 - **Delay bounds**: the hop's delay is clamped to the parent session's configured `minDelayMs` / `maxDelayMs`, not hardcoded values.
 - **Generation guard**: the hop's `setTimeout` callback checks the parent session's generation counter before spawning, preventing orphan spawns after preemption.
 
-#### Generation Guard Tolerance Asymmetry
+#### Generation Guard Tolerance
 
-`CONTINUE_WORK` timers use **strict equality** (`!==`) — any generation drift cancels the timer. `CONTINUE_DELEGATE` timers (bracket-path, tool-path, and chain-hop) use **tolerance-aware comparison** (`drift > generationGuardTolerance`).
+Both `CONTINUE_WORK` and `CONTINUE_DELEGATE` timers use the same tolerance-aware comparison: cancel when `drift > generationGuardTolerance`.
 
-This asymmetry is intentional:
+This is intentionally unified:
 
-- **WORK timers** schedule the _same agent's_ next turn. If someone talks to you, you should stop and listen — the human's message is more important than your planned continuation. Strict cancellation ensures responsiveness.
-- **DELEGATE timers** spawn _separate sub-agents_ carrying committed tasks. These are fire-and-forget obligations that should survive incidental channel traffic in multi-agent environments, while still cancelling on genuine preemption (e.g., operator `/stop`).
+- **WORK timers** and **DELEGATE timers** both treat generation drift as a coarse session-interruption signal.
+- With `generationGuardTolerance: 0`, any drift cancels the timer.
+- Raising tolerance allows both paths to survive incidental chatter in busy channels while still cancelling genuinely stale wakes.
 
-The `generationGuardTolerance` config (default: `0`) only applies to DELEGATE-family timers. WORK timers are always strict. In single-agent deployments (tolerance `0`), both paths behave identically. In multi-agent channels (tolerance `300`), delegates survive chatter while WORK continuations remain responsive.
+Single-agent deployments usually keep tolerance at `0`. Multi-agent channels may raise it so delayed work survives unrelated activity.
 
 #### `maxDelegatesPerTurn` Hot-Reload
 
@@ -379,7 +388,7 @@ Bracket syntax (`[[CONTINUE_DELEGATE: task]]`) is parsed from terminal output �
 2. **Structured parameters.** Delay, mode (`normal`, `silent`, `silent-wake`, `post-compaction`), and task are typed fields with schema validation, not string suffixes.
 3. **Discoverability.** The tool appears in the agent's tool list alongside `sessions_spawn` and `exec`. A naive agent sees it, reads the description, and knows when to reach for it — no prior knowledge of bracket syntax required.
 
-**Architecture: two doors, one room.** The tool writes to a module-level `Map<string, PendingContinuationDelegate[]>` via `enqueuePendingDelegate()`. After the agent's response completes, `agent-runner.ts` calls `consumePendingDelegates(sessionKey)` and processes them through the same chain tracking (cost cap, chain length, delay clamping) as bracket-parsed signals. Both paths converge on `spawnSubagentDirect()`. Chain tracking diverges at the hop boundary: tool-path dispatches use session store fields (`continuationChainCount`, `continuationChainTokens`); bracket chain-hops use task-prefix encoding (`[continuation:chain-hop:N]`) because session store resets clear state between hops.
+**Architecture: two doors, one room.** The tool writes to a module-level `Map<string, PendingContinuationDelegate[]>` via `enqueuePendingDelegate()`. After the agent's response completes, `agent-runner.ts` calls `consumePendingDelegates(sessionKey)` and processes them through the same chain tracking (cost cap, chain length, delay clamping) as bracket-parsed signals. Delayed bracket/tool delegates converge on the same in-memory reservation scheduler; immediate delegates bypass that reservation store and go straight to `spawnSubagentDirect()`. Accepted-hop persistence is shared: `continuationChainCount` tracks the highest accepted hop label, while delayed reservations stay separate until timer fire. Chain tracking diverges at the hop boundary: tool-path dispatches use session store fields (`continuationChainCount`, `continuationChainTokens`); bracket chain-hops use task-prefix encoding (`[continuation:chain-hop:N]`) because session store resets clear state between hops.
 
 **When to use which:**
 
@@ -1158,7 +1167,7 @@ These are documented failure modes observed during testing that are properties o
 
 **Channel context poisoning.** In multi-agent deployments where agents share communication channels, status declarations from one agent ("user is resting," "idle," "nothing needs attention") propagate into other agents' context windows. Over hours, this induces fleet-wide quiescence — agents adopt the posture of the most passive message in their context. This is not a continuation bug; it's a property of shared channels with `requireMention: false` (open-listen mode). The continuation system inherits this ambient context.
 
-**Volatile delayed-work state.** Delayed delegate timers and delegate-pending state are process-scoped. Ordinary prompt drains and compaction boundaries no longer erase delegate wake classification, but a gateway restart still clears in-flight delayed delegates and pending-return state. Durable long-horizon scheduling still belongs to cron or another persistent scheduler.
+**Volatile delayed-work state.** Delayed delegate timers, delayed-reservation state, and delegate-pending state are process-scoped. Ordinary prompt drains and compaction boundaries no longer erase delegate wake classification, but a gateway restart still clears in-flight delayed delegates and their reservation/pending-return state. Durable long-horizon scheduling still belongs to cron or another persistent scheduler.
 
 **Confabulation as default failure mode.** When asked about enrichment that hasn't arrived, agents confabulate with conviction. They invent plausible content, attribute it to the enrichment pipeline, and present it as fact. Enrichment content cannot be self-verified — external verification (operator confirmation, binary tests) is required for high-confidence recall. See the [Canary Validation](#canary-validation-blind-testing-methodology) section for detailed test results.
 

@@ -23,7 +23,20 @@ export interface PendingContinuationDelegate {
   silentWake?: boolean;
 }
 
+export interface DelayedContinuationReservation {
+  id: string;
+  source: "bracket" | "tool";
+  task: string;
+  createdAt: number;
+  fireAt: number;
+  generation: number;
+  plannedHop: number;
+  silent?: boolean;
+  silentWake?: boolean;
+}
+
 const pendingDelegates = new Map<string, PendingContinuationDelegate[]>();
+const delayedReservations = new Map<string, DelayedContinuationReservation[]>();
 
 /**
  * Called by the `continue_delegate` tool during execution.
@@ -55,6 +68,69 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
  */
 export function pendingDelegateCount(sessionKey: string): number {
   return pendingDelegates.get(sessionKey)?.length ?? 0;
+}
+
+export function addDelayedContinuationReservation(
+  sessionKey: string,
+  reservation: DelayedContinuationReservation,
+): void {
+  const existing = delayedReservations.get(sessionKey) ?? [];
+  existing.push(reservation);
+  delayedReservations.set(sessionKey, existing);
+}
+
+export function listDelayedContinuationReservations(
+  sessionKey: string,
+): DelayedContinuationReservation[] {
+  return [...(delayedReservations.get(sessionKey) ?? [])];
+}
+
+export function delayedContinuationReservationCount(sessionKey: string): number {
+  return delayedReservations.get(sessionKey)?.length ?? 0;
+}
+
+export function highestDelayedContinuationReservationHop(sessionKey: string): number {
+  const reservations = delayedReservations.get(sessionKey);
+  if (!reservations || reservations.length === 0) {
+    return 0;
+  }
+  let highestHop = 0;
+  for (const reservation of reservations) {
+    if (reservation.plannedHop > highestHop) {
+      highestHop = reservation.plannedHop;
+    }
+  }
+  return highestHop;
+}
+
+export function takeDelayedContinuationReservation(
+  sessionKey: string,
+  reservationId: string,
+): DelayedContinuationReservation | undefined {
+  const existing = delayedReservations.get(sessionKey);
+  if (!existing || existing.length === 0) {
+    return undefined;
+  }
+  const idx = existing.findIndex((reservation) => reservation.id === reservationId);
+  if (idx < 0) {
+    return undefined;
+  }
+  const [removed] = existing.splice(idx, 1);
+  if (existing.length === 0) {
+    delayedReservations.delete(sessionKey);
+  }
+  return removed;
+}
+
+export function removeDelayedContinuationReservation(
+  sessionKey: string,
+  reservationId: string,
+): boolean {
+  return takeDelayedContinuationReservation(sessionKey, reservationId) !== undefined;
+}
+
+export function clearDelayedContinuationReservations(sessionKey: string): void {
+  delayedReservations.delete(sessionKey);
 }
 
 // ---------------------------------------------------------------------------

@@ -8,9 +8,12 @@ import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
 import { onAgentEvent } from "../../infra/agent-events.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../infra/system-events.js";
 import {
+  clearDelayedContinuationReservations,
   consumePendingDelegates,
   consumeStagedPostCompactionDelegates,
+  delayedContinuationReservationCount,
   enqueuePendingDelegate,
+  listDelayedContinuationReservations,
   stagePostCompactionDelegate,
 } from "../continuation-delegate-store.js";
 import type { TemplateContext } from "../templating.js";
@@ -190,6 +193,8 @@ beforeEach(() => {
   consumePendingDelegates("test-session");
   consumeStagedPostCompactionDelegates("main");
   consumeStagedPostCompactionDelegates("test-session");
+  clearDelayedContinuationReservations("main");
+  clearDelayedContinuationReservations("test-session");
   // Default: no cron jobs in store.
   loadCronStoreMock.mockResolvedValue({ version: 1, jobs: [] });
   resetSystemEventsForTest();
@@ -215,6 +220,8 @@ afterEach(() => {
   consumePendingDelegates("test-session");
   consumeStagedPostCompactionDelegates("main");
   consumeStagedPostCompactionDelegates("test-session");
+  clearDelayedContinuationReservations("main");
+  clearDelayedContinuationReservations("test-session");
   resetSystemEventsForTest();
 });
 
@@ -2895,6 +2902,92 @@ describe("runReplyAgent continuation signal handling", () => {
     );
   });
 
+  it("DELEGATE: keeps delayed bracket reservations armed after turn cleanup without advancing chain count", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Queue delegate.\n[[CONTINUE_DELEGATE: inspect logs +1s]]" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(sessionEntry.continuationChainCount).toBe(0);
+    expect(sessionStore[sessionKey].continuationChainCount).toBe(0);
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(1);
+    expect(listDelayedContinuationReservations(sessionKey)).toEqual([
+      expect.objectContaining({ source: "bracket", plannedHop: 1 }),
+    ]);
+    expect(hasDelegatePending(sessionKey)).toBe(true);
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+  });
+
+  it("DELEGATE: delayed bracket reservations advance chain count only after accepted timer fire", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Queue delegate.\n[[CONTINUE_DELEGATE: inspect logs +1s]]" }],
+      meta: {},
+    });
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "accepted",
+      childSessionKey: "agent:main:subagent:delayed-bracket",
+      runId: "run-delayed-bracket",
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(sessionEntry.continuationChainCount).toBe(0);
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(sessionEntry.continuationChainCount).toBe(1);
+    expect(sessionStore[sessionKey].continuationChainCount).toBe(1);
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(0);
+  });
+
   it("DELEGATE: delayed bracket spawn reads generationGuardTolerance at fire time", async () => {
     vi.useFakeTimers();
     const sessionKey = "agent:main:telegram:dm:delegate-live-tolerance";
@@ -2970,7 +3063,62 @@ describe("runReplyAgent continuation signal handling", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(0);
     expect(hasDelegatePending(sessionKey)).toBe(false);
+  });
+
+  it("DELEGATE: clears delayed reservations on external input reset", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+    const followupRun = buildFollowupRun({
+      sessionKey,
+      continuation: {
+        enabled: true,
+        minDelayMs: 0,
+        maxDelayMs: 10_000,
+        generationGuardTolerance: 0,
+      },
+    });
+
+    runEmbeddedPiAgentMock
+      .mockResolvedValueOnce({
+        payloads: [{ text: "Queue delegate.\n[[CONTINUE_DELEGATE: inspect logs +1s]]" }],
+        meta: {},
+      })
+      .mockResolvedValueOnce({
+        payloads: [{ text: "Acknowledged." }],
+        meta: {},
+      });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun,
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(1);
+
+    await runTurn({
+      commandBody: "new external input",
+      followupRun,
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(0);
+    expect(hasDelegatePending(sessionKey)).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
   });
 
   it("DELEGATE: delayed tool spawn reads generationGuardTolerance at fire time", async () => {
@@ -3020,6 +3168,100 @@ describe("runReplyAgent continuation signal handling", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DELEGATE: keeps delayed tool reservations armed after turn cleanup without advancing chain count", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    enqueuePendingDelegate(sessionKey, {
+      task: "inspect shard health",
+      delayMs: 1_000,
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(sessionEntry.continuationChainCount).toBe(0);
+    expect(sessionStore[sessionKey].continuationChainCount).toBe(0);
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(1);
+    expect(listDelayedContinuationReservations(sessionKey)).toEqual([
+      expect.objectContaining({ source: "tool", plannedHop: 1 }),
+    ]);
+    expect(hasDelegatePending(sessionKey)).toBe(true);
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+  });
+
+  it("DELEGATE: delayed tool reservations advance chain count only after accepted timer fire", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    enqueuePendingDelegate(sessionKey, {
+      task: "inspect shard health",
+      delayMs: 1_000,
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "accepted",
+      childSessionKey: "agent:main:subagent:delayed-tool",
+      runId: "run-delayed-tool",
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(sessionEntry.continuationChainCount).toBe(0);
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(sessionEntry.continuationChainCount).toBe(1);
+    expect(sessionStore[sessionKey].continuationChainCount).toBe(1);
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(0);
   });
 
   it("DELEGATE: clears delegate-pending state when tool spawn fails", async () => {
@@ -3123,7 +3365,99 @@ describe("runReplyAgent continuation signal handling", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(0);
     expect(hasDelegatePending(sessionKey)).toBe(false);
+  });
+
+  it("DELEGATE: later immediate delegates use the highest allocated hop, not accepted-plus-reservations", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+    const followupRun = buildFollowupRun({
+      sessionKey,
+      continuation: {
+        enabled: true,
+        minDelayMs: 0,
+        maxDelayMs: 10_000,
+      },
+    });
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Queue delegate.\n[[CONTINUE_DELEGATE: inspect logs +60s]]" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun,
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(1);
+    expect(listDelayedContinuationReservations(sessionKey)).toEqual([
+      expect.objectContaining({ plannedHop: 1 }),
+    ]);
+
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "accepted",
+      childSessionKey: "agent:main:subagent:immediate-2",
+      runId: "run-immediate-2",
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Delegating now.\n[[CONTINUE_DELEGATE: do step 2]]" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "heartbeat",
+      followupRun,
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+      isHeartbeat: true,
+      isContinuationWake: true,
+    });
+
+    expect(String(spawnSubagentDirectMock.mock.calls[0]?.[0]?.task)).toContain(
+      "[continuation:chain-hop:2]",
+    );
+    expect(sessionEntry.continuationChainCount).toBe(2);
+
+    enqueuePendingDelegate(sessionKey, {
+      task: "do step 3",
+    });
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "accepted",
+      childSessionKey: "agent:main:subagent:immediate-3",
+      runId: "run-immediate-3",
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "heartbeat",
+      followupRun,
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+      isHeartbeat: true,
+      isContinuationWake: true,
+    });
+
+    expect(String(spawnSubagentDirectMock.mock.calls[1]?.[0]?.task)).toContain(
+      "[continuation:chain-hop:3]",
+    );
+    expect(sessionEntry.continuationChainCount).toBe(3);
+    expect(delayedContinuationReservationCount(sessionKey)).toBe(1);
   });
 
   it("DELEGATE: persists chain count so maxChainLength is enforced", async () => {
