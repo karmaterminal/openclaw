@@ -1,0 +1,13 @@
+{
+  "repoPath": "/home/figs/.openclaw/workspace/karmaterminal-openclaw",
+  "lastCommit": "95695c49884a53411d6cf70b5e5bf708bb8d927c",
+  "indexedAt": "2026-03-13T12:17:01.060Z",
+  "stats": {
+    "files": 7896,
+    "nodes": 40749,
+    "edges": 117029,
+    "communities": 3361,
+    "processes": 300,
+    "embeddings": 0
+  }
+}

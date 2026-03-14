@@ -1174,7 +1174,11 @@ export async function runReplyAgent(params: {
           maxDelegatesPerTurn: maxCompactionDelegates,
           costCapTokens: compactionCostCapTokens,
         } = resolveContinuationRuntimeConfig(cfg);
-        const releasedCompactionDelegates = allCompactionDelegates.slice(0, maxCompactionDelegates);
+        // Account for bracket delegate spawned this turn so combined count
+        // cannot exceed maxDelegatesPerTurn.
+        const bracketDelegateOffset = continuationSignal?.kind === "delegate" ? 1 : 0;
+        const compactionBudget = Math.max(0, maxCompactionDelegates - bracketDelegateOffset);
+        const releasedCompactionDelegates = allCompactionDelegates.slice(0, compactionBudget);
         let droppedCompactionDelegates = Math.max(
           0,
           allCompactionDelegates.length - releasedCompactionDelegates.length,
@@ -1770,7 +1774,7 @@ export async function runReplyAgent(params: {
       }
     }
 
-    if (!autoCompactionCompleted && continuationFeatureEnabled && sessionKey) {
+    if (!autoCompactionCount && continuationFeatureEnabled && sessionKey) {
       const stagedCompactionDelegates = consumeStagedPostCompactionDelegates(sessionKey);
       if (stagedCompactionDelegates.length > 0) {
         try {
