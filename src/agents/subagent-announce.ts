@@ -1433,7 +1433,11 @@ export async function runSubagentAnnounceFlow(params: {
       }
     }
 
-    if (!childCompletionFindings) {
+    if (childCompletionFindings?.trim()) {
+      // Descendant completions were synthesized successfully; announce that
+      // result upward unless we converted it into a wake continuation above.
+      reply = childCompletionFindings;
+    } else {
       const fallbackReply = params.fallbackReply?.trim() ? params.fallbackReply.trim() : undefined;
       const fallbackIsSilent =
         Boolean(fallbackReply) &&

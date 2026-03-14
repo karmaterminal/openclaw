@@ -1951,6 +1951,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("announces with direct child completion outputs once all descendants are settled", async () => {
+    configOverride = {
+      ...configOverride,
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
     subagentRegistryMock.countPendingDescendantRuns.mockReturnValue(0);
     subagentRegistryMock.listSubagentRunsForRequester.mockImplementation(
       (sessionKey: string, scope?: { requesterRunId?: string }) => {
@@ -2116,6 +2120,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("does not re-wake an already woken run id", async () => {
+    configOverride = {
+      ...configOverride,
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
     sessionStore = {
       "agent:main:subagent:parent": {
         sessionId: "session-parent",
@@ -2175,6 +2183,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("nested completion chains re-check child then parent deterministically", async () => {
+    configOverride = {
+      ...configOverride,
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
     const parentSessionKey = "agent:main:subagent:parent";
     const childSessionKey = "agent:main:subagent:parent:subagent:child";
     let parentPending = 1;
@@ -2558,6 +2570,10 @@ describe("subagent announce formatting", () => {
     });
 
     it("regression nested 2-level, parent announces direct child frozen result instead of placeholder text", async () => {
+      configOverride = {
+        ...configOverride,
+        agents: { defaults: { continuation: { enabled: true } } },
+      };
       // Regression guard: parent announce once used stale waiting text instead of child completion output.
       subagentRegistryMock.countPendingDescendantRuns.mockReturnValue(0);
       subagentRegistryMock.listSubagentRunsForRequester.mockImplementation((sessionKey: string) =>
@@ -2594,6 +2610,10 @@ describe("subagent announce formatting", () => {
     });
 
     it("regression parallel fan-out, parent defers until both children settle and then includes both outputs", async () => {
+      configOverride = {
+        ...configOverride,
+        agents: { defaults: { continuation: { enabled: true } } },
+      };
       // Regression guard: fan-out paths previously announced after the first child and dropped the sibling.
       let pending = 1;
       subagentRegistryMock.countPendingDescendantRuns.mockImplementation((sessionKey: string) =>
@@ -2651,6 +2671,10 @@ describe("subagent announce formatting", () => {
     });
 
     it("regression parallel timing difference, fast child cannot trigger early parent announce before slow child settles", async () => {
+      configOverride = {
+        ...configOverride,
+        agents: { defaults: { continuation: { enabled: true } } },
+      };
       // Regression guard: timing skew once allowed partial parent announces with only fast-child output.
       let pendingSlowChild = 1;
       subagentRegistryMock.countPendingDescendantRuns.mockImplementation((sessionKey: string) =>
@@ -2709,6 +2733,10 @@ describe("subagent announce formatting", () => {
     });
 
     it("regression nested parallel, middle waits for two children then parent receives the synthesized middle result", async () => {
+      configOverride = {
+        ...configOverride,
+        agents: { defaults: { continuation: { enabled: true } } },
+      };
       // Regression guard: nested fan-out previously leaked incomplete middle-agent output to the parent.
       const middleSessionKey = "agent:main:subagent:parent-nested:subagent:middle";
       let middlePending = 2;
@@ -2791,6 +2819,10 @@ describe("subagent announce formatting", () => {
     });
 
     it("regression sequential spawning, parent preserves child output order across child 1 then child 2 then child 3", async () => {
+      configOverride = {
+        ...configOverride,
+        agents: { defaults: { continuation: { enabled: true } } },
+      };
       // Regression guard: synthesized child summaries must stay deterministic for sequential orchestration chains.
       subagentRegistryMock.countPendingDescendantRuns.mockReturnValue(0);
       subagentRegistryMock.listSubagentRunsForRequester.mockImplementation((sessionKey: string) =>
@@ -2845,6 +2877,10 @@ describe("subagent announce formatting", () => {
     });
 
     it("regression child error handling, parent announce includes child error status and preserved child output", async () => {
+      configOverride = {
+        ...configOverride,
+        agents: { defaults: { continuation: { enabled: true } } },
+      };
       // Regression guard: failed child outcomes must still surface through parent completion synthesis.
       subagentRegistryMock.countPendingDescendantRuns.mockReturnValue(0);
       subagentRegistryMock.listSubagentRunsForRequester.mockImplementation((sessionKey: string) =>
@@ -2928,6 +2964,10 @@ describe("subagent announce formatting", () => {
     });
 
     it("regression deep 3-level re-check chain, child announce then parent re-check emits synthesized parent output", async () => {
+      configOverride = {
+        ...configOverride,
+        agents: { defaults: { continuation: { enabled: true } } },
+      };
       // Regression guard: child completion must unblock parent announce on deterministic re-check.
       const parentSessionKey = "agent:main:subagent:parent-recheck";
       const childSessionKey = `${parentSessionKey}:subagent:child`;
