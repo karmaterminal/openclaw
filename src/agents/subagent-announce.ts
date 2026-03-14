@@ -201,6 +201,7 @@ async function waitForAnnounceRetryDelay(ms: number, signal?: AbortSignal): Prom
 async function runAnnounceDeliveryWithRetry<T>(params: {
   operation: string;
   signal?: AbortSignal;
+  noRetryOnGatewayTimeout?: boolean;
   run: () => Promise<T>;
 }): Promise<T> {
   let retryIndex = 0;

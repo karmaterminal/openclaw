@@ -362,8 +362,12 @@ async function persistAcpTurnTranscript(params: {
 }
 function resolveAgentRunTrigger(
   continuationTrigger: AgentCommandOpts["continuationTrigger"] | undefined,
-): string {
-  return continuationTrigger ?? "user";
+): import("./pi-embedded-runner/run/params.js").EmbeddedRunTrigger {
+  // Continuation triggers ("work-wake", "delegate-return") are not in the
+  // EmbeddedRunTrigger union yet — they're proposed additions via this PR.
+  // Cast is safe: the trigger field is used for logging and policy lookup,
+  // and unknown values fall through to default policy.
+  return (continuationTrigger ?? "user") as import("./pi-embedded-runner/run/params.js").EmbeddedRunTrigger;
 }
 function runAgentAttempt(params: {
   providerOverride: string;

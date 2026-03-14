@@ -1446,7 +1446,10 @@ export async function runReplyAgent(params: {
                     await persistContinuationChainState({
                       count: Math.max(activeSessionEntry?.continuationChainCount ?? 0, plannedHop),
                       startedAt: options?.startedAt ?? chainStartedAt,
-                      tokens: accumulatedChainTokens,
+                      tokens: Math.max(
+                        accumulatedChainTokens,
+                        activeSessionEntry?.continuationChainTokens ?? 0,
+                      ),
                     });
                     enqueueSystemEvent(
                       `[continuation:delegate-spawned] Spawned turn ${plannedHop}/${maxChainLength}: ${task}`,
@@ -1694,7 +1697,10 @@ export async function runReplyAgent(params: {
                 await persistContinuationChainState({
                   count: currentChainCount,
                   startedAt: options?.startedAt ?? chainStartedAt,
-                  tokens: accumulatedChainTokens,
+                  tokens: Math.max(
+                    accumulatedChainTokens,
+                    activeSessionEntry?.continuationChainTokens ?? 0,
+                  ),
                 });
                 enqueueSystemEvent(
                   `[continuation:delegate-spawned] Tool delegate turn ${plannedHop}/${maxChainLength}: ${task}`,
