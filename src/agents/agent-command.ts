@@ -261,9 +261,26 @@ function createAcpVisibleTextAccumulator() {
       return nextVisible.delta ? nextVisible : null;
     },
     finalize(): string {
+      // Flush any buffered prefix that was never resolved as a silent reply.
+      // This handles edge cases where the stream ends mid-prefix (e.g. "NO"
+      // without the disambiguating "_REPLY" suffix).
+      if (pendingSilentPrefix && !visibleText) {
+        const trimmed = pendingSilentPrefix.trim();
+        if (!isSilentReplyText(trimmed, SILENT_REPLY_TOKEN)) {
+          return trimmed;
+        }
+      }
       return visibleText.trim();
     },
     finalizeRaw(): string {
+      // Flush any buffered prefix that was never resolved as a silent reply,
+      // same logic as finalize() but returning the raw (untrimmed) text.
+      if (pendingSilentPrefix && !visibleText) {
+        const trimmed = pendingSilentPrefix.trim();
+        if (!isSilentReplyText(trimmed, SILENT_REPLY_TOKEN)) {
+          return pendingSilentPrefix;
+        }
+      }
       return visibleText;
     },
   };
@@ -348,7 +365,11 @@ async function persistAcpTurnTranscript(params: {
   emitSessionTranscriptUpdate(sessionFile);
   return sessionEntry;
 }
-
+function resolveAgentRunTrigger(
+  continuationTrigger: AgentCommandOpts["continuationTrigger"] | undefined,
+): string {
+  return continuationTrigger ?? "user";
+}
 function runAgentAttempt(params: {
   providerOverride: string;
   modelOverride: string;
@@ -491,7 +512,7 @@ function runAgentAttempt(params: {
     sessionId: params.sessionId,
     sessionKey: params.sessionKey,
     agentId: params.sessionAgentId,
-    trigger: "user",
+    trigger: resolveAgentRunTrigger(params.opts.continuationTrigger),
     messageChannel: params.messageChannel,
     agentAccountId: params.runContext.accountId,
     messageTo: params.opts.replyTo ?? params.opts.to,
