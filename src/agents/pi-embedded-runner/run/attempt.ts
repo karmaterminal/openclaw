@@ -2011,6 +2011,7 @@ export async function runEmbeddedAttempt(
       userTimeFormat,
       contextFiles,
       memoryCitationsMode: params.config?.memory?.citations,
+      continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
     });
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
