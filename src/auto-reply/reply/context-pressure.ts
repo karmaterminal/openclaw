@@ -37,6 +37,7 @@ export function checkContextPressure(
   // all band thresholds → band = 0 → no event. Safe by arithmetic, not by explicit guard.
   if (
     contextPressureThreshold == null ||
+    contextPressureThreshold <= 0 ||
     contextWindowTokens <= 0 ||
     sessionEntry.totalTokens == null ||
     sessionEntry.totalTokens <= 0 ||

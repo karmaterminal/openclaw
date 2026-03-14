@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { lookupContextTokens } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { resolveModelAuthMode } from "../../agents/model-auth.js";
@@ -565,6 +566,7 @@ export async function runReplyAgent(params: {
   });
 
   let responseUsageLine: string | undefined;
+  const postCompactionDelegatesToPreserve: SessionPostCompactionDelegate[] = [];
   type SessionResetOptions = {
     failureLabel: string;
     buildLogMessage: (nextSessionId: string) => string;
@@ -1066,7 +1068,10 @@ export async function runReplyAgent(params: {
         const compactionChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
         let dispatchedCompactionDelegates = 0;
 
-        const workspaceDir = followupRun.run.workspaceDir ?? process.cwd();
+        const workspaceDir =
+          typeof followupRun.run.workspaceDir === "string" && followupRun.run.workspaceDir.trim()
+            ? followupRun.run.workspaceDir
+            : resolveAgentWorkspaceDir(cfg, followupRun.run.agentId);
         readPostCompactionContext(workspaceDir, cfg)
           .then((contextContent) => {
             if (contextContent) {
@@ -1107,44 +1112,62 @@ export async function runReplyAgent(params: {
           defaultRuntime.log(
             `Post-compaction delegate dispatch for session ${sessionKey}: ${delegate.task}`,
           );
-          currentCompactionChainCount = nextCompactionChainCount;
-          dispatchedCompactionDelegates += 1;
-          spawnSubagentDirect(
-            {
-              task:
-                `[continuation:post-compaction] ` +
-                `[continuation:chain-hop:${nextCompactionChainCount}] ` +
-                `Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
-              silentAnnounce: true,
-              wakeOnReturn: true,
-            },
-            {
-              agentSessionKey: sessionKey,
-              agentChannel: followupRun.originatingChannel ?? undefined,
-              agentAccountId: followupRun.originatingAccountId ?? undefined,
-              agentTo: followupRun.originatingTo ?? undefined,
-              agentThreadId: followupRun.originatingThreadId ?? undefined,
-            },
-          )
-            .then((spawnResult) => {
-              if (spawnResult.status === "accepted") {
-                enqueueSystemEvent(
-                  `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${delegate.task}`,
-                  { sessionKey },
-                );
-              } else {
-                defaultRuntime.log(
-                  `Post-compaction delegate rejected (${spawnResult.status}) for session ${sessionKey}`,
-                );
-              }
-            })
-            .catch((err) => {
-              // Re-stage so the delegate can be retried on the next compaction cycle.
-              stagePostCompactionDelegate(sessionKey, delegate);
-              defaultRuntime.log(
-                `Post-compaction delegate failed for session ${sessionKey} (re-staged): ${String(err)}`,
+          try {
+            const spawnResult = await spawnSubagentDirect(
+              {
+                task:
+                  `[continuation:post-compaction] ` +
+                  `[continuation:chain-hop:${nextCompactionChainCount}] ` +
+                  `Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
+                silentAnnounce: true,
+                wakeOnReturn: true,
+              },
+              {
+                agentSessionKey: sessionKey,
+                agentChannel: followupRun.originatingChannel ?? undefined,
+                agentAccountId: followupRun.originatingAccountId ?? undefined,
+                agentTo: followupRun.originatingTo ?? undefined,
+                agentThreadId: followupRun.originatingThreadId ?? undefined,
+              },
+            );
+            if (spawnResult.status === "accepted") {
+              currentCompactionChainCount = nextCompactionChainCount;
+              dispatchedCompactionDelegates += 1;
+              enqueueSystemEvent(
+                `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${delegate.task}`,
+                { sessionKey },
               );
+            } else {
+              droppedCompactionDelegates += 1;
+              postCompactionDelegatesToPreserve.push(delegate);
+              defaultRuntime.log(
+                `Post-compaction delegate rejected (${spawnResult.status}) for session ${sessionKey} (re-staged)`,
+              );
+            }
+          } catch (err) {
+            droppedCompactionDelegates += 1;
+            postCompactionDelegatesToPreserve.push(delegate);
+            defaultRuntime.log(
+              `Post-compaction delegate failed for session ${sessionKey} (re-staged): ${String(err)}`,
+            );
+          }
+        }
+
+        if (postCompactionDelegatesToPreserve.length > 0) {
+          try {
+            await persistPendingPostCompactionDelegates({
+              sessionEntry: activeSessionEntry,
+              sessionStore: activeSessionStore,
+              sessionKey,
+              storePath,
+              delegates: postCompactionDelegatesToPreserve,
             });
+            postCompactionDelegatesToPreserve.length = 0;
+          } catch (err) {
+            defaultRuntime.log(
+              `Failed to persist re-staged post-compaction delegates for ${sessionKey} (${postCompactionDelegatesToPreserve.length}): ${String(err)}`,
+            );
+          }
         }
 
         enqueueSystemEvent(
@@ -1238,40 +1261,8 @@ export async function runReplyAgent(params: {
             );
             bumpContinuationGeneration(sessionKey);
           } else {
-            // Persist chain state for both DELEGATE and WORK paths
             const nextChainCount = currentChainCount + 1;
             const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
-            if (activeSessionEntry) {
-              activeSessionEntry.continuationChainCount = nextChainCount;
-              activeSessionEntry.continuationChainStartedAt = chainStartedAt;
-              activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
-            }
-            if (activeSessionStore) {
-              activeSessionStore[sessionKey] = {
-                ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
-                continuationChainCount: nextChainCount,
-                continuationChainStartedAt: chainStartedAt,
-                continuationChainTokens: accumulatedChainTokens,
-              };
-            }
-            // Persist to disk so chain counters survive across turns
-            if (storePath) {
-              try {
-                await updateSessionStore(storePath, (store) => {
-                  const entry = store[sessionKey];
-                  if (entry) {
-                    entry.continuationChainCount = nextChainCount;
-                    entry.continuationChainStartedAt = chainStartedAt;
-                    entry.continuationChainTokens = accumulatedChainTokens;
-                  }
-                });
-              } catch (err) {
-                defaultRuntime.log(
-                  `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
-                );
-              }
-            }
-
             if (continuationSignal.kind === "delegate") {
               const delegateTask = continuationSignal.task;
               const delegateDelayMs = continuationSignal.delayMs;
@@ -1306,6 +1297,7 @@ export async function runReplyAgent(params: {
                       `[continuation:delegate-spawned] Spawned turn ${nextChainCount}/${maxChainLength}: ${delegateTask}`,
                       { sessionKey },
                     );
+                    return true;
                   } else {
                     defaultRuntime.log(
                       `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
@@ -1314,6 +1306,7 @@ export async function runReplyAgent(params: {
                       `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${delegateTask}`,
                       { sessionKey },
                     );
+                    return false;
                   }
                 } catch (err) {
                   clearDelegatePending(sessionKey);
@@ -1324,6 +1317,7 @@ export async function runReplyAgent(params: {
                     `[continuation] DELEGATE spawn failed: ${String(err)}. Original task: ${delegateTask}`,
                     { sessionKey },
                   );
+                  return false;
                 }
               };
 
@@ -1334,6 +1328,36 @@ export async function runReplyAgent(params: {
               }
 
               if (delegateDelayMs && delegateDelayMs > 0) {
+                if (activeSessionEntry) {
+                  activeSessionEntry.continuationChainCount = nextChainCount;
+                  activeSessionEntry.continuationChainStartedAt = chainStartedAt;
+                  activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
+                }
+                if (activeSessionStore) {
+                  activeSessionStore[sessionKey] = {
+                    ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
+                    continuationChainCount: nextChainCount,
+                    continuationChainStartedAt: chainStartedAt,
+                    continuationChainTokens: accumulatedChainTokens,
+                  };
+                }
+                // Persist to disk so delayed delegate reservations survive across turns.
+                if (storePath) {
+                  try {
+                    await updateSessionStore(storePath, (store) => {
+                      const entry = store[sessionKey];
+                      if (entry) {
+                        entry.continuationChainCount = nextChainCount;
+                        entry.continuationChainStartedAt = chainStartedAt;
+                        entry.continuationChainTokens = accumulatedChainTokens;
+                      }
+                    });
+                  } catch (err) {
+                    defaultRuntime.log(
+                      `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
+                    );
+                  }
+                }
                 // Timed dispatch: spawn after delay. Timer does not survive
                 // gateway restart — acceptable for v1 (see #176 for durable timers).
                 const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
@@ -1360,9 +1384,70 @@ export async function runReplyAgent(params: {
                   void doSpawn(true);
                 }, clampedDelay);
               } else {
-                await doSpawn();
+                const accepted = await doSpawn();
+                if (accepted) {
+                  if (activeSessionEntry) {
+                    activeSessionEntry.continuationChainCount = nextChainCount;
+                    activeSessionEntry.continuationChainStartedAt = chainStartedAt;
+                    activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
+                  }
+                  if (activeSessionStore) {
+                    activeSessionStore[sessionKey] = {
+                      ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
+                      continuationChainCount: nextChainCount,
+                      continuationChainStartedAt: chainStartedAt,
+                      continuationChainTokens: accumulatedChainTokens,
+                    };
+                  }
+                  if (storePath) {
+                    try {
+                      await updateSessionStore(storePath, (store) => {
+                        const entry = store[sessionKey];
+                        if (entry) {
+                          entry.continuationChainCount = nextChainCount;
+                          entry.continuationChainStartedAt = chainStartedAt;
+                          entry.continuationChainTokens = accumulatedChainTokens;
+                        }
+                      });
+                    } catch (err) {
+                      defaultRuntime.log(
+                        `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
+                      );
+                    }
+                  }
+                }
               }
             } else {
+              if (activeSessionEntry) {
+                activeSessionEntry.continuationChainCount = nextChainCount;
+                activeSessionEntry.continuationChainStartedAt = chainStartedAt;
+                activeSessionEntry.continuationChainTokens = accumulatedChainTokens;
+              }
+              if (activeSessionStore) {
+                activeSessionStore[sessionKey] = {
+                  ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
+                  continuationChainCount: nextChainCount,
+                  continuationChainStartedAt: chainStartedAt,
+                  continuationChainTokens: accumulatedChainTokens,
+                };
+              }
+              // Persist chain state for WORK paths before the timer fires.
+              if (storePath) {
+                try {
+                  await updateSessionStore(storePath, (store) => {
+                    const entry = store[sessionKey];
+                    if (entry) {
+                      entry.continuationChainCount = nextChainCount;
+                      entry.continuationChainStartedAt = chainStartedAt;
+                      entry.continuationChainTokens = accumulatedChainTokens;
+                    }
+                  });
+                } catch (err) {
+                  defaultRuntime.log(
+                    `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
+                  );
+                }
+              }
               // WORK: schedule a continuation turn after delay
               const requestedDelay = continuationSignal.delayMs ?? defaultDelayMs;
               const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, requestedDelay));
@@ -1496,6 +1581,7 @@ export async function runReplyAgent(params: {
                   `[continuation:delegate-spawned] Tool delegate turn ${nextChainCount}/${maxChainLength}: ${delegate.task}`,
                   { sessionKey },
                 );
+                return true;
               } else {
                 defaultRuntime.log(
                   `Tool DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
@@ -1504,6 +1590,7 @@ export async function runReplyAgent(params: {
                   `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${delegate.task}`,
                   { sessionKey },
                 );
+                return false;
               }
             } catch (err) {
               clearDelegatePending(sessionKey);
@@ -1514,6 +1601,7 @@ export async function runReplyAgent(params: {
                 `[continuation] Tool DELEGATE spawn failed: ${String(err)}. Task: ${delegate.task}`,
                 { sessionKey },
               );
+              return false;
             }
           };
 
@@ -1546,11 +1634,13 @@ export async function runReplyAgent(params: {
               }
               void doToolSpawn(true);
             }, clampedDelay);
+            currentChainCount = nextChainCount;
           } else {
-            await doToolSpawn();
+            const accepted = await doToolSpawn();
+            if (accepted) {
+              currentChainCount = nextChainCount;
+            }
           }
-
-          currentChainCount = nextChainCount;
         }
 
         // Persist updated chain state after processing all tool delegates
@@ -1600,10 +1690,7 @@ export async function runReplyAgent(params: {
             delegates: stagedCompactionDelegates,
           });
         } catch (err) {
-          // Re-stage consumed delegates so they survive for the next attempt.
-          for (const delegate of stagedCompactionDelegates) {
-            stagePostCompactionDelegate(sessionKey, delegate);
-          }
+          postCompactionDelegatesToPreserve.push(...stagedCompactionDelegates);
           defaultRuntime.log(
             `Failed to persist post-compaction delegates for ${sessionKey} (re-staged ${stagedCompactionDelegates.length}): ${String(err)}`,
           );
@@ -1634,6 +1721,9 @@ export async function runReplyAgent(params: {
     if (sessionKey) {
       consumePendingDelegates(sessionKey);
       consumeStagedPostCompactionDelegates(sessionKey);
+      for (const delegate of postCompactionDelegatesToPreserve) {
+        stagePostCompactionDelegate(sessionKey, delegate);
+      }
     }
     // Safety net: the dispatcher's onIdle callback normally fires
     // markDispatchIdle(), but if the dispatcher exits early, errors,

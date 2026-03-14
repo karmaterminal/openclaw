@@ -43,7 +43,7 @@ function clampNonNegativeInt(value: unknown, fallback: number): number {
 }
 
 function clampOptionalUnitInterval(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1) {
     return undefined;
   }
   return value;

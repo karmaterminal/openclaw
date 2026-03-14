@@ -799,6 +799,197 @@ describe("runReplyAgent auto-compaction token update", () => {
     expect(stored[sessionKey].continuationChainCount).toBe(2);
   });
 
+  it("re-queues post-compaction delegates when dispatch is not accepted", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compact-requeue-"));
+    const workspaceDir = path.join(tmp, "workspace");
+    await fs.mkdir(workspaceDir, { recursive: true });
+    const sessionFile = path.join(tmp, "session.jsonl");
+    await fs.writeFile(
+      sessionFile,
+      `${JSON.stringify({ type: "message", message: { role: "assistant", content: [] } })}\n`,
+      "utf-8",
+    );
+
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      totalTokens: 10_000,
+      compactionCount: 0,
+      pendingPostCompactionDelegates: [{ task: "retry shard", createdAt: 1 }],
+    };
+
+    await seedSessionStore({ storePath, sessionKey, entry: sessionEntry });
+    spawnSubagentDirectMock.mockResolvedValue({ status: "error" });
+    runEmbeddedPiAgentMock.mockImplementation(async (params: EmbeddedRunParams) => {
+      params.onAgentEvent?.({ stream: "compaction", data: { phase: "start" } });
+      params.onAgentEvent?.({ stream: "compaction", data: { phase: "end", willRetry: false } });
+      return {
+        payloads: [{ text: "done" }],
+        meta: {
+          agentMeta: {
+            usage: { input: 11_000, output: 500, total: 11_500 },
+            lastCallUsage: { input: 10_500, output: 500, total: 11_000 },
+            compactionCount: 1,
+          },
+        },
+      };
+    });
+
+    const config = {
+      agents: {
+        defaults: {
+          continuation: { enabled: true, maxDelegatesPerTurn: 5 },
+          compaction: { memoryFlush: { enabled: false } },
+        },
+      },
+    };
+    const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
+      storePath,
+      sessionEntry,
+      config,
+      sessionFile,
+      workspaceDir,
+    });
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun,
+      queueKey: "main",
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing,
+      sessionCtx,
+      sessionEntry,
+      sessionStore: { [sessionKey]: sessionEntry },
+      sessionKey,
+      storePath,
+      defaultModel: "anthropic/claude-opus-4-5",
+      agentCfgContextTokens: 200_000,
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    const lifecycleEvent = enqueueSystemEventMock.mock.calls.find((call) =>
+      String(call[0]).includes("[system:post-compaction]"),
+    );
+    expect(lifecycleEvent?.[0]).toContain("Released 0 post-compaction delegate(s)");
+    expect(lifecycleEvent?.[0]).toContain("1 delegate(s) were not released");
+
+    const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
+    expect(stored[sessionKey].pendingPostCompactionDelegates).toEqual([
+      { task: "retry shard", createdAt: 1 },
+    ]);
+    expect(stored[sessionKey].continuationChainCount ?? 0).toBe(0);
+  });
+
+  it("uses the resolved agent workspace for post-compaction context when run workspaceDir is unset", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compact-workspace-"));
+    const fallbackWorkspaceDir = path.join(tmp, "agent-workspace");
+    await fs.mkdir(fallbackWorkspaceDir, { recursive: true });
+    await fs.writeFile(
+      path.join(fallbackWorkspaceDir, "AGENTS.md"),
+      [
+        "## Session Startup",
+        "Read fallback workspace state.",
+        "",
+        "## Red Lines",
+        "Never skip startup.",
+      ].join("\n"),
+      "utf-8",
+    );
+    const sessionFile = path.join(tmp, "session.jsonl");
+    await fs.writeFile(
+      sessionFile,
+      `${JSON.stringify({ type: "message", message: { role: "assistant", content: [] } })}\n`,
+      "utf-8",
+    );
+
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      totalTokens: 10_000,
+      compactionCount: 0,
+    };
+
+    await seedSessionStore({ storePath, sessionKey, entry: sessionEntry });
+    runEmbeddedPiAgentMock.mockImplementation(async (params: EmbeddedRunParams) => {
+      params.onAgentEvent?.({ stream: "compaction", data: { phase: "start" } });
+      params.onAgentEvent?.({ stream: "compaction", data: { phase: "end", willRetry: false } });
+      return {
+        payloads: [{ text: "done" }],
+        meta: {
+          agentMeta: {
+            usage: { input: 11_000, output: 500, total: 11_500 },
+            lastCallUsage: { input: 10_500, output: 500, total: 11_000 },
+            compactionCount: 1,
+          },
+        },
+      };
+    });
+
+    const config = {
+      agents: {
+        defaults: {
+          workspace: fallbackWorkspaceDir,
+          compaction: { memoryFlush: { enabled: false } },
+        },
+      },
+    };
+    const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
+      storePath,
+      sessionEntry,
+      config,
+      sessionFile,
+      workspaceDir: path.join(tmp, "unused"),
+    });
+    followupRun.run.workspaceDir = undefined as unknown as string;
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun,
+      queueKey: "main",
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing,
+      sessionCtx,
+      sessionEntry,
+      sessionStore: { [sessionKey]: sessionEntry },
+      sessionKey,
+      storePath,
+      defaultModel: "anthropic/claude-opus-4-5",
+      agentCfgContextTokens: 200_000,
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        enqueueSystemEventMock.mock.calls.some((call) =>
+          String(call[0]).includes("Read fallback workspace state."),
+        ),
+      ).toBe(true);
+    });
+  });
+
   it("blocks post-compaction delegates when maxChainLength is already reached", async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compact-chain-cap-"));
     const workspaceDir = path.join(tmp, "workspace");
@@ -2595,6 +2786,40 @@ describe("runReplyAgent continuation signal handling", () => {
     expect(hasDelegatePending(sessionKey)).toBe(false);
   });
 
+  it("DELEGATE: does not increment chain count when bracket spawn is not accepted", async () => {
+    const sessionKey = "agent:main:telegram:dm:delegate-failure-no-hop";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    spawnSubagentDirectMock.mockResolvedValueOnce({ status: "error" });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Delegating now.\n[[CONTINUE_DELEGATE: inspect failure path]]" }],
+      meta: {},
+    });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(sessionEntry.continuationChainCount).toBe(0);
+    expect(sessionStore[sessionKey].continuationChainCount).toBe(0);
+  });
+
   it("DELEGATE: no continuation timer scheduled", async () => {
     vi.useFakeTimers();
     const delegateTask = "Autonomous background work";
@@ -2825,6 +3050,43 @@ describe("runReplyAgent continuation signal handling", () => {
     });
 
     expect(hasDelegatePending(sessionKey)).toBe(false);
+  });
+
+  it("DELEGATE: does not increment chain count when tool spawn is not accepted", async () => {
+    const sessionKey = "agent:main:telegram:dm:tool-failure-no-hop";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 0,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    enqueuePendingDelegate(sessionKey, {
+      task: "inspect tool failure path",
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+    spawnSubagentDirectMock.mockResolvedValueOnce({ status: "error" });
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun: buildFollowupRun({
+        sessionKey,
+        continuation: {
+          enabled: true,
+          minDelayMs: 0,
+          maxDelayMs: 10_000,
+        },
+      }),
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(sessionEntry.continuationChainCount).toBe(0);
+    expect(sessionStore[sessionKey].continuationChainCount).toBe(0);
   });
 
   it("DELEGATE: clears delegate-pending state when tool timer is cancelled", async () => {

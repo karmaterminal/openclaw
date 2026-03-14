@@ -83,6 +83,22 @@ describe("continuation runtime config", () => {
     });
   });
 
+  it("treats non-positive contextPressureThreshold values as unset", () => {
+    configOverride = {
+      agents: {
+        defaults: {
+          continuation: {
+            contextPressureThreshold: 0,
+          },
+        },
+      },
+    };
+
+    expect(resolveContinuationRuntimeConfig()).toMatchObject({
+      contextPressureThreshold: undefined,
+    });
+  });
+
   it("allows zero delay bounds for runtime-only/test overrides", () => {
     configOverride = {
       agents: {
