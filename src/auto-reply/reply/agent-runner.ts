@@ -1353,6 +1353,7 @@ export async function runReplyAgent(params: {
     // Handle continuation signal (CONTINUE_WORK / CONTINUE_DELEGATE)
     // continuationSignal is only set when continuationFeatureEnabled === true (checked
     // at parse time), so no redundant enabled re-check is needed here.
+    let bracketTokensAccumulated = false;
     if (continuationSignal && sessionKey) {
       const { maxChainLength, defaultDelayMs, minDelayMs, maxDelayMs, costCapTokens } =
         resolveContinuationRuntimeConfig(cfg);
@@ -1380,6 +1381,7 @@ export async function runReplyAgent(params: {
           const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
           const previousChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
           const accumulatedChainTokens = previousChainTokens + turnTokens;
+          bracketTokensAccumulated = true;
 
           if (costCapTokens > 0 && accumulatedChainTokens > costCapTokens) {
             defaultRuntime.log(
@@ -1605,7 +1607,7 @@ export async function runReplyAgent(params: {
         // Accumulate current turn's token usage into chain cost.
         // Skip if the bracket-signal path already accumulated this turn's tokens
         // (both paths read from the same activeSessionEntry.continuationChainTokens).
-        const bracketAlreadyAccumulated = continuationSignal != null;
+        const bracketAlreadyAccumulated = bracketTokensAccumulated;
         const toolDelegateUsage = runResult.meta?.agentMeta?.usage;
         // Count only input + output tokens for cost cap (excludes cache reads/writes
         // which inflate the count with inherited system prompt context).
