@@ -32,6 +32,7 @@ import {
   modelKey,
   normalizeModelRef,
   normalizeProviderId,
+  parseModelRef,
   resolveConfiguredModelRef,
   resolveDefaultModelForAgent,
   resolveThinkingDefault,
@@ -123,6 +124,36 @@ const OVERRIDE_FIELDS_CLEARED_BY_DELETE: OverrideFieldClearedByDelete[] = [
   "fallbackNoticeReason",
   "claudeCliSessionId",
 ];
+
+const OVERRIDE_VALUE_MAX_LENGTH = 256;
+
+function containsControlCharacters(value: string): boolean {
+  for (const char of value) {
+    const code = char.codePointAt(0);
+    if (code === undefined) {
+      continue;
+    }
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizeExplicitOverrideInput(raw: string, kind: "provider" | "model"): string {
+  const trimmed = raw.trim();
+  const label = kind === "provider" ? "Provider" : "Model";
+  if (!trimmed) {
+    throw new Error(`${label} override must be non-empty.`);
+  }
+  if (trimmed.length > OVERRIDE_VALUE_MAX_LENGTH) {
+    throw new Error(`${label} override exceeds ${String(OVERRIDE_VALUE_MAX_LENGTH)} characters.`);
+  }
+  if (containsControlCharacters(trimmed)) {
+    throw new Error(`${label} override contains invalid control characters.`);
+  }
+  return trimmed;
+}
 
 async function persistSessionEntry(params: PersistSessionEntryParams): Promise<void> {
   const persisted = await updateSessionStore(params.storePath, (store) => {
@@ -950,7 +981,19 @@ async function agentCommandInternal(
     const hasStoredOverride = Boolean(
       sessionEntry?.modelOverride || sessionEntry?.providerOverride,
     );
-    const needsModelCatalog = hasAllowlist || hasStoredOverride;
+    const explicitProviderOverride =
+      typeof opts.provider === "string"
+        ? normalizeExplicitOverrideInput(opts.provider, "provider")
+        : undefined;
+    const explicitModelOverride =
+      typeof opts.model === "string"
+        ? normalizeExplicitOverrideInput(opts.model, "model")
+        : undefined;
+    const hasExplicitRunOverride = Boolean(explicitProviderOverride || explicitModelOverride);
+    if (hasExplicitRunOverride && opts.allowModelOverride !== true) {
+      throw new Error("Model override is not authorized for this caller.");
+    }
+    const needsModelCatalog = hasAllowlist || hasStoredOverride || hasExplicitRunOverride;
     let allowedModelKeys = new Set<string>();
     let allowedModelCatalog: Awaited<ReturnType<typeof loadModelCatalog>> = [];
     let modelCatalog: Awaited<ReturnType<typeof loadModelCatalog>> | null = null;
@@ -1013,13 +1056,38 @@ async function agentCommandInternal(
         model = normalizedStored.model;
       }
     }
+    const providerForAuthProfileValidation = provider;
+    if (hasExplicitRunOverride) {
+      const explicitRef = explicitModelOverride
+        ? explicitProviderOverride
+          ? normalizeModelRef(explicitProviderOverride, explicitModelOverride)
+          : parseModelRef(explicitModelOverride, provider)
+        : explicitProviderOverride
+          ? normalizeModelRef(explicitProviderOverride, model)
+          : null;
+      if (!explicitRef) {
+        throw new Error("Invalid model override.");
+      }
+      const explicitKey = modelKey(explicitRef.provider, explicitRef.model);
+      if (
+        !isCliProvider(explicitRef.provider, cfg) &&
+        !allowAnyModel &&
+        !allowedModelKeys.has(explicitKey)
+      ) {
+        throw new Error(
+          `Model override "${explicitRef.provider}/${explicitRef.model}" is not allowed for agent "${sessionAgentId}".`,
+        );
+      }
+      provider = explicitRef.provider;
+      model = explicitRef.model;
+    }
     if (sessionEntry) {
       const authProfileId = sessionEntry.authProfileOverride;
       if (authProfileId) {
         const entry = sessionEntry;
         const store = ensureAuthProfileStore();
         const profile = store.profiles[authProfileId];
-        if (!profile || profile.provider !== provider) {
+        if (!profile || profile.provider !== providerForAuthProfileValidation) {
           if (sessionStore && sessionKey) {
             await clearSessionAuthProfileOverride({
               sessionEntry: entry,
@@ -1145,7 +1213,7 @@ async function agentCommandInternal(
             skillsSnapshot,
             resolvedVerboseLevel,
             agentDir,
-            primaryProvider: provider,
+            primaryProvider: providerForAuthProfileValidation,
             sessionStore,
             storePath,
             allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
