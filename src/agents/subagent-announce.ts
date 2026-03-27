@@ -1713,7 +1713,18 @@ export async function runSubagentAnnounceFlow(params: {
 
     const taskLabel = params.label || params.task || "task";
     const announceSessionId = childSessionId || "unknown";
+    // Merge child-settle findings into the announce result when present.
+    // The reply may already be childCompletionFindings (set at line 1646),
+    // but when the original reply differs, include both so the parent sees
+    // the subagent's own output alongside descendant completion context.
     let findings = reply || "(no output)";
+    if (
+      childCompletionFindings?.trim() &&
+      findings !== "(no output)" &&
+      findings !== childCompletionFindings
+    ) {
+      findings = `${findings}\n\n[Descendant completions]\n${childCompletionFindings}`;
+    }
 
     // --- Sub-agent continuation chain: parse [[CONTINUE_DELEGATE:]] from sub-agent output ---
     const cfg = loadConfig();
