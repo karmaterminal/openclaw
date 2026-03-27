@@ -273,6 +273,14 @@ function createAcpVisibleTextAccumulator() {
       return visibleText.trim();
     },
     finalizeRaw(): string {
+      // Flush any buffered prefix that was never resolved as a silent reply,
+      // same logic as finalize() but returning the raw (untrimmed) text.
+      if (pendingSilentPrefix && !visibleText) {
+        const trimmed = pendingSilentPrefix.trim();
+        if (!isSilentReplyText(trimmed, SILENT_REPLY_TOKEN)) {
+          return pendingSilentPrefix;
+        }
+      }
       return visibleText;
     },
   };
