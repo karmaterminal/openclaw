@@ -2018,9 +2018,10 @@ export async function runSubagentAnnounceFlow(params: {
     // Only tag as delegate-return when the completing run was a continuation
     // delegate (task contains chain-hop marker). Regular subagent completions
     // should not trigger continuation chain state preservation.
+    // Note: silentAnnounce delegates return early above and never reach here.
+    // Only the task prefix identifies continuation delegates in the non-silent path.
     const isContinuationDelegateRun =
-      /\[continuation:chain-hop:\d+\]/.test(params.task ?? "") ||
-      params.silentAnnounce === true;
+      /\[continuation:chain-hop:\d+\]/.test(params.task ?? "");
     const cfg2 = loadConfig();
     const continuationEnabledForTrigger =
       cfg2?.agents?.defaults?.continuation?.enabled === true;

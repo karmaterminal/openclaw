@@ -358,8 +358,12 @@ async function persistAcpTurnTranscript(params: {
 }
 function resolveAgentRunTrigger(
   continuationTrigger: AgentCommandOpts["continuationTrigger"] | undefined,
-): string {
-  return continuationTrigger ?? "user";
+): import("../agents/pi-embedded-runner/run/params.js").EmbeddedRunTrigger {
+  // Continuation triggers ("work-wake", "delegate-return") are not in the
+  // EmbeddedRunTrigger union yet — they're proposed additions via this PR.
+  // Cast is safe: the trigger field is used for logging and policy lookup,
+  // and unknown values fall through to default policy.
+  return (continuationTrigger ?? "user") as import("../agents/pi-embedded-runner/run/params.js").EmbeddedRunTrigger;
 }
 function runAgentAttempt(params: {
   providerOverride: string;
@@ -1326,6 +1330,9 @@ export async function agentCommandFromIngress(
     // HTTP/WS ingress must declare the trust level explicitly at the boundary.
     // This keeps network-facing callers from silently picking up the local trusted default.
     throw new Error("senderIsOwner must be explicitly set for ingress agent runs.");
+  }
+  if (typeof opts.allowModelOverride !== "boolean") {
+    throw new Error("allowModelOverride must be explicitly set for ingress agent runs.");
   }
   return await agentCommandInternal(
     {
