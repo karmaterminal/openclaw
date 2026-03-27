@@ -11,7 +11,11 @@ import {
 import { updateSessionStore } from "../../config/sessions/store.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { logVerbose } from "../../globals.js";
-import { peekSystemEventEntries, removeSystemEvents } from "../../infra/system-events.js";
+import {
+  enqueueSystemEvent,
+  peekSystemEventEntries,
+  removeSystemEvents,
+} from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
@@ -477,6 +481,16 @@ export async function runPreparedReply(
       }
     }
   }
+  // Preserve [continuation:wake] events during non-wake heartbeats so they
+  // survive the drain and are available for the dedicated continuation-wake run.
+  // Without this, a periodic heartbeat poll would consume the wake event, causing
+  // the continuation chain to stall.
+  const preservedContinuationWakeEvents =
+    isHeartbeat && !isContinuationWake
+      ? peekSystemEventEntries(sessionKey)?.filter((e) =>
+          e.text?.startsWith("[continuation:wake]"),
+        )
+      : undefined;
   // Drain system events once, then prepend to each path's body independently.
   // The queue/steer path uses effectiveBaseBody (unstripped, no session hints) to match
   // main's pre-PR behavior; the immediate-run path uses prefixedBodyBase (post-hints,
@@ -487,6 +501,12 @@ export async function runPreparedReply(
     isMainSession,
     isNewSession,
   });
+  // Re-enqueue preserved continuation wake events after the drain.
+  if (preservedContinuationWakeEvents && preservedContinuationWakeEvents.length > 0) {
+    for (const event of preservedContinuationWakeEvents) {
+      enqueueSystemEvent(event.text, { sessionKey });
+    }
+  }
   const prependEvents = (body: string) => (eventsBlock ? `${eventsBlock}\n\n${body}` : body);
   const bodyWithEvents = prependEvents(effectiveBaseBody);
   prefixedBodyBase = prependEvents(prefixedBodyBase);
