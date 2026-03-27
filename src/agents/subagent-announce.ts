@@ -853,7 +853,6 @@ async function resolveSubagentCompletionOrigin(params: {
 
 async function sendAnnounce(item: AnnounceQueueItem) {
   const cfg = loadConfig();
-  const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
   const announceTimeoutMs = resolveSubagentAnnounceTimeoutMs(cfg);
   const requesterIsSubagent = isInternalAnnounceRequesterSession(item.sessionKey);
   const origin = item.origin;
@@ -876,7 +875,9 @@ async function sendAnnounce(item: AnnounceQueueItem) {
       to: requesterIsSubagent ? undefined : origin?.to,
       threadId: requesterIsSubagent ? undefined : threadId,
       deliver: !requesterIsSubagent,
-      continuationTrigger: continuationEnabled ? "delegate-return" : undefined,
+      // Queue-based announces are regular subagent completions — do not tag
+      // as delegate-return. Continuation delegates use the direct delivery path.
+      continuationTrigger: undefined,
       internalEvents: item.internalEvents,
       inputProvenance: {
         kind: "inter_session",
@@ -1012,6 +1013,8 @@ async function sendSubagentAnnounceDirectly(params: {
   sourceTool?: string;
   requesterIsSubagent: boolean;
   signal?: AbortSignal;
+  /** Override for the continuationTrigger passed to the gateway agent call. */
+  continuationTriggerOverride?: string;
 }): Promise<SubagentAnnounceDeliveryResult> {
   if (params.signal?.aborted) {
     return {
@@ -1070,7 +1073,7 @@ async function sendSubagentAnnounceDirectly(params: {
             message: params.triggerMessage,
             deliver: shouldDeliverExternally,
             bestEffortDeliver: params.bestEffortDeliver,
-            continuationTrigger: continuationEnabled ? "delegate-return" : undefined,
+            continuationTrigger: params.continuationTriggerOverride ?? undefined,
             internalEvents: params.internalEvents,
             channel: shouldDeliverExternally ? directChannel : undefined,
             accountId: shouldDeliverExternally ? effectiveDirectOrigin?.accountId : undefined,
@@ -1121,6 +1124,8 @@ async function deliverSubagentAnnouncement(params: {
   bestEffortDeliver?: boolean;
   directIdempotencyKey: string;
   signal?: AbortSignal;
+  /** Override for the continuationTrigger passed to the gateway agent call. */
+  continuationTriggerOverride?: string;
 }): Promise<SubagentAnnounceDeliveryResult> {
   return await runSubagentAnnounceDispatch({
     expectsCompletionMessage: params.expectsCompletionMessage,
@@ -1154,6 +1159,7 @@ async function deliverSubagentAnnouncement(params: {
         expectsCompletionMessage: params.expectsCompletionMessage,
         signal: params.signal,
         bestEffortDeliver: params.bestEffortDeliver,
+        continuationTriggerOverride: params.continuationTriggerOverride,
       }),
   });
 }
@@ -1998,6 +2004,17 @@ export async function runSubagentAnnounceFlow(params: {
           })
         : targetRequesterOrigin;
     const directIdempotencyKey = buildAnnounceIdempotencyKey(announceId);
+    // Only tag as delegate-return when the completing run was a continuation
+    // delegate (task contains chain-hop marker). Regular subagent completions
+    // should not trigger continuation chain state preservation.
+    const isContinuationDelegateRun =
+      /\[continuation:chain-hop:\d+\]/.test(params.task ?? "") ||
+      params.silentAnnounce === true;
+    const cfg2 = loadConfig();
+    const continuationEnabledForTrigger =
+      cfg2?.agents?.defaults?.continuation?.enabled === true;
+    const delegateReturnTrigger =
+      continuationEnabledForTrigger && isContinuationDelegateRun ? "delegate-return" : undefined;
     const delivery = await deliverSubagentAnnouncement({
       requesterSessionKey: targetRequesterSessionKey,
       announceId,
@@ -2020,6 +2037,7 @@ export async function runSubagentAnnounceFlow(params: {
       bestEffortDeliver: params.bestEffortDeliver,
       directIdempotencyKey,
       signal: params.signal,
+      continuationTriggerOverride: delegateReturnTrigger,
     });
     didAnnounce = delivery.delivered;
     if (!delivery.delivered && delivery.path === "direct" && delivery.error) {
