@@ -1323,7 +1323,17 @@ function buildAnnounceReplyInstruction(params: {
   announceType: SubagentAnnounceType;
   expectsCompletionMessage?: boolean;
   silentEnrichment?: boolean;
+  /** When true, the enrichment should wake the agent to act on it. */
+  silentWakeEnrichment?: boolean;
 }): string {
+  if (params.silentWakeEnrichment) {
+    return (
+      `This is a silent-wake enrichment return from a background ${params.announceType}. ` +
+      `You were woken to process this enrichment. Review the result, integrate it into your ` +
+      `working knowledge, and take any follow-up actions needed. Do NOT echo the raw result ` +
+      `to the channel — act on it internally or dispatch further work.`
+    );
+  }
   if (params.silentEnrichment) {
     return `This is a silent enrichment return from a background ${params.announceType}. Absorb the context into your working knowledge — do NOT send a user-facing message. Reply ONLY: ${SILENT_REPLY_TOKEN}`;
   }
@@ -1938,6 +1948,7 @@ export async function runSubagentAnnounceFlow(params: {
       announceType,
       expectsCompletionMessage,
       silentEnrichment: params.silentAnnounce === true,
+      silentWakeEnrichment: params.silentAnnounce === true && params.wakeOnReturn === true,
     });
     const statsLine = await buildCompactAnnounceStatsLine({
       sessionKey: params.childSessionKey,
