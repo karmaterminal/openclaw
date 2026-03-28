@@ -196,6 +196,15 @@ function createAcpVisibleTextAccumulator() {
   let pendingSilentPrefix = "";
   let visibleText = "";
   const startsWithWordChar = (chunk: string): boolean => /^[\p{L}\p{N}]/u.test(chunk);
+  const flushPendingSilentPrefix = (): string => {
+    if (pendingSilentPrefix && !visibleText) {
+      const trimmed = pendingSilentPrefix.trim();
+      if (!isSilentReplyText(trimmed, SILENT_REPLY_TOKEN)) {
+        return trimmed;
+      }
+    }
+    return visibleText;
+  };
 
   const resolveNextCandidate = (base: string, chunk: string): string => {
     if (!base) {
@@ -264,24 +273,10 @@ function createAcpVisibleTextAccumulator() {
       // Flush any buffered prefix that was never resolved as a silent reply.
       // This handles edge cases where the stream ends mid-prefix (e.g. "NO"
       // without the disambiguating "_REPLY" suffix).
-      if (pendingSilentPrefix && !visibleText) {
-        const trimmed = pendingSilentPrefix.trim();
-        if (!isSilentReplyText(trimmed, SILENT_REPLY_TOKEN)) {
-          return trimmed;
-        }
-      }
-      return visibleText.trim();
+      return flushPendingSilentPrefix().trim();
     },
     finalizeRaw(): string {
-      // Flush any buffered prefix that was never resolved as a silent reply,
-      // same logic as finalize() but returning the raw (untrimmed) text.
-      if (pendingSilentPrefix && !visibleText) {
-        const trimmed = pendingSilentPrefix.trim();
-        if (!isSilentReplyText(trimmed, SILENT_REPLY_TOKEN)) {
-          return pendingSilentPrefix;
-        }
-      }
-      return visibleText;
+      return flushPendingSilentPrefix();
     },
   };
 }
@@ -1356,3 +1351,7 @@ export async function agentCommandFromIngress(
     deps,
   );
 }
+
+export const __testing = {
+  createAcpVisibleTextAccumulator,
+};

@@ -275,6 +275,8 @@ export function createOpenClawCodingTools(options?: {
   senderIsOwner?: boolean;
   /** Callback invoked when sessions_yield tool is called. */
   onYield?: (message: string) => Promise<void> | void;
+  /** Whether this run consumes continue_delegate work staged during the turn. */
+  drainsContinuationDelegateQueue?: boolean;
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -547,7 +549,7 @@ export function createOpenClawCodingTools(options?: {
       sessionId: options?.sessionId,
       onYield: options?.onYield,
       allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
-      hasDelegateDrainPath: true,
+      drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
     }),
   ];
   const toolsForMemoryFlush =

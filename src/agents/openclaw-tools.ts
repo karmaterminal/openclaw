@@ -96,14 +96,8 @@ export function createOpenClawTools(
     onYield?: (message: string) => Promise<void> | void;
     /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
     allowGatewaySubagentBinding?: boolean;
-    /**
-     * Whether the caller has a delegate drain path (e.g. agent-runner).
-     * The continue_delegate tool enqueues delegates into a module-level store
-     * that must be consumed by agent-runner after the turn. Without a drain
-     * path (e.g. gateway tools-invoke), delegates would leak into the next
-     * agent-runner turn for the same session.
-     */
-    hasDelegateDrainPath?: boolean;
+    /** Whether the current run consumes the continue_delegate staging queue. */
+    drainsContinuationDelegateQueue?: boolean;
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;
@@ -251,11 +245,10 @@ export function createOpenClawTools(
     ...(webFetchTool ? [webFetchTool] : []),
     ...(imageTool ? [imageTool] : []),
     ...(pdfTool ? [pdfTool] : []),
-    // Continuation delegate tool — only available when continuation is enabled
-    // AND the caller has a delegate drain path (agent-runner). Without a drain
-    // path, enqueued delegates would leak into the next agent-runner turn.
+    // Only runs that actually drain the staged delegate queue can safely expose
+    // continue_delegate; other runs would report "scheduled" but never spawn it.
     ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
-    options?.hasDelegateDrainPath === true
+    options?.drainsContinuationDelegateQueue === true
       ? [
           createContinueDelegateTool({
             agentSessionKey: options?.agentSessionKey,
