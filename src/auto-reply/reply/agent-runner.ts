@@ -836,32 +836,26 @@ export async function runReplyAgent(params: {
     const continuationFeatureEnabled = cfg.agents?.defaults?.continuation?.enabled === true;
     let continuationSignal: ContinuationSignal | null = null;
     if (continuationFeatureEnabled && payloadArray.length > 0) {
-      const lastPayload = payloadArray[payloadArray.length - 1];
-      // Diagnostic: only log when a continuation token is likely present somewhere
-      const anyTextMentionsContinuation = payloadArray.some(
-        (p) => p.text && (/CONTINUE_WORK|CONTINUE_DELEGATE/.test(p.text)),
-      );
-      if (anyTextMentionsContinuation) {
-        continuationGuardLog.debug(
-          `[continuation:parse] payloads=${payloadArray.length} lastPayloadKeys=${Object.keys(lastPayload).join(",")} ` +
-            `lastTextLen=${lastPayload.text?.length ?? 0} lastTextTail=${JSON.stringify((lastPayload.text ?? "").slice(-120))} ` +
-            `session=${sessionKey}`,
-        );
-        if (!lastPayload.text?.includes("CONTINUE_DELEGATE") && !lastPayload.text?.includes("CONTINUE_WORK")) {
-          continuationGuardLog.debug(
-            `[continuation:parse] token in response but NOT in lastPayload.text! ` +
-              `payloadTexts=${payloadArray.map((p, i) => `[${i}:${p.text?.length ?? 0}ch]`).join(" ")} session=${sessionKey}`,
-          );
+      // Find the last payload with text content — tool-call payloads may follow
+      // the text payload, pushing the bracket token out of the final position.
+      // This is critical for subagent chain-hops where the bracket is the ONLY
+      // continuation path (continue_delegate tool is denied for subagents).
+      let lastTextPayload: (typeof payloadArray)[number] | undefined;
+      for (let i = payloadArray.length - 1; i >= 0; i--) {
+        if (payloadArray[i].text) {
+          lastTextPayload = payloadArray[i];
+          break;
         }
       }
-      if (lastPayload.text) {
-        const continuationResult = stripContinuationSignal(lastPayload.text);
+      if (lastTextPayload?.text) {
+        const continuationResult = stripContinuationSignal(lastTextPayload.text);
         if (continuationResult.signal) {
           continuationSignal = continuationResult.signal;
-          lastPayload.text = continuationResult.text;
+          lastTextPayload.text = continuationResult.text;
           continuationGuardLog.debug(
             `[continuation:parse] signal detected: kind=${continuationResult.signal.kind} ` +
-              `task=${continuationResult.signal.task?.slice(0, 80)} delayMs=${continuationResult.signal.delayMs} session=${sessionKey}`,
+              `task=${continuationResult.signal.task?.slice(0, 80)} delayMs=${continuationResult.signal.delayMs} ` +
+              `payloads=${payloadArray.length} textPayloadIdx=${payloadArray.indexOf(lastTextPayload)} session=${sessionKey}`,
           );
         }
       }
