@@ -285,6 +285,45 @@ describe("parseContinuationSignal", () => {
     const result = parseContinuationSignal("CONTINUE_WORK\n[[CONTINUE_DELEGATE: do something]]");
     expect(result).toEqual({ kind: "delegate", task: "do something" });
   });
+
+  // --- Regression: bracket in non-last payload (2026-03-28) ---
+  // When tool calls interleave, the bracket token may be in a non-last payload.
+  // The parser itself is correct (end-anchored regex matches), but agent-runner.ts
+  // must scan backwards for the last TEXT-BEARING payload. This test documents
+  // that the parser works when given the correct text fragment.
+  // See: fix/2026.03.24-codex-review-findings commit 2b53fa4
+
+  it("parses bracket delegate from text that would be a non-last payload (regression)", () => {
+    // Simulates the text payload when tool calls follow:
+    // payload[0] = { text: "Here's my response.\n[[CONTINUE_DELEGATE: task +3s]]" }
+    // payload[1] = { toolCallId: "...", name: "exec", ... }  ← no .text
+    // payload[2] = { toolResultId: "...", ... }               ← no .text
+    // agent-runner must find payload[0], not payload[2]
+    const textPayload = "Here's my response.\n[[CONTINUE_DELEGATE: chain-hop task +3s]]";
+    const result = parseContinuationSignal(textPayload);
+    expect(result).toEqual({
+      kind: "delegate",
+      task: "chain-hop task",
+      delayMs: 3000,
+      silent: undefined,
+      silentWake: undefined,
+    });
+  });
+
+  it("parses bracket delegate after multi-line response with emoji (live regression)", () => {
+    // Exact pattern from Ronan's Test 5 at 01:08:16 UTC 2026-03-28
+    const text =
+      "✅ Test 2 passed.\nMoving to Test 5:\nBracket delegate dispatched. 🌊\n" +
+      "[[CONTINUE_DELEGATE: Report back with 'bracket delegate confirmed' +3s]]";
+    const result = parseContinuationSignal(text);
+    expect(result).toEqual({
+      kind: "delegate",
+      task: "Report back with 'bracket delegate confirmed'",
+      delayMs: 3000,
+      silent: undefined,
+      silentWake: undefined,
+    });
+  });
 });
 
 /* ------------------------------------------------------------------ */
