@@ -837,11 +837,32 @@ export async function runReplyAgent(params: {
     let continuationSignal: ContinuationSignal | null = null;
     if (continuationFeatureEnabled && payloadArray.length > 0) {
       const lastPayload = payloadArray[payloadArray.length - 1];
+      // Diagnostic: only log when a continuation token is likely present somewhere
+      const anyTextMentionsContinuation = payloadArray.some(
+        (p) => p.text && (/CONTINUE_WORK|CONTINUE_DELEGATE/.test(p.text)),
+      );
+      if (anyTextMentionsContinuation) {
+        continuationGuardLog.debug(
+          `[continuation:parse] payloads=${payloadArray.length} lastPayloadKeys=${Object.keys(lastPayload).join(",")} ` +
+            `lastTextLen=${lastPayload.text?.length ?? 0} lastTextTail=${JSON.stringify((lastPayload.text ?? "").slice(-120))} ` +
+            `session=${sessionKey}`,
+        );
+        if (!lastPayload.text?.includes("CONTINUE_DELEGATE") && !lastPayload.text?.includes("CONTINUE_WORK")) {
+          continuationGuardLog.debug(
+            `[continuation:parse] token in response but NOT in lastPayload.text! ` +
+              `payloadTexts=${payloadArray.map((p, i) => `[${i}:${p.text?.length ?? 0}ch]`).join(" ")} session=${sessionKey}`,
+          );
+        }
+      }
       if (lastPayload.text) {
         const continuationResult = stripContinuationSignal(lastPayload.text);
         if (continuationResult.signal) {
           continuationSignal = continuationResult.signal;
           lastPayload.text = continuationResult.text;
+          continuationGuardLog.debug(
+            `[continuation:parse] signal detected: kind=${continuationResult.signal.kind} ` +
+              `task=${continuationResult.signal.task?.slice(0, 80)} delayMs=${continuationResult.signal.delayMs} session=${sessionKey}`,
+          );
         }
       }
     }
