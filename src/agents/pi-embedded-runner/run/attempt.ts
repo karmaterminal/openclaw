@@ -1870,6 +1870,10 @@ export async function runEmbeddedAttempt(
       clientTools,
     });
     logToolSchemasForGoogle({ tools: effectiveTools, provider: params.provider });
+    // Diagnostic: log tool names to verify continue_delegate presence (#54)
+    log.info(
+      `[tool-diagnostic] effectiveTools(${effectiveTools.length}): ${effectiveTools.map((t) => t.name).join(", ")}`,
+    );
 
     const machineName = await getMachineDisplayName();
     const runtimeChannel = normalizeMessageChannel(params.messageChannel ?? params.messageProvider);
