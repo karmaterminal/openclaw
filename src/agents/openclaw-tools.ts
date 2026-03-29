@@ -247,15 +247,6 @@ export function createOpenClawTools(
     ...(pdfTool ? [pdfTool] : []),
     // Only runs that actually drain the staged delegate queue can safely expose
     // continue_delegate; other runs would report "scheduled" but never spawn it.
-    // Diagnostic: log gate values (#54)
-    ...(() => {
-      const contEnabled = options?.config?.agents?.defaults?.continuation?.enabled === true;
-      const drains = options?.drainsContinuationDelegateQueue === true;
-      if (!contEnabled || !drains) {
-        console.log(`[continue_delegate-gate] BLOCKED: continuation.enabled=${contEnabled} drainsContinuationDelegateQueue=${drains}`);
-      }
-      return [];
-    })(),
     ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
     options?.drainsContinuationDelegateQueue === true
       ? [
