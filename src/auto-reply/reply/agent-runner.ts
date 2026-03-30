@@ -854,7 +854,7 @@ export async function runReplyAgent(params: {
           lastTextPayload.text = continuationResult.text;
           continuationGuardLog.debug(
             `[continuation:parse] signal detected: kind=${continuationResult.signal.kind} ` +
-              `task=${continuationResult.signal.task?.slice(0, 80)} delayMs=${continuationResult.signal.delayMs} ` +
+              `task=${continuationResult.signal.kind === "delegate" ? continuationResult.signal.task.slice(0, 80) : ""} delayMs=${continuationResult.signal.delayMs} ` +
               `payloads=${payloadArray.length} textPayloadIdx=${payloadArray.indexOf(lastTextPayload)} session=${sessionKey}`,
           );
         }

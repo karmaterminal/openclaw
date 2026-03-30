@@ -109,6 +109,8 @@ export function resolveModelFallbackOptions(run: FollowupRun["run"]) {
   };
 }
 
+/** Flatten a FollowupRun into the base parameter object for runEmbeddedPiAgent.
+ * Derives enforceFinalTag and spreads authProfile; all other fields pass through from the run. */
 export function buildEmbeddedRunBaseParams(params: {
   run: FollowupRun["run"];
   provider: string;
@@ -138,6 +140,7 @@ export function buildEmbeddedRunBaseParams(params: {
     timeoutMs: params.run.timeoutMs,
     runId: params.runId,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
+    drainsContinuationDelegateQueue: params.run.drainsContinuationDelegateQueue,
   };
 }
 
