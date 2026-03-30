@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { typedCases } from "../test-utils/typed-cases.js";
+import { resolveSubagentToolPolicy } from "./pi-tools.policy.js";
 import { buildSubagentSystemPrompt } from "./subagent-announce.js";
 import { buildAgentSystemPrompt, buildRuntimeLine } from "./system-prompt.js";
 
@@ -254,9 +255,6 @@ describe("buildAgentSystemPrompt", () => {
       "For background, delayed, silent, or compaction-aware delegate work, prefer `continue_delegate` over shell sleeps, ad-hoc `openclaw ...` CLI calls, or manual relay patterns.",
     );
     expect(prompt).toContain(
-      "If `continue_delegate` is available, prefer it for most main-session delegate work:",
-    );
-    expect(prompt).toContain(
       "Use CONTINUE_WORK when you want your own next turn; use `continue_delegate` when the work",
     );
     expect(prompt).toContain(
@@ -266,10 +264,10 @@ describe("buildAgentSystemPrompt", () => {
       "They can quietly inform future blind inquiry, later synthesis, or post-compaction recovery.",
     );
     expect(prompt).toContain(
-      "Use `continue_delegate` (or [[CONTINUE_DELEGATE:]] when the tool is unavailable) when you need:",
+      "Use `continue_delegate` (or `[[CONTINUE_DELEGATE:]]` bracket syntax) when you need:",
     );
     expect(prompt).toContain(
-      "Compaction handoff — preserve working state or partial results across compaction better than a thin summary alone",
+      "Compaction handoff — preserve working state or partial results across compaction",
     );
     expect(prompt).toContain(
       "Do not use `exec`, shell sleeps, or manual `openclaw ...` commands to imitate delayed",
@@ -278,6 +276,35 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain(
       "Use `sessions_yield` to end your turn immediately, aborting any queued tool calls.",
     );
+  });
+
+  it("documents continue_delegate tool parameters when the tool is available", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      continuationEnabled: true,
+      toolNames: ["continue_delegate", "sessions_spawn", "exec"],
+    });
+
+    expect(prompt).toContain("This is the primary mechanism for delegation.");
+    expect(prompt).toContain("Tool parameters:");
+    expect(prompt).toContain("delaySeconds");
+    expect(prompt).toContain('mode — "normal" (default, announces to channel)');
+    expect(prompt).toContain("Fallback bracket syntax (if the tool call fails or is unavailable):");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE: task +30s | silent-wake]]");
+  });
+
+  it("uses bracket-only continuation delegate syntax when the tool is unavailable", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      continuationEnabled: true,
+      toolNames: ["sessions_spawn", "exec"],
+    });
+
+    expect(prompt).toContain(
+      "End your response with [[CONTINUE_DELEGATE: task description]] to dispatch a sub-agent",
+    );
+    expect(prompt).not.toContain("Tool parameters:");
+    expect(prompt).not.toContain("This is the primary mechanism for delegation.");
   });
 
   it("teaches minimal continuation prompts to keep delegate trees off the parent relay path", () => {
@@ -298,6 +325,35 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain(
       "Use `| silent-wake` when the result should enrich the parent and wake it to act.",
     );
+  });
+
+  it("avoids continue_delegate tool-name guidance in minimal continuation prompts", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+    });
+
+    expect(prompt).not.toContain("continue_delegate");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
+  });
+
+  it("keeps the subagent continuation deny list aligned with minimal prompt guidance", () => {
+    const policy = resolveSubagentToolPolicy(undefined, 1);
+    const toolNames = ["continue_delegate", "sessions_spawn", "exec"].filter(
+      (toolName) => !policy.deny?.includes(toolName),
+    );
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+      toolNames,
+    });
+
+    expect(policy.deny).toContain("continue_delegate");
+    expect(toolNames).not.toContain("continue_delegate");
+    expect(prompt).not.toContain("continue_delegate");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
   });
 
   it("lists available tools when provided", () => {
