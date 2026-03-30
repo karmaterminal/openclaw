@@ -76,6 +76,10 @@ export type SpawnSubagentParams = {
    *  enrichment is enqueued. Enables autonomous cognition loops where the agent
    *  acts on shard returns without external nudge. */
   wakeOnReturn?: boolean;
+  /** When true, the spawned sub-agent's run enables the continue_delegate tool.
+   *  Tool-enqueued delegates are consumed at the announce boundary and dispatched
+   *  as chain hops on the parent session. */
+  drainsContinuationDelegateQueue?: boolean;
 };
 
 export type SpawnSubagentContext = {
@@ -677,6 +681,9 @@ export async function spawnSubagentDirect(
         thinking: thinkingOverride,
         timeout: runTimeoutSeconds,
         label: label || undefined,
+        ...(params.drainsContinuationDelegateQueue === true
+          ? { drainsContinuationDelegateQueue: true }
+          : {}),
         ...publicSpawnedMetadata,
       },
       timeoutMs: 10_000,
