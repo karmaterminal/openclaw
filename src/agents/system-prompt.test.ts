@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { typedCases } from "../test-utils/typed-cases.js";
+import { resolveSubagentToolPolicy } from "./pi-tools.policy.js";
 import { buildSubagentSystemPrompt } from "./subagent-announce.js";
 import { buildAgentSystemPrompt, buildRuntimeLine } from "./system-prompt.js";
 
@@ -333,6 +334,24 @@ describe("buildAgentSystemPrompt", () => {
       continuationEnabled: true,
     });
 
+    expect(prompt).not.toContain("continue_delegate");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
+  });
+
+  it("keeps the subagent continuation deny list aligned with minimal prompt guidance", () => {
+    const policy = resolveSubagentToolPolicy(undefined, 1);
+    const toolNames = ["continue_delegate", "sessions_spawn", "exec"].filter(
+      (toolName) => !policy.deny?.includes(toolName),
+    );
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+      toolNames,
+    });
+
+    expect(policy.deny).toContain("continue_delegate");
+    expect(toolNames).not.toContain("continue_delegate");
     expect(prompt).not.toContain("continue_delegate");
     expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
   });
