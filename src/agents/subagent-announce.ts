@@ -4,6 +4,7 @@ import {
   setDelegatePending,
 } from "../auto-reply/reply/agent-runner.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
+import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import {
   isSilentReplyText,
@@ -1801,7 +1802,20 @@ export async function runSubagentAnnounceFlow(params: {
       }
     }
 
-    if (continuationEnabled && findings !== "(no output)") {
+    // --- Consume tool-dispatched delegates from the completing subagent ---
+    // The continue_delegate tool enqueues delegates in the module-level store during
+    // execution. For main sessions, agent-runner.ts consumes them. For chain-hop
+    // subagents, we consume them here — same store, routed to the parent's chain.
+    const toolDelegates = continuationEnabled && isContinuationChainDelegate
+      ? consumePendingDelegates(params.childSessionKey)
+      : [];
+    if (toolDelegates.length > 0) {
+      defaultRuntime.log(
+        `[subagent-chain-hop] Consuming ${toolDelegates.length} tool delegate(s) from subagent ${params.childSessionKey}`,
+      );
+    }
+
+    if (continuationEnabled && (findings !== "(no output)" || toolDelegates.length > 0)) {
       const continuationResult = stripContinuationSignal(findings);
       if (continuationResult.signal?.kind === "work") {
         defaultRuntime.log(
@@ -1954,6 +1968,111 @@ export async function runSubagentAnnounceFlow(params: {
             // Fire-and-forget — don't block the announce flow
             doChainSpawn().catch(() => {});
           }
+        }
+      }
+
+      // --- Tool-dispatched delegates from subagent (parallel to bracket delegates above) ---
+      // Process each tool delegate through the same chain bounds. The bracket delegate (if any)
+      // already consumed one hop; tool delegates continue sequentially from there.
+      if (toolDelegates.length > 0 && isContinuationChainDelegate) {
+        const {
+          maxChainLength: toolMaxChainLength,
+          costCapTokens: toolCostCapTokens,
+          minDelayMs: toolMinDelayMs,
+          maxDelayMs: toolMaxDelayMs,
+        } = resolveContinuationRuntimeConfig(cfg);
+        const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
+        const childChainHop = hopMatch ? parseInt(hopMatch[1], 10) : 0;
+        // If a bracket delegate already took the next hop, start tool delegates after it
+        const bracketConsumedHop = continuationResult.signal?.kind === "delegate" ? 1 : 0;
+        let toolHopBase = childChainHop + bracketConsumedHop;
+
+        const parentWasSilent = params.silentAnnounce === true;
+
+        for (const toolDelegate of toolDelegates) {
+          const nextToolHop = toolHopBase + 1;
+
+          // Chain length guard
+          if (nextToolHop > toolMaxChainLength) {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Tool delegate chain length ${nextToolHop} > ${toolMaxChainLength}, rejecting from ${params.childSessionKey}`,
+            );
+            break;
+          }
+
+          // Cost cap guard
+          const parentEntryForTool = loadSessionEntryByKey(targetRequesterSessionKey);
+          const parentChainTokensForTool = parentEntryForTool?.continuationChainTokens ?? 0;
+          if (toolCostCapTokens > 0 && parentChainTokensForTool > toolCostCapTokens) {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Tool delegate cost cap exceeded (${parentChainTokensForTool} > ${toolCostCapTokens}), rejecting from ${params.childSessionKey}`,
+            );
+            break;
+          }
+
+          const toolSilent = toolDelegate.silent || toolDelegate.silentWake || parentWasSilent;
+          const toolWake =
+            toolDelegate.silentWake || (parentWasSilent && params.wakeOnReturn === true);
+          const toolDelayMs = toolDelegate.delayMs;
+
+          setDelegatePending(targetRequesterSessionKey);
+
+          const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
+          const doToolChainSpawn = async (timerTriggered = false) => {
+            try {
+              const spawnResult = await spawnSubagentDirect(
+                {
+                  task: `[continuation:chain-hop:${nextToolHop}] Tool-delegated from sub-agent (depth ${childDepth}): ${toolDelegate.task}`,
+                  ...(toolSilent ? { silentAnnounce: true } : {}),
+                  ...(toolWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                },
+                {
+                  agentSessionKey: targetRequesterSessionKey,
+                  agentChannel: targetRequesterOrigin?.channel ?? undefined,
+                  agentAccountId: targetRequesterOrigin?.accountId ?? undefined,
+                  agentTo: targetRequesterOrigin?.to ?? undefined,
+                  agentThreadId: targetRequesterOrigin?.threadId ?? undefined,
+                },
+              );
+              if (spawnResult.status === "accepted") {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] ${timerTriggered ? "Timer: " : ""}Tool delegate (${nextToolHop}/${toolMaxChainLength}) from ${params.childSessionKey}: ${toolDelegate.task.slice(0, 80)}`,
+                );
+              } else {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Tool delegate spawn rejected (${spawnResult.status}) from ${params.childSessionKey}`,
+                );
+              }
+            } catch (err) {
+              defaultRuntime.log(
+                `[subagent-chain-hop] Tool delegate spawn failed from ${params.childSessionKey}: ${String(err)}`,
+              );
+            }
+          };
+
+          if (toolDelayMs && toolDelayMs > 0) {
+            const clampedDelay = Math.max(toolMinDelayMs, Math.min(toolMaxDelayMs, toolDelayMs));
+            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            continuationGuardLog.debug(
+              `[continuation-guard] Tool delegate timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
+            );
+            setTimeout(() => {
+              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+              const drift = currentGen - hopGeneration;
+              if (drift > generationGuardTolerance) {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Tool delegate timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
+                );
+                return;
+              }
+              doToolChainSpawn(true).catch(() => {});
+            }, clampedDelay);
+          } else {
+            doToolChainSpawn().catch(() => {});
+          }
+
+          toolHopBase = nextToolHop;
         }
       }
     }

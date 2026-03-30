@@ -35,10 +35,6 @@ const SUBAGENT_TOOL_DENY_ALWAYS = [
   "memory_get",
   // Direct session sends - subagents communicate through announce chain
   "sessions_send",
-  // Continuation delegates - sub-agents use bracket syntax at announce boundary (#196).
-  // The tool's pending-delegate store is only consumed by agent-runner.ts (main sessions),
-  // not pi-embedded-runner, so the tool would silently no-op in sub-agent context.
-  "continue_delegate",
 ];
 
 /**
@@ -50,6 +46,11 @@ const SUBAGENT_TOOL_DENY_LEAF = [
   "sessions_list",
   "sessions_history",
   "sessions_spawn",
+  // Leaf sub-agents (at max spawn depth) cannot delegate further — they have no
+  // children to orchestrate. The tool's pending-delegate store IS consumed by the
+  // auto-reply pipeline (runReplyAgent → consumePendingDelegates), but leaf nodes
+  // should complete their work directly rather than fan out.
+  "continue_delegate",
 ];
 
 /**

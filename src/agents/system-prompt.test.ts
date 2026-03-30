@@ -327,33 +327,56 @@ describe("buildAgentSystemPrompt", () => {
     );
   });
 
-  it("avoids continue_delegate tool-name guidance in minimal continuation prompts", () => {
+  it("teaches continue_delegate tool in minimal prompts when tool is available", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+      toolNames: ["continue_delegate", "exec"],
+    });
+
+    expect(prompt).toContain("continue_delegate");
+    expect(prompt).toContain("Fallback bracket syntax");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
+  });
+
+  it("uses bracket-only in minimal prompts when continue_delegate tool is absent", () => {
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/openclaw",
       promptMode: "minimal",
       continuationEnabled: true,
     });
 
-    expect(prompt).not.toContain("continue_delegate");
+    expect(prompt).not.toContain("Use the `continue_delegate` tool");
     expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
   });
 
-  it("keeps the subagent continuation deny list aligned with minimal prompt guidance", () => {
-    const policy = resolveSubagentToolPolicy(undefined, 1);
-    const toolNames = ["continue_delegate", "sessions_spawn", "exec"].filter(
-      (toolName) => !policy.deny?.includes(toolName),
+  it("keeps the subagent continuation deny list aligned: orchestrator gets tool, leaf does not", () => {
+    // Orchestrator (depth 1, maxSpawnDepth 3 — not at leaf depth)
+    const orchestratorConfig = {
+      agents: { defaults: { subagents: { maxSpawnDepth: 3 } } },
+    } as any;
+    const orchestratorPolicy = resolveSubagentToolPolicy(orchestratorConfig, 1);
+    expect(orchestratorPolicy.deny).not.toContain("continue_delegate");
+
+    // Leaf (depth >= maxSpawnDepth with default config)
+    const leafPolicy = resolveSubagentToolPolicy(undefined, 10);
+    expect(leafPolicy.deny).toContain("continue_delegate");
+
+    // Orchestrator subagent gets the tool in its prompt
+    const orchestratorTools = ["continue_delegate", "sessions_spawn", "exec"].filter(
+      (toolName) => !orchestratorPolicy.deny?.includes(toolName),
     );
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/openclaw",
       promptMode: "minimal",
       continuationEnabled: true,
-      toolNames,
+      toolNames: orchestratorTools,
     });
 
-    expect(policy.deny).toContain("continue_delegate");
-    expect(toolNames).not.toContain("continue_delegate");
-    expect(prompt).not.toContain("continue_delegate");
-    expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
+    expect(orchestratorTools).toContain("continue_delegate");
+    expect(prompt).toContain("continue_delegate");
+    expect(prompt).toContain("Fallback bracket syntax");
   });
 
   it("lists available tools when provided", () => {

@@ -753,28 +753,46 @@ export function buildAgentSystemPrompt(params: {
     );
   }
 
-  // Sub-agent chain-hop bracket template — lighter injection for minimal/subagent mode
+  // Sub-agent chain-hop continuation — teach tool-primary when available, bracket fallback otherwise
   if (isMinimal && params.continuationEnabled) {
-    lines.push(
-      "## Chain Delegation",
-      "To dispatch a follow-up sub-agent from your output, end your ENTIRE response with:",
-      "  [[CONTINUE_DELEGATE: task description]]",
-      "",
-      "Use this to keep a delegate tree moving without asking the parent to relay every hop.",
-      "The parent/main session stays free while your branch keeps working.",
-      "",
-      "Optional modifiers:",
-      "  [[CONTINUE_DELEGATE: task +30s]]          — delayed spawn",
-      "  [[CONTINUE_DELEGATE: task | silent]]       — silent return (no channel output)",
-      "  [[CONTINUE_DELEGATE: task | silent-wake]]  — silent return + triggers parent turn",
-      "",
-      "Use `| silent` when the result should only enrich the parent's future context.",
-      "Use `| silent-wake` when the result should enrich the parent and wake it to act.",
-      "",
-      "Emit exactly ONE bracket per response. Do not nest brackets inside brackets.",
-      "The gateway handles chain tracking and depth limits.",
-      "",
-    );
+    lines.push("## Chain Delegation");
+    if (availableTools.has("continue_delegate")) {
+      lines.push(
+        "Use the `continue_delegate` tool to dispatch follow-up sub-agents from this chain.",
+        "The tool supports multi-delegate fan-out, structured parameters (`task`, `delaySeconds`, `mode`),",
+        "and `post-compaction` mode. The parent/main session stays free while your branch keeps working.",
+        "",
+        "Fallback bracket syntax (if the tool call fails or is unavailable):",
+        "  [[CONTINUE_DELEGATE: task description]]",
+        "  [[CONTINUE_DELEGATE: task +30s]]          — delayed spawn",
+        "  [[CONTINUE_DELEGATE: task | silent]]       — silent return (no channel output)",
+        "  [[CONTINUE_DELEGATE: task | silent-wake]]  — silent return + triggers parent turn",
+        "",
+        "Prefer the tool. Use brackets only as fallback.",
+        "The gateway handles chain tracking and depth limits.",
+        "",
+      );
+    } else {
+      lines.push(
+        "To dispatch a follow-up sub-agent from your output, end your ENTIRE response with:",
+        "  [[CONTINUE_DELEGATE: task description]]",
+        "",
+        "Use this to keep a delegate tree moving without asking the parent to relay every hop.",
+        "The parent/main session stays free while your branch keeps working.",
+        "",
+        "Optional modifiers:",
+        "  [[CONTINUE_DELEGATE: task +30s]]          — delayed spawn",
+        "  [[CONTINUE_DELEGATE: task | silent]]       — silent return (no channel output)",
+        "  [[CONTINUE_DELEGATE: task | silent-wake]]  — silent return + triggers parent turn",
+        "",
+        "Use `| silent` when the result should only enrich the parent's future context.",
+        "Use `| silent-wake` when the result should enrich the parent and wake it to act.",
+        "",
+        "Emit exactly ONE bracket per response. Do not nest brackets inside brackets.",
+        "The gateway handles chain tracking and depth limits.",
+        "",
+      );
+    }
   }
 
   lines.push(
