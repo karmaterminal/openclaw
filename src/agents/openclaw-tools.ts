@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
+import { logVerbose } from "../globals.js";
 import { resolvePluginTools } from "../plugins/tools.js";
 import { getActiveRuntimeWebToolsMetadata } from "../secrets/runtime.js";
 import type { GatewayMessageChannel } from "../utils/message-channel.js";
@@ -247,6 +248,15 @@ export function createOpenClawTools(
     ...(pdfTool ? [pdfTool] : []),
     // Only runs that actually drain the staged delegate queue can safely expose
     // continue_delegate; other runs would report "scheduled" but never spawn it.
+    ...(() => {
+      const contEnabled = options?.config?.agents?.defaults?.continuation?.enabled === true;
+      if (contEnabled && options?.drainsContinuationDelegateQueue === undefined) {
+        logVerbose(
+          "continue_delegate gate: continuation enabled but drainsContinuationDelegateQueue is undefined; tool will not be included",
+        );
+      }
+      return [];
+    })(),
     ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
     options?.drainsContinuationDelegateQueue === true
       ? [

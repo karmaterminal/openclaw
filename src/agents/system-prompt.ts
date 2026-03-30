@@ -684,7 +684,7 @@ export function buildAgentSystemPrompt(params: {
             "",
             "Tool parameters:",
             "  task (required) — the delegated sub-agent's task; include scope, context, and desired return shape",
-            "  delaySeconds — seconds to wait before spawning (0 or omitted = immediate)",
+            "  delaySeconds — seconds to wait before spawning (0 or omitted = immediate; clamped to configured min/max)",
             '  mode — "normal" (default, announces to channel), "silent" (internal context only),',
             '         "silent-wake" (silent + triggers your next turn), "post-compaction" (fires at compaction)',
             "",
@@ -716,7 +716,7 @@ export function buildAgentSystemPrompt(params: {
       "### When to use CONTINUE_DELEGATE vs sessions_spawn",
       "Use sessions_spawn for immediate, explicit workers you want to manage directly, for ACP",
       "runtime spawns, or when the shard needs inline attachments / explicit spawn-time controls.",
-      "Use `continue_delegate` when you need:",
+      "Use `continue_delegate` (or `[[CONTINUE_DELEGATE:]]` bracket syntax) when you need:",
       "  - Delayed dispatch — schedule work for N seconds from now",
       "  - Silent return — result arrives as internal context, no channel output",
       "  - Wake-on-return — silent result that triggers your next turn",
@@ -740,7 +740,7 @@ export function buildAgentSystemPrompt(params: {
             'Use `continue_delegate` with `mode: "post-compaction"` to dispatch working state — decisions',
             "in progress, task context, partial results — before compaction. The post-compaction shard fires",
             "when compaction happens and returns to re-inject context the summary cannot preserve.",
-            "Fallback: [[CONTINUE_DELEGATE: ... | silent-wake]] if the tool is unavailable.",
+            "Fallback if the tool call fails: [[CONTINUE_DELEGATE: ... | silent-wake]] (note: post-compaction mode requires the tool).",
           ]
         : [
             "Use [[CONTINUE_DELEGATE: ... | silent-wake]] to dispatch working state — decisions in progress,",
