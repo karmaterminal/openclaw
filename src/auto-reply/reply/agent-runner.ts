@@ -1258,6 +1258,7 @@ export async function runReplyAgent(params: {
                   `Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
                 silentAnnounce: true,
                 wakeOnReturn: true,
+                drainsContinuationDelegateQueue: true,
               },
               {
                 agentSessionKey: sessionKey,
@@ -1428,6 +1429,7 @@ export async function runReplyAgent(params: {
                       task: `[continuation:chain-hop:${plannedHop}] Delegated task (turn ${plannedHop}/${maxChainLength}): ${task}`,
                       ...(options?.silent ? { silentAnnounce: true } : {}),
                       ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                      drainsContinuationDelegateQueue: true,
                     },
                     {
                       agentSessionKey: sessionKey,

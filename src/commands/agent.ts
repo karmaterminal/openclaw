@@ -543,8 +543,9 @@ function runAgentAttempt(params: {
     inputProvenance: params.opts.inputProvenance,
     streamParams: params.opts.streamParams,
     agentDir: params.agentDir,
-    // CLI runs do not have a gateway continuation delegate queue to drain.
-    drainsContinuationDelegateQueue: false,
+    // CLI runs don't drain by default, but continuation delegate spawns opt in
+    // so sub-agents can use the continue_delegate tool.
+    drainsContinuationDelegateQueue: params.opts.drainsContinuationDelegateQueue === true,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
     onAgentEvent: params.onAgentEvent,
     bootstrapPromptWarningSignaturesSeen,

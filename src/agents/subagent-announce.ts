@@ -1914,6 +1914,7 @@ export async function runSubagentAnnounceFlow(params: {
                   task: `[continuation:chain-hop:${nextChainHop}] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
                   ...(chainSilent ? { silentAnnounce: true } : {}),
                   ...(chainWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                  drainsContinuationDelegateQueue: true,
                 },
                 {
                   agentSessionKey: targetRequesterSessionKey,
@@ -2025,6 +2026,7 @@ export async function runSubagentAnnounceFlow(params: {
                   task: `[continuation:chain-hop:${nextToolHop}] Tool-delegated from sub-agent (depth ${childDepth}): ${toolDelegate.task}`,
                   ...(toolSilent ? { silentAnnounce: true } : {}),
                   ...(toolWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                  drainsContinuationDelegateQueue: true,
                 },
                 {
                   agentSessionKey: targetRequesterSessionKey,

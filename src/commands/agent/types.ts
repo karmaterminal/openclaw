@@ -84,6 +84,8 @@ export type AgentCommandOpts = {
   runId?: string;
   /** Structured lifecycle metadata for internally-triggered turns. */
   continuationTrigger?: ContinuationTrigger;
+  /** When true, the run drains the pending continuation delegate queue after completion. */
+  drainsContinuationDelegateQueue?: boolean;
   extraSystemPrompt?: string;
   internalEvents?: AgentInternalEvent[];
   inputProvenance?: InputProvenance;

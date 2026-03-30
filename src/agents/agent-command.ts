@@ -547,8 +547,9 @@ function runAgentAttempt(params: {
     inputProvenance: params.opts.inputProvenance,
     streamParams: params.opts.streamParams,
     agentDir: params.agentDir,
-    // Gateway-managed reply turns drain staged delegates after auto-reply, not here.
-    drainsContinuationDelegateQueue: false,
+    // Embedded agent runs don't drain by default, but continuation delegate spawns opt in
+    // so sub-agents can use the continue_delegate tool.
+    drainsContinuationDelegateQueue: params.opts.drainsContinuationDelegateQueue === true,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
     onAgentEvent: params.onAgentEvent,
     bootstrapPromptWarningSignaturesSeen,
