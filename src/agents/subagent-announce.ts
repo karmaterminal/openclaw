@@ -4,6 +4,10 @@ import {
   setDelegatePending,
 } from "../auto-reply/reply/agent-runner.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
+import {
+  consumePendingDelegates,
+  type PendingContinuationDelegate,
+} from "../auto-reply/continuation-delegate-store.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import {
   isSilentReplyText,
@@ -1952,6 +1956,128 @@ export async function runSubagentAnnounceFlow(params: {
             // Fire-and-forget — don't block the announce flow
             doChainSpawn().catch(() => {});
           }
+        }
+      }
+    }
+
+    // --- Tool-enqueued delegates: consume from the completing sub-agent's store ---
+    // When the continue_delegate tool is available to sub-agents, they write to the
+    // pending-delegate store keyed by their own session key. We consume those here
+    // and dispatch them as chain hops on the parent session — the same routing as
+    // bracket-parsed delegates. This ensures results announce back to the parent,
+    // not the ephemeral sub-agent.
+    if (continuationEnabled && params.childSessionKey) {
+      const toolDelegates = consumePendingDelegates(params.childSessionKey);
+      if (toolDelegates.length > 0) {
+        defaultRuntime.log(
+          `[subagent-chain-hop] Consuming ${toolDelegates.length} tool-enqueued delegate(s) from ${params.childSessionKey}`,
+        );
+        const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs, maxDelegatesPerTurn } =
+          resolveContinuationRuntimeConfig(cfg);
+
+        // Parse the completing shard's chain hop index from its task prefix
+        const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
+        const childChainHop = hopMatch ? parseInt(hopMatch[1], 10) : 0;
+        let nextHopBase = childChainHop + 1;
+
+        // Bracket delegate (if any this turn) already consumed one hop
+        // TODO: count bracket delegate if it was dispatched above
+
+        // Enforce per-turn width limit — shared with bracket delegates
+        const bracketCount = (findings !== "(no output)" && /\[\[\s*CONTINUE_DELEGATE:/.test(findings)) ? 0 : 0;
+        const remainingBudget = Math.max(0, maxDelegatesPerTurn - bracketCount);
+        const delegatesWithinLimit = toolDelegates.slice(0, remainingBudget);
+        const delegatesOverLimit = toolDelegates.slice(remainingBudget);
+        for (const dropped of delegatesOverLimit) {
+          defaultRuntime.log(
+            `[subagent-chain-hop] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${dropped.task}`,
+          );
+        }
+
+        for (const delegate of delegatesWithinLimit) {
+          // Chain depth guard
+          if (nextHopBase >= maxChainLength) {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Tool delegate rejected: chain length ${maxChainLength} reached. Task: ${delegate.task}`,
+            );
+            break;
+          }
+
+          // Cost cap guard
+          if (costCapTokens > 0 && accumulatedChildTokens > costCapTokens) {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Tool delegate rejected: cost cap exceeded. Task: ${delegate.task}`,
+            );
+            break;
+          }
+
+          // Resolve mode flags
+          const isSilent = delegate.silent === true || delegate.silentWake === true;
+          const isWake = delegate.silentWake === true;
+          // Sticky silent: inherit from parent shard
+          const parentWasSilent = params.silentAnnounce === true;
+          const effectiveSilent = isSilent || parentWasSilent;
+          const effectiveWake = isWake || (parentWasSilent && params.wakeOnReturn === true);
+
+          setDelegatePending(targetRequesterSessionKey);
+
+          const toolChainTask = `[continuation:chain-hop:${nextHopBase}] Delegated from sub-agent tool (depth ${getSubagentDepthFromSessionStore(params.childSessionKey)}): ${delegate.task}`;
+
+          const doToolDelegateSpawn = async (timerTriggered = false) => {
+            try {
+              const spawnResult = await spawnSubagentDirect(
+                {
+                  task: toolChainTask,
+                  ...(effectiveSilent ? { silentAnnounce: true } : {}),
+                  ...(effectiveWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                },
+                {
+                  agentSessionKey: targetRequesterSessionKey,
+                  agentChannel: targetRequesterOrigin?.channel ?? undefined,
+                  agentAccountId: targetRequesterOrigin?.accountId ?? undefined,
+                  agentTo: targetRequesterOrigin?.to ?? undefined,
+                  agentThreadId: targetRequesterOrigin?.threadId ?? undefined,
+                },
+              );
+              if (spawnResult.status === "accepted") {
+                defaultRuntime.log(
+                  timerTriggered
+                    ? `[subagent-chain-hop] Timer fired and spawned tool delegate (${nextHopBase}/${maxChainLength}) from ${params.childSessionKey}: ${delegate.task.slice(0, 80)}`
+                    : `[subagent-chain-hop] Spawned tool delegate (${nextHopBase}/${maxChainLength}) from ${params.childSessionKey}: ${delegate.task.slice(0, 80)}`,
+                );
+              } else {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Tool delegate spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${delegate.task.slice(0, 80)}`,
+                );
+              }
+            } catch (err) {
+              defaultRuntime.log(
+                `[subagent-chain-hop] Tool delegate spawn failed from ${params.childSessionKey}: ${String(err)}`,
+              );
+            }
+          };
+
+          const rawDelay = delegate.delayMs ?? 0;
+          if (rawDelay > 0) {
+            const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, rawDelay));
+            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            setTimeout(() => {
+              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+              const drift = currentGen - hopGeneration;
+              if (drift > generationGuardTolerance) {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Tool delegate timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
+                );
+                return;
+              }
+              doToolDelegateSpawn(true).catch(() => {});
+            }, clampedDelay);
+          } else {
+            doToolDelegateSpawn().catch(() => {});
+          }
+
+          nextHopBase++;
         }
       }
     }
