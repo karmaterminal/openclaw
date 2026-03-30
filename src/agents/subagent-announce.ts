@@ -875,9 +875,8 @@ async function sendAnnounce(item: AnnounceQueueItem) {
       to: requesterIsSubagent ? undefined : origin?.to,
       threadId: requesterIsSubagent ? undefined : threadId,
       deliver: !requesterIsSubagent,
-      // Queue-based announces are regular subagent completions — do not tag
-      // as delegate-return. Continuation delegates use the direct delivery path.
-      continuationTrigger: undefined,
+      // Preserve explicit continuation triggers for queued delegate returns.
+      continuationTrigger: item.continuationTriggerOverride ?? undefined,
       internalEvents: item.internalEvents,
       inputProvenance: {
         kind: "inter_session",
@@ -934,6 +933,7 @@ function buildAnnounceQueueKey(sessionKey: string, origin?: DeliveryContext): st
 async function maybeQueueSubagentAnnounce(params: {
   requesterSessionKey: string;
   announceId?: string;
+  continuationTriggerOverride?: string;
   triggerMessage: string;
   steerMessage: string;
   summaryLine?: string;
@@ -980,6 +980,7 @@ async function maybeQueueSubagentAnnounce(params: {
       key: buildAnnounceQueueKey(canonicalKey, origin),
       item: {
         announceId: params.announceId,
+        continuationTriggerOverride: params.continuationTriggerOverride,
         prompt: params.triggerMessage,
         summaryLine: params.summaryLine,
         internalEvents: params.internalEvents,
@@ -1023,7 +1024,6 @@ async function sendSubagentAnnounceDirectly(params: {
     };
   }
   const cfg = loadConfig();
-  const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
   const announceTimeoutMs = resolveSubagentAnnounceTimeoutMs(cfg);
   const canonicalRequesterSessionKey = resolveRequesterStoreKey(
     cfg,
@@ -1134,6 +1134,7 @@ async function deliverSubagentAnnouncement(params: {
       await maybeQueueSubagentAnnounce({
         requesterSessionKey: params.requesterSessionKey,
         announceId: params.announceId,
+        continuationTriggerOverride: params.continuationTriggerOverride,
         triggerMessage: params.triggerMessage,
         steerMessage: params.steerMessage,
         summaryLine: params.summaryLine,
@@ -1855,9 +1856,10 @@ export async function runSubagentAnnounceFlow(params: {
           // Persisted total should already include accumulatedChildTokens, but if
           // persistence failed, add them locally so cost-cap still enforces (P2 fix).
           const storedChainTokens = parentEntry?.continuationChainTokens ?? 0;
-          const parentChainTokens = storedChainTokens >= accumulatedChildTokens
-            ? storedChainTokens
-            : storedChainTokens + accumulatedChildTokens;
+          const parentChainTokens =
+            storedChainTokens >= accumulatedChildTokens
+              ? storedChainTokens
+              : storedChainTokens + accumulatedChildTokens;
           if (costCapTokens > 0 && parentChainTokens > costCapTokens) {
             chainGuardResult = {
               allowed: false,
@@ -2033,11 +2035,9 @@ export async function runSubagentAnnounceFlow(params: {
     // should not trigger continuation chain state preservation.
     // Note: silentAnnounce delegates return early above and never reach here.
     // Only the task prefix identifies continuation delegates in the non-silent path.
-    const isContinuationDelegateRun =
-      /\[continuation:chain-hop:\d+\]/.test(params.task ?? "");
+    const isContinuationDelegateRun = /\[continuation:chain-hop:\d+\]/.test(params.task ?? "");
     const cfg2 = loadConfig();
-    const continuationEnabledForTrigger =
-      cfg2?.agents?.defaults?.continuation?.enabled === true;
+    const continuationEnabledForTrigger = cfg2?.agents?.defaults?.continuation?.enabled === true;
     const delegateReturnTrigger =
       continuationEnabledForTrigger && isContinuationDelegateRun ? "delegate-return" : undefined;
     const delivery = await deliverSubagentAnnouncement({
