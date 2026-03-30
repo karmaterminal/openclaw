@@ -254,7 +254,7 @@ describe("buildAgentSystemPrompt", () => {
       "For background, delayed, silent, or compaction-aware delegate work, prefer `continue_delegate` over shell sleeps, ad-hoc `openclaw ...` CLI calls, or manual relay patterns.",
     );
     expect(prompt).toContain(
-      "If `continue_delegate` is available, prefer it for most main-session delegate work:",
+      "Use the `continue_delegate` tool to dispatch background sub-agents with gateway-managed",
     );
     expect(prompt).toContain(
       "Use CONTINUE_WORK when you want your own next turn; use `continue_delegate` when the work",
