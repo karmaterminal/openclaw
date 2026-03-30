@@ -191,6 +191,23 @@ The restriction was intentional and correct at the time:
 
 Now, with 8+ dream nights, fleet-wide delegate usage, and chain hops proven in canary testing, the experience exists. The bracket path works but doesn't scale to depth. The tool is the right interface.
 
+## Critical Finding: Why Self-Consumption Doesn't Work
+
+Elliott 🌻 identified that chain-hop delegates go through `callGateway({ method: "agent" })`, which routes to `get-reply-run.ts` → `runReplyAgent`. This means `consumePendingDelegates()` IS called for sub-agent sessions. So why not just remove the deny list entry?
+
+**Because of session routing.** When `runReplyAgent` consumes delegates from the sub-agent's session, it dispatches them with the sub-agent's session key as the requester. The grandchildren would announce back to the **sub-agent** — but the sub-agent is ephemeral (mode: "run") and may be dead by the time they return.
+
+The existing bracket chain-hop path (`subagent-announce.ts:1896`) dispatches with `agentSessionKey: targetRequesterSessionKey` — the **parent's** session key. The grandchildren announce to the parent, not the dead sub-agent.
+
+**This is why announce-boundary consumption is the right fix.** The announce boundary already knows the parent's session key and dispatches chain-hops to it. Tool-enqueued delegates must go through the same routing.
+
+### The Two Paths
+
+| Path | Where consumed | Who dispatches | Who receives results | Works? |
+|------|---------------|----------------|---------------------|--------|
+| Self-consumption (Elliott's) | `runReplyAgent` on sub-agent's turn | Sub-agent session | Sub-agent (dead) | ❌ |
+| Announce-boundary (Option A) | `runSubagentAnnounceFlow` after sub-agent completes | Parent session | Parent session | ✅ |
+
 ## Open Questions
 
 1. **Should `maxDelegatesPerTurn` apply per-sub-agent or per-chain?** Currently it's per-main-session-turn. If a depth-1 delegate dispatches 5 shards, does that count against the parent's limit?
