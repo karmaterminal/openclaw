@@ -382,11 +382,13 @@ Test areas:
 
 ### `continue_delegate` Tool
 
-Bracket syntax (`[[CONTINUE_DELEGATE: task]]`) is parsed from terminal output — one signal per response, end-anchored regex. The `continue_delegate` tool provides the same capability through the standard tool interface, with three advantages:
+Bracket syntax (`[[CONTINUE_DELEGATE: task]]`) is parsed from terminal output — one signal per response, end-anchored regex. The `continue_delegate` tool provides the same capability through the standard tool interface and is the **primary mechanism** for delegation in main sessions. The system prompt teaches the tool first when it is available, with bracket syntax as a fallback for tool-call failures or sub-agent contexts where the tool is denied.
+
+The tool has three concrete advantages over bracket syntax:
 
 1. **Multi-delegate fan-out.** Multiple tool calls in one response dispatch multiple delegates in parallel — use like a task fan-out across N shards. Bracket syntax is limited to one per response (end-anchored regex), requiring serial `CONTINUE_WORK` hops between dispatches for the same workload.
 2. **Structured parameters.** Delay, mode (`normal`, `silent`, `silent-wake`, `post-compaction`), and task are typed fields with schema validation, not string suffixes.
-3. **Discoverability.** The tool appears in the agent's tool list alongside `sessions_spawn` and `exec`. A naive agent sees it, reads the description, and knows when to reach for it — no prior knowledge of bracket syntax required.
+3. **Discoverability.** The tool appears in the agent's tool list alongside `sessions_spawn` and `exec` (when the run drains the delegate queue — see tool gating below). A naive agent sees it, reads the description, and knows when to reach for it — no prior knowledge of bracket syntax required.
 
 **Architecture: two doors, one room.** The tool writes to a module-level `Map<string, PendingContinuationDelegate[]>` via `enqueuePendingDelegate()`. After the agent's response completes, `agent-runner.ts` calls `consumePendingDelegates(sessionKey)` and processes them through the same chain tracking (cost cap, chain length, delay clamping) as bracket-parsed signals. Delayed bracket/tool delegates converge on the same in-memory reservation scheduler; immediate delegates bypass that reservation store and go straight to `spawnSubagentDirect()`. Accepted-hop persistence is shared: `continuationChainCount` tracks the highest accepted hop label, while delayed reservations stay separate until timer fire. Chain tracking diverges at the hop boundary: tool-path dispatches use session store fields (`continuationChainCount`, `continuationChainTokens`); bracket chain-hops use task-prefix encoding (`[continuation:chain-hop:N]`) because session store resets clear state between hops.
 
@@ -400,7 +402,13 @@ Bracket syntax (`[[CONTINUE_DELEGATE: task]]`) is parsed from terminal output �
 
 **Safety:** The tool enforces `maxDelegatesPerTurn` (default: 5) to prevent unbounded fan-out within a single response. It is denied for sub-agents (`SUBAGENT_TOOL_DENY_ALWAYS`) — sub-agents use bracket syntax at the announce boundary.
 
-**Files:** `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/continuation-delegate-store.ts`.
+**Tool gating (`drainsContinuationDelegateQueue`):** The tool only appears in an agent's toolset when two conditions are met: `continuation.enabled === true` in config, AND the `drainsContinuationDelegateQueue` flag is `true` on the run params. This flag indicates that the current run's code path (in `agent-runner.ts`) will actually consume any delegates the tool enqueues. Without this gate, the tool would accept calls and report "scheduled" but the delegates would never spawn — the pending-delegate store would accumulate entries that no consumer drains. The flag is set to `true` in `get-reply-run.ts` for auto-reply turns and threaded through the param reconstruction chain (`buildEmbeddedRunBaseParams` → `runEmbeddedPiAgent` → `runEmbeddedAttempt` → `createOpenClawTools`). Call sites that intentionally don't drain (CLI commands, cron jobs, memory flushes, slug generation) pass `false` explicitly. A `logVerbose` diagnostic fires when `continuation.enabled` is true but the flag is `undefined` — catching accidental omissions without alerting on intentional non-draining paths.
+
+### System Prompt Design
+
+The system prompt (`system-prompt.ts`) branches on `availableTools.has("continue_delegate")`. When the tool is present, it is documented first with typed parameters (`task`, `delaySeconds`, `mode`), multi-delegate fan-out guidance, and the bracket as a labeled fallback ("if the tool call fails"). When the tool is absent (sub-agents, non-draining runs), only bracket syntax is taught. The sub-agent prompt block (`isMinimal` mode) teaches bracket-only — no tool mention — because sub-agents never have the tool.
+
+**Files:** `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/continuation-delegate-store.ts`, `src/agents/openclaw-tools.ts` (tool gating), `src/agents/system-prompt.ts` (prompt priority).
 
 ### Post-Compaction Lifecycle Dispatch
 
@@ -1180,7 +1188,7 @@ These are documented failure modes observed during testing that are properties o
 3. **Self-knowledge** — `[system:context-pressure]` events that tell agents their resource state before they need to ask
 4. **Lifecycle dispatch** — `post-compaction` delegates that fire at the moment of compaction, carrying working state to the next copy alongside boot files
 
-Every continuation is bounded, observable, interruptible, and opt-in. The `continue_delegate` tool appears in the agent's tool list — a naive agent sees it, reads the description, and knows when to reach for it. No prior knowledge required.
+Every continuation is bounded, observable, interruptible, and opt-in. For main sessions, the `continue_delegate` tool appears in the agent's tool list as the primary delegation mechanism — a naive agent sees it, reads the description, and knows when to reach for it. Bracket syntax remains as a fallback and as the only delegation path for sub-agents. No prior knowledge required.
 
 Comprehensive test suite. Ships disabled by default.
 
