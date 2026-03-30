@@ -363,7 +363,8 @@ function resolveAgentRunTrigger(
   // EmbeddedRunTrigger union yet — they're proposed additions via this PR.
   // Cast is safe: the trigger field is used for logging and policy lookup,
   // and unknown values fall through to default policy.
-  return (continuationTrigger ?? "user") as import("../agents/pi-embedded-runner/run/params.js").EmbeddedRunTrigger;
+  return (continuationTrigger ??
+    "user") as import("../agents/pi-embedded-runner/run/params.js").EmbeddedRunTrigger;
 }
 function runAgentAttempt(params: {
   providerOverride: string;
@@ -542,6 +543,8 @@ function runAgentAttempt(params: {
     inputProvenance: params.opts.inputProvenance,
     streamParams: params.opts.streamParams,
     agentDir: params.agentDir,
+    // CLI runs do not have a gateway continuation delegate queue to drain.
+    drainsContinuationDelegateQueue: false,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
     onAgentEvent: params.onAgentEvent,
     bootstrapPromptWarningSignaturesSeen,
