@@ -46,6 +46,11 @@ const SUBAGENT_TOOL_DENY_LEAF = [
   "sessions_list",
   "sessions_history",
   "sessions_spawn",
+  // Leaf sub-agents (at max spawn depth) cannot delegate further — they have no
+  // children to orchestrate. The tool's pending-delegate store is consumed by
+  // agent-runner.ts for main sessions and by subagent-announce.ts for chain-hop
+  // subagents, but leaf nodes should complete their work directly rather than fan out.
+  "continue_delegate",
 ];
 
 /**

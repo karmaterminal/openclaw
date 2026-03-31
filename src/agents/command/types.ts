@@ -1,6 +1,7 @@
 import type { AgentInternalEvent } from "../../agents/internal-events.js";
 import type { ClientToolDefinition } from "../../agents/pi-embedded-runner/run/params.js";
 import type { SpawnedRunMetadata } from "../../agents/spawned-context.js";
+import type { ContinuationTrigger } from "../../auto-reply/types.js";
 import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 
@@ -81,6 +82,10 @@ export type AgentCommandOpts = {
   abortSignal?: AbortSignal;
   lane?: string;
   runId?: string;
+  /** Structured lifecycle metadata for internally-triggered turns. */
+  continuationTrigger?: ContinuationTrigger;
+  /** When true, the run drains the pending continuation delegate queue after completion. */
+  drainsContinuationDelegateQueue?: boolean;
   extraSystemPrompt?: string;
   internalEvents?: AgentInternalEvent[];
   inputProvenance?: InputProvenance;

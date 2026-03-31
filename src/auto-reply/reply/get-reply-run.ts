@@ -446,10 +446,14 @@ export async function runPreparedReply(
       sessionEntry.updatedAt = Date.now();
       sessionStore[sessionKey] = sessionEntry;
       if (storePath) {
-        const { updateSessionStore } = await loadSessionStoreRuntime();
-        await updateSessionStore(storePath, (store) => {
-          store[sessionKey] = sessionEntry;
-        });
+        try {
+          const { updateSessionStore } = await loadSessionStoreRuntime();
+          await updateSessionStore(storePath, (store) => {
+            store[sessionKey] = sessionEntry;
+          });
+        } catch (err) {
+          logVerbose(`failed to persist xhigh downgrade for ${sessionKey}: ${String(err)}`);
+        }
       }
     }
   }

@@ -218,6 +218,7 @@ export function createFollowupRunner(params: {
                 skillsSnapshot: queued.run.skillsSnapshot,
                 prompt: queued.prompt,
                 extraSystemPrompt: queued.run.extraSystemPrompt,
+                drainsContinuationDelegateQueue: queued.run.drainsContinuationDelegateQueue,
                 ownerNumbers: queued.run.ownerNumbers,
                 enforceFinalTag: queued.run.enforceFinalTag,
                 provider,

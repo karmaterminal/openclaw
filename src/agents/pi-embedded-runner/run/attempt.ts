@@ -467,6 +467,7 @@ export async function runEmbeddedAttempt(
           requireExplicitMessageTarget:
             params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
           disableMessageTool: params.disableMessageTool,
+          drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
           onYield: (message) => {
             yieldDetected = true;
             yieldMessage = message;
@@ -654,7 +655,21 @@ export async function runEmbeddedAttempt(
       userTimeFormat,
       contextFiles,
       memoryCitationsMode: params.config?.memory?.citations,
+      continuationEnabled:
+        params.config?.agents?.defaults?.continuation?.enabled === true &&
+        params.drainsContinuationDelegateQueue === true,
     });
+
+    // Log when config enables continuation but the drain flag suppresses it —
+    // helps diagnose "why didn't my subagent get continuation instructions?"
+    if (
+      params.config?.agents?.defaults?.continuation?.enabled === true &&
+      !params.drainsContinuationDelegateQueue
+    ) {
+      log.debug(
+        `[continuation] Continuation instructions suppressed for non-drain run: ${params.sessionKey ?? "unknown"}`,
+      );
+    }
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
       generatedAt: Date.now(),

@@ -69,6 +69,16 @@ export type SpawnSubagentParams = {
     mimeType?: string;
   }>;
   attachMountPath?: string;
+  /** When true, sub-agent completion is delivered as a silent system event
+   *  instead of a visible channel message. Used for ambient enrichment shards. */
+  silentAnnounce?: boolean;
+  /** When true (with silentAnnounce), the parent session is woken after the
+   *  enrichment is enqueued. Enables autonomous cognition loops where the agent
+   *  acts on shard returns without external nudge. */
+  wakeOnReturn?: boolean;
+  /** When true, the spawned sub-agent's run drains the continuation delegate queue,
+   *  enabling the continue_delegate tool for chain-hop delegates. */
+  drainsContinuationDelegateQueue?: boolean;
 };
 
 export type SpawnSubagentContext = {
@@ -563,6 +573,14 @@ export async function spawnSubagentDirect(
     acpEnabled: cfg.acp?.enabled !== false && !childRuntime.sandboxed,
     childDepth,
     maxSpawnDepth,
+    // Hint tool availability so the subagent prompt teaches tool-primary vs bracket-only.
+    // The tool will actually appear when drains === true AND the child is not a leaf
+    // (DENY_LEAF blocks it at max depth). Also respect explicit deny config so the
+    // prompt doesn't teach a tool the policy will strip from the actual toolset.
+    toolNames: params.drainsContinuationDelegateQueue === true && childDepth < maxSpawnDepth
+      && !(cfg.tools?.subagents?.tools?.deny as string[] | undefined)?.includes("continue_delegate")
+      ? ["continue_delegate"]
+      : undefined,
   });
 
   let retainOnSessionKeep = false;
@@ -670,6 +688,9 @@ export async function spawnSubagentDirect(
         thinking: thinkingOverride,
         timeout: runTimeoutSeconds,
         label: label || undefined,
+        ...(params.drainsContinuationDelegateQueue === true
+          ? { drainsContinuationDelegateQueue: true }
+          : {}),
         ...publicSpawnedMetadata,
       },
       timeoutMs: 10_000,
@@ -758,6 +779,8 @@ export async function spawnSubagentDirect(
       attachmentsDir: attachmentAbsDir,
       attachmentsRootDir: attachmentRootDir,
       retainAttachmentsOnKeep: retainOnSessionKeep,
+      ...(params.silentAnnounce ? { silentAnnounce: true } : {}),
+      ...(params.wakeOnReturn ? { wakeOnReturn: true } : {}),
     });
   } catch (err) {
     if (attachmentAbsDir) {

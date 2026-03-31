@@ -137,6 +137,7 @@ docs/superpowers
 
 # Deprecated changelog fragment workflow
 changelog/fragments/
+.gitnexus/
 
 # Local scratch workspace
 .tmp/

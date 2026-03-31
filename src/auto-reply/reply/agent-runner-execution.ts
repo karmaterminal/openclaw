@@ -210,6 +210,10 @@ export async function runAgentTurnWithFallback(params: {
         ) {
           return { skip: true };
         }
+        // Do NOT strip continuation markers from streaming partials.
+        // Partials are non-terminal and may transiently end with token-like text.
+        // Continuation parsing/stripping happens only on final assembled payloads
+        // in runReplyAgent to avoid corrupting streamed user-visible output.
         if (!text) {
           // Allow media-only payloads (e.g. tool result screenshots) through.
           if (reply.hasMedia) {
@@ -399,6 +403,7 @@ export async function runAgentTurnWithFallback(params: {
                 ...runBaseParams,
                 prompt: params.commandBody,
                 extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
+                drainsContinuationDelegateQueue: params.followupRun.run.drainsContinuationDelegateQueue,
                 toolResultFormat: (() => {
                   const channel = resolveMessageChannel(
                     params.sessionCtx.Surface,

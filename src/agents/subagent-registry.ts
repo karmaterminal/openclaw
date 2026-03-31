@@ -542,6 +542,8 @@ export function registerSubagentRun(params: {
   runTimeoutSeconds?: number;
   expectsCompletionMessage?: boolean;
   spawnMode?: "run" | "session";
+  silentAnnounce?: boolean;
+  wakeOnReturn?: boolean;
   attachmentsDir?: string;
   attachmentsRootDir?: string;
   retainAttachmentsOnKeep?: boolean;

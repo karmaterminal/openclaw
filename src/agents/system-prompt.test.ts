@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { typedCases } from "../test-utils/typed-cases.js";
+import { resolveSubagentToolPolicy } from "./pi-tools.policy.js";
 import { buildSubagentSystemPrompt } from "./subagent-announce.js";
 import { buildAgentSystemPrompt, buildRuntimeLine } from "./system-prompt.js";
 
@@ -238,6 +239,144 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain(
       "When a first-class tool exists for an action, use the tool directly instead of asking the user to run equivalent CLI or slash commands.",
     );
+  });
+
+  it("surfaces continue_delegate as the first-class background delegation tool", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      continuationEnabled: true,
+      toolNames: ["continue_delegate", "sessions_spawn", "exec"],
+    });
+
+    expect(prompt).toContain(
+      "- continue_delegate: Schedule background delegate work for future turns, silent enrichment, fan-out, or compaction handoff",
+    );
+    expect(prompt).toContain(
+      "For background, delayed, silent, or compaction-aware delegate work, prefer `continue_delegate` over shell sleeps, ad-hoc `openclaw ...` CLI calls, or manual relay patterns.",
+    );
+    expect(prompt).toContain(
+      "Use CONTINUE_WORK when you want your own next turn; use `continue_delegate` when the work",
+    );
+    expect(prompt).toContain(
+      "Delegates let the main session stay free while background shards do legwork.",
+    );
+    expect(prompt).toContain(
+      "They can quietly inform future blind inquiry, later synthesis, or post-compaction recovery.",
+    );
+    expect(prompt).toContain(
+      "Use `continue_delegate` (or `[[CONTINUE_DELEGATE:]]` bracket syntax) when you need:",
+    );
+    expect(prompt).toContain(
+      "Compaction handoff — preserve working state or partial results across compaction",
+    );
+    expect(prompt).toContain(
+      "Do not use `exec`, shell sleeps, or manual `openclaw ...` commands to imitate delayed",
+    );
+    expect(prompt).toContain("### Cooperative yield");
+    expect(prompt).toContain(
+      "Use `sessions_yield` to end your turn immediately, aborting any queued tool calls.",
+    );
+  });
+
+  it("documents continue_delegate tool parameters when the tool is available", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      continuationEnabled: true,
+      toolNames: ["continue_delegate", "sessions_spawn", "exec"],
+    });
+
+    expect(prompt).toContain("This is the primary mechanism for delegation.");
+    expect(prompt).toContain("Tool parameters:");
+    expect(prompt).toContain("delaySeconds");
+    expect(prompt).toContain('mode — "normal" (default, announces to channel)');
+    expect(prompt).toContain("Fallback bracket syntax (if the tool call fails or is unavailable):");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE: task +30s | silent-wake]]");
+  });
+
+  it("uses bracket-only continuation delegate syntax when the tool is unavailable", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      continuationEnabled: true,
+      toolNames: ["sessions_spawn", "exec"],
+    });
+
+    expect(prompt).toContain(
+      "End your response with [[CONTINUE_DELEGATE: task description]] to dispatch a sub-agent",
+    );
+    expect(prompt).not.toContain("Tool parameters:");
+    expect(prompt).not.toContain("This is the primary mechanism for delegation.");
+  });
+
+  it("teaches minimal continuation prompts to keep delegate trees off the parent relay path", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+    });
+
+    expect(prompt).toContain("## Chain Delegation");
+    expect(prompt).toContain(
+      "Use this to keep a delegate tree moving without asking the parent to relay every hop.",
+    );
+    expect(prompt).toContain("The parent/main session stays free while your branch keeps working.");
+    expect(prompt).toContain(
+      "Use `| silent` when the result should only enrich the parent's future context.",
+    );
+    expect(prompt).toContain(
+      "Use `| silent-wake` when the result should enrich the parent and wake it to act.",
+    );
+  });
+
+  it("teaches continue_delegate tool in minimal prompts when tool is available", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+      toolNames: ["continue_delegate", "exec"],
+    });
+
+    expect(prompt).toContain("continue_delegate");
+    expect(prompt).toContain("Fallback bracket syntax");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
+  });
+
+  it("uses bracket-only in minimal prompts when continue_delegate tool is absent", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+    });
+
+    expect(prompt).not.toContain("Use the `continue_delegate` tool");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE: task description]]");
+  });
+
+  it("keeps the subagent continuation deny list aligned: orchestrator gets tool, leaf does not", () => {
+    // Orchestrator (depth 1, maxSpawnDepth 3 — not at leaf depth)
+    const orchestratorConfig = {
+      agents: { defaults: { subagents: { maxSpawnDepth: 3 } } },
+    } as any;
+    const orchestratorPolicy = resolveSubagentToolPolicy(orchestratorConfig, 1);
+    expect(orchestratorPolicy.deny).not.toContain("continue_delegate");
+
+    // Leaf (depth >= maxSpawnDepth with default config)
+    const leafPolicy = resolveSubagentToolPolicy(undefined, 10);
+    expect(leafPolicy.deny).toContain("continue_delegate");
+
+    // Orchestrator subagent gets the tool in its prompt
+    const orchestratorTools = ["continue_delegate", "sessions_spawn", "exec"].filter(
+      (toolName) => !orchestratorPolicy.deny?.includes(toolName),
+    );
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      continuationEnabled: true,
+      toolNames: orchestratorTools,
+    });
+
+    expect(orchestratorTools).toContain("continue_delegate");
+    expect(prompt).toContain("continue_delegate");
+    expect(prompt).toContain("Fallback bracket syntax");
   });
 
   it("lists available tools when provided", () => {
@@ -789,5 +928,64 @@ describe("buildSubagentSystemPrompt", () => {
         expect(prompt, testCase.name).toContain("spawned by the main agent");
       }
     }
+  });
+
+  it("teaches tool-primary continuation when continue_delegate is in toolNames", () => {
+    const prompt = buildSubagentSystemPrompt({
+      childSessionKey: "agent:main:subagent:abc",
+      task: "chain task",
+      childDepth: 1,
+      maxSpawnDepth: 3,
+      toolNames: ["continue_delegate"],
+      continuationEnabled: true,
+    });
+
+    expect(prompt).toContain("## Continuation Chaining");
+    expect(prompt).toContain("Use the `continue_delegate` tool");
+    expect(prompt).toContain("Prefer the tool. Use brackets only as fallback.");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE:");
+  });
+
+  it("teaches bracket-only continuation when continue_delegate is NOT in toolNames", () => {
+    const prompt = buildSubagentSystemPrompt({
+      childSessionKey: "agent:main:subagent:abc",
+      task: "chain task",
+      childDepth: 1,
+      maxSpawnDepth: 3,
+      toolNames: [],
+      continuationEnabled: true,
+    });
+
+    expect(prompt).toContain("## Continuation Chaining");
+    expect(prompt).toContain("end your ENTIRE response with:");
+    expect(prompt).toContain("[[CONTINUE_DELEGATE:");
+    expect(prompt).not.toContain("Use the `continue_delegate` tool");
+    expect(prompt).not.toContain("Prefer the tool");
+  });
+
+  it("teaches bracket-only continuation when toolNames is undefined", () => {
+    const prompt = buildSubagentSystemPrompt({
+      childSessionKey: "agent:main:subagent:abc",
+      task: "chain task",
+      childDepth: 1,
+      maxSpawnDepth: 3,
+      continuationEnabled: true,
+    });
+
+    expect(prompt).toContain("## Continuation Chaining");
+    expect(prompt).not.toContain("Use the `continue_delegate` tool");
+  });
+
+  it("omits continuation chaining for leaf agents even with toolNames", () => {
+    const prompt = buildSubagentSystemPrompt({
+      childSessionKey: "agent:main:subagent:abc:subagent:def",
+      task: "leaf task",
+      childDepth: 2,
+      maxSpawnDepth: 2,
+      toolNames: ["continue_delegate"],
+    });
+
+    expect(prompt).not.toContain("## Continuation Chaining");
+    expect(prompt).not.toContain("continue_delegate");
   });
 });
