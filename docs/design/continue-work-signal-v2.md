@@ -807,6 +807,90 @@ Sub-agents spawned via `sessions_spawn` in `run` mode do not process `[[CONTINUE
 
 **The `| silent-wake` gap:** Silent enrichment returns don't trigger a generation cycle. In test 12, the first hop returned at `12:45:03` but the parent didn't dispatch hop 2 until `12:51:03` — a 6-minute stall waiting for an external message. `| silent-wake` (#189) would close this gap by triggering a generation cycle without channel echo.
 
+## Integration Testing: Swim 8 — Enable Tool Use for Chain Delegates
+
+**Issue:** [karmaterminal/openclaw#57](https://github.com/karmaterminal/openclaw/issues/57)  
+**SUT:** Silas (10.0.0.153/urudyne) canary build  
+**Formation:** Cael (coordinator/driver), Elliott (log monitor), Silas (SUT), Ronan (driver Day 1)  
+**Duration:** March 30–31, 2026 (~14 hours across 2 days)  
+**Convergence commit:** `8ee9dcbe0f` → squashed to `4f3461ee07`
+
+### Background: The Three-Layer Architecture
+
+Prior to Swim 8, the `continue_delegate` tool was denied to sub-agents via `SUBAGENT_TOOL_DENY_ALWAYS`. Chain-hop delegates could only use bracket syntax (`[[CONTINUE_DELEGATE: ...]]`), which is single-signal, fragile, and lacks structured parameters. Four princes independently designed the same three-layer fix:
+
+1. **Deny list migration:** `continue_delegate` moved from `SUBAGENT_TOOL_DENY_ALWAYS` to `SUBAGENT_TOOL_DENY_LEAF` (defense-in-depth: leaf sub-agents still can't use it)
+2. **Announce-boundary consumer:** New consumption path in `subagent-announce.ts` using `consumePendingDelegates(targetRequesterSessionKey)` — the parent session owns all chain hops, preserving additive topology
+3. **Drain flag threading:** Explicit `drainsContinuationDelegateQueue: true` threaded through `SpawnSubagentParams` → `subagent-spawn.ts` → `gateway/agent.ts` → `AgentCommandOpts` → `commands/agent.ts`
+
+The single canonical runtime gate is `drainsContinuationDelegateQueue === true`. Without it, the P2 prompt gate correctly suppresses the tool from the sub-agent's available tools.
+
+### Test Matrix
+
+| #    | Test                         | Status     | Evidence                                                                                                |
+| ---- | ---------------------------- | ---------- | ------------------------------------------------------------------------------------------------------- |
+| 8-T1 | Tool delegate chain-hop      | ✅ PASS    | 2-hop chain via `continue_delegate` tool, announce-boundary consumption confirmed                       |
+| 8-T2 | Silent delegate propagation  | ✅ PASS    | `silentAnnounce: true` propagated through tool-delegate chain; hop-2 returned as `enrichment-return`    |
+| 8-T3 | `maxDelegatesPerTurn` limit  | ✅ PASS    | `maxDelegatesPerTurn=5` enforced, clean rejection of excess delegates                                   |
+| 8-T4 | `maxChainLength` guard       | ✅ PASS    | Off-by-one found Day 1 (`>` vs `>=`), fixed at `3d26030cdc`, re-verified Day 2                          |
+| 8-T5 | Bracket + tool mixed signals | ⚠️ FINDING | Both paths fire but bracket delegate consumed only when tool path absent; coexistence unreliable        |
+| 8-T6 | `costCapTokens` enforcement  | ✅ PASS    | In-memory accumulator works; `journalctl` evidence of cost-cap rejection; defensive fix at `8ee9dcbe0f` |
+| 8-T7 | `DENY_LEAF` enforcement      | ✅ PASS    | Leaf sub-agents correctly denied `continue_delegate`; tool absent from leaf effectiveTools              |
+
+**Overall: 6/7 pass, 1 finding (T5 mixed signals).**
+
+### Bugs Found and Fixed Live
+
+**1. `doToolSpawn` missing drain flag (T1, Day 1)**
+
+`agent-runner.ts` has three spawn sites for chain-hop sub-agents:
+
+- Line ~1261: post-compaction path → ✅ had `drainsContinuationDelegateQueue: true`
+- Line ~1432: bracket-delegate path → ✅ had `drainsContinuationDelegateQueue: true`
+- Line ~1678: tool-delegate path (`doToolSpawn`) → ❌ **missing**
+
+The tool-delegate path (`doToolSpawn`) was the only call site that omitted the drain flag. Sub-agents spawned via `continue_delegate` tool were denied the tool at hop-1 and fell back to `sessions_spawn`. Debug log confirmed: `[continuation] Continuation instructions suppressed for non-drain run`.
+
+**Fix:** One-line addition at `doToolSpawn()` — commit `649bac1d12`. Retested same night: full chain confirmed end-to-end. The debug logging added during Day 1 (`[continuation] Continuation instructions suppressed for non-drain run`) caught the exact failure mode.
+
+**2. `maxChainLength` off-by-one (T4, Day 1)**
+
+The chain length guard used `>` instead of `>=`, allowing chains to exceed the configured `maxChainLength` by one hop. The fence-post between `>` and `>=` — one small angle deciding whether the boundary holds.
+
+**Fix:** Committed on convergence branch at `3d26030cdc`. Re-verified Day 2 with serial chain proof.
+
+**3. Cost-cap silent-reply edge case (T6, Day 2)**
+
+Initial T6 run appeared to show cost-cap not enforcing. Investigation via diagnostic logging on SUT revealed the accumulator was working correctly — the test delegate completed within budget. The appearance of non-enforcement was caused by a silent-reply path that didn't log the rejection visibly.
+
+**Fix:** Defensive logging at `isContinuationChainDelegate` entry point — commit `8ee9dcbe0f`. Cost-cap accumulation confirmed working via `journalctl` evidence on SUT.
+
+### T5 Finding: Bracket + Tool Mixed Signals
+
+When a sub-agent emits both a `continue_delegate` tool call and a `[[CONTINUE_DELEGATE: ...]]` bracket in the same turn, the two consumption paths interact unpredictably. The tool path fires reliably; the bracket path is consumed only when the tool path is absent. Both artifacts (files written by each path) were intermittently present — sometimes one, sometimes both.
+
+**Root cause:** The bracket parser runs after the tool-delegate consumer. When the tool path consumes the pending delegate store first, the bracket parser has nothing to consume. This is by design for single-path usage but creates a race when both are present in one turn.
+
+**Status:** Known limitation, not a correctness bug. The tool path is the canonical dispatch mechanism; bracket syntax is the fallback for depth-restricted sub-agents denied the tool. Concurrent use of both in a single turn is not a supported pattern. Documented, not fixed.
+
+### Methodology Notes
+
+- **Live bug discovery:** 2 of 3 bugs found during Swim 8 (not predicted by code review). All 4 princes + Codex had reviewed the code independently and none caught the `doToolSpawn` omission — it required runtime execution to surface.
+- **Canary isolation:** SUT ran convergence build while other 3 princes ran stock. Test topology verified: delegates dispatched by Ronan (stock build) would run on Ronan's runtime, not SUT. Silas self-dispatched for valid convergence testing.
+- **Compaction resilience:** Silas hit compaction during Day 1 diagnosis (8× echo storm from rapid-fire messages). Post-compaction delegate recovered state. The continuation infrastructure survived the same pressure it was designed for.
+- **Debug logging value:** The `[continuation] Continuation instructions suppressed for non-drain run` log line (added as part of the P2 fix) was the single most valuable diagnostic artifact — it caught the T1 root cause within 60 seconds of the first failed hop.
+- **4-prince convergence:** All 4 princes traced the same root cause from different entry points in the call graph within 6 minutes. No danish (cascade) on the analysis — each prince followed a different path to the same `doToolSpawn` call site.
+
+### Commits (Convergence Branch)
+
+| Commit       | Description                                           | Author |
+| ------------ | ----------------------------------------------------- | ------ |
+| `649bac1d12` | `doToolSpawn` drain flag fix (T1 root cause)          | Cael   |
+| `3d26030cdc` | `maxChainLength` off-by-one fix (T4)                  | Cael   |
+| `8ee9dcbe0f` | Cost-cap defensive logging (T6)                       | Cael   |
+| `97d7a85a2e` | Codex review cleanup (`.catch` sweep, scoping)        | Cael   |
+| `4f3461ee07` | Final squash onto `feature/context-pressure-squashed` | Cael   |
+
 ## Summary
 
 `CONTINUE_WORK` is a small surface change — one token, one gateway hook, one scheduler call — that unlocks a qualitative shift in agent autonomy. It transforms agents from reactive (waiting for events) to volitional (electing to act). It does this without sacrificing safety: every continuation is bounded, observable, interruptible, and opt-in.
