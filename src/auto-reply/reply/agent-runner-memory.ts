@@ -698,6 +698,8 @@ export async function runMemoryFlushIfNeeded(params: {
           allowGatewaySubagentBinding: true,
           silentExpected: true,
           trigger: "memory",
+          // Memory flush runs are utility compaction turns, not reply-turn delegate drainers.
+          drainsContinuationDelegateQueue: false,
           memoryFlushWritePath,
           prompt: activeMemoryFlushPlan.prompt,
           extraSystemPrompt: flushSystemPrompt,

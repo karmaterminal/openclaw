@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  enqueueSystemEvent,
+  peekSystemEventEntries,
+  resetSystemEventsForTest,
+} from "../../infra/system-events.js";
+import { runPreparedReply } from "./get-reply-run.js";
 
 vi.mock("../../agents/auth-profiles/session-override.js", () => ({
   resolveSessionAuthProfileOverride: vi.fn().mockResolvedValue(undefined),
@@ -39,10 +45,13 @@ vi.mock("../../process/command-queue.js", () => ({
   getQueueSize: vi.fn().mockReturnValue(0),
 }));
 
-vi.mock("../../routing/session-key.js", () => ({
-  normalizeMainKey: vi.fn().mockReturnValue("main"),
-  normalizeAgentId: vi.fn((id?: string) => id ?? "default"),
-}));
+vi.mock("../../routing/session-key.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../routing/session-key.js")>();
+  return {
+    ...actual,
+    normalizeMainKey: vi.fn().mockReturnValue("main"),
+  };
+});
 
 vi.mock("../../utils/provider-utils.js", () => ({
   isReasoningTagProvider: vi.fn().mockReturnValue(false),
@@ -54,10 +63,16 @@ vi.mock("../command-detection.js", () => ({
 
 vi.mock("./agent-runner.runtime.js", () => ({
   runReplyAgent: vi.fn().mockResolvedValue({ text: "ok" }),
+  cancelContinuationTimer: vi.fn(),
+  clearDelegatePending: vi.fn(),
 }));
 
 vi.mock("./body.js", () => ({
   applySessionHints: vi.fn().mockImplementation(async ({ baseBody }) => baseBody),
+}));
+
+vi.mock("./context-pressure.js", () => ({
+  checkContextPressure: vi.fn().mockReturnValue({ fired: false, band: 0 }),
 }));
 
 vi.mock("./groups.js", () => ({
@@ -94,20 +109,11 @@ vi.mock("./typing-mode.js", () => ({
   resolveTypingMode: vi.fn().mockReturnValue("off"),
 }));
 
-let runPreparedReply: typeof import("./get-reply-run.js").runPreparedReply;
-let runReplyAgent: typeof import("./agent-runner.runtime.js").runReplyAgent;
-let routeReply: typeof import("./route-reply.runtime.js").routeReply;
-let drainFormattedSystemEvents: typeof import("./session-system-events.js").drainFormattedSystemEvents;
-let resolveTypingMode: typeof import("./typing-mode.js").resolveTypingMode;
-
-async function loadFreshGetReplyRunModuleForTest() {
-  vi.resetModules();
-  ({ runReplyAgent } = await import("./agent-runner.runtime.js"));
-  ({ routeReply } = await import("./route-reply.runtime.js"));
-  ({ drainFormattedSystemEvents } = await import("./session-system-events.js"));
-  ({ resolveTypingMode } = await import("./typing-mode.js"));
-  ({ runPreparedReply } = await import("./get-reply-run.js"));
-}
+import { runReplyAgent } from "./agent-runner.runtime.js";
+import { checkContextPressure } from "./context-pressure.js";
+import { routeReply } from "./route-reply.runtime.js";
+import { drainFormattedSystemEvents } from "./session-system-events.js";
+import { resolveTypingMode } from "./typing-mode.js";
 
 function baseParams(
   overrides: Partial<Parameters<typeof runPreparedReply>[0]> = {},
@@ -190,7 +196,8 @@ describe("runPreparedReply media-only handling", () => {
     storeRuntimeLoads.mockClear();
     updateSessionStore.mockReset();
     vi.clearAllMocks();
-    await loadFreshGetReplyRunModuleForTest();
+    resetSystemEventsForTest();
+    vi.mocked(checkContextPressure).mockReturnValue({ fired: false, band: 0 });
   });
 
   it("does not load session store runtime on module import", async () => {
@@ -436,5 +443,64 @@ describe("runPreparedReply media-only handling", () => {
     expect(call).toBeTruthy();
     // Queue body (used by steer mode) must keep the full original text.
     expect(call?.followupRun.prompt).toContain("low steer this conversation");
+  });
+
+  it("classifies delegate-return heartbeats via continuationTrigger without queue markers", async () => {
+    await runPreparedReply(
+      baseParams({
+        opts: {
+          isHeartbeat: true,
+          continuationTrigger: "delegate-return",
+        },
+      }),
+    );
+
+    const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
+    expect(call?.isContinuationWake).toBe(true);
+  });
+
+  it("does not treat delegate-pending markers as a wake without a structured trigger", async () => {
+    enqueueSystemEvent("[continuation:delegate-pending] waiting", { sessionKey: "session-key" });
+
+    await runPreparedReply(baseParams());
+
+    const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
+    expect(call?.isContinuationWake).toBe(false);
+  });
+
+  it("does not check context pressure unless continuation is explicitly enabled", async () => {
+    await runPreparedReply(
+      baseParams({
+        sessionEntry: {
+          sessionId: "session",
+          updatedAt: Date.now(),
+          totalTokens: 180_000,
+          totalTokensFresh: 180_000,
+        } as never,
+        cfg: {
+          session: {},
+          channels: {},
+          agents: {
+            defaults: {
+              continuation: {
+                contextPressureThreshold: 0.8,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(vi.mocked(checkContextPressure)).not.toHaveBeenCalled();
+  });
+
+  it("drops legacy delegate-returned markers instead of classifying them as wakes", async () => {
+    enqueueSystemEvent("[continuation:delegate-returned]", { sessionKey: "session-key" });
+
+    await runPreparedReply(baseParams());
+
+    const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
+    expect(call?.isContinuationWake).toBe(false);
+    expect(peekSystemEventEntries("session-key")).toEqual([]);
   });
 });
