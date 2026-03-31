@@ -568,6 +568,8 @@ export async function runCronIsolatedAgentTurn(params: {
             runId: cronSession.sessionEntry.sessionId,
             requireExplicitMessageTarget: toolPolicy.requireExplicitMessageTarget,
             disableMessageTool: toolPolicy.disableMessageTool,
+            // Cron isolated runs are utility turns, not gateway-managed reply turns.
+            drainsContinuationDelegateQueue: false,
             allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
             abortSignal,
             bootstrapPromptWarningSignaturesSeen,

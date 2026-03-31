@@ -82,6 +82,8 @@ export type FollowupRun = {
     extraSystemPrompt?: string;
     enforceFinalTag?: boolean;
     silentExpected?: boolean;
+    /** Whether this run drains continue_delegate work staged during the turn. */
+    drainsContinuationDelegateQueue?: boolean;
   };
 };
 

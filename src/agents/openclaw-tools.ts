@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
+import { logVerbose } from "../globals.js";
 import { resolvePluginTools } from "../plugins/tools.js";
 import {
   getActiveSecretsRuntimeSnapshot,
@@ -15,6 +16,7 @@ import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
+import { createContinueDelegateTool } from "./tools/continue-delegate-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
@@ -99,6 +101,8 @@ export function createOpenClawTools(
     onYield?: (message: string) => Promise<void> | void;
     /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
     allowGatewaySubagentBinding?: boolean;
+    /** Whether the current run consumes the continue_delegate staging queue. */
+    drainsContinuationDelegateQueue?: boolean;
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;
@@ -258,6 +262,25 @@ export function createOpenClawTools(
     ...(webFetchTool ? [webFetchTool] : []),
     ...(imageTool ? [imageTool] : []),
     ...(pdfTool ? [pdfTool] : []),
+    // Only runs that actually drain the staged delegate queue can safely expose
+    // continue_delegate; other runs would report "scheduled" but never spawn it.
+    ...(() => {
+      const contEnabled = options?.config?.agents?.defaults?.continuation?.enabled === true;
+      if (contEnabled && options?.drainsContinuationDelegateQueue === undefined) {
+        logVerbose(
+          "continue_delegate gate: continuation enabled but drainsContinuationDelegateQueue is undefined; tool will not be included",
+        );
+      }
+      return [];
+    })(),
+    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    options?.drainsContinuationDelegateQueue === true
+      ? [
+          createContinueDelegateTool({
+            agentSessionKey: options?.agentSessionKey,
+          }),
+        ]
+      : []),
   ];
 
   const pluginTools = resolvePluginTools({

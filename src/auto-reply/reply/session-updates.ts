@@ -11,6 +11,7 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 export { drainFormattedSystemEvents } from "./session-system-events.js";
 
@@ -180,6 +181,7 @@ export async function incrementCompactionCount(params: {
   // Build update payload with compaction count and optionally updated token counts
   const updates: Partial<SessionEntry> = {
     compactionCount: nextCount,
+    lastContextPressureBand: undefined,
     updatedAt: now,
   };
   if (newSessionId && newSessionId !== entry.sessionId) {
