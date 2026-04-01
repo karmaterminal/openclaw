@@ -3877,7 +3877,6 @@ describe("runReplyAgent continuation signal handling", () => {
     expect(sessionEntry.continuationChainTokens).toBeUndefined();
   });
 });
-||||||| /tmp/base-agent-runner.misc.runreplyagent.test.ts
 
 
 describe("runReplyAgent mid-turn rate-limit fallback", () => {
