@@ -539,6 +539,7 @@ describe("agentCommand", () => {
           message: "hi",
           to: "+1555",
           senderIsOwner: false,
+          allowModelOverride: false,
           continuationTrigger: "delegate-return",
         },
         runtime,
