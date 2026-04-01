@@ -13,8 +13,11 @@ export type CachedCopilotToken = {
   updatedAt: number;
 };
 
-function resolveCopilotTokenCachePath(env: NodeJS.ProcessEnv = process.env) {
-  return path.join(resolveStateDir(env), "credentials", "github-copilot.token.json");
+function resolveCopilotTokenCachePath(env: NodeJS.ProcessEnv = process.env, profileId?: string) {
+  const filename = profileId
+    ? `github-copilot.token.${profileId}.json`
+    : "github-copilot.token.json";
+  return path.join(resolveStateDir(env), "credentials", filename);
 }
 
 function isTokenUsable(cache: CachedCopilotToken, now = Date.now()): boolean {
@@ -102,6 +105,7 @@ export function deriveCopilotApiBaseUrlFromToken(token: string): string | null {
 
 export async function resolveCopilotApiToken(params: {
   githubToken: string;
+  profileId?: string;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
   cachePath?: string;
@@ -114,7 +118,7 @@ export async function resolveCopilotApiToken(params: {
   baseUrl: string;
 }> {
   const env = params.env ?? process.env;
-  const cachePath = params.cachePath?.trim() || resolveCopilotTokenCachePath(env);
+  const cachePath = params.cachePath?.trim() || resolveCopilotTokenCachePath(env, params.profileId);
   const loadJsonFileFn = params.loadJsonFileImpl ?? loadJsonFile;
   const saveJsonFileFn = params.saveJsonFileImpl ?? saveJsonFile;
   const cached = loadJsonFileFn(cachePath) as CachedCopilotToken | undefined;

@@ -152,6 +152,7 @@ export default definePluginEntry({
       prepareRuntimeAuth: async (ctx) => {
         const token = await resolveCopilotApiToken({
           githubToken: ctx.apiKey,
+          profileId: ctx.profileId,
           env: ctx.env,
         });
         return {
