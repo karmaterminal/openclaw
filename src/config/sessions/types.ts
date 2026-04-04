@@ -65,6 +65,23 @@ export type AcpSessionRuntimeOptions = {
   backendExtras?: Record<string, string>;
 };
 
+export type SessionPostCompactionDelegate = {
+  task: string;
+  createdAt: number;
+  /**
+   * Post-compaction delegates are silent by contract. Persist the explicit
+   * flags so the intent survives session-store round trips.
+   */
+  silent?: boolean;
+  silentWake?: boolean;
+};
+
+export type CliSessionBinding = {
+  sessionId: string;
+  authProfileId?: string;
+  extraSystemPromptHash?: string;
+  mcpConfigHash?: string;
+};
 export type SessionEntry = {
   /**
    * Last delivered heartbeat payload (used to suppress duplicate heartbeat notifications).
@@ -78,12 +95,28 @@ export type SessionEntry = {
   sessionFile?: string;
   /** Parent session key that spawned this session (used for sandbox session-tool scoping). */
   spawnedBy?: string;
+  /** Workspace inherited by spawned sessions and reused on later turns for the same child session. */
+  spawnedWorkspaceDir?: string;
+  /** Explicit parent session linkage for dashboard-created child sessions. */
+  parentSessionKey?: string;
   /** True after a thread/topic session has been forked from its parent transcript once. */
   forkedFromParent?: boolean;
   /** Subagent spawn depth (0 = main, 1 = sub-agent, 2 = sub-sub-agent). */
   spawnDepth?: number;
+  /** Explicit role assigned at spawn time for subagent tool policy/control decisions. */
+  subagentRole?: "orchestrator" | "leaf";
+  /** Explicit control scope assigned at spawn time for subagent control decisions. */
+  subagentControlScope?: "children" | "none";
   systemSent?: boolean;
   abortedLastRun?: boolean;
+  /** Stable first-run start time for subagent sessions, persisted after completion. */
+  startedAt?: number;
+  /** Latest completed run end time for subagent sessions, persisted after completion. */
+  endedAt?: number;
+  /** Accumulated runtime across subagent follow-up runs, persisted after completion. */
+  runtimeMs?: number;
+  /** Final persisted subagent run status, used after in-memory run archival. */
+  status?: "running" | "done" | "failed" | "killed" | "timeout";
   /**
    * Session-level stop cutoff captured when /stop is received.
    * Messages at/before this boundary are skipped to avoid replaying
@@ -94,6 +127,7 @@ export type SessionEntry = {
   abortCutoffTimestamp?: number;
   chatType?: SessionChatType;
   thinkingLevel?: string;
+  fastMode?: boolean;
   verboseLevel?: string;
   reasoningLevel?: string;
   elevatedLevel?: string;
@@ -131,6 +165,7 @@ export type SessionEntry = {
    * totalTokens as stale/unknown for context-utilization displays.
    */
   totalTokensFresh?: boolean;
+  estimatedCostUsd?: number;
   cacheRead?: number;
   cacheWrite?: number;
   modelProvider?: string;
@@ -143,10 +178,19 @@ export type SessionEntry = {
   fallbackNoticeActiveModel?: string;
   fallbackNoticeReason?: string;
   contextTokens?: number;
+  /**
+   * Last context-pressure band that fired (e.g. 80, 90, 95). Used to deduplicate
+   * pressure events — only re-fires when the session crosses into a higher band.
+   */
+  lastContextPressureBand?: number;
   compactionCount?: number;
   memoryFlushAt?: number;
   memoryFlushCompactionCount?: number;
+  memoryFlushContextHash?: string;
+  /** Delegates waiting to fire when the next compaction completes. */
+  pendingPostCompactionDelegates?: SessionPostCompactionDelegate[];
   cliSessionIds?: Record<string, string>;
+  cliSessionBindings?: Record<string, CliSessionBinding>;
   claudeCliSessionId?: string;
   label?: string;
   displayName?: string;
@@ -164,6 +208,12 @@ export type SessionEntry = {
   skillsSnapshot?: SessionSkillSnapshot;
   systemPromptReport?: SessionSystemPromptReport;
   acp?: SessionAcpMeta;
+  /** Number of continuation turns completed in the current chain. Reset on external message. */
+  continuationChainCount?: number;
+  /** Timestamp (ms) when the current continuation chain started. */
+  continuationChainStartedAt?: number;
+  /** Accumulated token usage across the current continuation chain. Reset on external message. */
+  continuationChainTokens?: number;
 };
 
 function normalizeRuntimeField(value: string | undefined): string | undefined {
@@ -372,4 +422,4 @@ export type SessionSystemPromptReport = {
 
 export const DEFAULT_RESET_TRIGGER = "/new";
 export const DEFAULT_RESET_TRIGGERS = ["/new", "/reset"];
-export const DEFAULT_IDLE_MINUTES = 60;
+export const DEFAULT_IDLE_MINUTES = 0;

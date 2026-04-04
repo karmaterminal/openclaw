@@ -23,6 +23,7 @@ export type AnnounceQueueItem = {
   // Stable announce identity shared by direct + queued delivery paths.
   // Optional for backward compatibility with previously queued items.
   announceId?: string;
+  continuationTriggerOverride?: string;
   prompt: string;
   summaryLine?: string;
   internalEvents?: AgentInternalEvent[];
@@ -30,6 +31,9 @@ export type AnnounceQueueItem = {
   sessionKey: string;
   origin?: DeliveryContext;
   originKey?: string;
+  sourceSessionKey?: string;
+  sourceChannel?: string;
+  sourceTool?: string;
 };
 
 export type AnnounceQueueSettings = {
