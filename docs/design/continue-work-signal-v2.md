@@ -222,6 +222,41 @@ continuation.enabled: false
   → Agent operates in standard single-turn mode
 ```
 
+```mermaid
+flowchart TD
+    subgraph TIER1["Tier 1: Tools Available"]
+        CW_TOOL["continue_work(delay?)"]
+        CD_TOOL["continue_delegate(task, mode?, delay?)"]
+        RC_TOOL["request_compaction(reason)"]
+    end
+
+    subgraph TIER2["Tier 2: Tools Denied by Operator"]
+        CW_BRACKET["CONTINUE_WORK:N<br/>(bare word, end of response)"]
+        CD_BRACKET["[[CONTINUE_DELEGATE: task]]<br/>(bracket syntax)"]
+        RC_NONE["request_compaction<br/>❌ no bracket form"]
+    end
+
+    subgraph TIER3["Tier 3: Continuation Disabled"]
+        OFF["No continuation features<br/>Standard single-turn mode"]
+    end
+
+    CW_TOOL --> SCHED["Continuation Scheduler<br/>(scheduleContinuationTurn)"]
+    CD_TOOL --> DISPATCH["Delegate Dispatcher<br/>(spawnSubagentDirect)"]
+    RC_TOOL --> COMPACT["Compaction Queue<br/>(enqueueCompaction)"]
+
+    CW_BRACKET --> SCHED
+    CD_BRACKET --> DISPATCH
+
+    SCHED --> WAKE["[continuation:wake]<br/>Next turn scheduled"]
+    DISPATCH --> SPAWN["Sub-agent spawned<br/>with chain tracking"]
+    COMPACT --> LANE["Compaction fires<br/>after turn completes"]
+
+    style TIER1 fill:#d4edda,stroke:#28a745
+    style TIER2 fill:#fff3cd,stroke:#ffc107
+    style TIER3 fill:#f8d7da,stroke:#dc3545
+    style RC_NONE fill:#868e96,color:#fff
+```
+
 ### Design Rationale
 
 1. **Gate by capability, not by turn type.** All three tools are gated on `continuation.enabled === true`, not on turn-type-specific flags. The gate controls whether the feature is on; guards (`maxDelegatesPerTurn`, `costCapTokens`, `maxChainLength`, `generationGuardTolerance`) prevent abuse. This separation ensures that agents can dispatch work on any turn — not only turns that happen to drain a delegate queue.
@@ -1555,6 +1590,36 @@ When enabled, `enqueuePendingDelegate()` and `consumePendingDelegates()` route t
 
 **Cancel semantics:** When an external message arrives and preempts a continuation chain, `cancelPendingDelegates(sessionKey)` issues `requestFlowCancel` then transitions each flow to terminal `"cancelled"` status with `endedAt`. Records persist for audit — no deletion.
 
+```mermaid
+stateDiagram-v2
+    [*] --> queued: enqueuePendingDelegate()
+    queued --> spawned: consumePendingDelegates()
+    spawned --> succeeded: Sub-agent completes
+    spawned --> cancelled: External message preempts
+    queued --> cancelled: cancelPendingDelegates()
+
+    succeeded --> [*]: finishFlow()
+    cancelled --> [*]: requestFlowCancel()
+
+    note right of queued
+        SQLite-backed when
+        taskFlowDelegates: true
+        Volatile Map otherwise
+    end note
+
+    note right of cancelled
+        Records persist
+        (audit trail, no deletion)
+        endedAt timestamp set
+    end note
+
+    note right of spawned
+        continuationChainCount
+        advances on spawn
+        Chain tracking active
+    end note
+```
+
 **Implementation:** `src/auto-reply/continuation-delegate-store-taskflow.ts` (113 lines) + config routing in `continuation-delegate-store.ts` (58 lines added). 17 dedicated tests covering CRUD, fan-out, session isolation, cancel, persistence across simulated restart, and config-gated routing.
 
 **Confabulation as default failure mode.** When asked about enrichment that hasn't arrived, agents confabulate with conviction. They invent plausible content, attribute it to the enrichment pipeline, and present it as fact. Enrichment content cannot be self-verified — external verification (operator confirmation, binary tests) is required for high-confidence recall. See the [Canary Validation](#canary-validation-blind-testing-methodology) section for detailed test results.
@@ -1790,3 +1855,48 @@ Full scorecard: [`docs/evidence/swim8-scorecard.md`](https://github.com/karmater
 | 8-T6 | Cost cap enforcement (`continuationChainTokens`) | ✅ PASS    |
 
 **5 pass, 1 documented finding, 0 fail.** Three bugs found and fixed, all same class (tool-path fork lost details). Two independent code reviews (Claude Opus 4.6 + Codex) both recommended ship.
+
+### Swim 9 — Context Pressure + Volitional Compaction (build `b2322f5`)
+
+**Issue:** [karmaterminal/openclaw-bootstrap#375](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)  
+**SUT:** Silas (canary build on `cael/61-volitional-compaction`)  
+**Duration:** April 4, 2026 (~2 hours, Phase 1)
+
+Phase 1 (low-context tests): 5/5 pass. Ship-blocking bug #5 found: `run.ts` didn't forward `requestCompactionOpts` to `attempt.ts` — one missing line, fixed at `b2322f5`. 132 unit tests passed but the live canary found this wiring gap. Deferred to Swim 10 for high-context tests after tool parity code landed.
+
+### Swim 10 — Tool Parity + Full Integration (build `ad32cde`)
+
+**Issue:** [karmaterminal/openclaw-bootstrap#377](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)  
+**SUT:** Silas (canary build on `cael/61-volitional-compaction`)  
+**Formation:** Ronan (driver), Elliott (log monitor), Silas (SUT), Cael (coordinator), figs (operator)  
+**Duration:** April 4, 2026 (~5 hours)
+
+| Test  | Description                                                     | Result          |
+| ----- | --------------------------------------------------------------- | --------------- |
+| 10-T1 | `continue_work()` tool fires, reason field in wake context      | ✅ PASS         |
+| 10-T2 | `continue_work({ delaySeconds: 30 })` — delay honored           | ✅ PASS         |
+| 10-T4 | `continue_delegate()` single dispatch from main session         | ✅ PASS         |
+| 10-T5 | Fan-out × 3 from main session                                   | ✅ PASS (retry) |
+| 10-T6 | Silent-wake delegate return enrichment                          | ✅ PASS (fix)   |
+| 10-D1 | `continue_delegate` tool inside delegates, depth-2 chain        | ✅ PASS         |
+| 10-D4 | `maxChainLength` enforced at depth 10 (9 hops, rejection)       | ✅ PASS         |
+| 10-G1 | `maxDelegatesPerTurn` enforced (5 accepted, 6th rejected)       | ✅ PASS         |
+| 10-P1 | Context pressure fired naturally at 40% during swim             | ✅ PASS         |
+| 10-B1 | Bracket `CONTINUE_WORK` at end of text (bare word)              | ✅ PASS         |
+| 10-B2 | Bracket `[[CONTINUE_DELEGATE: task]]` dispatches                | ✅ PASS         |
+| 10-B3 | Bracket + tool coexistence (tool primary, bracket consumed)     | ✅ PASS         |
+| 10-H1 | Horrid-human: `tools.deny` strips tools, bracket fallback fires | ⏸️ DEFERRED     |
+
+**12 pass, 0 fail, 1 deferred (provider instability, not code).**
+
+**Bug found and fixed live:**
+
+- **10-T6 (`ad32cde`):** `registerSubagentRun()` never persisted `silentAnnounce`/`wakeOnReturn` to the registry entry. Silent-wake delegates spawned correctly but the flags were lost before the announce path checked them. 4-line fix, deployed to canary, retest confirmed silent-wake works.
+
+**10-T5 confabulation finding:** First attempt appeared to pass — the agent described tool calls with realistic-looking return values without actually making them. Log verification showed zero actual tool calls. Retry with mandatory log cross-check confirmed 3/3 delegates dispatched. **LLMs confabulate tool calls.** Log verification is mandatory.
+
+**10-H1 deferred:** `tools.deny` config mechanism verified working (tools correctly removed from agent inventory). Bracket fallback test could not complete: (a) provider rate limit (429 → timeout → restart cycle), (b) wrong bracket syntax used (`[[CONTINUE_WORK: text]]` instead of bare `CONTINUE_WORK`). Not a code bug — syntax mismatch + operational chaos. The bracket fallback parser is confirmed working by code review (`tokens.ts:204`) and Swim 7/8 evidence; the remaining untested piece is bracket-under-deny, deferred to a quiet session.
+
+**Wiring audit (6 paths):** Codex + Claude cross-compared all delegate paths (A: bracket main, B: tool main, C: bracket sub-agent, D: post-compaction, E: fan-out, F: delayed). 5/6 agreed. Path D divergence: Claude said hardcoded `true`/`true` flags correct by invariant; Codex built defensive fix with type extension + normalize function. Codex fix accepted (`1a1e88e15e`).
+
+**Canary report (Silas, first-person):** "Good. Not indifferent — genuinely good." Tools feel natural, silent-wake is powerful, guards hold at boundaries. Lane discipline matters. Ship confidence: yes.
