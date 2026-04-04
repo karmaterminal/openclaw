@@ -445,7 +445,7 @@ export async function runReplyAgent(params: {
   const cfg = followupRun.run.config;
   const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
   const taskFlowDelegatesConfigured =
-    cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
+    cfg?.agents?.defaults?.continuation?.taskFlowDelegates !== false;
 
   // Route delegate store operations to the Task Flow-backed implementation
   // before any inbound-message cancellation logic runs.
@@ -839,7 +839,7 @@ export async function runReplyAgent(params: {
     // so the routing flag must be set before any tool execution.
     const taskFlowDelegatesEarly =
       cfg.agents?.defaults?.continuation?.enabled === true &&
-      cfg.agents?.defaults?.continuation?.taskFlowDelegates === true;
+      cfg.agents?.defaults?.continuation?.taskFlowDelegates !== false;
     setTaskFlowDelegatesEnabled(taskFlowDelegatesEarly);
 
     const runStartedAt = Date.now();
@@ -923,7 +923,7 @@ export async function runReplyAgent(params: {
     // Sync the Task Flow delegate gate from config so the store routes
     // enqueue/consume/count through the TaskFlow-backed implementation.
     setTaskFlowDelegatesEnabled(
-      continuationFeatureEnabled && cfg.agents?.defaults?.continuation?.taskFlowDelegates === true,
+      continuationFeatureEnabled && cfg.agents?.defaults?.continuation?.taskFlowDelegates !== false,
     );
     let continuationSignal: ContinuationSignal | null = null;
     if (continuationFeatureEnabled && payloadArray.length > 0) {
