@@ -1449,9 +1449,9 @@ These are documented failure modes observed during testing that are properties o
 
 **Volatile delayed-work state.** Delayed delegate timers, delayed-reservation state, and delegate-pending state are process-scoped. Ordinary prompt drains and compaction boundaries no longer erase delegate wake classification, but a gateway restart still clears in-flight delayed delegates and their reservation/pending-return state. Durable long-horizon scheduling still belongs to cron or another persistent scheduler.
 
-### Task Flow Integration: Durable Delegate Lifecycle
+### Task Flow Integration: Durable Delegate Queue
 
-The volatile delegate store described above (`Map<string, PendingContinuationDelegate[]>`) serves the default path. An opt-in alternative models delegates as **Task Flow managed tasks** — the platform's built-in substrate for managed background work with SQLite-backed persistence, cancel semantics, and lifecycle tracking.
+The volatile delegate store described above (`Map<string, PendingContinuationDelegate[]>`) serves the default path. An opt-in alternative models delegates as **Task Flow managed tasks** — the platform's built-in substrate for managed background work with SQLite-backed persistence and cancel semantics.
 
 **Configuration:**
 
@@ -1468,9 +1468,9 @@ When enabled, `enqueuePendingDelegate()` and `consumePendingDelegates()` route t
 
 | Capability                         | Volatile Map   | Task Flow                                        |
 | ---------------------------------- | -------------- | ------------------------------------------------ |
-| Persistence across gateway restart | ❌ Lost        | ✅ SQLite-backed                                 |
-| Cancel semantics                   | Drain only     | `requestFlowCancel` with audit trail             |
-| Lifecycle tracking                 | None           | `pending → running → completed/failed/cancelled` |
+| Persistence across gateway restart | ❌ Lost        | ✅ SQLite-backed (until consumed)                 |
+| Cancel semantics                   | Drain only     | `requestFlowCancel` with observer event           |
+| Lifecycle tracking                 | None           | Pending → consumed/cancelled (records deleted after)|
 | Session isolation                  | Map key        | Flow record scoping                              |
 | Observability                      | Manual logging | Task Flow registry queries                       |
 
