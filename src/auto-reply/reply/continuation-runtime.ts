@@ -3,6 +3,7 @@ import { loadConfig } from "../../config/config.js";
 
 export type ContinuationRuntimeConfig = {
   enabled: boolean;
+  taskFlowDelegates: boolean;
   defaultDelayMs: number;
   minDelayMs: number;
   maxDelayMs: number;
@@ -56,6 +57,7 @@ export function resolveContinuationRuntimeConfig(
 
   return {
     enabled: continuation?.enabled === true,
+    taskFlowDelegates: continuation?.taskFlowDelegates === true,
     defaultDelayMs: clampNonNegativeDelayMs(
       continuation?.defaultDelayMs,
       DEFAULT_CONTINUATION_DELAY_MS,

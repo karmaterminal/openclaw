@@ -28,11 +28,13 @@ import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
   addDelayedContinuationReservation,
+  cancelPendingDelegates,
   clearDelayedContinuationReservations,
   consumeStagedPostCompactionDelegates,
   delayedContinuationReservationCount,
   highestDelayedContinuationReservationHop,
   takeDelayedContinuationReservation,
+  setTaskFlowDelegatesEnabled,
   stagePostCompactionDelegate,
   consumePendingDelegates,
   pendingDelegateCount,
@@ -324,6 +326,10 @@ export function cancelContinuationTimer(
     });
   }
 
+  // Cancel any Task Flow-backed pending delegates that may have survived a
+  // restart. For the volatile store this drains the Map as a safety net.
+  cancelPendingDelegates(sessionKey);
+
   // Clear delegate-pending flag — no delegate should be considered in-flight
   // after explicit cancellation.
   clearDelegatePending(sessionKey);
@@ -428,6 +434,7 @@ export async function runReplyAgent(params: {
     }
     if (hadDelayedReservations) {
       clearDelayedContinuationReservations(sessionKey);
+      cancelPendingDelegates(sessionKey);
       clearDelegatePending(sessionKey);
     }
     if ((hadActiveChain || hadStaleTokens) && activeSessionStore && activeSessionEntry) {
@@ -865,6 +872,11 @@ export async function runReplyAgent(params: {
     // This prevents output mutation on disabled deployments where a model might
     // mention CONTINUE_WORK or [[CONTINUE_DELEGATE:]] in explanatory text.
     const continuationFeatureEnabled = cfg.agents?.defaults?.continuation?.enabled === true;
+    // Sync the Task Flow delegate gate from config so the store routes
+    // enqueue/consume/count through the TaskFlow-backed implementation.
+    setTaskFlowDelegatesEnabled(
+      continuationFeatureEnabled && cfg.agents?.defaults?.continuation?.taskFlowDelegates === true,
+    );
     let continuationSignal: ContinuationSignal | null = null;
     if (continuationFeatureEnabled && payloadArray.length > 0) {
       // Find the last payload with text content — tool-call payloads may follow

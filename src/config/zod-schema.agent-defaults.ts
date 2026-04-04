@@ -214,6 +214,7 @@ export const AgentDefaultsSchema = z
     continuation: z
       .object({
         enabled: z.boolean().optional(),
+        taskFlowDelegates: z.boolean().optional(),
         defaultDelayMs: z.number().int().positive().optional(),
         minDelayMs: z.number().int().positive().optional(),
         maxDelayMs: z.number().int().positive().optional(),
