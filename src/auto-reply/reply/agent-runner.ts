@@ -798,6 +798,14 @@ export async function runReplyAgent(params: {
       });
     }
 
+    // Sync the Task Flow delegate gate BEFORE the agent turn starts.
+    // Tools (continue_delegate) call enqueuePendingDelegate() during the turn,
+    // so the routing flag must be set before any tool execution.
+    const taskFlowDelegatesEarly =
+      cfg.agents?.defaults?.continuation?.enabled === true &&
+      cfg.agents?.defaults?.continuation?.taskFlowDelegates === true;
+    setTaskFlowDelegatesEnabled(taskFlowDelegatesEarly);
+
     const runStartedAt = Date.now();
     const runOutcome = await runAgentTurnWithFallback({
       commandBody,
