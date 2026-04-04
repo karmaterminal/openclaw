@@ -66,6 +66,7 @@ import {
 import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-usage-line.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
+import { checkContextPressure } from "./context-pressure.js";
 import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
@@ -773,6 +774,23 @@ export async function runReplyAgent(params: {
     }
   };
   try {
+    // Trigger D: check context pressure before the agent turn and inject
+    // a [system:context-pressure] event when a threshold band is crossed.
+    if (activeSessionEntry && sessionKey) {
+      const { contextPressureThreshold } = resolveContinuationRuntimeConfig(cfg);
+      const contextWindowTokens =
+        agentCfgContextTokens ??
+        lookupContextTokens(defaultModel) ??
+        activeSessionEntry.contextTokens ??
+        DEFAULT_CONTEXT_TOKENS;
+      checkContextPressure({
+        sessionEntry: activeSessionEntry,
+        sessionKey,
+        contextPressureThreshold,
+        contextWindowTokens,
+      });
+    }
+
     const runStartedAt = Date.now();
     const runOutcome = await runAgentTurnWithFallback({
       commandBody,
