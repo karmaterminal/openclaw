@@ -34,6 +34,7 @@ import {
   delayedContinuationReservationCount,
   highestDelayedContinuationReservationHop,
   takeDelayedContinuationReservation,
+  isTaskFlowDelegatesEnabled,
   setTaskFlowDelegatesEnabled,
   stagePostCompactionDelegate,
   consumePendingDelegates,
@@ -426,14 +427,17 @@ export async function runReplyAgent(params: {
       activeSessionEntry.continuationChainTokens = undefined;
     }
     // Cancel any pending continuation timer by bumping the generation counter.
-    // Only bump when a generation exists (active/pending chain) to avoid
-    // unbounded map growth from sessions that never use continuation.
-    const hasGenerationEntry = continuationGenerations.has(sessionKey);
-    if (hadActiveChain || hasGenerationEntry || hadDelayedReservations) {
-      bumpContinuationGeneration(sessionKey);
-    }
+    // Always bump on external message arrival so the generation guard in
+    // request_compaction works even on fresh sessions with no prior state.
+    bumpContinuationGeneration(sessionKey);
     if (hadDelayedReservations) {
       clearDelayedContinuationReservations(sessionKey);
+      cancelPendingDelegates(sessionKey);
+      clearDelegatePending(sessionKey);
+    } else if (isTaskFlowDelegatesEnabled() && pendingDelegateCount(sessionKey) > 0) {
+      // After restart, volatile delayed reservations are lost but durable
+      // Task Flow delegates persist in SQLite.  Cancel them so stale delegates
+      // from a prior process don't get consumed on a fresh conversation.
       cancelPendingDelegates(sessionKey);
       clearDelegatePending(sessionKey);
     }
