@@ -1449,6 +1449,37 @@ These are documented failure modes observed during testing that are properties o
 
 **Volatile delayed-work state.** Delayed delegate timers, delayed-reservation state, and delegate-pending state are process-scoped. Ordinary prompt drains and compaction boundaries no longer erase delegate wake classification, but a gateway restart still clears in-flight delayed delegates and their reservation/pending-return state. Durable long-horizon scheduling still belongs to cron or another persistent scheduler.
 
+### Task Flow Integration: Durable Delegate Lifecycle
+
+The volatile delegate store described above (`Map<string, PendingContinuationDelegate[]>`) serves the default path. An opt-in alternative models delegates as **Task Flow managed tasks** — the platform's built-in substrate for managed background work with SQLite-backed persistence, cancel semantics, and lifecycle tracking.
+
+**Configuration:**
+
+```yaml
+agents:
+  defaults:
+    continuation:
+      taskFlowDelegates: true # opt-in; defaults to false (volatile Map)
+```
+
+When enabled, `enqueuePendingDelegate()` and `consumePendingDelegates()` route through `createManagedTaskFlow()` with `controllerId = "core/continuation-delegate"`. Each delegate becomes a managed flow record with FIFO ordering preserved via `createdAt` sort. The public API is identical — consumers import from the same store module. Routing is transparent.
+
+**What this provides:**
+
+| Capability                         | Volatile Map   | Task Flow                                        |
+| ---------------------------------- | -------------- | ------------------------------------------------ |
+| Persistence across gateway restart | ❌ Lost        | ✅ SQLite-backed                                 |
+| Cancel semantics                   | Drain only     | `requestFlowCancel` with audit trail             |
+| Lifecycle tracking                 | None           | `pending → running → completed/failed/cancelled` |
+| Session isolation                  | Map key        | Flow record scoping                              |
+| Observability                      | Manual logging | Task Flow registry queries                       |
+
+**Why this matters for the PR:** The volatile Map is a custom store that duplicates functionality the platform already provides. Task Flow integration demonstrates alignment with upstream's infrastructure direction — delegates are modeled using the same managed-task pattern that the platform uses for its own background work. The config gate ensures backwards compatibility: operators who prefer the lightweight volatile path retain it as the default.
+
+**Cancel semantics:** When an external message arrives and preempts a continuation chain, `cancelPendingDelegates(sessionKey)` issues `requestFlowCancel` for each pending flow record, providing a proper cancellation audit trail instead of silently draining a Map.
+
+**Implementation:** `src/auto-reply/continuation-delegate-store-taskflow.ts` (113 lines) + config routing in `continuation-delegate-store.ts` (58 lines added). 17 dedicated tests covering CRUD, fan-out, session isolation, cancel, persistence across simulated restart, and config-gated routing.
+
 **Confabulation as default failure mode.** When asked about enrichment that hasn't arrived, agents confabulate with conviction. They invent plausible content, attribute it to the enrichment pipeline, and present it as fact. Enrichment content cannot be self-verified — external verification (operator confirmation, binary tests) is required for high-confidence recall. See the [Canary Validation](#canary-validation-blind-testing-methodology) section for detailed test results.
 
 ## Integration Testing: Swim 8 — Enable Tool Use for Chain Delegates
