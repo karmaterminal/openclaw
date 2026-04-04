@@ -21,6 +21,7 @@ import {
   isTransientHttpError,
   sanitizeUserFacingText,
 } from "../../agents/pi-embedded-helpers.js";
+import { compactEmbeddedPiSession } from "../../agents/pi-embedded-runner/compact.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import {
   resolveGroupSessionKey,
@@ -457,8 +458,7 @@ export async function runAgentTurnWithFallback(params: {
                           ? currentContinuationGeneration(params.sessionKey)
                           : 0,
                         triggerCompaction: async () => {
-                          const { compactEmbeddedPiSession } =
-                            await import("../../agents/pi-embedded-runner/compact.js");
+                          // compactEmbeddedPiSession is statically imported at module top
                           try {
                             const result = await compactEmbeddedPiSession({
                               sessionId:
