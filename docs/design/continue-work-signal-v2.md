@@ -79,7 +79,7 @@ Without `| silent-wake`, parent-orchestrated chain hops stall: the enrichment ar
 
 With `generationGuardTolerance: 0`, any generation drift cancels delayed `CONTINUE_WORK` and delayed delegate timers. Raising tolerance allows both paths to survive incidental chatter in busy channels. This is intentionally unified today: generation drift is a coarse session-interruption signal, not a direct-human-preemption signal. Continuation chains are logged in session history; operators can view and kill active chains.
 
-Operational note: these defaults are conservative for single-agent deployments. Fleet operators using wide "sensor swarm" / "mast cell" fan-out will usually tune width upward via `maxDelegatesPerTurn`, while keeping `maxChainLength` as the recursion guard and `costCapTokens` as the global budget leash.
+Operational note: these defaults are conservative for single-agent deployments. Fleet operators using wide "sensor swarm" fan-out (dispatching many delegates for parallel data gathering — analogous to mast cells in immune systems, which broadcast widely to surface distributed information) will usually tune width upward via `maxDelegatesPerTurn`, while keeping `maxChainLength` as the recursion guard and `costCapTokens` as the global budget leash.
 
 > **Note:** Delegate return delivery relies on the parent session receiving inbound messages. In deployments using `requireMention: true`, the sub-agent's completion announce may not trigger a parent turn unless the announce is routed internally (which it is — announce payloads bypass mention gating).
 
@@ -784,7 +784,7 @@ The injection is approximately 15 lines in `get-reply-run.ts` (the prepared-repl
 
 **Why pre-run, not post-run:** Post-run fires after tokens are already spent — the agent can only react next turn. Pre-run fires before generation — the agent can elect evacuation _this_ turn. At 85% context, one more turn might push past compaction. The difference is one turn of latency, and that turn might be the last one.
 
-### Pre-Compaction Hook: Bounded Evacuation Window
+### Pre-Compaction Hook: Bounded Evacuation Window _(Proposed — not yet implemented)_
 
 Context-pressure at 80% is an advisory. The agent may or may not act on it. A stronger mechanism provides a **bounded evacuation window** when compaction is imminent — analogous to a POSIX signal grace period (`SIGTERM` before `SIGKILL`) or a serverless function shutdown hook.
 
@@ -793,6 +793,8 @@ When the gateway's compaction logic determines that compaction will execute, ins
 1. Enqueue `[system:compaction-imminent]` with a deadline: `Compaction will execute in {N} seconds. Evacuate working state now.`
 2. Grant the agent one turn to process the event. The agent can dispatch `CONTINUE_DELEGATE` evacuations, write memory files, or prepare `RESUMPTION.md`.
 3. After `preCompactionTurnTimeoutMs` (default: 30s) elapses — regardless of whether the agent responded — compaction executes.
+
+> **Note:** This section describes a _proposed_ enhancement. The current implementation does not include `preCompactionTurnTimeoutMs` or `[system:compaction-imminent]`. With volitional compaction (Trigger E), the agent initiates compaction _after_ completing evacuation, which partially addresses this need. The bounded window would protect against obligatory compaction (Triggers A/B) interrupting mid-evacuation.
 
 The timeout is **non-negotiable**. The agent cannot extend it, request additional turns, or block compaction. This is the same contract as process signal handling: the system grants a grace period, the process uses it or loses it, and the system proceeds on schedule.
 
@@ -879,11 +881,13 @@ This is the full circuit: not "time guess and fling," not just "post-compaction 
 **Configuration:**
 
 ```yaml
+# Proposed configuration — compactionEvacuation and evacuationTaskTemplate
+# are NOT YET IMPLEMENTED. Shown here as the target design.
 agents:
   defaults:
     continuation:
-      compactionEvacuation: true # spawn evacuation sub-agent on compaction
-      evacuationTaskTemplate: | # task given to the evacuation sub-agent
+      compactionEvacuation: true # spawn evacuation sub-agent on compaction (PROPOSED)
+      evacuationTaskTemplate: | # task given to the evacuation sub-agent (PROPOSED)
         Session is being compacted. You have the full pre-compaction context.
         1. Write RESUMPTION.md with current task state, decisions in progress, and thermal context
         2. Update memory/{date}.md with session events
@@ -950,8 +954,8 @@ agents:
       generationGuardTolerance: 0
       # Context-pressure:
       contextPressureThreshold: 0.8 # emit [system:context-pressure] at 80%
-      compactionWarningThreshold: 0.95 # emit [system:compaction-imminent] at 95%
-      preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction
+      compactionWarningThreshold: 0.95 # emit [system:compaction-imminent] at 95% (PROPOSED)
+      preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction (PROPOSED)
 ```
 
 Fleet / mast-cell example profile (not the shipped default):
@@ -1145,9 +1149,9 @@ This section documents how the continuation system interfaces with the platform'
 
 ### Hooks We PROPOSE
 
-| Hook               | Type      | Proposal                                                                                                                                                                                                                                                                                                                           |
-| ------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `context_pressure` | modifying | Proactive pressure notification as a typed hook. Currently implemented via `enqueueSystemEvent()` in the reply pipeline. Proposing as hook #28 for upstream adoption. A modifying hook would allow extensions to adjust the pressure event text, suppress it for specific sessions, or add extension-specific evacuation guidance. |
+| Hook               | Type      | Proposal                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `context_pressure` | modifying | **(Proposed — not yet a typed hook.)** Proactive pressure notification. Currently implemented via `enqueueSystemEvent()` in the reply pipeline. Proposing as hook #28 for upstream adoption. A modifying hook would allow extensions to adjust the pressure event text, suppress it for specific sessions, or add extension-specific evacuation guidance. |
 
 The `context_pressure` hook proposal reflects the pattern established by `before_compaction` / `after_compaction`: the platform provides the lifecycle event, extensions decide what to do with it.
 
@@ -1505,19 +1509,18 @@ When a sub-agent emits both a `continue_delegate` tool call and a `[[CONTINUE_DE
 - **Debug logging value:** The `[continuation] Continuation instructions suppressed for non-drain run` log line (added as part of the P2 fix) was the single most valuable diagnostic artifact — it caught the T1 root cause within 60 seconds of the first failed hop.
 - **4-instance convergence:** All 4 instances traced the same root cause from different entry points in the call graph within 6 minutes. No cascade on the analysis — each instance followed a different path to the same `doToolSpawn` call site.
 
-### Commits (Convergence Branch)
+### Commits
 
-| Commit       | Description                                           | Author |
-| ------------ | ----------------------------------------------------- | ------ |
-| `649bac1d12` | `doToolSpawn` drain flag fix (T1 root cause)          | Cael   |
-| `3d26030cdc` | `maxChainLength` off-by-one fix (T4)                  | Cael   |
-| `8ee9dcbe0f` | Cost-cap defensive logging (T6)                       | Cael   |
-| `97d7a85a2e` | Codex review cleanup (`.catch` sweep, scoping)        | Cael   |
-| `4f3461ee07` | Final squash onto `feature/context-pressure-squashed` | Cael   |
+_Development commits available on the convergence branch. Final PR will be squashed._
 
 ## Summary
 
-`CONTINUE_WORK`, `continue_delegate`, and `request_compaction` transform agents from reactive (waiting for events) to volitional (electing to act, dispatching aspects of themselves forward, and choosing when to compact). The implementation spans five primitives:
+`CONTINUE_WORK`, `continue_delegate`, and `request_compaction` transform the agent inter-turn cycle:
+
+- **From reactive:** waiting for events, compacting only when forced
+- **To volitional:** electing to act, dispatching aspects of themselves forward, and choosing when to compact
+
+The implementation spans five primitives:
 
 1. **Volition** — `CONTINUE_WORK` token for self-elected turn continuation
 2. **Sharding** — `[[CONTINUE_DELEGATE:]]` bracket syntax and `continue_delegate` tool for sub-agent dispatch with timed, silent, and wake-on-return modes
