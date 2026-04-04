@@ -368,6 +368,7 @@ async function sendAnnounce(item: AnnounceQueueItem) {
         sourceChannel: item.sourceChannel ?? INTERNAL_MESSAGE_CHANNEL,
         sourceTool: item.sourceTool ?? "subagent_announce",
       },
+      continuationTrigger: item.continuationTriggerOverride,
       idempotencyKey,
     },
     timeoutMs: announceTimeoutMs,
@@ -433,6 +434,7 @@ async function maybeQueueSubagentAnnounce(params: {
   sourceChannel?: string;
   sourceTool?: string;
   internalEvents?: AgentInternalEvent[];
+  continuationTriggerOverride?: string;
   signal?: AbortSignal;
 }): Promise<"steered" | "queued" | "none" | "dropped"> {
   if (params.signal?.aborted) {
@@ -471,6 +473,7 @@ async function maybeQueueSubagentAnnounce(params: {
       key: buildAnnounceQueueKey(canonicalKey, origin),
       item: {
         announceId: params.announceId,
+        continuationTriggerOverride: params.continuationTriggerOverride,
         prompt: params.triggerMessage,
         summaryLine: params.summaryLine,
         internalEvents: params.internalEvents,
@@ -504,6 +507,7 @@ async function sendSubagentAnnounceDirectly(params: {
   sourceChannel?: string;
   sourceTool?: string;
   requesterIsSubagent: boolean;
+  continuationTriggerOverride?: string;
   signal?: AbortSignal;
 }): Promise<SubagentAnnounceDeliveryResult> {
   if (params.signal?.aborted) {
@@ -587,6 +591,7 @@ async function sendSubagentAnnounceDirectly(params: {
               sourceChannel: params.sourceChannel ?? INTERNAL_MESSAGE_CHANNEL,
               sourceTool: params.sourceTool ?? "subagent_announce",
             },
+            continuationTrigger: params.continuationTriggerOverride,
             idempotencyKey: params.directIdempotencyKey,
           },
           expectFinal: true,
@@ -646,6 +651,7 @@ export async function deliverSubagentAnnouncement(params: {
         sourceChannel: params.sourceChannel,
         sourceTool: params.sourceTool,
         internalEvents: params.internalEvents,
+        continuationTriggerOverride: params.continuationTriggerOverride,
         signal: params.signal,
       }),
     direct: async () =>
@@ -662,6 +668,7 @@ export async function deliverSubagentAnnouncement(params: {
         sourceTool: params.sourceTool,
         requesterIsSubagent: params.requesterIsSubagent,
         expectsCompletionMessage: params.expectsCompletionMessage,
+        continuationTriggerOverride: params.continuationTriggerOverride,
         signal: params.signal,
         bestEffortDeliver: params.bestEffortDeliver,
       }),
