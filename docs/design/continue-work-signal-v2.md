@@ -1080,7 +1080,7 @@ Together, D+E restore the proactive compaction path for deployments where B is d
 request_compaction({ reason?: string })
 ```
 
-- `reason`: optional, max 512 characters. Logged for diagnostics and operator observability. Example: `"evacuated working state to memory files and 2 post-compaction delegates"`.
+- `reason`: required, max 1024 characters. Logged for diagnostics and operator observability. The agent must explain why it is requesting compaction. Example: `"evacuated working state to memory files and 2 post-compaction delegates"`.
 
 **Behavior:** Async — enqueues compaction and returns immediately. The agent finishes their turn, compaction runs between turns. The tool does not block the response; the user does not see a multi-minute freeze.
 
@@ -1090,9 +1090,9 @@ request_compaction({ reason?: string })
 | ---------------- | ---------------------------------------------- | ------------------------------------------------------ |
 | Context floor    | Rejects below 70% context usage (configurable) | Prevents wasteful compaction when context is plentiful |
 | Rate limit       | Max 1 per 5 minutes                            | Prevents compaction loops                              |
-| Generation guard | Prevents same-generation re-compact            | Prevents redundant compaction after a no-op cycle      |
+| Generation guard | Prevents compaction when generation has drifted | New message arrived since turn started — defer to avoid compacting mid-conversation |
 
-The context floor is configurable via `continuation.requestCompactionMinThreshold` (default: `0.7`). The rate limit and generation guard are hardcoded safety rails.
+The context floor is hardcoded at `0.7` (70%). The rate limit and generation guard are also hardcoded safety rails. Configurability for the threshold is a follow-up enhancement.
 
 ### The Flow
 
