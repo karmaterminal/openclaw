@@ -16,6 +16,8 @@ import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
+import { createContinueDelegateTool } from "./tools/continue-delegate-tool.js";
+import { createContinueWorkTool, type ContinueWorkRequest } from "./tools/continue-work-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
@@ -24,6 +26,7 @@ import { createMessageTool } from "./tools/message-tool.js";
 import { createMusicGenerateTool } from "./tools/music-generate-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createPdfTool } from "./tools/pdf-tool.js";
+import { createRequestCompactionTool } from "./tools/request-compaction-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
@@ -298,6 +301,32 @@ export function createOpenClawTools(
     ...(webFetchTool ? [webFetchTool] : []),
     ...(imageTool ? [imageTool] : []),
     ...(pdfTool ? [pdfTool] : []),
+    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    options?.continueWorkOpts
+      ? [
+          createContinueWorkTool({
+            agentSessionKey: options?.agentSessionKey,
+            ...options.continueWorkOpts,
+          }),
+        ]
+      : []),
+    ...(options?.config?.agents?.defaults?.continuation?.enabled === true
+      ? [
+          createContinueDelegateTool({
+            agentSessionKey: options?.agentSessionKey,
+          }),
+        ]
+      : []),
+    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    options?.requestCompactionOpts
+      ? [
+          createRequestCompactionTool({
+            agentSessionKey: options?.agentSessionKey,
+            sessionId: options?.sessionId,
+            ...options.requestCompactionOpts,
+          }),
+        ]
+      : []),
   ];
 
   if (options?.disablePluginTools) {
@@ -312,6 +341,7 @@ export function createOpenClawTools(
     }),
     existingToolNames: new Set(tools.map((tool) => tool.name)),
     toolAllowlist: options?.pluginToolAllowlist,
+    allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
   });
 
   const wrappedPluginTools = applyPluginToolDeliveryDefaults({
