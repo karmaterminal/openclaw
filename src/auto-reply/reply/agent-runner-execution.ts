@@ -20,6 +20,7 @@ import {
 } from "../../agents/pi-embedded-helpers.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
   resolveGroupSessionKey,
   resolveSessionTranscriptPath,
@@ -51,6 +52,7 @@ import {
   buildEmbeddedRunExecutionParams,
   resolveModelFallbackOptions,
 } from "./agent-runner-utils.js";
+import { currentContinuationGeneration } from "./agent-runner.js";
 import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
 import type { FollowupRun } from "./queue.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
@@ -521,6 +523,7 @@ export async function runAgentTurnWithFallback(params: {
   let fallbackProvider = params.followupRun.run.provider;
   let fallbackModel = params.followupRun.run.model;
   let fallbackAttempts: RuntimeFallbackAttempt[] = [];
+  let continueWorkRequest: ContinueWorkRequest | undefined;
   let didResetAfterCompactionFailure = false;
   let didRetryTransientHttpError = false;
   let liveModelSwitchRetries = 0;
@@ -626,6 +629,10 @@ export async function runAgentTurnWithFallback(params: {
         ) {
           return { skip: true };
         }
+        // Do NOT strip continuation markers from streaming partials.
+        // Partials are non-terminal and may transiently end with token-like text.
+        // Continuation parsing/stripping happens only on final assembled payloads
+        // in runReplyAgent to avoid corrupting streamed user-visible output.
         if (!text) {
           // Allow media-only payloads (e.g. tool result screenshots) through.
           if (reply.hasMedia) {
@@ -671,7 +678,10 @@ export async function runAgentTurnWithFallback(params: {
           })
         : undefined;
       const onToolResult = params.opts?.onToolResult;
-      const fallbackResult = await runWithModelFallback({
+      const fallbackResult = await runWithModelFallback<
+        | Awaited<ReturnType<typeof runEmbeddedPiAgent>>
+        | { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest }
+      >({
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
         run: async (provider, model, runOptions) => {
@@ -1001,7 +1011,16 @@ export async function runAgentTurnWithFallback(params: {
           })();
         },
       });
-      runResult = fallbackResult.result;
+      const fallbackRunResult = fallbackResult.result as
+        | Awaited<ReturnType<typeof runEmbeddedPiAgent>>
+        | { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest };
+      if (isContinuationWrappedRunResult(fallbackRunResult)) {
+        runResult = fallbackRunResult.result;
+        continueWorkRequest = fallbackRunResult.continueWorkRequest;
+      } else {
+        runResult = fallbackRunResult;
+        continueWorkRequest = undefined;
+      }
       fallbackProvider = fallbackResult.provider;
       fallbackModel = fallbackResult.model;
       fallbackAttempts = Array.isArray(fallbackResult.attempts)
