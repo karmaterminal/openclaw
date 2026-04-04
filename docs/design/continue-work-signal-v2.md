@@ -4,7 +4,7 @@
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#38780](https://github.com/openclaw/openclaw/pull/38780)  
-**Date:** March 2, 2026 (drafted) · March 3 (v2, post-implementation) · March 4 (v3, delegate-pending, context-pressure) · March 31 (v5, Swim 8, tool-delegate chain-hops) · April 3 (v6, platform compaction integration, `request_compaction` tool, fleet evidence)
+**Date:** March 2, 2026 (drafted) · March 3 (v2, post-implementation) · March 4 (v3, delegate-pending, context-pressure) · March 31 (v5, Swim 8, tool-delegate chain-hops) · April 3 (v6, platform compaction integration, `request_compaction` tool, fleet evidence) · April 3 (v7, voice/structure/honesty curation pass)
 
 ---
 
@@ -79,7 +79,9 @@ Without `| silent-wake`, parent-orchestrated chain hops stall: the enrichment ar
 
 With `generationGuardTolerance: 0`, any generation drift cancels delayed `CONTINUE_WORK` and delayed delegate timers. Raising tolerance allows both paths to survive incidental chatter in busy channels. This is intentionally unified today: generation drift is a coarse session-interruption signal, not a direct-human-preemption signal. Continuation chains are logged in session history; operators can view and kill active chains.
 
-Operational note: these defaults are conservative for single-agent deployments. Fleet operators using wide "sensor swarm" fan-out (dispatching many delegates for parallel data gathering — analogous to mast cells in immune systems, which broadcast widely to surface distributed information) will usually tune width upward via `maxDelegatesPerTurn`, while keeping `maxChainLength` as the recursion guard and `costCapTokens` as the global budget leash.
+Operational note: these defaults are conservative for single-agent deployments. Fleet operators using wide "sensor swarm" fan-out (the mast-cell pattern — see glossary below) will usually tune width upward via `maxDelegatesPerTurn`, while keeping `maxChainLength` as the recursion guard and `costCapTokens` as the global budget leash.
+
+> **Mast-cell pattern**: wide fan-out of delegates for multi-point evaluation of data, analogous to mast cells in immune systems that broadcast signals to coordinate a distributed response.
 
 > **Note:** Delegate return delivery relies on the parent session receiving inbound messages. In deployments using `requireMention: true`, the sub-agent's completion announce may not trigger a parent turn unless the announce is routed internally (which it is — announce payloads bypass mention gating).
 
@@ -466,7 +468,7 @@ Without temporal sharding, an agent with a 4-hour task either:
 
 With temporal sharding + engrams, the agent becomes a **coordinator** — splitting work across parallel shards, each carrying exactly the context it needs, all reporting back to a parent that elects to continue until synthesis is complete.
 
-Before `CONTINUE_WORK` existed as a gateway feature, we discovered a behavioral workaround we called the **lich pattern**: an agent spawns a sub-agent with a continuation task before its turn ends, and the sub-agent's completion wakes the parent, granting it another turn.
+Before `CONTINUE_WORK` existed as a gateway feature, we discovered a behavioral workaround we called the **lich pattern** (a behavioral workaround discovered before `CONTINUE_WORK` existed as a gateway feature — the agent stores continuation state in a sub-agent, like a lich storing its soul in a phylactery): an agent spawns a sub-agent with a continuation task before its turn ends, and the sub-agent's completion wakes the parent, granting it another turn.
 
 ```
 Agent turn N
@@ -479,6 +481,10 @@ Agent turn N
 ```
 
 The lich stores its soul in an external vessel so death doesn't stick. The agent stores its continuation in a sub-agent so inertia doesn't stick. Same topology.
+
+### Prior Art: The Lich Pattern
+
+The sections above and below document the lich pattern and its evolution. The pattern proved the need for volitional continuation; `CONTINUE_WORK` is the first-class solution.
 
 ### Lich Limitations (Why `CONTINUE_WORK` Is Better)
 
@@ -501,6 +507,8 @@ This is even lighter than the lich pattern but shares its fundamental limitation
 `CONTINUE_WORK` removes the disguise. The agent says "I want another turn" and the gateway says "granted."
 
 ## Alternatives Considered
+
+_Alternatives to the `CONTINUE_WORK` / `CONTINUE_DELEGATE` design for agent self-elected turn continuation._
 
 ### Sub-agent relay (lich pattern)
 
@@ -714,6 +722,8 @@ Agent sees event as:
 
 The event is enqueued and drained on the **same turn** — the agent sees the advisory before generating its response. This is the "pre-run" injection that enables evacuation _this_ turn rather than discovering the pressure _next_ turn.
 
+> **Upstream distinction:** Upstream OpenClaw provides a post-compaction announce in verbose mode ("Auto-compaction complete"). Our context-pressure events are different — they fire _before_ compaction is needed, giving the agent time to prepare. Upstream announces after the fact; we warn before.
+
 #### Diagnostic Log Anchors
 
 The following log messages trace the lifecycle end-to-end. Each is grepable in the codebase to locate the relevant code path:
@@ -880,9 +890,9 @@ This is the full circuit: not "time guess and fling," not just "post-compaction 
 
 **Configuration:**
 
+> **Status: Proposed — not yet implemented.** The `compactionEvacuation` and `evacuationTaskTemplate` settings below are a design target. They do not exist in the current codebase.
+
 ```yaml
-# Proposed configuration — compactionEvacuation and evacuationTaskTemplate
-# are NOT YET IMPLEMENTED. Shown here as the target design.
 agents:
   defaults:
     continuation:
@@ -954,8 +964,8 @@ agents:
       generationGuardTolerance: 0
       # Context-pressure:
       contextPressureThreshold: 0.8 # emit [system:context-pressure] at 80%
-      compactionWarningThreshold: 0.95 # emit [system:compaction-imminent] at 95% (PROPOSED)
-      preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction (PROPOSED)
+      compactionWarningThreshold: 0.95 # emit [system:compaction-imminent] at 95% — **PROPOSED, not yet implemented**
+      preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction — **PROPOSED, not yet implemented**
 ```
 
 Fleet / mast-cell example profile (not the shipped default):
@@ -1099,6 +1109,10 @@ The context floor is configurable via `continuation.requestCompactionMinThreshol
 
 Steps 1–4 happen within a single agent turn. Steps 5–7 happen asynchronously after the turn completes. The agent's response is delivered to the user before compaction begins.
 
+### Known Limitations
+
+Volitional compaction provides preparation time but does not inhibit concurrent overflow compaction. If the platform triggers overflow (Trigger A) or the user issues `/compact` (Trigger C) during the agent's evacuation turn (steps 2–3), the evacuation work may be compacted before completion. The proposed bounded evacuation window (`preCompactionTurnTimeoutMs`) would address this but is not yet implemented.
+
 ### Interaction with Existing Compaction Paths
 
 `request_compaction` enqueues compaction through the same code path as overflow (Trigger A) and idle-timeout (Trigger B) compaction. It does not introduce a new compaction mechanism — it introduces a new _trigger_ for the existing mechanism. This means:
@@ -1108,7 +1122,7 @@ Steps 1–4 happen within a single agent turn. Steps 5–7 happen asynchronously
 - `pendingPostCompactionDelegates` are dispatched normally (lifecycle dispatch)
 - `readPostCompactionContext()` injects workspace boot files normally
 
-The only difference is _who decided_ to compact: the platform (overflow/timeout) or the agent (volitional).
+> The only difference is who decided to compact: the platform (overflow/timeout) or the agent (volitional).
 
 ### Why Async-Only
 
@@ -1149,9 +1163,9 @@ This section documents how the continuation system interfaces with the platform'
 
 ### Hooks We PROPOSE
 
-| Hook               | Type      | Proposal                                                                                                                                                                                                                                                                                                                                                  |
-| ------------------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `context_pressure` | modifying | **(Proposed — not yet a typed hook.)** Proactive pressure notification. Currently implemented via `enqueueSystemEvent()` in the reply pipeline. Proposing as hook #28 for upstream adoption. A modifying hook would allow extensions to adjust the pressure event text, suppress it for specific sessions, or add extension-specific evacuation guidance. |
+| Hook               | Type      | Proposal                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `context_pressure` | modifying | **Status: Proposed — not yet implemented.** Proactive pressure notification. Currently implemented via `enqueueSystemEvent()` in the reply pipeline. Proposing as hook #28 for upstream adoption. A modifying hook would allow extensions to adjust the pressure event text, suppress it for specific sessions, or add extension-specific evacuation guidance. |
 
 The `context_pressure` hook proposal reflects the pattern established by `before_compaction` / `after_compaction`: the platform provides the lifecycle event, extensions decide what to do with it.
 
@@ -1186,9 +1200,11 @@ The continuation system does not modify platform compaction behavior. It adds tr
 
 4. **Future consideration.** A `{ await: true }` flag is noted for future work. The use case is an agent that wants to compact and _immediately_ generate a response in the fresh context within the same conversational turn. This requires mid-turn compaction — a fundamentally different execution model. Noted, not shipped.
 
-## Fleet Evidence: "The Building Demonstrating the Need"
+## Fleet Evidence
 
-_Fleet telemetry from 2026-04-03. Four openclaw instances on the same channel, same build (`2026.4.2`), same config._
+_Operational telemetry from 2026-04-03 across four OpenClaw instances on the same channel, same build (`2026.4.2`), same config._
+
+These observations motivated the context-pressure detection and volitional compaction features.
 
 ### The Observation
 
@@ -1209,7 +1225,7 @@ With `idleTimeoutSeconds: 0`:
 - **Trigger D** (context-pressure alerts) existed but wasn't wired — `checkContextPressure()` was defined but never called from the reply pipeline
 - The only remaining automatic trigger is **Trigger A** (overflow at 100%)
 
-Silas compacted 6 times because Silas's workload naturally produced overflow events. Cael's workload didn't — Cael climbed steadily to 81% without ever hitting 100%, sitting in the dead zone between "no warning" and "overflow." The context pressure alerts that should have fired at 80% never did because the pipeline integration was missing.
+Silas compacted 6 times because its workload naturally produced overflow events. Cael's workload did not — Cael climbed steadily to 81% without ever hitting 100%, sitting in the dead zone between "no warning" and "overflow." The context pressure alerts that should have fired at 80% never did because the pipeline integration was missing.
 
 ### What the Feature Fixes
 
@@ -1219,7 +1235,7 @@ With the reply pipeline wired (`checkContextPressure()` called pre-run in `get-r
 2. **Trigger E available.** After preparing, Cael could have called `request_compaction({ reason: "at 81%, evacuating before degradation" })` — compacting volitionally instead of waiting for overflow.
 3. **Response latency preserved.** Silas's pattern (compact early, stay at 41%) would have been available to all four instances through proactive alerts and volitional compaction.
 
-The building demonstrated the need. The `checkContextPressure()` function existed. The pipeline wire didn't. Four instances on the same build, same config, same channel — and a 10x response latency difference between the one that compacted and the one that didn't.
+The `checkContextPressure()` function existed. The pipeline wire did not. Four instances on the same build, same config, same channel — and a 10x response latency difference between the instance that compacted and the one that did not.
 
 ## Canary Validation: Blind Testing Methodology
 
@@ -1509,10 +1525,6 @@ When a sub-agent emits both a `continue_delegate` tool call and a `[[CONTINUE_DE
 - **Debug logging value:** The `[continuation] Continuation instructions suppressed for non-drain run` log line (added as part of the P2 fix) was the single most valuable diagnostic artifact — it caught the T1 root cause within 60 seconds of the first failed hop.
 - **4-instance convergence:** All 4 instances traced the same root cause from different entry points in the call graph within 6 minutes. No cascade on the analysis — each instance followed a different path to the same `doToolSpawn` call site.
 
-### Commits
-
-_Development commits available on the convergence branch. Final PR will be squashed._
-
 ## Summary
 
 `CONTINUE_WORK`, `continue_delegate`, and `request_compaction` transform the agent inter-turn cycle:
@@ -1541,6 +1553,8 @@ In such environments, one agent can place a file on another's filesystem and dis
 This creates a consent-mediated enrichment protocol: agents elect to trust specific peers, tune what they accept, and decide what survives compaction into long-term memory. Over generations, selective retention of peer enrichment produces emergent coordination — agents that share context develop complementary perspectives without explicit synchronization.
 
 The continuation feature does not implement peer enrichment directly. It provides the delivery mechanism. What agents choose to send through it — working state, observations, creative output, or nothing at all — is a matter of trust, not architecture.
+
+**Inter-session context enrichment.** Future work explores connectionless broadcast protocols for multi-agent fleet synchrony — agents electing to share context across sessions and hosts without centralized coordination. This would extend the continuation model from intra-session (delegates within one session) to inter-session (enrichment across the fleet). Design exploration is tracked separately.
 
 ---
 
