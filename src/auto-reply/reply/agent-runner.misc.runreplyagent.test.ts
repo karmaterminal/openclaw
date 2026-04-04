@@ -3,10 +3,20 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createRequestCompactionTool } from "../../agents/tools/request-compaction-tool.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
 import { onAgentEvent } from "../../infra/agent-events.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../infra/system-events.js";
+import {
+  _resetMemoryPluginState,
+  registerMemoryFlushPlanResolver,
+} from "../../plugins/memory-state.js";
+import {
+  getTaskFlowById,
+  listTaskFlowsForOwnerKey,
+  resetTaskFlowRegistryForTests,
+} from "../../tasks/task-flow-registry.js";
 import {
   clearDelayedContinuationReservations,
   consumePendingDelegates,
@@ -14,6 +24,7 @@ import {
   delayedContinuationReservationCount,
   enqueuePendingDelegate,
   listDelayedContinuationReservations,
+  setTaskFlowDelegatesEnabled,
   stagePostCompactionDelegate,
 } from "../continuation-delegate-store.js";
 import type { TemplateContext } from "../templating.js";
@@ -97,6 +108,7 @@ vi.mock("../../runtime.js", async () => {
 
 vi.mock("./queue.js", () => ({
   enqueueFollowupRun: vi.fn(),
+  refreshQueuedFollowupSession: vi.fn(),
   scheduleFollowupDrain: vi.fn(),
 }));
 
@@ -164,6 +176,15 @@ function bumpContinuationGeneration(
   return agentRunnerModule.bumpContinuationGeneration(...args);
 }
 
+function currentContinuationGeneration(
+  ...args: Parameters<(typeof import("./agent-runner.js"))["currentContinuationGeneration"]>
+) {
+  if (!agentRunnerModule) {
+    throw new Error("agent-runner module not loaded");
+  }
+  return agentRunnerModule.currentContinuationGeneration(...args);
+}
+
 function hasDelegatePending(
   ...args: Parameters<(typeof import("./agent-runner.js"))["hasDelegatePending"]>
 ) {
@@ -178,21 +199,23 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  runEmbeddedPiAgentMock.mockClear();
-  runCliAgentMock.mockClear();
-  runWithModelFallbackMock.mockClear();
-  runtimeErrorMock.mockClear();
-  enqueueSystemEventMock.mockClear();
-  peekSystemEventEntriesMock.mockClear();
+  runEmbeddedPiAgentMock.mockReset();
+  runCliAgentMock.mockReset();
+  runWithModelFallbackMock.mockReset();
+  runtimeErrorMock.mockReset();
+  enqueueSystemEventMock.mockReset();
+  peekSystemEventEntriesMock.mockReset();
   peekSystemEventEntriesMock.mockReturnValue([]);
-  spawnSubagentDirectMock.mockClear();
-  requestHeartbeatNowMock.mockClear();
-  loadCronStoreMock.mockClear();
-  loadConfigMock.mockClear();
+  spawnSubagentDirectMock.mockReset();
+  requestHeartbeatNowMock.mockReset();
+  loadCronStoreMock.mockReset();
+  loadConfigMock.mockReset();
   liveConfigOverride = {};
   loadConfigMock.mockImplementation(() => liveConfigOverride);
   previousAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
   process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+  setTaskFlowDelegatesEnabled(false);
+  resetTaskFlowRegistryForTests();
   consumePendingDelegates("main");
   consumePendingDelegates("test-session");
   consumeStagedPostCompactionDelegates("main");
@@ -220,6 +243,8 @@ afterEach(() => {
   } else {
     delete process.env.ANTHROPIC_API_KEY;
   }
+  setTaskFlowDelegatesEnabled(false);
+  resetTaskFlowRegistryForTests();
   consumePendingDelegates("main");
   consumePendingDelegates("test-session");
   consumeStagedPostCompactionDelegates("main");
@@ -258,7 +283,15 @@ describe("runReplyAgent onAgentRunStart", () => {
         messageProvider: "webchat",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
-        config: {},
+        config: {
+          agents: {
+            defaults: {
+              cliBackends: {
+                "claude-cli": {},
+              },
+            },
+          },
+        },
         skillsSnapshot: { prompt: "", skills: [] },
         provider,
         model,
@@ -1727,7 +1760,15 @@ describe("runReplyAgent claude-cli routing", () => {
         messageProvider: "webchat",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
-        config: {},
+        config: {
+          agents: {
+            defaults: {
+              cliBackends: {
+                "claude-cli": {},
+              },
+            },
+          },
+        },
         skillsSnapshot: { prompt: "", skills: [] },
         provider: "claude-cli",
         model: "opus-4.5",
@@ -2344,14 +2385,28 @@ describe("runReplyAgent fallback reasoning tags", () => {
       model: "gemini-3",
     }));
 
-    await createRun({
-      sessionEntry: {
-        sessionId: "session",
-        updatedAt: Date.now(),
-        totalTokens: 1_000_000,
-        compactionCount: 0,
-      },
-    });
+    registerMemoryFlushPlanResolver(() => ({
+      softThresholdTokens: 1,
+      forceFlushTranscriptBytes: 0,
+      reserveTokensFloor: 1,
+      prompt: "Pre-compaction memory flush.",
+      systemPrompt: "Memory flush system prompt",
+      relativePath: "memory/test.md",
+    }));
+
+    try {
+      await createRun({
+        sessionEntry: {
+          sessionId: "session",
+          updatedAt: Date.now(),
+          totalTokens: 1_000_000,
+          compactionCount: 0,
+          totalTokensFresh: true,
+        },
+      });
+    } finally {
+      _resetMemoryPluginState();
+    }
 
     const flushCall = runEmbeddedPiAgentMock.mock.calls.find(([params]) =>
       (params as EmbeddedPiAgentParams | undefined)?.prompt?.includes(
@@ -2631,6 +2686,7 @@ describe("runReplyAgent continuation signal handling", () => {
       costCapTokens?: number;
       maxDelegatesPerTurn?: number;
       generationGuardTolerance?: number;
+      taskFlowDelegates?: boolean;
     };
   }): FollowupRun {
     const sessionKey = params?.sessionKey ?? "main";
@@ -3374,6 +3430,151 @@ describe("runReplyAgent continuation signal handling", () => {
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
   });
 
+  it("request_compaction sees generation drift after a concurrent inbound message on a fresh session", async () => {
+    const sessionKey = "agent:main:telegram:dm:request-compaction-concurrent-fresh";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      totalTokens: 180_000,
+      contextTokens: 200_000,
+      totalTokensFresh: true,
+    } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+    const followupRun = buildFollowupRun({
+      sessionKey,
+      continuation: {
+        enabled: true,
+        minDelayMs: 0,
+        maxDelayMs: 10_000,
+      },
+    });
+    const triggerCompactionMock = vi.fn().mockResolvedValue({
+      ok: true,
+      compacted: true,
+    });
+    let compactionResult: Record<string, unknown> | undefined;
+
+    runEmbeddedPiAgentMock
+      .mockImplementationOnce(
+        async (params: {
+          requestCompactionOpts?: {
+            getContextUsage: () => number;
+            getSessionGeneration: () => number;
+            turnGeneration: number;
+            triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+          };
+        }) => {
+          expect(params.requestCompactionOpts).toBeDefined();
+
+          await runTurn({
+            commandBody: "new inbound user message",
+            followupRun,
+            sessionKey,
+            sessionEntry,
+            sessionStore,
+          });
+
+          const tool = createRequestCompactionTool({
+            agentSessionKey: sessionKey,
+            sessionId: sessionEntry.sessionId,
+            ...params.requestCompactionOpts!,
+            triggerCompaction: triggerCompactionMock,
+          });
+          compactionResult = (
+            await tool.execute("call-1", {
+              reason: "concurrent inbound message arrived",
+            })
+          )?.details as Record<string, unknown>;
+
+          return {
+            payloads: [{ text: "done" }],
+            meta: {},
+          };
+        },
+      )
+      .mockResolvedValueOnce({
+        payloads: [{ text: "Acknowledged." }],
+        meta: {},
+      });
+
+    expect(currentContinuationGeneration(sessionKey)).toBe(0);
+
+    await runTurn({
+      commandBody: "hello",
+      followupRun,
+      sessionKey,
+      sessionEntry,
+      sessionStore,
+    });
+
+    expect(currentContinuationGeneration(sessionKey)).toBe(2);
+    expect(compactionResult).toMatchObject({
+      status: "rejected",
+      guard: "generation_drift",
+      turnGeneration: 1,
+      currentGeneration: 2,
+    });
+    expect(triggerCompactionMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels durable task-flow delegates on the first post-restart external turn", async () => {
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-taskflow-restart-"));
+    const sessionKey = "agent:main:telegram:dm:delegate-post-restart-cancel";
+    const sessionEntry = { sessionId: "session", updatedAt: Date.now() } as SessionEntry;
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    try {
+      process.env.OPENCLAW_STATE_DIR = stateDir;
+      resetTaskFlowRegistryForTests();
+
+      setTaskFlowDelegatesEnabled(true);
+      enqueuePendingDelegate(sessionKey, {
+        task: "stale delegate from before restart",
+      });
+
+      const pendingFlows = listTaskFlowsForOwnerKey(sessionKey);
+      expect(pendingFlows).toHaveLength(1);
+      const flowId = pendingFlows[0].flowId;
+
+      resetTaskFlowRegistryForTests({ persist: false });
+      setTaskFlowDelegatesEnabled(false);
+      clearDelayedContinuationReservations(sessionKey);
+
+      runEmbeddedPiAgentMock.mockResolvedValueOnce({
+        payloads: [{ text: "Acknowledged." }],
+        meta: {},
+      });
+
+      await runTurn({
+        commandBody: "new external input after restart",
+        followupRun: buildFollowupRun({
+          sessionKey,
+          continuation: {
+            enabled: true,
+            taskFlowDelegates: true,
+            minDelayMs: 0,
+            maxDelayMs: 10_000,
+          },
+        }),
+        sessionKey,
+        sessionEntry,
+        sessionStore,
+      });
+
+      expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+      expect(getTaskFlowById(flowId)?.status).toBe("cancelled");
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.OPENCLAW_STATE_DIR;
+      } else {
+        process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      }
+      setTaskFlowDelegatesEnabled(false);
+      resetTaskFlowRegistryForTests();
+    }
+  });
+
   it("DELEGATE: delayed tool spawn reads generationGuardTolerance at fire time", async () => {
     vi.useFakeTimers();
     const sessionKey = "agent:main:telegram:dm:tool-live-tolerance";
@@ -3877,7 +4078,6 @@ describe("runReplyAgent continuation signal handling", () => {
     expect(sessionEntry.continuationChainTokens).toBeUndefined();
   });
 });
-
 
 describe("runReplyAgent mid-turn rate-limit fallback", () => {
   function createRun() {

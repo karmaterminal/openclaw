@@ -34,7 +34,6 @@ import {
   delayedContinuationReservationCount,
   highestDelayedContinuationReservationHop,
   takeDelayedContinuationReservation,
-  isTaskFlowDelegatesEnabled,
   setTaskFlowDelegatesEnabled,
   stagePostCompactionDelegate,
   consumePendingDelegates,
@@ -404,6 +403,14 @@ export async function runReplyAgent(params: {
   let activeIsNewSession = isNewSession;
 
   const isHeartbeat = opts?.isHeartbeat === true;
+  const cfg = followupRun.run.config;
+  const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
+  const taskFlowDelegatesConfigured =
+    cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
+
+  // Route delegate store operations to the Task Flow-backed implementation
+  // before any inbound-message cancellation logic runs.
+  setTaskFlowDelegatesEnabled(taskFlowDelegatesConfigured);
 
   // Detect whether this turn is a continuation wake or an external message.
   // The isContinuationWake flag is set by the caller (get-reply-run) by peeking
@@ -426,18 +433,17 @@ export async function runReplyAgent(params: {
       activeSessionEntry.continuationChainStartedAt = undefined;
       activeSessionEntry.continuationChainTokens = undefined;
     }
-    // Cancel any pending continuation timer by bumping the generation counter.
-    // Always bump on external message arrival so the generation guard in
-    // request_compaction works even on fresh sessions with no prior state.
-    bumpContinuationGeneration(sessionKey);
-    if (hadDelayedReservations) {
-      clearDelayedContinuationReservations(sessionKey);
-      cancelPendingDelegates(sessionKey);
-      clearDelegatePending(sessionKey);
-    } else if (isTaskFlowDelegatesEnabled() && pendingDelegateCount(sessionKey) > 0) {
-      // After restart, volatile delayed reservations are lost but durable
-      // Task Flow delegates persist in SQLite.  Cancel them so stale delegates
-      // from a prior process don't get consumed on a fresh conversation.
+    // Every inbound user message on a continuation-enabled session must advance
+    // the generation so in-flight guards observe the new turn, even when the
+    // session had not armed a timer or created state yet.
+    if (continuationFeatureEnabled) {
+      bumpContinuationGeneration(sessionKey);
+    }
+    clearDelayedContinuationReservations(sessionKey);
+    // Task Flow-backed delegates can survive restarts even after volatile
+    // delayed reservations are gone, so external input must cancel them on
+    // the first post-restart turn. The volatile store remains turn-local.
+    if (hadDelayedReservations || taskFlowDelegatesConfigured) {
       cancelPendingDelegates(sessionKey);
       clearDelegatePending(sessionKey);
     }
@@ -500,7 +506,6 @@ export async function runReplyAgent(params: {
     sessionCtx.ChatType,
   );
   const applyReplyToMode = createReplyToModeFilterForChannel(replyToMode, replyToChannel);
-  const cfg = followupRun.run.config;
   const normalizeReplyMediaPaths = createReplyMediaPathNormalizer({
     cfg,
     sessionKey,
@@ -883,7 +888,6 @@ export async function runReplyAgent(params: {
     // Detect and strip continuation signal only when the feature is enabled.
     // This prevents output mutation on disabled deployments where a model might
     // mention CONTINUE_WORK or [[CONTINUE_DELEGATE:]] in explanatory text.
-    const continuationFeatureEnabled = cfg.agents?.defaults?.continuation?.enabled === true;
     // Sync the Task Flow delegate gate from config so the store routes
     // enqueue/consume/count through the TaskFlow-backed implementation.
     setTaskFlowDelegatesEnabled(
