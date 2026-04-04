@@ -398,7 +398,9 @@ The continuation system provides **volition** (self-elected turns) and **shardin
 
 The gateway already tracks per-session token usage: `tokens/maxTokens` is visible via `openclaw sessions` CLI output. But the agent _inside_ the session has no visibility into this value. An agent at 90% context consumption cannot prepare for compaction because it doesn't know compaction is imminent.
 
-### Proposed: `[system:context-pressure]`
+### `[system:context-pressure]`
+
+**Status: Implemented locally** via `enqueueSystemEvent()` (see tests: 27 unit + 5 integration). The upstream hook form is **proposed for upstream OpenClaw** — the current implementation injects the event through the internal system event queue, not through a formal gateway hook API.
 
 A system event injected when session token usage crosses a configurable threshold:
 
@@ -540,7 +542,9 @@ With context-pressure visibility, the full survival pattern becomes:
 
 This is not a feature request. It's a design direction. The continuation system (`CONTINUE_WORK` + `DELEGATE` + marker events) provides the mechanism. Context-pressure visibility provides the trigger. Together, they give an agent the ability to say: _"I want me back."_
 
-### Implementation Sketch: Context-Pressure Injection
+### Implementation: Context-Pressure Injection (via `enqueueSystemEvent`)
+
+**Status: Implemented locally** — the injection uses the internal `enqueueSystemEvent()` queue, not an upstream hook API. Proposed for upstream as a formal gateway hook.
 
 The injection point is small. In `get-reply-run.ts`, session token metadata (`sessionEntry.totalTokens`) is already available **before** the agent run begins. The context window max is resolved via `resolveMemoryFlushContextWindowTokens()` (already imported in `agent-runner-memory.ts`). The event must fire **pre-run** — the agent needs to see pressure before generating, so it can elect evacuation _this_ turn rather than discovering the damage _next_ turn.
 
@@ -572,13 +576,15 @@ The injection is approximately 15 lines in `get-reply-run.ts` (the prepared-repl
 
 ### Pre-Compaction Hook: Bounded Evacuation Window
 
+**Status: Proposed (not yet implemented)**
+
 Context-pressure at 80% is an advisory. The agent may or may not act on it. A stronger mechanism provides a **bounded evacuation window** when compaction is imminent — analogous to a POSIX signal grace period (`SIGTERM` before `SIGKILL`) or a serverless function shutdown hook.
 
 When the gateway's compaction logic determines that compaction will execute, instead of compacting immediately:
 
 1. Enqueue `[system:compaction-imminent]` with a deadline: `Compaction will execute in {N} seconds. Evacuate working state now.`
 2. Grant the agent one turn to process the event. The agent can dispatch `CONTINUE_DELEGATE` evacuations, write memory files, or prepare `RESUMPTION.md`.
-3. After `preCompactionTurnTimeoutMs` (default: 30s) elapses — regardless of whether the agent responded — compaction executes.
+3. After `preCompactionTurnTimeoutMs` (default: 30s, **proposed — not yet implemented**) elapses — regardless of whether the agent responded — compaction executes.
 
 The timeout is **non-negotiable**. The agent cannot extend it, request additional turns, or block compaction. This is the same contract as process signal handling: the system grants a grace period, the process uses it or loses it, and the system proceeds on schedule.
 
@@ -610,6 +616,8 @@ The shards are the bridge. They carry the temperature that the summary cannot.
 
 ### Post-Compaction Lifecycle Event: The Door Opens
 
+**Status: Proposed (not yet implemented)**
+
 Beyond the "fling and hope" pattern (dispatch shards pre-compaction, trust they return), the gateway can provide a **deterministic post-compaction signal**:
 
 ```
@@ -638,6 +646,8 @@ The fling is the arrow. The post-compaction event is the door opening when the a
 
 ### Compaction-Triggered Evacuation Sub-Agent
 
+**Status: Proposed (not yet implemented)**
+
 Beyond advisory events and post-compaction file injection, the strongest mechanism is: **the gateway itself spawns an evacuation sub-agent when compaction fires.**
 
 Instead of hoping the agent noticed the pressure event and acted, the gateway — which _knows_ compaction is happening — spawns a sub-agent on the agent's behalf at the start of (or just before) the compaction lifecycle. This sub-agent:
@@ -662,14 +672,14 @@ Compaction triggered
 
 This is the full circuit: not "time guess and fling," not just "post-compaction file read," but **the gateway itself ensuring the agent gets a chance to evacuate, ordered by what matters most.** The agent doesn't need to predict compaction. The gateway handles it.
 
-**Configuration:**
+**Configuration (proposed, not yet implemented):**
 
 ```yaml
 agents:
   defaults:
     continuation:
-      compactionEvacuation: true # spawn evacuation sub-agent on compaction
-      evacuationTaskTemplate: | # task given to the evacuation sub-agent
+      compactionEvacuation: true # spawn evacuation sub-agent on compaction (proposed)
+      evacuationTaskTemplate: | # task given to the evacuation sub-agent (proposed)
         Session is being compacted. You have the full pre-compaction context.
         1. Write RESUMPTION.md with current task state, decisions in progress, and thermal context
         2. Update memory/{date}.md with session events
@@ -730,10 +740,11 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       costCapTokens: 500000
-      # New (context-pressure):
+      # New (context-pressure) — implemented locally via enqueueSystemEvent():
       contextPressureThreshold: 0.8 # emit [system:context-pressure] at 80%
-      compactionWarningThreshold: 0.95 # emit [system:compaction-imminent] at 95%
-      preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction
+      # Proposed (not yet implemented):
+      compactionWarningThreshold: 0.95 # emit [system:compaction-imminent] at 95% (proposed)
+      preCompactionTurnTimeoutMs: 30000 # max time for agent to respond before forced compaction (proposed)
 ```
 
 The pieces are: volition (this PR), sharding (this PR), recognition (this PR), and self-knowledge (next PR). Three of four rings are forged.
