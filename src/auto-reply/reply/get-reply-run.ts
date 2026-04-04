@@ -584,6 +584,7 @@ export async function runPreparedReply(
     },
   };
 
+  const { runReplyAgent } = await loadAgentRunnerRuntime();
   return runReplyAgent({
     commandBody: prefixedCommandBody,
     followupRun,

@@ -303,6 +303,10 @@ export const agentHandlers: GatewayRequestHandlers = {
       groupChannel?: string;
       groupSpace?: string;
       lane?: string;
+      continuationTrigger?: "work-wake" | "delegate-return";
+      /** When true, the run drains the continuation delegate queue after completion.
+       *  Set by continuation delegate spawns so sub-agents can use the continue_delegate tool. */
+      drainsContinuationDelegateQueue?: boolean;
       extraSystemPrompt?: string;
       internalEvents?: AgentInternalEvent[];
       idempotencyKey: string;
@@ -836,6 +840,8 @@ export const agentHandlers: GatewayRequestHandlers = {
         messageChannel: originMessageChannel,
         runId,
         lane: request.lane,
+        continuationTrigger: request.continuationTrigger,
+        drainsContinuationDelegateQueue: request.drainsContinuationDelegateQueue,
         extraSystemPrompt: request.extraSystemPrompt,
         internalEvents: request.internalEvents,
         inputProvenance,
