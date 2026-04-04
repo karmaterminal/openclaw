@@ -299,6 +299,13 @@ export function createOpenClawCodingTools(options?: {
   onYield?: (message: string) => Promise<void> | void;
   /** Whether this run consumes continue_delegate work staged during the turn. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Closures for request_compaction tool (Trigger E). Only set when continuation is enabled. */
+  requestCompactionOpts?: {
+    getContextUsage: () => number;
+    getSessionGeneration: () => number;
+    turnGeneration: number;
+    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+  };
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -573,6 +580,7 @@ export function createOpenClawCodingTools(options?: {
       onYield: options?.onYield,
       allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
       drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
+      requestCompactionOpts: options?.requestCompactionOpts,
     }),
   ];
   const toolsForMemoryFlush =

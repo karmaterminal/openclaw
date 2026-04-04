@@ -24,6 +24,7 @@ import { createImageTool } from "./tools/image-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createPdfTool } from "./tools/pdf-tool.js";
+import { createRequestCompactionTool } from "./tools/request-compaction-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
@@ -103,6 +104,13 @@ export function createOpenClawTools(
     allowGatewaySubagentBinding?: boolean;
     /** Whether the current run consumes the continue_delegate staging queue. */
     drainsContinuationDelegateQueue?: boolean;
+    /** Closures for request_compaction tool (Trigger E). Only set when continuation is enabled. */
+    requestCompactionOpts?: {
+      getContextUsage: () => number;
+      getSessionGeneration: () => number;
+      turnGeneration: number;
+      triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+    };
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;
@@ -278,6 +286,16 @@ export function createOpenClawTools(
       ? [
           createContinueDelegateTool({
             agentSessionKey: options?.agentSessionKey,
+          }),
+        ]
+      : []),
+    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    options?.requestCompactionOpts
+      ? [
+          createRequestCompactionTool({
+            agentSessionKey: options?.agentSessionKey,
+            sessionId: options?.sessionId,
+            ...options.requestCompactionOpts,
           }),
         ]
       : []),

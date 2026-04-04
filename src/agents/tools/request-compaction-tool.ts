@@ -60,8 +60,6 @@ export type RequestCompactionToolOpts = {
   agentSessionKey?: string;
   /** Session id (the Pi session UUID). */
   sessionId?: string;
-  /** Path to the session JSONL file. */
-  sessionFile?: string;
   /**
    * Returns the current context usage as a fraction (0-1).
    * Injected so the tool does not reach into session internals.
@@ -197,7 +195,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       // ----- All guards passed — enqueue compaction -----
       log.info(
-        `[request_compaction:enqueuing] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}% reason=${reason ?? "(none)"}`,
+        `[request_compaction:enqueuing] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}% reason=${reason}`,
       );
 
       // Update rate-limit state BEFORE firing so a second call in the same
@@ -213,11 +211,18 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       pendingCompactionSessions.add(sessionKey);
       void opts
         .triggerCompaction()
-        .catch((err) => {
-          log.error(
-            `[request_compaction:background-error] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
-          );
-        })
+        .then(
+          (result) => {
+            if (result.ok && result.compacted) {
+              incrementVolitionalCompactionCount(sessionKey);
+            }
+          },
+          (err: unknown) => {
+            log.error(
+              `[request_compaction:background-error] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+            );
+          },
+        )
         .finally(() => {
           pendingCompactionSessions.delete(sessionKey);
         });
