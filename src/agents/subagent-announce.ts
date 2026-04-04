@@ -9,6 +9,7 @@ import {
   buildAnnounceIdempotencyKey,
 } from "./announce-idempotency.js";
 import { formatAgentInternalEventsForPrompt, type AgentInternalEvent } from "./internal-events.js";
+import { isEmbeddedPiRunActive, waitForEmbeddedPiRunEnd } from "./pi-embedded.js";
 import {
   deliverSubagentAnnouncement,
   loadRequesterSessionEntry,
@@ -72,6 +73,10 @@ export function buildSubagentSystemPrompt(params: {
   childDepth?: number;
   /** Config value: max allowed spawn depth. */
   maxSpawnDepth?: number;
+  /** Tool names available to the child — used to teach tool-primary vs bracket-only continuation. */
+  toolNames?: string[];
+  /** Whether continuation chaining is enabled. Defaults to config value. */
+  continuationEnabled?: boolean;
 }) {
   const taskText =
     typeof params.task === "string" && params.task.trim()
@@ -179,6 +184,8 @@ function buildAnnounceReplyInstruction(params: {
   requesterIsSubagent: boolean;
   announceType: SubagentAnnounceType;
   expectsCompletionMessage?: boolean;
+  silentEnrichment?: boolean;
+  silentWakeEnrichment?: boolean;
 }): string {
   if (params.requesterIsSubagent) {
     return `Convert this completion into a concise internal orchestration update for your parent agent in your own words. Keep this internal context private (don't mention system/log/stats/session details or announce type). If this result is duplicate or no update is needed, reply ONLY: ${SILENT_REPLY_TOKEN}.`;
@@ -324,6 +331,13 @@ export async function runSubagentAnnounceFlow(params: {
   wakeOnDescendantSettle?: boolean;
   signal?: AbortSignal;
   bestEffortDeliver?: boolean;
+  /** When true, deliver completion as a silent system event instead of a
+   *  visible channel message. Used for ambient enrichment (DELEGATE | silent). */
+  silentAnnounce?: boolean;
+  /** When true (with silentAnnounce), trigger a generation cycle on the parent
+   *  session after enrichment delivery. Enables autonomous cognition loops
+   *  (DELEGATE | silent-wake). */
+  wakeOnReturn?: boolean;
 }): Promise<boolean> {
   let didAnnounce = false;
   const expectsCompletionMessage = params.expectsCompletionMessage === true;
@@ -503,6 +517,105 @@ export async function runSubagentAnnounceFlow(params: {
       outcome = { status: "unknown" };
     }
 
+    const announceId = buildAnnounceIdFromChildRun({
+      childSessionKey: params.childSessionKey,
+      childRunId: params.childRunId,
+    });
+
+    const childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
+    if (
+      params.wakeOnDescendantSettle === true &&
+      childCompletionFindings?.trim() &&
+      !childRunAlreadyWoken
+    ) {
+      const wakeAnnounceId = buildAnnounceIdFromChildRun({
+        childSessionKey: params.childSessionKey,
+        childRunId: stripWakeRunSuffixes(params.childRunId),
+      });
+      const woke = await wakeSubagentRunAfterDescendants({
+        runId: params.childRunId,
+        childSessionKey: params.childSessionKey,
+        taskLabel: params.label || params.task || "task",
+        findings: childCompletionFindings,
+        announceId: wakeAnnounceId,
+        signal: params.signal,
+      });
+      if (woke) {
+        shouldDeleteChildSession = false;
+        return true;
+      }
+    }
+
+    // Track whether the announce delivery should be skipped (silent/skip reply
+    // with no fallback). Declared here so chain-hop accounting below still runs.
+    let skipAnnounceDelivery = false;
+
+    if (childCompletionFindings?.trim()) {
+      // Descendant completions were synthesized successfully; announce that
+      // result upward unless we converted it into a wake continuation above.
+      reply = childCompletionFindings;
+    } else {
+      const fallbackReply = params.fallbackReply?.trim() ? params.fallbackReply.trim() : undefined;
+      const fallbackIsSilent =
+        Boolean(fallbackReply) &&
+        (isAnnounceSkip(fallbackReply) || isSilentReplyText(fallbackReply, SILENT_REPLY_TOKEN));
+
+      if (!reply) {
+        reply = await readSubagentOutput(params.childSessionKey, outcome);
+      }
+
+      if (!reply?.trim()) {
+        reply = await readLatestSubagentOutputWithRetry({
+          sessionKey: params.childSessionKey,
+          maxWaitMs: params.timeoutMs,
+          outcome,
+        });
+      }
+
+      if (!reply?.trim() && fallbackReply && !fallbackIsSilent) {
+        reply = fallbackReply;
+      }
+
+      // A worker can finish just after the first wait request timed out.
+      // If we already have real completion content, do one cached recheck so
+      // the final completion event prefers the authoritative terminal state.
+      // This is best-effort; if the recheck fails, keep the known timeout
+      // outcome instead of dropping the announcement entirely.
+      if (outcome?.status === "timeout" && reply?.trim() && params.waitForCompletion !== false) {
+        try {
+          const rechecked = await waitForSubagentRunOutcome(params.childRunId, 0);
+          const applied = applySubagentWaitOutcome({
+            wait: rechecked,
+            outcome,
+            startedAt: params.startedAt,
+            endedAt: params.endedAt,
+          });
+          outcome = applied.outcome;
+          params.startedAt = applied.startedAt;
+          params.endedAt = applied.endedAt;
+        } catch {
+          // Best-effort recheck; keep the existing timeout outcome on failure.
+        }
+      }
+
+      if (isAnnounceSkip(reply) || isSilentReplyText(reply, SILENT_REPLY_TOKEN)) {
+        if (fallbackReply && !fallbackIsSilent) {
+          reply = fallbackReply;
+        } else {
+          // Do NOT early-return here — fall through to chain-hop accounting
+          // below so that token accumulation, chain guards, and tool-delegate
+          // consumption still run for silent/skip replies. Without this,
+          // subagents that reply with NO_REPLY bypass cost-cap enforcement
+          // and chain-hop accounting entirely (Swim 8, 8-T6 finding).
+          skipAnnounceDelivery = true;
+        }
+      }
+    }
+
+    if (!outcome) {
+      outcome = { status: "unknown" };
+    }
+
     // Build status label
     const statusLabel =
       outcome.status === "ok"
@@ -550,6 +663,8 @@ export async function runSubagentAnnounceFlow(params: {
       requesterIsSubagent,
       announceType,
       expectsCompletionMessage,
+      silentEnrichment: params.silentAnnounce === true,
+      silentWakeEnrichment: params.silentAnnounce === true && params.wakeOnReturn === true,
     });
     const statsLine = await buildCompactAnnounceStatsLine({
       sessionKey: params.childSessionKey,
@@ -592,6 +707,16 @@ export async function runSubagentAnnounceFlow(params: {
           })
         : targetRequesterOrigin;
     const directIdempotencyKey = buildAnnounceIdempotencyKey(announceId);
+    // Only tag as delegate-return when the completing run was a continuation
+    // delegate (task contains chain-hop marker). Regular subagent completions
+    // should not trigger continuation chain state preservation.
+    // Note: silentAnnounce delegates return early above and never reach here.
+    // Only the task prefix identifies continuation delegates in the non-silent path.
+    const isContinuationDelegateRun = /\[continuation:chain-hop:\d+\]/.test(params.task ?? "");
+    const cfg2 = loadConfig();
+    const continuationEnabledForTrigger = cfg2?.agents?.defaults?.continuation?.enabled === true;
+    const delegateReturnTrigger =
+      continuationEnabledForTrigger && isContinuationDelegateRun ? "delegate-return" : undefined;
     const delivery = await deliverSubagentAnnouncement({
       requesterSessionKey: targetRequesterSessionKey,
       announceId,
@@ -615,6 +740,7 @@ export async function runSubagentAnnounceFlow(params: {
       bestEffortDeliver: params.bestEffortDeliver,
       directIdempotencyKey,
       signal: params.signal,
+      continuationTriggerOverride: delegateReturnTrigger,
     });
     didAnnounce = delivery.delivered;
     if (!delivery.delivered && delivery.path === "direct" && delivery.error) {
