@@ -4,7 +4,7 @@
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#38780](https://github.com/openclaw/openclaw/pull/38780)  
-**Date:** March 2, 2026 (drafted) · March 3 (v2, post-implementation) · March 4 (v3, delegate-pending, context-pressure) · March 31 (v5, Swim 8, tool-delegate chain-hops) · April 3 (v6, platform compaction integration, `request_compaction` tool, fleet evidence) · April 3 (v7, voice/structure/honesty curation pass)
+**Date:** March 2, 2026 (drafted) · March 3 (v2, post-implementation) · March 4 (v3, delegate-pending, context-pressure) · March 31 (v5, Swim 8, tool-delegate chain-hops) · April 3 (v6, platform compaction integration, `request_compaction` tool, fleet evidence) · April 3 (v7, voice/structure/honesty curation pass) · April 4 (v8, tool parity — `continue_work` tool, `continue_delegate` every-turn gating, three-tier fallback hierarchy)
 
 ---
 
@@ -20,7 +20,21 @@ A new response token `CONTINUE_WORK` (alongside existing `NO_REPLY` and `HEARTBE
 
 The mechanism is **volitional** — the agent elects to continue at every turn boundary and can always elect not to. This is not a loop. It's self-governance.
 
-### Token Variants
+### Tool Suite _(v8: new section)_
+
+The **primary interface** for continuation is a set of three tools, available on every main-session turn when `continuation.enabled: true`:
+
+| Tool                                            | Purpose                                         | Bracket Fallback                      |
+| ----------------------------------------------- | ----------------------------------------------- | ------------------------------------- |
+| `continue_work(delaySeconds?)`                  | Request another turn for the current session    | `CONTINUE_WORK:N`                     |
+| `continue_delegate(task, mode?, delaySeconds?)` | Dispatch work to a delegate sub-agent           | `[[CONTINUE_DELEGATE: task \| mode]]` |
+| `request_compaction(reason)`                    | Request volitional compaction after preparation | _(none — tool only)_                  |
+
+All three tools are fire-and-forget: they schedule their action and return immediately. The agent finishes its turn normally. Actions execute after turn completion (continuation timer, delegate spawn, compaction). Tool calls have typed schemas, validation, and multi-call-per-turn support. Bracket syntax (below) is a degraded fallback for environments where tools are disabled by operator policy.
+
+### Token Variants (Bracket Fallback)
+
+When tools are unavailable (operator policy, leaf sub-agent depth, or tool-call failure), the same capabilities are accessible via response-terminal tokens:
 
 ```
 CONTINUE_WORK                   → schedule another turn (same session, default delay)
@@ -28,6 +42,8 @@ CONTINUE_WORK:30                → schedule another turn after 30 seconds
 [[CONTINUE_DELEGATE: <task>]]   → spawn sub-agent with task, result wakes parent
 DONE                            → (default) session goes inert until external event
 ```
+
+Bracket syntax is limited to one signal per response (end-anchored regex), does not support multi-delegate fan-out in a single turn, and `request_compaction` has no bracket equivalent. The tool form is preferred in all contexts where it is available.
 
 ### Delegate Return Modes
 
@@ -185,6 +201,38 @@ Use cases:
 The safety net is `costCapTokens`, not `maxDelegatesPerTurn`. Individual sensor shards are cheap (short prompts, focused tasks). The operator caps total spend, and the architecture handles width freely within that budget.
 
 All configuration values are hot-reloadable — modify `openclaw.json` and changes take effect at the next enforcement point (tool execution, timer callback, consumption loop) without gateway restart. This is enforced by `resolveContinuationRuntimeConfig()` calling `loadConfig()` at use time, not at startup. Validated live in Swim 7: tolerance, `maxDelegatesPerTurn`, and `maxChainLength` all hot-reloaded mid-test without gateway restart.
+
+## Tool Parity Design Principle _(v8: new section)_
+
+The continuation system maintains a strict two-interface model: every continuation capability is exposed as both a **tool** (primary) and a **bracket token** (fallback). The tool form is the canonical interface; brackets exist for degraded environments where tools are disabled.
+
+### Three-Tier Fallback Hierarchy
+
+```
+continuation.enabled: true + tools available
+  → Agent uses continue_work(), continue_delegate(), request_compaction()
+  → Brackets available as same-turn fallback if a tool call fails
+
+continuation.enabled: true + tools disabled by operator policy
+  → Agent uses CONTINUE_WORK:N, [[CONTINUE_DELEGATE: task]]
+  → request_compaction has no bracket form (tool-only capability)
+
+continuation.enabled: false
+  → No continuation features available
+  → Agent operates in standard single-turn mode
+```
+
+### Design Rationale
+
+1. **Gate by capability, not by turn type.** All three tools are gated on `continuation.enabled === true`, not on turn-type-specific flags. The gate controls whether the feature is on; guards (`maxDelegatesPerTurn`, `costCapTokens`, `maxChainLength`, `generationGuardTolerance`) prevent abuse. This separation ensures that agents can dispatch work on any turn — not only turns that happen to drain a delegate queue.
+
+2. **Structured parameters over regex parsing.** Tool calls have typed, validated schemas. Bracket syntax is regex-parsed free text — fragile and limited to one signal per response. The tool form eliminates the parsing fragility that bracket syntax carries.
+
+3. **Multi-call fan-out.** A tool can be called N times per turn. `continue_delegate()` called 5 times dispatches 5 parallel delegates. Bracket syntax requires N sequential `CONTINUE_WORK` hops between dispatches for the same workload. At fleet scale, only the tool form is viable for wide fan-out.
+
+4. **Discoverability.** Tools appear in the agent's tool list with descriptions and schemas. A naive agent sees them and knows when to reach for them — no prior knowledge of bracket syntax required.
+
+5. **Unified code paths.** All three tools route through the same scheduling and dispatch machinery as their bracket equivalents. The tool is a structured entry point, not a parallel implementation.
 
 ## Implementation
 
@@ -383,6 +431,35 @@ Test areas:
 - **Delegate store:** Enqueue/consume lifecycle, session isolation, multi-delegate ordering, compaction delegate queue, consumption clearing
 - **Config validation:** Zod boundary tests for all continuation config fields (negative values, type mismatches, out-of-range, unknown keys)
 
+### `continue_work` Tool _(v8: new section)_
+
+The `continue_work` tool provides a structured interface for self-elected turn continuation — the tool equivalent of the `CONTINUE_WORK:N` bracket token.
+
+**Signature:**
+
+```typescript
+continue_work({ delaySeconds?: number })
+```
+
+- `delaySeconds`: optional, clamped to `minDelayMs`/`maxDelayMs`. Defaults to `defaultDelayMs` from config.
+
+**Behavior:** Fire-and-forget. Schedules the continuation timer (same machinery as the bracket token path) and returns immediately. The agent finishes its turn normally. After turn completion, the timer fires and the gateway delivers a `[continuation:wake]` system message to the session.
+
+**Gating:** Available on every main-session turn when `continuation.enabled: true`. _(v8 change: previously, this capability was only available via bracket syntax. The tool form is now the primary interface.)_
+
+**Safety:** Subject to `maxChainLength` and `costCapTokens` guards. If the chain is at capacity, the tool returns an error and the agent can elect to stop or write state to files instead.
+
+**Architecture:** The tool writes to the same continuation scheduling path as `parseContinuationSignal()` — `scheduleContinuationTurn()` in `session-updates.ts`. The tool is a structured entry point, not a parallel implementation.
+
+**When to use which:**
+
+| Mechanism                 | Multi-continuation  | Delay                   | Discoverability             | Sub-agent support       |
+| ------------------------- | ------------------- | ----------------------- | --------------------------- | ----------------------- |
+| `continue_work` tool      | ❌ one per turn     | ✅ `delaySeconds` param | ✅ in tool list             | ✅ when tools available |
+| `CONTINUE_WORK:N` bracket | ❌ one per response | ✅ `:N` suffix          | ❌ requires prior knowledge | ✅ universal fallback   |
+
+**Files:** `src/agents/tools/continue-work-tool.ts`, `src/auto-reply/reply/session-updates.ts` (shared scheduling), `src/agents/openclaw-tools.ts` (tool gating).
+
 ### `continue_delegate` Tool
 
 Bracket syntax (`[[CONTINUE_DELEGATE: task]]`) is parsed from terminal output — one signal per response, end-anchored regex. The `continue_delegate` tool provides the same capability through the standard tool interface and is the **primary mechanism** for delegation in main sessions. The system prompt teaches the tool first when it is available, with bracket syntax as a fallback for tool-call failures or sub-agent contexts where the tool is denied.
@@ -391,7 +468,7 @@ The tool has three concrete advantages over bracket syntax:
 
 1. **Multi-delegate fan-out.** Multiple tool calls in one response dispatch multiple delegates in parallel — use like a task fan-out across N shards. Bracket syntax is limited to one per response (end-anchored regex), requiring serial `CONTINUE_WORK` hops between dispatches for the same workload.
 2. **Structured parameters.** Delay, mode (`normal`, `silent`, `silent-wake`, `post-compaction`), and task are typed fields with schema validation, not string suffixes.
-3. **Discoverability.** The tool appears in the agent's tool list alongside `sessions_spawn` and `exec` (when the run drains the delegate queue — see tool gating below). A naive agent sees it, reads the description, and knows when to reach for it — no prior knowledge of bracket syntax required.
+3. **Discoverability.** The tool appears in the agent's tool list alongside `sessions_spawn` and `exec` when `continuation.enabled: true`. A naive agent sees it, reads the description, and knows when to reach for it — no prior knowledge of bracket syntax required.
 
 **Architecture: two doors, one room.** The tool writes to a module-level `Map<string, PendingContinuationDelegate[]>` via `enqueuePendingDelegate()`. After the agent's response completes, `agent-runner.ts` calls `consumePendingDelegates(sessionKey)` and processes them through the same chain tracking (cost cap, chain length, delay clamping) as bracket-parsed signals. Delayed bracket/tool delegates converge on the same in-memory reservation scheduler; immediate delegates bypass that reservation store and go straight to `spawnSubagentDirect()`. Accepted-hop persistence is shared: `continuationChainCount` tracks the highest accepted hop label, while delayed reservations stay separate until timer fire. Chain tracking diverges at the hop boundary: tool-path dispatches use session store fields (`continuationChainCount`, `continuationChainTokens`); bracket chain-hops use task-prefix encoding (`[continuation:chain-hop:N]`) because session store resets clear state between hops.
 
@@ -405,13 +482,13 @@ The tool has three concrete advantages over bracket syntax:
 
 **Safety:** The tool enforces `maxDelegatesPerTurn` (default: 5) to prevent unbounded fan-out within a single response. It is denied for **leaf** sub-agents (`SUBAGENT_TOOL_DENY_LEAF`) — sub-agents at maximum spawn depth cannot delegate further. Orchestrator sub-agents (depth < maxSpawnDepth) and continuation chain-hop delegates have full tool access. For **main sessions**, delegates are consumed in `agent-runner.ts` via `consumePendingDelegates` after the response completes. For **spawned sub-agents** (which use `deliver: false` and route through `agentCommandFromIngress` → `runEmbeddedPiAgent`, NOT through `get-reply-run.ts` → `runReplyAgent`), delegates are consumed at the **announce boundary** in `subagent-announce.ts` when the sub-agent completes — this ensures correct parent-rooted chain topology via `targetRequesterSessionKey`. Bracket syntax remains as a universal fallback at any depth.
 
-**Tool gating (`drainsContinuationDelegateQueue`):** The tool only appears in an agent's toolset when two conditions are met: `continuation.enabled === true` in config, AND the `drainsContinuationDelegateQueue` flag is `true` on the run params. This flag indicates that the current run's code path will actually consume any delegates the tool enqueues. Without this gate, the tool would accept calls and report "scheduled" but the delegates would never spawn — the pending-delegate store would accumulate entries that no consumer drains. For **main sessions**, the flag is set to `true` in `get-reply-run.ts` and threaded through `buildEmbeddedRunBaseParams` → `runEmbeddedPiAgent` → `runEmbeddedAttempt` → `createOpenClawTools`. For **spawned sub-agents**, the flag is threaded through `SpawnSubagentParams` → `callGateway({ method: "agent" })` → gateway agent handler → `AgentCommandOpts` → `commands/agent.ts` → `runEmbeddedPiAgent`. The gateway RPC schema (`AgentParamsSchema`) must include the field to survive the `additionalProperties: false` validation boundary. Call sites that intentionally don't drain (CLI commands, cron jobs, memory flushes, slug generation) pass `false` explicitly. A `logVerbose` diagnostic fires when `continuation.enabled` is true but the flag is `undefined` — catching accidental omissions without alerting on intentional non-draining paths.
+**Tool gating:** _(v8 change: gate simplified from `drainsContinuationDelegateQueue` to `continuation.enabled`.)_ The tool appears in an agent's toolset when `continuation.enabled === true` in config. Previously, the tool was additionally gated on the `drainsContinuationDelegateQueue` flag, which restricted it to turns where the code path would consume any enqueued delegates. This conflated _creating_ delegates (which an agent may want on any turn) with _consuming_ returned delegates (which happens at specific code paths). The new gating makes the tool available on every main-session turn — guards (`maxDelegatesPerTurn`, `costCapTokens`, `maxChainLength`) prevent abuse rather than availability gating. The `drainsContinuationDelegateQueue` flag is retained as an internal signal for the consumption path but no longer controls tool visibility. For **main sessions**, the consumption path in `agent-runner.ts` via `consumePendingDelegates` fires after every response. For **spawned sub-agents** (which use `deliver: false` and route through `agentCommandFromIngress` → `runEmbeddedPiAgent`, NOT through `get-reply-run.ts` → `runReplyAgent`), delegates are consumed at the **announce boundary** in `subagent-announce.ts` when the sub-agent completes — this ensures correct parent-rooted chain topology via `targetRequesterSessionKey`. Call sites that intentionally don't drain (CLI commands, cron jobs, memory flushes, slug generation) pass `false` explicitly. A `logVerbose` diagnostic fires when `continuation.enabled` is true but the flag is `undefined` — catching accidental omissions without alerting on intentional non-draining paths.
 
 ### System Prompt Design
 
-The system prompt (`system-prompt.ts`) branches on `availableTools.has("continue_delegate")`. When the tool is present, it is documented first with typed parameters (`task`, `delaySeconds`, `mode`), multi-delegate fan-out guidance, and the bracket as a labeled fallback ("if the tool call fails"). When the tool is absent (leaf sub-agents, non-draining runs), only bracket syntax is taught. The sub-agent prompt block (`isMinimal` mode) teaches tool-primary when the tool is available, and bracket-only when it is not — matching the same conditional logic as the main prompt. This means orchestrator sub-agents and continuation chain-hops see the tool in their prompt and tool list, while leaf sub-agents see only brackets.
+The system prompt (`system-prompt.ts`) branches on tool availability. _(v8 change: all three continuation tools — `continue_work`, `continue_delegate`, and `request_compaction` — are now available on every main-session turn when `continuation.enabled: true`.)_ When tools are present, the prompt documents the tool suite first with typed parameters, multi-delegate fan-out guidance, and bracket syntax as a labeled fallback ("if the tool call fails"). When tools are absent (leaf sub-agents, non-draining runs, operator policy disabling tools), only bracket syntax is taught. The sub-agent prompt block (`isMinimal` mode) teaches tool-primary when tools are available, and bracket-only when they are not — matching the same conditional logic as the main prompt. This means orchestrator sub-agents and continuation chain-hops see all three tools in their prompt and tool list, while leaf sub-agents see only brackets.
 
-**Files:** `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/continuation-delegate-store.ts`, `src/agents/openclaw-tools.ts` (tool gating), `src/agents/system-prompt.ts` (prompt priority).
+**Files:** `src/agents/tools/continue-work-tool.ts`, `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/continuation-delegate-store.ts`, `src/agents/openclaw-tools.ts` (tool gating), `src/agents/system-prompt.ts` (prompt priority).
 
 ### Post-Compaction Lifecycle Dispatch
 
@@ -989,7 +1066,7 @@ Interpretation:
 - `costCapTokens` remains the global budget leash
 - fleet operators should usually widen width before widening depth
 
-The pieces are: volition (`CONTINUE_WORK`), sharding (`CONTINUE_DELEGATE`), recognition (structured continuation triggers plus delegate-pending state), self-knowledge (context-pressure events), the `continue_delegate` tool (multi-delegate fan-out), and lifecycle dispatch (`| post-compaction`).
+The pieces are: volition (`continue_work` tool / `CONTINUE_WORK` bracket), sharding (`continue_delegate` tool / `CONTINUE_DELEGATE` bracket), recognition (structured continuation triggers plus delegate-pending state), self-knowledge (context-pressure events), volitional compaction (`request_compaction` tool), and lifecycle dispatch (`| post-compaction`). All three tools are available on every main-session turn when `continuation.enabled: true`.
 
 ## Platform Compaction Integration
 
@@ -1086,10 +1163,10 @@ request_compaction({ reason?: string })
 
 ### Guards (3-Layer)
 
-| Guard            | Threshold                                      | Purpose                                                |
-| ---------------- | ---------------------------------------------- | ------------------------------------------------------ |
-| Context floor    | Rejects below 70% context usage (configurable) | Prevents wasteful compaction when context is plentiful |
-| Rate limit       | Max 1 per 5 minutes                            | Prevents compaction loops                              |
+| Guard            | Threshold                                       | Purpose                                                                             |
+| ---------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Context floor    | Rejects below 70% context usage (configurable)  | Prevents wasteful compaction when context is plentiful                              |
+| Rate limit       | Max 1 per 5 minutes                             | Prevents compaction loops                                                           |
 | Generation guard | Prevents compaction when generation has drifted | New message arrived since turn started — defer to avoid compacting mid-conversation |
 
 The context floor is hardcoded at `0.7` (70%). The rate limit and generation guard are also hardcoded safety rails. Configurability for the threshold is a follow-up enhancement.
@@ -1498,7 +1575,7 @@ Prior to Swim 8, the `continue_delegate` tool was denied to sub-agents via `SUBA
 2. **Announce-boundary consumer:** New consumption path in `subagent-announce.ts` using `consumePendingDelegates(targetRequesterSessionKey)` — the parent session owns all chain hops, preserving additive topology
 3. **Drain flag threading:** Explicit `drainsContinuationDelegateQueue: true` threaded through `SpawnSubagentParams` → `subagent-spawn.ts` → `gateway/agent.ts` → `AgentCommandOpts` → `commands/agent.ts`
 
-The single canonical runtime gate is `drainsContinuationDelegateQueue === true`. Without it, the P2 prompt gate correctly suppresses the tool from the sub-agent's available tools.
+The single canonical runtime gate for sub-agent delegate consumption is `drainsContinuationDelegateQueue === true`. Without it, the prompt gate correctly suppresses the tool from the sub-agent's available tools. _(v8 note: for main sessions, tool visibility is now gated on `continuation.enabled` only — the drain flag is retained for sub-agent consumption paths.)_
 
 ### Test Matrix
 
@@ -1563,15 +1640,16 @@ When a sub-agent emits both a `continue_delegate` tool call and a `[[CONTINUE_DE
 - **From reactive:** waiting for events, compacting only when forced
 - **To volitional:** electing to act, dispatching aspects of themselves forward, and choosing when to compact
 
-The implementation spans five primitives:
+The implementation spans six primitives:
 
-1. **Volition** — `CONTINUE_WORK` token for self-elected turn continuation
+1. **Volition** — `CONTINUE_WORK` token and `continue_work` tool for self-elected turn continuation
 2. **Sharding** — `[[CONTINUE_DELEGATE:]]` bracket syntax and `continue_delegate` tool for sub-agent dispatch with timed, silent, and wake-on-return modes
 3. **Self-knowledge** — `[system:context-pressure]` events that tell agents their resource state before they need to ask
 4. **Lifecycle dispatch** — `post-compaction` delegates that fire at the moment of compaction, carrying working state to the next copy alongside boot files
 5. **Volitional compaction** — `request_compaction` tool for agent-initiated compaction after preparation, filling the gap left by disabled idle-timeout compaction
+6. **Tool parity** _(v8)_ — All three continuation tools (`continue_work`, `continue_delegate`, `request_compaction`) available on every main-session turn when `continuation.enabled: true`. Tools are the primary interface; bracket syntax is the degraded fallback. Three-tier hierarchy: tools → brackets → off.
 
-Every continuation is bounded, observable, interruptible, and opt-in. For main sessions, the `continue_delegate` tool appears in the agent's tool list as the primary delegation mechanism — a naive agent sees it, reads the description, and knows when to reach for it. Bracket syntax remains as a fallback and as the only delegation path for sub-agents. No prior knowledge required.
+Every continuation is bounded, observable, interruptible, and opt-in. For main sessions, the full tool suite appears in the agent's tool list as the primary continuation interface — a naive agent sees the tools, reads the descriptions, and knows when to reach for them. Bracket syntax remains as a fallback for tool-call failures and as the only delegation path for leaf sub-agents at maximum spawn depth. No prior knowledge required.
 
 Comprehensive test suite. Ships disabled by default.
 
