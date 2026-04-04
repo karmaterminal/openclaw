@@ -2,6 +2,7 @@ import { createHmac, createHash } from "node:crypto";
 import type { ReasoningLevel, ThinkLevel } from "../auto-reply/thinking.js";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import type { MemoryCitationsMode } from "../config/types.memory.js";
+import { buildMemoryPromptSection } from "../plugins/memory-state.js";
 import { listDeliverableMessageChannels } from "../utils/message-channel.js";
 import type { ResolvedTimeFormat } from "./date-time.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
@@ -29,6 +30,7 @@ function buildSkillsSection(params: { skillsPrompt?: string; readToolName: strin
     "- If multiple could apply: choose the most specific one, then read/follow it.",
     "- If none clearly apply: do not read any SKILL.md.",
     "Constraints: never read more than one skill up front; only read after selecting.",
+    "- When a skill drives external API writes, assume rate limits: prefer fewer larger writes, avoid tight one-item loops, serialize bursts when possible, and respect 429/Retry-After.",
     trimmed,
     "",
   ];
@@ -42,24 +44,10 @@ function buildMemorySection(params: {
   if (params.isMinimal) {
     return [];
   }
-  if (!params.availableTools.has("memory_search") && !params.availableTools.has("memory_get")) {
-    return [];
-  }
-  const lines = [
-    "## Memory Recall",
-    "Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search on MEMORY.md + memory/*.md; then use memory_get to pull only the needed lines. If low confidence after search, say you checked.",
-  ];
-  if (params.citationsMode === "off") {
-    lines.push(
-      "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks.",
-    );
-  } else {
-    lines.push(
-      "Citations: include Source: <path#line> when it helps the user verify memory snippets.",
-    );
-  }
-  lines.push("");
-  return lines;
+  return buildMemoryPromptSection({
+    availableTools: params.availableTools,
+    citationsMode: params.citationsMode,
+  });
 }
 
 function buildUserIdentitySection(ownerLine: string | undefined, isMinimal: boolean) {
@@ -178,11 +166,24 @@ function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readT
     "Mirror: https://docs.openclaw.ai",
     "Source: https://github.com/openclaw/openclaw",
     "Community: https://discord.com/invite/clawd",
-    "Find new skills: https://clawhub.com",
+    "Find new skills: https://clawhub.ai",
     "For OpenClaw behavior, commands, config, or architecture: consult local docs first.",
     "When diagnosing issues, run `openclaw status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
     "",
   ];
+}
+
+function buildExecApprovalPromptGuidance(params: { runtimeChannel?: string }) {
+  const runtimeChannel = params.runtimeChannel?.trim().toLowerCase();
+  if (
+    runtimeChannel === "discord" ||
+    runtimeChannel === "slack" ||
+    runtimeChannel === "telegram" ||
+    runtimeChannel === "webchat"
+  ) {
+    return "When exec returns approval-pending on Discord, Slack, Telegram, or WebChat, rely on the native approval card/buttons when they appear and do not also send plain chat /approve instructions. Only include the concrete /approve command if the tool result says chat approvals are unavailable or only manual approval is possible.";
+  }
+  return "When exec returns approval-pending, include the concrete /approve command from tool output as plain chat text for the user, and do not ask for a different or rotated code.";
 }
 
 export function buildAgentSystemPrompt(params: {
@@ -201,7 +202,6 @@ export function buildAgentSystemPrompt(params: {
   userTime?: string;
   userTimeFormat?: ResolvedTimeFormat;
   contextFiles?: EmbeddedContextFile[];
-  bootstrapTruncationWarningLines?: string[];
   skillsPrompt?: string;
   heartbeatPrompt?: string;
   docsPath?: string;
@@ -232,6 +232,8 @@ export function buildAgentSystemPrompt(params: {
     channel: string;
   };
   memoryCitationsMode?: MemoryCitationsMode;
+  /** Whether agent self-elected turn continuation is enabled. */
+  continuationEnabled?: boolean;
 }) {
   const acpEnabled = params.acpEnabled !== false;
   const sandboxedRuntime = params.sandboxInfo?.enabled === true;
@@ -246,7 +248,7 @@ export function buildAgentSystemPrompt(params: {
     ls: "List directory contents",
     exec: "Run shell commands (pty available for TTY-required CLIs)",
     process: "Manage background exec sessions",
-    web_search: "Search the web (Brave API)",
+    web_search: "Search the web",
     web_fetch: "Fetch and extract readable content from a URL",
     // Channel docking: add login tools here when a channel needs interactive linking.
     browser: "Control web browser",
@@ -261,6 +263,9 @@ export function buildAgentSystemPrompt(params: {
     sessions_list: "List other sessions (incl. sub-agents) with filters/last",
     sessions_history: "Fetch history for another session/sub-agent",
     sessions_send: "Send a message to another session/sub-agent",
+    continue_work: "Request another turn for this session after yielding",
+    continue_delegate:
+      "Schedule background delegate work for future turns, silent enrichment, fan-out, or compaction handoff",
     sessions_spawn: acpSpawnRuntimeEnabled
       ? 'Spawn an isolated sub-agent or ACP coding session (runtime="acp" requires `agentId` unless `acp.defaultAgent` is configured; ACP harness ids follow acp.allowedAgents, not agents_list)'
       : "Spawn an isolated sub-agent session",
@@ -268,6 +273,7 @@ export function buildAgentSystemPrompt(params: {
     session_status:
       "Show a /status-equivalent status card (usage + time + Reasoning/Verbose/Elevated); use for model-use questions (📊 session_status); optional per-session model override",
     image: "Analyze an image with the configured image model",
+    image_generate: "Generate images with the configured image-generation model",
   };
 
   const toolOrder = [
@@ -280,6 +286,7 @@ export function buildAgentSystemPrompt(params: {
     "ls",
     "exec",
     "process",
+    "code_execution",
     "web_search",
     "web_fetch",
     "browser",
@@ -292,9 +299,12 @@ export function buildAgentSystemPrompt(params: {
     "sessions_list",
     "sessions_history",
     "sessions_send",
+    "continue_work",
+    "continue_delegate",
     "subagents",
     "session_status",
     "image",
+    "image_generate",
   ];
 
   const rawToolNames = (params.toolNames ?? []).map((tool) => tool.trim());
@@ -364,9 +374,6 @@ export function buildAgentSystemPrompt(params: {
   const userTimezone = params.userTimezone?.trim();
   const skillsPrompt = params.skillsPrompt?.trim();
   const heartbeatPrompt = params.heartbeatPrompt?.trim();
-  const heartbeatPromptLine = heartbeatPrompt
-    ? `Heartbeat prompt: ${heartbeatPrompt}`
-    : "Heartbeat prompt: (configured)";
   const runtimeInfo = params.runtimeInfo;
   const runtimeChannel = runtimeInfo?.channel?.trim().toLowerCase();
   const runtimeCapabilities = (runtimeInfo?.capabilities ?? [])
@@ -447,9 +454,14 @@ export function buildAgentSystemPrompt(params: {
     "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
     `For long waits, avoid rapid poll loops: use ${execToolName} with enough yieldMs or ${processToolName}(action=poll, timeout=<ms>).`,
     "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
+    ...(availableTools.has("continue_delegate")
+      ? [
+          "For background, delayed, silent, or compaction-aware delegate work, prefer `continue_delegate` over shell sleeps, ad-hoc `openclaw ...` CLI calls, or manual relay patterns.",
+        ]
+      : []),
     ...(acpHarnessSpawnAllowed
       ? [
-          'For requests like "do this in codex/claude code/gemini", treat it as ACP harness intent and call `sessions_spawn` with `runtime: "acp"`.',
+          'For requests like "do this in codex/claude code/cursor/gemini" or similar ACP harnesses, treat it as ACP harness intent and call `sessions_spawn` with `runtime: "acp"`.',
           'On Discord, default ACP harness requests to thread-bound persistent sessions (`thread: true`, `mode: "session"`) unless the user asks otherwise.',
           "Set `agentId` explicitly unless `acp.defaultAgent` is configured, and do not route ACP harness requests through `subagents`/`agents_list` or local PTY exec flows.",
           'For ACP harness thread spawns, do not call `message` with `action=thread-create`; use `sessions_spawn` (`runtime: "acp"`, `thread: true`) as the single thread creation path.',
@@ -463,6 +475,12 @@ export function buildAgentSystemPrompt(params: {
     "Keep narration brief and value-dense; avoid repeating obvious steps.",
     "Use plain human language for narration unless in a technical context.",
     "When a first-class tool exists for an action, use the tool directly instead of asking the user to run equivalent CLI or slash commands.",
+    buildExecApprovalPromptGuidance({
+      runtimeChannel: params.runtimeInfo?.channel,
+    }),
+    "Never execute /approve through exec or any other shell/tool path; /approve is a user-facing approval command, not a shell command.",
+    "Treat allow-once as single-command only: if another elevated command needs approval, request a fresh /approve and do not claim prior approval covered it.",
+    "When approvals are required, preserve and show the full command/script exactly as provided (including chained operators like &&, ||, |, ;, or multiline shells) so the user can approve what will actually run.",
     "",
     ...safetySection,
     "## OpenClaw CLI Quick Reference",
@@ -482,8 +500,8 @@ export function buildAgentSystemPrompt(params: {
       ? [
           "Get Updates (self-update) is ONLY allowed when the user explicitly asks for it.",
           "Do not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.",
-          "Use config.schema to fetch the current JSON Schema (includes plugins/channels) before making config changes or answering config-field questions; avoid guessing field names/types.",
-          "Actions: config.get, config.schema, config.apply (validate + write full config, then restart), update.run (update deps or git, then restart).",
+          "Use config.schema.lookup with a specific dot path to inspect only the relevant config subtree before making config changes or answering config-field questions; avoid guessing field names/types.",
+          "Actions: config.schema.lookup, config.get, config.apply (validate + write full config, then restart), config.patch (partial update, merges with existing), update.run (update deps or git, then restart).",
           "After restart, OpenClaw pings the last active session automatically.",
         ].join("\n")
       : "",
@@ -610,13 +628,10 @@ export function buildAgentSystemPrompt(params: {
   }
 
   const contextFiles = params.contextFiles ?? [];
-  const bootstrapTruncationWarningLines = (params.bootstrapTruncationWarningLines ?? []).filter(
-    (line) => line.trim().length > 0,
-  );
   const validContextFiles = contextFiles.filter(
     (file) => typeof file.path === "string" && file.path.trim().length > 0,
   );
-  if (validContextFiles.length > 0 || bootstrapTruncationWarningLines.length > 0) {
+  if (validContextFiles.length > 0) {
     lines.push("# Project Context", "");
     if (validContextFiles.length > 0) {
       const hasSoulFile = validContextFiles.some((file) => {
@@ -629,13 +644,6 @@ export function buildAgentSystemPrompt(params: {
         lines.push(
           "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.",
         );
-      }
-      lines.push("");
-    }
-    if (bootstrapTruncationWarningLines.length > 0) {
-      lines.push("⚠ Bootstrap truncation warning:");
-      for (const warningLine of bootstrapTruncationWarningLines) {
-        lines.push(`- ${warningLine}`);
       }
       lines.push("");
     }
@@ -663,16 +671,153 @@ export function buildAgentSystemPrompt(params: {
   }
 
   // Skip heartbeats for subagent/none modes
-  if (!isMinimal) {
+  if (!isMinimal && heartbeatPrompt) {
     lines.push(
       "## Heartbeats",
-      heartbeatPromptLine,
+      `Heartbeat prompt: ${heartbeatPrompt}`,
       "If you receive a heartbeat poll (a user message matching the heartbeat prompt above), and there is nothing that needs attention, reply exactly:",
       "HEARTBEAT_OK",
       'OpenClaw treats a leading/trailing "HEARTBEAT_OK" as a heartbeat ack (and may discard it).',
       'If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text instead.',
       "",
     );
+  }
+
+  // Continuation tokens — only when the feature is enabled and not in subagent mode
+  if (!isMinimal && params.continuationEnabled) {
+    lines.push(
+      "## Continuation & Delegation",
+      "### Self-elected turns",
+      ...(availableTools.has("continue_work")
+        ? [
+            "Use the `continue_work` tool to request another turn with structured `reason` and optional `delaySeconds`.",
+            "Fallback bracket syntax remains available: CONTINUE_WORK or CONTINUE_WORK:30.",
+          ]
+        : []),
+      "End your response with CONTINUE_WORK to request another turn after a delay.",
+      "End with CONTINUE_WORK:30 to specify delay in seconds.",
+      "Use this when the same session should keep working later, after yielding to human input first.",
+      "This is the sequential path: your main session keeps the thread of work itself.",
+      "Use CONTINUE_WORK when you want your own next turn; use `continue_delegate` when the work",
+      "should leave your head-session, run in background shards, and inform future turns later.",
+      "",
+      "### Delegated continuation",
+      ...(availableTools.has("continue_delegate")
+        ? [
+            "Use the `continue_delegate` tool to dispatch background sub-agents with gateway-managed",
+            "timing and delivery control. This is the primary mechanism for delegation.",
+            "",
+            "Tool parameters:",
+            "  task (required) — the delegated sub-agent's task; include scope, context, and desired return shape",
+            "  delaySeconds — seconds to wait before spawning (0 or omitted = immediate; clamped to configured min/max)",
+            '  mode — "normal" (default, announces to channel), "silent" (internal context only),',
+            '         "silent-wake" (silent + triggers your next turn), "post-compaction" (fires at compaction)',
+            "",
+            "Call the tool multiple times in one turn for parallel fan-out while the main session stays free.",
+            "",
+            "Fallback bracket syntax (if the tool call fails or is unavailable):",
+            "  [[CONTINUE_DELEGATE: task +30s | silent-wake]]",
+            "Modifiers: +Ns for delay, | silent, | silent-wake. End your response with the bracket.",
+          ]
+        : [
+            "End your response with [[CONTINUE_DELEGATE: task description]] to dispatch a sub-agent",
+            "with gateway-managed timing and delivery control.",
+            "",
+            "Syntax:",
+            "  [[CONTINUE_DELEGATE: task +30s]]               — delayed spawn, normal return",
+            "  [[CONTINUE_DELEGATE: task | silent]]            — result as internal context only (no channel output)",
+            "  [[CONTINUE_DELEGATE: task | silent-wake]]       — silent result + triggers your next turn",
+            "  [[CONTINUE_DELEGATE: task +30s | silent-wake]]  — delayed spawn, silent return, triggers next turn",
+            "",
+            "The task text is free-form. Include working context alongside the instruction.",
+          ]),
+      "",
+      "Delegates let the main session stay free while background shards do legwork.",
+      "Silent returns may simply color later replies; they do not need immediate visible output.",
+      "They can quietly inform future blind inquiry, later synthesis, or post-compaction recovery.",
+      "Use `silent` for ambient enrichment or future recall. Use `silent-wake` when the return",
+      "should silently enrich context and immediately wake you to synthesize or fan out again.",
+      "",
+      "### When to use CONTINUE_DELEGATE vs sessions_spawn",
+      "Use sessions_spawn for immediate, explicit workers you want to manage directly, for ACP",
+      "runtime spawns, or when the shard needs inline attachments / explicit spawn-time controls.",
+      "Use `continue_delegate` (or `[[CONTINUE_DELEGATE:]]` bracket syntax) when you need:",
+      "  - Delayed dispatch — schedule work for N seconds from now",
+      "  - Silent return — result arrives as internal context, no channel output",
+      "  - Wake-on-return — silent result that triggers your next turn",
+      "  - Background fan-out — multiple narrow shards while the main session keeps thinking/responding",
+      "  - Compaction handoff — preserve working state or partial results across compaction",
+      "  - Chain tracking — gateway enforces cost cap and depth limit across linked dispatches",
+      "",
+      "Do not use `exec`, shell sleeps, or manual `openclaw ...` commands to imitate delayed",
+      "delegate scheduling when `continue_delegate` or `sessions_spawn` already fits the job.",
+      "",
+      "### Cooperative yield",
+      "Use `sessions_yield` to end your turn immediately, aborting any queued tool calls.",
+      "The session parks until an external event (subagent result, user message) arrives.",
+      "This is useful after dispatching delegates when you should stop and wait for results,",
+      "rather than requesting another turn on a timer.",
+      "",
+      "### Context pressure",
+      "When you receive a [system:context-pressure] event, your context window is approaching capacity.",
+      ...(availableTools.has("continue_delegate")
+        ? [
+            'Use `continue_delegate` with `mode: "post-compaction"` to dispatch working state — decisions',
+            "in progress, task context, partial results — before compaction. The post-compaction shard fires",
+            "when compaction happens and returns to re-inject context the summary cannot preserve.",
+            "Fallback if the tool call fails: [[CONTINUE_DELEGATE: ... | silent-wake]] (note: post-compaction mode requires the tool).",
+          ]
+        : [
+            "Use [[CONTINUE_DELEGATE: ... | silent-wake]] to dispatch working state — decisions in progress,",
+            "task context, partial results — before compaction. These shards return after compaction and",
+            "re-inject context that the summary cannot preserve.",
+          ]),
+      "",
+      "Continuations are bounded: max chain length, cost cap, and min/max delay enforced by the gateway.",
+      "",
+    );
+  }
+
+  // Sub-agent chain-hop continuation — teach tool-primary when available, bracket fallback otherwise
+  if (isMinimal && params.continuationEnabled) {
+    lines.push("## Chain Delegation");
+    if (availableTools.has("continue_delegate")) {
+      lines.push(
+        "Use the `continue_delegate` tool to dispatch follow-up sub-agents from this chain.",
+        "The tool supports multi-delegate fan-out, structured parameters (`task`, `delaySeconds`, `mode`),",
+        "and `post-compaction` mode. The parent/main session stays free while your branch keeps working.",
+        "",
+        "Fallback bracket syntax (if the tool call fails or is unavailable):",
+        "  [[CONTINUE_DELEGATE: task description]]",
+        "  [[CONTINUE_DELEGATE: task +30s]]          — delayed spawn",
+        "  [[CONTINUE_DELEGATE: task | silent]]       — silent return (no channel output)",
+        "  [[CONTINUE_DELEGATE: task | silent-wake]]  — silent return + triggers parent turn",
+        "",
+        "Prefer the tool. Use brackets only as fallback.",
+        "The gateway handles chain tracking and depth limits.",
+        "",
+      );
+    } else {
+      lines.push(
+        "To dispatch a follow-up sub-agent from your output, end your ENTIRE response with:",
+        "  [[CONTINUE_DELEGATE: task description]]",
+        "",
+        "Use this to keep a delegate tree moving without asking the parent to relay every hop.",
+        "The parent/main session stays free while your branch keeps working.",
+        "",
+        "Optional modifiers:",
+        "  [[CONTINUE_DELEGATE: task +30s]]          — delayed spawn",
+        "  [[CONTINUE_DELEGATE: task | silent]]       — silent return (no channel output)",
+        "  [[CONTINUE_DELEGATE: task | silent-wake]]  — silent return + triggers parent turn",
+        "",
+        "Use `| silent` when the result should only enrich the parent's future context.",
+        "Use `| silent-wake` when the result should enrich the parent and wake it to act.",
+        "",
+        "Emit exactly ONE bracket per response. Do not nest brackets inside brackets.",
+        "The gateway handles chain tracking and depth limits.",
+        "",
+      );
+    }
   }
 
   lines.push(

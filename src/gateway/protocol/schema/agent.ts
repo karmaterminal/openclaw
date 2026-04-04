@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
-import { INPUT_PROVENANCE_KIND_VALUES } from "../../../sessions/input-provenance.js";
-import { NonEmptyString, SessionLabelString } from "./primitives.js";
+import { InputProvenanceSchema, NonEmptyString, SessionLabelString } from "./primitives.js";
+
+const CONTINUATION_TRIGGER_VALUES = ["work-wake", "delegate-return"] as const;
 
 export const AgentInternalEventSchema = Type.Object(
   {
@@ -76,6 +77,8 @@ export const AgentParamsSchema = Type.Object(
   {
     message: NonEmptyString,
     agentId: Type.Optional(NonEmptyString),
+    provider: Type.Optional(Type.String()),
+    model: Type.Optional(Type.String()),
     to: Type.Optional(Type.String()),
     replyTo: Type.Optional(Type.String()),
     sessionId: Type.Optional(Type.String()),
@@ -94,22 +97,13 @@ export const AgentParamsSchema = Type.Object(
     timeout: Type.Optional(Type.Integer({ minimum: 0 })),
     bestEffortDeliver: Type.Optional(Type.Boolean()),
     lane: Type.Optional(Type.String()),
+    continuationTrigger: Type.Optional(Type.String({ enum: [...CONTINUATION_TRIGGER_VALUES] })),
     extraSystemPrompt: Type.Optional(Type.String()),
     internalEvents: Type.Optional(Type.Array(AgentInternalEventSchema)),
-    inputProvenance: Type.Optional(
-      Type.Object(
-        {
-          kind: Type.String({ enum: [...INPUT_PROVENANCE_KIND_VALUES] }),
-          sourceSessionKey: Type.Optional(Type.String()),
-          sourceChannel: Type.Optional(Type.String()),
-          sourceTool: Type.Optional(Type.String()),
-        },
-        { additionalProperties: false },
-      ),
-    ),
+    inputProvenance: Type.Optional(InputProvenanceSchema),
     idempotencyKey: NonEmptyString,
     label: Type.Optional(SessionLabelString),
-    spawnedBy: Type.Optional(Type.String()),
+    drainsContinuationDelegateQueue: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
