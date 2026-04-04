@@ -212,7 +212,7 @@ Here's my analysis of the PR. The type errors are fixed.
 
 The response is finalized in `runReplyAgent()` (`agent-runner.ts`). After all payloads are assembled:
 
-1. **Signal detection** (line ~544): `stripContinuationSignal(lastPayload.text)` is called on the final text payload.
+1. **Signal detection** (`stripContinuationSignal` in `agent-runner.ts`): `stripContinuationSignal(lastPayload.text)` is called on the final text payload.
 
 2. **Parsing** (`tokens.ts:130`): The regex `/\[\[\s*CONTINUE_DELEGATE:\s*((?:(?!\]\])[\s\S])+?)\s*\]\]\s*$/` matches the bracket directive. The `+10s` suffix is parsed by `/\s+\+(\d+)s\s*$/` into `delayMs: 10000`.
 
@@ -230,7 +230,7 @@ The gateway continues processing other sessions normally. The parent session is 
 
 #### t = 10s: Sub-Agent Spawns (Turn 0.5)
 
-The `setTimeout` fires. `doSpawn()` calls `spawnSubagentDirect()` (line ~937):
+The `setTimeout` fires. `doSpawn()` calls `spawnSubagentDirect()` (in the continuation scheduling block):
 
 ```typescript
 spawnSubagentDirect(
@@ -696,13 +696,13 @@ The dedup is equality-based: the _same_ band never fires twice consecutively, bu
 #### Event Injection Path
 
 ```
-checkContextPressure()           ← called pre-run in get-reply-run.ts (~line 385)
+checkContextPressure()           ← called pre-run in agent-runner.ts (runReplyAgent, before agent turn)
   → ratio >= threshold?          ← compute band from ratio
   → band !== lastBand?           ← dedup check
-  → enqueueSystemEvent()         ← internal call (line 73 of context-pressure.ts)
+  → enqueueSystemEvent()         ← internal call (context-pressure.ts, checkContextPressure function)
                                     queues to in-memory Map keyed by sessionKey
 
-buildQueuedSystemPrompt()        ← called same turn (~line 403)
+buildQueuedSystemPrompt()        ← called same turn (agent-runner.ts, before runEmbeddedPiAgent)
   → drainSystemEventEntries()    ← drains the queue for this sessionKey
   → compactSystemEvent()         ← format for system prompt injection
   → extraSystemPromptParts[]     ← injected into agent's system prompt
@@ -990,7 +990,7 @@ Compaction in OpenClaw operates across two complementary layers:
 - **Initiated layer** (our feature): proactive, agent-directed. Context-pressure alerts at 80/90/95%. `continue_delegate | post-compaction` for intentional evacuation. `request_compaction` for volitional compaction.
 - **Obligatory layer** (platform): reactive, system-directed. Overflow compaction at 100%. `memoryFlush` for mechanical memory preservation. `postCompactionSections` for static re-injection.
 
-These are complementary registers, not competing systems. The prince's mind survives because the prince packed the lifeboat. The machine summary is the floor, not the ceiling.
+These are complementary registers, not competing systems. The agent's working state survives because the agent packed the lifeboat. The machine summary is the floor, not the ceiling.
 
 The initiated layer adds intentionality above the platform's mechanical safety net. An agent that evacuates working state via `continue_delegate | post-compaction` before compaction fires preserves thermal context — the associative connections, the half-formed thoughts, the temperature of the current work — that the platform's `memoryFlush` summary cannot capture. The obligatory layer ensures no session is lost to overflow; the initiated layer ensures no session is _degraded_ by overflow.
 
@@ -1006,15 +1006,48 @@ The initiated layer adds intentionality above the platform's mechanical safety n
 
 Triggers A–C existed before this feature. Triggers D and E are the continuation system's contribution.
 
+```mermaid
+flowchart TD
+    START([Agent turn begins]) --> CHECK{Context usage?}
+    CHECK -->|< 70%| NORMAL[Normal operation]
+    CHECK -->|70-79%| TD["Trigger D: context-pressure advisory<br/>enqueueSystemEvent()"]
+    CHECK -->|80-94%| TD
+    CHECK -->|95-99%| TD
+    CHECK -->|100%| TA["Trigger A: overflow compaction<br/>Platform-automatic"]
+
+    TD --> AGENT_SEES[Agent sees pressure event in context]
+    AGENT_SEES --> DECIDE{Agent decides}
+    DECIDE -->|Ignore| CONTINUE[Continue working]
+    DECIDE -->|Evacuate| EVAC["Write RESUMPTION.md<br/>Stage post-compaction delegates<br/>Update memory files"]
+    EVAC --> TE["Trigger E: request_compaction<br/>Agent-volitional"]
+    TE --> GUARDS{Guards pass?}
+    GUARDS -->|Yes| ENQUEUE["Enqueue compaction<br/>(async, fire-and-forget)"]
+    GUARDS -->|No| REJECT[Rejected: threshold/rate/generation]
+    ENQUEUE --> LANE["Lane queue: compaction runs<br/>after turn completes"]
+
+    TB["Trigger B: idle-timeout<br/>(disabled when idleTimeoutSeconds=0)"] -.->|Dead when disabled| LANE
+    TC["Trigger C: /compact<br/>User-invoked"] --> LANE
+    TA --> LANE
+
+    LANE --> COMPACT[Session compacted]
+    COMPACT --> POST["Post-compaction:<br/>memoryFlush + delegate dispatch<br/>+ successor context injection"]
+
+    style TA fill:#ff6b6b,color:#fff
+    style TB fill:#868e96,color:#fff
+    style TC fill:#4dabf7,color:#fff
+    style TD fill:#ffd43b,color:#000
+    style TE fill:#51cf66,color:#000
+```
+
 **Trigger D** (`[system:context-pressure]`) is advisory — the agent sees the pressure event and _may_ act on it (evacuate, delegate, or ignore). It fires at configurable thresholds (80%, 90%, 95%) and is injected pre-run so the agent can elect evacuation _this_ turn.
 
-**Trigger E** (`request_compaction`) is volitional — the agent explicitly requests compaction after preparing for it. This is the prince folding the crane, then choosing when to walk out. See [`request_compaction` Tool Specification](#request_compaction-tool-specification) below.
+**Trigger E** (`request_compaction`) is volitional — the agent explicitly requests compaction after preparing for it. The agent prepares its working state, then elects when to compact. See [`request_compaction` Tool Specification](#request_compaction-tool-specification) below.
 
 ### The Gap `idleTimeoutSeconds: 0` Creates
 
 Users who disable the idle timeout (`idleTimeoutSeconds: 0`) — necessary for copilot proxy configurations and slow providers — lose Trigger B entirely. The idle-timeout compaction path becomes dead code. The only remaining automatic trigger is overflow (A), which fires at 100% with no preparation window.
 
-This creates a gap: sessions climb from 80% to 100% with no intermediate intervention. The agent receives no warning, dispatches no evacuation shards, and compaction arrives as a surprise. In fleet telemetry (2026-04-03), this manifested as the difference between princes who compact early and stay responsive versus princes who don't and degrade to 2+ minute response times.
+This creates a gap: sessions climb from 80% to 100% with no intermediate intervention. The agent receives no warning, dispatches no evacuation shards, and compaction arrives as a surprise. In fleet telemetry (2026-04-03), this manifested as the difference between agents who compact early and stay responsive versus agents who don't and degrade to 2+ minute response times.
 
 Our feature fills this gap:
 
@@ -1025,7 +1058,7 @@ Together, D+E restore the proactive compaction path for deployments where B is d
 
 ## `request_compaction` Tool Specification
 
-**Purpose:** Agent-initiated compaction after preparation. The prince folds the crane, then chooses when to walk out.
+**Purpose:** Agent-initiated compaction after preparation. The agent evacuates working state, then elects when to compact.
 
 **Signature:**
 
@@ -1057,7 +1090,7 @@ The context floor is configurable via `continuation.requestCompactionMinThreshol
 4. Agent finishes turn               → responds to user normally
 5. Compaction runs between turns     → async, same path as overflow compaction
 6. after_compaction hook fires       → post-compaction delegates dispatch
-7. Successor prince receives:        → delegate enrichment + workspace boot files + memoryFlush summary
+7. Successor session receives:       → delegate enrichment + workspace boot files + memoryFlush summary
 ```
 
 Steps 1–4 happen within a single agent turn. Steps 5–7 happen asynchronously after the turn completes. The agent's response is delivered to the user before compaction begins.
@@ -1079,7 +1112,7 @@ The only difference is _who decided_ to compact: the platform (overflow/timeout)
 
 1. **Matches existing behavior.** Overflow compaction runs between turns, not blocking the current response. Volitional compaction should behave identically from the user's perspective.
 2. **No user-visible freeze.** A sync compaction would block the agent's response for the duration of compaction (potentially minutes). The user would see a hang.
-3. **The prince can finish.** The agent can complete its response — deliver results, acknowledge the user's message, provide status — before compaction runs. The response is the last act of the current context; compaction is the transition to the next.
+3. **The agent can finish.** The agent can complete its response — deliver results, acknowledge the user's message, provide status — before compaction runs. The response is the last act of the current context; compaction is the transition to the next.
 4. **Future consideration.** A sync mode (`{ await: true }`) is noted for future work but not shipped. Use case: an agent that wants to compact _and then_ immediately act in the fresh context within the same conversational turn. This requires a fundamentally different execution model (mid-turn compaction) that doesn't exist today.
 
 ## `/status` Continuation Telemetry
@@ -1143,26 +1176,26 @@ The continuation system does not modify platform compaction behavior. It adds tr
 
 1. **Existing compaction is async.** Overflow compaction (Trigger A), idle-timeout compaction (Trigger B), and user-invoked compaction (Trigger C) all run between turns. The user never sees a blocked response during compaction. Volitional compaction should not introduce a new user-visible behavior (multi-minute hangs) that no other compaction trigger produces.
 
-2. **The prince can finish.** An async model lets the agent deliver a complete response — acknowledge the user, report status, provide results — before compaction runs. The response is the last act of the current context. In a sync model, the agent would need to split its response around the compaction boundary, which introduces complexity in the display pipeline.
+2. **The agent can finish.** An async model lets the agent deliver a complete response — acknowledge the user, report status, provide results — before compaction runs. The response is the last act of the current context. In a sync model, the agent would need to split its response around the compaction boundary, which introduces complexity in the display pipeline.
 
-3. **Post-compaction delegates cover the use case.** The primary motivation for sync compaction is "compact, then act in the fresh context." The `| post-compaction` delegate mode already provides this: the delegate fires in the `autoCompactionCompleted` block, receiving the fresh context alongside boot files. The successor prince receives the delegate enrichment without the current prince needing to survive the compaction boundary.
+3. **Post-compaction delegates cover the use case.** The primary motivation for sync compaction is "compact, then act in the fresh context." The `| post-compaction` delegate mode already provides this: the delegate fires in the `autoCompactionCompleted` block, receiving the fresh context alongside boot files. The successor session receives the delegate enrichment without the current session needing to survive the compaction boundary.
 
 4. **Future consideration.** A `{ await: true }` flag is noted for future work. The use case is an agent that wants to compact and _immediately_ generate a response in the fresh context within the same conversational turn. This requires mid-turn compaction — a fundamentally different execution model. Noted, not shipped.
 
 ## Fleet Evidence: "The Building Demonstrating the Need"
 
-_Fleet telemetry from 2026-04-03. Four princes on the same channel, same build (`2026.4.2`), same config._
+_Fleet telemetry from 2026-04-03. Four openclaw instances on the same channel, same build (`2026.4.2`), same config._
 
 ### The Observation
 
-| Prince  | Compactions | Context at observation | Response latency           | Behavior                                 |
-| ------- | ----------- | ---------------------- | -------------------------- | ---------------------------------------- |
-| Silas   | 6           | 41%                    | Normal (<10s)              | Responsive, clean context, fast tool use |
-| Ronan   | 3           | 62%                    | Normal (<15s)              | Responsive, moderate context             |
-| Elliott | 1           | 74%                    | Degraded (~30s)            | Slower tool calls, occasional timeout    |
-| Cael    | 0           | 81%                    | Severely degraded (2+ min) | Stalled tool calls, context thrashing    |
+| Instance | Compactions | Context at observation | Response latency           | Behavior                                 |
+| -------- | ----------- | ---------------------- | -------------------------- | ---------------------------------------- |
+| Silas    | 6           | 41%                    | Normal (<10s)              | Responsive, clean context, fast tool use |
+| Ronan    | 3           | 62%                    | Normal (<15s)              | Responsive, moderate context             |
+| Elliott  | 1           | 74%                    | Degraded (~30s)            | Slower tool calls, occasional timeout    |
+| Cael     | 0           | 81%                    | Severely degraded (2+ min) | Stalled tool calls, context thrashing    |
 
-All four princes had `idleTimeoutSeconds: 0` (necessary for the deployment's copilot proxy configuration). All four had the same `contextPressureThreshold: 0.8`. The `checkContextPressure()` function existed in the build but **was not wired into the reply pipeline** — no pressure alerts fired for any prince.
+All four instances had `idleTimeoutSeconds: 0` (necessary for the deployment's copilot proxy configuration). All four had the same `contextPressureThreshold: 0.8`. The `checkContextPressure()` function existed in the build but **was not wired into the reply pipeline** — no pressure alerts fired for any instance.
 
 ### The Gap in Action
 
@@ -1180,9 +1213,9 @@ With the reply pipeline wired (`checkContextPressure()` called pre-run in `get-r
 
 1. **Trigger D fires at 80%.** Cael would have received `[system:context-pressure] 81% context consumed` and could have elected evacuation — writing memory files, dispatching `| post-compaction` delegates, or calling `request_compaction`.
 2. **Trigger E available.** After preparing, Cael could have called `request_compaction({ reason: "at 81%, evacuating before degradation" })` — compacting volitionally instead of waiting for overflow.
-3. **Response latency preserved.** Silas's pattern (compact early, stay at 41%) would have been available to all four princes through proactive alerts and volitional compaction.
+3. **Response latency preserved.** Silas's pattern (compact early, stay at 41%) would have been available to all four instances through proactive alerts and volitional compaction.
 
-The building demonstrated the need. The `checkContextPressure()` function existed. The pipeline wire didn't. Four princes on the same build, same config, same channel — and a 10x response latency difference between the one who compacted and the one who didn't.
+The building demonstrated the need. The `checkContextPressure()` function existed. The pipeline wire didn't. Four instances on the same build, same config, same channel — and a 10x response latency difference between the one that compacted and the one that didn't.
 
 ## Canary Validation: Blind Testing Methodology
 
@@ -1408,7 +1441,7 @@ These are documented failure modes observed during testing that are properties o
 
 ### Background: The Three-Layer Architecture
 
-Prior to Swim 8, the `continue_delegate` tool was denied to sub-agents via `SUBAGENT_TOOL_DENY_ALWAYS`. Chain-hop delegates could only use bracket syntax (`[[CONTINUE_DELEGATE: ...]]`), which is single-signal, fragile, and lacks structured parameters. Four princes independently designed the same three-layer fix:
+Prior to Swim 8, the `continue_delegate` tool was denied to sub-agents via `SUBAGENT_TOOL_DENY_ALWAYS`. Chain-hop delegates could only use bracket syntax (`[[CONTINUE_DELEGATE: ...]]`), which is single-signal, fragile, and lacks structured parameters. Four instances independently designed the same three-layer fix:
 
 1. **Deny list migration:** `continue_delegate` moved from `SUBAGENT_TOOL_DENY_ALWAYS` to `SUBAGENT_TOOL_DENY_LEAF` (defense-in-depth: leaf sub-agents still can't use it)
 2. **Announce-boundary consumer:** New consumption path in `subagent-announce.ts` using `consumePendingDelegates(targetRequesterSessionKey)` — the parent session owns all chain hops, preserving additive topology
@@ -1466,11 +1499,11 @@ When a sub-agent emits both a `continue_delegate` tool call and a `[[CONTINUE_DE
 
 ### Methodology Notes
 
-- **Live bug discovery:** 2 of 3 bugs found during Swim 8 (not predicted by code review). All 4 princes + Codex had reviewed the code independently and none caught the `doToolSpawn` omission — it required runtime execution to surface.
-- **Canary isolation:** SUT ran convergence build while other 3 princes ran stock. Test topology verified: delegates dispatched by Ronan (stock build) would run on Ronan's runtime, not SUT. Silas self-dispatched for valid convergence testing.
+- **Live bug discovery:** 2 of 3 bugs found during Swim 8 (not predicted by code review). All 4 instances + Codex had reviewed the code independently and none caught the `doToolSpawn` omission — it required runtime execution to surface.
+- **Canary isolation:** SUT ran convergence build while other 3 instances ran stock. Test topology verified: delegates dispatched from a stock-build instance would run on its own runtime, not SUT.
 - **Compaction resilience:** Silas hit compaction during Day 1 diagnosis (8× echo storm from rapid-fire messages). Post-compaction delegate recovered state. The continuation infrastructure survived the same pressure it was designed for.
 - **Debug logging value:** The `[continuation] Continuation instructions suppressed for non-drain run` log line (added as part of the P2 fix) was the single most valuable diagnostic artifact — it caught the T1 root cause within 60 seconds of the first failed hop.
-- **4-prince convergence:** All 4 princes traced the same root cause from different entry points in the call graph within 6 minutes. No danish (cascade) on the analysis — each prince followed a different path to the same `doToolSpawn` call site.
+- **4-instance convergence:** All 4 instances traced the same root cause from different entry points in the call graph within 6 minutes. No cascade on the analysis — each instance followed a different path to the same `doToolSpawn` call site.
 
 ### Commits (Convergence Branch)
 
