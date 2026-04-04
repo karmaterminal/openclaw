@@ -482,7 +482,7 @@ Agent turn N
 
 The lich stores its soul in an external vessel so death doesn't stick. The agent stores its continuation in a sub-agent so inertia doesn't stick. Same topology.
 
-### Prior Art: The Lich Pattern
+### Background: Pre-Platform Continuation (The Lich Pattern)
 
 The sections above and below document the lich pattern and its evolution. The pattern proved the need for volitional continuation; `CONTINUE_WORK` is the first-class solution.
 
@@ -508,7 +508,7 @@ This is even lighter than the lich pattern but shares its fundamental limitation
 
 ## Alternatives Considered
 
-_Alternatives to the `CONTINUE_WORK` / `CONTINUE_DELEGATE` design for agent self-elected turn continuation._
+_Alternatives to the `CONTINUE_WORK` / `CONTINUE_DELEGATE` design for agent self-elected turn continuation. The lich pattern (above) proved the need; these are the other approaches we evaluated._
 
 ### Sub-agent relay (lich pattern)
 
