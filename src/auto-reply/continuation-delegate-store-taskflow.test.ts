@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetTaskFlowRegistryForTests } from "../tasks/task-flow-registry.js";
+import {
+  getTaskFlowById,
+  listTaskFlowsForOwnerKey,
+  resetTaskFlowRegistryForTests,
+} from "../tasks/task-flow-registry.js";
 import { withTempDir } from "../test-helpers/temp-dir.js";
 import {
   taskFlowCancelPendingDelegates,
@@ -207,6 +211,68 @@ describe("continuation-delegate-store-taskflow", () => {
       expect(delegates[0].silent).toBe(true);
 
       resetTaskFlowRegistryForTests();
+    });
+  });
+
+  it("consume transitions flow records to succeeded (not deleted)", async () => {
+    await withFlowRegistryTempDir(async () => {
+      taskFlowEnqueuePendingDelegate("test-session", { task: "lifecycle task" });
+
+      // Capture flow ID before consume.
+      const pendingFlows = listTaskFlowsForOwnerKey("test-session");
+      expect(pendingFlows).toHaveLength(1);
+      const flowId = pendingFlows[0].flowId;
+
+      taskFlowConsumePendingDelegates("test-session");
+
+      // Record still exists with "succeeded" status.
+      const flow = getTaskFlowById(flowId);
+      expect(flow).toBeDefined();
+      expect(flow!.status).toBe("succeeded");
+      expect(flow!.endedAt).toBeGreaterThan(0);
+    });
+  });
+
+  it("cancel transitions flow records to cancelled with cancel intent (not deleted)", async () => {
+    await withFlowRegistryTempDir(async () => {
+      taskFlowEnqueuePendingDelegate("test-session", { task: "cancel me" });
+
+      const pendingFlows = listTaskFlowsForOwnerKey("test-session");
+      const flowId = pendingFlows[0].flowId;
+
+      taskFlowCancelPendingDelegates("test-session");
+
+      // Record persists with cancelled status and cancel timestamp.
+      const flow = getTaskFlowById(flowId);
+      expect(flow).toBeDefined();
+      expect(flow!.status).toBe("cancelled");
+      expect(flow!.cancelRequestedAt).toBeGreaterThan(0);
+      expect(flow!.endedAt).toBeGreaterThan(0);
+    });
+  });
+
+  it("completed/cancelled records are excluded from pending listings", async () => {
+    await withFlowRegistryTempDir(async () => {
+      taskFlowEnqueuePendingDelegate("test-session", { task: "will complete" });
+      taskFlowEnqueuePendingDelegate("test-session", { task: "will cancel" });
+      taskFlowEnqueuePendingDelegate("test-session", { task: "stays queued" });
+
+      // Consume first delegate (→ succeeded).
+      const consumed = taskFlowConsumePendingDelegates("test-session");
+      expect(consumed).toHaveLength(3);
+
+      // Re-enqueue one to have a pending record.
+      taskFlowEnqueuePendingDelegate("test-session", { task: "new pending" });
+
+      // Only the new pending delegate is visible.
+      expect(taskFlowPendingDelegateCount("test-session")).toBe(1);
+      const delegates = taskFlowConsumePendingDelegates("test-session");
+      expect(delegates).toHaveLength(1);
+      expect(delegates[0].task).toBe("new pending");
+
+      // All records still exist in the registry (succeeded + new succeeded).
+      const allFlows = listTaskFlowsForOwnerKey("test-session");
+      expect(allFlows.length).toBe(4);
     });
   });
 });

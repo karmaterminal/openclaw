@@ -14,9 +14,10 @@
 
 import {
   createManagedTaskFlow,
-  deleteTaskFlowRecordById,
+  finishFlow,
   listTaskFlowsForOwnerKey,
   requestFlowCancel,
+  updateFlowRecordByIdExpectedRevision,
 } from "../tasks/task-flow-registry.js";
 import type { TaskFlowRecord, JsonValue } from "../tasks/task-flow-registry.types.js";
 import type { PendingContinuationDelegate } from "./continuation-delegate-store.js";
@@ -78,14 +79,18 @@ export function taskFlowEnqueuePendingDelegate(
 
 /**
  * Consume (drain) all pending delegates for a session.
- * Returns delegates in FIFO order and removes the backing flow records.
+ * Returns delegates in FIFO order and transitions backing flow records
+ * from "queued" → "succeeded" (proper lifecycle, not delete).
  */
 export function taskFlowConsumePendingDelegates(sessionKey: string): PendingContinuationDelegate[] {
   const flows = listPendingFlows(sessionKey);
   const delegates: PendingContinuationDelegate[] = [];
   for (const flow of flows) {
     delegates.push(flowToDelegate(flow));
-    deleteTaskFlowRecordById(flow.flowId);
+    finishFlow({
+      flowId: flow.flowId,
+      expectedRevision: flow.revision,
+    });
   }
   return delegates;
 }
@@ -98,16 +103,28 @@ export function taskFlowPendingDelegateCount(sessionKey: string): number {
 }
 
 /**
- * Cancel and remove all pending TaskFlow delegates for a session.
+ * Cancel all pending TaskFlow delegates for a session.
  * Called when an external message arrives or a session is reset.
+ * Records persist with cancelled status for audit trail.
  */
 export function taskFlowCancelPendingDelegates(sessionKey: string): void {
   const flows = listPendingFlows(sessionKey);
   for (const flow of flows) {
-    requestFlowCancel({
+    // Mark cancel intent (sticky timestamp).
+    const cancelResult = requestFlowCancel({
       flowId: flow.flowId,
       expectedRevision: flow.revision,
     });
-    deleteTaskFlowRecordById(flow.flowId);
+    // Transition to terminal "cancelled" status.
+    if (cancelResult.applied) {
+      updateFlowRecordByIdExpectedRevision({
+        flowId: flow.flowId,
+        expectedRevision: cancelResult.flow.revision,
+        patch: {
+          status: "cancelled",
+          endedAt: Date.now(),
+        },
+      });
+    }
   }
 }

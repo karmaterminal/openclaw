@@ -1466,17 +1466,17 @@ When enabled, `enqueuePendingDelegate()` and `consumePendingDelegates()` route t
 
 **What this provides:**
 
-| Capability                         | Volatile Map   | Task Flow                                        |
-| ---------------------------------- | -------------- | ------------------------------------------------ |
-| Persistence across gateway restart | ❌ Lost        | ✅ SQLite-backed (until consumed)                 |
-| Cancel semantics                   | Drain only     | `requestFlowCancel` with observer event           |
-| Lifecycle tracking                 | None           | Pending → consumed/cancelled (records deleted after)|
-| Session isolation                  | Map key        | Flow record scoping                              |
-| Observability                      | Manual logging | Task Flow registry queries                       |
+| Capability                         | Volatile Map   | Task Flow                                            |
+| ---------------------------------- | -------------- | ---------------------------------------------------- |
+| Persistence across gateway restart | ❌ Lost        | ✅ SQLite-backed (durable lifecycle)                 |
+| Cancel semantics                   | Drain only     | `requestFlowCancel` → cancelled status (audit trail) |
+| Lifecycle tracking                 | None           | queued → succeeded / cancelled (records persist)     |
+| Session isolation                  | Map key        | Flow record scoping                                  |
+| Observability                      | Manual logging | Task Flow registry queries                           |
 
 **Why this matters for the PR:** The volatile Map is a custom store that duplicates functionality the platform already provides. Task Flow integration demonstrates alignment with upstream's infrastructure direction — delegates are modeled using the same managed-task pattern that the platform uses for its own background work. The config gate ensures backwards compatibility: operators who prefer the lightweight volatile path retain it as the default.
 
-**Cancel semantics:** When an external message arrives and preempts a continuation chain, `cancelPendingDelegates(sessionKey)` issues `requestFlowCancel` for each pending flow record, providing a proper cancellation audit trail instead of silently draining a Map.
+**Cancel semantics:** When an external message arrives and preempts a continuation chain, `cancelPendingDelegates(sessionKey)` issues `requestFlowCancel` then transitions each flow to terminal `"cancelled"` status with `endedAt`. Records persist for audit — no deletion.
 
 **Implementation:** `src/auto-reply/continuation-delegate-store-taskflow.ts` (113 lines) + config routing in `continuation-delegate-store.ts` (58 lines added). 17 dedicated tests covering CRUD, fan-out, session isolation, cancel, persistence across simulated restart, and config-gated routing.
 
