@@ -51,6 +51,7 @@ import {
   buildEmbeddedRunExecutionParams,
   resolveModelFallbackOptions,
 } from "./agent-runner-utils.js";
+import { currentContinuationGeneration } from "./agent-runner.js";
 import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
 import type { FollowupRun } from "./queue.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
@@ -432,7 +433,55 @@ export async function runAgentTurnWithFallback(params: {
                 ...runBaseParams,
                 prompt: params.commandBody,
                 extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
-                drainsContinuationDelegateQueue: params.followupRun.run.drainsContinuationDelegateQueue,
+                drainsContinuationDelegateQueue:
+                  params.followupRun.run.drainsContinuationDelegateQueue,
+                requestCompactionOpts:
+                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        getContextUsage: () => {
+                          const entry = params.sessionKey
+                            ? params.activeSessionStore?.[params.sessionKey]
+                            : undefined;
+                          if (!entry?.totalTokens || entry.totalTokensFresh === false) {
+                            return 0;
+                          }
+                          const contextWindow = entry.contextTokens ?? 200_000;
+                          return entry.totalTokens / contextWindow;
+                        },
+                        getSessionGeneration: () => {
+                          return params.sessionKey
+                            ? currentContinuationGeneration(params.sessionKey)
+                            : 0;
+                        },
+                        turnGeneration: params.sessionKey
+                          ? currentContinuationGeneration(params.sessionKey)
+                          : 0,
+                        triggerCompaction: async () => {
+                          const { compactEmbeddedPiSession } =
+                            await import("../../agents/pi-embedded-runner/compact.js");
+                          try {
+                            const result = await compactEmbeddedPiSession({
+                              sessionId:
+                                params.followupRun.run.sessionId ??
+                                params.getActiveSessionEntry()?.sessionId ??
+                                "",
+                              sessionKey: params.sessionKey ?? "",
+                              sessionFile: params.followupRun.run.sessionFile,
+                              workspaceDir: params.followupRun.run.workspaceDir,
+                              config: params.followupRun.run.config,
+                              trigger: "volitional",
+                            });
+                            return {
+                              ok: !!result?.ok,
+                              compacted: !!result?.compacted,
+                              reason: result?.reason,
+                            };
+                          } catch (err) {
+                            return { ok: false, compacted: false, reason: String(err) };
+                          }
+                        },
+                      }
+                    : undefined,
                 toolResultFormat: (() => {
                   const channel = resolveMessageChannel(
                     params.sessionCtx.Surface,
