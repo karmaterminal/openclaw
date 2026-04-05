@@ -1235,6 +1235,8 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 | Validated canary build     | [tag `swim7-validated`](https://github.com/karmaterminal/openclaw/tree/swim7-validated)                                                                                |
 | Full process documentation | [`releases/lich-protocol-v1`](https://github.com/karmaterminal/openclaw/tree/releases/lich-protocol-v1)                                                                |
 | Swim 8 scorecard           | [`docs/evidence/swim8-scorecard.md`](https://github.com/karmaterminal/openclaw/blob/releases/lich-protocol-v1/docs/evidence/swim8-scorecard.md)                        |
+| Swim 9 issue + results     | [`karmaterminal/openclaw-bootstrap#375`](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)                                                               |
+| Swim 10 issue + results    | [`karmaterminal/openclaw-bootstrap#377`](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)                                                               |
 
 ### D.3 Swim 7 scorecard and evidence lines
 
