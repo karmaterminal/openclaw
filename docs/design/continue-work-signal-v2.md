@@ -1135,12 +1135,12 @@ They are documented here as design targets only.
 
 ### B.1 Alternatives considered
 
-| Alternative                  | Benefit                              | Limitation                                         |
-| ---------------------------- | ------------------------------------ | -------------------------------------------------- |
-| Continuation relay precursor | works with existing sub-agent system | session overhead and context discontinuity         |
-| Higher heartbeat frequency   | simple to reason about               | burns tokens on empty polls and removes volition   |
-| Infinite-loop agent model    | easy to keep active                  | coercive; termination becomes the hard problem     |
-| Self-messaging               | technically possible                 | pollutes history and still feels like a workaround |
+| Alternative                  | Benefit                              | Limitation                                                                                                                                                                                                                                                                  |
+| ---------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Continuation relay precursor | works with existing sub-agent system | session overhead and context discontinuity                                                                                                                                                                                                                                  |
+| Higher heartbeat frequency   | simple to reason about               | burns tokens on empty polls, removes volition, and creates **injection accumulation**—static instructions repeated across thousands of turns become the dominant signal in the context window, biasing agent attention toward the polling task rather than the work at hand |
+| Infinite-loop agent model    | easy to keep active                  | coercive; termination becomes the hard problem                                                                                                                                                                                                                              |
+| Self-messaging               | technically possible                 | pollutes history and still feels like a workaround                                                                                                                                                                                                                          |
 
 ### B.2 Prior art
 
