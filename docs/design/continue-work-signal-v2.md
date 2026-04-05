@@ -4,7 +4,7 @@
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#38780](https://github.com/openclaw/openclaw/pull/38780)  
-**Date:** March 2, 2026 (drafted) · March 3 (implementation) · March 4 (delegate-pending, context-pressure) · March 31 (Swim 8, tool-delegate chain hops) · April 3 (platform compaction integration, `request_compaction()`, fleet evidence) · April 4 (tool parity, `continue_work()`, all-turn `continue_delegate()`, three-tier fallback hierarchy)
+**Date:** March–April 2026
 
 This RFC documents a continuation system for persistent OpenClaw sessions. It introduces self-elected turn continuation, delegated follow-up work, context-pressure awareness, and agent-initiated compaction. The implementation is bounded, observable, interruptible, and opt-in.
 
@@ -152,8 +152,6 @@ Compared with bracket syntax, `continue_delegate()` adds three core properties:
 
 The delegate return modes are:
 
-Implementation note: `silentAnnounce` is threaded through the spawn and registry path and ultimately gates the normal announce delivery path. The `silent` and `silent-wake` modes therefore suppress channel output at the delivery decision point rather than merely post-processing a visible message.
-
 | Mode               | Channel echo | Wake parent           | Use case                                                                          |
 | ------------------ | ------------ | --------------------- | --------------------------------------------------------------------------------- |
 | `normal` (default) | ✅           | ✅                    | Standard delegate completion                                                      |
@@ -161,7 +159,7 @@ Implementation note: `silentAnnounce` is threaded through the spawn and registry
 | `silent-wake`      | ❌           | ✅                    | Quiet background cognition that should trigger the next turn automatically        |
 | `post-compaction`  | ❌           | ✅ (after compaction) | Evacuation or resume work that should be released only after compaction completes |
 
-**`silent:`** the sub-agent result is delivered through `enqueueSystemEvent()` instead of the normal announce path. The parent absorbs the result on a later turn but is not woken.
+**`silent:`** the sub-agent result is delivered through `enqueueSystemEvent()` instead of the normal announce path. Internally, the `silentAnnounce` flag threads through spawn and registry paths to gate the delivery decision point. The parent absorbs the result on a later turn but is not woken.
 
 **`silent-wake:`** channel output remains suppressed, but the return triggers a generation cycle through `requestHeartbeatNow()`. This enables quiet background processing without visible channel noise.
 
