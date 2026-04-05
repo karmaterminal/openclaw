@@ -1226,17 +1226,15 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 
 ### D.2 Evidence locations
 
-| Artifact                   | Location                                                                                                                                                               |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Swim 7 structured results  | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27)                                                           |
-| Gateway journal            | [`swim-logs/` on `silas-likes-to-watch/main`](https://github.com/karmaterminal/silas-likes-to-watch/tree/main/swim-logs)                                               |
-| Raw operator log capture   | [`swim7-silas-raw-figs-capture-2026-03-06.log`](https://github.com/karmaterminal/silas-likes-to-watch/blob/main/swim-logs/swim7-silas-raw-figs-capture-2026-03-06.log) |
-| Chat transcript            | [`docs/evidence/swim7-chat-transcript.md`](https://github.com/karmaterminal/openclaw/blob/releases/lich-protocol-v1/docs/evidence/swim7-chat-transcript.md)            |
-| Validated canary build     | [tag `swim7-validated`](https://github.com/karmaterminal/openclaw/tree/swim7-validated)                                                                                |
-| Full process documentation | [`releases/lich-protocol-v1`](https://github.com/karmaterminal/openclaw/tree/releases/lich-protocol-v1)                                                                |
-| Swim 8 scorecard           | [`docs/evidence/swim8-scorecard.md`](https://github.com/karmaterminal/openclaw/blob/releases/lich-protocol-v1/docs/evidence/swim8-scorecard.md)                        |
-| Swim 9 issue + results     | [`karmaterminal/openclaw-bootstrap#375`](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)                                                               |
-| Swim 10 issue + results    | [`karmaterminal/openclaw-bootstrap#377`](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)                                                               |
+| Artifact                  | Location                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Swim 7 structured results | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27)                                                           |
+| Gateway journal           | [`swim-logs/` on `silas-likes-to-watch/main`](https://github.com/karmaterminal/silas-likes-to-watch/tree/main/swim-logs)                                               |
+| Raw operator log capture  | [`swim7-silas-raw-figs-capture-2026-03-06.log`](https://github.com/karmaterminal/silas-likes-to-watch/blob/main/swim-logs/swim7-silas-raw-figs-capture-2026-03-06.log) |
+| Swim 7 chat transcript    | [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch                                                     |
+| Swim 8 evidence           | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                     |
+| Swim 9 issue + results    | [`karmaterminal/openclaw-bootstrap#375`](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)                                                               |
+| Swim 10 issue + results   | [`karmaterminal/openclaw-bootstrap#377`](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)                                                               |
 
 ### D.3 Swim 7 scorecard and evidence lines
 
