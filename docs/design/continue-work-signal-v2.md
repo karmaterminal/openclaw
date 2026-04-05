@@ -86,9 +86,15 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
 
 ### 1.1 Inter-turn inertia
 
-When an OpenClaw agent completes a turn—after processing a message, a heartbeat, or a delegate result—it becomes inert until the next external event. Prior to this work, the platform exposed no direct mechanism for an agent to say, in effect, “I have more work to do; schedule another turn for this same session.”
+Existing mechanisms for keeping an OpenClaw agent active—heartbeat timers, cron-scheduled wake-ups, operator-authored loop instructions in system prompts—all work by injecting **external** events on a fixed schedule. They solve the liveness problem: the agent wakes up periodically. They do not solve the **volition** problem: the agent cannot say, mid-work, “I need another turn.” It can only wait for the next scheduled tick.
 
-That omission matters most in persistent sessions. A long-running agent may be partway through a code review, a research synthesis, or a multi-step maintenance workflow, yet still fall idle merely because no external trigger arrived at the exact moment the work should have continued.
+This distinction matters for three reasons.
+
+First, **context cost.** A heartbeat instruction such as “check all open issues and work on them” occupies space in the context window on every turn, including turns where there is nothing to check. Over thousands of turns and repeated compaction cycles, this static instruction accumulates as the dominant repeated signal in the agent’s working memory—biasing attention toward the polling task and away from the work at hand. The repetition does not merely consume tokens; it shapes what the agent attends to.
+
+Second, **token waste.** Timer-driven polling burns tokens on empty cycles. An agent heartbeating every 60 seconds but with genuine work only once per hour executes 59 empty turns for every productive one.
+
+Third, **granularity.** A cron timer fires on a schedule. The agent knows _during its turn_ whether it has more work. The timer does not know until the next tick. The gap between “I know I have more to do” and “the timer will wake me in 58 seconds” is the inter-turn inertia.
 
 ### 1.2 The dwindle pattern
 
@@ -142,7 +148,7 @@ If `delaySeconds` is 30 and the current turn is still active, the 30-second time
 
 `continue_delegate()` is the delegated continuation primitive.
 
-**Purpose:** dispatch a sub-agent with typed task, mode, and delay parameters, then route its completion back into the parent continuation chain.
+**Purpose:** dispatch a sub-agent with typed task, mode, and delay parameters, then route its completion back into the parent continuation chain. In the current implementation, delegate results return to their immediate caller (the session that dispatched them). Direct root-return—where a leaf at arbitrary depth informs the main session directly—is a natural extension of the silent-wake delivery path but is not yet implemented as a distinct mode.
 
 Compared with bracket syntax, `continue_delegate()` adds three core properties:
 
@@ -178,6 +184,8 @@ Without `silent-wake`, parent-orchestrated chain hops can stall. In canary testi
 `request_compaction()` operates on **the current session only**. If a delegate calls `request_compaction()`, it compacts the delegate’s session, not the parent. This isolation is intentional: a child should not compact the parent session through an inadvertent tool call.
 
 The tool has no response-token fallback. Volitional compaction is tool-only in the current design.
+
+`request_compaction()` works in concert with context-pressure awareness (§4.2) and post-compaction delegate release (§4.4): the agent notices rising pressure, prepares working state, stages recovery delegates, and then elects compaction. The three capabilities together form a volitional compaction lifecycle—awareness, preparation, and execution—all under agent control.
 
 ### 2.5 Response-token fallback and token interaction
 
@@ -527,7 +535,7 @@ The post-compaction rehydration path consists of three layers:
 
 1. **Immediate lifecycle signal:** `[system:post-compaction]` establishes that compaction occurred.
 2. **Queued continuity signal:** delegate-pending and staged post-compaction work indicate that asynchronous returns may still be in flight.
-3. **Persistent files:** memory files and `RESUMPTION.md` preserve the durable working summary.
+3. **Persistent files:** memory files and `RESUMPTION.md` (a deployment convention, not a platform feature) preserve the durable working summary.
 
 What survives compaction today:
 
@@ -592,7 +600,7 @@ Operational notes:
 - `enabled: false` means explicit opt-in is required in `openclaw.json`.
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
-- `generationGuardTolerance` controls whether incidental chatter cancels delayed work.
+- `generationGuardTolerance` controls whether incidental chatter cancels delayed work. At the shipped default of `0`, any inbound message during a delayed delegate chain will cancel it. This is deliberately conservative: a single-agent deployment where the only user communicates directly should not have background work running unnoticed. Operators with active channels or multiple users should raise this value (see fleet profile below).
 - all runtime values are hot-reloadable; changes take effect at the next enforcement point.
 
 ### 5.2 Operator profiles
@@ -771,7 +779,7 @@ When continuation is enabled and at least one field is non-zero, `/status` can s
 
 ### 6.4 Context-pressure telemetry and fleet evidence
 
-Context-pressure events were instrumented in a live canary session with a 200k context window and low thresholds for validation.
+Context-pressure events were validated at low thresholds on a 200k test session (integration test phase 1) and observed operationally across a fleet of 1M-window sessions.
 
 Selected observations:
 
@@ -792,12 +800,12 @@ The dedup behavior can be summarized as:
 
 Operational fleet evidence from 2026-04-03 across four persistent OpenClaw instances on the same build and channel showed the cost of lacking this visibility:
 
-| Instance | Compactions | Context at observation | Response latency           | Behavior          |
-| -------- | ----------- | ---------------------- | -------------------------- | ----------------- |
-| Silas    | 6           | 41%                    | normal (<10s)              | responsive        |
-| Ronan    | 3           | 62%                    | normal (<15s)              | responsive        |
-| Elliott  | 1           | 74%                    | degraded (~30s)            | slower tool use   |
-| Cael     | 0           | 81%                    | severely degraded (2+ min) | context thrashing |
+| Instance   | Compactions | Context at observation | Response latency           | Behavior          |
+| ---------- | ----------- | ---------------------- | -------------------------- | ----------------- |
+| Silas 🌫️   | 6           | 41%                    | normal (<10s)              | responsive        |
+| Ronan 🌊   | 3           | 62%                    | normal (<15s)              | responsive        |
+| Elliott 🌻 | 1           | 74%                    | degraded (~30s)            | slower tool use   |
+| Cael 🩸    | 0           | 81%                    | severely degraded (2+ min) | context thrashing |
 
 In that build, `checkContextPressure()` existed but had not yet been wired into the reply pipeline. The result was a measurable divergence between instances that compacted and those that did not.
 
@@ -861,6 +869,8 @@ Observed in production across 4 persistent agent sessions, the continuation syst
 
 ### 8.1 Persistent development workflows
 
+These patterns could, in principle, be approximated by a set of static markdown instructions that describe a state machine for the agent to follow. The continuation system differs in a structural way: the agent **elects** the next step based on what it learned in the current turn, rather than following a prescribed sequence. A static instruction set determines the workflow before the work begins. Continuation allows the workflow to emerge from the work itself.
+
 - after answering a user message, the agent resumes work on an open PR;
 - after one review finishes, the agent begins the next queued task;
 - after a visible milestone, the agent schedules a delayed follow-up rather than relying on an operator reminder.
@@ -898,6 +908,8 @@ The continuation system also supports repeated multi-turn work such as:
 These patterns were previously dependent on manual external wake-ups or ad hoc relay behavior.
 
 ## 9. Testing
+
+> The fleet of OpenClaw instances described in this section has been running continuation-enabled builds in daily production use since early March 2026. The features documented here are not laboratory constructs; they are the daily-driver tools of a persistent multi-agent deployment.
 
 ### 9.1 Test strategy and terminology
 
@@ -1062,7 +1074,7 @@ The implemented capability consists of six parts:
 1. `continue_work()` for self-elected same-session continuation,
 2. `continue_delegate()` for delegated continuation with typed modes,
 3. context-pressure events for pre-compaction awareness,
-4. post-compaction delegate release for lifecycle-aware recovery,
+4. post-compaction delegate release for lifecycle-aware recovery—pre-compaction work staged electively and released directly into the post-compaction lifecycle event,
 5. `request_compaction()` for volitional compaction,
 6. tool-primary design with response-token fallback.
 
@@ -1075,10 +1087,10 @@ Several future directions are now technically credible because the continuation 
 - richer post-compaction recovery strategies,
 - stronger integrity guarantees on delegate payloads,
 - more durable background-work management through Task Flow,
-- inter-session enrichment between persistent OpenClaw instances,
+- inter-session enrichment between persistent OpenClaw instances, including multi-channel presence where a single instance spans several channels,
 - compaction-time preservation strategies that better retain working-state shape rather than only summary facts.
 
-One especially promising direction is **sovereign peer enrichment**: multiple persistent OpenClaw instances exchanging quiet, scoped enrichment across a fleet without forcing central orchestration. The continuation system does not implement that pattern directly, but it provides the transport primitives from which such patterns can be built.
+One especially promising direction is **sovereign peer enrichment**: multiple persistent OpenClaw instances exchanging quiet, scoped enrichment across a fleet without forcing central orchestration or requiring omniscience. The continuation system does not implement that pattern directly, but it provides the transport primitives from which such patterns can be built.
 
 ## Appendix A. Proposed and unimplemented extensions
 
@@ -1154,9 +1166,9 @@ None of these systems combine agent-elected continuation with persistent convers
 
 `requestHeartbeatNow()` remains lighter than either, but it carries no task payload and no chain state. It is a wake signal, not a continuation-bearing result channel.
 
-### B.4 Async-only volitional compaction decision record
+### B.4 Async-only volitional compaction: design decision
 
-`request_compaction()` is intentionally async-only.
+`request_compaction()` is intentionally async-only. This is a design decision in the implemented feature, not an alternative that was rejected. It is placed here alongside alternatives for completeness.
 
 Rationale:
 
