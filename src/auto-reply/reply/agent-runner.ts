@@ -110,6 +110,7 @@ export function hasDelegatePending(sessionKey: string): boolean {
 
 export function clearDelegatePending(sessionKey: string): void {
   delegatePendingFlags.delete(sessionKey);
+  continuationGenerations.delete(sessionKey);
 }
 
 function clearDelegatePendingIfNoDelayedReservations(sessionKey: string): void {
