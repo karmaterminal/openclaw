@@ -364,6 +364,7 @@ async function maybeQueueSubagentAnnounce(params: {
   internalEvents?: AgentInternalEvent[];
   continuationTriggerOverride?: string;
   signal?: AbortSignal;
+  continuationTriggerOverride?: string;
 }): Promise<"steered" | "queued" | "none" | "dropped"> {
   if (params.signal?.aborted) {
     return "none";
@@ -411,6 +412,7 @@ async function maybeQueueSubagentAnnounce(params: {
         sourceSessionKey: params.sourceSessionKey,
         sourceChannel: params.sourceChannel,
         sourceTool: params.sourceTool,
+        continuationTriggerOverride: params.continuationTriggerOverride,
       },
       settings: queueSettings,
       send: sendAnnounce,
@@ -437,6 +439,7 @@ async function sendSubagentAnnounceDirectly(params: {
   requesterIsSubagent: boolean;
   continuationTriggerOverride?: string;
   signal?: AbortSignal;
+  continuationTriggerOverride?: string;
 }): Promise<SubagentAnnounceDeliveryResult> {
   if (params.signal?.aborted) {
     return {
@@ -585,6 +588,7 @@ export async function deliverSubagentAnnouncement(params: {
         internalEvents: params.internalEvents,
         continuationTriggerOverride: params.continuationTriggerOverride,
         signal: params.signal,
+        continuationTriggerOverride: params.continuationTriggerOverride,
       }),
     direct: async () =>
       await sendSubagentAnnounceDirectly({
@@ -603,6 +607,7 @@ export async function deliverSubagentAnnouncement(params: {
         continuationTriggerOverride: params.continuationTriggerOverride,
         signal: params.signal,
         bestEffortDeliver: params.bestEffortDeliver,
+        continuationTriggerOverride: params.continuationTriggerOverride,
       }),
   });
 }
