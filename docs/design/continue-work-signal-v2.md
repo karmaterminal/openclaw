@@ -148,7 +148,7 @@ If `delaySeconds` is 30 and the current turn is still active, the 30-second time
 
 `continue_delegate()` is the delegated continuation primitive.
 
-**Purpose:** dispatch a sub-agent with typed task, mode, and delay parameters, then route its completion back into the parent continuation chain. In the current implementation, delegate results return to their immediate caller (the session that dispatched them). Direct root-return—where a leaf at arbitrary depth informs the main session directly—is a natural extension of the silent-wake delivery path but is not yet implemented as a distinct mode.
+**Purpose:** dispatch a sub-agent with typed task, mode, and delay parameters, then route its completion back into the parent continuation chain. In the current implementation, delegate results return to their immediate caller (the session that dispatched them). However, delegates using `normal` mode announce their results to the channel, where the main session can observe them directly regardless of chain depth. For `silent` and `silent-wake` modes, results propagate up through the chain; direct root-return from arbitrary depth is a natural extension of the delivery architecture but is not yet exposed as a distinct mode.
 
 Compared with bracket syntax, `continue_delegate()` adds three core properties:
 
