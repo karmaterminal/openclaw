@@ -592,7 +592,7 @@ agents:
       maxDelegatesPerTurn: 5
       generationGuardTolerance: 0
       contextPressureThreshold: 0.8
-      taskFlowDelegates: false # use volatile in-memory store unless explicitly enabled
+      taskFlowDelegates: true # durable delegate queue via Task Flow (platform feature, ships enabled)
 ```
 
 Operational notes:
@@ -607,7 +607,7 @@ Operational notes:
 
 #### Shipped defaults: single-agent, safety-first
 
-```yaml
+````yaml
 agents:
   defaults:
     continuation:
@@ -620,10 +620,7 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
-      taskFlowDelegates: false
-```
-
-This profile assumes minimal fan-out, strict interruption semantics, and a conservative per-chain budget.
+      taskFlowDelegates: true, strict interruption semantics, and a conservative per-chain budget.
 
 #### Fleet multi-agent profile
 
@@ -640,10 +637,7 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
-      taskFlowDelegates: false
-```
-
-This profile is appropriate for multiple persistent agents in shared channels. In that environment:
+      taskFlowDelegates: true for multiple persistent agents in shared channels. In that environment:
 
 - `generationGuardTolerance: 300` absorbs ambient cross-agent generation drift;
 - `maxDelegatesPerTurn: 20` enables wide fan-out;
@@ -663,7 +657,7 @@ main session
     → sensor 3 reads chunk 3
     → ... up to maxDelegatesPerTurn
   → coordinator synthesizes and returns
-```
+````
 
 Representative use cases:
 
