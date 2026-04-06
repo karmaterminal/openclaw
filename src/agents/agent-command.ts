@@ -1003,3 +1003,7 @@ export async function agentCommandFromIngress(
     deps,
   );
 }
+
+export const __testing = {
+  createAcpVisibleTextAccumulator,
+};

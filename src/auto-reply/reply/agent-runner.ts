@@ -665,6 +665,50 @@ export async function runReplyAgent(params: {
   }
   let runFollowupTurn = queuedRunFollowupTurn;
 
+
+  const postCompactionDelegatesToPreserve: SessionPostCompactionDelegate[] = [];
+
+  const persistContinuationChainState = async (params: {
+    count: number;
+    startedAt: number;
+    tokens: number;
+  }): Promise<void> => {
+    if (!sessionKey) {
+      return;
+    }
+    if (activeSessionEntry) {
+      activeSessionEntry.continuationChainCount = params.count;
+      activeSessionEntry.continuationChainStartedAt = params.startedAt;
+      activeSessionEntry.continuationChainTokens = params.tokens;
+    }
+    if (activeSessionStore) {
+      const existingEntry = activeSessionStore[sessionKey] ?? activeSessionEntry;
+      if (existingEntry) {
+        activeSessionStore[sessionKey] = {
+          ...existingEntry,
+          continuationChainCount: params.count,
+          continuationChainStartedAt: params.startedAt,
+          continuationChainTokens: params.tokens,
+        };
+      }
+    }
+    if (storePath) {
+      try {
+        await updateSessionStore(storePath, (store) => {
+          const entry = store[sessionKey];
+          if (entry) {
+            entry.continuationChainCount = params.count;
+            entry.continuationChainStartedAt = params.startedAt;
+            entry.continuationChainTokens = params.tokens;
+          }
+        });
+      } catch (err) {
+        defaultRuntime.log(
+          `Failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
+        );
+      }
+    }
+  };
   try {
     await typingSignals.signalRunStart();
 

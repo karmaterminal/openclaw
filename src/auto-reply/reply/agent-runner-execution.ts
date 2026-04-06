@@ -21,6 +21,13 @@ import {
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
+
+/** Type guard for wrapped continuation run results. */
+function isContinuationWrappedRunResult(
+  result: unknown,
+): result is { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest } {
+  return typeof result === "object" && result !== null && "result" in result;
+}
 import {
   resolveGroupSessionKey,
   resolveSessionTranscriptPath,
@@ -90,6 +97,7 @@ export type AgentRunLoopResult =
       didLogHeartbeatStrip: boolean;
       autoCompactionCount: number;
       /** Payload keys sent directly (not via pipeline) during tool flush. */
+      continueWorkRequest?: import("../../agents/tools/continue-work-tool.js").ContinueWorkRequest;
       directlySentBlockKeys?: Set<string>;
     }
   | { kind: "final"; payload: ReplyPayload };
@@ -1351,5 +1359,6 @@ export async function runAgentTurnWithFallback(params: {
     didLogHeartbeatStrip,
     autoCompactionCount,
     directlySentBlockKeys: directlySentBlockKeys.size > 0 ? directlySentBlockKeys : undefined,
+    continueWorkRequest,
   };
 }

@@ -9,7 +9,6 @@ import {
   buildAnnounceIdempotencyKey,
 } from "./announce-idempotency.js";
 import { formatAgentInternalEventsForPrompt, type AgentInternalEvent } from "./internal-events.js";
-import { isEmbeddedPiRunActive, waitForEmbeddedPiRunEnd } from "./pi-embedded.js";
 import {
   deliverSubagentAnnouncement,
   loadRequesterSessionEntry,
@@ -431,12 +430,12 @@ export async function runSubagentAnnounceFlow(params: {
       // Best-effort only.
     }
 
-    const announceId = buildAnnounceIdFromChildRun({
+    let announceId = buildAnnounceIdFromChildRun({
       childSessionKey: params.childSessionKey,
       childRunId: params.childRunId,
     });
 
-    const childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
+    let childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
     if (
       params.wakeOnDescendantSettle === true &&
       childCompletionFindings?.trim() &&
@@ -517,12 +516,12 @@ export async function runSubagentAnnounceFlow(params: {
       outcome = { status: "unknown" };
     }
 
-    const announceId = buildAnnounceIdFromChildRun({
+    announceId = buildAnnounceIdFromChildRun({
       childSessionKey: params.childSessionKey,
       childRunId: params.childRunId,
     });
 
-    const childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
+    childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
     if (
       params.wakeOnDescendantSettle === true &&
       childCompletionFindings?.trim() &&
