@@ -31,6 +31,10 @@ import {
   formatTaskStatusDetail,
   formatTaskStatusTitle,
 } from "../../tasks/task-status.js";
+import {
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
+} from "../continuation-delegate-store.js";
 import { normalizeGroupActivation } from "../group-activation.js";
 import { resolveSelectedAndActiveModel } from "../model-runtime.js";
 import { buildStatusMessage } from "../status.js";
@@ -284,6 +288,17 @@ export async function buildStatusText(params: {
       }
     }
   }
+  let continuationLine: string | undefined;
+  const continuation = cfg.agents?.defaults?.continuation;
+  if (continuation?.enabled && sessionKey) {
+    const chainCount = sessionEntry?.continuationChainCount ?? 0;
+    const maxChainLength = continuation.maxChainLength ?? 0;
+    const pending = pendingDelegateCount(sessionKey);
+    const staged = stagedPostCompactionDelegateCount(sessionKey);
+    const compactionCount = sessionEntry?.compactionCount ?? 0;
+    continuationLine = `🔄 Continuation: chain ${chainCount}/${maxChainLength} | ${pending} delegates pending | ${staged} post-compaction staged | volitional: ${compactionCount}`;
+  }
+
   const groupActivation = isGroup
     ? (normalizeGroupActivation(sessionEntry?.groupActivation) ?? defaultGroupActivation())
     : undefined;
@@ -340,6 +355,7 @@ export async function buildStatusText(params: {
     },
     subagentsLine,
     taskLine,
+    continuationLine,
     mediaDecisions: params.mediaDecisions,
     includeTranscriptUsage: params.includeTranscriptUsage ?? true,
   });
