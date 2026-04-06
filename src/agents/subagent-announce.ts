@@ -1,5 +1,22 @@
-import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
+import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
+import {
+  bumpContinuationGeneration,
+  currentContinuationGeneration,
+  setDelegatePending,
+} from "../auto-reply/reply/agent-runner.js";
+import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
+import {
+  isSilentReplyText,
+  SILENT_REPLY_TOKEN,
+  stripContinuationSignal,
+} from "../auto-reply/tokens.js";
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
+import {
+  resolveAgentIdFromSessionKey,
+  resolveStorePath,
+  updateSessionStore,
+} from "../config/sessions.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
 import { type DeliveryContext, normalizeDeliveryContext } from "../utils/delivery-context.js";
@@ -36,7 +53,7 @@ import {
   waitForEmbeddedPiRunEnd,
 } from "./subagent-announce.runtime.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
-import type { SpawnSubagentMode } from "./subagent-spawn.js";
+import { spawnSubagentDirect, type SpawnSubagentMode } from "./subagent-spawn.js";
 import { isAnnounceSkip } from "./tools/sessions-send-tokens.js";
 
 type SubagentAnnounceDeps = {
@@ -59,6 +76,8 @@ function loadSubagentRegistryRuntime() {
   subagentRegistryRuntimePromise ??= import("./subagent-announce.registry.runtime.js");
   return subagentRegistryRuntimePromise;
 }
+
+const continuationGuardLog = createSubsystemLogger("continuation/guard");
 
 export function buildSubagentSystemPrompt(params: {
   requesterSessionKey?: string;
@@ -627,7 +646,353 @@ export async function runSubagentAnnounceFlow(params: {
 
     const taskLabel = params.label || params.task || "task";
     const announceSessionId = childSessionId || "unknown";
-    const findings = childCompletionFindings || reply || "(no output)";
+    let findings = reply || "(no output)";
+    if (
+      childCompletionFindings?.trim() &&
+      findings !== "(no output)" &&
+      findings !== childCompletionFindings
+    ) {
+      findings = `${findings}\n\n[Descendant completions]\n${childCompletionFindings}`;
+    }
+
+    // --- Sub-agent continuation chain: accumulate child token cost + parse [[CONTINUE_DELEGATE:]] ---
+    const cfg = loadConfig();
+    const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
+
+    // Accumulate the completing shard's token cost unconditionally on delegate-return,
+    // even if the child doesn't emit another [[CONTINUE_DELEGATE:]]. Without this,
+    // children that finish normally leak their tokens from the chain budget.
+    const childTask = params.task ?? "";
+    const isContinuationChainDelegate = /\[continuation:chain-hop:\d+\]/.test(childTask);
+    let accumulatedChildTokens = 0;
+    if (continuationEnabled && isContinuationChainDelegate) {
+      let childEntry = loadSessionEntryByKey(params.childSessionKey);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const hasTokenData =
+          typeof childEntry?.inputTokens === "number" ||
+          typeof childEntry?.outputTokens === "number";
+        if (hasTokenData) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        childEntry = loadSessionEntryByKey(params.childSessionKey);
+      }
+      accumulatedChildTokens =
+        (typeof childEntry?.inputTokens === "number" ? childEntry.inputTokens : 0) +
+        (typeof childEntry?.outputTokens === "number" ? childEntry.outputTokens : 0);
+      if (accumulatedChildTokens > 0) {
+        const parentAgentId = resolveAgentIdFromSessionKey(targetRequesterSessionKey);
+        const parentStorePath = resolveStorePath(cfg?.session?.store, {
+          agentId: parentAgentId,
+        });
+        try {
+          await updateSessionStore(parentStorePath, (store) => {
+            const parentEntry = store[targetRequesterSessionKey];
+            if (parentEntry) {
+              const prev =
+                typeof parentEntry.continuationChainTokens === "number"
+                  ? parentEntry.continuationChainTokens
+                  : 0;
+              parentEntry.continuationChainTokens = prev + accumulatedChildTokens;
+            }
+          });
+          defaultRuntime.log(
+            `[subagent-chain-hop] Accumulated ${accumulatedChildTokens} tokens from ${params.childSessionKey} to parent chain cost`,
+          );
+        } catch (err) {
+          defaultRuntime.log(
+            `[subagent-chain-hop] Failed to persist token accumulation for ${targetRequesterSessionKey}: ${String(err)}`,
+          );
+        }
+      }
+    }
+
+    // --- Consume tool-dispatched delegates from the completing subagent ---
+    const toolDelegates =
+      continuationEnabled && isContinuationChainDelegate
+        ? consumePendingDelegates(params.childSessionKey)
+        : [];
+    if (toolDelegates.length > 0) {
+      defaultRuntime.log(
+        `[subagent-chain-hop] Consuming ${toolDelegates.length} tool delegate(s) from subagent ${params.childSessionKey}`,
+      );
+    }
+
+    // Safety: drain orphaned delegates from non-chain-hop subagents that had tool access.
+    if (!isContinuationChainDelegate && continuationEnabled) {
+      const orphaned = consumePendingDelegates(params.childSessionKey);
+      if (orphaned.length > 0) {
+        defaultRuntime.log(
+          `[subagent-chain-hop] WARNING: ${orphaned.length} tool delegate(s) orphaned from non-chain-hop subagent ${params.childSessionKey} — drainsContinuationDelegateQueue was set but task has no chain-hop prefix`,
+        );
+      }
+    }
+
+    if (continuationEnabled && (findings !== "(no output)" || toolDelegates.length > 0)) {
+      const continuationResult = stripContinuationSignal(findings);
+      if (continuationResult.signal?.kind === "work") {
+        defaultRuntime.log(
+          `[subagent-chain-hop] CONTINUE_WORK not supported in sub-agent chain (from ${params.childSessionKey}), ignoring`,
+        );
+      } else if (continuationResult.signal?.kind === "delegate") {
+        findings = continuationResult.text || "(no output)";
+        const chainTask = continuationResult.signal.task;
+        const chainDelayMs = continuationResult.signal.delayMs;
+        const parentWasSilent = params.silentAnnounce === true;
+        const chainSilent =
+          continuationResult.signal.silent ||
+          continuationResult.signal.silentWake ||
+          parentWasSilent;
+        const chainWake =
+          continuationResult.signal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
+
+        const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs } =
+          resolveContinuationRuntimeConfig(cfg);
+
+        const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
+        const childChainHop = hopMatch ? parseInt(hopMatch[1], 10) : 0;
+        const nextChainHop = childChainHop + 1;
+
+        let chainGuardResult:
+          | { allowed: false; reason: "chain-length"; chainCount: number; maxChainLength: number }
+          | { allowed: false; reason: "cost-cap"; chainTokens: number; costCapTokens: number }
+          | { allowed: true; nextChainHop: number };
+
+        if (childChainHop >= maxChainLength) {
+          chainGuardResult = {
+            allowed: false,
+            reason: "chain-length",
+            chainCount: nextChainHop,
+            maxChainLength,
+          };
+        } else {
+          const parentEntry = loadSessionEntryByKey(targetRequesterSessionKey);
+          const storedChainTokens = parentEntry?.continuationChainTokens ?? 0;
+          const parentChainTokens =
+            storedChainTokens >= accumulatedChildTokens
+              ? storedChainTokens
+              : storedChainTokens + accumulatedChildTokens;
+          if (costCapTokens > 0 && parentChainTokens > costCapTokens) {
+            chainGuardResult = {
+              allowed: false,
+              reason: "cost-cap",
+              chainTokens: parentChainTokens,
+              costCapTokens,
+            };
+          } else {
+            chainGuardResult = { allowed: true, nextChainHop };
+          }
+        }
+
+        if (!chainGuardResult.allowed) {
+          if (chainGuardResult.reason === "chain-length") {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Chain length ${chainGuardResult.chainCount} > ${chainGuardResult.maxChainLength}, rejecting hop from ${params.childSessionKey}`,
+            );
+          } else {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Cost cap exceeded (${chainGuardResult.chainTokens} > ${chainGuardResult.costCapTokens}), rejecting hop from ${params.childSessionKey}`,
+            );
+          }
+        } else {
+          const nextChainHop = chainGuardResult.nextChainHop;
+
+          setDelegatePending(targetRequesterSessionKey);
+
+          const doChainSpawn = async (timerTriggered = false) => {
+            try {
+              const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
+              const spawnResult = await spawnSubagentDirect(
+                {
+                  task: `[continuation:chain-hop:${nextChainHop}] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
+                  ...(chainSilent ? { silentAnnounce: true } : {}),
+                  ...(chainWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                  drainsContinuationDelegateQueue: true,
+                },
+                {
+                  agentSessionKey: targetRequesterSessionKey,
+                  agentChannel: targetRequesterOrigin?.channel ?? undefined,
+                  agentAccountId: targetRequesterOrigin?.accountId ?? undefined,
+                  agentTo: targetRequesterOrigin?.to ?? undefined,
+                  agentThreadId: targetRequesterOrigin?.threadId ?? undefined,
+                },
+              );
+              if (spawnResult.status === "accepted") {
+                defaultRuntime.log(
+                  timerTriggered
+                    ? `[subagent-chain-hop] Timer fired and spawned chain delegate (${nextChainHop}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`
+                    : `[subagent-chain-hop] Spawned chain delegate (${nextChainHop}/${maxChainLength}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+                );
+              } else {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+                );
+              }
+            } catch (err) {
+              defaultRuntime.log(
+                `[subagent-chain-hop] Spawn failed from ${params.childSessionKey}: ${String(err)}`,
+              );
+            }
+          };
+
+          if (chainDelayMs && chainDelayMs > 0) {
+            const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, chainDelayMs));
+            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            continuationGuardLog.debug(
+              `[continuation-guard] Chain-hop timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
+            );
+            setTimeout(() => {
+              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+              const drift = currentGen - hopGeneration;
+              continuationGuardLog.debug(
+                `[continuation-guard] Chain-hop timer check: stored=${hopGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${targetRequesterSessionKey}`,
+              );
+              if (drift > generationGuardTolerance) {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
+                );
+                return;
+              }
+              doChainSpawn(true).catch((err) => {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Unhandled bracket delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
+                );
+              });
+            }, clampedDelay);
+          } else {
+            // Fire-and-forget — don't block the announce flow
+            doChainSpawn().catch((err) => {
+              defaultRuntime.log(
+                `[subagent-chain-hop] Unhandled bracket delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
+              );
+            });
+          }
+        }
+      }
+
+      // --- Tool-dispatched delegates from subagent (parallel to bracket delegates above) ---
+      if (toolDelegates.length > 0 && isContinuationChainDelegate) {
+        const {
+          maxChainLength: toolMaxChainLength,
+          costCapTokens: toolCostCapTokens,
+          minDelayMs: toolMinDelayMs,
+          maxDelayMs: toolMaxDelayMs,
+        } = resolveContinuationRuntimeConfig(cfg);
+        const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
+        const childChainHop = hopMatch ? parseInt(hopMatch[1], 10) : 0;
+        const continuationResult = stripContinuationSignal(findings);
+        const bracketConsumedHop = continuationResult.signal?.kind === "delegate" ? 1 : 0;
+        let toolHopBase = childChainHop + bracketConsumedHop;
+
+        const parentWasSilent = params.silentAnnounce === true;
+
+        for (const toolDelegate of toolDelegates) {
+          const nextToolHop = toolHopBase + 1;
+
+          if (nextToolHop >= toolMaxChainLength) {
+            const remaining = toolDelegates.length - toolDelegates.indexOf(toolDelegate);
+            defaultRuntime.log(
+              `[subagent-chain-hop] Tool delegate chain length ${nextToolHop} >= ${toolMaxChainLength}, rejecting from ${params.childSessionKey}. ${remaining} delegate(s) dropped.`,
+            );
+            break;
+          }
+
+          const parentEntryForTool = loadSessionEntryByKey(targetRequesterSessionKey);
+          const storedToolChainTokens = parentEntryForTool?.continuationChainTokens ?? 0;
+          const parentChainTokensForTool =
+            storedToolChainTokens >= accumulatedChildTokens
+              ? storedToolChainTokens
+              : storedToolChainTokens + accumulatedChildTokens;
+          if (toolCostCapTokens > 0 && parentChainTokensForTool > toolCostCapTokens) {
+            const remaining = toolDelegates.length - toolDelegates.indexOf(toolDelegate);
+            defaultRuntime.log(
+              `[subagent-chain-hop] Tool delegate cost cap exceeded (${parentChainTokensForTool} > ${toolCostCapTokens}), rejecting from ${params.childSessionKey}. ${remaining} delegate(s) dropped.`,
+            );
+            break;
+          }
+
+          const toolSilent = toolDelegate.silent || toolDelegate.silentWake || parentWasSilent;
+          const toolWake =
+            toolDelegate.silentWake || (parentWasSilent && params.wakeOnReturn === true);
+          const toolDelayMs = toolDelegate.delayMs;
+
+          setDelegatePending(targetRequesterSessionKey);
+
+          const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
+          const doToolChainSpawn = async (timerTriggered = false) => {
+            try {
+              const spawnResult = await spawnSubagentDirect(
+                {
+                  task: `[continuation:chain-hop:${nextToolHop}] Tool-delegated from sub-agent (depth ${childDepth}): ${toolDelegate.task}`,
+                  ...(toolSilent ? { silentAnnounce: true } : {}),
+                  ...(toolWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                  drainsContinuationDelegateQueue: true,
+                },
+                {
+                  agentSessionKey: targetRequesterSessionKey,
+                  agentChannel: targetRequesterOrigin?.channel ?? undefined,
+                  agentAccountId: targetRequesterOrigin?.accountId ?? undefined,
+                  agentTo: targetRequesterOrigin?.to ?? undefined,
+                  agentThreadId: targetRequesterOrigin?.threadId ?? undefined,
+                },
+              );
+              if (spawnResult.status === "accepted") {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] ${timerTriggered ? "Timer: " : ""}Tool delegate (${nextToolHop}/${toolMaxChainLength}) from ${params.childSessionKey}: ${toolDelegate.task.slice(0, 80)}`,
+                );
+              } else {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Tool delegate spawn rejected (${spawnResult.status}) from ${params.childSessionKey}`,
+                );
+              }
+            } catch (err) {
+              defaultRuntime.log(
+                `[subagent-chain-hop] Tool delegate spawn failed from ${params.childSessionKey}: ${String(err)}`,
+              );
+            }
+          };
+
+          if (toolDelayMs && toolDelayMs > 0) {
+            const clampedDelay = Math.max(toolMinDelayMs, Math.min(toolMaxDelayMs, toolDelayMs));
+            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            continuationGuardLog.debug(
+              `[continuation-guard] Tool delegate timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
+            );
+            setTimeout(() => {
+              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+              const drift = currentGen - hopGeneration;
+              if (drift > generationGuardTolerance) {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Tool delegate timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
+                );
+                return;
+              }
+              doToolChainSpawn(true).catch((err) => {
+                defaultRuntime.log(
+                  `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
+                );
+              });
+            }, clampedDelay);
+          } else {
+            doToolChainSpawn().catch((err) => {
+              defaultRuntime.log(
+                `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
+              );
+            });
+          }
+
+          toolHopBase = nextToolHop;
+        }
+      }
+    }
+
+    // If the reply was silent/skip and we fell through for chain-hop accounting,
+    // return now before delivery logic.
+    if (skipAnnounceDelivery) {
+      return true;
+    }
 
     let requesterIsSubagent = requesterIsInternalSession();
     if (requesterIsSubagent) {

@@ -44,6 +44,17 @@ vi.mock("./subagent-registry.js", () => ({
   shouldIgnorePostCompletionAnnounceForSession: () => false,
 }));
 
+vi.mock("../auto-reply/reply/agent-runner.js", () => ({
+  bumpContinuationGeneration: vi.fn(() => 1),
+  currentContinuationGeneration: vi.fn(() => 0),
+  setDelegatePending: vi.fn(),
+}));
+
+
+vi.mock("../auto-reply/continuation-delegate-store.js", () => ({
+  consumePendingDelegates: vi.fn(() => []),
+}));
+
 import {
   setRuntimeConfigSnapshot,
   clearRuntimeConfigSnapshot,

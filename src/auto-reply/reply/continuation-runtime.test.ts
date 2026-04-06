@@ -35,6 +35,7 @@ describe("continuation runtime config", () => {
 
     expect(resolveContinuationRuntimeConfig()).toEqual({
       enabled: true,
+      taskFlowDelegates: false,
       defaultDelayMs: 15_000,
       minDelayMs: 5_000,
       maxDelayMs: 300_000,
