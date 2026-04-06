@@ -1,3 +1,5 @@
+export type ContinuationTrigger = "work-wake" | "delegate-return";
+
 import type { ImageContent } from "@mariozechner/pi-ai";
 import type { InteractiveReply } from "../interactive/payload.js";
 import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";

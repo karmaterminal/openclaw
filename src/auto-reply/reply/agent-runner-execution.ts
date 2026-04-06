@@ -60,6 +60,13 @@ import { createReplyMediaPathNormalizer } from "./reply-media-paths.runtime.js";
 import type { ReplyOperation } from "./reply-run-registry.js";
 import type { TypingSignaler } from "./typing-mode.js";
 
+
+function isContinuationWrappedRunResult(
+  result: unknown,
+): result is { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest } {
+  return typeof result === "object" && result !== null && "result" in result;
+}
+
 // Maximum number of LiveSessionModelSwitchError retries before surfacing a
 // user-visible error. Prevents infinite ping-pong when the persisted session
 // selection keeps conflicting with fallback model choices.
@@ -91,6 +98,7 @@ export type AgentRunLoopResult =
       autoCompactionCount: number;
       /** Payload keys sent directly (not via pipeline) during tool flush. */
       directlySentBlockKeys?: Set<string>;
+      continueWorkRequest?: import("../../agents/tools/continue-work-tool.js").ContinueWorkRequest;
     }
   | { kind: "final"; payload: ReplyPayload };
 
@@ -1351,5 +1359,6 @@ export async function runAgentTurnWithFallback(params: {
     didLogHeartbeatStrip,
     autoCompactionCount,
     directlySentBlockKeys: directlySentBlockKeys.size > 0 ? directlySentBlockKeys : undefined,
+    continueWorkRequest,
   };
 }
