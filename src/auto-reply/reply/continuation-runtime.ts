@@ -57,7 +57,7 @@ export function resolveContinuationRuntimeConfig(
 
   return {
     enabled: continuation?.enabled === true,
-    taskFlowDelegates: continuation?.taskFlowDelegates === true,
+    taskFlowDelegates: continuation?.taskFlowDelegates !== false,
     defaultDelayMs: clampNonNegativeDelayMs(
       continuation?.defaultDelayMs,
       DEFAULT_CONTINUATION_DELAY_MS,

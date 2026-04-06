@@ -147,4 +147,6 @@ export type RunEmbeddedPiAgentParams = {
    * exit promptly after emitting the final JSON result.
    */
   cleanupBundleMcpOnRunEnd?: boolean;
+  /** Whether this run should drain the continuation delegate queue after completion. */
+  drainsContinuationDelegateQueue?: boolean;
 };

@@ -44,7 +44,6 @@ import {
   extractObservedOverflowTokenCount,
   type FailoverReason,
   formatAssistantErrorText,
-  formatBillingErrorMessage,
   isAuthAssistantError,
   isBillingAssistantError,
   isCompactionFailureError,
@@ -1132,29 +1131,6 @@ export async function runEmbeddedPiAgent(
               failoverReason: promptFailoverReason,
               profileRotated: false,
             });
-            const promptFailoverFailure =
-              promptFailoverReason !== null || isFailoverErrorMessage(errorText);
-            // Capture the failing profile before auth-profile rotation mutates `lastProfileId`.
-            const failedPromptProfileId = lastProfileId;
-            const logPromptFailoverDecision = createFailoverDecisionLogger({
-              stage: "prompt",
-              runId: params.runId,
-              rawError: errorText,
-              failoverReason: promptFailoverReason,
-              profileFailureReason: promptProfileFailureReason,
-              provider,
-              model: modelId,
-              profileId: failedPromptProfileId,
-              fallbackConfigured,
-              aborted,
-            });
-            if (promptFailoverReason === "rate_limit") {
-              maybeEscalateRateLimitProfileFallback({
-                failoverProvider: provider,
-                failoverModel: modelId,
-                logFallbackDecision: logPromptFailoverDecision,
-              });
-            }
             if (
               promptFailoverDecision.action === "rotate_profile" &&
               (await advanceAuthProfile())
@@ -1486,82 +1462,6 @@ export async function runEmbeddedPiAgent(
               messagingToolSentTargets: attempt.messagingToolSentTargets,
               successfulCronAdds: attempt.successfulCronAdds,
             };
-          }
-
-          // Detect incomplete turns where prompt() resolved prematurely due to
-          // pi-agent-core's auto-retry timing issue: when a mid-turn 429/overload
-          // triggers an internal retry, waitForRetry() resolves on the next
-          // assistant message *before* tool execution completes in the retried
-          // loop (see #8643). The captured lastAssistant has a non-terminal
-          // stopReason (e.g. "toolUse") with no text content, producing empty
-          // payloads. Surface an error instead of silently dropping the reply.
-          //
-          // Exclusions:
-          //  - didSendDeterministicApprovalPrompt: approval-prompt turns
-          //    intentionally produce empty payloads with stopReason=toolUse
-          //  - lastToolError: suppressed/recoverable tool failures also produce
-          //    empty payloads with stopReason=toolUse; those are handled by
-          //    buildEmbeddedRunPayloads' own warning policy
-          if (
-            payloads.length === 0 &&
-            !aborted &&
-            !timedOut &&
-            !attempt.clientToolCall &&
-            !attempt.yieldDetected &&
-            !attempt.didSendDeterministicApprovalPrompt &&
-            !attempt.lastToolError
-          ) {
-            const incompleteStopReason = lastAssistant?.stopReason;
-            // Only trigger for non-terminal stop reasons (toolUse, etc.) to
-            // avoid false positives when the model legitimately produces no text.
-            // StopReason union: "aborted" | "error" | "length" | "toolUse"
-            // "toolUse" is the key signal that prompt() resolved mid-turn.
-            if (incompleteStopReason === "toolUse" || incompleteStopReason === "error") {
-              log.warn(
-                `incomplete turn detected: runId=${params.runId} sessionId=${params.sessionId} ` +
-                  `stopReason=${incompleteStopReason} payloads=0 — surfacing error to user`,
-              );
-
-              // Mark the failing profile for cooldown so multi-profile setups
-              // rotate away from the exhausted credential on the next turn.
-              if (lastProfileId) {
-                const failoverReason = classifyFailoverReason(lastAssistant?.errorMessage ?? "");
-                await maybeMarkAuthProfileFailure({
-                  profileId: lastProfileId,
-                  reason: resolveAuthProfileFailureReason(failoverReason),
-                });
-              }
-
-              // Warn about potential side-effects when mutating tools executed
-              // before the turn was interrupted, so users don't blindly retry.
-              const hadMutatingTools = attempt.toolMetas.some((t) =>
-                isLikelyMutatingToolName(t.toolName),
-              );
-              const errorText = hadMutatingTools
-                ? "⚠️ Agent couldn't generate a response. Note: some tool actions may have already been executed — please verify before retrying."
-                : "⚠️ Agent couldn't generate a response. Please try again.";
-
-              return {
-                payloads: [
-                  {
-                    text: errorText,
-                    isError: true,
-                  },
-                ],
-                meta: {
-                  durationMs: Date.now() - started,
-                  agentMeta,
-                  aborted,
-                  systemPromptReport: attempt.systemPromptReport,
-                },
-                didSendViaMessagingTool: attempt.didSendViaMessagingTool,
-                didSendDeterministicApprovalPrompt: attempt.didSendDeterministicApprovalPrompt,
-                messagingToolSentTexts: attempt.messagingToolSentTexts,
-                messagingToolSentMediaUrls: attempt.messagingToolSentMediaUrls,
-                messagingToolSentTargets: attempt.messagingToolSentTargets,
-                successfulCronAdds: attempt.successfulCronAdds,
-              };
-            }
           }
 
           log.debug(

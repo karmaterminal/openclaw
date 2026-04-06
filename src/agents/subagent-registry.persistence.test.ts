@@ -18,6 +18,7 @@ import {
   getSubagentRunByChildSessionKey,
   initSubagentRegistry,
   listSubagentRunsForRequester,
+  registerSubagentRun,
   resetSubagentRegistryForTests,
 } from "./subagent-registry.js";
 import {

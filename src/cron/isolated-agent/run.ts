@@ -71,9 +71,6 @@ async function loadSessionStoreRuntime() {
   return await sessionStoreRuntimePromise;
 }
 
-function resolveNonNegativeNumber(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
 
 export type RunCronAgentTurnResult = {
   /** Last non-empty agent text output (not truncated). */
