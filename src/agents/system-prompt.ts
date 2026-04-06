@@ -355,6 +355,8 @@ export function buildAgentSystemPrompt(params: {
     channel: string;
   };
   memoryCitationsMode?: MemoryCitationsMode;
+  /** Whether the continuation feature is enabled for this agent. */
+  continuationEnabled?: boolean;
   promptContribution?: ProviderSystemPromptContribution;
 }) {
   const acpEnabled = params.acpEnabled !== false;

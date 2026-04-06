@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AgentParamsSchema } from "./agent.js";
-import Ajv from "ajv";
+import AjvModule from "ajv";
+const Ajv = (AjvModule as any).default ?? AjvModule;
 
 const ajv = new Ajv({ allErrors: true });
 const validate = ajv.compile(AgentParamsSchema);

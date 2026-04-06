@@ -221,6 +221,8 @@ export type SessionEntry = {
   continuationChainStartedAt?: number;
   /** Accumulated token usage across the current continuation chain. Reset on external message. */
   continuationChainTokens?: number;
+  /** Post-compaction delegates staged for execution after context compaction. */
+  pendingPostCompactionDelegates?: SessionPostCompactionDelegate[];
 };
 
 function normalizeRuntimeField(value: string | undefined): string | undefined {

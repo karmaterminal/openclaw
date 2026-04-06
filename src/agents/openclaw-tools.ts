@@ -119,6 +119,19 @@ export function createOpenClawTools(
     onYield?: (message: string) => Promise<void> | void;
     /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
     allowGatewaySubagentBinding?: boolean;
+    /** Whether the current run consumes the continue_delegate staging queue. */
+    drainsContinuationDelegateQueue?: boolean;
+    /** Callback for continue_work to request a post-turn continuation. */
+    continueWorkOpts?: {
+      requestContinuation: (request: ContinueWorkRequest) => void;
+    };
+    /** Closures for request_compaction tool (Trigger E). Only set when continuation is enabled. */
+    requestCompactionOpts?: {
+      getContextUsage: () => number;
+      getSessionGeneration: () => number;
+      turnGeneration: number;
+      triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+    };
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;

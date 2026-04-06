@@ -31,7 +31,6 @@ import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
 import { resolveOpenClawAgentDir } from "../../agent-paths.js";
 import { resolveSessionAgentIds } from "../../agent-scope.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
-import { createAnthropicVertexStreamFnForModel } from "../../anthropic-vertex-stream.js";
 import {
   analyzeBootstrapBudget,
   buildBootstrapPromptWarning,
@@ -135,11 +134,7 @@ import {
   buildEmbeddedSystemPrompt,
   createSystemPromptOverride,
 } from "../system-prompt.js";
-import {
-  dropThinkingBlocks,
-  sanitizeThinkingForRecovery,
-  wrapAnthropicStreamWithRecovery,
-} from "../thinking.js";
+import { dropThinkingBlocks } from "../thinking.js";
 import { collectAllowedToolNames } from "../tool-name-allowlist.js";
 import { installToolResultContextGuard } from "../tool-result-context-guard.js";
 import {
@@ -714,17 +709,6 @@ export async function runEmbeddedAttempt(
       memoryCitationsMode: params.config?.memory?.citations,
       promptContribution,
     });
-
-    // Log when config enables continuation but the drain flag suppresses it —
-    // helps diagnose "why didn't my subagent get continuation instructions?"
-    if (
-      params.config?.agents?.defaults?.continuation?.enabled === true &&
-      !params.drainsContinuationDelegateQueue
-    ) {
-      log.debug(
-        `[continuation] Continuation instructions suppressed for non-drain run: ${params.sessionKey ?? "unknown"}`,
-      );
-    }
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
       generatedAt: Date.now(),
@@ -1185,28 +1169,6 @@ export async function runEmbeddedAttempt(
       }
 
       try {
-        if (shouldEnableAnthropicThinkingRecovery(params.model.api)) {
-          const originalMessageCount = activeSession.messages.length;
-          const { messages, prefill } = sanitizeThinkingForRecovery(activeSession.messages);
-          if (messages !== activeSession.messages) {
-            activeSession.agent.replaceMessages(messages);
-          }
-          if (messages.length !== originalMessageCount) {
-            log.warn(
-              `[session-recovery] dropped latest assistant message with incomplete thinking: sessionId=${params.sessionId}`,
-            );
-          }
-          if (prefill) {
-            // Keeping the signed-thinking turn intact is a forward-compatibility
-            // signal for future prefill-style recovery; the current fallback
-            // still comes from the one-shot stream wrapper if Anthropic rejects
-            // the replayed payload.
-            log.warn(
-              `[session-recovery] keeping latest assistant message with signed thinking and incomplete text: sessionId=${params.sessionId}`,
-            );
-          }
-        }
-
         const prior = await sanitizeSessionHistory({
           messages: activeSession.messages,
           modelApi: params.model.api,
@@ -1267,40 +1229,6 @@ export async function runEmbeddedAttempt(
             }
             if (assembled.messages !== activeSession.messages) {
               activeSession.agent.state.messages = assembled.messages;
-            }
-            if (assembled.systemPromptAddition) {
-              systemPromptText = prependSystemPromptAddition({
-                systemPrompt: systemPromptText,
-                systemPromptAddition: assembled.systemPromptAddition,
-              });
-              applySystemPromptOverrideToSession(activeSession, systemPromptText);
-              log.debug(
-                `context engine: prepended system prompt addition (${assembled.systemPromptAddition.length} chars)`,
-              );
-            }
-          } catch (assembleErr) {
-            log.warn(
-              `context engine assemble failed, using pipeline messages: ${String(assembleErr)}`,
-            );
-          }
-        }
-
-        if (params.contextEngine) {
-          try {
-            const assembled = await assembleAttemptContextEngine({
-              contextEngine: params.contextEngine,
-              sessionId: params.sessionId,
-              sessionKey: params.sessionKey,
-              messages: activeSession.messages,
-              tokenBudget: params.contextTokenBudget,
-              modelId: params.modelId,
-              ...(params.prompt !== undefined ? { prompt: params.prompt } : {}),
-            });
-            if (!assembled) {
-              throw new Error("context engine assemble returned no result");
-            }
-            if (assembled.messages !== activeSession.messages) {
-              activeSession.agent.replaceMessages(assembled.messages);
             }
             if (assembled.systemPromptAddition) {
               systemPromptText = prependSystemPromptAddition({
