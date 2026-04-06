@@ -665,7 +665,6 @@ export async function runReplyAgent(params: {
   }
   let runFollowupTurn = queuedRunFollowupTurn;
 
-
   const postCompactionDelegatesToPreserve: SessionPostCompactionDelegate[] = [];
 
   const persistContinuationChainState = async (params: {
@@ -795,6 +794,9 @@ export async function runReplyAgent(params: {
         fallbackNoticeSelectedModel: undefined,
         fallbackNoticeActiveModel: undefined,
         fallbackNoticeReason: undefined,
+        continuationChainCount: undefined,
+        continuationChainStartedAt: undefined,
+        continuationChainTokens: undefined,
       };
       const agentId = resolveAgentIdFromSessionKey(sessionKey);
       const nextSessionFile = resolveSessionTranscriptPath(
