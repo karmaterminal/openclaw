@@ -19,6 +19,7 @@ import {
   sanitizeUserFacingText,
 } from "../../agents/pi-embedded-helpers.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
+import { compactEmbeddedPiSession } from "../../agents/pi-embedded-runner/compact.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 
@@ -725,6 +726,7 @@ export async function runAgentTurnWithFallback(params: {
           );
           return (async () => {
             let attemptCompactionCount = 0;
+            let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
             try {
               const result = await runEmbeddedPiAgent({
                 ...embeddedContext,
@@ -738,6 +740,61 @@ export async function runAgentTurnWithFallback(params: {
                 ...runBaseParams,
                 prompt: params.commandBody,
                 extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
+                drainsContinuationDelegateQueue:
+                  params.followupRun.run.drainsContinuationDelegateQueue,
+                continueWorkOpts:
+                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        requestContinuation: (request) => {
+                          attemptContinueWorkRequest = request;
+                        },
+                      }
+                    : undefined,
+                requestCompactionOpts:
+                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        getContextUsage: () => {
+                          const entry = params.sessionKey
+                            ? params.activeSessionStore?.[params.sessionKey]
+                            : undefined;
+                          if (!entry?.totalTokens || entry.totalTokensFresh === false) {
+                            return 0;
+                          }
+                          const contextWindow = entry.contextTokens ?? 200_000;
+                          return entry.totalTokens / contextWindow;
+                        },
+                        getSessionGeneration: () => {
+                          return params.sessionKey
+                            ? currentContinuationGeneration(params.sessionKey)
+                            : 0;
+                        },
+                        turnGeneration: params.sessionKey
+                          ? currentContinuationGeneration(params.sessionKey)
+                          : 0,
+                        triggerCompaction: async () => {
+                          try {
+                            const result = await compactEmbeddedPiSession({
+                              sessionId:
+                                params.followupRun.run.sessionId ??
+                                params.getActiveSessionEntry()?.sessionId ??
+                                "",
+                              sessionKey: params.sessionKey ?? "",
+                              sessionFile: params.followupRun.run.sessionFile,
+                              workspaceDir: params.followupRun.run.workspaceDir,
+                              config: params.followupRun.run.config,
+                              trigger: "volitional",
+                            });
+                            return {
+                              ok: !!result?.ok,
+                              compacted: !!result?.compacted,
+                              reason: result?.reason,
+                            };
+                          } catch (err) {
+                            return { ok: false, compacted: false, reason: String(err) };
+                          }
+                        },
+                      }
+                    : undefined,
                 toolResultFormat: (() => {
                   const channel = resolveMessageChannel(
                     params.sessionCtx.Surface,
@@ -1001,7 +1058,10 @@ export async function runAgentTurnWithFallback(params: {
                 result.meta?.agentMeta?.compactionCount ?? 0,
               );
               attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
-              return result;
+              return {
+                result,
+                continueWorkRequest: attemptContinueWorkRequest,
+              };
             } catch (err) {
               if (rollbackFallbackCandidateSelection) {
                 try {
