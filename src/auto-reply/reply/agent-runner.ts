@@ -872,12 +872,22 @@ export async function runReplyAgent(params: {
         lookupContextTokens(defaultModel) ??
         activeSessionEntry.contextTokens ??
         DEFAULT_CONTEXT_TOKENS;
-      checkContextPressure({
+      const pressureResult = checkContextPressure({
         sessionEntry: activeSessionEntry,
         sessionKey,
         contextPressureThreshold,
         contextWindowTokens,
       });
+
+      // Persist lastContextPressureBand to disk so we only fire once per band crossing (#83)
+      if (pressureResult.fired && storePath) {
+        await updateSessionStore(storePath, (store) => {
+          const entry = store[sessionKey];
+          if (entry) {
+            entry.lastContextPressureBand = pressureResult.band;
+          }
+        });
+      }
     }
 
     // Sync the Task Flow delegate gate BEFORE the agent turn starts.
