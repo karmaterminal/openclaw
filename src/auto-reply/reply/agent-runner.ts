@@ -1003,6 +1003,9 @@ export async function runReplyAgent(params: {
         if (continuationResult.signal) {
           continuationSignal = continuationResult.signal;
           lastTextPayload.text = continuationResult.text;
+          defaultRuntime.log(
+            `[bracket-debug] parsed signal: kind=${continuationResult.signal.kind} silent=${(continuationResult.signal as any).silent} silentWake=${(continuationResult.signal as any).silentWake}`,
+          );
           continuationGuardLog.debug(
             `[continuation:parse] signal detected: kind=${continuationResult.signal.kind} ` +
               `task=${continuationResult.signal.kind === "delegate" ? continuationResult.signal.task.slice(0, 80) : ""} delayMs=${continuationResult.signal.delayMs} ` +
@@ -1587,6 +1590,9 @@ export async function runReplyAgent(params: {
                 },
               ) => {
                 try {
+                  defaultRuntime.log(
+                    `[bracket-debug] doSpawn called: silent=${options?.silent} silentWake=${options?.silentWake} → silentAnnounce=${!!(options?.silent || options?.silentWake)} wakeOnReturn=${!!options?.silentWake}`,
+                  );
                   const spawnResult = await spawnSubagentDirect(
                     {
                       // The spawned child carries its current chain position in-band.
@@ -1706,6 +1712,9 @@ export async function runReplyAgent(params: {
                   });
                 }, clampedDelay);
               } else {
+                defaultRuntime.log(
+                  `[bracket-debug] DELEGATE immediate spawn: silent=${effectiveContinuationSignal.silent} silentWake=${effectiveContinuationSignal.silentWake} task=${delegateTask.slice(0, 80)}`,
+                );
                 await doSpawn(nextChainCount, delegateTask, {
                   silent: effectiveContinuationSignal.silent,
                   silentWake: effectiveContinuationSignal.silentWake,
