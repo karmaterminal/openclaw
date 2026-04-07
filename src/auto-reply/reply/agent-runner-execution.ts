@@ -53,6 +53,7 @@ import {
   isSilentReplyPrefixText,
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
+  stripContinuationSignal,
 } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { resolveRunAuthProfile } from "./agent-runner-auth-profile.js";
@@ -638,10 +639,16 @@ export async function runAgentTurnWithFallback(params: {
         ) {
           return { skip: true };
         }
-        // Do NOT strip continuation markers from streaming partials.
-        // Partials are non-terminal and may transiently end with token-like text.
-        // Continuation parsing/stripping happens only on final assembled payloads
-        // in runReplyAgent to avoid corrupting streamed user-visible output.
+        // Strip continuation markers (CONTINUE_WORK, [[CONTINUE_DELEGATE:…]])
+        // from streamed blocks so they never reach the channel. The regex anchors
+        // to the end of the text, so mid-sentence mentions are safe. Final-payload
+        // stripping in runReplyAgent still runs for the assembled payloads.
+        if (text) {
+          const cont = stripContinuationSignal(text);
+          if (cont.signal) {
+            text = cont.text;
+          }
+        }
         if (!text) {
           // Allow media-only payloads (e.g. tool result screenshots) through.
           if (reply.hasMedia) {
