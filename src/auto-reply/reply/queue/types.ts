@@ -82,6 +82,7 @@ export type FollowupRun = {
     extraSystemPrompt?: string;
     enforceFinalTag?: boolean;
     silentExpected?: boolean;
+    drainsContinuationDelegateQueue?: boolean;
   };
 };
 

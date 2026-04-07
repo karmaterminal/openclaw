@@ -12,7 +12,6 @@ import type { AgentInternalEvent } from "../../internal-events.js";
 import type { BlockReplyPayload } from "../../pi-embedded-payloads.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
 import type { SkillSnapshot } from "../../skills.js";
-import type { ContinueWorkRequest } from "../../tools/continue-work-tool.js";
 
 // Simplified tool definition for client-provided tools (OpenResponses hosted tools)
 export type ClientToolDefinition = {
@@ -77,7 +76,9 @@ export type RunEmbeddedPiAgentParams = {
   drainsContinuationDelegateQueue?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */
   continueWorkOpts?: {
-    requestContinuation: (request: import("../../tools/continue-work-tool.js").ContinueWorkRequest) => void;
+    requestContinuation: (
+      request: import("../../tools/continue-work-tool.js").ContinueWorkRequest,
+    ) => void;
   };
   /** Closures for request_compaction tool (Trigger E). Provided by the caller when continuation is enabled. */
   requestCompactionOpts?: {
@@ -160,6 +161,4 @@ export type RunEmbeddedPiAgentParams = {
    * exit promptly after emitting the final JSON result.
    */
   cleanupBundleMcpOnRunEnd?: boolean;
-  /** Whether this run should drain the continuation delegate queue after completion. */
-  drainsContinuationDelegateQueue?: boolean;
 };
