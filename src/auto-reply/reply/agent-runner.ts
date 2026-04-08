@@ -1752,7 +1752,7 @@ export async function runReplyAgent(params: {
                     silentWake: reservation.silentWake,
                     startedAt: reservation.createdAt,
                   });
-                }, clampedDelay);
+                }, clampedDelay).unref();
               } else {
                 await doSpawn(nextChainCount, delegateTask, {
                   silent: effectiveContinuationSignal.silent,
@@ -1800,7 +1800,7 @@ export async function runReplyAgent(params: {
                   { sessionKey },
                 );
                 requestHeartbeatNow({ sessionKey, reason: "continuation" });
-              }, clampedDelay);
+              }, clampedDelay).unref();
             }
           }
         }
@@ -2006,7 +2006,7 @@ export async function runReplyAgent(params: {
                 silentWake: reservation.silentWake,
                 startedAt: reservation.createdAt,
               });
-            }, clampedDelay);
+            }, clampedDelay).unref();
           } else {
             await doToolSpawn(nextChainCount, delegate.task, {
               silent: delegate.silent,

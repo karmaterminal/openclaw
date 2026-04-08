@@ -700,6 +700,10 @@ export async function runSubagentAnnounceFlow(params: {
       }
     }
 
+    // Track whether a bracket delegate was consumed from findings — must
+    // capture BEFORE stripping mutates findings (P0-1 from review).
+    let bracketDelegateConsumed = false;
+
     if (continuationEnabled && (findings !== "(no output)" || toolDelegates.length > 0)) {
       const continuationResult = stripContinuationSignal(findings);
       if (continuationResult.signal?.kind === "work") {
@@ -707,6 +711,7 @@ export async function runSubagentAnnounceFlow(params: {
           `[subagent-chain-hop] CONTINUE_WORK not supported in sub-agent chain (from ${params.childSessionKey}), ignoring`,
         );
       } else if (continuationResult.signal?.kind === "delegate") {
+        bracketDelegateConsumed = true;
         findings = continuationResult.text || "(no output)";
         const chainTask = continuationResult.signal.task;
         const chainDelayMs = continuationResult.signal.delayMs;
@@ -831,7 +836,7 @@ export async function runSubagentAnnounceFlow(params: {
                   `[subagent-chain-hop] Unhandled bracket delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
                 );
               });
-            }, clampedDelay);
+            }, clampedDelay).unref();
           } else {
             // Fire-and-forget — don't block the announce flow
             doChainSpawn().catch((err) => {
@@ -853,8 +858,8 @@ export async function runSubagentAnnounceFlow(params: {
         } = resolveContinuationRuntimeConfig(cfg);
         const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
         const childChainHop = hopMatch ? parseInt(hopMatch[1], 10) : 0;
-        const continuationResult = stripContinuationSignal(findings);
-        const bracketConsumedHop = continuationResult.signal?.kind === "delegate" ? 1 : 0;
+        // Use the flag captured before findings was mutated (not re-parsing stripped text).
+        const bracketConsumedHop = bracketDelegateConsumed ? 1 : 0;
         let toolHopBase = childChainHop + bracketConsumedHop;
 
         const parentWasSilent = params.silentAnnounce === true;
@@ -946,7 +951,7 @@ export async function runSubagentAnnounceFlow(params: {
                   `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
                 );
               });
-            }, clampedDelay);
+            }, clampedDelay).unref();
           } else {
             doToolChainSpawn().catch((err) => {
               defaultRuntime.log(
