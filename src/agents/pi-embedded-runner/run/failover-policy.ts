@@ -95,7 +95,13 @@ export function mergeRetryFailoverReason(params: {
   failoverReason: FailoverReason | null;
   timedOut?: boolean;
 }): FailoverReason | null {
-  return params.failoverReason ?? (params.timedOut ? "timeout" : null) ?? params.previous;
+  // timedOut takes precedence — timeout must always surface as the reason
+  // to prevent session-lock deadlock (#86). A pre-existing failoverReason
+  // (e.g. "rate_limit") must not mask a timeout condition.
+  if (params.timedOut) {
+    return "timeout";
+  }
+  return params.failoverReason ?? params.previous;
 }
 
 export function resolveRunFailoverDecision(
