@@ -30,7 +30,7 @@ import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.
 function isContinuationWrappedRunResult(
   result: unknown,
 ): result is { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest } {
-  return typeof result === "object" && result !== null && "result" in result;
+  return typeof result === "object" && result !== null && "result" in result && "continueWorkRequest" in result;
 }
 import {
   resolveGroupSessionKey,

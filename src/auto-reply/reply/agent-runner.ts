@@ -454,7 +454,7 @@ export async function runReplyAgent(params: {
 
   // Route delegate store operations to the Task Flow-backed implementation
   // before any inbound-message cancellation logic runs.
-  setTaskFlowDelegatesEnabled(taskFlowDelegatesConfigured);
+  setTaskFlowDelegatesEnabled(continuationFeatureEnabled && taskFlowDelegatesConfigured);
 
   // Detect whether this turn is a continuation wake or an external message.
   // The isContinuationWake flag is set by the caller (get-reply-run) by peeking
