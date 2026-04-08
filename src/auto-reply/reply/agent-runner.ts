@@ -1011,6 +1011,12 @@ export async function runReplyAgent(params: {
         }
       }
     }
+    // Reserve generation at parse time so external messages arriving during
+    // the ~660-line gap before the scheduling block are visible as drift.
+    const earlyDelegateGeneration =
+      continuationSignal?.kind === "delegate" && sessionKey
+        ? bumpContinuationGeneration(sessionKey)
+        : null;
     const effectiveContinuationSignal: ContinuationSignal | null =
       continuationSignal ??
       (continuationFeatureEnabled && continueWorkRequest
@@ -1657,9 +1663,9 @@ export async function runReplyAgent(params: {
                 // Timed dispatch: spawn after delay. Timer does not survive
                 // gateway restart — acceptable for v1 (see #176 for durable timers).
                 const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
-                // Generation guard: if an external message arrives during the delay,
-                // bumpContinuationGeneration invalidates this timer — same as WORK timers.
-                const delegateGeneration = bumpContinuationGeneration(sessionKey);
+                // Generation guard: use the generation reserved at parse time so
+                // external messages that arrived during the gap are visible as drift.
+                const delegateGeneration = earlyDelegateGeneration ?? bumpContinuationGeneration(sessionKey);
                 const reservationId = generateSecureUuid();
                 addDelayedContinuationReservation(sessionKey, {
                   id: reservationId,
