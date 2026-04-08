@@ -643,7 +643,9 @@ export async function runAgentTurnWithFallback(params: {
         // from streamed blocks so they never reach the channel. The regex anchors
         // to the end of the text, so mid-sentence mentions are safe. Final-payload
         // stripping in runReplyAgent still runs for the assembled payloads.
-        if (text) {
+        // Only strip when continuation is enabled — otherwise the tokens are
+        // regular text the model happened to generate. (#104)
+        if (text && params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true) {
           const cont = stripContinuationSignal(text);
           if (cont.signal) {
             text = cont.text;
