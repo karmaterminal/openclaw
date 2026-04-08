@@ -450,12 +450,12 @@ export async function runSubagentAnnounceFlow(params: {
       // Best-effort only.
     }
 
-    let announceId = buildAnnounceIdFromChildRun({
+    const announceId = buildAnnounceIdFromChildRun({
       childSessionKey: params.childSessionKey,
       childRunId: params.childRunId,
     });
 
-    let childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
+    const childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
     if (
       params.wakeOnDescendantSettle === true &&
       childCompletionFindings?.trim() &&
@@ -534,35 +534,6 @@ export async function runSubagentAnnounceFlow(params: {
 
     if (!outcome) {
       outcome = { status: "unknown" };
-    }
-
-    announceId = buildAnnounceIdFromChildRun({
-      childSessionKey: params.childSessionKey,
-      childRunId: params.childRunId,
-    });
-
-    childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
-    if (
-      params.wakeOnDescendantSettle === true &&
-      childCompletionFindings?.trim() &&
-      !childRunAlreadyWoken
-    ) {
-      const wakeAnnounceId = buildAnnounceIdFromChildRun({
-        childSessionKey: params.childSessionKey,
-        childRunId: stripWakeRunSuffixes(params.childRunId),
-      });
-      const woke = await wakeSubagentRunAfterDescendants({
-        runId: params.childRunId,
-        childSessionKey: params.childSessionKey,
-        taskLabel: params.label || params.task || "task",
-        findings: childCompletionFindings,
-        announceId: wakeAnnounceId,
-        signal: params.signal,
-      });
-      if (woke) {
-        shouldDeleteChildSession = false;
-        return true;
-      }
     }
 
     // Track whether the announce delivery should be skipped (silent/skip reply

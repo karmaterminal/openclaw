@@ -26,12 +26,6 @@ import { compactEmbeddedPiSession } from "../../agents/pi-embedded-runner/compac
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 
-/** Type guard for wrapped continuation run results. */
-function isContinuationWrappedRunResult(
-  result: unknown,
-): result is { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest } {
-  return typeof result === "object" && result !== null && "result" in result && "continueWorkRequest" in result;
-}
 import {
   resolveGroupSessionKey,
   resolveSessionTranscriptPath,
@@ -78,6 +72,13 @@ import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
 import { createReplyMediaPathNormalizer } from "./reply-media-paths.runtime.js";
 import type { ReplyOperation } from "./reply-run-registry.js";
 import type { TypingSignaler } from "./typing-mode.js";
+
+/** Type guard for wrapped continuation run results. */
+function isContinuationWrappedRunResult(
+  result: unknown,
+): result is { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest } {
+  return typeof result === "object" && result !== null && "result" in result && "continueWorkRequest" in result;
+}
 
 // Maximum number of LiveSessionModelSwitchError retries before surfacing a
 // user-visible error. Prevents infinite ping-pong when the persisted session
