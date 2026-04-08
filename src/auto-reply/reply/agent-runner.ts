@@ -118,7 +118,10 @@ export function hasDelegatePending(sessionKey: string): boolean {
 
 export function clearDelegatePending(sessionKey: string): void {
   delegatePendingFlags.delete(sessionKey);
-  continuationGenerations.delete(sessionKey);
+  // Bump the generation instead of deleting it — deleting enables
+  // generation-reuse collision if the counter is later re-created
+  // at the same value a stale timer holds. (#105)
+  bumpContinuationGeneration(sessionKey);
 }
 
 function clearDelegatePendingIfNoDelayedReservations(sessionKey: string): void {
