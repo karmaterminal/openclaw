@@ -541,6 +541,8 @@ export async function runEmbeddedAttempt(
             senderE164: params.senderE164,
             senderIsOwner: params.senderIsOwner,
             allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
+            continueWorkOpts: params.continueWorkOpts,
+            requestCompactionOpts: params.requestCompactionOpts,
             sessionKey: sandboxSessionKey,
             sessionId: params.sessionId,
             runId: params.runId,
@@ -819,6 +821,7 @@ export async function runEmbeddedAttempt(
         includeMemorySection: !params.contextEngine || params.contextEngine.info.id === "legacy",
         memoryCitationsMode: params.config?.memory?.citations,
         promptContribution,
+        continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
       });
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
