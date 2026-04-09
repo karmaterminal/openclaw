@@ -1007,7 +1007,12 @@ export async function runReplyAgent(params: {
         }
       }
       // [continuation:trace] Log what the backward scan sees for bracket diagnosis (#102 F4)
-      const payloadSummary = payloadArray.map((p, i) => `[${i}]text=${!!p.text}${p.text ? `:"${p.text.slice(-60).replace(/\n/g, '\\n')}"` : ''}`).join(' ');
+      const payloadSummary = payloadArray
+        .map(
+          (p, i) =>
+            `[${i}]text=${!!p.text}${p.text ? `:"${p.text.slice(-60).replace(/\n/g, "\\n")}"` : ""}`,
+        )
+        .join(" ");
       continuationGuardLog.info(
         `[continuation:trace] payload-scan: count=${payloadArray.length} lastTextIdx=${lastTextPayload ? payloadArray.indexOf(lastTextPayload) : -1} ${payloadSummary} session=${sessionKey}`,
       );
@@ -1710,7 +1715,8 @@ export async function runReplyAgent(params: {
                 const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
                 // Generation guard: use the generation reserved at parse time so
                 // external messages that arrived during the gap are visible as drift.
-                const delegateGeneration = earlyDelegateGeneration ?? bumpContinuationGeneration(sessionKey);
+                const delegateGeneration =
+                  earlyDelegateGeneration ?? bumpContinuationGeneration(sessionKey);
                 const reservationId = generateSecureUuid();
                 addDelayedContinuationReservation(sessionKey, {
                   id: reservationId,
@@ -1739,7 +1745,7 @@ export async function runReplyAgent(params: {
                   const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
                   const currentGen = currentContinuationGeneration(sessionKey);
                   const drift = currentGen - reservation.generation;
-                  continuationGuardLog.debug(
+                  continuationGuardLog.info(
                     `[continuation-guard] DELEGATE timer check: stored=${reservation.generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
                   );
                   if (drift > generationGuardTolerance) {
@@ -1784,7 +1790,7 @@ export async function runReplyAgent(params: {
                 const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
                 const currentGen = currentContinuationGeneration(sessionKey);
                 const drift = currentGen - generation;
-                continuationGuardLog.debug(
+                continuationGuardLog.info(
                   `[continuation-guard] WORK timer check: stored=${generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
                 );
                 if (drift > generationGuardTolerance) {
@@ -1993,7 +1999,7 @@ export async function runReplyAgent(params: {
               const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
               const currentGen = currentContinuationGeneration(sessionKey);
               const drift = currentGen - reservation.generation;
-              continuationGuardLog.debug(
+              continuationGuardLog.info(
                 `[continuation-guard] Tool DELEGATE timer check: stored=${reservation.generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
               );
               if (drift > generationGuardTolerance) {
