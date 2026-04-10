@@ -6,6 +6,8 @@ import {
 } from "../../agents/agent-scope.js";
 import { resolveFastModeState } from "../../agents/fast-mode.js";
 import { resolveModelAuthLabel } from "../../agents/model-auth-label.js";
+import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
+import { getVolitionalCompactionCount } from "../../agents/tools/request-compaction-tool.js";
 import { listControlledSubagentRuns } from "../../agents/subagent-control.js";
 import { countPendingDescendantRuns } from "../../agents/subagent-registry.js";
 import {
@@ -289,11 +291,15 @@ export async function buildStatusText(params: {
   const continuation = cfg.agents?.defaults?.continuation;
   if (continuation?.enabled && sessionKey) {
     const chainCount = sessionEntry?.continuationChainCount ?? 0;
-    const maxChainLength = continuation.maxChainLength ?? 0;
+    const { maxChainLength } = resolveContinuationRuntimeConfig(cfg);
     const pending = pendingDelegateCount(sessionKey);
     const staged = stagedPostCompactionDelegateCount(sessionKey);
-    const compactionCount = sessionEntry?.compactionCount ?? 0;
-    continuationLine = `🔄 Continuation: chain ${chainCount}/${maxChainLength} | ${pending} delegates pending | ${staged} post-compaction staged | volitional: ${compactionCount}`;
+    const volitional = getVolitionalCompactionCount(sessionKey);
+    const parts = [`chain ${chainCount}/${maxChainLength}`];
+    if (pending > 0) parts.push(`${pending} delegates pending`);
+    if (staged > 0) parts.push(`${staged} post-compaction staged`);
+    parts.push(`volitional: ${volitional}`);
+    continuationLine = `🔄 Continuation: ${parts.join(" | ")}`;
   }
 
   const groupActivation = isGroup
