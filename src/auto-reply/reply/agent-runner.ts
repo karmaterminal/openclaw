@@ -31,7 +31,6 @@ import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-for
 import {
   addDelayedContinuationReservation,
   cancelPendingDelegates,
-  clearDelayedContinuationReservations,
   consumeStagedPostCompactionDelegates,
   delayedContinuationReservationCount,
   highestDelayedContinuationReservationHop,
@@ -328,7 +327,8 @@ export function cancelContinuationTimer(
     bumpContinuationGeneration(sessionKey);
   }
 
-  clearDelayedContinuationReservations(sessionKey);
+  // Removed: let generation guard handle delegate cancellation at fire-time. (#121)
+  // clearDelayedContinuationReservations(sessionKey);
 
   // Reset chain metadata so stale counters don't block future chains.
   // Check both chain count and chain tokens — chain count may be on child shards
@@ -484,7 +484,10 @@ export async function runReplyAgent(params: {
     if (continuationFeatureEnabled) {
       bumpContinuationGeneration(sessionKey);
     }
-    clearDelayedContinuationReservations(sessionKey);
+    // Removed: clearDelayedContinuationReservations was preemptively destroying
+    // delayed delegate reservations before the generation guard could evaluate them.
+    // The generation guard at fire-time (drift check) is the sole cancellation
+    // mechanism, consistent with continue_work timer behavior. (#121)
     // Task Flow-backed delegates can survive restarts even after volatile
     // delayed reservations are gone, so external input must cancel them on
     // the first post-restart turn. The volatile store remains turn-local.
@@ -1740,6 +1743,9 @@ export async function runReplyAgent(params: {
                 setTimeout(() => {
                   const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
                   if (!reservation) {
+                    continuationGuardLog.info(
+                      `[continuation-guard] DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
+                    );
                     return;
                   }
                   const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
@@ -1994,6 +2000,9 @@ export async function runReplyAgent(params: {
             setTimeout(() => {
               const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
               if (!reservation) {
+                continuationGuardLog.info(
+                  `[continuation-guard] Tool DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
+                );
                 return;
               }
               const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
