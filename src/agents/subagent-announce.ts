@@ -479,63 +479,6 @@ export async function runSubagentAnnounceFlow(params: {
       }
     }
 
-    if (!childCompletionFindings) {
-      const fallbackReply = normalizeOptionalString(params.fallbackReply);
-      const fallbackIsSilent =
-        Boolean(fallbackReply) &&
-        (isAnnounceSkip(fallbackReply) || isSilentReplyText(fallbackReply, SILENT_REPLY_TOKEN));
-
-      if (!reply) {
-        reply = await readSubagentOutput(params.childSessionKey, outcome);
-      }
-
-      if (!reply?.trim()) {
-        reply = await readLatestSubagentOutputWithRetry({
-          sessionKey: params.childSessionKey,
-          maxWaitMs: params.timeoutMs,
-          outcome,
-        });
-      }
-
-      if (!reply?.trim() && fallbackReply && !fallbackIsSilent) {
-        reply = fallbackReply;
-      }
-
-      // A worker can finish just after the first wait request timed out.
-      // If we already have real completion content, do one cached recheck so
-      // the final completion event prefers the authoritative terminal state.
-      // This is best-effort; if the recheck fails, keep the known timeout
-      // outcome instead of dropping the announcement entirely.
-      if (outcome?.status === "timeout" && reply?.trim() && params.waitForCompletion !== false) {
-        try {
-          const rechecked = await waitForSubagentRunOutcome(params.childRunId, 0);
-          const applied = applySubagentWaitOutcome({
-            wait: rechecked,
-            outcome,
-            startedAt: params.startedAt,
-            endedAt: params.endedAt,
-          });
-          outcome = applied.outcome;
-          params.startedAt = applied.startedAt;
-          params.endedAt = applied.endedAt;
-        } catch {
-          // Best-effort recheck; keep the existing timeout outcome on failure.
-        }
-      }
-
-      if (isAnnounceSkip(reply) || isSilentReplyText(reply, SILENT_REPLY_TOKEN)) {
-        if (fallbackReply && !fallbackIsSilent) {
-          reply = fallbackReply;
-        } else {
-          return true;
-        }
-      }
-    }
-
-    if (!outcome) {
-      outcome = { status: "unknown" };
-    }
-
     // Track whether the announce delivery should be skipped (silent/skip reply
     // with no fallback). Declared here so chain-hop accounting below still runs.
     let skipAnnounceDelivery = false;
@@ -867,10 +810,10 @@ export async function runSubagentAnnounceFlow(params: {
         for (const toolDelegate of toolDelegates) {
           const nextToolHop = toolHopBase + 1;
 
-          if (nextToolHop >= toolMaxChainLength) {
+          if (nextToolHop > toolMaxChainLength) {
             const remaining = toolDelegates.length - toolDelegates.indexOf(toolDelegate);
             defaultRuntime.log(
-              `[subagent-chain-hop] Tool delegate chain length ${nextToolHop} >= ${toolMaxChainLength}, rejecting from ${params.childSessionKey}. ${remaining} delegate(s) dropped.`,
+              `[subagent-chain-hop] Tool delegate chain length ${nextToolHop} > ${toolMaxChainLength}, rejecting from ${params.childSessionKey}. ${remaining} delegate(s) dropped.`,
             );
             break;
           }

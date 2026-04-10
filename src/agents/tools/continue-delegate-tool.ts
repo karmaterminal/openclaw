@@ -9,7 +9,7 @@ import { resolveMaxDelegatesPerTurn } from "../../auto-reply/reply/continuation-
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
-import { jsonResult, readStringParam, ToolInputError } from "./common.js";
+import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
 
 const log = createSubsystemLogger("continuation/delegate-tool");
 
@@ -90,13 +90,16 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         throw new ToolInputError("task must be a non-empty string describing the delegated work.");
       }
 
-      const delaySeconds =
-        typeof params.delaySeconds === "number" && Number.isFinite(params.delaySeconds)
-          ? Math.max(0, params.delaySeconds)
-          : undefined;
-      const delayMs = delaySeconds !== undefined ? delaySeconds * 1000 : undefined;
+      const delaySeconds = readNumberParam(params, "delaySeconds");
+      const delayMs =
+        delaySeconds !== undefined ? Math.max(0, delaySeconds) * 1000 : undefined;
 
       const modeRaw = typeof params.mode === "string" ? params.mode.trim().toLowerCase() : "";
+      if (modeRaw && !DELEGATE_MODES.includes(modeRaw as (typeof DELEGATE_MODES)[number])) {
+        throw new ToolInputError(
+          `Unknown mode "${modeRaw}". Valid modes: ${DELEGATE_MODES.join(", ")}`,
+        );
+      }
       const isPostCompaction = modeRaw === "post-compaction";
       const silent = modeRaw === "silent" || modeRaw === "silent-wake" || isPostCompaction;
       const silentWake = modeRaw === "silent-wake" || isPostCompaction;

@@ -484,7 +484,6 @@ export async function runPreparedReply(
         storePath,
         isNewSession,
       });
-  let { runReplyAgent } = await loadAgentRunnerRuntime();
   const queueKey = sessionKey ?? sessionIdFinal;
   preparedSessionState = resolvePreparedSessionState();
   const resolveActiveQueueSessionId = () =>
@@ -627,7 +626,7 @@ export async function runPreparedReply(
     },
   };
 
-  ({ runReplyAgent } = await loadAgentRunnerRuntime());
+  const { runReplyAgent } = await loadAgentRunnerRuntime();
   return runReplyAgent({
     commandBody: prefixedCommandBody,
     followupRun,

@@ -591,7 +591,6 @@ export function buildAgentSystemPrompt(params: {
           "After restart, OpenClaw pings the last active session automatically.",
         ].join("\n")
       : "",
-    hasGateway && !isMinimal ? "" : "",
     "",
     // Skip model aliases for subagent/none modes
     modelAliasLines.length > 0 && !isMinimal ? "## Model Aliases" : "",
