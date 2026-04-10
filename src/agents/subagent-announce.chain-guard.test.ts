@@ -60,6 +60,7 @@ import {
   clearRuntimeConfigSnapshot,
 } from "../config/config.js";
 import { resolveStorePath } from "../config/sessions.js";
+import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 import * as subagentSpawn from "./subagent-spawn.js";
 
@@ -216,6 +217,133 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
     const params = buildChainShardParams(1);
     await runSubagentAnnounceFlow(params);
 
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool-delegate chain guard (nextToolHop > toolMaxChainLength)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build params for a tool-delegate chain guard test.
+ * The roundOneReply has NO bracket [[CONTINUE_DELEGATE:...]] so the bracket
+ * path stays dormant and only tool delegates (from consumePendingDelegates)
+ * are evaluated.
+ */
+function buildToolDelegateParams(hopIndex: number): AnnounceFlowParams {
+  const taskPrefix = hopIndex > 0 ? `[continuation:chain-hop:${hopIndex}] ` : "";
+  return {
+    childSessionKey: `agent:main:subagent:tool-hop-${hopIndex}`,
+    childRunId: `run-tool-hop-${hopIndex}`,
+    requesterSessionKey: "agent:main:discord:dm:test-chain",
+    requesterDisplayKey: "test-chain",
+    task: `${taskPrefix}Tool-delegated from sub-agent (depth 1): do research`,
+    roundOneReply: "Research complete.", // no bracket delegate
+    timeoutMs: 30_000,
+    cleanup: "delete",
+    outcome: { status: "ok" as const },
+    silentAnnounce: true,
+    wakeOnReturn: true,
+  };
+}
+
+const mockedConsumePendingDelegates = vi.mocked(consumePendingDelegates);
+
+describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
+  let spawnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    writeSessionStore({});
+    setRuntimeConfigSnapshot(makeConfig({ maxChainLength: 10 }) as any);
+    spawnSpy = vi.spyOn(subagentSpawn, "spawnSubagentDirect").mockResolvedValue({
+      status: "accepted",
+      childSessionKey: "agent:main:subagent:tool-chain-next",
+      runId: "run-tool-chain-next",
+    });
+  });
+
+  afterEach(() => {
+    spawnSpy.mockRestore();
+    mockedConsumePendingDelegates.mockReturnValue([]);
+    clearRuntimeConfigSnapshot();
+  });
+
+  it("allows tool delegate at maxChainLength-1 (next hop = maxChainLength)", async () => {
+    // childChainHop=9, bracketConsumedHop=0, toolHopBase=9, nextToolHop=10 = maxChainLength → allowed
+    mockedConsumePendingDelegates.mockReturnValue([
+      { task: "tool task at boundary minus one" },
+    ]);
+
+    const params = buildToolDelegateParams(9);
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(spawnArgs.task).toContain("[continuation:chain-hop:10]");
+    expect(spawnArgs.task).toContain("Tool-delegated");
+  });
+
+  it("allows tool delegate at maxChainLength (next hop = maxChainLength, off-by-one fix)", async () => {
+    // With maxChainLength=5: childChainHop=4, nextToolHop=5 = maxChainLength → allowed (> not >=)
+    setRuntimeConfigSnapshot(makeConfig({ maxChainLength: 5 }) as any);
+    mockedConsumePendingDelegates.mockReturnValue([
+      { task: "tool task exactly at boundary" },
+    ]);
+
+    const params = buildToolDelegateParams(4);
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(spawnArgs.task).toContain("[continuation:chain-hop:5]");
+  });
+
+  it("rejects tool delegate at maxChainLength+1 (next hop exceeds max)", async () => {
+    // childChainHop=10, nextToolHop=11 > maxChainLength(10) → rejected
+    mockedConsumePendingDelegates.mockReturnValue([
+      { task: "tool task beyond boundary" },
+    ]);
+
+    const params = buildToolDelegateParams(10);
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects tool delegate well beyond maxChainLength", async () => {
+    mockedConsumePendingDelegates.mockReturnValue([
+      { task: "tool task way beyond boundary" },
+    ]);
+
+    const params = buildToolDelegateParams(15);
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it("respects custom maxChainLength for tool delegates", async () => {
+    setRuntimeConfigSnapshot(makeConfig({ maxChainLength: 3 }) as any);
+    mockedConsumePendingDelegates.mockReturnValue([
+      { task: "tool task at custom boundary" },
+    ]);
+
+    // hop 2 → next=3 = maxChainLength → allowed
+    const paramsAllow = buildToolDelegateParams(2);
+    await runSubagentAnnounceFlow(paramsAllow);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+
+    spawnSpy.mockClear();
+
+    // hop 3 → next=4 > maxChainLength → rejected
+    const paramsReject = buildToolDelegateParams(3);
+    await runSubagentAnnounceFlow(paramsReject);
+    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 });
