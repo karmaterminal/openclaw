@@ -82,23 +82,28 @@ export function taskFlowEnqueuePendingDelegate(
  * Returns delegates in FIFO order and transitions backing flow records
  * from "queued" → "succeeded" (proper lifecycle, not delete).
  *
- * Collect-then-cleanup: delegates are converted first so callers always
- * receive them even if finishFlow() fails for some records.
+ * Only delegates whose backing flow record is successfully finalized are
+ * returned. If finishFlow() reports a revision conflict (another consumer
+ * already claimed the record), the delegate is skipped to prevent
+ * double-dispatch.
  */
 export function taskFlowConsumePendingDelegates(sessionKey: string): PendingContinuationDelegate[] {
   const flows = listPendingFlows(sessionKey);
+  const consumed: PendingContinuationDelegate[] = [];
 
-  // Collect phase — convert all flows to delegates before any mutation.
-  const delegates = flows.map((flow) => flowToDelegate(flow));
-
-  // Cleanup phase — mark each flow as finished individually so one failure
-  // does not prevent the rest from being finalized.
   for (const flow of flows) {
     try {
-      finishFlow({
+      const result = finishFlow({
         flowId: flow.flowId,
         expectedRevision: flow.revision,
       });
+      if (result.applied) {
+        consumed.push(flowToDelegate(flow));
+      } else {
+        console.warn(
+          `[continuation-delegate] skipping flowId=${flow.flowId}: finishFlow not applied (${result.reason})`,
+        );
+      }
     } catch (err) {
       console.warn(
         `[continuation-delegate] finishFlow failed for flowId=${flow.flowId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -106,7 +111,7 @@ export function taskFlowConsumePendingDelegates(sessionKey: string): PendingCont
     }
   }
 
-  return delegates;
+  return consumed;
 }
 
 /**

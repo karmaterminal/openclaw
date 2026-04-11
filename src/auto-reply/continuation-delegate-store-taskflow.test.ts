@@ -12,7 +12,7 @@ const hoisted = vi.hoisted(() => ({
 const { finishFlowSpy } = hoisted;
 vi.mock("../tasks/task-flow-registry.js", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../tasks/task-flow-registry.js")>();
-  hoisted.realFinishFlow = mod.finishFlow;
+  hoisted.realFinishFlow = mod.finishFlow as (...args: unknown[]) => unknown;
   hoisted.finishFlowSpy.mockImplementation((...args: unknown[]) =>
     mod.finishFlow(...(args as [never])),
   );
@@ -275,7 +275,7 @@ describe("continuation-delegate-store-taskflow", () => {
     });
   });
 
-  it("returns all delegates even when finishFlow throws for some flows", async () => {
+  it("skips delegates when finishFlow throws for some flows", async () => {
     await withFlowRegistryTempDir(async () => {
       taskFlowEnqueuePendingDelegate("test-session", { task: "task 1" });
       taskFlowEnqueuePendingDelegate("test-session", { task: "task 2" });
@@ -293,17 +293,49 @@ describe("continuation-delegate-store-taskflow", () => {
 
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
-        // Should NOT throw — delegates are collected before cleanup.
         const delegates = taskFlowConsumePendingDelegates("test-session");
 
-        expect(delegates).toHaveLength(3);
+        // Only the two successfully finalized delegates are returned.
+        expect(delegates).toHaveLength(2);
         expect(delegates[0].task).toBe("task 1");
-        expect(delegates[1].task).toBe("task 2");
-        expect(delegates[2].task).toBe("task 3");
+        expect(delegates[1].task).toBe("task 3");
 
         // The failed finishFlow should have been logged as a warning.
         expect(warnSpy).toHaveBeenCalledOnce();
         expect(warnSpy.mock.calls[0][0]).toContain("simulated SQLite failure");
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+  });
+
+  it("skips delegates on revision conflict (applied: false)", async () => {
+    await withFlowRegistryTempDir(async () => {
+      taskFlowEnqueuePendingDelegate("test-session", { task: "task 1" });
+      taskFlowEnqueuePendingDelegate("test-session", { task: "task 2" });
+
+      // Make finishFlow return applied:false for the first call (simulates
+      // a concurrent consumer that already finalized the record).
+      let callCount = 0;
+      finishFlowSpy.mockImplementation((...args: unknown[]) => {
+        callCount++;
+        if (callCount === 1) {
+          return { applied: false, reason: "revision_conflict" };
+        }
+        return (hoisted.realFinishFlow as Function)(...args);
+      });
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const delegates = taskFlowConsumePendingDelegates("test-session");
+
+        // Only the second delegate (successfully finalized) is returned.
+        expect(delegates).toHaveLength(1);
+        expect(delegates[0].task).toBe("task 2");
+
+        // Revision conflict should have been logged.
+        expect(warnSpy).toHaveBeenCalledOnce();
+        expect(warnSpy.mock.calls[0][0]).toContain("revision_conflict");
       } finally {
         warnSpy.mockRestore();
       }
