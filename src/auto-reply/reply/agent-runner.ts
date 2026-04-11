@@ -1,6 +1,5 @@
-import fs from "node:fs";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
-import { lookupContextTokens } from "../../agents/context.js";
+import { resolveContextTokensForModel } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { resolveModelAuthMode } from "../../agents/model-auth.js";
 import { isCliProvider } from "../../agents/model-selection.js";
@@ -8,10 +7,8 @@ import { queueEmbeddedPiMessage } from "../../agents/pi-embedded.js";
 import { spawnSubagentDirect } from "../../agents/subagent-spawn.js";
 import { hasNonzeroUsage } from "../../agents/usage.js";
 import {
-  resolveAgentIdFromSessionKey,
-  resolveSessionFilePath,
-  resolveSessionFilePathOptions,
-  resolveSessionTranscriptPath,
+  loadSessionStore,
+  resolveSessionPluginDebugLines,
   type SessionEntry,
   type SessionPostCompactionDelegate,
   updateSessionStore,
@@ -65,6 +62,7 @@ import {
   hasSessionRelatedCronJobs,
   hasUnbackedReminderCommitment,
 } from "./agent-runner-reminder-guard.js";
+import { resetReplyRunSession } from "./agent-runner-session-reset.js";
 import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-usage-line.js";
 import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
@@ -95,6 +93,39 @@ import type { TypingController } from "./typing.js";
 
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 const continuationGuardLog = createSubsystemLogger("continuation/guard");
+
+function buildInlinePluginStatusPayload(entry: SessionEntry | undefined): ReplyPayload | undefined {
+  const lines = resolveSessionPluginDebugLines(entry);
+  if (lines.length === 0) {
+    return undefined;
+  }
+  return { text: lines.join("\n") };
+}
+
+function refreshSessionEntryFromStore(params: {
+  storePath?: string;
+  sessionKey?: string;
+  fallbackEntry?: SessionEntry;
+  activeSessionStore?: Record<string, SessionEntry>;
+}): SessionEntry | undefined {
+  const { storePath, sessionKey, fallbackEntry, activeSessionStore } = params;
+  if (!storePath || !sessionKey) {
+    return fallbackEntry;
+  }
+  try {
+    const latestStore = loadSessionStore(storePath, { skipCache: true });
+    const latestEntry = latestStore?.[sessionKey];
+    if (!latestEntry) {
+      return fallbackEntry;
+    }
+    if (activeSessionStore) {
+      activeSessionStore[sessionKey] = latestEntry;
+    }
+    return latestEntry;
+  } catch {
+    return fallbackEntry;
+  }
+}
 
 // Track pending continuation timers so they can be cancelled when an external
 // message arrives during the delay window (prevents ghost continuations).
@@ -777,89 +808,28 @@ export async function runReplyAgent(params: {
       failureLabel,
       buildLogMessage,
       cleanupTranscripts,
-    }: SessionResetOptions): Promise<boolean> => {
-      if (!sessionKey || !activeSessionStore || !storePath) {
-        return false;
-      }
-      const prevEntry = activeSessionStore[sessionKey] ?? activeSessionEntry;
-      if (!prevEntry) {
-        return false;
-      }
-      const prevSessionId = cleanupTranscripts ? prevEntry.sessionId : undefined;
-      const nextSessionId = generateSecureUuid();
-      const nextEntry: SessionEntry = {
-        ...prevEntry,
-        sessionId: nextSessionId,
-        updatedAt: Date.now(),
-        systemSent: false,
-        abortedLastRun: false,
-        modelProvider: undefined,
-        model: undefined,
-        inputTokens: undefined,
-        outputTokens: undefined,
-        totalTokens: undefined,
-        totalTokensFresh: false,
-        estimatedCostUsd: undefined,
-        cacheRead: undefined,
-        cacheWrite: undefined,
-        contextTokens: undefined,
-        systemPromptReport: undefined,
-        fallbackNoticeSelectedModel: undefined,
-        fallbackNoticeActiveModel: undefined,
-        fallbackNoticeReason: undefined,
-        continuationChainCount: undefined,
-        continuationChainStartedAt: undefined,
-        continuationChainTokens: undefined,
-      };
-      const agentId = resolveAgentIdFromSessionKey(sessionKey);
-      const nextSessionFile = resolveSessionTranscriptPath(
-        nextSessionId,
-        agentId,
-        sessionCtx.MessageThreadId,
-      );
-      nextEntry.sessionFile = nextSessionFile;
-      activeSessionStore[sessionKey] = nextEntry;
-      try {
-        await updateSessionStore(storePath, (store) => {
-          store[sessionKey] = nextEntry;
-        });
-      } catch (err) {
-        defaultRuntime.error(
-          `Failed to persist session reset after ${failureLabel} (${sessionKey}): ${String(err)}`,
-        );
-      }
-      followupRun.run.sessionId = nextSessionId;
-      followupRun.run.sessionFile = nextSessionFile;
-      refreshQueuedFollowupSession({
-        key: queueKey,
-        previousSessionId: prevEntry.sessionId,
-        nextSessionId,
-        nextSessionFile,
+    }: SessionResetOptions): Promise<boolean> =>
+      await resetReplyRunSession({
+        options: {
+          failureLabel,
+          buildLogMessage,
+          cleanupTranscripts,
+        },
+        sessionKey,
+        queueKey,
+        activeSessionEntry,
+        activeSessionStore,
+        storePath,
+        messageThreadId:
+          typeof sessionCtx.MessageThreadId === "string" ? sessionCtx.MessageThreadId : undefined,
+        followupRun,
+        onActiveSessionEntry: (nextEntry) => {
+          activeSessionEntry = nextEntry;
+        },
+        onNewSession: () => {
+          activeIsNewSession = true;
+        },
       });
-      activeSessionEntry = nextEntry;
-      activeIsNewSession = true;
-      defaultRuntime.error(buildLogMessage(nextSessionId));
-      if (cleanupTranscripts && prevSessionId) {
-        const transcriptCandidates = new Set<string>();
-        const resolved = resolveSessionFilePath(
-          prevSessionId,
-          prevEntry,
-          resolveSessionFilePathOptions({ agentId, storePath }),
-        );
-        if (resolved) {
-          transcriptCandidates.add(resolved);
-        }
-        transcriptCandidates.add(resolveSessionTranscriptPath(prevSessionId, agentId));
-        for (const candidate of transcriptCandidates) {
-          try {
-            fs.unlinkSync(candidate);
-          } catch {
-            // Best-effort cleanup.
-          }
-        }
-      }
-      return true;
-    };
     const resetSessionAfterCompactionFailure = async (reason: string): Promise<boolean> =>
       resetSession({
         failureLabel: "compaction failure",
@@ -881,10 +851,14 @@ export async function runReplyAgent(params: {
     if (activeSessionEntry && sessionKey) {
       const { contextPressureThreshold } = resolveContinuationRuntimeConfig(cfg);
       const contextWindowTokens =
-        agentCfgContextTokens ??
-        lookupContextTokens(defaultModel) ??
-        activeSessionEntry.contextTokens ??
-        DEFAULT_CONTEXT_TOKENS;
+        resolveContextTokensForModel({
+          cfg,
+          provider: followupRun.run.provider,
+          model: defaultModel,
+          contextTokensOverride: agentCfgContextTokens,
+          fallbackContextTokens: activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
+          allowAsyncLoad: false,
+        }) ?? DEFAULT_CONTEXT_TOKENS;
       const pressureResult = checkContextPressure({
         sessionEntry: activeSessionEntry,
         sessionKey,
@@ -1129,10 +1103,14 @@ export async function runReplyAgent(params: {
       ? runResult.meta?.agentMeta?.cliSessionBinding
       : undefined;
     const contextTokensUsed =
-      agentCfgContextTokens ??
-      lookupContextTokens(modelUsed) ??
-      activeSessionEntry?.contextTokens ??
-      DEFAULT_CONTEXT_TOKENS;
+      resolveContextTokensForModel({
+        cfg,
+        provider: providerUsed,
+        model: modelUsed,
+        contextTokensOverride: agentCfgContextTokens,
+        fallbackContextTokens: activeSessionEntry?.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
+        allowAsyncLoad: false,
+      }) ?? DEFAULT_CONTEXT_TOKENS;
 
     await persistRunSessionUsage({
       storePath,
@@ -1289,6 +1267,15 @@ export async function runReplyAgent(params: {
       if (formatted) {
         responseUsageLine = formatted;
       }
+    }
+
+    if (verboseEnabled) {
+      activeSessionEntry = refreshSessionEntryFromStore({
+        storePath,
+        sessionKey,
+        fallbackEntry: activeSessionEntry,
+        activeSessionStore,
+      });
     }
 
     // If verbose is enabled, prepend operational run notices.
@@ -1574,8 +1561,15 @@ export async function runReplyAgent(params: {
     // Skip verbose/usage augmentation for silent continuations — a bare CONTINUE_WORK
     // should produce no user-visible output, not a usage line or verbose notice.
     if (!wasSilentContinuation) {
-      if (verboseNotices.length > 0) {
-        finalPayloads = [...verboseNotices, ...finalPayloads];
+      const prefixPayloads = [...verboseNotices];
+      if (verboseEnabled) {
+        const pluginStatusPayload = buildInlinePluginStatusPayload(activeSessionEntry);
+        if (pluginStatusPayload) {
+          prefixPayloads.push(pluginStatusPayload);
+        }
+      }
+      if (prefixPayloads.length > 0) {
+        finalPayloads = [...prefixPayloads, ...finalPayloads];
       }
       if (responseUsageLine) {
         finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);

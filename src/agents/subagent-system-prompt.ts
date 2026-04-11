@@ -13,6 +13,10 @@ export function buildSubagentSystemPrompt(params: {
   childDepth?: number;
   /** Config value: max allowed spawn depth. */
   maxSpawnDepth?: number;
+  /** Tool names available to the child — used to teach tool-primary vs bracket-only continuation. */
+  toolNames?: string[];
+  /** Whether continuation chaining is enabled. Defaults to config value. */
+  continuationEnabled?: boolean;
 }) {
   const taskText =
     typeof params.task === "string" && params.task.trim()
