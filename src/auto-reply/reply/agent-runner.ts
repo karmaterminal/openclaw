@@ -513,7 +513,8 @@ export async function runReplyAgent(params: {
     // the generation so in-flight guards observe the new turn, even when the
     // session had not armed a timer or created state yet.
     // Skip when clearDelegatePending will bump below to avoid double-incrementing.
-    const willClearDelegates = hadDelayedReservations || taskFlowDelegatesConfigured;
+    const willClearDelegates =
+      continuationFeatureEnabled && (hadDelayedReservations || taskFlowDelegatesConfigured);
     if (continuationFeatureEnabled && !willClearDelegates) {
       bumpContinuationGeneration(sessionKey);
     }
