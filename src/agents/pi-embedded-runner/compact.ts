@@ -734,6 +734,7 @@ export async function compactEmbeddedPiSessionDirect(
           config: params.config,
           workspaceDir: effectiveWorkspace,
           context: {
+            systemPrompt: builtSystemPrompt,
             config: params.config,
             agentDir,
             workspaceDir: effectiveWorkspace,
@@ -754,7 +755,8 @@ export async function compactEmbeddedPiSessionDirect(
             memoryCitationsMode: params.config?.memory?.citations,
             promptContribution,
             continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
-          }),
+          },
+        }),
       );
     };
 
