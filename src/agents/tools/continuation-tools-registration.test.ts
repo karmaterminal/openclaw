@@ -15,29 +15,33 @@ describe("continuation tool registration", () => {
     },
   } as const;
 
-  it("exposes continue_delegate only when drain pipeline is active", () => {
+  it("exposes continue_delegate when continuation is enabled", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
-      drainsContinuationDelegateQueue: true,
     });
 
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
   });
 
-  it("hides continue_delegate when drain pipeline is not active", () => {
+  it("hides continue_delegate when continuation is disabled", () => {
     const tools = createOpenClawTools({
-      config,
+      config: {
+        ...config,
+        agents: { defaults: { continuation: { enabled: false } } },
+      },
       agentSessionKey: "main",
-      drainsContinuationDelegateQueue: false,
     });
 
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(false);
   });
 
-  it("hides continue_delegate when drainsContinuationDelegateQueue is omitted", () => {
+  it("hides continue_delegate when continuation config is omitted", () => {
     const tools = createOpenClawTools({
-      config,
+      config: {
+        ...config,
+        agents: { defaults: {} },
+      },
       agentSessionKey: "main",
     });
 

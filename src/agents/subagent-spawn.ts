@@ -740,6 +740,9 @@ export async function spawnSubagentDirect(
         thinking: thinkingOverride,
         timeout: runTimeoutSeconds,
         label: label || undefined,
+        ...(params.drainsContinuationDelegateQueue
+          ? { drainsContinuationDelegateQueue: true }
+          : {}),
         ...(bootstrapContextMode
           ? {
               bootstrapContextMode,
