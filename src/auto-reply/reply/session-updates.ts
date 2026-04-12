@@ -15,6 +15,7 @@ import {
   resolveSessionFilePathOptions,
   type SessionEntry,
   updateSessionStore,
+  updateSessionStoreEntry,
 } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveStableSessionEndTranscript } from "../../gateway/session-transcript-files.fs.js";
@@ -270,11 +271,10 @@ export async function incrementCompactionCount(params: {
     ...updates,
   };
   if (storePath) {
-    await updateSessionStore(storePath, (store) => {
-      store[sessionKey] = {
-        ...store[sessionKey],
-        ...updates,
-      };
+    await updateSessionStoreEntry({
+      storePath,
+      sessionKey,
+      update: async () => updates,
     });
   }
   if (newSessionId && newSessionId !== entry.sessionId && cfg) {
