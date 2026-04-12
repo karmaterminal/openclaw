@@ -261,7 +261,9 @@ export function createOpenClawCodingTools(options?: {
   allowGatewaySubagentBinding?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */
   continueWorkOpts?: {
-    requestContinuation: (request: import("./tools/continue-work-tool.js").ContinueWorkRequest) => void;
+    requestContinuation: (
+      request: import("./tools/continue-work-tool.js").ContinueWorkRequest,
+    ) => void;
   };
   /** Closures for request_compaction tool (Trigger E). */
   requestCompactionOpts?: {
@@ -278,6 +280,8 @@ export function createOpenClawCodingTools(options?: {
   disableMessageTool?: boolean;
   /** Whether the sender is an owner (required for owner-only tools). */
   senderIsOwner?: boolean;
+  /** Whether the current run consumes the continue_delegate staging queue. */
+  drainsContinuationDelegateQueue?: boolean;
   /** Callback invoked when sessions_yield tool is called. */
   onYield?: (message: string) => Promise<void> | void;
 }): AnyAgentTool[] {
@@ -556,6 +560,7 @@ export function createOpenClawCodingTools(options?: {
       sessionId: options?.sessionId,
       onYield: options?.onYield,
       allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
+      drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
       continueWorkOpts: options?.continueWorkOpts,
       requestCompactionOpts: options?.requestCompactionOpts,
     }),

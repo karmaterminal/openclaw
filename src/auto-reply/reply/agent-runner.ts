@@ -482,7 +482,7 @@ export async function runReplyAgent(params: {
   const cfg = followupRun.run.config;
   const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
   const taskFlowDelegatesConfigured =
-    cfg?.agents?.defaults?.continuation?.taskFlowDelegates !== false;
+    cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
 
   // Route delegate store operations to the Task Flow-backed implementation
   // before any inbound-message cancellation logic runs.
@@ -513,7 +513,8 @@ export async function runReplyAgent(params: {
     // the generation so in-flight guards observe the new turn, even when the
     // session had not armed a timer or created state yet.
     // Skip when clearDelegatePending will bump below to avoid double-incrementing.
-    const willClearDelegates = hadDelayedReservations || taskFlowDelegatesConfigured;
+    const willClearDelegates =
+      continuationFeatureEnabled && (hadDelayedReservations || taskFlowDelegatesConfigured);
     if (continuationFeatureEnabled && !willClearDelegates) {
       bumpContinuationGeneration(sessionKey);
     }
@@ -886,7 +887,7 @@ export async function runReplyAgent(params: {
     // so the routing flag must be set before any tool execution.
     const taskFlowDelegatesEarly =
       cfg.agents?.defaults?.continuation?.enabled === true &&
-      cfg.agents?.defaults?.continuation?.taskFlowDelegates !== false;
+      cfg.agents?.defaults?.continuation?.taskFlowDelegates === true;
     setTaskFlowDelegatesEnabled(taskFlowDelegatesEarly);
 
     const runStartedAt = Date.now();
@@ -970,7 +971,7 @@ export async function runReplyAgent(params: {
     // Sync the Task Flow delegate gate from config so the store routes
     // enqueue/consume/count through the TaskFlow-backed implementation.
     setTaskFlowDelegatesEnabled(
-      continuationFeatureEnabled && cfg.agents?.defaults?.continuation?.taskFlowDelegates !== false,
+      continuationFeatureEnabled && cfg.agents?.defaults?.continuation?.taskFlowDelegates === true,
     );
     let continuationSignal: ContinuationSignal | null = null;
     if (continuationFeatureEnabled && payloadArray.length > 0) {
@@ -1607,14 +1608,13 @@ export async function runReplyAgent(params: {
           const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
           const previousChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
           const accumulatedChainTokens = previousChainTokens + turnTokens;
-          bracketTokensAccumulated = true;
-
           if (costCapTokens > 0 && accumulatedChainTokens > costCapTokens) {
             defaultRuntime.log(
               `Continuation cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}) for session ${sessionKey}`,
             );
             bumpContinuationGeneration(sessionKey);
           } else {
+            bracketTokensAccumulated = true;
             const nextChainCount = allocatedChainHop + 1;
             const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
             if (effectiveContinuationSignal.kind === "delegate") {

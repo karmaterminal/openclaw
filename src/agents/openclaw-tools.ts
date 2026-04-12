@@ -327,7 +327,7 @@ export function createOpenClawTools(
         ]
       : []),
     ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
-    options?.drainsContinuationDelegateQueue !== false
+    options?.drainsContinuationDelegateQueue === true
       ? [
           createContinueDelegateTool({
             agentSessionKey: options?.agentSessionKey,
