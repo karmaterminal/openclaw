@@ -91,8 +91,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       }
 
       const delaySeconds = readNumberParam(params, "delaySeconds");
-      const delayMs =
-        delaySeconds !== undefined ? Math.max(0, delaySeconds) * 1000 : undefined;
+      const delayMs = delaySeconds !== undefined ? Math.max(0, delaySeconds) * 1000 : undefined;
 
       const modeRaw = typeof params.mode === "string" ? params.mode.trim().toLowerCase() : "";
       if (modeRaw && !DELEGATE_MODES.includes(modeRaw as (typeof DELEGATE_MODES)[number])) {

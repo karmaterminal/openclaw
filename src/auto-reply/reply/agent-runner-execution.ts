@@ -26,10 +26,8 @@ import {
 } from "../../agents/pi-embedded-helpers.js";
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
-import { compactEmbeddedPiSession } from "../../agents/pi-embedded-runner/compact.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import { compactEmbeddedPiSession, runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
-
 import {
   resolveGroupSessionKey,
   resolveSessionTranscriptPath,
@@ -81,10 +79,16 @@ import type { ReplyOperation } from "./reply-run-registry.js";
 import type { TypingSignaler } from "./typing-mode.js";
 
 /** Type guard for wrapped continuation run results. */
-function isContinuationWrappedRunResult(
-  result: unknown,
-): result is { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest } {
-  return typeof result === "object" && result !== null && "result" in result && "continueWorkRequest" in result;
+function isContinuationWrappedRunResult(result: unknown): result is {
+  result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
+  continueWorkRequest?: ContinueWorkRequest;
+} {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "result" in result &&
+    "continueWorkRequest" in result
+  );
 }
 
 // Maximum number of LiveSessionModelSwitchError retries before surfacing a
@@ -774,7 +778,10 @@ export async function runAgentTurnWithFallback(params: {
         // stripping in runReplyAgent still runs for the assembled payloads.
         // Only strip when continuation is enabled — otherwise the tokens are
         // regular text the model happened to generate. (#104)
-        if (text && params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true) {
+        if (
+          text &&
+          params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+        ) {
           const cont = stripContinuationSignal(text);
           if (cont.signal) {
             text = cont.text;
@@ -827,7 +834,10 @@ export async function runAgentTurnWithFallback(params: {
       const onToolResult = params.opts?.onToolResult;
       const fallbackResult = await runWithModelFallback<
         | Awaited<ReturnType<typeof runEmbeddedPiAgent>>
-        | { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest }
+        | {
+            result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
+            continueWorkRequest?: ContinueWorkRequest;
+          }
       >({
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
@@ -1046,8 +1056,8 @@ export async function runAgentTurnWithFallback(params: {
                               trigger: "volitional",
                             });
                             return {
-                              ok: !!result?.ok,
-                              compacted: !!result?.compacted,
+                              ok: result?.ok ?? false,
+                              compacted: result?.compacted ?? false,
                               reason: result?.reason,
                             };
                           } catch (err) {
@@ -1326,7 +1336,10 @@ export async function runAgentTurnWithFallback(params: {
       });
       const fallbackRunResult = fallbackResult.result as
         | Awaited<ReturnType<typeof runEmbeddedPiAgent>>
-        | { result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>; continueWorkRequest?: ContinueWorkRequest };
+        | {
+            result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
+            continueWorkRequest?: ContinueWorkRequest;
+          };
       if (isContinuationWrappedRunResult(fallbackRunResult)) {
         runResult = fallbackRunResult.result;
         continueWorkRequest = fallbackRunResult.continueWorkRequest;

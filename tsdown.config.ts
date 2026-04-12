@@ -54,6 +54,18 @@ function buildInputOptions(options: InputOptionsArg): InputOptionsReturn {
     if (log.code === "PLUGIN_TIMINGS") {
       return true;
     }
+    // Suppress pi-embedded.ts facade warning introduced by continuation feature carry.
+    // Our 23 new files shift the rollup chunk graph enough that pi-embedded.ts can no
+    // longer be split into a separate chunk, surfacing a pre-existing static/dynamic
+    // boundary that upstream's smaller graph doesn't trigger. The dynamic imports in
+    // agent-runner-memory.ts and list.probe.ts are upstream code we cannot modify.
+    // Tracked: https://github.com/karmaterminal/openclaw-bootstrap/issues/406
+    if (
+      log.code === "INEFFECTIVE_DYNAMIC_IMPORT" &&
+      normalizedLogHaystack(log).includes("pi-embedded.ts")
+    ) {
+      return true;
+    }
     if (log.code === "UNRESOLVED_IMPORT") {
       return normalizedLogHaystack(log).includes("extensions/");
     }

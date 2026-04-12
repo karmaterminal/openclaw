@@ -9,7 +9,6 @@ import {
   startsWithSilentToken,
   stripContinuationSignal,
   stripLeadingSilentToken,
-  stripSilentToken,
 } from "./tokens.js";
 
 /* ------------------------------------------------------------------ */

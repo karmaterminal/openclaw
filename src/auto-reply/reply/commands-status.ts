@@ -7,10 +7,9 @@ import {
 } from "../../agents/agent-scope.js";
 import { resolveFastModeState } from "../../agents/fast-mode.js";
 import { resolveModelAuthLabel } from "../../agents/model-auth-label.js";
-import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
-import { getVolitionalCompactionCount } from "../../agents/tools/request-compaction-tool.js";
 import { listControlledSubagentRuns } from "../../agents/subagent-control.js";
 import { countPendingDescendantRuns } from "../../agents/subagent-registry.js";
+import { getVolitionalCompactionCount } from "../../agents/tools/request-compaction-tool.js";
 import {
   resolveInternalSessionKey,
   resolveMainSessionAlias,
@@ -46,6 +45,7 @@ import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "..
 import type { ReplyPayload } from "../types.js";
 import { buildSubagentsStatusLine } from "./commands-status-subagents.js";
 import type { CommandContext } from "./commands-types.js";
+import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
 import { getFollowupQueueDepth, resolveQueueSettings } from "./queue.js";
 
 // Some usage endpoints only work with CLI/session OAuth tokens, not API keys.
@@ -297,8 +297,12 @@ export async function buildStatusText(params: {
     const staged = stagedPostCompactionDelegateCount(sessionKey);
     const volitional = getVolitionalCompactionCount(sessionKey);
     const parts = [`chain ${chainCount}/${maxChainLength}`];
-    if (pending > 0) parts.push(`${pending} delegates pending`);
-    if (staged > 0) parts.push(`${staged} post-compaction staged`);
+    if (pending > 0) {
+      parts.push(`${pending} delegates pending`);
+    }
+    if (staged > 0) {
+      parts.push(`${staged} post-compaction staged`);
+    }
     parts.push(`volitional: ${volitional}`);
     continuationLine = `🔄 Continuation: ${parts.join(" | ")}`;
   }

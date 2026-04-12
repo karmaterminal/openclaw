@@ -623,10 +623,12 @@ export async function spawnSubagentDirect(
     // The tool will actually appear when drains === true AND the child is not a leaf
     // (DENY_LEAF blocks it at max depth). Also respect explicit deny config so the
     // prompt doesn't teach a tool the policy will strip from the actual toolset.
-    toolNames: params.drainsContinuationDelegateQueue === true && childDepth < maxSpawnDepth
-      && !cfg.tools?.subagents?.tools?.deny?.includes("continue_delegate")
-      ? ["continue_delegate"]
-      : undefined,
+    toolNames:
+      params.drainsContinuationDelegateQueue === true &&
+      childDepth < maxSpawnDepth &&
+      !cfg.tools?.subagents?.tools?.deny?.includes("continue_delegate")
+        ? ["continue_delegate"]
+        : undefined,
   });
 
   let retainOnSessionKeep = false;

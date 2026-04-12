@@ -727,6 +727,7 @@ export async function compactEmbeddedPiSessionDirect(
           contextFiles,
           memoryCitationsMode: params.config?.memory?.citations,
           promptContribution,
+          continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
         });
       return createSystemPromptOverride(
         transformProviderSystemPrompt({
@@ -741,20 +742,9 @@ export async function compactEmbeddedPiSessionDirect(
             provider,
             modelId,
             promptMode,
-            acpEnabled: params.config?.acp?.enabled !== false,
-            runtimeInfo,
-            reactionGuidance,
-            messageToolHints,
-            sandboxInfo,
-            tools: effectiveTools,
-            modelAliasLines: buildModelAliasLines(params.config),
-            userTimezone,
-            userTime,
-            userTimeFormat,
-            contextFiles,
-            memoryCitationsMode: params.config?.memory?.citations,
-            promptContribution,
-            continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
+            runtimeChannel,
+            runtimeCapabilities,
+            agentId: sessionAgentId,
           },
         }),
       );

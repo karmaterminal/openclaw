@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  setRuntimeConfigSnapshot,
-  clearRuntimeConfigSnapshot,
-} from "../../config/io.js";
-
+import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../../config/io.js";
 import {
   resolveContinuationRuntimeConfig,
   resolveMaxDelegatesPerTurn,
