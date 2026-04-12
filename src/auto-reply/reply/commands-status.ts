@@ -7,6 +7,8 @@ import {
 } from "../../agents/agent-scope.js";
 import { resolveFastModeState } from "../../agents/fast-mode.js";
 import { resolveModelAuthLabel } from "../../agents/model-auth-label.js";
+import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
+import { getVolitionalCompactionCount } from "../../agents/tools/request-compaction-tool.js";
 import { listControlledSubagentRuns } from "../../agents/subagent-control.js";
 import { countPendingDescendantRuns } from "../../agents/subagent-registry.js";
 import {
@@ -33,6 +35,10 @@ import {
   formatTaskStatusDetail,
   formatTaskStatusTitle,
 } from "../../tasks/task-status.js";
+import {
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
+} from "../continuation-delegate-store.js";
 import { normalizeGroupActivation } from "../group-activation.js";
 import { resolveSelectedAndActiveModel } from "../model-runtime.js";
 import { buildStatusMessage } from "../status.js";
@@ -282,6 +288,21 @@ export async function buildStatusText(params: {
       pendingDescendantsForRun: (entry) => countPendingDescendantRuns(entry.childSessionKey),
     });
   }
+  let continuationLine: string | undefined;
+  const continuation = cfg.agents?.defaults?.continuation;
+  if (continuation?.enabled && sessionKey) {
+    const chainCount = sessionEntry?.continuationChainCount ?? 0;
+    const { maxChainLength } = resolveContinuationRuntimeConfig(cfg);
+    const pending = pendingDelegateCount(sessionKey);
+    const staged = stagedPostCompactionDelegateCount(sessionKey);
+    const volitional = getVolitionalCompactionCount(sessionKey);
+    const parts = [`chain ${chainCount}/${maxChainLength}`];
+    if (pending > 0) parts.push(`${pending} delegates pending`);
+    if (staged > 0) parts.push(`${staged} post-compaction staged`);
+    parts.push(`volitional: ${volitional}`);
+    continuationLine = `🔄 Continuation: ${parts.join(" | ")}`;
+  }
+
   const groupActivation = isGroup
     ? (normalizeGroupActivation(sessionEntry?.groupActivation) ?? defaultGroupActivation())
     : undefined;
@@ -340,6 +361,7 @@ export async function buildStatusText(params: {
     },
     subagentsLine,
     taskLine,
+    continuationLine,
     mediaDecisions: params.mediaDecisions,
     includeTranscriptUsage: params.includeTranscriptUsage ?? true,
   });

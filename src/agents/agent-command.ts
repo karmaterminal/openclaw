@@ -1023,4 +1023,5 @@ export async function agentCommandFromIngress(
 export const __testing = {
   resolveAgentRuntimeConfig,
   prepareAgentCommandExecution,
+  createAcpVisibleTextAccumulator,
 };
