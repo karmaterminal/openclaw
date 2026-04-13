@@ -381,26 +381,40 @@ export function cancelContinuationTimer(
     sessionCtx.sessionEntry.continuationChainStartedAt = undefined;
     sessionCtx.sessionEntry.continuationChainTokens = undefined;
   }
-  const storeEntry = sessionCtx?.sessionStore?.[sessionKey];
-  const storeHasChainState =
-    (storeEntry?.continuationChainCount ?? 0) > 0 || (storeEntry?.continuationChainTokens ?? 0) > 0;
-  if (storeEntry && storeHasChainState && sessionCtx.sessionStore) {
-    sessionCtx.sessionStore[sessionKey] = {
-      ...storeEntry,
-      continuationChainCount: 0,
-      continuationChainStartedAt: undefined,
-      continuationChainTokens: undefined,
-    };
+  if (sessionCtx?.sessionStore) {
+    const storeResolved = resolveSessionStoreEntry({ store: sessionCtx.sessionStore, sessionKey });
+    const storeEntry = storeResolved.existing;
+    const storeHasChainState =
+      (storeEntry?.continuationChainCount ?? 0) > 0 ||
+      (storeEntry?.continuationChainTokens ?? 0) > 0;
+    if (storeEntry && storeHasChainState) {
+      sessionCtx.sessionStore[storeResolved.normalizedKey] = {
+        ...storeEntry,
+        continuationChainCount: 0,
+        continuationChainStartedAt: undefined,
+        continuationChainTokens: undefined,
+      };
+      for (const legacyKey of storeResolved.legacyKeys) {
+        delete sessionCtx.sessionStore[legacyKey];
+      }
+    }
   }
   if (sessionCtx?.storePath) {
     void updateSessionStore(sessionCtx.storePath, (store) => {
-      const entry = store[sessionKey];
+      const resolved = resolveSessionStoreEntry({ store, sessionKey });
       const entryHasChainState =
-        (entry?.continuationChainCount ?? 0) > 0 || (entry?.continuationChainTokens ?? 0) > 0;
-      if (entry && entryHasChainState) {
-        entry.continuationChainCount = 0;
-        entry.continuationChainStartedAt = undefined;
-        entry.continuationChainTokens = undefined;
+        (resolved.existing?.continuationChainCount ?? 0) > 0 ||
+        (resolved.existing?.continuationChainTokens ?? 0) > 0;
+      if (resolved.existing && entryHasChainState) {
+        store[resolved.normalizedKey] = {
+          ...resolved.existing,
+          continuationChainCount: 0,
+          continuationChainStartedAt: undefined,
+          continuationChainTokens: undefined,
+        };
+        for (const legacyKey of resolved.legacyKeys) {
+          delete store[legacyKey];
+        }
       }
     }).catch(() => {
       // Best-effort — chain state will be reset on next runReplyAgent entry.
@@ -539,23 +553,33 @@ export async function runReplyAgent(params: {
       clearDelegatePending(sessionKey);
     }
     if ((hadActiveChain || hadStaleTokens) && activeSessionStore && activeSessionEntry) {
-      activeSessionStore[sessionKey] = {
+      const resolved = resolveSessionStoreEntry({ store: activeSessionStore, sessionKey });
+      activeSessionStore[resolved.normalizedKey] = {
         ...activeSessionEntry,
         continuationChainCount: 0,
         continuationChainStartedAt: undefined,
         continuationChainTokens: undefined,
       };
+      for (const legacyKey of resolved.legacyKeys) {
+        delete activeSessionStore[legacyKey];
+      }
     }
     // Persist reset to disk only when a chain was actually active — avoids
     // unnecessary lock + disk write on every normal message.
     if ((hadActiveChain || hadStaleTokens) && storePath) {
       try {
         await updateSessionStore(storePath, (store) => {
-          const entry = store[sessionKey];
-          if (entry) {
-            entry.continuationChainCount = 0;
-            entry.continuationChainStartedAt = undefined;
-            entry.continuationChainTokens = undefined;
+          const resolved = resolveSessionStoreEntry({ store, sessionKey });
+          if (resolved.existing) {
+            store[resolved.normalizedKey] = {
+              ...resolved.existing,
+              continuationChainCount: 0,
+              continuationChainStartedAt: undefined,
+              continuationChainTokens: undefined,
+            };
+            for (const legacyKey of resolved.legacyKeys) {
+              delete store[legacyKey];
+            }
           }
         });
       } catch (err) {
@@ -735,24 +759,34 @@ export async function runReplyAgent(params: {
       activeSessionEntry.continuationChainTokens = params.tokens;
     }
     if (activeSessionStore) {
-      const existingEntry = activeSessionStore[sessionKey] ?? activeSessionEntry;
+      const resolved = resolveSessionStoreEntry({ store: activeSessionStore, sessionKey });
+      const existingEntry = resolved.existing ?? activeSessionEntry;
       if (existingEntry) {
-        activeSessionStore[sessionKey] = {
+        activeSessionStore[resolved.normalizedKey] = {
           ...existingEntry,
           continuationChainCount: params.count,
           continuationChainStartedAt: params.startedAt,
           continuationChainTokens: params.tokens,
         };
+        for (const legacyKey of resolved.legacyKeys) {
+          delete activeSessionStore[legacyKey];
+        }
       }
     }
     if (storePath) {
       try {
         await updateSessionStore(storePath, (store) => {
-          const entry = store[sessionKey];
-          if (entry) {
-            entry.continuationChainCount = params.count;
-            entry.continuationChainStartedAt = params.startedAt;
-            entry.continuationChainTokens = params.tokens;
+          const resolved = resolveSessionStoreEntry({ store, sessionKey });
+          if (resolved.existing) {
+            store[resolved.normalizedKey] = {
+              ...resolved.existing,
+              continuationChainCount: params.count,
+              continuationChainStartedAt: params.startedAt,
+              continuationChainTokens: params.tokens,
+            };
+            for (const legacyKey of resolved.legacyKeys) {
+              delete store[legacyKey];
+            }
           }
         });
       } catch (err) {
@@ -1543,21 +1577,31 @@ export async function runReplyAgent(params: {
             activeSessionEntry.continuationChainTokens = compactionChainTokens;
           }
           if (activeSessionStore) {
-            activeSessionStore[sessionKey] = {
-              ...(activeSessionStore[sessionKey] ?? activeSessionEntry!),
+            const resolved = resolveSessionStoreEntry({ store: activeSessionStore, sessionKey });
+            activeSessionStore[resolved.normalizedKey] = {
+              ...(resolved.existing ?? activeSessionEntry!),
               continuationChainCount: currentCompactionChainCount,
               continuationChainStartedAt: compactionChainStartedAt,
               continuationChainTokens: compactionChainTokens,
             };
+            for (const legacyKey of resolved.legacyKeys) {
+              delete activeSessionStore[legacyKey];
+            }
           }
           if (storePath) {
             try {
               await updateSessionStore(storePath, (store) => {
-                const entry = store[sessionKey];
-                if (entry) {
-                  entry.continuationChainCount = currentCompactionChainCount;
-                  entry.continuationChainStartedAt = compactionChainStartedAt;
-                  entry.continuationChainTokens = compactionChainTokens;
+                const resolved = resolveSessionStoreEntry({ store, sessionKey });
+                if (resolved.existing) {
+                  store[resolved.normalizedKey] = {
+                    ...resolved.existing,
+                    continuationChainCount: currentCompactionChainCount,
+                    continuationChainStartedAt: compactionChainStartedAt,
+                    continuationChainTokens: compactionChainTokens,
+                  };
+                  for (const legacyKey of resolved.legacyKeys) {
+                    delete store[legacyKey];
+                  }
                 }
               });
             } catch (err) {
