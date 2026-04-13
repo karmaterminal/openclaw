@@ -14,6 +14,7 @@ import {
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
   type SessionEntry,
+  resolveSessionStoreEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -43,7 +44,11 @@ async function persistSessionEntryUpdate(params: {
     return;
   }
   await updateSessionStore(params.storePath, (store) => {
-    store[params.sessionKey!] = { ...store[params.sessionKey!], ...params.nextEntry };
+    const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey! });
+    store[resolved.normalizedKey] = { ...resolved.existing, ...params.nextEntry };
+    for (const legacyKey of resolved.legacyKeys) {
+      delete store[legacyKey];
+    }
   });
 }
 
