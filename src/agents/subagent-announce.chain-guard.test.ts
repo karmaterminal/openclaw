@@ -47,7 +47,11 @@ vi.mock("./subagent-registry.js", () => ({
 vi.mock("../auto-reply/reply/agent-runner.js", () => ({
   bumpContinuationGeneration: vi.fn(() => 1),
   currentContinuationGeneration: vi.fn(() => 0),
+  registerContinuationTimerHandle: vi.fn(),
+  retainContinuationTimerRef: vi.fn(),
+  releaseContinuationTimerRef: vi.fn(),
   setDelegatePending: vi.fn(),
+  unregisterContinuationTimerHandle: vi.fn(),
 }));
 
 vi.mock("../auto-reply/continuation-delegate-store.js", () => ({

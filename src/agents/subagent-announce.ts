@@ -2,7 +2,10 @@ import { consumePendingDelegates } from "../auto-reply/continuation-delegate-sto
 import {
   bumpContinuationGeneration,
   currentContinuationGeneration,
+  registerContinuationTimerHandle,
+  retainContinuationTimerRef,
   setDelegatePending,
+  unregisterContinuationTimerHandle,
 } from "../auto-reply/reply/agent-runner.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
 import {
@@ -53,7 +56,7 @@ import {
   waitForEmbeddedPiRunEnd,
 } from "./subagent-announce.runtime.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
-import { spawnSubagentDirect, type SpawnSubagentMode } from "./subagent-spawn.js";
+import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
 import { isAnnounceSkip } from "./tools/sessions-send-tokens.js";
 
 type SubagentAnnounceDeps = {
@@ -251,10 +254,35 @@ export async function runSubagentAnnounceFlow(params: {
   const announceType = params.announceType ?? "subagent task";
   let shouldDeleteChildSession = params.cleanup === "delete";
   try {
+    const sessionEntryCache = new Map<string, ReturnType<typeof loadSessionEntryByKey>>();
+    const requesterEntryCache = new Map<string, ReturnType<typeof loadRequesterSessionEntry>>();
+    const readSessionEntryByKey = (sessionKey: string, options?: { refresh?: boolean }) => {
+      if (options?.refresh || !sessionEntryCache.has(sessionKey)) {
+        sessionEntryCache.set(sessionKey, loadSessionEntryByKey(sessionKey));
+      }
+      return sessionEntryCache.get(sessionKey);
+    };
+    const readRequesterSessionEntry = (
+      requesterSessionKey: string,
+      options?: { refresh?: boolean },
+    ) => {
+      if (options?.refresh || !requesterEntryCache.has(requesterSessionKey)) {
+        requesterEntryCache.set(
+          requesterSessionKey,
+          loadRequesterSessionEntry(requesterSessionKey),
+        );
+      }
+      return requesterEntryCache.get(requesterSessionKey)!;
+    };
+    const invalidateSessionEntry = (sessionKey: string) => {
+      sessionEntryCache.delete(sessionKey);
+      requesterEntryCache.delete(sessionKey);
+    };
+
     let targetRequesterSessionKey = params.requesterSessionKey;
     let targetRequesterOrigin = normalizeDeliveryContext(params.requesterOrigin);
     const childSessionId = (() => {
-      const entry = loadSessionEntryByKey(params.childSessionKey);
+      const entry = readSessionEntryByKey(params.childSessionKey);
       return typeof entry?.sessionId === "string" && entry.sessionId.trim()
         ? entry.sessionId.trim()
         : undefined;
@@ -469,7 +497,7 @@ export async function runSubagentAnnounceFlow(params: {
     const isContinuationChainDelegate = /\[continuation:chain-hop:\d+\]/.test(childTask);
     let accumulatedChildTokens = 0;
     if (continuationEnabled && isContinuationChainDelegate) {
-      let childEntry = loadSessionEntryByKey(params.childSessionKey);
+      let childEntry = readSessionEntryByKey(params.childSessionKey);
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const hasTokenData =
           typeof childEntry?.inputTokens === "number" ||
@@ -478,7 +506,7 @@ export async function runSubagentAnnounceFlow(params: {
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 150));
-        childEntry = loadSessionEntryByKey(params.childSessionKey);
+        childEntry = readSessionEntryByKey(params.childSessionKey, { refresh: true });
       }
       accumulatedChildTokens =
         (typeof childEntry?.inputTokens === "number" ? childEntry.inputTokens : 0) +
@@ -502,6 +530,7 @@ export async function runSubagentAnnounceFlow(params: {
           defaultRuntime.log(
             `[subagent-chain-hop] Accumulated ${accumulatedChildTokens} tokens from ${params.childSessionKey} to parent chain cost`,
           );
+          invalidateSessionEntry(targetRequesterSessionKey);
         } catch (err) {
           defaultRuntime.log(
             `[subagent-chain-hop] Failed to persist token accumulation for ${targetRequesterSessionKey}: ${String(err)}`,
@@ -574,7 +603,7 @@ export async function runSubagentAnnounceFlow(params: {
             maxChainLength,
           };
         } else {
-          const parentEntry = loadSessionEntryByKey(targetRequesterSessionKey);
+          const parentEntry = readSessionEntryByKey(targetRequesterSessionKey);
           const storedChainTokens = parentEntry?.continuationChainTokens ?? 0;
           const parentChainTokens =
             storedChainTokens >= accumulatedChildTokens
@@ -610,6 +639,7 @@ export async function runSubagentAnnounceFlow(params: {
           const doChainSpawn = async (timerTriggered = false) => {
             try {
               const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
+              const { spawnSubagentDirect } = await import("./subagent-spawn.js");
               const spawnResult = await spawnSubagentDirect(
                 {
                   task: `[continuation:chain-hop:${nextChainHop}] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
@@ -649,25 +679,32 @@ export async function runSubagentAnnounceFlow(params: {
             continuationGuardLog.debug(
               `[continuation-guard] Chain-hop timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
             );
-            setTimeout(() => {
-              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
-              const drift = currentGen - hopGeneration;
-              continuationGuardLog.debug(
-                `[continuation-guard] Chain-hop timer check: stored=${hopGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${targetRequesterSessionKey}`,
-              );
-              if (drift > generationGuardTolerance) {
-                defaultRuntime.log(
-                  `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
+            retainContinuationTimerRef(targetRequesterSessionKey);
+            const timerHandle = setTimeout(() => {
+              try {
+                const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+                const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+                const drift = currentGen - hopGeneration;
+                continuationGuardLog.debug(
+                  `[continuation-guard] Chain-hop timer check: stored=${hopGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${targetRequesterSessionKey}`,
                 );
-                return;
+                if (drift > generationGuardTolerance) {
+                  defaultRuntime.log(
+                    `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
+                  );
+                  return;
+                }
+                doChainSpawn(true).catch((err) => {
+                  defaultRuntime.log(
+                    `[subagent-chain-hop] Unhandled bracket delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
+                  );
+                });
+              } finally {
+                unregisterContinuationTimerHandle(targetRequesterSessionKey, timerHandle);
               }
-              doChainSpawn(true).catch((err) => {
-                defaultRuntime.log(
-                  `[subagent-chain-hop] Unhandled bracket delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
-                );
-              });
-            }, clampedDelay).unref();
+            }, clampedDelay);
+            registerContinuationTimerHandle(targetRequesterSessionKey, timerHandle);
+            timerHandle.unref();
           } else {
             // Fire-and-forget — don't block the announce flow
             doChainSpawn().catch((err) => {
@@ -706,7 +743,7 @@ export async function runSubagentAnnounceFlow(params: {
             break;
           }
 
-          const parentEntryForTool = loadSessionEntryByKey(targetRequesterSessionKey);
+          const parentEntryForTool = readSessionEntryByKey(targetRequesterSessionKey);
           const storedToolChainTokens = parentEntryForTool?.continuationChainTokens ?? 0;
           const parentChainTokensForTool =
             storedToolChainTokens >= accumulatedChildTokens
@@ -730,6 +767,7 @@ export async function runSubagentAnnounceFlow(params: {
           const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
           const doToolChainSpawn = async (timerTriggered = false) => {
             try {
+              const { spawnSubagentDirect } = await import("./subagent-spawn.js");
               const spawnResult = await spawnSubagentDirect(
                 {
                   task: `[continuation:chain-hop:${nextToolHop}] Tool-delegated from sub-agent (depth ${childDepth}): ${toolDelegate.task}`,
@@ -767,22 +805,29 @@ export async function runSubagentAnnounceFlow(params: {
             continuationGuardLog.debug(
               `[continuation-guard] Tool delegate timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
             );
-            setTimeout(() => {
-              const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-              const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
-              const drift = currentGen - hopGeneration;
-              if (drift > generationGuardTolerance) {
-                defaultRuntime.log(
-                  `[subagent-chain-hop] Tool delegate timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
-                );
-                return;
+            retainContinuationTimerRef(targetRequesterSessionKey);
+            const timerHandle = setTimeout(() => {
+              try {
+                const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
+                const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+                const drift = currentGen - hopGeneration;
+                if (drift > generationGuardTolerance) {
+                  defaultRuntime.log(
+                    `[subagent-chain-hop] Tool delegate timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
+                  );
+                  return;
+                }
+                doToolChainSpawn(true).catch((err) => {
+                  defaultRuntime.log(
+                    `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
+                  );
+                });
+              } finally {
+                unregisterContinuationTimerHandle(targetRequesterSessionKey, timerHandle);
               }
-              doToolChainSpawn(true).catch((err) => {
-                defaultRuntime.log(
-                  `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
-                );
-              });
-            }, clampedDelay).unref();
+            }, clampedDelay);
+            registerContinuationTimerHandle(targetRequesterSessionKey, timerHandle);
+            timerHandle.unref();
           } else {
             doToolChainSpawn().catch((err) => {
               defaultRuntime.log(
@@ -813,7 +858,7 @@ export async function runSubagentAnnounceFlow(params: {
         if (shouldIgnorePostCompletionAnnounceForSession(targetRequesterSessionKey)) {
           return true;
         }
-        const parentSessionEntry = loadSessionEntryByKey(targetRequesterSessionKey);
+        const parentSessionEntry = readSessionEntryByKey(targetRequesterSessionKey);
         const parentSessionAlive = hasUsableSessionEntry(parentSessionEntry);
 
         if (!parentSessionAlive) {
@@ -864,7 +909,7 @@ export async function runSubagentAnnounceFlow(params: {
     // follow-up injection (deliver=false) so the orchestrator receives it.
     let directOrigin = targetRequesterOrigin;
     if (!requesterIsSubagent) {
-      const { entry } = loadRequesterSessionEntry(targetRequesterSessionKey);
+      const { entry } = readRequesterSessionEntry(targetRequesterSessionKey);
       directOrigin = resolveAnnounceOrigin(entry, targetRequesterOrigin);
     }
     const completionDirectOrigin =
