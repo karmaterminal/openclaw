@@ -60,6 +60,10 @@ import { resolveCronAgentSessionKey } from "./session-key.js";
 import { resolveCronSession } from "./session.js";
 import { resolveCronSkillsSnapshot } from "./skills-snapshot.js";
 
+function resolveNonNegativeNumber(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
 let sessionStoreRuntimePromise:
   | Promise<typeof import("../../config/sessions/store.runtime.js")>
   | undefined;
@@ -67,10 +71,6 @@ let sessionStoreRuntimePromise:
 async function loadSessionStoreRuntime() {
   sessionStoreRuntimePromise ??= import("../../config/sessions/store.runtime.js");
   return await sessionStoreRuntimePromise;
-}
-
-function resolveNonNegativeNumber(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 export type { RunCronAgentTurnResult } from "./run.types.js";
