@@ -25,9 +25,8 @@ import {
   isTransientHttpError,
 } from "../../agents/pi-embedded-helpers.js";
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
-import { compactEmbeddedPiSession } from "../../agents/pi-embedded-runner/compact.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import { compactEmbeddedPiSession, runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
   resolveGroupSessionKey,
@@ -80,9 +79,7 @@ import type { ReplyOperation } from "./reply-run-registry.js";
 import type { TypingSignaler } from "./typing-mode.js";
 
 /** Type guard for wrapped continuation run results. */
-function isContinuationWrappedRunResult(
-  result: unknown,
-): result is {
+function isContinuationWrappedRunResult(result: unknown): result is {
   result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
   continueWorkRequest?: ContinueWorkRequest;
 } {
@@ -1059,8 +1056,8 @@ export async function runAgentTurnWithFallback(params: {
                               trigger: "volitional",
                             });
                             return {
-                              ok: !!result?.ok,
-                              compacted: !!result?.compacted,
+                              ok: result?.ok ?? false,
+                              compacted: result?.compacted ?? false,
                               reason: result?.reason,
                             };
                           } catch (err) {

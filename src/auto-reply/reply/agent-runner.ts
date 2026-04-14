@@ -10,6 +10,7 @@ import {
   loadSessionStore,
   resolveSessionPluginStatusLines,
   resolveSessionPluginTraceLines,
+  resolveSessionStoreEntry,
   type SessionEntry,
   type SessionPostCompactionDelegate,
   updateSessionStore,
@@ -243,8 +244,9 @@ async function persistPendingPostCompactionDelegates(params: {
   }
 
   const persisted = await updateSessionStore(params.storePath, (store) => {
+    const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey });
     const current =
-      store[params.sessionKey] ??
+      resolved.existing ??
       params.sessionStore?.[params.sessionKey] ??
       params.sessionEntry ??
       undefined;
@@ -253,10 +255,13 @@ async function persistPendingPostCompactionDelegates(params: {
       ...normalizedDelegates,
     ];
     if (current) {
-      store[params.sessionKey] = {
+      store[resolved.normalizedKey] = {
         ...current,
         pendingPostCompactionDelegates: combined,
       };
+      for (const legacyKey of resolved.legacyKeys) {
+        delete store[legacyKey];
+      }
     }
     return combined;
   });
@@ -291,8 +296,9 @@ async function takePendingPostCompactionDelegates(params: {
   }
 
   const persisted = await updateSessionStore(params.storePath, (store) => {
+    const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey });
     const current =
-      store[params.sessionKey] ??
+      resolved.existing ??
       params.sessionStore?.[params.sessionKey] ??
       params.sessionEntry ??
       undefined;
@@ -300,10 +306,13 @@ async function takePendingPostCompactionDelegates(params: {
       normalizePostCompactionDelegate,
     );
     if (current && delegates.length > 0) {
-      store[params.sessionKey] = {
+      store[resolved.normalizedKey] = {
         ...current,
         pendingPostCompactionDelegates: undefined,
       };
+      for (const legacyKey of resolved.legacyKeys) {
+        delete store[legacyKey];
+      }
     }
     return delegates;
   });
