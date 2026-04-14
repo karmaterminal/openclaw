@@ -15,14 +15,33 @@ describe("continuation tool registration", () => {
     },
   } as const;
 
-  it("exposes continue_delegate on normal turns when continuation is enabled", () => {
+  it("exposes continue_delegate only when drain pipeline is active", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+      drainsContinuationDelegateQueue: true,
+    });
+
+    expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
+  });
+
+  it("hides continue_delegate when drain pipeline is not active", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
       drainsContinuationDelegateQueue: false,
     });
 
-    expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
+    expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(false);
+  });
+
+  it("hides continue_delegate when drainsContinuationDelegateQueue is omitted", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+    });
+
+    expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(false);
   });
 
   it("exposes continue_work when continuation is enabled and the runner wires it", () => {
