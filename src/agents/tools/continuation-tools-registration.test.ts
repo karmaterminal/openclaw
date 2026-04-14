@@ -19,10 +19,21 @@ describe("continuation tool registration", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
-      drainsContinuationDelegateQueue: false,
     });
 
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
+  });
+
+  it("hides continue_delegate when continuation is disabled", () => {
+    const tools = createOpenClawTools({
+      config: {
+        ...config,
+        agents: { defaults: { continuation: { enabled: false } } },
+      },
+      agentSessionKey: "main",
+    });
+
+    expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(false);
   });
 
   it("exposes continue_work when continuation is enabled and the runner wires it", () => {
