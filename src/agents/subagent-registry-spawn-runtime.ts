@@ -43,9 +43,21 @@ export function configureSubagentRegistrySpawnRuntime(params: {
 }
 
 export function countActiveRunsForSession(requesterSessionKey: string): number {
-  return countActiveRunsForSessionImpl?.(requesterSessionKey) ?? 0;
+  if (!countActiveRunsForSessionImpl) {
+    console.warn(
+      "[subagent-registry-spawn-runtime] countActiveRunsForSession called before configureSubagentRegistrySpawnRuntime()",
+    );
+    return 0;
+  }
+  return countActiveRunsForSessionImpl(requesterSessionKey);
 }
 
 export function registerSubagentRun(params: RegisterSubagentRunParams): void {
-  registerSubagentRunImpl?.(params);
+  if (!registerSubagentRunImpl) {
+    console.warn(
+      "[subagent-registry-spawn-runtime] registerSubagentRun called before configureSubagentRegistrySpawnRuntime()",
+    );
+    return;
+  }
+  registerSubagentRunImpl(params);
 }

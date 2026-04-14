@@ -531,15 +531,21 @@ export async function runSubagentAnnounceFlow(params: {
     let accumulatedChildTokens = 0;
     if (continuationEnabled && isContinuationChainDelegate) {
       let childEntry = readSessionEntryByKey(params.childSessionKey);
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const hasTokenData =
-          typeof childEntry?.inputTokens === "number" ||
-          typeof childEntry?.outputTokens === "number";
-        if (hasTokenData) {
-          break;
-        }
+      const hasTokenData =
+        typeof childEntry?.inputTokens === "number" ||
+        typeof childEntry?.outputTokens === "number";
+      if (!hasTokenData) {
+        // Best-effort single retry — avoid blocking the announce hot path
         await new Promise((resolve) => setTimeout(resolve, 150));
         childEntry = readSessionEntryByKey(params.childSessionKey, { refresh: true });
+        const hasTokenDataRetry =
+          typeof childEntry?.inputTokens === "number" ||
+          typeof childEntry?.outputTokens === "number";
+        if (!hasTokenDataRetry) {
+          defaultRuntime.log(
+            `[subagent-chain-hop] Token data unavailable for ${params.childSessionKey} after retry, proceeding with zero token accumulation`,
+          );
+        }
       }
       accumulatedChildTokens =
         (typeof childEntry?.inputTokens === "number" ? childEntry.inputTokens : 0) +
@@ -774,11 +780,12 @@ export async function runSubagentAnnounceFlow(params: {
 
         const parentWasSilent = params.silentAnnounce === true;
 
+        let toolDelegateIdx = 0;
         for (const toolDelegate of toolDelegates) {
           const nextToolHop = toolHopBase + 1;
 
           if (nextToolHop > toolMaxChainLength) {
-            const remaining = toolDelegates.length - toolDelegates.indexOf(toolDelegate);
+            const remaining = toolDelegates.length - toolDelegateIdx;
             defaultRuntime.log(
               `[subagent-chain-hop] Tool delegate chain length ${nextToolHop} > ${toolMaxChainLength}, rejecting from ${params.childSessionKey}. ${remaining} delegate(s) dropped.`,
             );
@@ -792,7 +799,7 @@ export async function runSubagentAnnounceFlow(params: {
               ? storedToolChainTokens
               : storedToolChainTokens + accumulatedChildTokens;
           if (toolCostCapTokens > 0 && parentChainTokensForTool > toolCostCapTokens) {
-            const remaining = toolDelegates.length - toolDelegates.indexOf(toolDelegate);
+            const remaining = toolDelegates.length - toolDelegateIdx;
             defaultRuntime.log(
               `[subagent-chain-hop] Tool delegate cost cap exceeded (${parentChainTokensForTool} > ${toolCostCapTokens}), rejecting from ${params.childSessionKey}. ${remaining} delegate(s) dropped.`,
             );
@@ -888,6 +895,7 @@ export async function runSubagentAnnounceFlow(params: {
           }
 
           toolHopBase = nextToolHop;
+          toolDelegateIdx += 1;
         }
       }
     }
