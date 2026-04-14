@@ -884,9 +884,15 @@ export async function runReplyAgent(params: {
       if (pressureResult.fired && storePath) {
         try {
           await updateSessionStore(storePath, (store) => {
-            const entry = store[sessionKey];
-            if (entry) {
-              entry.lastContextPressureBand = pressureResult.band;
+            const resolved = resolveSessionStoreEntry({ store, sessionKey });
+            if (resolved.existing) {
+              store[resolved.normalizedKey] = {
+                ...resolved.existing,
+                lastContextPressureBand: pressureResult.band,
+              };
+              for (const legacyKey of resolved.legacyKeys) {
+                delete store[legacyKey];
+              }
             }
           });
         } catch (err) {
