@@ -1,4 +1,5 @@
 import { Type } from "@sinclair/typebox";
+import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, ToolInputError } from "./common.js";
@@ -15,6 +16,9 @@ const MIN_CONTEXT_THRESHOLD = 0.7;
 /** Minimum milliseconds between compaction requests per session. */
 const RATE_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
 
+/** Volitional compaction counts are status-only diagnostics, not durable state. */
+const VOLITIONAL_COMPACTION_COUNT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 /**
  * Per-session state for guards.
  *
@@ -23,13 +27,15 @@ const RATE_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
  * rate-limiters, not durable state. A restart resets the cooldown, which is
  * fine — the session itself is fresh.
  */
-const sessionGuardState = new Map<
+const sessionGuardState = createExpiringMapCache<
   string,
   {
     lastRequestMs: number;
     lastGeneration: number;
   }
->();
+>({
+  ttlMs: RATE_LIMIT_MS,
+});
 
 /**
  * Tracks sessions that have a compaction request in-flight.
@@ -244,7 +250,9 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 // Volitional compaction counter (module-level, survives compaction)
 // ---------------------------------------------------------------------------
 
-const volitionalCompactionCounts = new Map<string, number>();
+const volitionalCompactionCounts = createExpiringMapCache<string, number>({
+  ttlMs: VOLITIONAL_COMPACTION_COUNT_TTL_MS,
+});
 
 /** Increment the volitional compaction counter for a session. */
 export function incrementVolitionalCompactionCount(sessionKey: string): void {
@@ -289,4 +297,5 @@ export function _resetVolitionalCounts(sessionKey?: string): void {
 export const _guards = {
   MIN_CONTEXT_THRESHOLD,
   RATE_LIMIT_MS,
+  VOLITIONAL_COMPACTION_COUNT_TTL_MS,
 } as const;

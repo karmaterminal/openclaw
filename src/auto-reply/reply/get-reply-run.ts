@@ -238,6 +238,9 @@ export async function runPreparedReply(
   const isGroupChat = sessionCtx.ChatType === "group";
   const wasMentioned = ctx.WasMentioned === true;
   const isHeartbeat = opts?.isHeartbeat === true;
+  const continuationTrigger = opts?.continuationTrigger;
+  const isDelegateWake = continuationTrigger === "delegate-return";
+  const isContinuationWake = continuationTrigger === "work-wake" || isDelegateWake;
   const { typingPolicy, suppressTyping } = resolveRunTypingPolicy({
     requestedPolicy: opts?.typingPolicy,
     suppressTyping: opts?.suppressTyping === true,
@@ -662,7 +665,10 @@ export async function runPreparedReply(
     },
   };
 
-  const { runReplyAgent } = await loadAgentRunnerRuntime();
+  const { clearDelegatePending, runReplyAgent } = await loadAgentRunnerRuntime();
+  if (isDelegateWake && sessionKey) {
+    clearDelegatePending(sessionKey);
+  }
   return runReplyAgent({
     commandBody: prefixedCommandBody,
     followupRun,
@@ -694,6 +700,7 @@ export async function runPreparedReply(
     sessionCtx,
     shouldInjectGroupIntro,
     typingMode,
+    isContinuationWake,
     resetTriggered,
   });
 }

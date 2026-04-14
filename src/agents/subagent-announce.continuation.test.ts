@@ -9,7 +9,11 @@ const mocked = vi.hoisted(() => ({
     async (_sessionKey?: string): Promise<string | undefined> => "raw subagent reply",
   ),
   generationState: new Map<string, number>(),
+  registerContinuationTimerHandleMock: vi.fn(),
+  retainContinuationTimerRefMock: vi.fn(),
+  releaseContinuationTimerRefMock: vi.fn(),
   setDelegatePendingMock: vi.fn(),
+  unregisterContinuationTimerHandleMock: vi.fn(),
   countActiveDescendantRunsMock: vi.fn((_key?: string) => 0),
   countPendingDescendantRunsMock: vi.fn((_key?: string) => 0),
   isSubagentSessionRunActiveMock: vi.fn((_key?: string) => true),
@@ -40,7 +44,15 @@ vi.mock("../auto-reply/reply/agent-runner.js", () => ({
   },
   currentContinuationGeneration: (sessionKey: string) =>
     mocked.generationState.get(sessionKey) ?? 0,
+  registerContinuationTimerHandle: (...args: unknown[]) =>
+    mocked.registerContinuationTimerHandleMock(...args),
+  retainContinuationTimerRef: (...args: unknown[]) =>
+    mocked.retainContinuationTimerRefMock(...args),
+  releaseContinuationTimerRef: (...args: unknown[]) =>
+    mocked.releaseContinuationTimerRefMock(...args),
   setDelegatePending: (...args: unknown[]) => mocked.setDelegatePendingMock(...args),
+  unregisterContinuationTimerHandle: (...args: unknown[]) =>
+    mocked.unregisterContinuationTimerHandleMock(...args),
 }));
 
 vi.mock("./subagent-depth.js", () => ({
@@ -55,7 +67,7 @@ vi.mock("./pi-embedded.js", () => ({
   waitForEmbeddedPiRunEnd: async () => true,
 }));
 
-vi.mock("./subagent-registry.js", () => ({
+vi.mock("./subagent-announce.registry.runtime.js", () => ({
   countActiveDescendantRuns: (key: string) => mocked.countActiveDescendantRunsMock(key),
   countPendingDescendantRuns: (key: string) => mocked.countPendingDescendantRunsMock(key),
   countPendingDescendantRunsExcludingRun: () => 0,
@@ -136,7 +148,11 @@ describe("subagent announce continuation chaining", () => {
     mocked.requestHeartbeatNowMock.mockReset();
     mocked.readLatestAssistantReplyMock.mockReset().mockResolvedValue("raw subagent reply");
     mocked.generationState.clear();
+    mocked.registerContinuationTimerHandleMock.mockReset();
+    mocked.retainContinuationTimerRefMock.mockReset();
+    mocked.releaseContinuationTimerRefMock.mockReset();
     mocked.setDelegatePendingMock.mockReset();
+    mocked.unregisterContinuationTimerHandleMock.mockReset();
     mocked.countActiveDescendantRunsMock.mockReset().mockReturnValue(0);
     mocked.countPendingDescendantRunsMock.mockReset().mockReturnValue(0);
     mocked.isSubagentSessionRunActiveMock.mockReset().mockReturnValue(true);
@@ -160,6 +176,7 @@ describe("subagent announce continuation chaining", () => {
     childTaskPrefix: string;
     reply: string;
     maxChainLength?: number;
+    maxDelayMs?: number;
     costCapTokens?: number;
     requesterSessionKey?: string;
     wakeOnReturn?: boolean;
@@ -175,10 +192,15 @@ describe("subagent announce continuation chaining", () => {
     fs.writeFileSync(storePath, JSON.stringify(currentStore), "utf8");
 
     // Update config if needed
-    if (typeof params.maxChainLength === "number" || typeof params.costCapTokens === "number") {
+    if (
+      typeof params.maxChainLength === "number" ||
+      typeof params.maxDelayMs === "number" ||
+      typeof params.costCapTokens === "number"
+    ) {
       setRuntimeConfigSnapshot(
         makeBaseConfig({
           maxChainLength: params.maxChainLength,
+          maxDelayMs: params.maxDelayMs,
           costCapTokens: params.costCapTokens,
         }),
       );
@@ -290,7 +312,7 @@ describe("subagent announce continuation chaining", () => {
         sessionId: "grandparent-session",
         continuationChainTokens: 11,
       },
-      "agent:main:subagent:parent": {},
+      "agent:main:subagent:parent": null,
     });
     mocked.isSubagentSessionRunActiveMock.mockReturnValue(false);
     mocked.resolveRequesterForChildSessionMock.mockReturnValue({
@@ -314,21 +336,30 @@ describe("subagent announce continuation chaining", () => {
   });
 
   it("reads generationGuardTolerance when the delayed chain-hop timer fires", async () => {
-    vi.useFakeTimers();
-
     await runContinuationAnnounce({
       childSessionKey: "agent:main:subagent:worker-live-tolerance",
       childTaskPrefix: "[continuation:chain-hop:1]",
       reply: "step complete\n[[CONTINUE_DELEGATE: do step 2 +1s]]",
       maxChainLength: 3,
+      maxDelayMs: 10,
     });
 
     mocked.generationState.set("agent:main:main", 4);
-    // Update config with tolerance BEFORE timer fires — the setTimeout callback
-    // calls resolveContinuationRuntimeConfig() which reads the live config.
+    // Update config with tolerance BEFORE the clamped timer fires — the
+    // setTimeout callback calls resolveContinuationRuntimeConfig() which reads
+    // the live config.
     setRuntimeConfigSnapshot(makeBaseConfig({ maxChainLength: 3, generationGuardTolerance: 3 }));
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(mocked.registerContinuationTimerHandleMock).toHaveBeenCalledWith(
+      "agent:main:main",
+      expect.any(Object),
+    );
+    expect(mocked.retainContinuationTimerRefMock).toHaveBeenCalledWith("agent:main:main");
+    expect(mocked.unregisterContinuationTimerHandleMock).toHaveBeenCalledWith(
+      "agent:main:main",
+      expect.any(Object),
+    );
     expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
   });
 });
