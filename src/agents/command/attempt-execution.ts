@@ -288,7 +288,7 @@ export function runAgentAttempt(params: {
     sessionId: params.sessionId,
     sessionKey: params.sessionKey,
     agentId: params.sessionAgentId,
-    trigger: "user",
+    trigger: "user", // continuationTrigger is forwarded via opts, not mapped to EmbeddedRunTrigger
     messageChannel: params.messageChannel,
     agentAccountId: params.runContext.accountId,
     messageTo: params.opts.replyTo ?? params.opts.to,

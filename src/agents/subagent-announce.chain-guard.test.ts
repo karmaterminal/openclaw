@@ -56,6 +56,8 @@ vi.mock("../auto-reply/reply/continuation-state.runtime.js", () => ({
 
 vi.mock("../auto-reply/continuation-delegate-store.js", () => ({
   consumePendingDelegates: vi.fn(() => []),
+  setTaskFlowDelegatesEnabled: vi.fn(),
+  isTaskFlowDelegatesEnabled: vi.fn(() => false),
 }));
 
 import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";

@@ -321,6 +321,8 @@ export function createOpenClawCodingTools(options?: {
     turnGeneration: number;
     triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
   };
+  /** Whether this run should drain the continuation delegate queue (chain-hop tool path). */
+  drainsContinuationDelegateQueue?: boolean;
   /** If true, the model has native vision capability */
   modelHasVision?: boolean;
   /** Require explicit message targets (no implicit last-route sends). */
@@ -609,6 +611,7 @@ export function createOpenClawCodingTools(options?: {
       allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
       continueWorkOpts: options?.continueWorkOpts,
       requestCompactionOpts: options?.requestCompactionOpts,
+      drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
     }),
   ];
   const toolsForMemoryFlush =

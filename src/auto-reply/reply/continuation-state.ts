@@ -16,8 +16,13 @@ export function hasDelegatePending(sessionKey: string): boolean {
 }
 
 export function clearDelegatePending(sessionKey: string): void {
-  delegatePendingFlags.delete(sessionKey);
-  bumpContinuationGeneration(sessionKey);
+  const wasPending = delegatePendingFlags.delete(sessionKey);
+  // Only bump generation if we actually cleared a pending flag or if
+  // continuation state already exists for this session — avoids
+  // unbounded generation-map growth from non-continuation command paths.
+  if (wasPending || continuationGenerations.has(sessionKey)) {
+    bumpContinuationGeneration(sessionKey);
+  }
   maybeDropContinuationGeneration(sessionKey);
 }
 

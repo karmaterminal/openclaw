@@ -505,6 +505,7 @@ export async function runEmbeddedAttempt(
             allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
             continueWorkOpts: params.continueWorkOpts,
             requestCompactionOpts: params.requestCompactionOpts,
+            drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
             sessionKey: sandboxSessionKey,
             sessionId: params.sessionId,
             runId: params.runId,

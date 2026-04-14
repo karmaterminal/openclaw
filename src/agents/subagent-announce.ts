@@ -1,4 +1,4 @@
-import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
+import { consumePendingDelegates, setTaskFlowDelegatesEnabled, isTaskFlowDelegatesEnabled } from "../auto-reply/continuation-delegate-store.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
 import {
   isSilentReplyText,
@@ -579,6 +579,14 @@ export async function runSubagentAnnounceFlow(params: {
     }
 
     // --- Consume tool-dispatched delegates from the completing subagent ---
+    // Ensure TaskFlow backend is enabled if configured, so consumePendingDelegates reads
+    // the correct store (not just the volatile in-memory map after restart).
+    if (continuationEnabled && !isTaskFlowDelegatesEnabled()) {
+      const taskFlowDelegatesConfigured = cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
+      if (taskFlowDelegatesConfigured) {
+        setTaskFlowDelegatesEnabled(true);
+      }
+    }
     const toolDelegates =
       continuationEnabled && isContinuationChainDelegate
         ? consumePendingDelegates(params.childSessionKey)
