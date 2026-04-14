@@ -56,7 +56,6 @@ import {
   waitForEmbeddedPiRunEnd,
 } from "./subagent-announce.runtime.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
-import { spawnSubagentDirect } from "./subagent-spawn.js";
 import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
 import { isAnnounceSkip } from "./tools/sessions-send-tokens.js";
 
@@ -640,7 +639,7 @@ export async function runSubagentAnnounceFlow(params: {
           const doChainSpawn = async (timerTriggered = false) => {
             try {
               const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
-
+              const { spawnSubagentDirect } = await import("./subagent-spawn.js");
               const spawnResult = await spawnSubagentDirect(
                 {
                   task: `[continuation:chain-hop:${nextChainHop}] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
@@ -768,6 +767,7 @@ export async function runSubagentAnnounceFlow(params: {
           const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
           const doToolChainSpawn = async (timerTriggered = false) => {
             try {
+              const { spawnSubagentDirect } = await import("./subagent-spawn.js");
               const spawnResult = await spawnSubagentDirect(
                 {
                   task: `[continuation:chain-hop:${nextToolHop}] Tool-delegated from sub-agent (depth ${childDepth}): ${toolDelegate.task}`,

@@ -70,8 +70,8 @@ import {
   resolveQueuedReplyRuntimeConfig,
   resolveModelFallbackOptions,
 } from "./agent-runner-utils.js";
-import { currentContinuationGeneration } from "./agent-runner.js";
 import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
+import { currentContinuationGeneration } from "./continuation-state.js";
 import type { FollowupRun } from "./queue.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
 import { createReplyMediaPathNormalizer } from "./reply-media-paths.runtime.js";
