@@ -14,7 +14,9 @@ import {
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
   type SessionEntry,
+  resolveSessionStoreEntry,
   updateSessionStore,
+  updateSessionStoreEntry,
 } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveStableSessionEndTranscript } from "../../gateway/session-transcript-files.fs.js";
@@ -43,7 +45,11 @@ async function persistSessionEntryUpdate(params: {
     return;
   }
   await updateSessionStore(params.storePath, (store) => {
-    store[params.sessionKey!] = { ...store[params.sessionKey!], ...params.nextEntry };
+    const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey! });
+    store[resolved.normalizedKey] = { ...resolved.existing, ...params.nextEntry };
+    for (const legacyKey of resolved.legacyKeys) {
+      delete store[legacyKey];
+    }
   });
 }
 
@@ -270,11 +276,10 @@ export async function incrementCompactionCount(params: {
     ...updates,
   };
   if (storePath) {
-    await updateSessionStore(storePath, (store) => {
-      store[sessionKey] = {
-        ...store[sessionKey],
-        ...updates,
-      };
+    await updateSessionStoreEntry({
+      storePath,
+      sessionKey,
+      update: async () => updates,
     });
   }
   if (newSessionId && newSessionId !== entry.sessionId && cfg) {
