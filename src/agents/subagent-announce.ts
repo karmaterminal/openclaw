@@ -950,9 +950,7 @@ export async function runSubagentAnnounceFlow(params: {
     const directIdempotencyKey = buildAnnounceIdempotencyKey(announceId);
     // Structured completion wakes are enabled fleet-wide through the same
     // continuation flag, even for ordinary subagent returns.
-    const cfg2 = loadConfig();
-    const continuationEnabledForTrigger = cfg2?.agents?.defaults?.continuation?.enabled === true;
-    const delegateReturnTrigger = continuationEnabledForTrigger ? "delegate-return" : undefined;
+    const delegateReturnTrigger = continuationEnabled ? "delegate-return" : undefined;
     const delivery = await deliverSubagentAnnouncement({
       requesterSessionKey: targetRequesterSessionKey,
       announceId,
