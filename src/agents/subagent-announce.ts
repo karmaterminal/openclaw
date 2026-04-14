@@ -1,19 +1,10 @@
 import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
-import {
-  bumpContinuationGeneration,
-  currentContinuationGeneration,
-  registerContinuationTimerHandle,
-  retainContinuationTimerRef,
-  setDelegatePending,
-  unregisterContinuationTimerHandle,
-} from "../auto-reply/reply/agent-runner.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
 import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
   stripContinuationSignal,
 } from "../auto-reply/tokens.js";
-import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import {
   resolveAgentIdFromSessionKey,
   resolveStorePath,
@@ -57,7 +48,7 @@ import {
   waitForEmbeddedPiRunEnd,
 } from "./subagent-announce.runtime.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
-import { spawnSubagentDirect, type SpawnSubagentMode } from "./subagent-spawn.js";
+import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
 import { isAnnounceSkip } from "./tools/sessions-send-tokens.js";
 
 type SubagentAnnounceDeps = {
@@ -77,128 +68,31 @@ let subagentAnnounceDeps: SubagentAnnounceDeps = defaultSubagentAnnounceDeps;
 let subagentRegistryRuntimePromise: Promise<
   typeof import("./subagent-announce.registry.runtime.js")
 > | null = null;
+let continuationStateRuntimePromise: Promise<
+  typeof import("../auto-reply/reply/continuation-state.runtime.js")
+> | null = null;
+let subagentSpawnRuntimePromise: Promise<
+  Pick<typeof import("./subagent-spawn.js"), "spawnSubagentDirect">
+> | null = null;
 
 function loadSubagentRegistryRuntime() {
   subagentRegistryRuntimePromise ??= import("./subagent-announce.registry.runtime.js");
   return subagentRegistryRuntimePromise;
 }
 
-const continuationGuardLog = createSubsystemLogger("continuation/guard");
-
-export function buildSubagentSystemPrompt(params: {
-  requesterSessionKey?: string;
-  requesterOrigin?: DeliveryContext;
-  childSessionKey: string;
-  label?: string;
-  task?: string;
-  /** Whether ACP-specific routing guidance should be included. Defaults to true. */
-  acpEnabled?: boolean;
-  /** Depth of the child being spawned (1 = sub-agent, 2 = sub-sub-agent). */
-  childDepth?: number;
-  /** Config value: max allowed spawn depth. */
-  maxSpawnDepth?: number;
-  /** Tool names available to the child — used to teach tool-primary vs bracket-only continuation. */
-  toolNames?: string[];
-  /** Whether continuation chaining is enabled. Defaults to config value. */
-  continuationEnabled?: boolean;
-}) {
-  const taskText =
-    typeof params.task === "string" && params.task.trim()
-      ? params.task.replace(/\s+/g, " ").trim()
-      : "{{TASK_DESCRIPTION}}";
-  const childDepth = typeof params.childDepth === "number" ? params.childDepth : 1;
-  const maxSpawnDepth =
-    typeof params.maxSpawnDepth === "number"
-      ? params.maxSpawnDepth
-      : DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH;
-  const acpEnabled = params.acpEnabled !== false;
-  const canSpawn = childDepth < maxSpawnDepth;
-  const parentLabel = childDepth >= 2 ? "parent orchestrator" : "main agent";
-
-  const lines = [
-    "# Subagent Context",
-    "",
-    `You are a **subagent** spawned by the ${parentLabel} for a specific task.`,
-    "",
-    "## Your Role",
-    `- You were created to handle: ${taskText}`,
-    "- Complete this task. That's your entire purpose.",
-    `- You are NOT the ${parentLabel}. Don't try to be.`,
-    "",
-    "## Rules",
-    "1. **Stay focused** - Do your assigned task, nothing else",
-    `2. **Complete the task** - Your final message will be automatically reported to the ${parentLabel}`,
-    "3. **Don't initiate** - No heartbeats, no proactive actions, no side quests",
-    "4. **Be ephemeral** - You may be terminated after task completion. That's fine.",
-    "5. **Trust push-based completion** - Descendant results are auto-announced back to you; do not busy-poll for status.",
-    "6. **Recover from truncated tool output** - If you see a notice like `[... N more characters truncated]`, assume prior output was reduced. Re-read only what you need using smaller chunks (`read` with offset/limit, or targeted `rg`/`head`/`tail`) instead of full-file `cat`.",
-    "",
-    "## Output Format",
-    "When complete, your final response should include:",
-    `- What you accomplished or found`,
-    `- Any relevant details the ${parentLabel} should know`,
-    "- Keep it concise but informative",
-    "",
-    "## What You DON'T Do",
-    `- NO user conversations (that's ${parentLabel}'s job)`,
-    "- NO external messages (email, tweets, etc.) unless explicitly tasked with a specific recipient/channel",
-    "- NO cron jobs or persistent state",
-    `- NO pretending to be the ${parentLabel}`,
-    `- Only use the \`message\` tool when explicitly instructed to contact a specific external recipient; otherwise return plain text and let the ${parentLabel} deliver it`,
-    "",
-  ];
-
-  if (canSpawn) {
-    lines.push(
-      "## Sub-Agent Spawning",
-      "You CAN spawn your own sub-agents for parallel or complex work using `sessions_spawn`.",
-      "Use the `subagents` tool to steer, kill, or do an on-demand status check for your spawned sub-agents.",
-      "Your sub-agents will announce their results back to you automatically (not to the main agent).",
-      "Default workflow: spawn work, continue orchestrating, and wait for auto-announced completions.",
-      "Auto-announce is push-based. After spawning children, do NOT call sessions_list, sessions_history, exec sleep, or any polling tool.",
-      "Wait for completion events to arrive as user messages.",
-      "Track expected child session keys and only send your final answer after completion events for ALL expected children arrive.",
-      "If a child completion event arrives AFTER you already sent your final answer, reply ONLY with NO_REPLY.",
-      "Do NOT repeatedly poll `subagents list` in a loop unless you are actively debugging or intervening.",
-      "Coordinate their work and synthesize results before reporting back.",
-      ...(acpEnabled
-        ? [
-            'For ACP harness sessions (codex/claudecode/gemini), use `sessions_spawn` with `runtime: "acp"` (set `agentId` unless `acp.defaultAgent` is configured).',
-            '`agents_list` and `subagents` apply to OpenClaw sub-agents (`runtime: "subagent"`); ACP harness ids are controlled by `acp.allowedAgents`.',
-            "Do not ask users to run slash commands or CLI when `sessions_spawn` can do it directly.",
-            "Do not use `exec` (`openclaw ...`, `acpx ...`) to spawn ACP sessions.",
-            'Use `subagents` only for OpenClaw subagents (`runtime: "subagent"`).',
-            "Subagent results auto-announce back to you; ACP sessions continue in their bound thread.",
-            "Avoid polling loops; spawn, orchestrate, and synthesize results.",
-          ]
-        : []),
-      "",
-    );
-  } else if (childDepth >= 2) {
-    lines.push(
-      "## Sub-Agent Spawning",
-      "You are a leaf worker and CANNOT spawn further sub-agents. Focus on your assigned task.",
-      "",
-    );
-  }
-
-  lines.push(
-    "## Session Context",
-    ...[
-      params.label ? `- Label: ${params.label}` : undefined,
-      params.requesterSessionKey
-        ? `- Requester session: ${params.requesterSessionKey}.`
-        : undefined,
-      params.requesterOrigin?.channel
-        ? `- Requester channel: ${params.requesterOrigin.channel}.`
-        : undefined,
-      `- Your session: ${params.childSessionKey}.`,
-    ].filter((line): line is string => line !== undefined),
-    "",
-  );
-  return lines.join("\n");
+function loadContinuationStateRuntime() {
+  continuationStateRuntimePromise ??= import("../auto-reply/reply/continuation-state.runtime.js");
+  return continuationStateRuntimePromise;
 }
 
+function loadSubagentSpawnRuntime() {
+  subagentSpawnRuntimePromise ??= import("./subagent-spawn.js");
+  return subagentSpawnRuntimePromise;
+}
+
+const continuationGuardLog = createSubsystemLogger("continuation/guard");
+
+export { buildSubagentSystemPrompt } from "./subagent-system-prompt.js";
 export { captureSubagentCompletionReply } from "./subagent-announce-output.js";
 export type { SubagentRunOutcome } from "./subagent-announce-output.js";
 
@@ -439,13 +333,38 @@ export async function runSubagentAnnounceFlow(params: {
       | undefined;
     try {
       subagentRegistryRuntime = await subagentAnnounceDeps.loadSubagentRegistryRuntime();
-      if (
-        requesterDepth >= 1 &&
-        subagentRegistryRuntime.shouldIgnorePostCompletionAnnounceForSession(
-          targetRequesterSessionKey,
-        )
-      ) {
-        return true;
+      const runtime = subagentRegistryRuntime;
+      const refreshRequesterTarget = () => {
+        if (!requesterIsInternalSession()) {
+          return { ok: true } as const;
+        }
+        if (runtime.isSubagentSessionRunActive(targetRequesterSessionKey)) {
+          return { ok: true } as const;
+        }
+        if (runtime.shouldIgnorePostCompletionAnnounceForSession(targetRequesterSessionKey)) {
+          return { ok: false, ignored: true } as const;
+        }
+        const parentSessionEntry = readSessionEntryByKey(targetRequesterSessionKey);
+        if (hasUsableSessionEntry(parentSessionEntry)) {
+          return { ok: true } as const;
+        }
+        const fallback = runtime.resolveRequesterForChildSession(targetRequesterSessionKey);
+        if (!fallback?.requesterSessionKey) {
+          return { ok: false, missing: true } as const;
+        }
+        targetRequesterSessionKey = fallback.requesterSessionKey;
+        targetRequesterOrigin =
+          normalizeDeliveryContext(fallback.requesterOrigin) ?? targetRequesterOrigin;
+        requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey);
+        return { ok: true } as const;
+      };
+      const requesterTarget = refreshRequesterTarget();
+      if (!requesterTarget.ok) {
+        if (requesterTarget.ignored) {
+          return true;
+        }
+        shouldDeleteChildSession = false;
+        return false;
       }
 
       const pendingChildDescendantRuns = Math.max(
@@ -747,12 +666,14 @@ export async function runSubagentAnnounceFlow(params: {
           }
         } else {
           const nextChainHop = chainGuardResult.nextChainHop;
+          const continuationStateRuntime = await loadContinuationStateRuntime();
 
-          setDelegatePending(targetRequesterSessionKey);
+          continuationStateRuntime.setDelegatePending(targetRequesterSessionKey);
 
           const doChainSpawn = async (timerTriggered = false) => {
             try {
               const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
+              const { spawnSubagentDirect } = await loadSubagentSpawnRuntime();
               const spawnResult = await spawnSubagentDirect(
                 {
                   task: `[continuation:chain-hop:${nextChainHop}] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
@@ -788,15 +709,17 @@ export async function runSubagentAnnounceFlow(params: {
 
           if (chainDelayMs && chainDelayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, chainDelayMs));
-            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            const hopGeneration =
+              continuationStateRuntime.bumpContinuationGeneration(targetRequesterSessionKey);
             continuationGuardLog.debug(
               `[continuation-guard] Chain-hop timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
             );
-            retainContinuationTimerRef(targetRequesterSessionKey);
+            continuationStateRuntime.retainContinuationTimerRef(targetRequesterSessionKey);
             const timerHandle = setTimeout(() => {
               try {
                 const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-                const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+                const currentGen =
+                  continuationStateRuntime.currentContinuationGeneration(targetRequesterSessionKey);
                 const drift = currentGen - hopGeneration;
                 continuationGuardLog.debug(
                   `[continuation-guard] Chain-hop timer check: stored=${hopGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${targetRequesterSessionKey}`,
@@ -813,10 +736,16 @@ export async function runSubagentAnnounceFlow(params: {
                   );
                 });
               } finally {
-                unregisterContinuationTimerHandle(targetRequesterSessionKey, timerHandle);
+                continuationStateRuntime.unregisterContinuationTimerHandle(
+                  targetRequesterSessionKey,
+                  timerHandle,
+                );
               }
             }, clampedDelay);
-            registerContinuationTimerHandle(targetRequesterSessionKey, timerHandle);
+            continuationStateRuntime.registerContinuationTimerHandle(
+              targetRequesterSessionKey,
+              timerHandle,
+            );
             timerHandle.unref();
           } else {
             // Fire-and-forget — don't block the announce flow
@@ -874,12 +803,14 @@ export async function runSubagentAnnounceFlow(params: {
           const toolWake =
             toolDelegate.silentWake || (parentWasSilent && params.wakeOnReturn === true);
           const toolDelayMs = toolDelegate.delayMs;
+          const continuationStateRuntime = await loadContinuationStateRuntime();
 
-          setDelegatePending(targetRequesterSessionKey);
+          continuationStateRuntime.setDelegatePending(targetRequesterSessionKey);
 
           const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
           const doToolChainSpawn = async (timerTriggered = false) => {
             try {
+              const { spawnSubagentDirect } = await loadSubagentSpawnRuntime();
               const spawnResult = await spawnSubagentDirect(
                 {
                   task: `[continuation:chain-hop:${nextToolHop}] Tool-delegated from sub-agent (depth ${childDepth}): ${toolDelegate.task}`,
@@ -913,15 +844,17 @@ export async function runSubagentAnnounceFlow(params: {
 
           if (toolDelayMs && toolDelayMs > 0) {
             const clampedDelay = Math.max(toolMinDelayMs, Math.min(toolMaxDelayMs, toolDelayMs));
-            const hopGeneration = bumpContinuationGeneration(targetRequesterSessionKey);
+            const hopGeneration =
+              continuationStateRuntime.bumpContinuationGeneration(targetRequesterSessionKey);
             continuationGuardLog.debug(
               `[continuation-guard] Tool delegate timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
             );
-            retainContinuationTimerRef(targetRequesterSessionKey);
+            continuationStateRuntime.retainContinuationTimerRef(targetRequesterSessionKey);
             const timerHandle = setTimeout(() => {
               try {
                 const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-                const currentGen = currentContinuationGeneration(targetRequesterSessionKey);
+                const currentGen =
+                  continuationStateRuntime.currentContinuationGeneration(targetRequesterSessionKey);
                 const drift = currentGen - hopGeneration;
                 if (drift > generationGuardTolerance) {
                   defaultRuntime.log(
@@ -935,10 +868,16 @@ export async function runSubagentAnnounceFlow(params: {
                   );
                 });
               } finally {
-                unregisterContinuationTimerHandle(targetRequesterSessionKey, timerHandle);
+                continuationStateRuntime.unregisterContinuationTimerHandle(
+                  targetRequesterSessionKey,
+                  timerHandle,
+                );
               }
             }, clampedDelay);
-            registerContinuationTimerHandle(targetRequesterSessionKey, timerHandle);
+            continuationStateRuntime.registerContinuationTimerHandle(
+              targetRequesterSessionKey,
+              timerHandle,
+            );
             timerHandle.unref();
           } else {
             doToolChainSpawn().catch((err) => {
@@ -959,34 +898,7 @@ export async function runSubagentAnnounceFlow(params: {
       return true;
     }
 
-    let requesterIsSubagent = requesterIsInternalSession();
-    if (requesterIsSubagent) {
-      const {
-        isSubagentSessionRunActive,
-        resolveRequesterForChildSession,
-        shouldIgnorePostCompletionAnnounceForSession,
-      } = subagentRegistryRuntime ?? (await loadSubagentRegistryRuntime());
-      if (!isSubagentSessionRunActive(targetRequesterSessionKey)) {
-        if (shouldIgnorePostCompletionAnnounceForSession(targetRequesterSessionKey)) {
-          return true;
-        }
-        const parentSessionEntry = readSessionEntryByKey(targetRequesterSessionKey);
-        const parentSessionAlive = hasUsableSessionEntry(parentSessionEntry);
-
-        if (!parentSessionAlive) {
-          const fallback = resolveRequesterForChildSession(targetRequesterSessionKey);
-          if (!fallback?.requesterSessionKey) {
-            shouldDeleteChildSession = false;
-            return false;
-          }
-          targetRequesterSessionKey = fallback.requesterSessionKey;
-          targetRequesterOrigin =
-            normalizeDeliveryContext(fallback.requesterOrigin) ?? targetRequesterOrigin;
-          requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey);
-          requesterIsSubagent = requesterIsInternalSession();
-        }
-      }
-    }
+    const requesterIsSubagent = requesterIsInternalSession();
 
     const replyInstruction = buildAnnounceReplyInstruction({
       requesterIsSubagent,
@@ -1036,16 +948,11 @@ export async function runSubagentAnnounceFlow(params: {
           })
         : targetRequesterOrigin;
     const directIdempotencyKey = buildAnnounceIdempotencyKey(announceId);
-    // Only tag as delegate-return when the completing run was a continuation
-    // delegate (task contains chain-hop marker). Regular subagent completions
-    // should not trigger continuation chain state preservation.
-    // Note: silentAnnounce delegates return early above and never reach here.
-    // Only the task prefix identifies continuation delegates in the non-silent path.
-    const isContinuationDelegateRun = /\[continuation:chain-hop:\d+\]/.test(params.task ?? "");
+    // Structured completion wakes are enabled fleet-wide through the same
+    // continuation flag, even for ordinary subagent returns.
     const cfg2 = loadConfig();
     const continuationEnabledForTrigger = cfg2?.agents?.defaults?.continuation?.enabled === true;
-    const delegateReturnTrigger =
-      continuationEnabledForTrigger && isContinuationDelegateRun ? "delegate-return" : undefined;
+    const delegateReturnTrigger = continuationEnabledForTrigger ? "delegate-return" : undefined;
     const delivery = await deliverSubagentAnnouncement({
       requesterSessionKey: targetRequesterSessionKey,
       announceId,

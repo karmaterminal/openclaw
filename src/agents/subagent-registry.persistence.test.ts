@@ -326,7 +326,7 @@ describe("subagent registry persistence", () => {
 
     await flushQueuedRegistryWork();
 
-    const store = await readSessionStore(storePath);
+    const store = await readSubagentSessionStore(storePath);
     const persisted = store["agent:main:subagent:timing"];
     expect(persisted?.endedAt).toBe(endedAt);
     expect(persisted?.runtimeMs).toBe(500);

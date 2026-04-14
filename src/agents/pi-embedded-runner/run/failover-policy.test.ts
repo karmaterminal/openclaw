@@ -104,6 +104,7 @@ describe("resolveRunFailoverDecision", () => {
       resolveRunFailoverDecision({
         stage: "assistant",
         aborted: false,
+        externalAbort: false,
         fallbackConfigured: true,
         failoverFailure: false,
         failoverReason: null,
@@ -121,6 +122,7 @@ describe("resolveRunFailoverDecision", () => {
       resolveRunFailoverDecision({
         stage: "assistant",
         aborted: false,
+        externalAbort: false,
         fallbackConfigured: true,
         failoverFailure: true,
         failoverReason: "timeout",

@@ -4,21 +4,22 @@ import {
   listTaskFlowsForOwnerKey,
   resetTaskFlowRegistryForTests,
 } from "../tasks/task-flow-registry.js";
+import type { finishFlow as finishFlowType } from "../tasks/task-flow-registry.js";
 
 const hoisted = vi.hoisted(() => ({
   finishFlowSpy: vi.fn(),
-  realFinishFlow: null as null | ((...args: unknown[]) => unknown),
+  realFinishFlow: null as null | typeof finishFlowType,
 }));
 const { finishFlowSpy } = hoisted;
 vi.mock("../tasks/task-flow-registry.js", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../tasks/task-flow-registry.js")>();
   hoisted.realFinishFlow = mod.finishFlow;
-  hoisted.finishFlowSpy.mockImplementation((...args: unknown[]) =>
-    mod.finishFlow(...(args as [never])),
+  hoisted.finishFlowSpy.mockImplementation((params: Parameters<typeof mod.finishFlow>[0]) =>
+    mod.finishFlow(params),
   );
   return {
     ...mod,
-    finishFlow: (...args: unknown[]) => hoisted.finishFlowSpy(...args),
+    finishFlow: (params: Parameters<typeof mod.finishFlow>[0]) => hoisted.finishFlowSpy(params),
   };
 });
 import { withTempDir } from "../test-helpers/temp-dir.js";
@@ -61,8 +62,8 @@ describe("continuation-delegate-store-taskflow", () => {
     finishFlowSpy.mockRestore();
     // Re-bind default delegation to real implementation after restore.
     if (hoisted.realFinishFlow) {
-      finishFlowSpy.mockImplementation((...args: unknown[]) =>
-        (hoisted.realFinishFlow as Function)(...args),
+      finishFlowSpy.mockImplementation((params: Parameters<typeof finishFlowType>[0]) =>
+        hoisted.realFinishFlow!(params),
       );
     }
     setTaskFlowDelegatesEnabled(false);

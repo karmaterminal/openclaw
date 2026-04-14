@@ -5,6 +5,10 @@ import {
   taskFlowEnqueuePendingDelegate,
   taskFlowPendingDelegateCount,
 } from "./continuation-delegate-store-taskflow.js";
+import type {
+  DelayedContinuationReservation,
+  PendingContinuationDelegate,
+} from "./continuation-delegate.types.js";
 
 /**
  * Module-level store for `continue_delegate` tool calls.
@@ -25,25 +29,6 @@ import {
  * Task Flow registry (SQLite persistence). Otherwise, the volatile in-memory
  * Map is used (default).
  */
-
-export interface PendingContinuationDelegate {
-  task: string;
-  delayMs?: number;
-  silent?: boolean;
-  silentWake?: boolean;
-}
-
-export interface DelayedContinuationReservation {
-  id: string;
-  source: "bracket" | "tool";
-  task: string;
-  createdAt: number;
-  fireAt: number;
-  generation: number;
-  plannedHop: number;
-  silent?: boolean;
-  silentWake?: boolean;
-}
 
 // ---------------------------------------------------------------------------
 // Task Flow delegate gate

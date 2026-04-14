@@ -185,7 +185,7 @@ function loadSessionStoreFixture(): Record<string, SessionEntry> {
   }) as unknown as Record<string, SessionEntry>;
 }
 
-vi.mock("./subagent-registry.js", () => subagentRegistryMock);
+vi.mock("./subagent-announce.registry.runtime.js", () => subagentRegistryMock);
 vi.mock("./subagent-registry-runtime.js", () => subagentRegistryMock);
 
 describe("subagent announce formatting", () => {
@@ -338,10 +338,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("sends instructional message to main agent with status and findings", async () => {
-    configOverride = {
+    setConfigOverride({
       ...configOverride,
       agents: { defaults: { continuation: { enabled: true } } },
-    };
+    });
     sessionStore = {
       "agent:main:subagent:test": {
         sessionId: "child-session-123",
@@ -1726,10 +1726,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("prefers direct delivery first for completion-mode and then queues on direct failure", async () => {
-    configOverride = {
+    setConfigOverride({
       ...configOverride,
       agents: { defaults: { continuation: { enabled: true } } },
-    };
+    });
     embeddedRunMock.isEmbeddedPiRunActive.mockReturnValue(true);
     embeddedRunMock.isEmbeddedPiRunStreaming.mockReturnValue(false);
     sessionStore = {
@@ -1768,10 +1768,10 @@ describe("subagent announce formatting", () => {
   });
 
   it("falls back to internal requester-session injection when completion route is missing", async () => {
-    configOverride = {
+    setConfigOverride({
       ...configOverride,
       agents: { defaults: { continuation: { enabled: true } } },
-    };
+    });
     embeddedRunMock.isEmbeddedPiRunActive.mockReturnValue(false);
     embeddedRunMock.isEmbeddedPiRunStreaming.mockReturnValue(false);
     sessionStore = {

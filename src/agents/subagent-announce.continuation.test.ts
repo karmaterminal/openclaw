@@ -36,7 +36,7 @@ vi.mock("../infra/heartbeat-wake.js", () => ({
   requestHeartbeatNow: (...args: unknown[]) => mocked.requestHeartbeatNowMock(...args),
 }));
 
-vi.mock("../auto-reply/reply/agent-runner.js", () => ({
+vi.mock("../auto-reply/reply/continuation-state.runtime.js", () => ({
   bumpContinuationGeneration: (sessionKey: string) => {
     const next = (mocked.generationState.get(sessionKey) ?? 0) + 1;
     mocked.generationState.set(sessionKey, next);

@@ -33,7 +33,7 @@ vi.mock("./pi-embedded.js", () => ({
   waitForEmbeddedPiRunEnd: async () => true,
 }));
 
-vi.mock("./subagent-registry.js", () => ({
+vi.mock("./subagent-announce.registry.runtime.js", () => ({
   countActiveDescendantRuns: () => 0,
   countPendingDescendantRuns: () => 0,
   countPendingDescendantRunsExcludingRun: () => 0,
@@ -44,7 +44,7 @@ vi.mock("./subagent-registry.js", () => ({
   shouldIgnorePostCompletionAnnounceForSession: () => false,
 }));
 
-vi.mock("../auto-reply/reply/agent-runner.js", () => ({
+vi.mock("../auto-reply/reply/continuation-state.runtime.js", () => ({
   bumpContinuationGeneration: vi.fn(() => 1),
   currentContinuationGeneration: vi.fn(() => 0),
   registerContinuationTimerHandle: vi.fn(),

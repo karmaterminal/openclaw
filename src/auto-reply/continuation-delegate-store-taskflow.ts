@@ -20,7 +20,7 @@ import {
   updateFlowRecordByIdExpectedRevision,
 } from "../tasks/task-flow-registry.js";
 import type { TaskFlowRecord, JsonValue } from "../tasks/task-flow-registry.types.js";
-import type { PendingContinuationDelegate } from "./continuation-delegate-store.js";
+import type { PendingContinuationDelegate } from "./continuation-delegate.types.js";
 
 const CONTROLLER_ID = "core/continuation-delegate";
 
