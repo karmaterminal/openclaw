@@ -47,4 +47,46 @@ describe("continuation tool registration", () => {
 
     expect(tools.some((tool) => tool.name === "continue_work")).toBe(true);
   });
+
+  it("exposes request_compaction when continuation is enabled and requestCompactionOpts is wired", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+      requestCompactionOpts: {
+        getContextUsage: () => 0.85,
+        getSessionGeneration: () => 1,
+        turnGeneration: 1,
+        triggerCompaction: vi.fn().mockResolvedValue({ ok: true, compacted: false }),
+      },
+    });
+
+    expect(tools.some((tool) => tool.name === "request_compaction")).toBe(true);
+  });
+
+  it("hides request_compaction when continuation is disabled", () => {
+    const tools = createOpenClawTools({
+      config: {
+        ...config,
+        agents: { defaults: { continuation: { enabled: false } } },
+      },
+      agentSessionKey: "main",
+      requestCompactionOpts: {
+        getContextUsage: () => 0.85,
+        getSessionGeneration: () => 1,
+        turnGeneration: 1,
+        triggerCompaction: vi.fn().mockResolvedValue({ ok: true, compacted: false }),
+      },
+    });
+
+    expect(tools.some((tool) => tool.name === "request_compaction")).toBe(false);
+  });
+
+  it("hides request_compaction when requestCompactionOpts is not provided", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+    });
+
+    expect(tools.some((tool) => tool.name === "request_compaction")).toBe(false);
+  });
 });
