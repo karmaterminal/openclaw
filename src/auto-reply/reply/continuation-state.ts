@@ -38,6 +38,10 @@ export function clearDelegatePendingIfNoDelayedReservations(sessionKey: string):
   }
 }
 
+export function hasContinuationGeneration(sessionKey: string): boolean {
+  return continuationGenerations.has(sessionKey);
+}
+
 export function currentContinuationGeneration(sessionKey: string): number {
   return continuationGenerations.get(sessionKey) ?? 0;
 }
@@ -48,11 +52,11 @@ export function bumpContinuationGeneration(sessionKey: string): number {
   return next;
 }
 
-function hasLiveContinuationTimerRefs(sessionKey: string): boolean {
+export function hasLiveContinuationTimerRefs(sessionKey: string): boolean {
   return (continuationTimerRefs.get(sessionKey) ?? 0) > 0;
 }
 
-function maybeDropContinuationGeneration(sessionKey: string): void {
+export function maybeDropContinuationGeneration(sessionKey: string): void {
   if (hasLiveContinuationTimerRefs(sessionKey)) {
     return;
   }
