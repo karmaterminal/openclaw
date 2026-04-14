@@ -86,7 +86,7 @@ function shouldRotatePrompt(params: PromptDecisionParams): boolean {
 }
 
 function shouldRotateAssistant(params: AssistantDecisionParams): boolean {
-  if (params.aborted || params.timedOut || params.failoverReason === "timeout") {
+  if (params.aborted) {
     return false;
   }
   return params.failoverFailure || params.failoverReason !== null;
@@ -153,6 +153,24 @@ export function resolveRunFailoverDecision(params: RunFailoverDecisionParams): R
   }
 
   if (params.externalAbort) {
+    return {
+      action: "surface_error",
+      reason: params.failoverReason,
+    };
+  }
+  if (params.timedOut) {
+    return {
+      action: "surface_error",
+      reason: params.failoverReason,
+    };
+  }
+  if (params.failoverReason === "timeout") {
+    if (params.fallbackConfigured && params.failoverFailure) {
+      return {
+        action: "fallback_model",
+        reason: "timeout",
+      };
+    }
     return {
       action: "surface_error",
       reason: params.failoverReason,

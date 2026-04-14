@@ -7,6 +7,10 @@ import {
   addSubagentRunForTests,
   resetSubagentRegistryForTests,
 } from "../../agents/subagent-registry.js";
+import {
+  _resetVolitionalCounts,
+  incrementVolitionalCompactionCount,
+} from "../../agents/tools/request-compaction-tool.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import {
   completeTaskRunByRunId,
@@ -496,6 +500,7 @@ describe("buildStatusText continuation line", () => {
   afterEach(() => {
     consumePendingDelegates(continuationSessionKey);
     consumeStagedPostCompactionDelegates(continuationSessionKey);
+    _resetVolitionalCounts(continuationSessionKey);
   });
 
   const cfgWithContinuation = {
@@ -511,6 +516,8 @@ describe("buildStatusText continuation line", () => {
   } as OpenClawConfig;
 
   it("shows continuation line when continuation is enabled", async () => {
+    incrementVolitionalCompactionCount(continuationSessionKey);
+
     const text = await buildStatusText({
       cfg: cfgWithContinuation,
       sessionEntry: {
@@ -566,6 +573,8 @@ describe("buildStatusText continuation line", () => {
   });
 
   it("renders delegate and post-compaction counts correctly", async () => {
+    incrementVolitionalCompactionCount(continuationSessionKey);
+    incrementVolitionalCompactionCount(continuationSessionKey);
     enqueuePendingDelegate(continuationSessionKey, { task: "task-a" });
     enqueuePendingDelegate(continuationSessionKey, { task: "task-b" });
     stagePostCompactionDelegate(continuationSessionKey, {

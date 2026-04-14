@@ -677,27 +677,28 @@ export async function runReplyAgent(params: {
   }
 
   followupRun.run.config = await resolveQueuedReplyExecutionConfig(followupRun.run.config);
+  const resolvedRunCfg = followupRun.run.config;
 
   const replyToChannel = resolveOriginMessageProvider({
     originatingChannel: sessionCtx.OriginatingChannel,
     provider: sessionCtx.Surface ?? sessionCtx.Provider,
   }) as OriginatingChannelType | undefined;
   const replyToMode = resolveReplyToMode(
-    followupRun.run.config,
+    resolvedRunCfg,
     replyToChannel,
     sessionCtx.AccountId,
     sessionCtx.ChatType,
   );
   const applyReplyToMode = createReplyToModeFilterForChannel(replyToMode, replyToChannel);
   const normalizeReplyMediaPaths = createReplyMediaPathNormalizer({
-    cfg,
+    cfg: resolvedRunCfg,
     sessionKey,
     workspaceDir: followupRun.run.workspaceDir,
   });
   const blockReplyCoalescing =
     blockStreamingEnabled && opts?.onBlockReply
       ? resolveEffectiveBlockStreamingConfig({
-          cfg,
+          cfg: resolvedRunCfg,
           provider: sessionCtx.Provider,
           accountId: sessionCtx.AccountId,
           chunking: blockReplyChunking,
@@ -792,7 +793,7 @@ export async function runReplyAgent(params: {
     await typingSignals.signalRunStart();
 
     activeSessionEntry = await runPreflightCompactionIfNeeded({
-      cfg,
+      cfg: resolvedRunCfg,
       followupRun,
       promptForEstimate: followupRun.prompt,
       defaultModel,
@@ -806,7 +807,7 @@ export async function runReplyAgent(params: {
     });
 
     activeSessionEntry = await runMemoryFlushIfNeeded({
-      cfg,
+      cfg: resolvedRunCfg,
       followupRun,
       promptForEstimate: followupRun.prompt,
       sessionCtx,

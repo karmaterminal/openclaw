@@ -12,14 +12,14 @@
  * The volatile Map store remains the default fallback.
  */
 
+import type { TaskFlowRecord, JsonValue } from "../tasks/task-flow-registry.types.js";
 import {
   createManagedTaskFlow,
   finishFlow,
   listTaskFlowsForOwnerKey,
   requestFlowCancel,
   updateFlowRecordByIdExpectedRevision,
-} from "../tasks/task-flow-registry.js";
-import type { TaskFlowRecord, JsonValue } from "../tasks/task-flow-registry.types.js";
+} from "../tasks/task-flow-runtime-internal.js";
 import type { PendingContinuationDelegate } from "./continuation-delegate.types.js";
 
 const CONTROLLER_ID = "core/continuation-delegate";

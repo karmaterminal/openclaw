@@ -285,15 +285,15 @@ describe("subagent registry persistence", () => {
       endedAt: 222,
     });
 
-    await flushQueuedRegistryWork();
-
-    expect(announceSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        childRunId: "run-silent",
-        silentAnnounce: true,
-        wakeOnReturn: true,
-      }),
-    );
+    await vi.waitFor(() => {
+      expect(announceSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          childRunId: "run-silent",
+          silentAnnounce: true,
+          wakeOnReturn: true,
+        }),
+      );
+    });
   });
 
   it("persists completed subagent timing into the child session entry", async () => {

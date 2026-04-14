@@ -99,7 +99,7 @@ describe("resolveRunFailoverDecision", () => {
     });
   });
 
-  it("keeps timed-out assistant attempts as local timeout handling", () => {
+  it("surfaces timed-out assistant attempts so local timeout recovery can run", () => {
     expect(
       resolveRunFailoverDecision({
         stage: "assistant",
@@ -113,11 +113,12 @@ describe("resolveRunFailoverDecision", () => {
         profileRotated: false,
       }),
     ).toEqual({
-      action: "continue_normal",
+      action: "surface_error",
+      reason: null,
     });
   });
 
-  it("keeps classified assistant timeout errors as local handling", () => {
+  it("falls back for classified assistant timeout errors when model fallbacks are configured", () => {
     expect(
       resolveRunFailoverDecision({
         stage: "assistant",
@@ -131,7 +132,8 @@ describe("resolveRunFailoverDecision", () => {
         profileRotated: false,
       }),
     ).toEqual({
-      action: "continue_normal",
+      action: "fallback_model",
+      reason: "timeout",
     });
   });
 
