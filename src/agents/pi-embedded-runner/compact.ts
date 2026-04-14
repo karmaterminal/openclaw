@@ -140,6 +140,7 @@ import type { EmbeddedPiCompactResult } from "./types.js";
 import { mapThinkingLevel } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
 export type { CompactEmbeddedPiSessionParams } from "./compact.types.js";
+export type { CompactionMessageMetrics } from "./compact.types.js";
 
 function hasRealConversationContent(
   msg: AgentMessage,
@@ -726,6 +727,7 @@ export async function compactEmbeddedPiSessionDirect(
           contextFiles,
           memoryCitationsMode: params.config?.memory?.citations,
           promptContribution,
+          continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
         });
       return createSystemPromptOverride(
         transformProviderSystemPrompt({
