@@ -152,13 +152,15 @@ import {
   clearDelegatePending,
   clearDelegatePendingIfNoDelayedReservations,
   clearTrackedContinuationTimers,
+  hasContinuationGeneration,
   bumpContinuationGeneration,
   currentContinuationGeneration,
+  hasLiveContinuationTimerRefs,
+  maybeDropContinuationGeneration,
   retainContinuationTimerRef,
   releaseContinuationTimerRef,
   registerContinuationTimerHandle,
   unregisterContinuationTimerHandle,
-  __testing as continuationStateTesting,
 } from "./continuation-state.js";
 
 function syncPendingPostCompactionDelegates(params: {
@@ -350,7 +352,7 @@ export function cancelContinuationTimer(
 ): void {
   // Only bump when a generation exists — avoids unbounded map growth
   // from sessions that never use continuation.
-  if (continuationStateTesting.continuationGenerations.has(sessionKey)) {
+  if (hasContinuationGeneration(sessionKey)) {
     bumpContinuationGeneration(sessionKey);
   }
 
