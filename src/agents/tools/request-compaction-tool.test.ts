@@ -5,6 +5,8 @@ import {
   _resetVolitionalCounts,
   _setPending,
   _guards,
+  getVolitionalCompactionCount,
+  incrementVolitionalCompactionCount,
   type RequestCompactionToolOpts,
 } from "./request-compaction-tool.js";
 
@@ -334,6 +336,19 @@ describe("request_compaction tool", () => {
     const resultB = await executeTool(toolB);
     expect(resultA).toMatchObject({ status: "compaction_requested" });
     expect(resultB).toMatchObject({ status: "compaction_requested" });
+  });
+
+  it("expires volitional compaction counts after the diagnostic TTL", () => {
+    let fakeNow = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+    incrementVolitionalCompactionCount(SESSION_KEY);
+    expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(1);
+
+    fakeNow += _guards.VOLITIONAL_COMPACTION_COUNT_TTL_MS + 1;
+    expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(0);
+
+    vi.restoreAllMocks();
   });
 
   // -------------------------------------------------------------------------
