@@ -1,7 +1,7 @@
 import { deliveryContextFromSession } from "../../utils/delivery-context.shared.js";
 import { loadConfig } from "../io.js";
 import { resolveStorePath } from "./paths.js";
-import { loadSessionStore } from "./store.js";
+import { loadSessionStore, resolveSessionStoreEntry } from "./store.js";
 export { parseSessionThreadInfo } from "./thread-info.js";
 import { parseSessionThreadInfo } from "./thread-info.js";
 
@@ -34,10 +34,10 @@ export function extractDeliveryInfo(sessionKey: string | undefined): {
     const cfg = loadConfig();
     const storePath = resolveStorePath(cfg.session?.store);
     const store = loadSessionStore(storePath);
-    let entry = store[sessionKey];
+    let entry = resolveSessionStoreEntry({ store, sessionKey }).existing;
     let storedDeliveryContext = deliveryContextFromSession(entry);
     if (!hasRoutableDeliveryContext(storedDeliveryContext) && baseSessionKey !== sessionKey) {
-      entry = store[baseSessionKey];
+      entry = resolveSessionStoreEntry({ store, sessionKey: baseSessionKey }).existing;
       storedDeliveryContext = deliveryContextFromSession(entry);
     }
     if (hasRoutableDeliveryContext(storedDeliveryContext)) {

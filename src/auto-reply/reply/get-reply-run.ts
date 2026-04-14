@@ -446,7 +446,11 @@ export async function runPreparedReply(
       if (storePath) {
         const { updateSessionStore } = await loadSessionStoreRuntime();
         await updateSessionStore(storePath, (store) => {
-          store[sessionKey] = sessionEntry;
+          const resolved = resolveSessionStoreEntry({ store, sessionKey });
+          store[resolved.normalizedKey] = sessionEntry;
+          for (const legacyKey of resolved.legacyKeys) {
+            delete store[legacyKey];
+          }
         });
       }
     }

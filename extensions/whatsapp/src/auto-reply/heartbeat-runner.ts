@@ -20,6 +20,7 @@ import {
   resolveIndicatorType,
   resolveSendableOutboundReplyParts,
   resolveSessionKey,
+  resolveSessionStoreEntry,
   resolveStorePath,
   resolveWhatsAppHeartbeatRecipients,
   sendMessageWhatsApp,
@@ -97,19 +98,27 @@ export async function runWebHeartbeatOnce(opts: {
   if (sessionId) {
     const storePath = resolveStorePath(cfg.session?.store);
     const store = loadSessionStore(storePath);
-    const current = store[sessionKey] ?? {};
-    store[sessionKey] = {
+    const resolved = resolveSessionStoreEntry({ store, sessionKey });
+    const current = resolved.existing ?? {};
+    store[resolved.normalizedKey] = {
       ...current,
       sessionId,
       updatedAt: Date.now(),
     };
+    for (const legacyKey of resolved.legacyKeys) {
+      delete store[legacyKey];
+    }
     await updateSessionStore(storePath, (nextStore) => {
-      const nextCurrent = nextStore[sessionKey] ?? current;
-      nextStore[sessionKey] = {
+      const nextResolved = resolveSessionStoreEntry({ store: nextStore, sessionKey });
+      const nextCurrent = nextResolved.existing ?? current;
+      nextStore[nextResolved.normalizedKey] = {
         ...nextCurrent,
         sessionId,
         updatedAt: Date.now(),
       };
+      for (const legacyKey of nextResolved.legacyKeys) {
+        delete nextStore[legacyKey];
+      }
     });
   }
   const sessionSnapshot = getSessionSnapshot(cfg, to, true, { sessionKey });

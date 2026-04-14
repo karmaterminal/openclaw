@@ -39,10 +39,13 @@ export async function clearSessionAuthProfileOverride(params: {
   sessionEntry.updatedAt = Date.now();
   sessionStore[sessionKey] = sessionEntry;
   if (storePath) {
-    await (
-      await loadSessionStoreRuntime()
-    ).updateSessionStore(storePath, (store) => {
-      store[sessionKey] = sessionEntry;
+    const { updateSessionStore, resolveSessionStoreEntry } = await loadSessionStoreRuntime();
+    await updateSessionStore(storePath, (store) => {
+      const resolved = resolveSessionStoreEntry({ store, sessionKey });
+      store[resolved.normalizedKey] = sessionEntry;
+      for (const legacyKey of resolved.legacyKeys) {
+        delete store[legacyKey];
+      }
     });
   }
 }
@@ -161,10 +164,13 @@ export async function resolveSessionAuthProfileOverride(params: {
     sessionEntry.updatedAt = Date.now();
     sessionStore[sessionKey] = sessionEntry;
     if (storePath) {
-      await (
-        await loadSessionStoreRuntime()
-      ).updateSessionStore(storePath, (store) => {
-        store[sessionKey] = sessionEntry;
+      const { updateSessionStore, resolveSessionStoreEntry } = await loadSessionStoreRuntime();
+      await updateSessionStore(storePath, (store) => {
+        const resolved = resolveSessionStoreEntry({ store, sessionKey });
+        store[resolved.normalizedKey] = sessionEntry;
+        for (const legacyKey of resolved.legacyKeys) {
+          delete store[legacyKey];
+        }
       });
     }
   }

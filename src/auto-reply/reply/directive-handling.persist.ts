@@ -6,7 +6,7 @@ import {
 import { resolveContextTokensForModel } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import type { ModelAliasIndex } from "../../agents/model-selection.js";
-import { updateSessionStore } from "../../config/sessions/store.js";
+import { resolveSessionStoreEntry, updateSessionStore } from "../../config/sessions/store.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -204,7 +204,11 @@ export async function persistInlineDirectives(params: {
       sessionStore[sessionKey] = sessionEntry;
       if (storePath) {
         await updateSessionStore(storePath, (store) => {
-          store[sessionKey] = sessionEntry;
+          const resolved = resolveSessionStoreEntry({ store, sessionKey });
+          store[resolved.normalizedKey] = sessionEntry;
+          for (const legacyKey of resolved.legacyKeys) {
+            delete store[legacyKey];
+          }
         });
       }
       enqueueModeSwitchEvents({

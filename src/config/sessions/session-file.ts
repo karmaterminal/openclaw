@@ -1,6 +1,6 @@
 import { resolveSessionFilePath } from "./paths.js";
 import type { ResolvedSessionMaintenanceConfig } from "./store-maintenance.js";
-import { updateSessionStore } from "./store.js";
+import { resolveSessionStoreEntry, updateSessionStore } from "./store.js";
 import type { SessionEntry } from "./types.js";
 
 export async function resolveAndPersistSessionFile(params: {
@@ -38,10 +38,14 @@ export async function resolveAndPersistSessionFile(params: {
     await updateSessionStore(
       storePath,
       (store) => {
-        store[sessionKey] = {
-          ...store[sessionKey],
+        const resolved = resolveSessionStoreEntry({ store, sessionKey });
+        store[resolved.normalizedKey] = {
+          ...resolved.existing,
           ...persistedEntry,
         };
+        for (const legacyKey of resolved.legacyKeys) {
+          delete store[legacyKey];
+        }
       },
       params.activeSessionKey || params.maintenanceConfig
         ? {

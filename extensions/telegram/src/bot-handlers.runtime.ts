@@ -1589,8 +1589,15 @@ export const registerTelegramHandlers = ({
 
             await updateSessionStore(storePath, (store) => {
               const sessionKey = sessionState.sessionKey;
-              const entry = store[sessionKey] ?? {};
-              store[sessionKey] = entry;
+              const resolved = resolveSessionStoreEntry({ store, sessionKey });
+              const entry = resolved.existing ?? {
+                sessionId: sessionKey,
+                updatedAt: Date.now(),
+              };
+              store[resolved.normalizedKey] = entry;
+              for (const legacyKey of resolved.legacyKeys) {
+                delete store[legacyKey];
+              }
               applyModelOverrideToSessionEntry({
                 entry,
                 selection: {

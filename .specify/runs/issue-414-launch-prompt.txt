@@ -1,0 +1,5 @@
+Read .specify/runs/issue-414-workorder.md and execute it.
+Start by searching for remaining raw store[sessionKey] uses inside updateSessionStore callbacks and related normalized-entry bug-family sites.
+Make only the surgical #414 fixes.
+Run focused validation for touched paths.
+At the end, write a concise artifact summary: files changed, pattern replaced, tests run, results, and any remaining follow-up sites.

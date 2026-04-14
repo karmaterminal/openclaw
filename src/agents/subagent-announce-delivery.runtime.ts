@@ -5,6 +5,7 @@ export {
   resolveMainSessionKey,
   resolveStorePath,
 } from "../config/sessions.js";
+export { resolveSessionStoreEntry } from "../config/sessions/store.js";
 export { callGateway } from "../gateway/call.js";
 export { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 export { resolveExternalBestEffortDeliveryTarget } from "../infra/outbound/best-effort-delivery.js";

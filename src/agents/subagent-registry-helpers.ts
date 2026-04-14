@@ -8,9 +8,9 @@ import {
   updateSessionStore,
   type SessionEntry,
 } from "../config/sessions.js";
+import { resolveSessionStoreEntry } from "../config/sessions/store.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { defaultRuntime } from "../runtime.js";
-import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import { type SubagentRunOutcome } from "./subagent-announce-output.js";
 import { SUBAGENT_ENDED_REASON_ERROR } from "./subagent-lifecycle-events.js";
 import { runOutcomesEqual } from "./subagent-registry-completion.js";
@@ -74,17 +74,7 @@ export function logAnnounceGiveUp(entry: SubagentRunRecord, reason: "retry-limit
 }
 
 function findSessionEntryByKey(store: Record<string, SessionEntry>, sessionKey: string) {
-  const direct = store[sessionKey];
-  if (direct) {
-    return direct;
-  }
-  const normalized = normalizeLowercaseStringOrEmpty(sessionKey);
-  for (const [key, entry] of Object.entries(store)) {
-    if (normalizeLowercaseStringOrEmpty(key) === normalized) {
-      return entry;
-    }
-  }
-  return undefined;
+  return resolveSessionStoreEntry({ store, sessionKey }).existing;
 }
 
 export async function persistSubagentSessionTiming(entry: SubagentRunRecord) {

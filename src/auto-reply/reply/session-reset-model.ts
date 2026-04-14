@@ -8,6 +8,7 @@ import {
 } from "../../agents/model-selection.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { updateSessionStore } from "../../config/sessions.js";
+import { resolveSessionStoreEntry } from "../../config/sessions/store.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
@@ -79,7 +80,11 @@ function applySelectionToSession(params: {
   sessionStore[sessionKey] = sessionEntry;
   if (storePath) {
     updateSessionStore(storePath, (store) => {
-      store[sessionKey] = sessionEntry;
+      const resolved = resolveSessionStoreEntry({ store, sessionKey });
+      store[resolved.normalizedKey] = sessionEntry;
+      for (const legacyKey of resolved.legacyKeys) {
+        delete store[legacyKey];
+      }
     }).catch(() => {
       // Ignore persistence errors; session still proceeds.
     });

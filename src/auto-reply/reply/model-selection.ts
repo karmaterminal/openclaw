@@ -353,10 +353,13 @@ export async function createModelSelectionState(params: {
       if (updated) {
         sessionStore[sessionKey] = sessionEntry;
         if (storePath) {
-          await (
-            await loadSessionStoreRuntime()
-          ).updateSessionStore(storePath, (store) => {
-            store[sessionKey] = sessionEntry;
+          const { updateSessionStore, resolveSessionStoreEntry } = await loadSessionStoreRuntime();
+          await updateSessionStore(storePath, (store) => {
+            const resolved = resolveSessionStoreEntry({ store, sessionKey });
+            store[resolved.normalizedKey] = sessionEntry;
+            for (const legacyKey of resolved.legacyKeys) {
+              delete store[legacyKey];
+            }
           });
         }
       }

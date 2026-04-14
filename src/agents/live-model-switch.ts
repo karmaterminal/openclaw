@@ -1,5 +1,9 @@
 import { resolveStorePath } from "../config/sessions/paths.js";
-import { loadSessionStore, updateSessionStore } from "../config/sessions/store.js";
+import {
+  loadSessionStore,
+  resolveSessionStoreEntry,
+  updateSessionStore,
+} from "../config/sessions/store.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { LiveSessionModelSwitchError } from "./live-model-switch-error.js";
 import {
@@ -218,9 +222,13 @@ export async function clearLiveModelSwitchPending(params: {
     return;
   }
   await updateSessionStore(storePath, (store) => {
-    const entry = store[sessionKey];
-    if (entry) {
-      delete entry.liveModelSwitchPending;
+    const resolved = resolveSessionStoreEntry({ store, sessionKey });
+    if (resolved.existing) {
+      delete resolved.existing.liveModelSwitchPending;
+      store[resolved.normalizedKey] = resolved.existing;
+      for (const legacyKey of resolved.legacyKeys) {
+        delete store[legacyKey];
+      }
     }
   });
 }

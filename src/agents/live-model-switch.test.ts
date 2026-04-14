@@ -50,10 +50,14 @@ vi.mock("./model-selection.js", () => ({
     state.resolvePersistedSelectedModelRefMock(...args),
 }));
 
-vi.mock("../config/sessions/store.js", () => ({
-  loadSessionStore: (...args: unknown[]) => state.loadSessionStoreMock(...args),
-  updateSessionStore: (...args: unknown[]) => state.updateSessionStoreMock(...args),
-}));
+vi.mock("../config/sessions/store.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../config/sessions/store.js")>();
+  return {
+    loadSessionStore: (...args: unknown[]) => state.loadSessionStoreMock(...args),
+    resolveSessionStoreEntry: original.resolveSessionStoreEntry,
+    updateSessionStore: (...args: unknown[]) => state.updateSessionStoreMock(...args),
+  };
+});
 
 vi.mock("../config/sessions/paths.js", () => ({
   resolveStorePath: (...args: unknown[]) => state.resolveStorePathMock(...args),

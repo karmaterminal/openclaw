@@ -15,9 +15,13 @@ vi.mock("./paths.js", () => ({
   resolveStorePath: () => "/tmp/sessions.json",
 }));
 
-vi.mock("./store.js", () => ({
-  loadSessionStore: () => storeState.store,
-}));
+vi.mock("./store.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./store.js")>();
+  return {
+    loadSessionStore: () => storeState.store,
+    resolveSessionStoreEntry: original.resolveSessionStoreEntry,
+  };
+});
 
 let extractDeliveryInfo: typeof import("./delivery-info.js").extractDeliveryInfo;
 let parseSessionThreadInfo: typeof import("./delivery-info.js").parseSessionThreadInfo;

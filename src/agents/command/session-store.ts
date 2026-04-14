@@ -4,6 +4,7 @@ import {
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
+import { resolveSessionStoreEntry } from "../../config/sessions/store.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import { setCliSessionBinding, setCliSessionId } from "../cli-session.js";
@@ -126,8 +127,12 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.compactionCount = (entry.compactionCount ?? 0) + compactionsThisRun;
   }
   const persisted = await updateSessionStore(storePath, (store) => {
-    const merged = mergeSessionEntry(store[sessionKey], next);
-    store[sessionKey] = merged;
+    const resolved = resolveSessionStoreEntry({ store, sessionKey });
+    const merged = mergeSessionEntry(resolved.existing, next);
+    store[resolved.normalizedKey] = merged;
+    for (const legacyKey of resolved.legacyKeys) {
+      delete store[legacyKey];
+    }
     return merged;
   });
   sessionStore[sessionKey] = persisted;

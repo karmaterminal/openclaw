@@ -31,17 +31,21 @@ export async function applySessionHints(params: {
       params.sessionStore[params.sessionKey] = params.sessionEntry;
       if (params.storePath) {
         const sessionKey = params.sessionKey;
-        const { updateSessionStore } = await loadSessionStoreRuntime();
+        const { updateSessionStore, resolveSessionStoreEntry } = await loadSessionStoreRuntime();
         await updateSessionStore(params.storePath, (store) => {
-          const entry = store[sessionKey] ?? params.sessionEntry;
+          const resolved = resolveSessionStoreEntry({ store, sessionKey });
+          const entry = resolved.existing ?? params.sessionEntry;
           if (!entry) {
             return;
           }
-          store[sessionKey] = {
+          store[resolved.normalizedKey] = {
             ...entry,
             abortedLastRun: false,
             updatedAt: Date.now(),
           };
+          for (const legacyKey of resolved.legacyKeys) {
+            delete store[legacyKey];
+          }
         });
       }
     } else if (params.abortKey) {

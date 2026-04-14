@@ -34,6 +34,7 @@ import {
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
+import { resolveSessionStoreEntry } from "../../config/sessions/store.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -701,12 +702,16 @@ export async function runAgentTurnWithFallback(params: {
     try {
       if (params.storePath) {
         await updateSessionStore(params.storePath, (store) => {
-          const persistedEntry = store[params.sessionKey!];
+          const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey! });
+          const persistedEntry = resolved.existing;
           if (!persistedEntry) {
             return;
           }
           applyFallbackSelectionState(persistedEntry, nextState);
-          store[params.sessionKey!] = persistedEntry;
+          store[resolved.normalizedKey] = persistedEntry;
+          for (const legacyKey of resolved.legacyKeys) {
+            delete store[legacyKey];
+          }
         });
       }
     } catch (error) {
@@ -728,12 +733,16 @@ export async function runAgentTurnWithFallback(params: {
         return;
       }
       await updateSessionStore(params.storePath, (store) => {
-        const persistedEntry = store[params.sessionKey!];
+        const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey! });
+        const persistedEntry = resolved.existing;
         if (!persistedEntry) {
           return;
         }
         if (rollbackFallbackSelectionStateIfUnchanged(persistedEntry, nextState, previousState)) {
-          store[params.sessionKey!] = persistedEntry;
+          store[resolved.normalizedKey] = persistedEntry;
+          for (const legacyKey of resolved.legacyKeys) {
+            delete store[legacyKey];
+          }
         }
       });
     };
@@ -1532,7 +1541,11 @@ export async function runAgentTurnWithFallback(params: {
 
           // Remove session entry from store using a fresh, locked snapshot.
           await updateSessionStore(params.storePath, (store) => {
-            delete store[sessionKey];
+            const resolved = resolveSessionStoreEntry({ store, sessionKey });
+            delete store[resolved.normalizedKey];
+            for (const legacyKey of resolved.legacyKeys) {
+              delete store[legacyKey];
+            }
           });
         } catch (cleanupErr) {
           defaultRuntime.error(

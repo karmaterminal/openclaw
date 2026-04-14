@@ -1,6 +1,7 @@
 import { resolveSessionConversationRef } from "../channels/plugins/session-conversation.js";
 import { resolveStorePath } from "../config/sessions/paths.js";
 import { loadSessionStore } from "../config/sessions/store-load.js";
+import { resolveSessionStoreEntry } from "../config/sessions/store.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
@@ -131,7 +132,7 @@ export function resolveExecApprovalSessionTarget(params: {
   const agentId = parsed?.agentId ?? params.request.request.agentId ?? "main";
   const storePath = resolveStorePath(params.cfg.session?.store, { agentId });
   const store = loadSessionStore(storePath);
-  const entry = store[sessionKey];
+  const entry = resolveSessionStoreEntry({ store, sessionKey }).existing;
   if (!entry) {
     return null;
   }

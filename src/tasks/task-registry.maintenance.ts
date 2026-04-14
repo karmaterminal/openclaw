@@ -1,10 +1,10 @@
 import { readAcpSessionEntry } from "../acp/runtime/session-meta.js";
 import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
+import { resolveSessionStoreEntry } from "../config/sessions/store.js";
 import { isCronJobActive } from "../cron/active-jobs.js";
 import { getAgentRunContext } from "../infra/agent-events.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { deriveSessionChatType } from "../sessions/session-chat-type.js";
-import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import {
   deleteTaskRecordById,
   ensureTaskRegistryReady,
@@ -82,17 +82,10 @@ export type TaskRegistryMaintenanceSummary = {
 };
 
 function findSessionEntryByKey(store: Record<string, unknown>, sessionKey: string): unknown {
-  const direct = store[sessionKey];
-  if (direct) {
-    return direct;
-  }
-  const normalized = normalizeLowercaseStringOrEmpty(sessionKey);
-  for (const [key, entry] of Object.entries(store)) {
-    if (normalizeLowercaseStringOrEmpty(key) === normalized) {
-      return entry;
-    }
-  }
-  return undefined;
+  return resolveSessionStoreEntry({
+    store: store as Record<string, import("../config/sessions/types.js").SessionEntry>,
+    sessionKey,
+  }).existing;
 }
 
 function isActiveTask(task: TaskRecord): boolean {

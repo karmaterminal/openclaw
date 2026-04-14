@@ -1,5 +1,6 @@
 import { resolveStorePath } from "../config/sessions/paths.js";
 import { loadSessionStore } from "../config/sessions/store-load.js";
+import { resolveSessionStoreEntry } from "../config/sessions/store.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeOptionalAccountId } from "../routing/account-id.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
@@ -31,7 +32,7 @@ function resolvePersistedApprovalRequestSessionBinding(params: {
   const agentId = parsed?.agentId ?? params.request.request.agentId ?? "main";
   const storePath = resolveStorePath(params.cfg.session?.store, { agentId });
   const store = loadSessionStore(storePath);
-  const entry = store[sessionKey];
+  const entry = resolveSessionStoreEntry({ store, sessionKey }).existing;
   if (!entry) {
     return null;
   }
