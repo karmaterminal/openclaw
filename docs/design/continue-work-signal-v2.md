@@ -142,7 +142,7 @@ This yields a strict two-interface model:
 
 If `delaySeconds` is 30 and the current turn is still active, the 30-second timer starts **after turn completion**, not when the tool call is emitted. The same timing model applies to the `CONTINUE_WORK:30` response token.
 
-**Safety model:** the scheduled continuation remains subject to chain-length, token-budget, and generation-drift guards. If the session has already exhausted its configured continuation budget, the call is rejected and the agent may stop, persist state to files, or choose another recovery path.
+**Safety model:** the scheduled continuation remains subject to chain-length and token-budget guards. If the session has already exhausted its configured continuation budget, the call is rejected and the agent may stop, persist state to files, or choose another recovery path.
 
 ### 2.3 `continue_delegate()` semantics and return modes
 
@@ -267,7 +267,7 @@ flowchart TB
 
 ### 2.7 Design rationale
 
-1. **Gate by capability, not turn type.** Tool visibility is controlled by `continuation.enabled`, while abuse prevention is handled by runtime guards such as `maxDelegatesPerTurn`, `maxChainLength`, `costCapTokens`, and `generationGuardTolerance`.
+1. **Gate by capability, not turn type.** Tool visibility is controlled by `continuation.enabled`, while abuse prevention is handled by runtime guards such as `maxDelegatesPerTurn`, `maxChainLength`, and `costCapTokens`.
 2. **Prefer structured invocation.** Tools avoid the fragility of regex parsing and allow explicit schemas.
 3. **Support width.** Fleet-scale fan-out requires multiple delegates in one turn; response syntax cannot express that efficiently.
 4. **Keep the interface self-describing.** When tools are available, the continuation surface appears explicitly in the tool inventory rather than relying on prior knowledge of terminal syntax.
@@ -308,7 +308,7 @@ The gateway then:
 1. Parses the terminal bracket syntax.
 2. Strips it from displayed output, so the user sees only the review summary.
 3. Records delegate-pending state outside the model-visible event queue.
-4. Creates a delayed reservation with task, planned hop, fire time, and generation guard.
+4. Creates a delayed reservation with task, planned hop, and fire time.
 5. Arms a timer for the configured delay.
 
 By default that delayed scheduling is process-scoped. A gateway restart clears the in-memory timer and reservation. When `taskFlowDelegates: true`, delegate queue state is backed by Task Flow in SQLite, so queued work survives restart even though a specific in-memory timer does not.
@@ -365,9 +365,7 @@ Budget inheritance follows four rules:
 1. **Chain index:** child hop labels advance within the configured maximum.
 2. **Token budget:** `continue_work()` chains and tool-path delegate chains accumulate against `costCapTokens`; bracket-chain cost accumulation exists but remains less reliable at the announce boundary because child token data may not yet be written.
 3. **Delay bounds:** each hop is clamped to runtime-configured `minDelayMs` and `maxDelayMs`.
-4. **Generation guard:** the parent generation counter is checked before delayed spawn.
-
-Both `CONTINUE_WORK` and delegate timers use the same generation-drift test: cancel when `drift > generationGuardTolerance`.
+<!-- Generation guard removed by design decision 2026-04-15. Delayed work should not be cancelled by unrelated channel noise. -->
 
 ### 3.4 Tool implementation and prompt gating
 
@@ -590,8 +588,7 @@ agents:
       maxDelayMs: 300000
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
-      generationGuardTolerance: 0
-      contextPressureThreshold: 0.8
+      # generationGuardTolerance removed — delayed work should not be cancelled by channel noise
       taskFlowDelegates: true # durable delegate queue via Task Flow (platform feature, ships enabled)
 ```
 
@@ -600,7 +597,7 @@ Operational notes:
 - `enabled: false` means explicit opt-in is required in `openclaw.json`.
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
-- `generationGuardTolerance` controls whether incidental chatter cancels delayed work. At the shipped default of `0`, any inbound message during a delayed delegate chain will cancel it. This is deliberately conservative: a single-agent deployment where the only user communicates directly should not have background work running unnoticed. Operators with active channels or multiple users should raise this value (see fleet profile below).
+- `generationGuardTolerance` has been removed from the configuration surface. Delayed work should not be cancelled by unrelated channel noise. See the design decision note in §3.2.
 - all runtime values are hot-reloadable; changes take effect at the next enforcement point.
 
 ### 5.2 Operator profiles
@@ -615,8 +612,8 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 5
       costCapTokens: 500000
-      generationGuardTolerance: 0
-      defaultDelayMs: 15000
+      # generationGuardTolerance removed — see §3.2 design note
+      contextPressureThreshold: 0.8
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
@@ -632,14 +629,13 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 20
       costCapTokens: 1000000
-      generationGuardTolerance: 300
+      # generationGuardTolerance removed — see §3.2 design note
       defaultDelayMs: 15000
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
       taskFlowDelegates: true for multiple persistent agents in shared channels. In that environment:
 
-- `generationGuardTolerance: 300` absorbs ambient cross-agent generation drift;
 - `maxDelegatesPerTurn: 20` enables wide fan-out;
 - `costCapTokens: 1000000` preserves a budget ceiling while permitting broad but shallow work.
 
@@ -751,9 +747,9 @@ Representative runtime traces are shown below.
 **Generation-drift behavior:**
 
 ```text
-Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)
-WORK timer cancelled (generation drift 1 > tolerance 0)
-Tool DELEGATE timer fired and spawned turn 1/10 (drift within tolerance 300)
+<!-- [historical] Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0) — generation guard removed from design -->
+<!-- [historical] WORK timer cancelled (generation drift 1 > tolerance 0) — generation guard removed from design -->
+<!-- [historical] Tool DELEGATE timer fired and spawned turn 1/10 (drift within tolerance 300) — generation guard removed from design -->
 ```
 
 ### 6.3 `/status` continuation telemetry
@@ -814,7 +810,6 @@ Operators can observe continuation behavior without restart:
 
 Hot-reload validation confirmed live changes to:
 
-- `generationGuardTolerance`,
 - `maxDelegatesPerTurn`,
 - `maxChainLength`,
 - `costCapTokens`,
@@ -826,15 +821,15 @@ Hot-reload validation confirmed live changes to:
 
 The continuation feature is intentionally conservative by default.
 
-| Constraint                 | Default  | Purpose                                                      |
-| -------------------------- | -------- | ------------------------------------------------------------ |
-| `enabled`                  | `false`  | explicit deployment consent required                         |
-| `maxChainLength`           | `10`     | prevents runaway recursion                                   |
-| `costCapTokens`            | `500000` | bounds cost per chain                                        |
-| `minDelayMs`               | `5000`   | prevents tight loops                                         |
-| `maxDelayMs`               | `300000` | bounds scheduling horizon                                    |
-| `generationGuardTolerance` | `0`      | treats any drift as interruption in safety-first deployments |
-| `maxDelegatesPerTurn`      | `5`      | prevents unbounded fan-out                                   |
+| Constraint                 | Default  | Purpose                                                                                                                             |
+| -------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                  | `false`  | explicit deployment consent required                                                                                                |
+| `maxChainLength`           | `10`     | prevents runaway recursion                                                                                                          |
+| `costCapTokens`            | `500000` | bounds cost per chain                                                                                                               |
+| `minDelayMs`               | `5000`   | prevents tight loops                                                                                                                |
+| `maxDelayMs`               | `300000` | bounds scheduling horizon                                                                                                           |
+| `generationGuardTolerance` | removed  | ~~treats any drift as interruption~~ — removed by design decision 2026-04-15: delayed work should not be cancelled by channel noise |
+| `maxDelegatesPerTurn`      | `5`      | prevents unbounded fan-out                                                                                                          |
 
 Additional deployment note: delegate returns rely on an internal announce path. In channels configured with `requireMention: true`, the internal delivery path still bypasses mention gating, which preserves the continuation wake semantics.
 
@@ -951,20 +946,20 @@ This establishes a strong claim: the subject’s only legitimate access path is 
 
 The blind test matrix included:
 
-| #   | Content                                 | Dispatch | Enrichment | Recall | Notes                                     |
-| --- | --------------------------------------- | -------- | ---------- | ------ | ----------------------------------------- |
-| 1   | 6-digit number `847293`                 | ✅       | ✅         | ✅     | binary recall                             |
-| 2   | nonsense string `chrysanthemum-vapor-9` | ✅       | ✅         | ✅     | cross-machine via SSH                     |
-| 3   | prose sentence                          | ✅       | ✅         | ✅     | no channel contamination                  |
-| 4   | image description via file + image tool | ✅       | ✅         | ✅     | instruction file plus sibling image       |
-| 5   | dream summary                           | ❌       | —          | ❌     | generation guard cancelled dispatch       |
-| 6   | image via DM chain (catboy)             | ✅       | ✅         | ✅     | `read()` fallback after `image()` failure |
-| 7   | image via DM chain (N from Pokémon)     | ✅       | ⚠️         | ✅     | output correct, tool path unreliable      |
-| 8   | keyword-tagged file (`winterFloor`)     | ✅       | ✅         | ✅     | keyword recall validated                  |
-| 9   | image + keyword, narrated dispatch      | ❌       | —          | ❌     | syntax posted visibly rather than parsed  |
-| 10  | image + keyword, clean retry            | ✅       | ✅         | ✅     | retry succeeded                           |
-| 11  | two-hop chain, wrong path               | ✅       | ❌         | ❌     | workspace path error                      |
-| 12  | two-hop chain, corrected path           | ✅       | ✅         | ✅     | full two-hop pipeline validated           |
+| #   | Content                                 | Dispatch | Enrichment | Recall | Notes                                                               |
+| --- | --------------------------------------- | -------- | ---------- | ------ | ------------------------------------------------------------------- |
+| 1   | 6-digit number `847293`                 | ✅       | ✅         | ✅     | binary recall                                                       |
+| 2   | nonsense string `chrysanthemum-vapor-9` | ✅       | ✅         | ✅     | cross-machine via SSH                                               |
+| 3   | prose sentence                          | ✅       | ✅         | ✅     | no channel contamination                                            |
+| 4   | image description via file + image tool | ✅       | ✅         | ✅     | instruction file plus sibling image                                 |
+| 5   | dream summary                           | ❌       | —          | ❌     | ~~generation guard cancelled dispatch~~ (guard removed from design) |
+| 6   | image via DM chain (catboy)             | ✅       | ✅         | ✅     | `read()` fallback after `image()` failure                           |
+| 7   | image via DM chain (N from Pokémon)     | ✅       | ⚠️         | ✅     | output correct, tool path unreliable                                |
+| 8   | keyword-tagged file (`winterFloor`)     | ✅       | ✅         | ✅     | keyword recall validated                                            |
+| 9   | image + keyword, narrated dispatch      | ❌       | —          | ❌     | syntax posted visibly rather than parsed                            |
+| 10  | image + keyword, clean retry            | ✅       | ✅         | ✅     | retry succeeded                                                     |
+| 11  | two-hop chain, wrong path               | ✅       | ❌         | ❌     | workspace path error                                                |
+| 12  | two-hop chain, corrected path           | ✅       | ✅         | ✅     | full two-hop pipeline validated                                     |
 
 Overall: **10/12 passed**. When dispatch occurred correctly, the accuracy rate was **10/10**.
 
@@ -1256,11 +1251,11 @@ Swim 7 scorecard:
 Representative evidence lines:
 
 ```text
-07:02:58 Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)
-07:03:55 config change applied (dynamic reads: agents.defaults.continuation.generationGuardTolerance)
+07:02:58 Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)  <!-- NOTE: generation guard was active in this build but has been removed from design -->
+07:03:55 config change applied (dynamic reads: agents.defaults.continuation.generationGuardTolerance)  <!-- NOTE: generationGuardTolerance config removed from design -->
 07:04:41 Tool DELEGATE timer fired and spawned turn 1/10
 
-07:07:08 WORK timer cancelled (generation drift 1 > tolerance 0)
+07:07:08 WORK timer cancelled (generation drift 1 > tolerance 0)  <!-- NOTE: generation guard was active in this build but has been removed from design -->
 07:12:22 WORK timer fired for session agent:main:discord:channel:...
 
 07:22:35 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
