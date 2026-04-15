@@ -6,6 +6,7 @@ import {
   getActivePluginChannelRegistryVersion,
   getActivePluginRegistryVersion,
   getActivePluginChannelRegistry,
+  getGatewayBindablePluginRegistry,
   pinActivePluginChannelRegistry,
   releasePinnedPluginChannelRegistry,
   requireActivePluginChannelRegistry,
@@ -102,6 +103,17 @@ describe("channel registry pinning", () => {
     const replacement = createEmptyPluginRegistry();
     expectPinnedChannelRegistry(startup, replacement);
     expect(getActivePluginChannelRegistry()!.channels).toHaveLength(1);
+  });
+
+  it("prefers the pinned startup registry for gateway-bindable lookups after active drift", () => {
+    const startup = createEmptyPluginRegistry();
+    const replacement = createEmptyPluginRegistry();
+
+    setActivePluginRegistry(startup, "gateway-startup", "gateway-bindable");
+    pinActivePluginChannelRegistry(startup);
+    setActivePluginRegistry(replacement, "default-registry", "default");
+
+    expect(getGatewayBindablePluginRegistry()).toBe(startup);
   });
 
   it("re-pin invalidates cached channel lookups", () => {

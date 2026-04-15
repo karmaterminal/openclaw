@@ -2,10 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   resolveRuntimePluginRegistry: vi.fn(),
+  getGatewayBindablePluginRegistry: vi.fn(),
 }));
 
 vi.mock("../plugins/loader.js", () => ({
   resolveRuntimePluginRegistry: hoisted.resolveRuntimePluginRegistry,
+}));
+
+vi.mock("../plugins/runtime.js", () => ({
+  getGatewayBindablePluginRegistry: hoisted.getGatewayBindablePluginRegistry,
 }));
 
 describe("ensureRuntimePluginsLoaded", () => {
@@ -14,12 +19,14 @@ describe("ensureRuntimePluginsLoaded", () => {
   beforeEach(async () => {
     hoisted.resolveRuntimePluginRegistry.mockReset();
     hoisted.resolveRuntimePluginRegistry.mockReturnValue(undefined);
+    hoisted.getGatewayBindablePluginRegistry.mockReset();
+    hoisted.getGatewayBindablePluginRegistry.mockReturnValue(null);
     vi.resetModules();
     ({ ensureRuntimePluginsLoaded } = await import("./runtime-plugins.js"));
   });
 
-  it("does not reactivate plugins when a process already has an active registry", async () => {
-    hoisted.resolveRuntimePluginRegistry.mockReturnValue({});
+  it("reuses a pinned gateway-bindable registry without forcing a fresh load", async () => {
+    hoisted.getGatewayBindablePluginRegistry.mockReturnValue({});
 
     ensureRuntimePluginsLoaded({
       config: {} as never,
@@ -27,7 +34,7 @@ describe("ensureRuntimePluginsLoaded", () => {
       allowGatewaySubagentBinding: true,
     });
 
-    expect(hoisted.resolveRuntimePluginRegistry).toHaveBeenCalledTimes(1);
+    expect(hoisted.resolveRuntimePluginRegistry).not.toHaveBeenCalled();
   });
 
   it("resolves runtime plugins through the shared runtime helper", async () => {

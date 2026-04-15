@@ -43,6 +43,9 @@ const refreshQueuedFollowupSessionMock = vi.fn();
 const compactState = vi.hoisted(() => ({
   compactEmbeddedPiSessionMock: vi.fn(),
 }));
+const runtimeConfigSnapshotState = vi.hoisted(() => ({
+  getRuntimeConfigSnapshot: vi.fn(),
+}));
 const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 
@@ -61,6 +64,14 @@ vi.mock("../../agents/model-fallback.js", () => ({
 vi.mock("../../agents/model-auth.js", () => ({
   resolveModelAuthMode: () => "api-key",
 }));
+
+vi.mock("../../config/config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../config/config.js")>();
+  return {
+    ...actual,
+    getRuntimeConfigSnapshot: runtimeConfigSnapshotState.getRuntimeConfigSnapshot,
+  };
+});
 
 vi.mock("../../agents/pi-embedded.js", () => {
   return {
@@ -161,6 +172,8 @@ beforeEach(() => {
   runCliAgentMock.mockClear();
   runWithModelFallbackMock.mockClear();
   runtimeErrorMock.mockClear();
+  runtimeConfigSnapshotState.getRuntimeConfigSnapshot.mockReset();
+  runtimeConfigSnapshotState.getRuntimeConfigSnapshot.mockReturnValue(null);
   abortEmbeddedPiRunMock.mockClear();
   compactState.compactEmbeddedPiSessionMock.mockReset();
   compactState.compactEmbeddedPiSessionMock.mockResolvedValue({
@@ -345,6 +358,74 @@ describe("runReplyAgent continuation volatile state", () => {
     });
 
     expect(result).toMatchObject({ text: "Normal reply" });
+    expect(currentContinuationGeneration(run.sessionKey)).toBeGreaterThan(0);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(requestHeartbeatNowMock).toHaveBeenCalledWith({
+      sessionKey: run.sessionKey,
+      reason: "continuation",
+    });
+    expect(currentContinuationGeneration(run.sessionKey)).toBe(0);
+  });
+
+  it("arms and fires delayed work timers from the continue_work tool path", async () => {
+    vi.useFakeTimers();
+
+    const run = createContinuationRun({ sessionKey: "continuation-work-tool-timer" });
+    runEmbeddedPiAgentMock.mockImplementationOnce(
+      async (params: {
+        continueWorkOpts?: {
+          requestContinuation: (request: { reason: string; delaySeconds: number }) => void;
+        };
+      }) => {
+        params.continueWorkOpts?.requestContinuation({
+          reason: "Need another turn from tool path.",
+          delaySeconds: 1,
+        });
+        return {
+          payloads: [{ text: "Normal reply" }],
+          meta: {
+            agentMeta: {
+              usage: {
+                input: 2,
+                output: 3,
+              },
+            },
+          },
+        };
+      },
+    );
+
+    const result = await runReplyAgent({
+      commandBody: "hello",
+      followupRun: run.followupRun,
+      queueKey: run.sessionKey,
+      resolvedQueue: run.resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing: run.typing,
+      sessionCtx: run.sessionCtx,
+      sessionEntry: run.sessionEntry,
+      sessionStore: { [run.sessionKey]: run.sessionEntry },
+      sessionKey: run.sessionKey,
+      defaultModel: "anthropic/claude-opus-4-6",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(result).toMatchObject({ text: "Normal reply" });
+    expect(
+      runEmbeddedPiAgentMock.mock.calls.map(([params]) =>
+        Boolean((params as { continueWorkOpts?: unknown }).continueWorkOpts),
+      ),
+    ).toContain(true);
     expect(currentContinuationGeneration(run.sessionKey)).toBeGreaterThan(0);
 
     await vi.advanceTimersByTimeAsync(1_000);

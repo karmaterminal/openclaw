@@ -184,6 +184,25 @@ export function requireActivePluginChannelRegistry(): PluginRegistry {
   return created;
 }
 
+/**
+ * Return the gateway-bindable registry snapshot that gateway-owned runtime
+ * helpers should prefer. A pinned channel/route registry reflects the gateway
+ * startup snapshot even after later default-mode registry loads replace the
+ * process-wide active registry.
+ */
+export function getGatewayBindablePluginRegistry(): PluginRegistry | null {
+  if (state.channel.pinned && state.channel.registry) {
+    return asPluginRegistry(state.channel.registry);
+  }
+  if (state.httpRoute.pinned && state.httpRoute.registry) {
+    return asPluginRegistry(state.httpRoute.registry);
+  }
+  if (state.runtimeSubagentMode === "gateway-bindable" && state.activeRegistry) {
+    return asPluginRegistry(state.activeRegistry);
+  }
+  return null;
+}
+
 export function getActivePluginRegistryKey(): string | null {
   return state.key;
 }

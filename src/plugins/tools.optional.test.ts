@@ -21,6 +21,7 @@ vi.mock("../config/plugin-auto-enable.js", () => ({
 
 let resolvePluginTools: typeof import("./tools.js").resolvePluginTools;
 let resetPluginRuntimeStateForTest: typeof import("./runtime.js").resetPluginRuntimeStateForTest;
+let pinActivePluginChannelRegistry: typeof import("./runtime.js").pinActivePluginChannelRegistry;
 let setActivePluginRegistry: typeof import("./runtime.js").setActivePluginRegistry;
 
 function makeTool(name: string) {
@@ -195,7 +196,8 @@ function expectConflictingCoreNameResolution(params: {
 describe("resolvePluginTools optional tools", () => {
   beforeAll(async () => {
     ({ resolvePluginTools } = await import("./tools.js"));
-    ({ resetPluginRuntimeStateForTest, setActivePluginRegistry } = await import("./runtime.js"));
+    ({ pinActivePluginChannelRegistry, resetPluginRuntimeStateForTest, setActivePluginRegistry } =
+      await import("./runtime.js"));
   });
 
   beforeEach(() => {
@@ -356,6 +358,32 @@ describe("resolvePluginTools optional tools", () => {
   it("reuses the active registry for gateway-bindable tool loads before reloading", () => {
     const activeRegistry = createOptionalDemoActiveRegistry();
     setActivePluginRegistry(activeRegistry as never, "gateway-startup", "gateway-bindable");
+    resolveRuntimePluginRegistryMock.mockReturnValue(undefined);
+
+    const tools = resolvePluginTools(
+      createResolveToolsParams({
+        toolAllowlist: ["optional_tool"],
+        allowGatewaySubagentBinding: true,
+      }),
+    );
+
+    expectResolvedToolNames(tools, ["optional_tool"]);
+    expect(resolveRuntimePluginRegistryMock).not.toHaveBeenCalled();
+    expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
+  });
+
+  it("reuses the pinned gateway registry after the active registry drifts to default mode", () => {
+    const startupRegistry = createOptionalDemoActiveRegistry();
+    setActivePluginRegistry(startupRegistry as never, "gateway-startup", "gateway-bindable");
+    pinActivePluginChannelRegistry(startupRegistry as never);
+    setActivePluginRegistry(
+      {
+        tools: [],
+        diagnostics: [],
+      } as never,
+      "default-registry",
+      "default",
+    );
     resolveRuntimePluginRegistryMock.mockReturnValue(undefined);
 
     const tools = resolvePluginTools(

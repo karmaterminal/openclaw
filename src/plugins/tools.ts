@@ -2,11 +2,7 @@ import { normalizeToolName } from "../agents/tool-policy.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
 import { applyTestPluginDefaults, normalizePluginsConfig } from "./config-state.js";
 import { resolveRuntimePluginRegistry, type PluginLoadOptions } from "./loader.js";
-import {
-  getActivePluginRegistry,
-  getActivePluginRegistryKey,
-  getActivePluginRuntimeSubagentMode,
-} from "./runtime.js";
+import { getGatewayBindablePluginRegistry } from "./runtime.js";
 import {
   buildPluginRuntimeLoadOptions,
   resolvePluginRuntimeLoadContext,
@@ -58,12 +54,11 @@ function resolvePluginToolRegistry(params: {
   loadOptions: PluginLoadOptions;
   allowGatewaySubagentBinding?: boolean;
 }) {
-  if (
-    params.allowGatewaySubagentBinding &&
-    getActivePluginRegistryKey() &&
-    getActivePluginRuntimeSubagentMode() === "gateway-bindable"
-  ) {
-    return getActivePluginRegistry() ?? resolveRuntimePluginRegistry(params.loadOptions);
+  if (params.allowGatewaySubagentBinding) {
+    const gatewayRegistry = getGatewayBindablePluginRegistry();
+    if (gatewayRegistry) {
+      return gatewayRegistry;
+    }
   }
   return resolveRuntimePluginRegistry(params.loadOptions);
 }
