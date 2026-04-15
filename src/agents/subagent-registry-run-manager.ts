@@ -6,7 +6,10 @@ import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { createRunningTaskRun } from "../tasks/task-executor.js";
 import { type DeliveryContext, normalizeDeliveryContext } from "../utils/delivery-context.js";
 import { waitForAgentRun } from "./run-wait.js";
-import type { ensureRuntimePluginsLoaded as ensureRuntimePluginsLoadedFn } from "./runtime-plugins.js";
+import type {
+  ensureRuntimePluginsLoaded as ensureRuntimePluginsLoadedFn,
+  ensureRuntimePluginsLoadedReadOnly as ensureRuntimePluginsLoadedReadOnlyFn,
+} from "./runtime-plugins.js";
 import type { SubagentRunOutcome } from "./subagent-announce-output.js";
 import {
   SUBAGENT_ENDED_OUTCOME_KILLED,
@@ -45,6 +48,13 @@ export function createSubagentRunManager(params: {
         workspaceDir?: string;
         allowGatewaySubagentBinding?: boolean;
       }) => void | Promise<void>);
+  ensureRuntimePluginsLoadedReadOnly?:
+    | typeof ensureRuntimePluginsLoadedReadOnlyFn
+    | ((args: {
+        config: OpenClawConfig;
+        workspaceDir?: string;
+        allowGatewaySubagentBinding?: boolean;
+      }) => boolean | Promise<boolean>);
   ensureListener(): void;
   startSweeper(): void;
   stopSweeper(): void;
@@ -460,18 +470,35 @@ export function createSubagentRunManager(params: {
           });
           continue;
         }
+        // Use read-only plugin resolution when available: this is a lifecycle
+        // path that runs per-termination and should not trigger a full
+        // synchronous plugin load on cache miss.
         const cfg = params.loadConfig();
-        void Promise.resolve(
-          params.ensureRuntimePluginsLoaded({
-            config: cfg,
-            workspaceDir: entry.workspaceDir,
-            allowGatewaySubagentBinding: true,
-          }),
-        )
-          .then(emitEndedHook)
-          .catch(() => {
-            // Hook failures should not break termination flow.
-          });
+        if (params.ensureRuntimePluginsLoadedReadOnly) {
+          void Promise.resolve(
+            params.ensureRuntimePluginsLoadedReadOnly({
+              config: cfg,
+              workspaceDir: entry.workspaceDir,
+              allowGatewaySubagentBinding: true,
+            }),
+          )
+            .then((ready) => ready && emitEndedHook())
+            .catch(() => {
+              // Hook failures should not break termination flow.
+            });
+        } else {
+          void Promise.resolve(
+            params.ensureRuntimePluginsLoaded({
+              config: cfg,
+              workspaceDir: entry.workspaceDir,
+              allowGatewaySubagentBinding: true,
+            }),
+          )
+            .then(emitEndedHook)
+            .catch(() => {
+              // Hook failures should not break termination flow.
+            });
+        }
       }
     }
     return updated;

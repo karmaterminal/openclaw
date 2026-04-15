@@ -383,10 +383,12 @@ describe("subagent registry seam flow", () => {
       runSubagentEnded: mocks.runSubagentEnded,
     };
     mocks.getGlobalHookRunner.mockReturnValue(null);
-    mocks.ensureRuntimePluginsLoadedReadOnly.mockImplementation(() => true);
-    mocks.getGlobalHookRunner.mockReturnValue(null);
-    mocks.ensureRuntimePluginsLoaded.mockImplementation(() => {
+    // The run-manager termination path now uses the read-only plugin
+    // resolution variant. Wire the side effect (installing the hook runner)
+    // into the read-only mock so the hook can be emitted.
+    mocks.ensureRuntimePluginsLoadedReadOnly.mockImplementation(() => {
       mocks.getGlobalHookRunner.mockReturnValue(endedHookRunner as never);
+      return true;
     });
 
     mod.registerSubagentRun({
@@ -407,7 +409,7 @@ describe("subagent registry seam flow", () => {
 
     expect(updated).toBe(1);
     await vi.waitFor(() => {
-      expect(mocks.ensureRuntimePluginsLoaded).toHaveBeenCalledWith({
+      expect(mocks.ensureRuntimePluginsLoadedReadOnly).toHaveBeenCalledWith({
         config: {
           agents: { defaults: { subagents: { archiveAfterMinutes: 0 } } },
           session: { mainKey: "main", scope: "per-sender" },

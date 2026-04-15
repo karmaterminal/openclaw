@@ -187,7 +187,8 @@ async function ensureSubagentRegistryPluginRuntimeLoadedReadOnly(params: {
   workspaceDir?: string;
   allowGatewaySubagentBinding?: boolean;
 }): Promise<boolean> {
-  const ensureRuntimePluginsLoadedReadOnly = subagentRegistryDeps.ensureRuntimePluginsLoadedReadOnly;
+  const ensureRuntimePluginsLoadedReadOnly =
+    subagentRegistryDeps.ensureRuntimePluginsLoadedReadOnly;
   if (ensureRuntimePluginsLoadedReadOnly) {
     return ensureRuntimePluginsLoadedReadOnly(params);
   }
@@ -709,6 +710,11 @@ const subagentRunManager = createSubagentRunManager({
     workspaceDir?: string;
     allowGatewaySubagentBinding?: boolean;
   }) => ensureSubagentRegistryPluginRuntimeLoaded(args),
+  ensureRuntimePluginsLoadedReadOnly: (args: {
+    config: OpenClawConfig;
+    workspaceDir?: string;
+    allowGatewaySubagentBinding?: boolean;
+  }) => ensureSubagentRegistryPluginRuntimeLoadedReadOnly(args),
   ensureListener,
   startSweeper,
   stopSweeper,
