@@ -565,6 +565,18 @@ function getCompatibleActivePluginRegistry(
       return activeRegistry;
     }
   }
+  if (
+    loadContext.runtimeSubagentMode === "gateway-bindable" &&
+    getActivePluginRuntimeSubagentMode() === "default"
+  ) {
+    const defaultCacheKey = resolvePluginLoadCacheContext({
+      ...options,
+      runtimeOptions: undefined,
+    }).cacheKey;
+    if (defaultCacheKey === activeCacheKey) {
+      return activeRegistry;
+    }
+  }
   return undefined;
 }
 

@@ -77,7 +77,7 @@ describe("getCompatibleActivePluginRegistry", () => {
     ).toBeUndefined();
   });
 
-  it("does not treat a default-mode active registry as compatible with gateway binding", () => {
+  it("treats a default-mode active registry as compatible when gateway binding is the only difference", () => {
     const registry = createEmptyPluginRegistry();
     const loadOptions = {
       config: {
@@ -98,7 +98,7 @@ describe("getCompatibleActivePluginRegistry", () => {
           allowGatewaySubagentBinding: true,
         },
       }),
-    ).toBeUndefined();
+    ).toBe(registry);
   });
 
   it("does not embed activation secrets in the loader cache key", () => {

@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   runSubagentAnnounceFlow: vi.fn(async () => true),
   getGlobalHookRunner: vi.fn(() => null),
   ensureRuntimePluginsLoaded: vi.fn(),
+  ensureRuntimePluginsLoadedReadOnly: vi.fn(() => true),
   ensureContextEnginesInitialized: vi.fn(),
   resolveContextEngine: vi.fn(),
   onSubagentEnded: vi.fn(async () => {}),
@@ -84,6 +85,7 @@ vi.mock("../plugins/hook-runner-global.js", () => ({
 
 vi.mock("./runtime-plugins.js", () => ({
   ensureRuntimePluginsLoaded: mocks.ensureRuntimePluginsLoaded,
+  ensureRuntimePluginsLoadedReadOnly: mocks.ensureRuntimePluginsLoadedReadOnly,
 }));
 
 vi.mock("../context-engine/init.js", () => ({
@@ -109,6 +111,10 @@ describe("subagent registry seam flow", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-24T12:00:00Z"));
+    mocks.ensureRuntimePluginsLoaded.mockReset();
+    mocks.ensureRuntimePluginsLoaded.mockReturnValue(undefined);
+    mocks.ensureRuntimePluginsLoadedReadOnly.mockReset();
+    mocks.ensureRuntimePluginsLoadedReadOnly.mockReturnValue(true);
     mocks.onAgentEvent.mockReturnValue(noop);
     mocks.loadConfig.mockReturnValue({
       agents: { defaults: { subagents: { archiveAfterMinutes: 0 } } },
@@ -149,6 +155,7 @@ describe("subagent registry seam flow", () => {
       runSubagentAnnounceFlow: mocks.runSubagentAnnounceFlow,
       ensureContextEnginesInitialized: mocks.ensureContextEnginesInitialized,
       ensureRuntimePluginsLoaded: mocks.ensureRuntimePluginsLoaded,
+      ensureRuntimePluginsLoadedReadOnly: mocks.ensureRuntimePluginsLoadedReadOnly,
       resolveContextEngine: mocks.resolveContextEngine,
     });
     mod.resetSubagentRegistryForTests({ persist: false });
@@ -376,6 +383,8 @@ describe("subagent registry seam flow", () => {
       runSubagentEnded: mocks.runSubagentEnded,
     };
     mocks.getGlobalHookRunner.mockReturnValue(null);
+    mocks.ensureRuntimePluginsLoadedReadOnly.mockImplementation(() => true);
+    mocks.getGlobalHookRunner.mockReturnValue(null);
     mocks.ensureRuntimePluginsLoaded.mockImplementation(() => {
       mocks.getGlobalHookRunner.mockReturnValue(endedHookRunner as never);
     });
@@ -556,7 +565,7 @@ describe("subagent registry seam flow", () => {
         workspaceDir: "/tmp/workspace",
       });
     });
-    expect(mocks.ensureRuntimePluginsLoaded).toHaveBeenCalledWith({
+    expect(mocks.ensureRuntimePluginsLoadedReadOnly).toHaveBeenCalledWith({
       config: {
         agents: { defaults: { subagents: { archiveAfterMinutes: 0 } } },
         session: { mainKey: "main", scope: "per-sender" },
@@ -565,5 +574,42 @@ describe("subagent registry seam flow", () => {
       allowGatewaySubagentBinding: true,
     });
     expect(mocks.ensureContextEnginesInitialized).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips released end-hook runtime work when no compatible registry is already loaded", async () => {
+    mocks.ensureRuntimePluginsLoadedReadOnly.mockReturnValue(false);
+    mod.addSubagentRunForTests({
+      runId: "run-release-no-runtime",
+      childSessionKey: "agent:main:session:child-no-runtime",
+      controllerSessionKey: "agent:main:session:parent",
+      requesterSessionKey: "agent:main:session:parent",
+      requesterOrigin: undefined,
+      requesterDisplayKey: "parent",
+      task: "task",
+      cleanup: "keep",
+      expectsCompletionMessage: undefined,
+      spawnMode: "run",
+      workspaceDir: "/tmp/workspace",
+      createdAt: 1,
+      startedAt: 1,
+      sessionStartedAt: 1,
+      accumulatedRuntimeMs: 0,
+      cleanupHandled: false,
+    });
+
+    mod.releaseSubagentRun("run-release-no-runtime");
+
+    await vi.waitFor(() => {
+      expect(mocks.ensureRuntimePluginsLoadedReadOnly).toHaveBeenCalledWith({
+        config: {
+          agents: { defaults: { subagents: { archiveAfterMinutes: 0 } } },
+          session: { mainKey: "main", scope: "per-sender" },
+        },
+        workspaceDir: "/tmp/workspace",
+        allowGatewaySubagentBinding: true,
+      });
+    });
+    expect(mocks.ensureContextEnginesInitialized).not.toHaveBeenCalled();
+    expect(mocks.onSubagentEnded).not.toHaveBeenCalled();
   });
 });

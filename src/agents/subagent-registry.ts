@@ -7,7 +7,10 @@ import { onAgentEvent } from "../infra/agent-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { importRuntimeModule } from "../shared/runtime-import.js";
 import { type DeliveryContext, normalizeDeliveryContext } from "../utils/delivery-context.js";
-import type { ensureRuntimePluginsLoaded as ensureRuntimePluginsLoadedFn } from "./runtime-plugins.js";
+import type {
+  ensureRuntimePluginsLoaded as ensureRuntimePluginsLoadedFn,
+  ensureRuntimePluginsLoadedReadOnly as ensureRuntimePluginsLoadedReadOnlyFn,
+} from "./runtime-plugins.js";
 import type { SubagentRunOutcome } from "./subagent-announce-output.js";
 import { resetAnnounceQueuesForTests } from "./subagent-announce-queue.js";
 import * as subagentAnnounceModule from "./subagent-announce.js";
@@ -77,6 +80,7 @@ type SubagentRegistryDeps = {
   runSubagentAnnounceFlow: typeof subagentAnnounceModule.runSubagentAnnounceFlow;
   ensureContextEnginesInitialized?: () => void;
   ensureRuntimePluginsLoaded?: typeof ensureRuntimePluginsLoadedFn;
+  ensureRuntimePluginsLoadedReadOnly?: typeof ensureRuntimePluginsLoadedReadOnlyFn;
   resolveContextEngine?: (cfg: OpenClawConfig) => Promise<ContextEngine>;
 };
 
@@ -110,8 +114,9 @@ type ContextEngineRegistryModule = Pick<
 type RuntimePluginsModule = Pick<
   {
     ensureRuntimePluginsLoaded: typeof ensureRuntimePluginsLoadedFn;
+    ensureRuntimePluginsLoadedReadOnly: typeof ensureRuntimePluginsLoadedReadOnlyFn;
   },
-  "ensureRuntimePluginsLoaded"
+  "ensureRuntimePluginsLoaded" | "ensureRuntimePluginsLoadedReadOnly"
 >;
 
 const SUBAGENT_REGISTRY_RUNTIME_SPEC = ["./subagent-registry.runtime", ".js"] as const;
@@ -175,6 +180,22 @@ async function ensureSubagentRegistryPluginRuntimeLoaded(params: {
     return;
   }
   (await loadRuntimePluginsModule()).ensureRuntimePluginsLoaded(params);
+}
+
+async function ensureSubagentRegistryPluginRuntimeLoadedReadOnly(params: {
+  config: OpenClawConfig;
+  workspaceDir?: string;
+  allowGatewaySubagentBinding?: boolean;
+}): Promise<boolean> {
+  const ensureRuntimePluginsLoadedReadOnly = subagentRegistryDeps.ensureRuntimePluginsLoadedReadOnly;
+  if (ensureRuntimePluginsLoadedReadOnly) {
+    return ensureRuntimePluginsLoadedReadOnly(params);
+  }
+  try {
+    return (await loadRuntimePluginsModule()).ensureRuntimePluginsLoadedReadOnly(params);
+  } catch {
+    return false;
+  }
 }
 
 async function resolveSubagentRegistryContextEngine(cfg: OpenClawConfig) {
@@ -283,11 +304,14 @@ async function notifyContextEngineSubagentEnded(params: {
 }) {
   try {
     const cfg = subagentRegistryDeps.loadConfig();
-    await ensureSubagentRegistryPluginRuntimeLoaded({
+    const ready = await ensureSubagentRegistryPluginRuntimeLoadedReadOnly({
       config: cfg,
       workspaceDir: params.workspaceDir,
       allowGatewaySubagentBinding: true,
     });
+    if (!ready) {
+      return;
+    }
     const engine = await resolveSubagentRegistryContextEngine(cfg);
     if (!engine.onSubagentEnded) {
       return;
@@ -329,11 +353,14 @@ async function emitSubagentEndedHookForRun(params: {
     return;
   }
   const cfg = subagentRegistryDeps.loadConfig();
-  await ensureSubagentRegistryPluginRuntimeLoaded({
+  const ready = await ensureSubagentRegistryPluginRuntimeLoadedReadOnly({
     config: cfg,
     workspaceDir: params.entry.workspaceDir,
     allowGatewaySubagentBinding: true,
   });
+  if (!ready) {
+    return;
+  }
   const reason = params.reason ?? params.entry.endedReason ?? SUBAGENT_ENDED_REASON_COMPLETE;
   const outcome = resolveLifecycleOutcomeFromRunOutcome(params.entry.outcome);
   const error = params.entry.outcome?.status === "error" ? params.entry.outcome.error : undefined;
