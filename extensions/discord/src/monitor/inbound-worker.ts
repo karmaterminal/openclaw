@@ -1,5 +1,9 @@
 import { createRunStateMachine } from "openclaw/plugin-sdk/channel-lifecycle";
 import { KeyedAsyncQueue } from "openclaw/plugin-sdk/keyed-async-queue";
+import {
+  abortReplyRunBySessionKey,
+  waitForReplyRunIdleBySessionKey,
+} from "openclaw/plugin-sdk/reply-runtime";
 import { danger, formatDurationSeconds } from "openclaw/plugin-sdk/runtime-env";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/text-runtime";
 import { materializeDiscordInboundJob, type DiscordInboundJob } from "./inbound-job.js";
@@ -26,7 +30,11 @@ export type DiscordInboundWorker = {
 export type DiscordInboundWorkerTestingHooks = {
   processDiscordMessage?: typeof processDiscordMessage;
   deliverDiscordReply?: typeof deliverDiscordReply;
+  abortReplyRunBySessionKey?: typeof abortReplyRunBySessionKey;
+  waitForReplyRunIdleBySessionKey?: typeof waitForReplyRunIdleBySessionKey;
 };
+
+const DISCORD_TIMEOUT_ABORT_WAIT_MS = 5_000;
 
 function formatDiscordRunContextSuffix(job: DiscordInboundJob): string {
   const channelId = job.payload.messageChannelId?.trim();
@@ -39,6 +47,57 @@ function formatDiscordRunContextSuffix(job: DiscordInboundJob): string {
     return "";
   }
   return ` (${details.join(", ")})`;
+}
+
+function resolveDiscordInboundWorkerSessionKey(params: {
+  job: DiscordInboundJob;
+  sessionKey?: string;
+}): string | undefined {
+  return normalizeOptionalString(
+    params.sessionKey ?? params.job.payload.route.sessionKey ?? params.job.payload.baseSessionKey,
+  );
+}
+
+function abortTimedOutDiscordReplyRun(params: {
+  job: DiscordInboundJob;
+  sessionKey?: string;
+  abortReplyRunBySessionKeyImpl?: typeof abortReplyRunBySessionKey;
+}): string | undefined {
+  const resolvedSessionKey = resolveDiscordInboundWorkerSessionKey(params);
+  if (!resolvedSessionKey) {
+    return undefined;
+  }
+  const abortImpl = params.abortReplyRunBySessionKeyImpl ?? abortReplyRunBySessionKey;
+  return abortImpl(resolvedSessionKey) ? resolvedSessionKey : undefined;
+}
+
+async function waitForTimedOutDiscordReplyRunCleanup(params: {
+  runtime: RuntimeEnv;
+  contextSuffix: string;
+  sessionKey?: string;
+  waitForReplyRunIdleBySessionKeyImpl?: typeof waitForReplyRunIdleBySessionKey;
+}) {
+  const resolvedSessionKey = normalizeOptionalString(params.sessionKey);
+  if (!resolvedSessionKey) {
+    return;
+  }
+  const waitForIdleImpl =
+    params.waitForReplyRunIdleBySessionKeyImpl ?? waitForReplyRunIdleBySessionKey;
+  const cleanedUp = await waitForIdleImpl(resolvedSessionKey, DISCORD_TIMEOUT_ABORT_WAIT_MS);
+  if (cleanedUp) {
+    return;
+  }
+  params.runtime.error?.(
+    danger(
+      `discord inbound worker timeout cleanup did not finish within ${formatDurationSeconds(
+        DISCORD_TIMEOUT_ABORT_WAIT_MS,
+        {
+          decimals: 1,
+          unit: "seconds",
+        },
+      )}${params.contextSuffix}`,
+    ),
+  );
 }
 
 async function processDiscordInboundJob(params: {
@@ -80,7 +139,18 @@ async function processDiscordInboundJob(params: {
           })}${contextSuffix}`,
         ),
       );
+      const abortedSessionKey = abortTimedOutDiscordReplyRun({
+        job: params.job,
+        sessionKey,
+        abortReplyRunBySessionKeyImpl: params.testing?.abortReplyRunBySessionKey,
+      });
       if (finalReplyStarted) {
+        await waitForTimedOutDiscordReplyRunCleanup({
+          runtime: params.runtime,
+          contextSuffix,
+          sessionKey: abortedSessionKey,
+          waitForReplyRunIdleBySessionKeyImpl: params.testing?.waitForReplyRunIdleBySessionKey,
+        });
         return;
       }
       await sendDiscordInboundWorkerTimeoutReply({
@@ -90,6 +160,12 @@ async function processDiscordInboundJob(params: {
         createdThreadId,
         sessionKey,
         deliverDiscordReplyImpl: params.testing?.deliverDiscordReply,
+      });
+      await waitForTimedOutDiscordReplyRunCleanup({
+        runtime: params.runtime,
+        contextSuffix,
+        sessionKey: abortedSessionKey,
+        waitForReplyRunIdleBySessionKeyImpl: params.testing?.waitForReplyRunIdleBySessionKey,
       });
     },
     onErrorAfterTimeout: (error) => {

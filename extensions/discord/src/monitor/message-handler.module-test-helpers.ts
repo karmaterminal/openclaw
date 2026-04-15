@@ -5,6 +5,8 @@ import type { DiscordInboundWorkerTestingHooks } from "./inbound-worker.js";
 export const preflightDiscordMessageMock: MockFn = vi.fn();
 export const processDiscordMessageMock: MockFn = vi.fn();
 export const deliverDiscordReplyMock: MockFn = vi.fn(async () => undefined);
+export const abortReplyRunBySessionKeyMock: MockFn = vi.fn(() => true);
+export const waitForReplyRunIdleBySessionKeyMock: MockFn = vi.fn(async () => true);
 
 const { createDiscordMessageHandler: createRealDiscordMessageHandler } =
   await import("./message-handler.js");
@@ -17,6 +19,12 @@ type ProcessDiscordMessageHook = NonNullable<
   DiscordInboundWorkerTestingHooks["processDiscordMessage"]
 >;
 type DeliverDiscordReplyHook = NonNullable<DiscordInboundWorkerTestingHooks["deliverDiscordReply"]>;
+type AbortReplyRunBySessionKeyHook = NonNullable<
+  DiscordInboundWorkerTestingHooks["abortReplyRunBySessionKey"]
+>;
+type WaitForReplyRunIdleBySessionKeyHook = NonNullable<
+  DiscordInboundWorkerTestingHooks["waitForReplyRunIdleBySessionKey"]
+>;
 
 export function createDiscordMessageHandler(
   ...args: Parameters<typeof createRealDiscordMessageHandler>
@@ -29,6 +37,9 @@ export function createDiscordMessageHandler(
       preflightDiscordMessage: preflightDiscordMessageMock as PreflightDiscordMessageHook,
       processDiscordMessage: processDiscordMessageMock as ProcessDiscordMessageHook,
       deliverDiscordReply: deliverDiscordReplyMock as DeliverDiscordReplyHook,
+      abortReplyRunBySessionKey: abortReplyRunBySessionKeyMock as AbortReplyRunBySessionKeyHook,
+      waitForReplyRunIdleBySessionKey:
+        waitForReplyRunIdleBySessionKeyMock as WaitForReplyRunIdleBySessionKeyHook,
     },
   });
 }

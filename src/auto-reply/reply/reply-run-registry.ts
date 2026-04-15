@@ -445,6 +445,17 @@ export function resolveActiveReplyRunSessionId(sessionKey: string): string | und
   return replyRunRegistry.resolveSessionId(sessionKey);
 }
 
+export function abortReplyRunBySessionKey(sessionKey: string): boolean {
+  return replyRunRegistry.abort(sessionKey);
+}
+
+export function waitForReplyRunIdleBySessionKey(
+  sessionKey: string,
+  timeoutMs = 15_000,
+): Promise<boolean> {
+  return replyRunRegistry.waitForIdle(sessionKey, timeoutMs);
+}
+
 export function isReplyRunActiveForSessionId(sessionId: string): boolean {
   return resolveReplyRunForCurrentSessionId(sessionId) !== undefined;
 }

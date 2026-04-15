@@ -33,6 +33,10 @@ export { isBtwRequestText } from "../auto-reply/reply/btw-command.js";
 export { resetInboundDedupe } from "../auto-reply/reply/inbound-dedupe.js";
 export { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
 export {
+  abortReplyRunBySessionKey,
+  waitForReplyRunIdleBySessionKey,
+} from "../auto-reply/reply/reply-run-registry.js";
+export {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "../auto-reply/inbound-debounce.js";

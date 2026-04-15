@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDiscordMessageHandler,
   preflightDiscordMessageMock,
   processDiscordMessageMock,
   deliverDiscordReplyMock,
+  abortReplyRunBySessionKeyMock,
+  waitForReplyRunIdleBySessionKeyMock,
 } from "./message-handler.module-test-helpers.js";
 import {
   createDiscordHandlerParams,
@@ -33,6 +35,13 @@ function createMessageData(messageId: string, channelId = "ch-1") {
     },
   };
 }
+
+beforeEach(() => {
+  abortReplyRunBySessionKeyMock.mockReset();
+  abortReplyRunBySessionKeyMock.mockImplementation(() => true);
+  waitForReplyRunIdleBySessionKeyMock.mockReset();
+  waitForReplyRunIdleBySessionKeyMock.mockImplementation(async () => true);
+});
 
 function createPreflightContext(channelId = "ch-1") {
   return {
@@ -269,6 +278,11 @@ describe("createDiscordMessageHandler queue behavior", () => {
       expect(handlerParams.runtime.error).toHaveBeenCalledWith(
         expect.stringContaining("discord inbound worker timed out after"),
       );
+      expect(abortReplyRunBySessionKeyMock).toHaveBeenCalledWith("agent:main:discord:channel:ch-1");
+      expect(waitForReplyRunIdleBySessionKeyMock).toHaveBeenCalledWith(
+        "agent:main:discord:channel:ch-1",
+        5000,
+      );
       expect(deliverDiscordReplyMock).toHaveBeenCalledTimes(1);
       expect(deliverDiscordReplyMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -291,11 +305,15 @@ describe("createDiscordMessageHandler queue behavior", () => {
     vi.useFakeTimers();
     try {
       const deliverTimeoutReply = createDeferred();
+      const cleanupFinished = createDeferred<boolean>();
       const { handlerParams } = await queueTimedMessages({
         beforeCreateHandler: () => {
           deliverDiscordReplyMock.mockReset();
           deliverDiscordReplyMock.mockImplementationOnce(async () => {
             await deliverTimeoutReply.promise;
+          });
+          waitForReplyRunIdleBySessionKeyMock.mockImplementationOnce(async () => {
+            return await cleanupFinished.promise;
           });
         },
       });
@@ -312,6 +330,12 @@ describe("createDiscordMessageHandler queue behavior", () => {
 
       deliverTimeoutReply.resolve();
       await deliverTimeoutReply.promise;
+      await Promise.resolve();
+
+      expect(processDiscordMessageMock).toHaveBeenCalledTimes(1);
+
+      cleanupFinished.resolve(true);
+      await cleanupFinished.promise;
 
       await vi.waitFor(() => {
         expect(processDiscordMessageMock).toHaveBeenCalledTimes(2);
@@ -341,6 +365,11 @@ describe("createDiscordMessageHandler queue behavior", () => {
         },
       });
 
+      expect(abortReplyRunBySessionKeyMock).toHaveBeenCalledWith("agent:main:discord:channel:ch-1");
+      expect(waitForReplyRunIdleBySessionKeyMock).toHaveBeenCalledWith(
+        "agent:main:discord:channel:ch-1",
+        5000,
+      );
       expect(deliverDiscordReplyMock).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
@@ -387,6 +416,13 @@ describe("createDiscordMessageHandler queue behavior", () => {
           ],
         }),
       );
+      expect(abortReplyRunBySessionKeyMock).toHaveBeenCalledWith(
+        "agent:main:discord:channel:thread-1",
+      );
+      expect(waitForReplyRunIdleBySessionKeyMock).toHaveBeenCalledWith(
+        "agent:main:discord:channel:thread-1",
+        5000,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -430,6 +466,11 @@ describe("createDiscordMessageHandler queue behavior", () => {
 
       expect(params.runtime.error).toHaveBeenCalledWith(
         expect.stringContaining("discord inbound worker timed out after"),
+      );
+      expect(abortReplyRunBySessionKeyMock).toHaveBeenCalledWith("agent:main:discord:channel:ch-1");
+      expect(waitForReplyRunIdleBySessionKeyMock).toHaveBeenCalledWith(
+        "agent:main:discord:channel:ch-1",
+        5000,
       );
       expect(deliverDiscordReplyMock).not.toHaveBeenCalled();
 
