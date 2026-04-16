@@ -1179,6 +1179,31 @@ export async function runReplyAgent(params: {
         cleanupTranscripts: true,
       });
 
+    // --- Context-pressure pre-run injection (RFC §4.2) ---
+    // Fire before the agent turn so the agent can act on pressure in this turn.
+    const continuationEnabledForPressure = cfg?.agents?.defaults?.continuation?.enabled === true;
+    if (continuationEnabledForPressure && sessionKey && activeSessionEntry) {
+      const { checkContextPressure } = await import("../continuation/context-pressure.js");
+      const pressureConfig = resolveContinuationRuntimeConfig(cfg);
+      const threshold = pressureConfig.contextPressureThreshold;
+      // Resolve context window for pressure calculation — agentCfgContextTokens
+      // or session-stored value or default.
+      const pressureContextWindow =
+        agentCfgContextTokens ?? activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS;
+      if (threshold && activeSessionEntry.totalTokens && pressureContextWindow) {
+        const pressureEvent = checkContextPressure({
+          sessionKey,
+          totalTokens: activeSessionEntry.totalTokens,
+          contextWindow: pressureContextWindow,
+          threshold,
+          postCompaction: preflightCompactionApplied,
+        });
+        if (pressureEvent) {
+          enqueueSystemEvent(pressureEvent, { sessionKey });
+        }
+      }
+    }
+
     replyOperation.setPhase("running");
     const runStartedAt = Date.now();
     const runOutcome = await runAgentTurnWithFallback({

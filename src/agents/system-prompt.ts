@@ -402,6 +402,8 @@ export function buildAgentSystemPrompt(params: {
   promptMode?: PromptMode;
   /** Whether ACP-specific routing guidance should be included. Defaults to true. */
   acpEnabled?: boolean;
+  /** Whether the continuation feature is enabled for this agent. */
+  continuationEnabled?: boolean;
   runtimeInfo?: {
     agentId?: string;
     host?: string;
@@ -916,6 +918,57 @@ export function buildAgentSystemPrompt(params: {
   }
 
   lines.push(...buildHeartbeatSection({ isMinimal, heartbeatPrompt }));
+
+  // Continuation section — RFC §3.4: system prompt branches on tool availability.
+  if (!isMinimal && params.continuationEnabled) {
+    const availableTools = new Set(params.toolNames ?? []);
+    lines.push(
+      "## Continuation & Delegation",
+      "### Self-elected turns",
+      ...(availableTools.has("continue_work")
+        ? [
+            "Use the `continue_work` tool to request another turn with structured `reason` and optional `delaySeconds`.",
+            "Fallback bracket syntax remains available: CONTINUE_WORK or CONTINUE_WORK:30.",
+          ]
+        : [
+            "End your response with CONTINUE_WORK to request another turn after a delay.",
+            "End with CONTINUE_WORK:30 to specify delay in seconds.",
+          ]),
+      "Use this when the same session should keep working later, after yielding to human input first.",
+      "",
+      "### Delegated continuation",
+      ...(availableTools.has("continue_delegate")
+        ? [
+            "Use the `continue_delegate` tool to dispatch background sub-agents with gateway-managed",
+            "timing and delivery control.",
+            "  task (required) — the delegated sub-agent's task",
+            "  delaySeconds — seconds to wait before spawning (0 or omitted = immediate)",
+            '  mode — "normal" (default), "silent" (internal context only),',
+            '         "silent-wake" (silent + triggers your next turn), "post-compaction" (fires at compaction)',
+            "Call the tool multiple times per turn for parallel fan-out.",
+          ]
+        : [
+            "End your response with [[CONTINUE_DELEGATE: task]] to dispatch a sub-agent.",
+            "Syntax: [[CONTINUE_DELEGATE: task +30s | silent-wake]]",
+            "Modifiers: +Ns for delay, | silent, | silent-wake.",
+          ]),
+      "",
+      "Use `continue_delegate` for background enrichment, chunked fan-out, or compaction handoff.",
+      "Use `continue_work` for same-session sequential continuation.",
+      "Use `sessions_yield` after dispatching delegates when you should park and wait for results.",
+      "",
+      "### Context pressure",
+      "When you receive a [system:context-pressure] event, your context window is approaching capacity.",
+      "Evacuate working state to memory files or delegate remaining work before compaction.",
+      ...(availableTools.has("request_compaction")
+        ? [
+            "Use `request_compaction` to trigger compaction after evacuation.",
+            'Use `continue_delegate` with `mode: "post-compaction"` to stage work that fires after compaction.',
+          ]
+        : []),
+      "",
+    );
+  }
 
   lines.push(
     "## Runtime",
