@@ -988,6 +988,42 @@ export async function runAgentTurnWithFallback(params: {
                 imageOrder: params.opts?.imageOrder,
                 abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
                 replyOperation: params.replyOperation,
+                // Continuation: request_compaction opts wired from session state.
+                requestCompactionOpts:
+                  runtimeConfig?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        sessionId: params.followupRun.run.sessionId,
+                        getContextUsage: () => {
+                          const entry = params.getActiveSessionEntry();
+                          const totalTokens =
+                            (entry as { totalTokens?: number } | undefined)?.totalTokens ?? 0;
+                          const contextWindow =
+                            (entry as { contextTokens?: number } | undefined)?.contextTokens ??
+                            200_000;
+                          return contextWindow > 0 ? totalTokens / contextWindow : 0;
+                        },
+                        triggerCompaction: async () => {
+                          try {
+                            const { compactEmbeddedPiSession } =
+                              await import("../../agents/pi-embedded-runner/compact.queued.js");
+                            await compactEmbeddedPiSession({
+                              sessionId: params.followupRun.run.sessionId ?? "",
+                              sessionKey: params.sessionKey,
+                              sessionFile: params.followupRun.run.sessionFile ?? "",
+                              workspaceDir: params.followupRun.run.workspaceDir ?? process.cwd(),
+                              messageProvider: params.followupRun.run.messageProvider,
+                            });
+                            return { ok: true, compacted: true };
+                          } catch (err) {
+                            return {
+                              ok: false,
+                              compacted: false,
+                              reason: err instanceof Error ? err.message : String(err),
+                            };
+                          }
+                        },
+                      }
+                    : undefined,
                 blockReplyBreak: params.resolvedBlockStreamingBreak,
                 blockReplyChunking: params.blockReplyChunking,
                 onPartialReply: async (payload) => {

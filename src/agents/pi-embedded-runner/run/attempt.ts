@@ -545,6 +545,9 @@ export async function runEmbeddedAttempt(
             requireExplicitMessageTarget:
               params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
             disableMessageTool: params.disableMessageTool,
+            // request_compaction opts are threaded from createOpenClawCodingTools
+            // when the caller (execution layer) has access to session state.
+            requestCompactionOpts: params.requestCompactionOpts,
             onYield: (message) => {
               yieldDetected = true;
               yieldMessage = message;

@@ -318,6 +318,12 @@ export function createOpenClawCodingTools(options?: {
   senderIsOwner?: boolean;
   /** Callback invoked when sessions_yield tool is called. */
   onYield?: (message: string) => Promise<void> | void;
+  /** Continuation: request_compaction tool opts (injected from execution context). */
+  requestCompactionOpts?: {
+    sessionId?: string;
+    getContextUsage: () => number;
+    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+  };
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -594,6 +600,7 @@ export function createOpenClawCodingTools(options?: {
       sessionId: options?.sessionId,
       onYield: options?.onYield,
       allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
+      requestCompactionOpts: options?.requestCompactionOpts,
     }),
   ];
   const toolsForMemoryFlush =
