@@ -163,36 +163,89 @@ export function clearDelayedContinuationReservations(sessionKey: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Post-compaction delegate staging
+// Post-compaction delegate staging — TaskFlow-backed
+//
+// These delegates MUST survive the compaction lifecycle. They are staged
+// before compaction and released after it completes. A volatile Map would
+// be lost on restart — TaskFlow ensures they persist.
 // ---------------------------------------------------------------------------
 
-const stagedPostCompactionDelegates = new Map<string, StagedPostCompactionDelegate[]>();
+import type { JsonValue, TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+import {
+  createManagedTaskFlow as createPostCompactionFlow,
+  finishFlow as finishPostCompactionFlow,
+  listTaskFlowsForOwnerKey as listPostCompactionFlows,
+} from "../../tasks/task-flow-runtime-internal.js";
+
+const POST_COMPACTION_CONTROLLER_ID = "core/continuation-post-compaction";
+
+// Volatile fallback for tests.
+const stagedPostCompactionDelegatesVolatile = new Map<string, StagedPostCompactionDelegate[]>();
 
 export function stagePostCompactionDelegate(
   sessionKey: string,
   delegate: StagedPostCompactionDelegate,
 ): void {
-  const existing = stagedPostCompactionDelegates.get(sessionKey);
+  if (taskFlowReady) {
+    createPostCompactionFlow({
+      ownerKey: sessionKey,
+      controllerId: POST_COMPACTION_CONTROLLER_ID,
+      goal: delegate.task,
+      stateJson: { task: delegate.task, stagedAt: delegate.stagedAt } as JsonValue,
+      status: "queued",
+    });
+    return;
+  }
+  const existing = stagedPostCompactionDelegatesVolatile.get(sessionKey);
   if (existing) {
     existing.push(delegate);
   } else {
-    stagedPostCompactionDelegates.set(sessionKey, [delegate]);
+    stagedPostCompactionDelegatesVolatile.set(sessionKey, [delegate]);
   }
 }
 
 export function consumeStagedPostCompactionDelegates(
   sessionKey: string,
 ): StagedPostCompactionDelegate[] {
-  const delegates = stagedPostCompactionDelegates.get(sessionKey);
+  if (taskFlowReady) {
+    const flows = listPostCompactionFlows(sessionKey)
+      .filter(
+        (f: TaskFlowRecord) =>
+          f.controllerId === POST_COMPACTION_CONTROLLER_ID && f.status === "queued",
+      )
+      .toSorted((a: TaskFlowRecord, b: TaskFlowRecord) => a.createdAt - b.createdAt);
+    const delegates = flows.map((flow: TaskFlowRecord): StagedPostCompactionDelegate => {
+      const state = (flow.stateJson ?? {}) as Record<string, unknown>;
+      return {
+        task: typeof state.task === "string" ? state.task : flow.goal,
+        stagedAt: typeof state.stagedAt === "number" ? state.stagedAt : flow.createdAt,
+      };
+    });
+    for (const flow of flows) {
+      try {
+        finishPostCompactionFlow({ flowId: flow.flowId, expectedRevision: flow.revision });
+      } catch {
+        // Best-effort cleanup.
+      }
+    }
+    return delegates;
+  }
+  const delegates = stagedPostCompactionDelegatesVolatile.get(sessionKey);
   if (!delegates || delegates.length === 0) {
     return [];
   }
-  stagedPostCompactionDelegates.delete(sessionKey);
+  stagedPostCompactionDelegatesVolatile.delete(sessionKey);
   return delegates;
 }
 
 export function stagedPostCompactionDelegateCount(sessionKey: string): number {
-  return stagedPostCompactionDelegates.get(sessionKey)?.length ?? 0;
+  if (taskFlowReady) {
+    return listPostCompactionFlows(sessionKey).filter(
+      (f: TaskFlowRecord) =>
+        f.controllerId === POST_COMPACTION_CONTROLLER_ID && f.status === "queued",
+    ).length;
+  }
+  return stagedPostCompactionDelegatesVolatile.get(sessionKey)?.length ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +278,7 @@ export function consumePendingWorkRequest(
 export function resetDelegateStoreForTests(): void {
   pendingDelegates.clear();
   delayedReservations.clear();
-  stagedPostCompactionDelegates.clear();
+  stagedPostCompactionDelegatesVolatile.clear();
   pendingWorkRequests.clear();
   taskFlowReady = false;
 }
