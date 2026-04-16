@@ -1611,6 +1611,68 @@ export async function runReplyAgent(params: {
           .catch(() => {
             // Silent failure — post-compaction context is best-effort
           });
+
+        // --- Post-compaction continuation lifecycle (RFC §4.4) ---
+        // Release staged post-compaction delegates and fire context-pressure event.
+        if (continuationEnabledForPressure) {
+          const { consumeStagedPostCompactionDelegates } =
+            await import("../continuation/delegate-store.js");
+          const { clearContextPressureState, checkContextPressure } =
+            await import("../continuation/context-pressure.js");
+
+          // Clear pressure dedup so post-compaction lifecycle can fire fresh bands.
+          clearContextPressureState(sessionKey);
+
+          // Fire context-pressure unconditionally after compaction — informs the
+          // session it was compacted, enabling rehydration via delegates.
+          const pressureConfig = resolveContinuationRuntimeConfig(cfg);
+          const pressureContextWindow =
+            agentCfgContextTokens ?? activeSessionEntry?.contextTokens ?? DEFAULT_CONTEXT_TOKENS;
+          if (pressureContextWindow && activeSessionEntry?.totalTokens != null) {
+            const postCompactionPressure = checkContextPressure({
+              sessionKey,
+              totalTokens: activeSessionEntry.totalTokens,
+              contextWindow: pressureContextWindow,
+              threshold: pressureConfig.contextPressureThreshold ?? 0.8,
+              postCompaction: true,
+            });
+            if (postCompactionPressure) {
+              enqueueSystemEvent(postCompactionPressure, { sessionKey });
+            }
+          }
+
+          // Release staged post-compaction delegates with silentAnnounce + wakeOnReturn.
+          const stagedDelegates = consumeStagedPostCompactionDelegates(sessionKey);
+          if (stagedDelegates.length > 0) {
+            const { createSubsystemLogger } = await import("../../logging/subsystem.js");
+            const compactionLog = createSubsystemLogger("continuation/compaction");
+            compactionLog.info(
+              `[continuation:compaction-delegate] Consuming ${stagedDelegates.length} compaction delegate(s) for session ${sessionKey}`,
+            );
+            const { spawnSubagentDirect } = await import("../../agents/subagent-spawn.js");
+            for (const delegate of stagedDelegates) {
+              try {
+                await spawnSubagentDirect(
+                  {
+                    task: delegate.task,
+                    silentAnnounce: true,
+                    wakeOnReturn: true,
+                    drainsContinuationDelegateQueue: true,
+                  },
+                  {
+                    agentSessionKey: sessionKey,
+                    agentChannel: followupRun.originatingChannel ?? undefined,
+                    agentAccountId: followupRun.originatingAccountId ?? undefined,
+                    agentTo: followupRun.originatingTo ?? undefined,
+                    agentThreadId: followupRun.originatingThreadId ?? undefined,
+                  },
+                );
+              } catch {
+                // Post-compaction delegate dispatch is best-effort.
+              }
+            }
+          }
+        }
       }
 
       if (verboseEnabled) {
