@@ -367,6 +367,30 @@ export type AgentDefaultsConfig = {
   };
   /** Optional sandbox settings for non-main sessions. */
   sandbox?: AgentSandboxConfig;
+  /**
+   * Agent self-elected turn continuation.
+   * RFC: docs/design/continue-work-signal-v2.md
+   */
+  continuation?: {
+    /** Enable the continuation feature (default: false — explicit opt-in required). */
+    enabled?: boolean;
+    /** Maximum chain depth before rejection (default: 10). */
+    maxChainLength?: number;
+    /** Default delay between continuation turns in ms (default: 15000). */
+    defaultDelayMs?: number;
+    /** Minimum allowed delay in ms (default: 5000). */
+    minDelayMs?: number;
+    /** Maximum allowed delay in ms (default: 300000). */
+    maxDelayMs?: number;
+    /** Per-chain token budget; 0 = unlimited (default: 500000). */
+    costCapTokens?: number;
+    /** Maximum delegates dispatched per turn (default: 5). */
+    maxDelegatesPerTurn?: number;
+    /** Context-pressure threshold as fraction of context window (default: 0.8). */
+    contextPressureThreshold?: number;
+    /** Use SQLite-backed Task Flow for durable delegate queues (default: false; opt-in). */
+    taskFlowDelegates?: boolean;
+  };
 };
 
 export type AgentCompactionMode = "default" | "safeguard";
