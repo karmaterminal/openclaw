@@ -100,6 +100,12 @@ export type SpawnSubagentParams = {
     mimeType?: string;
   }>;
   attachMountPath?: string;
+  /** Continuation: suppress channel echo for silent delegate returns. */
+  silentAnnounce?: boolean;
+  /** Continuation: wake parent session when silent delegate completes. */
+  wakeOnReturn?: boolean;
+  /** Continuation: marks this spawn as a continuation chain-hop that can consume pending delegates. */
+  drainsContinuationDelegateQueue?: boolean;
 };
 
 export type SpawnSubagentContext = {

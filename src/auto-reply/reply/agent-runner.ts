@@ -28,7 +28,6 @@ import {
 } from "../../utils/usage-format.js";
 import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
 import {
-  consumePendingDelegates,
   consumePendingWorkRequest,
   pendingDelegateCount,
   setTaskFlowDelegatesEnabled,
@@ -1769,20 +1768,27 @@ export async function runReplyAgent(params: {
       // Tool-dispatched delegates are consumed separately below.
     }
 
-    // Consume tool-dispatched delegates (continue_delegate tool).
+    // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
     if (continuationFeatureEnabled && sessionKey) {
-      const toolDelegates = consumePendingDelegates(sessionKey);
-      if (toolDelegates.length > 0) {
-        // Log at info level for observability (addresses silent success finding).
-        const log = await import("../../logging/subsystem.js").then((m) =>
-          m.createSubsystemLogger("continuation/delegate-dispatch"),
-        );
-        log.info(
-          `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
-        );
-        // TODO: dispatch each delegate through scheduler (Phase 4 delegate-dispatch module)
-        // For now, log the consumption. Full spawn wiring requires subagent-spawn integration.
-      }
+      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const dispatchChainState = {
+        currentChainCount: activeSessionEntry?.continuationChainCount ?? 0,
+        chainStartedAt: activeSessionEntry?.continuationChainStartedAt ?? Date.now(),
+        accumulatedChainTokens: (activeSessionEntry?.continuationChainTokens ?? 0) + turnTokens,
+      };
+      const { dispatchToolDelegates } = await import("../continuation/delegate-dispatch.js");
+      await dispatchToolDelegates({
+        sessionKey,
+        chainState: dispatchChainState,
+        ctx: {
+          sessionKey,
+          agentChannel: followupRun.originatingChannel ?? undefined,
+          agentAccountId: followupRun.originatingAccountId ?? undefined,
+          agentTo: followupRun.originatingTo ?? undefined,
+          agentThreadId: followupRun.originatingThreadId ?? undefined,
+        },
+        maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
+      });
     }
 
     // Track whether this was a silent continuation (stripped to empty payloads).

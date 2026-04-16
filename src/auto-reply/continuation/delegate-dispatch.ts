@@ -1,0 +1,160 @@
+/**
+ * Continuation delegate dispatch — spawn logic for both immediate and delayed delegates.
+ *
+ * Consumes pending delegates from the store and dispatches them via spawnSubagentDirect.
+ * Handles per-turn cap enforcement, chain-hop prefix, and mode flags.
+ *
+ * OBSERVABILITY: every spawn outcome (accepted/rejected/failed) is logged at info level,
+ * regardless of whether the spawn was immediate or timer-triggered. The old branch gated
+ * success logging behind `timerTriggered`, making immediate delegates invisible to operators.
+ * Do not reproduce this.
+ *
+ * RFC: docs/design/continue-work-signal-v2.md §3.2, §3.4
+ */
+
+import { spawnSubagentDirect } from "../../agents/subagent-spawn.js";
+import type { SpawnSubagentContext } from "../../agents/subagent-spawn.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { resolveContinuationRuntimeConfig } from "./config.js";
+import { consumePendingDelegates } from "./delegate-store.js";
+import { checkContinuationBudget, type ChainState } from "./scheduler.js";
+import { setDelegatePending } from "./state.js";
+
+const log = createSubsystemLogger("continuation/delegate-dispatch");
+
+export type DelegateDispatchContext = {
+  sessionKey: string;
+  agentChannel?: string;
+  agentAccountId?: string;
+  agentTo?: string;
+  agentThreadId?: string | number;
+};
+
+/**
+ * Consume and dispatch all pending tool-dispatched delegates for a session.
+ *
+ * Called by agent-runner.ts after the response finalizes.
+ * Each delegate goes through chain/cost enforcement and is spawned via spawnSubagentDirect.
+ */
+export async function dispatchToolDelegates(params: {
+  sessionKey: string;
+  chainState: ChainState;
+  ctx: DelegateDispatchContext;
+  maxChainLength: number;
+}): Promise<{ dispatched: number; rejected: number }> {
+  const { sessionKey, chainState, ctx } = params;
+  const config = resolveContinuationRuntimeConfig();
+  const toolDelegates = consumePendingDelegates(sessionKey);
+
+  if (toolDelegates.length === 0) {
+    return { dispatched: 0, rejected: 0 };
+  }
+
+  log.info(
+    `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
+  );
+
+  const { maxDelegatesPerTurn, maxChainLength } = config;
+  const delegatesWithinLimit = toolDelegates.slice(0, maxDelegatesPerTurn);
+  const delegatesOverLimit = toolDelegates.slice(maxDelegatesPerTurn);
+
+  for (const dropped of delegatesOverLimit) {
+    log.info(
+      `[continuation:delegate-rejected] maxDelegatesPerTurn=${maxDelegatesPerTurn} task=${dropped.task.slice(0, 80)} session=${sessionKey}`,
+    );
+    enqueueSystemEvent(
+      `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${dropped.task}`,
+      { sessionKey },
+    );
+  }
+
+  let dispatched = 0;
+  let rejected = delegatesOverLimit.length;
+  let currentChainCount = chainState.currentChainCount;
+  let accumulatedTokens = chainState.accumulatedChainTokens;
+
+  for (const delegate of delegatesWithinLimit) {
+    const budgetCheck = checkContinuationBudget({
+      chainState: {
+        currentChainCount,
+        chainStartedAt: chainState.chainStartedAt,
+        accumulatedChainTokens: accumulatedTokens,
+      },
+      config,
+      sessionKey,
+    });
+
+    if (budgetCheck) {
+      log.info(
+        `[continuation:delegate-rejected] ${budgetCheck} task=${delegate.task.slice(0, 80)} session=${sessionKey}`,
+      );
+      enqueueSystemEvent(
+        `[continuation] Tool delegate rejected: ${budgetCheck}. Task: ${delegate.task}`,
+        { sessionKey },
+      );
+      rejected++;
+      continue;
+    }
+
+    const nextHop = currentChainCount + 1;
+    const silent = delegate.mode === "silent" || delegate.mode === "silent-wake";
+    const silentWake = delegate.mode === "silent-wake";
+
+    // Mark delegate-pending so the runner knows work is queued.
+    setDelegatePending(sessionKey);
+
+    const spawnCtx: SpawnSubagentContext = {
+      agentSessionKey: sessionKey,
+      agentChannel: ctx.agentChannel,
+      agentAccountId: ctx.agentAccountId,
+      agentTo: ctx.agentTo,
+      agentThreadId: ctx.agentThreadId,
+    };
+
+    try {
+      const result = await spawnSubagentDirect(
+        {
+          task: `[continuation:chain-hop:${nextHop}] Delegated task (turn ${nextHop}/${maxChainLength}): ${delegate.task}`,
+          drainsContinuationDelegateQueue: true,
+          ...(silent ? { silentAnnounce: true } : {}),
+          ...(silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+        },
+        spawnCtx,
+      );
+
+      if (result.status === "accepted") {
+        // INFO-level on EVERY successful spawn — observability parity.
+        log.info(
+          `[continuation:delegate-spawned] hop=${nextHop}/${maxChainLength} mode=${delegate.mode ?? "normal"} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+        );
+        enqueueSystemEvent(
+          `[continuation:delegate-spawned] Spawned turn ${nextHop}/${maxChainLength}: ${delegate.task}`,
+          { sessionKey },
+        );
+        dispatched++;
+        currentChainCount = nextHop;
+      } else {
+        log.info(
+          `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+        );
+        enqueueSystemEvent(
+          `[continuation] DELEGATE spawn ${result.status}: delegation was not accepted. Task: ${delegate.task}`,
+          { sessionKey },
+        );
+        rejected++;
+      }
+    } catch (err) {
+      log.info(
+        `[continuation:delegate-spawn-failed] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey}`,
+      );
+      enqueueSystemEvent(
+        `[continuation] DELEGATE spawn failed: ${String(err)}. Task: ${delegate.task}`,
+        { sessionKey },
+      );
+      rejected++;
+    }
+  }
+
+  return { dispatched, rejected };
+}
