@@ -438,6 +438,21 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Sub-agent",
       detailKeys: ["label", "task", "agentId", "model", "thinking", "runTimeoutSeconds", "cleanup"],
     },
+    continue_work: {
+      emoji: "🔄",
+      title: "Continue Work",
+      detailKeys: ["delay_seconds", "reason"],
+    },
+    continue_delegate: {
+      emoji: "📤",
+      title: "Continue Delegate",
+      detailKeys: ["task", "delay_seconds", "mode"],
+    },
+    request_compaction: {
+      emoji: "🗜️",
+      title: "Request Compaction",
+      detailKeys: ["reason"],
+    },
     subagents: {
       emoji: "🤖",
       title: "Subagents",
