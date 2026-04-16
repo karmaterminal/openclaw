@@ -515,6 +515,89 @@ describe("createFollowupRunner runtime config", () => {
   });
 });
 
+describe("createFollowupRunner continuation wiring", () => {
+  it("threads requestCompactionOpts into queued embedded followup runs", async () => {
+    const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), "openclaw-followup-continuation-"));
+    const config: OpenClawConfig = {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: true,
+          },
+        },
+      },
+    };
+    const sessionEntry: SessionEntry = {
+      sessionId: "session-followup",
+      sessionFile: path.join(workspaceDir, "session-followup.jsonl"),
+      contextTokens: 1_000,
+      totalTokens: 800,
+      totalTokensFresh: true,
+      updatedAt: Date.now(),
+    };
+    const sessionStore: Record<string, SessionEntry> = {
+      main: sessionEntry,
+    };
+    compactEmbeddedPiSessionMock.mockResolvedValueOnce({
+      ok: true,
+      compacted: true,
+      reason: "compacted",
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [],
+      meta: {},
+    });
+
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      sessionEntry,
+      sessionStore,
+      sessionKey: "main",
+      defaultModel: "openai/gpt-5.4",
+    });
+
+    await runner(
+      createQueuedRun({
+        run: {
+          config,
+          sessionId: "session-followup",
+          sessionFile: path.join(workspaceDir, "session-followup.jsonl"),
+          workspaceDir,
+          provider: "openai",
+          model: "gpt-5.4",
+        },
+      }),
+    );
+
+    const call = runEmbeddedPiAgentMock.mock.calls.at(-1)?.[0] as
+      | {
+          requestCompactionOpts?: {
+            getContextUsage: () => number;
+            triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+          };
+        }
+      | undefined;
+
+    expect(call?.requestCompactionOpts).toBeDefined();
+    expect(call?.requestCompactionOpts?.getContextUsage()).toBeCloseTo(0.8);
+    await expect(call?.requestCompactionOpts?.triggerCompaction()).resolves.toEqual({
+      ok: true,
+      compacted: true,
+      reason: "compacted",
+    });
+    expect(compactEmbeddedPiSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-followup",
+        sessionKey: "main",
+        sessionFile: path.join(workspaceDir, "session-followup.jsonl"),
+        workspaceDir,
+        trigger: "volitional",
+      }),
+    );
+  });
+});
+
 describe("createFollowupRunner compaction", () => {
   it("adds verbose auto-compaction notice and tracks count", async () => {
     const storePath = path.join(

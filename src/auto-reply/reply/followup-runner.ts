@@ -9,7 +9,7 @@ import { resolveContextTokensForModel } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import { compactEmbeddedPiSession, runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
@@ -201,6 +201,8 @@ export function createFollowupRunner(params: {
           }),
           run: async (provider, model, runOptions) => {
             const authProfile = resolveRunAuthProfile(run, provider);
+            const continuationEnabled =
+              run.config?.agents?.defaults?.continuation?.enabled === true;
             let attemptCompactionCount = 0;
             try {
               const result = await runEmbeddedPiAgent({
@@ -255,6 +257,51 @@ export function createFollowupRunner(params: {
                   bootstrapPromptWarningSignaturesSeen[
                     bootstrapPromptWarningSignaturesSeen.length - 1
                   ],
+                requestCompactionOpts: continuationEnabled
+                  ? {
+                      getContextUsage: () => {
+                        const entry = replySessionKey ? sessionStore?.[replySessionKey] : undefined;
+                        if (!entry?.totalTokens || entry.totalTokensFresh === false) {
+                          return 0;
+                        }
+                        const contextWindow = entry.contextTokens ?? 0;
+                        if (!contextWindow || contextWindow <= 0) {
+                          return 0;
+                        }
+                        return entry.totalTokens / contextWindow;
+                      },
+                      triggerCompaction: async () => {
+                        try {
+                          const compacted = await compactEmbeddedPiSession({
+                            sessionId: run.sessionId,
+                            sessionKey: replySessionKey ?? "",
+                            sessionFile: run.sessionFile,
+                            workspaceDir: run.workspaceDir,
+                            config: runtimeConfig,
+                            skillsSnapshot: run.skillsSnapshot,
+                            provider,
+                            model,
+                            thinkLevel: run.thinkLevel,
+                            reasoningLevel: run.reasoningLevel,
+                            bashElevated: run.bashElevated,
+                            allowGatewaySubagentBinding: true,
+                            trigger: "volitional",
+                          });
+                          return {
+                            ok: compacted.ok,
+                            compacted: compacted.compacted,
+                            reason: compacted.reason,
+                          };
+                        } catch (err) {
+                          return {
+                            ok: false,
+                            compacted: false,
+                            reason: err instanceof Error ? err.message : String(err),
+                          };
+                        }
+                      },
+                    }
+                  : undefined,
                 onAgentEvent: (evt) => {
                   if (evt.stream !== "compaction") {
                     return;
