@@ -48,6 +48,10 @@ export type PendingContinuationDelegate = {
   task: string;
   delayMs?: number;
   mode?: "normal" | "silent" | "silent-wake" | "post-compaction";
+  /** Convenience booleans for TaskFlow state serialization. */
+  silent?: boolean;
+  silentWake?: boolean;
+  postCompaction?: boolean;
 };
 
 /**

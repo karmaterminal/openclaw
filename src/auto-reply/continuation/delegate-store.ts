@@ -1,23 +1,24 @@
 /**
- * Pending continuation delegate store.
+ * Continuation delegate store — pure TaskFlow-backed.
  *
- * The `continue_delegate` tool writes pending delegates here during execution.
- * After the agent's response finalizes, the delegate dispatch module reads and
- * consumes them, feeding them into the scheduler.
+ * Every delegate operation goes through TaskFlow (SQLite persistence).
+ * Zero volatile Maps. Delegates survive gateway restarts by design.
  *
- * Production backend: TaskFlow (SQLite-backed, survives gateway restarts).
- * Volatile Map fallback exists for test environments where TaskFlow is not
- * initialized. This is NOT an opt-out — TaskFlow is required for production.
+ * Adapted from Goldeneye's implementation with Zod validation on state
+ * payloads, `releasedAt` audit trail, and `failFlow` for corrupt records.
  *
  * RFC: docs/design/continue-work-signal-v2.md §5.4
  */
 
+import { z } from "zod";
 import {
-  taskFlowCancelPendingDelegates,
-  taskFlowConsumePendingDelegates,
-  taskFlowEnqueuePendingDelegate,
-  taskFlowPendingDelegateCount,
-} from "./delegate-store-taskflow.js";
+  createManagedTaskFlow,
+  deleteTaskFlowRecordById,
+  failFlow,
+  finishFlow,
+  listTaskFlowsForOwnerKey,
+} from "../../tasks/task-flow-registry.js";
+import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 import type {
   DelayedContinuationReservation,
   PendingContinuationDelegate,
@@ -25,32 +26,104 @@ import type {
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
-// TaskFlow readiness gate
-//
-// TaskFlow is the required production backend for delegate persistence.
-// Delegates must survive gateway restarts. The volatile Map fallback is
-// for test environments only where the TaskFlow registry is not initialized.
+// Controller IDs (exported for test assertions)
 // ---------------------------------------------------------------------------
 
-let taskFlowReady = false;
+export const CONTINUATION_DELEGATE_CONTROLLER_ID = "core/continuation-delegate";
+export const CONTINUATION_POST_COMPACTION_CONTROLLER_ID = "core/continuation-post-compaction";
 
-/**
- * Signal that the TaskFlow registry is available. Called once at gateway
- * startup after the registry is initialized.
- */
-export function setTaskFlowDelegatesEnabled(enabled: boolean): void {
-  taskFlowReady = enabled;
+// ---------------------------------------------------------------------------
+// Zod validation for TaskFlow state payloads
+// ---------------------------------------------------------------------------
+
+const PendingDelegateStateSchema = z.object({
+  kind: z.literal("continuation_delegate"),
+  task: z.string().min(1),
+  delayMs: z.number().int().nonnegative().optional(),
+  silent: z.boolean().optional(),
+  silentWake: z.boolean().optional(),
+  postCompaction: z.boolean().optional(),
+});
+
+type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildDelegateGoal(delegate: PendingContinuationDelegate): string {
+  const task = delegate.task.trim();
+  if (!task) {
+    return delegate.postCompaction
+      ? "Post-compaction continuation delegate"
+      : "Continuation delegate";
+  }
+  const excerpt = task.length > 80 ? `${task.slice(0, 77)}...` : task;
+  return delegate.postCompaction
+    ? `Post-compaction delegate: ${excerpt}`
+    : `Continuation delegate: ${excerpt}`;
 }
 
-export function isTaskFlowDelegatesEnabled(): boolean {
-  return taskFlowReady;
+function buildDelegateState(delegate: PendingContinuationDelegate): PendingDelegateState {
+  return {
+    kind: "continuation_delegate",
+    task: delegate.task,
+    ...(delegate.delayMs !== undefined ? { delayMs: delegate.delayMs } : {}),
+    ...(delegate.silent === true || delegate.mode === "silent" ? { silent: true } : {}),
+    ...(delegate.silentWake === true || delegate.mode === "silent-wake"
+      ? { silentWake: true }
+      : {}),
+    ...(delegate.postCompaction === true || delegate.mode === "post-compaction"
+      ? { postCompaction: true }
+      : {}),
+  };
+}
+
+function isPendingDelegateFlow(flow: TaskFlowRecord): boolean {
+  return flow.syncMode === "managed" && flow.controllerId === CONTINUATION_DELEGATE_CONTROLLER_ID;
+}
+
+function isPostCompactionDelegateFlow(flow: TaskFlowRecord): boolean {
+  return (
+    flow.syncMode === "managed" && flow.controllerId === CONTINUATION_POST_COMPACTION_CONTROLLER_ID
+  );
+}
+
+function listQueuedPendingFlows(sessionKey: string): TaskFlowRecord[] {
+  return listTaskFlowsForOwnerKey(sessionKey)
+    .filter((flow) => isPendingDelegateFlow(flow) && flow.status === "queued")
+    .toSorted((a, b) => a.createdAt - b.createdAt);
+}
+
+function listQueuedPostCompactionFlows(sessionKey: string): TaskFlowRecord[] {
+  return listTaskFlowsForOwnerKey(sessionKey)
+    .filter((flow) => isPostCompactionDelegateFlow(flow) && flow.status === "queued")
+    .toSorted((a, b) => a.createdAt - b.createdAt);
+}
+
+function decodeDelegateState(flow: TaskFlowRecord): PendingDelegateState | undefined {
+  const parsed = PendingDelegateStateSchema.safeParse(flow.stateJson);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function flowToDelegate(
+  flow: TaskFlowRecord,
+  state: PendingDelegateState,
+): PendingContinuationDelegate {
+  return {
+    task: state.task,
+    ...(state.delayMs !== undefined ? { delayMs: state.delayMs } : {}),
+    ...(state.silent === true ? { silent: true, mode: "silent" as const } : {}),
+    ...(state.silentWake === true ? { silentWake: true, mode: "silent-wake" as const } : {}),
+    ...(state.postCompaction === true
+      ? { postCompaction: true, mode: "post-compaction" as const }
+      : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Volatile pending delegates (test-only fallback)
+// Pending delegates — enqueue/consume/count/cancel
 // ---------------------------------------------------------------------------
-
-const pendingDelegates = new Map<string, PendingContinuationDelegate[]>();
 
 /**
  * Enqueue a delegate from the `continue_delegate` tool.
@@ -59,30 +132,55 @@ export function enqueuePendingDelegate(
   sessionKey: string,
   delegate: PendingContinuationDelegate,
 ): void {
-  if (taskFlowReady) {
-    taskFlowEnqueuePendingDelegate(sessionKey, delegate);
-    return;
-  }
-  const existing = pendingDelegates.get(sessionKey);
-  if (existing) {
-    existing.push(delegate);
-  } else {
-    pendingDelegates.set(sessionKey, [delegate]);
-  }
+  const isPostCompaction = delegate.postCompaction === true || delegate.mode === "post-compaction";
+  createManagedTaskFlow({
+    ownerKey: sessionKey,
+    controllerId: isPostCompaction
+      ? CONTINUATION_POST_COMPACTION_CONTROLLER_ID
+      : CONTINUATION_DELEGATE_CONTROLLER_ID,
+    notifyPolicy: "silent",
+    goal: buildDelegateGoal(delegate),
+    currentStep: isPostCompaction
+      ? "Staged for release after compaction"
+      : "Queued for continuation dispatch",
+    stateJson: buildDelegateState(delegate),
+  });
 }
 
 /**
- * Consume all pending delegates for a session. Returns and removes them.
+ * Consume all pending delegates for a session.
+ * Returns delegates in FIFO order. Finishes backing flow records with
+ * `releasedAt` audit trail. Skips corrupt payloads via `failFlow`.
+ * Only pushes delegates where `finishFlow` was applied (concurrency-safe).
  */
 export function consumePendingDelegates(sessionKey: string): PendingContinuationDelegate[] {
-  if (taskFlowReady) {
-    return taskFlowConsumePendingDelegates(sessionKey);
+  const delegates: PendingContinuationDelegate[] = [];
+
+  for (const flow of listQueuedPendingFlows(sessionKey)) {
+    const state = decodeDelegateState(flow);
+    if (!state) {
+      failFlow({
+        flowId: flow.flowId,
+        expectedRevision: flow.revision,
+        currentStep: "Rejected invalid continuation payload",
+        blockedSummary: "Pending continuation delegate payload could not be decoded.",
+      });
+      continue;
+    }
+
+    const finished = finishFlow({
+      flowId: flow.flowId,
+      expectedRevision: flow.revision,
+      currentStep: "Released to continuation scheduler",
+      stateJson: { ...state, releasedAt: Date.now() },
+    });
+    if (!finished.applied) {
+      continue;
+    }
+
+    delegates.push(flowToDelegate(flow, state));
   }
-  const delegates = pendingDelegates.get(sessionKey);
-  if (!delegates || delegates.length === 0) {
-    return [];
-  }
-  pendingDelegates.delete(sessionKey);
+
   return delegates;
 }
 
@@ -90,27 +188,84 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
  * Count pending delegates without consuming them.
  */
 export function pendingDelegateCount(sessionKey: string): number {
-  if (taskFlowReady) {
-    return taskFlowPendingDelegateCount(sessionKey);
-  }
-  return pendingDelegates.get(sessionKey)?.length ?? 0;
+  return listQueuedPendingFlows(sessionKey).length;
 }
 
 /**
- * Cancel all pending delegates for a session.
+ * Cancel all pending delegates for a session (both regular and post-compaction).
  */
 export function cancelPendingDelegates(sessionKey: string): void {
-  if (taskFlowReady) {
-    taskFlowCancelPendingDelegates(sessionKey);
-    return;
+  for (const flow of listTaskFlowsForOwnerKey(sessionKey).filter(
+    (f) => isPendingDelegateFlow(f) || isPostCompactionDelegateFlow(f),
+  )) {
+    deleteTaskFlowRecordById(flow.flowId);
   }
-  pendingDelegates.delete(sessionKey);
 }
 
 // ---------------------------------------------------------------------------
-// Delayed continuation reservations (volatile, in-memory only)
-// Timers are process-scoped — these do not need TaskFlow backing because
-// a gateway restart clears the timers anyway.
+// Post-compaction delegate staging
+// ---------------------------------------------------------------------------
+
+/**
+ * Stage a delegate for release after compaction.
+ */
+export function stagePostCompactionDelegate(
+  sessionKey: string,
+  delegate: StagedPostCompactionDelegate,
+): void {
+  enqueuePendingDelegate(sessionKey, {
+    task: delegate.task,
+    silent: true,
+    silentWake: true,
+    postCompaction: true,
+    mode: "post-compaction",
+  });
+}
+
+/**
+ * Consume staged post-compaction delegates. Same lifecycle as consumePendingDelegates.
+ */
+export function consumeStagedPostCompactionDelegates(
+  sessionKey: string,
+): PendingContinuationDelegate[] {
+  const delegates: PendingContinuationDelegate[] = [];
+
+  for (const flow of listQueuedPostCompactionFlows(sessionKey)) {
+    const state = decodeDelegateState(flow);
+    if (!state) {
+      failFlow({
+        flowId: flow.flowId,
+        expectedRevision: flow.revision,
+        currentStep: "Rejected invalid post-compaction payload",
+        blockedSummary: "Staged post-compaction delegate payload could not be decoded.",
+      });
+      continue;
+    }
+
+    const finished = finishFlow({
+      flowId: flow.flowId,
+      expectedRevision: flow.revision,
+      currentStep: "Released after compaction",
+      stateJson: { ...state, releasedAt: Date.now() },
+    });
+    if (!finished.applied) {
+      continue;
+    }
+
+    delegates.push(flowToDelegate(flow, state));
+  }
+
+  return delegates;
+}
+
+export function stagedPostCompactionDelegateCount(sessionKey: string): number {
+  return listQueuedPostCompactionFlows(sessionKey).length;
+}
+
+// ---------------------------------------------------------------------------
+// Delayed continuation reservations (volatile, justified)
+// Timer handles are process-scoped — timers themselves don't survive restart,
+// so the reservation tracking doesn't need to either.
 // ---------------------------------------------------------------------------
 
 const delayedReservations = new Map<string, DelayedContinuationReservation[]>();
@@ -163,101 +318,11 @@ export function clearDelayedContinuationReservations(sessionKey: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Post-compaction delegate staging — TaskFlow-backed
+// Continue-work request store (DELIBERATELY VOLATILE)
 //
-// These delegates MUST survive the compaction lifecycle. They are staged
-// before compaction and released after it completes. A volatile Map would
-// be lost on restart — TaskFlow ensures they persist.
-// ---------------------------------------------------------------------------
-
-import type { JsonValue, TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
-import {
-  createManagedTaskFlow as createPostCompactionFlow,
-  finishFlow as finishPostCompactionFlow,
-  listTaskFlowsForOwnerKey as listPostCompactionFlows,
-} from "../../tasks/task-flow-runtime-internal.js";
-
-const POST_COMPACTION_CONTROLLER_ID = "core/continuation-post-compaction";
-
-// Volatile fallback for tests.
-const stagedPostCompactionDelegatesVolatile = new Map<string, StagedPostCompactionDelegate[]>();
-
-export function stagePostCompactionDelegate(
-  sessionKey: string,
-  delegate: StagedPostCompactionDelegate,
-): void {
-  if (taskFlowReady) {
-    createPostCompactionFlow({
-      ownerKey: sessionKey,
-      controllerId: POST_COMPACTION_CONTROLLER_ID,
-      goal: delegate.task,
-      stateJson: { task: delegate.task, stagedAt: delegate.stagedAt } as JsonValue,
-      status: "queued",
-    });
-    return;
-  }
-  const existing = stagedPostCompactionDelegatesVolatile.get(sessionKey);
-  if (existing) {
-    existing.push(delegate);
-  } else {
-    stagedPostCompactionDelegatesVolatile.set(sessionKey, [delegate]);
-  }
-}
-
-export function consumeStagedPostCompactionDelegates(
-  sessionKey: string,
-): StagedPostCompactionDelegate[] {
-  if (taskFlowReady) {
-    const flows = listPostCompactionFlows(sessionKey)
-      .filter(
-        (f: TaskFlowRecord) =>
-          f.controllerId === POST_COMPACTION_CONTROLLER_ID && f.status === "queued",
-      )
-      .toSorted((a: TaskFlowRecord, b: TaskFlowRecord) => a.createdAt - b.createdAt);
-    const delegates = flows.map((flow: TaskFlowRecord): StagedPostCompactionDelegate => {
-      const state = (flow.stateJson ?? {}) as Record<string, unknown>;
-      return {
-        task: typeof state.task === "string" ? state.task : flow.goal,
-        stagedAt: typeof state.stagedAt === "number" ? state.stagedAt : flow.createdAt,
-      };
-    });
-    for (const flow of flows) {
-      try {
-        finishPostCompactionFlow({ flowId: flow.flowId, expectedRevision: flow.revision });
-      } catch (err) {
-        // Best-effort cleanup — log revision conflicts for diagnostic signal.
-        console.debug(
-          `[continuation-post-compaction] finishFlow failed for flowId=${flow.flowId}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-    return delegates;
-  }
-  const delegates = stagedPostCompactionDelegatesVolatile.get(sessionKey);
-  if (!delegates || delegates.length === 0) {
-    return [];
-  }
-  stagedPostCompactionDelegatesVolatile.delete(sessionKey);
-  return delegates;
-}
-
-export function stagedPostCompactionDelegateCount(sessionKey: string): number {
-  if (taskFlowReady) {
-    return listPostCompactionFlows(sessionKey).filter(
-      (f: TaskFlowRecord) =>
-        f.controllerId === POST_COMPACTION_CONTROLLER_ID && f.status === "queued",
-    ).length;
-  }
-  return stagedPostCompactionDelegatesVolatile.get(sessionKey)?.length ?? 0;
-}
-
-// ---------------------------------------------------------------------------
-// Continue-work request store (same "tool writes, runner reads" pattern)
-//
-// DELIBERATELY VOLATILE: this is same-turn ephemeral state. The continue_work
-// tool writes during execution, the runner consumes in the same turn's
-// post-response processing. The request is never live across a turn boundary
-// or a gateway restart. TaskFlow backing is not needed here.
+// Same-turn ephemeral: continue_work tool writes during execution, runner
+// consumes in same turn's post-response. Never live across turn boundaries
+// or gateway restarts. TaskFlow is not needed here.
 // ---------------------------------------------------------------------------
 
 const pendingWorkRequests = new Map<string, { reason: string; delaySeconds: number }>();
@@ -280,13 +345,27 @@ export function consumePendingWorkRequest(
 }
 
 // ---------------------------------------------------------------------------
+// TaskFlow readiness gate (kept for runner startup signal only)
+// ---------------------------------------------------------------------------
+
+let taskFlowReady = false;
+
+export function setTaskFlowDelegatesEnabled(enabled: boolean): void {
+  taskFlowReady = enabled;
+}
+
+export function isTaskFlowDelegatesEnabled(): boolean {
+  return taskFlowReady;
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
 export function resetDelegateStoreForTests(): void {
-  pendingDelegates.clear();
+  // Clean up TaskFlow records for all test sessions.
+  // In test environments, TaskFlow may or may not be initialized.
   delayedReservations.clear();
-  stagedPostCompactionDelegatesVolatile.clear();
   pendingWorkRequests.clear();
   taskFlowReady = false;
 }

@@ -1411,7 +1411,9 @@ export async function runReplyAgent(params: {
     const { replyPayloads } = payloadResult;
     didLogHeartbeatStrip = payloadResult.didLogHeartbeatStrip;
 
-    if (replyPayloads.length === 0) {
+    // Guard: don't bail on empty reply payloads if continuation work is queued.
+    // Without this, tool-only or NO_REPLY turns would exit before delegate dispatch.
+    if (replyPayloads.length === 0 && !effectiveContinuationSignal && !hasQueuedDelegateWork) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
