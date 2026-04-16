@@ -63,6 +63,8 @@ export function buildStatusCommandOverviewRows(params: {
     tone: Tone;
   };
   updateValue?: string;
+  /** Continuation telemetry value (RFC §6.3). */
+  continuationValue?: string;
 }) {
   const agentsValue = buildStatusAgentsValue({
     agentStatus: params.agentStatus,
@@ -123,6 +125,9 @@ export function buildStatusCommandOverviewRows(params: {
       { Item: "Tasks", Value: tasksValue },
       { Item: "Heartbeat", Value: heartbeatValue },
       ...(lastHeartbeatValue ? [{ Item: "Last heartbeat", Value: lastHeartbeatValue }] : []),
+      ...(params.continuationValue
+        ? [{ Item: "Continuation", Value: params.continuationValue }]
+        : []),
       {
         Item: "Sessions",
         Value: buildStatusSessionsOverviewValue({

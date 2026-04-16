@@ -1,3 +1,4 @@
+import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import type { HeartbeatEventPayload } from "../infra/heartbeat-events.js";
 import type { resolveOsSummary } from "../infra/os-summary.js";
 import type { Tone } from "../memory-host-sdk/status.js";
@@ -116,6 +117,13 @@ export async function buildStatusCommandReportData(params: {
     resolveMemoryFtsState: params.resolveMemoryFtsState,
     resolveMemoryCacheSummary: params.resolveMemoryCacheSummary,
     updateValue: params.updateValue,
+    continuationValue: (() => {
+      const cfg = resolveContinuationRuntimeConfig();
+      if (!cfg.enabled) {
+        return undefined;
+      }
+      return `enabled · chain max ${cfg.maxChainLength} · fan-out max ${cfg.maxDelegatesPerTurn}`;
+    })(),
   });
 
   const sessionsColumns = [
