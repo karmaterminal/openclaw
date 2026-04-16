@@ -2,13 +2,17 @@
  * `continue_work` tool — self-elected same-session continuation.
  *
  * The agent calls this to request another turn after the current one completes.
- * The tool itself is fire-and-forget: it stores the request via a callback,
- * and the runner reads it post-response to arm the timer.
+ * The tool writes the request to the continuation delegate store; the runner
+ * reads it post-response to arm the timer.
+ *
+ * Uses the same "tool writes, runner reads" store pattern as continue_delegate,
+ * avoiding deep callback threading through the execution stack.
  *
  * RFC: docs/design/continue-work-signal-v2.md §2.2
  */
 
 import { Type } from "@sinclair/typebox";
+import { setPendingWorkRequest } from "../../auto-reply/continuation/delegate-store.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
@@ -36,12 +40,7 @@ export type ContinueWorkRequest = {
   delaySeconds: number;
 };
 
-export type ContinueWorkToolOpts = {
-  agentSessionKey?: string;
-  requestContinuation: (request: ContinueWorkRequest) => void;
-};
-
-export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool {
+export function createContinueWorkTool(opts: { agentSessionKey?: string }): AnyAgentTool {
   return {
     label: "Continuation",
     name: "continue_work",
@@ -66,17 +65,11 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       }
       const delaySeconds = parsedDelaySeconds ?? 0;
 
-      log.debug(
-        `[continue_work:request] session=${sessionKey} delaySeconds=${delaySeconds} reason=${reason.slice(0, 80)}`,
-      );
-      // Log at info level for observability parity — immediate tool calls were
-      // previously invisible to operators (the 10/10 "silent success" finding).
-      log.info(`[continue_work:scheduled] session=${sessionKey} delaySeconds=${delaySeconds}`);
+      // Write to the store — runner reads post-response.
+      setPendingWorkRequest(sessionKey, { reason, delaySeconds });
 
-      opts.requestContinuation({
-        reason,
-        delaySeconds,
-      });
+      // Log at info level for observability parity.
+      log.info(`[continue_work:scheduled] session=${sessionKey} delaySeconds=${delaySeconds}`);
 
       return jsonResult({
         status: "scheduled",

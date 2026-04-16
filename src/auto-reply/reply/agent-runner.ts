@@ -17,6 +17,7 @@ import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
@@ -25,6 +26,16 @@ import {
   formatTokenCount,
   resolveModelCostConfig,
 } from "../../utils/usage-format.js";
+import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import {
+  consumePendingDelegates,
+  consumePendingWorkRequest,
+  pendingDelegateCount,
+  setTaskFlowDelegatesEnabled,
+  stagedPostCompactionDelegateCount,
+} from "../continuation/delegate-store.js";
+import { scheduleWorkContinuation } from "../continuation/scheduler.js";
+import { extractContinuationSignal } from "../continuation/signal.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
@@ -1246,6 +1257,31 @@ export async function runReplyAgent(params: {
       await Promise.allSettled(pendingToolTasks);
     }
 
+    // --- Continuation signal extraction (RFC §3.1) ---
+    // Reads from both bracket syntax in payloads and the continue_work tool store.
+    const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
+    const continuationTaskFlowEnabled =
+      continuationFeatureEnabled && cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
+    setTaskFlowDelegatesEnabled(continuationTaskFlowEnabled);
+
+    const continueWorkRequest = sessionKey ? consumePendingWorkRequest(sessionKey) : undefined;
+    const continuationExtraction = extractContinuationSignal({
+      payloads: payloadArray,
+      continueWorkRequest: continueWorkRequest
+        ? { reason: continueWorkRequest.reason, delaySeconds: continueWorkRequest.delaySeconds }
+        : undefined,
+      enabled: continuationFeatureEnabled,
+      sessionKey,
+    });
+    const effectiveContinuationSignal = continuationExtraction.signal;
+    const continuationWorkReason = continuationExtraction.workReason;
+
+    // Check if there's queued delegate work from the continue_delegate tool.
+    const hasQueuedDelegateWork =
+      continuationFeatureEnabled &&
+      !!sessionKey &&
+      (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
+
     const usage = runResult.meta?.agentMeta?.usage;
     const promptTokens = runResult.meta?.agentMeta?.promptTokens;
     const modelUsed = runResult.meta?.agentMeta?.model ?? fallbackModel ?? defaultModel;
@@ -1320,9 +1356,8 @@ export async function runReplyAgent(params: {
     });
 
     // Drain any late tool/block deliveries before deciding there's "nothing to send".
-    // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
-    // keep the typing indicator stuck.
-    if (payloadArray.length === 0) {
+    // A continuation signal or queued delegates mean we still have work below.
+    if (payloadArray.length === 0 && !effectiveContinuationSignal && !hasQueuedDelegateWork) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
@@ -1697,6 +1732,63 @@ export async function runReplyAgent(params: {
     }
     if (responseUsageLine) {
       finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);
+    }
+
+    // --- Continuation scheduling (RFC §3.1–§3.4) ---
+    // Schedule next turn or dispatch delegates based on the extracted signal.
+    if (effectiveContinuationSignal && sessionKey) {
+      const continuationConfig = resolveContinuationRuntimeConfig(cfg);
+      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const chainState = {
+        currentChainCount: activeSessionEntry?.continuationChainCount ?? 0,
+        chainStartedAt: activeSessionEntry?.continuationChainStartedAt ?? Date.now(),
+        accumulatedChainTokens: (activeSessionEntry?.continuationChainTokens ?? 0) + turnTokens,
+      };
+
+      if (effectiveContinuationSignal.kind === "work") {
+        scheduleWorkContinuation({
+          signal: effectiveContinuationSignal,
+          chainState,
+          config: continuationConfig,
+          sessionKey,
+          workReason: continuationWorkReason,
+          onFire: (nextChainCount, chainStartedAt, accumulatedTokens, reason) => {
+            enqueueSystemEvent(
+              `[continuation:wake] Turn ${nextChainCount}/${continuationConfig.maxChainLength}. ` +
+                `Chain started at ${new Date(chainStartedAt).toISOString()}. ` +
+                `Accumulated tokens: ${accumulatedTokens}. ` +
+                `The agent elected to continue working.` +
+                (reason ? ` Reason: ${reason}` : ""),
+              { sessionKey },
+            );
+            requestHeartbeatNow({ sessionKey, reason: "continuation" });
+          },
+        });
+      }
+      // Bracket-parsed delegate signals are handled by the scheduler.
+      // Tool-dispatched delegates are consumed separately below.
+    }
+
+    // Consume tool-dispatched delegates (continue_delegate tool).
+    if (continuationFeatureEnabled && sessionKey) {
+      const toolDelegates = consumePendingDelegates(sessionKey);
+      if (toolDelegates.length > 0) {
+        // Log at info level for observability (addresses silent success finding).
+        const log = await import("../../logging/subsystem.js").then((m) =>
+          m.createSubsystemLogger("continuation/delegate-dispatch"),
+        );
+        log.info(
+          `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
+        );
+        // TODO: dispatch each delegate through scheduler (Phase 4 delegate-dispatch module)
+        // For now, log the consumption. Full spawn wiring requires subagent-spawn integration.
+      }
+    }
+
+    // Track whether this was a silent continuation (stripped to empty payloads).
+    const wasSilentContinuation = finalPayloads.length === 0 && !!effectiveContinuationSignal;
+    if (wasSilentContinuation) {
+      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
     return finalizeWithFollowup(

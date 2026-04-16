@@ -16,6 +16,8 @@ import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
+import { createContinueDelegateTool } from "./tools/continue-delegate-tool.js";
+import { createContinueWorkTool } from "./tools/continue-work-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
@@ -302,6 +304,18 @@ export function createOpenClawTools(
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
   ];
+
+  // Continuation tools — registered when continuation.enabled is true.
+  if (resolvedConfig?.agents?.defaults?.continuation?.enabled === true) {
+    tools.push(
+      createContinueWorkTool({
+        agentSessionKey: options?.agentSessionKey,
+      }),
+      createContinueDelegateTool({
+        agentSessionKey: options?.agentSessionKey,
+      }),
+    );
+  }
 
   if (options?.disablePluginTools) {
     return tools;

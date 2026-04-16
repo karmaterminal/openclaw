@@ -256,6 +256,13 @@ export type SessionEntry = {
    */
   pluginDebugEntries?: SessionPluginDebugEntry[];
   acp?: SessionAcpMeta;
+  // --- Continuation chain state (RFC: docs/design/continue-work-signal-v2.md §3.3) ---
+  /** Current continuation chain depth. */
+  continuationChainCount?: number;
+  /** Timestamp when the current chain started. */
+  continuationChainStartedAt?: number;
+  /** Accumulated token cost across the chain (input + output only). */
+  continuationChainTokens?: number;
 };
 
 function isSessionPluginTraceLine(line: string): boolean {

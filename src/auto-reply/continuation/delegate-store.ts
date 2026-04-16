@@ -190,6 +190,36 @@ export function stagedPostCompactionDelegateCount(sessionKey: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// Continue-work request store (same "tool writes, runner reads" pattern)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-session continue_work request. Set by the tool during execution,
+ * consumed by the runner post-response to arm the WORK timer.
+ *
+ * Using a store instead of a callback avoids threading the callback through
+ * 5 layers of function params (runner → execution → embedded Pi → attempt → tools).
+ */
+const pendingWorkRequests = new Map<string, { reason: string; delaySeconds: number }>();
+
+export function setPendingWorkRequest(
+  sessionKey: string,
+  request: { reason: string; delaySeconds: number },
+): void {
+  pendingWorkRequests.set(sessionKey, request);
+}
+
+export function consumePendingWorkRequest(
+  sessionKey: string,
+): { reason: string; delaySeconds: number } | undefined {
+  const request = pendingWorkRequests.get(sessionKey);
+  if (request) {
+    pendingWorkRequests.delete(sessionKey);
+  }
+  return request;
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
@@ -197,5 +227,6 @@ export function resetDelegateStoreForTests(): void {
   pendingDelegates.clear();
   delayedReservations.clear();
   stagedPostCompactionDelegates.clear();
+  pendingWorkRequests.clear();
   taskFlowDelegatesEnabled = false;
 }
