@@ -12,7 +12,7 @@ describe("resolveContinuationRuntimeConfig", () => {
     const config = resolveContinuationRuntimeConfig({} as never);
     expect(config).toMatchObject({
       enabled: false,
-      taskFlowDelegates: false,
+      taskFlowDelegates: true, // ships enabled per RFC §5.1
       defaultDelayMs: 15_000,
       minDelayMs: 5_000,
       maxDelayMs: 300_000,

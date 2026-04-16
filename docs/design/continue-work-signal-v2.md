@@ -489,13 +489,14 @@ When Trigger B is disabled, a session can climb from “still usable” to overf
 2. routes into the same compaction machinery already used by platform compaction;
 3. preserves the existing user-visible model in which compaction occurs between turns rather than freezing a live reply.
 
-The tool applies three guards:
+The tool applies two guards:
 
-| Guard            | Threshold           | Purpose                                                        |
-| ---------------- | ------------------- | -------------------------------------------------------------- |
-| Context floor    | below 70% rejected  | prevents wasteful compaction                                   |
-| Rate limit       | max 1 per 5 minutes | prevents compaction loops                                      |
-| Generation guard | reject on drift     | avoids compacting mid-conversation after new external activity |
+| Guard         | Threshold           | Purpose                      |
+| ------------- | ------------------- | ---------------------------- |
+| Context floor | below 70% rejected  | prevents wasteful compaction |
+| Rate limit    | max 1 per 5 minutes | prevents compaction loops    |
+
+<!-- Generation guard removed by design decision 2026-04-15. Compaction should not be blocked by unrelated channel noise. -->
 
 Operational flow:
 
@@ -589,7 +590,7 @@ agents:
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
       # generationGuardTolerance removed — delayed work should not be cancelled by channel noise
-      taskFlowDelegates: true # durable delegate queue via Task Flow (platform feature, ships enabled)
+      # taskFlowDelegates is always on — delegates must survive restart, no config option
 ```
 
 Operational notes:
@@ -666,18 +667,9 @@ In these patterns, width is normally adjusted before depth. `costCapTokens` rema
 
 ### 5.4 Task Flow backing and durable delegate queues
 
-By default, pending delegates live in a volatile in-memory `Map<string, PendingContinuationDelegate[]>`.
+Pending delegates are backed by Task Flow (SQLite persistence) unconditionally. There is no opt-out — delegates must survive gateway restarts for the continuation lifecycle to work correctly, particularly for post-compaction delegate release.
 
-An implemented opt-in alternative routes that queue through Task Flow:
-
-```yaml
-agents:
-  defaults:
-    continuation:
-      taskFlowDelegates: true
-```
-
-When enabled, `enqueuePendingDelegate()` and `consumePendingDelegates()` use `createManagedTaskFlow()` with `controllerId = "core/continuation-delegate"`.
+`enqueuePendingDelegate()` and `consumePendingDelegates()` use `createManagedTaskFlow()` with `controllerId = "core/continuation-delegate"`.
 
 This provides:
 

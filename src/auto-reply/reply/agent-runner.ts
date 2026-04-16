@@ -1284,9 +1284,8 @@ export async function runReplyAgent(params: {
     // --- Continuation signal extraction (RFC §3.1) ---
     // Reads from both bracket syntax in payloads and the continue_work tool store.
     const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
-    const continuationTaskFlowEnabled =
-      continuationFeatureEnabled && cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
-    setTaskFlowDelegatesEnabled(continuationTaskFlowEnabled);
+    // TaskFlow is always on when continuation is enabled — no opt-out.
+    setTaskFlowDelegatesEnabled(continuationFeatureEnabled);
 
     const continueWorkRequest = sessionKey ? consumePendingWorkRequest(sessionKey) : undefined;
     const continuationExtraction = extractContinuationSignal({

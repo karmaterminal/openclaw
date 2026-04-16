@@ -388,8 +388,7 @@ export type AgentDefaultsConfig = {
     maxDelegatesPerTurn?: number;
     /** Context-pressure threshold as fraction of context window (default: 0.8). */
     contextPressureThreshold?: number;
-    /** Use SQLite-backed Task Flow for durable delegate queues (default: false; opt-in). */
-    taskFlowDelegates?: boolean;
+    // taskFlowDelegates is always on — no config option. Delegates must survive restart.
   };
 };
 
