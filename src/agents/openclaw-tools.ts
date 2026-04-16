@@ -26,6 +26,8 @@ import { createMessageTool } from "./tools/message-tool.js";
 import { createMusicGenerateTool } from "./tools/music-generate-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createPdfTool } from "./tools/pdf-tool.js";
+import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
+import { createRequestCompactionTool } from "./tools/request-compaction-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
@@ -112,6 +114,8 @@ export function createOpenClawTools(
     onYield?: (message: string) => Promise<void> | void;
     /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
     allowGatewaySubagentBinding?: boolean;
+    /** Continuation: request_compaction tool opts (injected from execution context). */
+    requestCompactionOpts?: Omit<RequestCompactionToolOpts, "agentSessionKey">;
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;
@@ -305,7 +309,7 @@ export function createOpenClawTools(
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
   ];
 
-  // Continuation tools — registered when continuation.enabled is true.
+  // Continuation tools — registered when continuation.enabled is true (RFC §2.1).
   if (resolvedConfig?.agents?.defaults?.continuation?.enabled === true) {
     tools.push(
       createContinueWorkTool({
@@ -315,6 +319,15 @@ export function createOpenClawTools(
         agentSessionKey: options?.agentSessionKey,
       }),
     );
+    // request_compaction requires injected opts (context usage + compaction trigger).
+    if (options?.requestCompactionOpts) {
+      tools.push(
+        createRequestCompactionTool({
+          agentSessionKey: options?.agentSessionKey,
+          ...options.requestCompactionOpts,
+        }),
+      );
+    }
   }
 
   if (options?.disablePluginTools) {
