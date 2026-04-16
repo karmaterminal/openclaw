@@ -757,6 +757,10 @@ export async function runEmbeddedPiAgent(
             bootstrapPromptWarningSignaturesSeen,
             bootstrapPromptWarningSignature:
               bootstrapPromptWarningSignaturesSeen[bootstrapPromptWarningSignaturesSeen.length - 1],
+            // Continuation: thread request_compaction opts so subagent (and
+            // other non-followup) attempts can call request_compaction when
+            // continuation is enabled. RFC §2.1 Tier 1.
+            requestCompactionOpts: params.requestCompactionOpts,
           });
 
           const {

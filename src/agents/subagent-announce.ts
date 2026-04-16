@@ -1,6 +1,7 @@
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { defaultRuntime } from "../runtime.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
+import { importRuntimeModule } from "../shared/runtime-import.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
 import { type DeliveryContext, normalizeDeliveryContext } from "../utils/delivery-context.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
@@ -95,6 +96,104 @@ function hasUsableSessionEntry(entry: unknown): boolean {
   }
   const sessionId = (entry as { sessionId?: unknown }).sessionId;
   return typeof sessionId !== "string" || sessionId.trim() !== "";
+}
+
+// Structural shapes for the continuation modules loaded via
+// `importRuntimeModule`. Defined locally so no static edge leads from this
+// file to `auto-reply/continuation/*` — that would close an import cycle
+// through `delegate-dispatch → subagent-spawn → subagent-registry →
+// subagent-announce`.
+type ContinuationChainState = {
+  currentChainCount: number;
+  chainStartedAt: number;
+  accumulatedChainTokens: number;
+};
+
+type ContinuationDispatchContext = {
+  sessionKey: string;
+  agentChannel?: string;
+  agentAccountId?: string;
+  agentTo?: string;
+  agentThreadId?: string | number;
+};
+
+type ContinuationDispatchModule = {
+  dispatchToolDelegates: (params: {
+    sessionKey: string;
+    chainState: ContinuationChainState;
+    ctx: ContinuationDispatchContext;
+    maxChainLength: number;
+  }) => Promise<{ dispatched: number; rejected: number }>;
+};
+
+type ContinuationConfigModule = {
+  resolveContinuationRuntimeConfig: (cfg?: unknown) => { maxChainLength: number };
+};
+
+/**
+ * Drain the child session's continue_delegate queue after the subagent has
+ * settled. Chain state is inherited from the child session entry so nested
+ * hops stay sequential across the chain. Best-effort — dispatch failures
+ * are logged and swallowed so they cannot break the announce path.
+ */
+async function drainChildContinuationQueue(params: {
+  childSessionKey: string;
+  requesterOrigin?: DeliveryContext;
+}): Promise<void> {
+  let cfg: Awaited<ReturnType<typeof subagentAnnounceDeps.loadConfig>>;
+  try {
+    cfg = subagentAnnounceDeps.loadConfig();
+  } catch {
+    return;
+  }
+  if (cfg?.agents?.defaults?.continuation?.enabled !== true) {
+    return;
+  }
+  try {
+    // `importRuntimeModule` constructs the module URL at call time, keeping
+    // `delegate-dispatch.js` off the static import graph. Direct `await import()`
+    // with a literal path would pull `subagent-spawn.js` into a cycle via
+    // `delegate-dispatch.js → subagent-spawn.js → subagent-registry.js →
+    // subagent-announce.ts`.
+    const [dispatchModule, configModule] = await Promise.all([
+      importRuntimeModule<ContinuationDispatchModule>(import.meta.url, [
+        "../auto-reply/continuation/delegate-dispatch.js",
+      ]),
+      importRuntimeModule<ContinuationConfigModule>(import.meta.url, [
+        "../auto-reply/continuation/config.js",
+      ]),
+    ]);
+    const { dispatchToolDelegates } = dispatchModule;
+    const { resolveContinuationRuntimeConfig } = configModule;
+    const childEntry = loadSessionEntryByKey(params.childSessionKey) as
+      | {
+          continuationChainCount?: number;
+          continuationChainStartedAt?: number;
+          continuationChainTokens?: number;
+        }
+      | undefined;
+    const dispatchConfig = resolveContinuationRuntimeConfig(cfg);
+    await dispatchToolDelegates({
+      sessionKey: params.childSessionKey,
+      chainState: {
+        currentChainCount: childEntry?.continuationChainCount ?? 0,
+        chainStartedAt: childEntry?.continuationChainStartedAt ?? Date.now(),
+        accumulatedChainTokens: childEntry?.continuationChainTokens ?? 0,
+      },
+      ctx: {
+        sessionKey: params.childSessionKey,
+        agentChannel: params.requesterOrigin?.channel,
+        agentAccountId: params.requesterOrigin?.accountId,
+        agentTo: params.requesterOrigin?.to,
+        agentThreadId: params.requesterOrigin?.threadId,
+      },
+      maxChainLength: dispatchConfig.maxChainLength,
+    });
+  } catch (err) {
+    defaultRuntime.error?.(
+      `Subagent continuation delegate drain failed for ${params.childSessionKey}: ${String(err)}`,
+    );
+  }
 }
 
 function buildDescendantWakeMessage(params: { findings: string; taskLabel: string }): string {
@@ -262,6 +361,18 @@ export async function runSubagentAnnounceFlow(params: {
     if (!outcome) {
       outcome = { status: "unknown" };
     }
+
+    // F7: drain the child session's continue_delegate queue now that the
+    // subagent has settled. Delegates enqueued by the subagent during its
+    // turn would otherwise stay orphaned in TaskFlow until the next inbound
+    // message on the parent triggers agent-runner dispatch — stalling the
+    // two-hop chain. Chain state is inherited from the child session entry
+    // so hop labels and cost caps remain accurate across hops.
+    // RFC: docs/design/continue-work-signal-v2.md §3.2, §3.4.
+    await drainChildContinuationQueue({
+      childSessionKey: params.childSessionKey,
+      requesterOrigin: targetRequesterOrigin,
+    });
 
     let requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey);
     const requesterIsInternalSession = () =>
