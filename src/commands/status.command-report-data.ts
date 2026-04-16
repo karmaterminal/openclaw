@@ -1,4 +1,3 @@
-import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import type { HeartbeatEventPayload } from "../infra/heartbeat-events.js";
 import type { resolveOsSummary } from "../infra/os-summary.js";
 import type { Tone } from "../memory-host-sdk/status.js";
@@ -118,11 +117,23 @@ export async function buildStatusCommandReportData(params: {
     resolveMemoryCacheSummary: params.resolveMemoryCacheSummary,
     updateValue: params.updateValue,
     continuationValue: (() => {
-      const cfg = resolveContinuationRuntimeConfig();
-      if (!cfg.enabled) {
+      try {
+        const { resolveContinuationRuntimeConfig } =
+          require("../auto-reply/continuation/config.js") as {
+            resolveContinuationRuntimeConfig: () => {
+              enabled: boolean;
+              maxChainLength: number;
+              maxDelegatesPerTurn: number;
+            };
+          };
+        const cfg = resolveContinuationRuntimeConfig();
+        if (!cfg.enabled) {
+          return undefined;
+        }
+        return `enabled · chain max ${cfg.maxChainLength} · fan-out max ${cfg.maxDelegatesPerTurn}`;
+      } catch {
         return undefined;
       }
-      return `enabled · chain max ${cfg.maxChainLength} · fan-out max ${cfg.maxDelegatesPerTurn}`;
     })(),
   });
 

@@ -5500,6 +5500,36 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 },
                 additionalProperties: false,
               },
+              continuation: {
+                type: "object",
+                properties: {
+                  enabled: {
+                    type: "boolean",
+                  },
+                  maxChainLength: {
+                    type: "number",
+                  },
+                  defaultDelayMs: {
+                    type: "number",
+                  },
+                  minDelayMs: {
+                    type: "number",
+                  },
+                  maxDelayMs: {
+                    type: "number",
+                  },
+                  costCapTokens: {
+                    type: "number",
+                  },
+                  maxDelegatesPerTurn: {
+                    type: "number",
+                  },
+                  contextPressureThreshold: {
+                    type: "number",
+                  },
+                },
+                additionalProperties: false,
+              },
             },
             additionalProperties: false,
             title: "Agent Defaults",

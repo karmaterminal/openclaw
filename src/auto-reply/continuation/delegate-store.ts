@@ -11,14 +11,14 @@
  */
 
 import { z } from "zod";
+import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 import {
   createManagedTaskFlow,
   deleteTaskFlowRecordById,
   failFlow,
   finishFlow,
   listTaskFlowsForOwnerKey,
-} from "../../tasks/task-flow-registry.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+} from "../../tasks/task-flow-runtime-internal.js";
 import type {
   DelayedContinuationReservation,
   PendingContinuationDelegate,

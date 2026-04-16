@@ -255,6 +255,39 @@ export function createFollowupRunner(params: {
                   bootstrapPromptWarningSignaturesSeen[
                     bootstrapPromptWarningSignaturesSeen.length - 1
                   ],
+                // Continuation: thread requestCompactionOpts so request_compaction
+                // is callable on queued followup turns, not just the first turn.
+                requestCompactionOpts:
+                  runtimeConfig?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        sessionId: run.sessionId,
+                        getContextUsage: () => {
+                          // Followup path doesn't have a live token count yet —
+                          // the context-floor guard (70%) will reject premature calls.
+                          return 0;
+                        },
+                        triggerCompaction: async () => {
+                          try {
+                            const { compactEmbeddedPiSession } =
+                              await import("../../agents/pi-embedded-runner/compact.queued.js");
+                            await compactEmbeddedPiSession({
+                              sessionId: run.sessionId ?? "",
+                              sessionKey: run.sessionKey,
+                              sessionFile: run.sessionFile ?? "",
+                              workspaceDir: run.workspaceDir ?? process.cwd(),
+                              messageProvider: run.messageProvider,
+                            });
+                            return { ok: true, compacted: true };
+                          } catch (err) {
+                            return {
+                              ok: false,
+                              compacted: false,
+                              reason: err instanceof Error ? err.message : String(err),
+                            };
+                          }
+                        },
+                      }
+                    : undefined,
                 onAgentEvent: (evt) => {
                   if (evt.stream !== "compaction") {
                     return;
