@@ -116,6 +116,9 @@ export function resolveEffectiveToolInventory(
     modelId: params.modelId,
   });
 
+  // Continuation: provide no-op requestCompactionOpts so the tool inventory
+  // includes request_compaction when continuation is enabled (TC3 §2.1).
+  const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
   const effectiveTools = createOpenClawCodingTools({
     agentId,
     sessionKey: params.sessionKey,
@@ -143,6 +146,18 @@ export function resolveEffectiveToolInventory(
     modelHasVision: params.modelHasVision,
     requireExplicitMessageTarget: params.requireExplicitMessageTarget,
     disableMessageTool: params.disableMessageTool,
+    ...(continuationEnabled
+      ? {
+          requestCompactionOpts: {
+            getContextUsage: () => 0,
+            triggerCompaction: async () => ({
+              ok: false,
+              compacted: false,
+              reason: "inventory-only",
+            }),
+          },
+        }
+      : {}),
   });
   const effectivePolicy = resolveEffectiveToolPolicy({
     config: params.cfg,

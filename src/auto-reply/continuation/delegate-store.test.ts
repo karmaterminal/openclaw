@@ -164,3 +164,31 @@ describe("post-compaction delegate staging", () => {
     expect(postCompact[0].task).toBe("post-compact");
   });
 });
+
+// F-STALL regression: the agent-runner early-return guards must use a live
+// pendingDelegateCount check, not a pre-turn snapshot. This test validates that
+// a snapshot captured before enqueue misses the delegate, while a fresh call
+// after enqueue sees it — the exact scenario that caused a 28-minute consumption
+// stall in SWIM 33.
+describe("F-STALL: snapshot vs live delegate count", () => {
+  it("pre-enqueue snapshot is 0, live check after enqueue is 1", () => {
+    // Snapshot taken before model run (agent-runner.ts line 1303).
+    const snapshotBefore = pendingDelegateCount("session-stall");
+    expect(snapshotBefore).toBe(0);
+
+    // Model calls continue_delegate during its turn.
+    enqueuePendingDelegate("session-stall", { task: "work that would stall" });
+
+    // Stale snapshot is still 0.
+    expect(snapshotBefore).toBe(0);
+
+    // Live recheck (checkQueuedDelegateWorkNow in agent-runner.ts) sees the delegate.
+    expect(pendingDelegateCount("session-stall")).toBe(1);
+
+    // Consumption drains it.
+    const consumed = consumePendingDelegates("session-stall");
+    expect(consumed).toHaveLength(1);
+    expect(consumed[0].task).toBe("work that would stall");
+    expect(pendingDelegateCount("session-stall")).toBe(0);
+  });
+});

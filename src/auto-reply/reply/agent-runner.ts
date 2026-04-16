@@ -1300,7 +1300,14 @@ export async function runReplyAgent(params: {
     const continuationWorkReason = continuationExtraction.workReason;
 
     // Check if there's queued delegate work from the continue_delegate tool.
+    // NOTE: this snapshot is taken BEFORE the model run. Delegates enqueued during
+    // the model run (via continue_delegate tool) won't be reflected here.
+    // Early-return guards below must recheck live via checkQueuedDelegateWorkNow().
     const hasQueuedDelegateWork =
+      continuationFeatureEnabled &&
+      !!sessionKey &&
+      (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
+    const checkQueuedDelegateWorkNow = () =>
       continuationFeatureEnabled &&
       !!sessionKey &&
       (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
@@ -1380,7 +1387,13 @@ export async function runReplyAgent(params: {
 
     // Drain any late tool/block deliveries before deciding there's "nothing to send".
     // A continuation signal or queued delegates mean we still have work below.
-    if (payloadArray.length === 0 && !effectiveContinuationSignal && !hasQueuedDelegateWork) {
+    // F-STALL fix: recheck live — delegates may have been enqueued during the model run
+    // via continue_delegate, after the pre-run snapshot at hasQueuedDelegateWork.
+    if (
+      payloadArray.length === 0 &&
+      !effectiveContinuationSignal &&
+      !checkQueuedDelegateWorkNow()
+    ) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
@@ -1413,7 +1426,12 @@ export async function runReplyAgent(params: {
 
     // Guard: don't bail on empty reply payloads if continuation work is queued.
     // Without this, tool-only or NO_REPLY turns would exit before delegate dispatch.
-    if (replyPayloads.length === 0 && !effectiveContinuationSignal && !hasQueuedDelegateWork) {
+    // F-STALL fix: recheck live — same rationale as the guard above.
+    if (
+      replyPayloads.length === 0 &&
+      !effectiveContinuationSignal &&
+      !checkQueuedDelegateWorkNow()
+    ) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
