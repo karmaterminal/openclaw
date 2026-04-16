@@ -155,6 +155,24 @@ The main-session tool-delegate consumption path **was NOT broken**. The 10/10
 - Policy: deny `continue_delegate` on leaf workers; allow `continue_work` + `request_compaction` on all children
 - This is a behavior-model change, not just a deny-list edit
 
+### Steps 6-9 completed
+
+- Step 6: Silent/wake announce routing — `silentAnnounce`/`wakeOnReturn` flags threaded through
+  spawn → registry → announce. System event delivery + heartbeat wake for silent delegates.
+- Step 7: Post-compaction delegate release — after compaction, consume staged delegates and
+  dispatch with silentAnnounce+wakeOnReturn. Context-pressure fires post-compaction unconditionally.
+- Step 8: request_compaction opts threading — `getContextUsage` and `triggerCompaction` wired
+  from execution layer through attempt → pi-tools → openclaw-tools.
+- Step 9: Leaf deny — `continue_delegate` added to SUBAGENT_TOOL_DENY_LEAF. Chain-hop exemption
+  via `drainsContinuationDelegateQueue` → orchestrator role override.
+
+### RFC fixes applied
+
+- §4.3: Removed stale generation guard reference from guard table
+- §5.1: Removed taskFlowDelegates config option (always on)
+- §5.4: Updated to reflect unconditional TaskFlow backing
+- Tool display metadata added for all 3 tools
+
 ### What remains (ordered per approved plan)
 
 **Compaction cluster (Steps 8, 7):**
