@@ -40,10 +40,14 @@ const RATE_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
 /** Volitional compaction counts are status-only diagnostics, not durable state. */
 const VOLITIONAL_COMPACTION_COUNT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+// DELIBERATELY VOLATILE: rate-limit cooldown. A restart resets the 5-min
+// cooldown, which is harmless — the session itself is fresh after restart.
 const sessionGuardState = createExpiringMapCache<string, { lastRequestMs: number }>({
   ttlMs: RATE_LIMIT_MS,
 });
 
+// DELIBERATELY VOLATILE: tracks in-flight async compaction operations.
+// Process-scoped by nature — the async operation doesn't survive restart.
 const pendingCompactionSessions = new Set<string>();
 
 // ---------------------------------------------------------------------------

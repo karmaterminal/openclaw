@@ -15,24 +15,34 @@ const continuationTimerHandles = new Map<string, Set<ContinuationTimerHandle>>()
 // Per-session ref count for outstanding timers (used to determine if
 // continuation state should be kept alive).
 const continuationTimerRefs = new Map<string, number>();
-// Per-session delegate-pending flags (set when delegates are queued,
-// cleared when all delegates are consumed or cancelled).
-const delegatePendingFlags = new Map<string, boolean>();
-
 // ---------------------------------------------------------------------------
-// Delegate-pending flags
+// Delegate-pending queries — derived from TaskFlow, not a separate Map
+//
+// The old branch had a volatile delegatePendingFlags Map that duplicated
+// information already in TaskFlow via pendingDelegateCount. Removed:
+// the source of truth is the TaskFlow registry.
 // ---------------------------------------------------------------------------
 
-export function setDelegatePending(sessionKey: string): void {
-  delegatePendingFlags.set(sessionKey, true);
+import { pendingDelegateCount } from "./delegate-store.js";
+
+/**
+ * @deprecated No-op. Delegates are tracked in TaskFlow; the pending state
+ * is derived from pendingDelegateCount(). Kept for call-site compatibility
+ * during migration.
+ */
+export function setDelegatePending(_sessionKey: string): void {
+  // No-op: TaskFlow enqueue is the source of truth.
 }
 
 export function hasDelegatePending(sessionKey: string): boolean {
-  return delegatePendingFlags.get(sessionKey) === true;
+  return pendingDelegateCount(sessionKey) > 0;
 }
 
-export function clearDelegatePending(sessionKey: string): void {
-  delegatePendingFlags.delete(sessionKey);
+/**
+ * @deprecated No-op. Delegate pending state is derived from TaskFlow.
+ */
+export function clearDelegatePending(_sessionKey: string): void {
+  // No-op: TaskFlow consume/cancel is the source of truth.
 }
 
 // ---------------------------------------------------------------------------
@@ -149,5 +159,5 @@ export function persistContinuationChainState(params: {
 export function resetContinuationStateForTests(): void {
   continuationTimerHandles.clear();
   continuationTimerRefs.clear();
-  delegatePendingFlags.clear();
+  // delegatePendingFlags removed — derived from TaskFlow.
 }
