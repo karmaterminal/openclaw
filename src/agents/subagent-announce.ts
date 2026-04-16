@@ -217,6 +217,10 @@ export async function runSubagentAnnounceFlow(params: {
   wakeOnDescendantSettle?: boolean;
   signal?: AbortSignal;
   bestEffortDeliver?: boolean;
+  /** Continuation: suppress channel echo, deliver as internal system event. */
+  silentAnnounce?: boolean;
+  /** Continuation: wake parent session after silent delivery. */
+  wakeOnReturn?: boolean;
 }): Promise<boolean> {
   let didAnnounce = false;
   const expectsCompletionMessage = params.expectsCompletionMessage === true;
@@ -484,6 +488,38 @@ export async function runSubagentAnnounceFlow(params: {
             expectsCompletionMessage,
           })
         : targetRequesterOrigin;
+    // --- Continuation: silent/wake routing (RFC §2.3) ---
+    // If this is a continuation delegate with silentAnnounce, deliver as internal
+    // system event instead of channel announce. If wakeOnReturn, also wake parent.
+    if (params.silentAnnounce) {
+      const { enqueueSystemEvent } = await import("../infra/system-events.js");
+      const { createSubsystemLogger } = await import("../logging/subsystem.js");
+      const continuationLog = createSubsystemLogger("continuation/announce");
+
+      if (params.wakeOnReturn) {
+        continuationLog.info(
+          `[continuation/silent-wake] wakeOnReturn=true target=${targetRequesterSessionKey} silentAnnounce=true`,
+        );
+      }
+
+      // Inject completion as system event (invisible to channel).
+      const enrichmentText =
+        triggerMessage || `[continuation:enrichment-return] Delegate completed: ${taskLabel}`;
+      enqueueSystemEvent(enrichmentText, { sessionKey: targetRequesterSessionKey });
+      continuationLog.info(
+        `[continuation:enrichment-return] Delivered to ${targetRequesterSessionKey} from ${params.childSessionKey}`,
+      );
+
+      if (params.wakeOnReturn) {
+        const { requestHeartbeatNow } = await import("../infra/heartbeat-wake.js");
+        requestHeartbeatNow({ sessionKey: targetRequesterSessionKey, reason: "continuation" });
+      }
+
+      didAnnounce = true;
+      shouldDeleteChildSession = params.cleanup === "delete";
+      return true;
+    }
+
     const directIdempotencyKey = buildAnnounceIdempotencyKey(announceId);
     const delivery = await deliverSubagentAnnouncement({
       requesterSessionKey: targetRequesterSessionKey,

@@ -821,6 +821,9 @@ export async function spawnSubagentDirect(
       attachmentsDir: attachmentAbsDir,
       attachmentsRootDir: attachmentRootDir,
       retainAttachmentsOnKeep: retainOnSessionKeep,
+      silentAnnounce: params.silentAnnounce,
+      wakeOnReturn: params.wakeOnReturn,
+      drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
     });
   } catch (err) {
     if (attachmentAbsDir) {
