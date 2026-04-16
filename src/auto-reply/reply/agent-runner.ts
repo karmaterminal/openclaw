@@ -26,13 +26,17 @@ import {
   resolveModelCostConfig,
 } from "../../utils/usage-format.js";
 import {
+  clearPendingDelegates as _clearPendingDelegates,
+  consumePendingDelegates,
+} from "../continuation-delegate-store.js";
+import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
   resolveFallbackTransition,
 } from "../fallback-state.js";
 import type { OriginatingChannelType, TemplateContext } from "../templating.js";
 import { resolveResponseUsageMode, type VerboseLevel } from "../thinking.js";
-import { SILENT_REPLY_TOKEN } from "../tokens.js";
+import { SILENT_REPLY_TOKEN, stripContinuationSignal, type ContinuationSignal } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { runAgentTurnWithFallback } from "./agent-runner-execution.js";
 import {
@@ -54,6 +58,9 @@ import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-usage-l
 import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
+import { checkContextPressure } from "./context-pressure.js";
+import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
+import { scheduleContinuation as _scheduleContinuation } from "./continuation-scheduler.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
@@ -287,6 +294,21 @@ function mergeExecutionTrace(params: {
     fallbackUsed: params.executionTrace?.fallbackUsed ?? attempts.length > 1,
     runner: params.executionTrace?.runner ?? params.runner,
   };
+}
+
+function resolveContinuationTurnTokens(usage: Parameters<typeof normalizeUsage>[0]): number {
+  const normalized = normalizeUsage(usage);
+  if (!normalized) {
+    return 0;
+  }
+  const directTurnTokens = (normalized.input ?? 0) + (normalized.output ?? 0);
+  if (directTurnTokens > 0) {
+    return directTurnTokens;
+  }
+  const fallbackTotal = normalized.total;
+  return typeof fallbackTotal === "number" && Number.isFinite(fallbackTotal) && fallbackTotal > 0
+    ? fallbackTotal
+    : 0;
 }
 
 function formatExecutionResultTraceBlock(
@@ -957,6 +979,37 @@ export async function runReplyAgent(params: {
       });
     }
   };
+  const _persistContinuationChainState = async (state: {
+    count: number;
+    startedAt: number;
+    tokens: number;
+  }) => {
+    if (!sessionKey) {
+      return;
+    }
+    const updatedAt = Date.now();
+    if (activeSessionEntry) {
+      activeSessionEntry.continuationChainCount = state.count;
+      activeSessionEntry.continuationChainStartedAt = state.startedAt;
+      activeSessionEntry.continuationChainTokens = state.tokens;
+      activeSessionEntry.updatedAt = updatedAt;
+    }
+    if (activeSessionStore && activeSessionEntry) {
+      activeSessionStore[sessionKey] = activeSessionEntry;
+    }
+    if (storePath) {
+      await updateSessionStoreEntry({
+        storePath,
+        sessionKey,
+        update: async () => ({
+          continuationChainCount: state.count,
+          continuationChainStartedAt: state.startedAt,
+          continuationChainTokens: state.tokens,
+          updatedAt,
+        }),
+      });
+    }
+  };
 
   if (shouldSteer && isStreaming) {
     const steerSessionId =
@@ -1027,6 +1080,8 @@ export async function runReplyAgent(params: {
   );
   const applyReplyToMode = createReplyToModeFilterForChannel(replyToMode, replyToChannel);
   const cfg = followupRun.run.config;
+  const continuationConfig = resolveContinuationRuntimeConfig(cfg);
+  const continuationFeatureEnabled = continuationConfig.enabled;
   const normalizeReplyMediaPaths = createReplyMediaPathNormalizer({
     cfg,
     sessionKey,
@@ -1170,6 +1225,37 @@ export async function runReplyAgent(params: {
       });
 
     replyOperation.setPhase("running");
+    if (continuationFeatureEnabled && activeSessionEntry && sessionKey) {
+      const contextWindowTokens =
+        resolveContextTokensForModel({
+          cfg,
+          provider: followupRun.run.provider,
+          model: defaultModel,
+          contextTokensOverride: agentCfgContextTokens,
+          fallbackContextTokens: activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
+          allowAsyncLoad: false,
+        }) ?? DEFAULT_CONTEXT_TOKENS;
+      const pressureResult = checkContextPressure({
+        sessionEntry: activeSessionEntry,
+        sessionKey,
+        contextPressureThreshold: continuationConfig.contextPressureThreshold,
+        contextWindowTokens,
+      });
+      if (pressureResult.fired) {
+        if (activeSessionStore) {
+          activeSessionStore[sessionKey] = activeSessionEntry;
+        }
+        if (storePath) {
+          await updateSessionStoreEntry({
+            storePath,
+            sessionKey,
+            update: async () => ({
+              lastContextPressureBand: pressureResult.band,
+            }),
+          });
+        }
+      }
+    }
     const runStartedAt = Date.now();
     const runOutcome = await runAgentTurnWithFallback({
       commandBody,
@@ -1210,6 +1296,7 @@ export async function runReplyAgent(params: {
       fallbackModel,
       fallbackAttempts,
       directlySentBlockKeys,
+      continueWorkRequest,
     } = runOutcome;
     let { didLogHeartbeatStrip, autoCompactionCount } = runOutcome;
 
@@ -1245,6 +1332,36 @@ export async function runReplyAgent(params: {
     if (pendingToolTasks.size > 0) {
       await Promise.allSettled(pendingToolTasks);
     }
+
+    let continuationSignal: ContinuationSignal | null = null;
+    if (continuationFeatureEnabled && payloadArray.length > 0) {
+      const lastTextPayload = [...payloadArray]
+        .toReversed()
+        .find((payload) => typeof payload.text === "string" && payload.text.trim().length > 0);
+      if (lastTextPayload?.text) {
+        const continuation = stripContinuationSignal(lastTextPayload.text);
+        if (continuation.signal) {
+          continuationSignal = continuation.signal;
+          lastTextPayload.text = continuation.text;
+        }
+      }
+    }
+    const effectiveContinuationSignal =
+      continuationSignal ??
+      (continueWorkRequest
+        ? ({
+            kind: "work",
+            delayMs: continueWorkRequest.delaySeconds * 1000,
+          } satisfies ContinuationSignal)
+        : null);
+    const continuationWorkReason =
+      !continuationSignal && effectiveContinuationSignal?.kind === "work"
+        ? continueWorkRequest?.reason
+        : undefined;
+    const pendingContinuationDelegates =
+      continuationFeatureEnabled && sessionKey ? consumePendingDelegates(sessionKey) : [];
+    const hasQueuedContinuationWork =
+      effectiveContinuationSignal !== null || pendingContinuationDelegates.length > 0;
 
     const usage = runResult.meta?.agentMeta?.usage;
     const promptTokens = runResult.meta?.agentMeta?.promptTokens;
@@ -1319,13 +1436,6 @@ export async function runReplyAgent(params: {
       usageIsContextSnapshot: isCliProvider(providerUsed, cfg),
     });
 
-    // Drain any late tool/block deliveries before deciding there's "nothing to send".
-    // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
-    // keep the typing indicator stuck.
-    if (payloadArray.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
-    }
-
     const payloadResult = await buildReplyPayloads({
       payloads: payloadArray,
       isHeartbeat,
@@ -1353,9 +1463,10 @@ export async function runReplyAgent(params: {
     const { replyPayloads } = payloadResult;
     didLogHeartbeatStrip = payloadResult.didLogHeartbeatStrip;
 
-    if (replyPayloads.length === 0) {
+    if (replyPayloads.length === 0 && !hasQueuedContinuationWork) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
+    const wasSilentContinuation = replyPayloads.length === 0 && hasQueuedContinuationWork;
 
     const successfulCronAdds = runResult.successfulCronAdds ?? 0;
     const hasReminderCommitment = replyPayloads.some(
@@ -1560,147 +1671,183 @@ export async function runReplyAgent(params: {
         verboseNotices.push({ text: `🧹 Auto-compaction complete${suffix}.` });
       }
     }
-    const prefixPayloads = [...verboseNotices];
-    const rawUserText =
-      runResult.meta?.finalPromptText ??
-      sessionCtx.CommandBody ??
-      sessionCtx.RawBody ??
-      sessionCtx.BodyForAgent ??
-      sessionCtx.Body;
-    const rawAssistantText =
-      runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText;
-    const traceAuthorized = followupRun.run.traceAuthorized === true;
-    const executionTrace = mergeExecutionTrace({
-      fallbackAttempts,
-      executionTrace: runResult.meta?.executionTrace as TraceExecutionView | undefined,
-      provider: providerUsed,
-      model: modelUsed,
-      runner: isCliProvider(providerUsed, cfg) ? "cli" : "embedded",
-    });
-    const requestShaping = {
-      authMode:
-        runResult.meta?.requestShaping?.authMode ??
-        (cfg?.models?.providers && providerUsed in cfg.models.providers
-          ? (resolveModelAuthMode(providerUsed, cfg) ?? undefined)
-          : undefined),
-      thinking:
-        runResult.meta?.requestShaping?.thinking ??
-        normalizeOptionalString(followupRun.run.thinkLevel),
-      reasoning:
-        runResult.meta?.requestShaping?.reasoning ??
-        normalizeOptionalString(followupRun.run.reasoningLevel),
-      verbose:
-        runResult.meta?.requestShaping?.verbose ?? normalizeOptionalString(resolvedVerboseLevel),
-      trace:
-        runResult.meta?.requestShaping?.trace ??
-        normalizeOptionalString(activeSessionEntry?.traceLevel),
-      fallbackEligible:
-        runResult.meta?.requestShaping?.fallbackEligible ??
-        hasConfiguredModelFallbacks({
-          cfg,
-          agentId: followupRun.run.agentId,
-          sessionKey: followupRun.run.sessionKey,
-        }),
-      blockStreaming:
-        runResult.meta?.requestShaping?.blockStreaming ??
-        normalizeOptionalString(resolvedBlockStreamingBreak),
-    };
-    const promptSegments =
-      (runResult.meta?.promptSegments as TracePromptSegmentView[] | undefined) ??
-      derivePromptSegments(rawUserText);
-    const toolSummary = runResult.meta?.toolSummary as TraceToolSummaryView | undefined;
-    const completion =
-      (runResult.meta?.completion as TraceCompletionView | undefined) ??
-      (runResult.meta?.stopReason
-        ? {
-            stopReason: runResult.meta.stopReason,
-            finishReason: runResult.meta.stopReason,
-            ...(runResult.meta.stopReason.toLowerCase().includes("refusal")
-              ? { refusal: true }
-              : {}),
-          }
-        : undefined);
-    const contextManagement = {
-      ...(typeof activeSessionEntry?.compactionCount === "number"
-        ? { sessionCompactions: activeSessionEntry.compactionCount }
-        : {}),
-      ...(typeof runResult.meta?.contextManagement?.lastTurnCompactions === "number"
-        ? { lastTurnCompactions: runResult.meta.contextManagement.lastTurnCompactions }
-        : typeof runResult.meta?.agentMeta?.compactionCount === "number"
-          ? { lastTurnCompactions: runResult.meta.agentMeta.compactionCount }
-          : {}),
-      ...(runResult.meta?.contextManagement &&
-      typeof runResult.meta.contextManagement.preflightCompactionApplied === "boolean"
-        ? {
-            preflightCompactionApplied: runResult.meta.contextManagement.preflightCompactionApplied,
-          }
-        : preflightCompactionApplied
-          ? { preflightCompactionApplied }
-          : {}),
-      ...(runResult.meta?.contextManagement &&
-      typeof runResult.meta.contextManagement.postCompactionContextInjected === "boolean"
-        ? {
-            postCompactionContextInjected:
-              runResult.meta.contextManagement.postCompactionContextInjected,
-          }
-        : {}),
-    } satisfies TraceContextManagementView;
-    const sessionUsage =
-      traceAuthorized && activeSessionEntry?.traceLevel === "raw"
-        ? await accumulateSessionUsageFromTranscript({
-            sessionId: runResult.meta?.agentMeta?.sessionId ?? followupRun.run.sessionId,
-            storePath,
-            sessionFile: followupRun.run.sessionFile,
-          })
-        : undefined;
-    const traceEnabledForSender =
-      traceAuthorized &&
-      (activeSessionEntry?.traceLevel === "on" || activeSessionEntry?.traceLevel === "raw");
-    const shouldAppendTracePayload = verboseEnabled || traceEnabledForSender;
-    let trailingPluginStatusPayload: ReplyPayload | undefined;
-    if (shouldAppendTracePayload) {
-      const pluginStatusPayload = buildInlinePluginStatusPayload({
-        entry: activeSessionEntry,
-        includeTraceLines: traceEnabledForSender,
+    if (!wasSilentContinuation) {
+      const prefixPayloads = [...verboseNotices];
+      const rawUserText =
+        runResult.meta?.finalPromptText ??
+        sessionCtx.CommandBody ??
+        sessionCtx.RawBody ??
+        sessionCtx.BodyForAgent ??
+        sessionCtx.Body;
+      const rawAssistantText =
+        runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText;
+      const traceAuthorized = followupRun.run.traceAuthorized === true;
+      const executionTrace = mergeExecutionTrace({
+        fallbackAttempts,
+        executionTrace: runResult.meta?.executionTrace as TraceExecutionView | undefined,
+        provider: providerUsed,
+        model: modelUsed,
+        runner: isCliProvider(providerUsed, cfg) ? "cli" : "embedded",
       });
-      const rawTracePayload =
+      const requestShaping = {
+        authMode:
+          runResult.meta?.requestShaping?.authMode ??
+          (cfg?.models?.providers && providerUsed in cfg.models.providers
+            ? (resolveModelAuthMode(providerUsed, cfg) ?? undefined)
+            : undefined),
+        thinking:
+          runResult.meta?.requestShaping?.thinking ??
+          normalizeOptionalString(followupRun.run.thinkLevel),
+        reasoning:
+          runResult.meta?.requestShaping?.reasoning ??
+          normalizeOptionalString(followupRun.run.reasoningLevel),
+        verbose:
+          runResult.meta?.requestShaping?.verbose ?? normalizeOptionalString(resolvedVerboseLevel),
+        trace:
+          runResult.meta?.requestShaping?.trace ??
+          normalizeOptionalString(activeSessionEntry?.traceLevel),
+        fallbackEligible:
+          runResult.meta?.requestShaping?.fallbackEligible ??
+          hasConfiguredModelFallbacks({
+            cfg,
+            agentId: followupRun.run.agentId,
+            sessionKey: followupRun.run.sessionKey,
+          }),
+        blockStreaming:
+          runResult.meta?.requestShaping?.blockStreaming ??
+          normalizeOptionalString(resolvedBlockStreamingBreak),
+      };
+      const promptSegments =
+        (runResult.meta?.promptSegments as TracePromptSegmentView[] | undefined) ??
+        derivePromptSegments(rawUserText);
+      const toolSummary = runResult.meta?.toolSummary as TraceToolSummaryView | undefined;
+      const completion =
+        (runResult.meta?.completion as TraceCompletionView | undefined) ??
+        (runResult.meta?.stopReason
+          ? {
+              stopReason: runResult.meta.stopReason,
+              finishReason: runResult.meta.stopReason,
+              ...(runResult.meta.stopReason.toLowerCase().includes("refusal")
+                ? { refusal: true }
+                : {}),
+            }
+          : undefined);
+      const contextManagement = {
+        ...(typeof activeSessionEntry?.compactionCount === "number"
+          ? { sessionCompactions: activeSessionEntry.compactionCount }
+          : {}),
+        ...(typeof runResult.meta?.contextManagement?.lastTurnCompactions === "number"
+          ? { lastTurnCompactions: runResult.meta.contextManagement.lastTurnCompactions }
+          : typeof runResult.meta?.agentMeta?.compactionCount === "number"
+            ? { lastTurnCompactions: runResult.meta.agentMeta.compactionCount }
+            : {}),
+        ...(runResult.meta?.contextManagement &&
+        typeof runResult.meta.contextManagement.preflightCompactionApplied === "boolean"
+          ? {
+              preflightCompactionApplied:
+                runResult.meta.contextManagement.preflightCompactionApplied,
+            }
+          : preflightCompactionApplied
+            ? { preflightCompactionApplied }
+            : {}),
+        ...(runResult.meta?.contextManagement &&
+        typeof runResult.meta.contextManagement.postCompactionContextInjected === "boolean"
+          ? {
+              postCompactionContextInjected:
+                runResult.meta.contextManagement.postCompactionContextInjected,
+            }
+          : {}),
+      } satisfies TraceContextManagementView;
+      const sessionUsage =
         traceAuthorized && activeSessionEntry?.traceLevel === "raw"
-          ? buildInlineRawTracePayload({
-              entry: activeSessionEntry,
-              rawUserText,
-              rawAssistantText,
-              sessionUsage,
-              usage: runResult.meta?.agentMeta?.usage,
-              lastCallUsage: runResult.meta?.agentMeta?.lastCallUsage,
-              provider: providerUsed,
-              model: modelUsed,
-              contextLimit: contextTokensUsed,
-              promptTokens,
-              executionTrace,
-              requestShaping,
-              promptSegments,
-              toolSummary,
-              completion,
-              contextManagement,
+          ? await accumulateSessionUsageFromTranscript({
+              sessionId: runResult.meta?.agentMeta?.sessionId ?? followupRun.run.sessionId,
+              storePath,
+              sessionFile: followupRun.run.sessionFile,
             })
           : undefined;
-      trailingPluginStatusPayload =
-        pluginStatusPayload && rawTracePayload
-          ? { text: `${pluginStatusPayload.text}\n\n${rawTracePayload.text}` }
-          : (pluginStatusPayload ?? rawTracePayload);
+      const traceEnabledForSender =
+        traceAuthorized &&
+        (activeSessionEntry?.traceLevel === "on" || activeSessionEntry?.traceLevel === "raw");
+      const shouldAppendTracePayload = verboseEnabled || traceEnabledForSender;
+      let trailingPluginStatusPayload: ReplyPayload | undefined;
+      if (shouldAppendTracePayload) {
+        const pluginStatusPayload = buildInlinePluginStatusPayload({
+          entry: activeSessionEntry,
+          includeTraceLines: traceEnabledForSender,
+        });
+        const rawTracePayload =
+          traceAuthorized && activeSessionEntry?.traceLevel === "raw"
+            ? buildInlineRawTracePayload({
+                entry: activeSessionEntry,
+                rawUserText,
+                rawAssistantText,
+                sessionUsage,
+                usage: runResult.meta?.agentMeta?.usage,
+                lastCallUsage: runResult.meta?.agentMeta?.lastCallUsage,
+                provider: providerUsed,
+                model: modelUsed,
+                contextLimit: contextTokensUsed,
+                promptTokens,
+                executionTrace,
+                requestShaping,
+                promptSegments,
+                toolSummary,
+                completion,
+                contextManagement,
+              })
+            : undefined;
+        trailingPluginStatusPayload =
+          pluginStatusPayload && rawTracePayload
+            ? { text: `${pluginStatusPayload.text}\n\n${rawTracePayload.text}` }
+            : (pluginStatusPayload ?? rawTracePayload);
+      }
+      if (prefixPayloads.length > 0) {
+        finalPayloads = [...prefixPayloads, ...finalPayloads];
+      }
+      if (trailingPluginStatusPayload) {
+        finalPayloads = [...finalPayloads, trailingPluginStatusPayload];
+      }
+      if (responseUsageLine) {
+        finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);
+      }
     }
-    if (prefixPayloads.length > 0) {
-      finalPayloads = [...prefixPayloads, ...finalPayloads];
-    }
-    if (trailingPluginStatusPayload) {
-      finalPayloads = [...finalPayloads, trailingPluginStatusPayload];
-    }
-    if (responseUsageLine) {
-      finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);
+
+    const continuationFollowupRun =
+      activeSessionEntry?.sessionId && activeSessionEntry.sessionId !== followupRun.run.sessionId
+        ? {
+            ...followupRun,
+            run: {
+              ...followupRun.run,
+              sessionId: activeSessionEntry.sessionId,
+              sessionFile: activeSessionEntry.sessionFile ?? followupRun.run.sessionFile,
+            },
+          }
+        : followupRun;
+
+    if (continuationFeatureEnabled && sessionKey && hasQueuedContinuationWork) {
+      await _scheduleContinuation({
+        sessionKey,
+        queueKey,
+        queueSettings: resolvedQueue,
+        runFollowupTurn,
+        followupRun: continuationFollowupRun,
+        sessionEntry: activeSessionEntry,
+        config: continuationConfig,
+        turnTokens: resolveContinuationTurnTokens(usage),
+        signal: effectiveContinuationSignal,
+        workReason: continuationWorkReason,
+        delegates: pendingContinuationDelegates,
+        onChainStateAccepted: _persistContinuationChainState,
+      });
     }
 
     return finalizeWithFollowup(
-      finalPayloads.length === 1 ? finalPayloads[0] : finalPayloads,
+      finalPayloads.length === 0
+        ? undefined
+        : finalPayloads.length === 1
+          ? finalPayloads[0]
+          : finalPayloads,
       queueKey,
       runFollowupTurn,
     );

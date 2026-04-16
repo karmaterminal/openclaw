@@ -85,6 +85,9 @@ export const sessionMessages: unknown[] = [
 ];
 export const sessionAbortCompactionMock: Mock<(reason?: unknown) => void> = vi.fn();
 export const createOpenClawCodingToolsMock = vi.fn(() => []);
+export const spawnSubagentDirectMock: Mock<
+  (task?: unknown, context?: unknown) => Promise<unknown>
+> = vi.fn(async () => ({ status: "accepted" }));
 export const resolveEmbeddedAgentStreamFnMock: Mock<
   (params?: unknown) => MockEmbeddedAgentStreamFn
 > = vi.fn((_params?: unknown) => vi.fn());
@@ -187,6 +190,8 @@ export function resetCompactHooksHarnessMocks(): void {
   resetCompactSessionStateMocks();
   createOpenClawCodingToolsMock.mockReset();
   createOpenClawCodingToolsMock.mockReturnValue([]);
+  spawnSubagentDirectMock.mockReset();
+  spawnSubagentDirectMock.mockResolvedValue({ status: "accepted" });
 }
 
 export async function loadCompactHooksHarness(): Promise<{
@@ -375,6 +380,10 @@ export async function loadCompactHooksHarness(): Promise<{
 
   vi.doMock("../pi-tools.js", () => ({
     createOpenClawCodingTools: createOpenClawCodingToolsMock,
+  }));
+
+  vi.doMock("../subagent-spawn.js", () => ({
+    spawnSubagentDirect: spawnSubagentDirectMock,
   }));
 
   vi.doMock("./replay-history.js", () => ({

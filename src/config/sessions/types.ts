@@ -227,6 +227,11 @@ export type SessionEntry = {
   fallbackNoticeActiveModel?: string;
   fallbackNoticeReason?: string;
   contextTokens?: number;
+  /**
+   * Last context-pressure band that fired (for example 80, 90, 95).
+   * Used to deduplicate pressure events until the session enters a higher band.
+   */
+  lastContextPressureBand?: number;
   compactionCount?: number;
   compactionCheckpoints?: SessionCompactionCheckpoint[];
   memoryFlushAt?: number;
@@ -256,6 +261,12 @@ export type SessionEntry = {
    */
   pluginDebugEntries?: SessionPluginDebugEntry[];
   acp?: SessionAcpMeta;
+  /** Number of continuation turns accepted in the current chain. */
+  continuationChainCount?: number;
+  /** Timestamp (ms) when the current continuation chain started. */
+  continuationChainStartedAt?: number;
+  /** Accumulated input+output tokens across the current continuation chain. */
+  continuationChainTokens?: number;
 };
 
 function isSessionPluginTraceLine(line: string): boolean {

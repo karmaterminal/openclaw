@@ -461,6 +461,21 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Agents",
       detailKeys: [],
     },
+    continue_work: {
+      emoji: "⏳",
+      title: "Continue Work",
+      detailKeys: ["delaySeconds", "reason"],
+    },
+    continue_delegate: {
+      emoji: "🪁",
+      title: "Continue Delegate",
+      detailKeys: ["task", "mode", "delaySeconds"],
+    },
+    request_compaction: {
+      emoji: "🧹",
+      title: "Request Compaction",
+      detailKeys: ["reason"],
+    },
     memory_search: {
       emoji: "🧠",
       title: "Memory Search",

@@ -26,7 +26,8 @@ import {
 } from "../../agents/pi-embedded-helpers.js";
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import { compactEmbeddedPiSession, runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
   resolveGroupSessionKey,
   resolveSessionTranscriptPath,
@@ -59,6 +60,7 @@ import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
   startsWithSilentToken,
+  stripContinuationSignal,
   stripLeadingSilentToken,
 } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
@@ -106,6 +108,7 @@ export type AgentRunLoopResult =
       autoCompactionCount: number;
       /** Payload keys sent directly (not via pipeline) during tool flush. */
       directlySentBlockKeys?: Set<string>;
+      continueWorkRequest?: ContinueWorkRequest;
     }
   | { kind: "final"; payload: ReplyPayload };
 
@@ -626,6 +629,7 @@ export async function runAgentTurnWithFallback(params: {
   let didResetAfterCompactionFailure = false;
   let didRetryTransientHttpError = false;
   let liveModelSwitchRetries = 0;
+  let continueWorkRequest: ContinueWorkRequest | undefined;
   let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
     params.getActiveSessionEntry()?.systemPromptReport,
   );
@@ -753,6 +757,15 @@ export async function runAgentTurnWithFallback(params: {
         }
         if (text && startsWithSilentToken(text, SILENT_REPLY_TOKEN)) {
           text = stripLeadingSilentToken(text, SILENT_REPLY_TOKEN);
+        }
+        if (
+          text &&
+          params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+        ) {
+          const continuation = stripContinuationSignal(text);
+          if (continuation.signal) {
+            text = continuation.text;
+          }
         }
         if (!text) {
           // Allow media-only payloads (e.g. tool result screenshots) through.
@@ -903,7 +916,10 @@ export async function runAgentTurnWithFallback(params: {
                 });
                 lifecycleTerminalEmitted = true;
 
-                return result;
+                return {
+                  result,
+                  continueWorkRequest: undefined,
+                };
               } catch (err) {
                 if (rollbackFallbackCandidateSelection) {
                   try {
@@ -957,6 +973,7 @@ export async function runAgentTurnWithFallback(params: {
           );
           return (async () => {
             let attemptCompactionCount = 0;
+            let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
             try {
               const result = await runEmbeddedPiAgent({
                 ...embeddedContext,
@@ -1176,6 +1193,65 @@ export async function runAgentTurnWithFallback(params: {
                   bootstrapPromptWarningSignaturesSeen[
                     bootstrapPromptWarningSignaturesSeen.length - 1
                   ],
+                continueWorkOpts:
+                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        requestContinuation: (request) => {
+                          attemptContinueWorkRequest = request;
+                        },
+                      }
+                    : undefined,
+                requestCompactionOpts:
+                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        getContextUsage: () => {
+                          const entry = params.sessionKey
+                            ? params.activeSessionStore?.[params.sessionKey]
+                            : undefined;
+                          if (!entry?.totalTokens || entry.totalTokensFresh === false) {
+                            return 0;
+                          }
+                          const contextWindow = entry.contextTokens ?? 0;
+                          if (!contextWindow || contextWindow <= 0) {
+                            return 0;
+                          }
+                          return entry.totalTokens / contextWindow;
+                        },
+                        triggerCompaction: async () => {
+                          try {
+                            const result = await compactEmbeddedPiSession({
+                              sessionId:
+                                params.followupRun.run.sessionId ??
+                                params.getActiveSessionEntry()?.sessionId ??
+                                "",
+                              sessionKey: params.sessionKey ?? "",
+                              sessionFile: params.followupRun.run.sessionFile,
+                              workspaceDir: params.followupRun.run.workspaceDir,
+                              config: params.followupRun.run.config,
+                              skillsSnapshot: params.followupRun.run.skillsSnapshot,
+                              provider: params.followupRun.run.provider,
+                              model: params.followupRun.run.model,
+                              thinkLevel: params.followupRun.run.thinkLevel,
+                              reasoningLevel: params.followupRun.run.reasoningLevel,
+                              bashElevated: params.followupRun.run.bashElevated,
+                              allowGatewaySubagentBinding: true,
+                              trigger: "volitional",
+                            });
+                            return {
+                              ok: result.ok,
+                              compacted: result.compacted,
+                              reason: result.reason,
+                            };
+                          } catch (err) {
+                            return {
+                              ok: false,
+                              compacted: false,
+                              reason: err instanceof Error ? err.message : String(err),
+                            };
+                          }
+                        },
+                      }
+                    : undefined,
                 onToolResult: onToolResult
                   ? (() => {
                       // Serialize tool result delivery to preserve message ordering.
@@ -1218,7 +1294,10 @@ export async function runAgentTurnWithFallback(params: {
                 result.meta?.agentMeta?.compactionCount ?? 0,
               );
               attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
-              return result;
+              return {
+                result,
+                continueWorkRequest: attemptContinueWorkRequest,
+              };
             } catch (err) {
               if (rollbackFallbackCandidateSelection) {
                 try {
@@ -1236,7 +1315,8 @@ export async function runAgentTurnWithFallback(params: {
           })();
         },
       });
-      runResult = fallbackResult.result;
+      runResult = fallbackResult.result.result;
+      continueWorkRequest = fallbackResult.result.continueWorkRequest;
       fallbackProvider = fallbackResult.provider;
       fallbackModel = fallbackResult.model;
       fallbackAttempts = Array.isArray(fallbackResult.attempts)
@@ -1568,5 +1648,6 @@ export async function runAgentTurnWithFallback(params: {
     didLogHeartbeatStrip,
     autoCompactionCount,
     directlySentBlockKeys: directlySentBlockKeys.size > 0 ? directlySentBlockKeys : undefined,
+    continueWorkRequest,
   };
 }

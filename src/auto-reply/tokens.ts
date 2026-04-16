@@ -2,6 +2,7 @@ import { escapeRegExp } from "../utils.js";
 
 export const HEARTBEAT_TOKEN = "HEARTBEAT_OK";
 export const SILENT_REPLY_TOKEN = "NO_REPLY";
+export const CONTINUE_WORK_TOKEN = "CONTINUE_WORK";
 
 const silentExactRegexByToken = new Map<string, RegExp>();
 const silentTrailingRegexByToken = new Map<string, RegExp>();
@@ -24,7 +25,7 @@ function getSilentTrailingRegex(token: string): RegExp {
     return cached;
   }
   const escaped = escapeRegExp(token);
-  const regex = new RegExp(`(?:^|\\s+|\\*+)${escaped}\\s*$`);
+  const regex = new RegExp(`(?:^|\\s+|\\*+)${escaped}\\s*$`, "i");
   silentTrailingRegexByToken.set(token, regex);
   return regex;
 }
@@ -176,4 +177,100 @@ export function isSilentReplyPrefixText(
   // uppercase words (e.g. HEART/HE with HEARTBEAT_OK). Only allow bare "NO"
   // because NO_REPLY streaming can transiently emit that fragment.
   return tokenUpper === SILENT_REPLY_TOKEN && normalized === "NO";
+}
+
+export type ContinuationSignal =
+  | { kind: "work"; delayMs?: number }
+  | {
+      kind: "delegate";
+      task: string;
+      delayMs?: number;
+      silent?: boolean;
+      silentWake?: boolean;
+      postCompaction?: boolean;
+    };
+
+export function parseContinuationSignal(text: string | undefined): ContinuationSignal | null {
+  if (!text) {
+    return null;
+  }
+
+  const trimmed = text.trim();
+
+  const delegateMatch = trimmed.match(
+    /\[\[\s*CONTINUE_DELEGATE:\s*((?:(?!\]\])[\s\S])+?)\s*\]\]\s*$/,
+  );
+  if (delegateMatch) {
+    let taskBody = delegateMatch[1].trim();
+    let silent: boolean | undefined;
+    let silentWake: boolean | undefined;
+    let postCompaction: boolean | undefined;
+    const postCompactionSuffixMatch = taskBody.match(/\s*\|\s*post[- ]compaction\s*$/i);
+    if (postCompactionSuffixMatch) {
+      postCompaction = true;
+      silent = true;
+      silentWake = true;
+      taskBody = taskBody.slice(0, -postCompactionSuffixMatch[0].length).trimEnd();
+    } else {
+      const silentWakeSuffixMatch = taskBody.match(/\s*\|\s*silent[- ]wake\s*$/i);
+      if (silentWakeSuffixMatch) {
+        silentWake = true;
+        taskBody = taskBody.slice(0, -silentWakeSuffixMatch[0].length).trimEnd();
+      } else {
+        const silentSuffixMatch = taskBody.match(/\s*\|\s*silent\s*$/i);
+        if (silentSuffixMatch) {
+          silent = true;
+          taskBody = taskBody.slice(0, -silentSuffixMatch[0].length).trimEnd();
+        }
+      }
+    }
+    let delayMs: number | undefined;
+    const delayMatch = taskBody.match(/\s+\+(\d+)s\s*$/);
+    if (delayMatch) {
+      delayMs = parseInt(delayMatch[1], 10) * 1000;
+      taskBody = taskBody.slice(0, -delayMatch[0].length).trimEnd();
+    }
+    if (taskBody) {
+      const maxTaskLength = 4096;
+      return {
+        kind: "delegate",
+        task: taskBody.slice(0, maxTaskLength),
+        delayMs,
+        silent,
+        silentWake,
+        postCompaction,
+      };
+    }
+  }
+
+  const workMatch = trimmed.match(/\bCONTINUE_WORK(?::(\d+))?\s*$/);
+  if (workMatch) {
+    const delaySec = workMatch[1] ? parseInt(workMatch[1], 10) : undefined;
+    return {
+      kind: "work",
+      delayMs: delaySec !== undefined ? delaySec * 1000 : undefined,
+    };
+  }
+
+  return null;
+}
+
+export function stripContinuationSignal(text: string): {
+  text: string;
+  signal: ContinuationSignal | null;
+} {
+  const signal = parseContinuationSignal(text);
+  if (!signal) {
+    return { text, signal: null };
+  }
+
+  const stripped =
+    signal.kind === "delegate"
+      ? text.replace(/\[\[\s*CONTINUE_DELEGATE:\s*(?:(?!\]\])[\s\S])+?\s*\]\]\s*$/, "")
+      : text.replace(/\bCONTINUE_WORK(?::\d+)?\s*$/, "");
+
+  return {
+    text: stripped.trimEnd(),
+    signal,
+  };
 }

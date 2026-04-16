@@ -165,9 +165,10 @@ export async function compactEmbeddedPiSession(
           sessionFile: params.sessionFile,
           tokenBudget: ceCtxInfo.tokens,
           currentTokenCount: params.currentTokenCount,
-          compactionTarget: params.trigger === "manual" ? "threshold" : "budget",
+          compactionTarget:
+            params.trigger === "manual" || params.trigger === "volitional" ? "threshold" : "budget",
           customInstructions: params.customInstructions,
-          force: params.trigger === "manual",
+          force: params.trigger === "manual" || params.trigger === "volitional",
           runtimeContext,
         });
         if (result.ok && result.compacted) {
@@ -212,6 +213,7 @@ export async function compactEmbeddedPiSession(
             config: params.config,
             sessionKey: params.sessionKey,
             sessionFile: params.sessionFile,
+            workspaceDir: params.workspaceDir,
           });
         }
         if (

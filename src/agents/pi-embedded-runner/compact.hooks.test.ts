@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyExtraParamsToAgentMock,
   contextEngineCompactMock,
@@ -20,6 +20,7 @@ import {
   sessionAbortCompactionMock,
   sessionMessages,
   sessionCompactImpl,
+  spawnSubagentDirectMock,
   triggerInternalHook,
 } from "./compact.hooks.harness.js";
 
@@ -91,6 +92,28 @@ function wrappedCompactionArgs(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function resetContinuationTaskFlows() {
+  const [
+    { clearPendingDelegates },
+    { configureTaskFlowRegistryRuntime },
+    { resetTaskFlowRegistryForTests },
+  ] = await Promise.all([
+    import("../../auto-reply/continuation-delegate-store.js"),
+    import("../../tasks/task-flow-registry.store.js"),
+    import("../../tasks/task-flow-registry.js"),
+  ]);
+  resetTaskFlowRegistryForTests({ persist: false });
+  configureTaskFlowRegistryRuntime({
+    store: {
+      loadSnapshot: () => ({ flows: new Map() }),
+      saveSnapshot: () => {},
+      upsertFlow: () => {},
+      deleteFlow: () => {},
+    },
+  });
+  clearPendingDelegates(TEST_SESSION_KEY);
+}
+
 const sessionHook = (action: string): SessionHookEvent | undefined =>
   triggerInternalHook.mock.calls.find((call) => {
     const event = call[0] as SessionHookEvent | undefined;
@@ -142,8 +165,13 @@ beforeAll(async () => {
   onSessionTranscriptUpdate = loaded.onSessionTranscriptUpdate;
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  await resetContinuationTaskFlows();
   resetCompactHooksHarnessMocks();
+});
+
+afterEach(async () => {
+  await resetContinuationTaskFlows();
 });
 
 describe("compactEmbeddedPiSessionDirect hooks", () => {
@@ -541,6 +569,31 @@ describe("compactEmbeddedPiSessionDirect hooks", () => {
       reason: "post-compaction",
       sessionFiles: [TEST_SESSION_FILE],
     });
+  });
+
+  it("releases staged post-compaction delegates after compaction completes", async () => {
+    const { stagePostCompactionDelegate } =
+      await import("../../auto-reply/continuation-delegate-store.js");
+    stagePostCompactionDelegate(TEST_SESSION_KEY, {
+      task: "resume the refactor after compaction",
+    });
+
+    await compactTesting.runPostCompactionSideEffects({
+      sessionKey: TEST_SESSION_KEY,
+      sessionFile: TEST_SESSION_FILE,
+      workspaceDir: TEST_WORKSPACE_DIR,
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringContaining("resume the refactor after compaction"),
+        expectsCompletionMessage: false,
+      }),
+      expect.objectContaining({
+        agentSessionKey: TEST_SESSION_KEY,
+        workspaceDir: TEST_WORKSPACE_DIR,
+      }),
+    );
   });
 
   it("skips compaction when the transcript only contains boilerplate replies and tool output", async () => {

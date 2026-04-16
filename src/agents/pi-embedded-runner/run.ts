@@ -940,6 +940,7 @@ export async function runEmbeddedPiAgent(
                     config: params.config,
                     sessionKey: params.sessionKey,
                     sessionFile: params.sessionFile,
+                    workspaceDir: params.workspaceDir,
                   });
                 }
                 log.info(

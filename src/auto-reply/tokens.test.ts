@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   isSilentReplyPrefixText,
   isSilentReplyText,
+  parseContinuationSignal,
   startsWithSilentToken,
+  stripContinuationSignal,
   stripLeadingSilentToken,
   stripSilentToken,
 } from "./tokens.js";
@@ -133,5 +135,64 @@ describe("isSilentReplyPrefixText", () => {
     expect(isSilentReplyPrefixText("NO_X")).toBe(false);
     expect(isSilentReplyPrefixText("NO_REPLY more")).toBe(false);
     expect(isSilentReplyPrefixText("NO-")).toBe(false);
+  });
+});
+
+describe("parseContinuationSignal", () => {
+  it("parses continue_work with delay", () => {
+    expect(parseContinuationSignal("CONTINUE_WORK:45")).toEqual({
+      kind: "work",
+      delayMs: 45_000,
+    });
+  });
+
+  it("parses bracket delegate delay and silent suffixes", () => {
+    expect(
+      parseContinuationSignal("[[CONTINUE_DELEGATE: inspect shard health +30s | silent]]"),
+    ).toEqual({
+      kind: "delegate",
+      task: "inspect shard health",
+      delayMs: 30_000,
+      silent: true,
+      silentWake: undefined,
+    });
+
+    expect(parseContinuationSignal("[[CONTINUE_DELEGATE: gather diffs | silent-wake]]")).toEqual({
+      kind: "delegate",
+      task: "gather diffs",
+      delayMs: undefined,
+      silent: undefined,
+      silentWake: true,
+    });
+
+    expect(
+      parseContinuationSignal("[[CONTINUE_DELEGATE: compact-safe audit | post-compaction]]"),
+    ).toEqual({
+      kind: "delegate",
+      task: "compact-safe audit",
+      delayMs: undefined,
+      silent: true,
+      silentWake: true,
+      postCompaction: true,
+    });
+  });
+});
+
+describe("stripContinuationSignal", () => {
+  it("removes the bracket delegate marker and returns the parsed signal", () => {
+    expect(
+      stripContinuationSignal(
+        "Working...\n[[CONTINUE_DELEGATE: inspect shard health +30s | silent-wake]]",
+      ),
+    ).toEqual({
+      text: "Working...",
+      signal: {
+        kind: "delegate",
+        task: "inspect shard health",
+        delayMs: 30_000,
+        silent: undefined,
+        silentWake: true,
+      },
+    });
   });
 });

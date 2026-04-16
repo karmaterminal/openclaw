@@ -72,4 +72,38 @@ describe("agent defaults schema", () => {
     expect(() => AgentDefaultsSchema.parse({ heartbeat: { timeoutSeconds: 0 } })).toThrow();
     expect(() => AgentEntrySchema.parse({ id: "ops", heartbeat: { timeoutSeconds: 0 } })).toThrow();
   });
+
+  it("accepts continuation defaults", () => {
+    const result = AgentDefaultsSchema.parse({
+      continuation: {
+        enabled: true,
+        defaultDelayMs: 0,
+        minDelayMs: 0,
+        maxDelayMs: 30_000,
+        maxChainLength: 4,
+        costCapTokens: 500_000,
+        maxDelegatesPerTurn: 3,
+        contextPressureThreshold: 0.8,
+      },
+    })!;
+
+    expect(result.continuation).toMatchObject({
+      enabled: true,
+      defaultDelayMs: 0,
+      minDelayMs: 0,
+      maxDelayMs: 30_000,
+      maxChainLength: 4,
+      costCapTokens: 500_000,
+      maxDelegatesPerTurn: 3,
+      contextPressureThreshold: 0.8,
+    });
+  });
+
+  it("rejects non-positive continuation context pressure thresholds", () => {
+    expect(() =>
+      AgentDefaultsSchema.parse({
+        continuation: { contextPressureThreshold: 0 },
+      }),
+    ).toThrow();
+  });
 });

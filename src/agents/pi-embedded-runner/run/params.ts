@@ -15,6 +15,7 @@ import type {
   ToolResultFormat,
 } from "../../pi-embedded-subscribe.shared-types.js";
 import type { SkillSnapshot } from "../../skills.js";
+import type { ContinueWorkRequest } from "../../tools/continue-work-tool.js";
 export type { ClientToolDefinition } from "../../command/shared-types.js";
 
 export type EmbeddedRunTrigger = "cron" | "heartbeat" | "manual" | "memory" | "overflow" | "user";
@@ -64,6 +65,15 @@ export type RunEmbeddedPiAgentParams = {
   disableMessageTool?: boolean;
   /** Allow runtime plugins for this run to late-bind the gateway subagent. */
   allowGatewaySubagentBinding?: boolean;
+  /** Callback for continue_work to request a post-turn continuation. */
+  continueWorkOpts?: {
+    requestContinuation: (request: ContinueWorkRequest) => void;
+  };
+  /** Closures for request_compaction when continuation is enabled. */
+  requestCompactionOpts?: {
+    getContextUsage: () => number;
+    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+  };
   sessionFile: string;
   workspaceDir: string;
   agentDir?: string;

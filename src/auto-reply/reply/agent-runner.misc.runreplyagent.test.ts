@@ -7,6 +7,7 @@ import {
   abortEmbeddedPiRun,
   isEmbeddedPiRunActive,
 } from "../../agents/pi-embedded-runner/runs.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import * as sessionTypesModule from "../../config/sessions.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
@@ -14,8 +15,9 @@ import {
   clearMemoryPluginState,
   registerMemoryFlushPlanResolver,
 } from "../../plugins/memory-state.js";
+import { consumePendingDelegates, enqueuePendingDelegate } from "../continuation-delegate-store.js";
 import type { TemplateContext } from "../templating.js";
-import type { FollowupRun, QueueSettings } from "./queue.js";
+import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
 import { __testing as replyRunRegistryTesting } from "./reply-run-registry.js";
 import { createMockTypingController } from "./test-helpers.js";
 
@@ -39,6 +41,7 @@ const runtimeErrorMock = vi.fn();
 const abortEmbeddedPiRunMock = vi.fn();
 const clearSessionQueuesMock = vi.fn();
 const refreshQueuedFollowupSessionMock = vi.fn();
+const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 const compactState = vi.hoisted(() => ({
   compactEmbeddedPiSessionMock: vi.fn(),
 }));
@@ -75,6 +78,10 @@ vi.mock("../../agents/pi-embedded.js", () => {
 
 vi.mock("../../agents/cli-runner.js", () => ({
   runCliAgent: (...args: unknown[]) => runCliAgentMock(...args),
+}));
+
+vi.mock("../../agents/subagent-spawn.js", () => ({
+  spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
 
 vi.mock("../../runtime.js", () => {
@@ -154,6 +161,9 @@ beforeEach(() => {
   clearSessionQueuesMock.mockReturnValue({ followupCleared: 0, laneCleared: 0, keys: [] });
   refreshQueuedFollowupSessionMock.mockReset();
   refreshQueuedFollowupSessionMock.mockResolvedValue(undefined);
+  vi.mocked(enqueueFollowupRun).mockReset();
+  spawnSubagentDirectMock.mockReset();
+  spawnSubagentDirectMock.mockResolvedValue({ status: "accepted" });
   loadCronStoreMock.mockClear();
   // Default: no cron jobs in store.
   loadCronStoreMock.mockResolvedValue({ version: 1, jobs: [] });
@@ -173,6 +183,8 @@ afterEach(() => {
   clearMemoryPluginState();
   replyRunRegistryTesting.resetReplyRunRegistry();
   embeddedRunTesting.resetActiveEmbeddedRuns();
+  clearRuntimeConfigSnapshot();
+  consumePendingDelegates("main");
 });
 
 describe("runReplyAgent auto-compaction token update", () => {
@@ -484,6 +496,250 @@ describe("runReplyAgent block streaming", () => {
 
     expect(sawAbort).toBe(true);
     expect(result).toMatchObject({ text: "Final message" });
+  });
+});
+
+describe("runReplyAgent continuation live wiring", () => {
+  async function seedSessionStore(params: {
+    storePath: string;
+    sessionKey: string;
+    entry: Record<string, unknown>;
+  }) {
+    await fs.mkdir(path.dirname(params.storePath), { recursive: true });
+    await fs.writeFile(
+      params.storePath,
+      JSON.stringify({ [params.sessionKey]: params.entry }, null, 2),
+      "utf-8",
+    );
+  }
+
+  function createContinuationRun(params: {
+    storePath: string;
+    sessionEntry: SessionEntry;
+    config?: Record<string, unknown>;
+  }) {
+    const typing = createMockTypingController();
+    const sessionCtx = {
+      Provider: "whatsapp",
+      OriginatingTo: "+15550001111",
+      AccountId: "primary",
+      MessageSid: "msg",
+    } as unknown as TemplateContext;
+    const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
+    const config = params.config ?? {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: true,
+            defaultDelayMs: 0,
+            minDelayMs: 0,
+            maxDelayMs: 0,
+            maxChainLength: 5,
+            costCapTokens: 1_000,
+            maxDelegatesPerTurn: 2,
+          },
+        },
+      },
+    };
+    setRuntimeConfigSnapshot(
+      config as Parameters<typeof setRuntimeConfigSnapshot>[0],
+      config as Parameters<typeof setRuntimeConfigSnapshot>[1],
+    );
+    const followupRun = {
+      prompt: "hello",
+      summaryLine: "hello",
+      enqueuedAt: Date.now(),
+      run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
+        sessionId: params.sessionEntry.sessionId,
+        sessionKey: "main",
+        messageProvider: "whatsapp",
+        sessionFile: params.sessionEntry.sessionFile ?? "/tmp/session.jsonl",
+        workspaceDir: "/tmp",
+        config,
+        skillsSnapshot: {},
+        provider: "anthropic",
+        model: "claude",
+        thinkLevel: "low",
+        reasoningLevel: "on",
+        verboseLevel: "off",
+        elevatedLevel: "off",
+        bashElevated: { enabled: false, allowed: false, defaultLevel: "off" },
+        timeoutMs: 1_000,
+        blockReplyBreak: "message_end",
+      },
+    } as unknown as FollowupRun;
+
+    return {
+      typing,
+      sessionCtx,
+      resolvedQueue,
+      followupRun,
+      run: () =>
+        runReplyAgent({
+          commandBody: "hello",
+          followupRun,
+          queueKey: "main",
+          resolvedQueue,
+          shouldSteer: false,
+          shouldFollowup: false,
+          isActive: false,
+          isStreaming: false,
+          typing,
+          sessionCtx,
+          sessionEntry: params.sessionEntry,
+          sessionStore: { main: params.sessionEntry },
+          sessionKey: "main",
+          storePath: params.storePath,
+          defaultModel: "anthropic/claude-opus-4-6",
+          agentCfgContextTokens: 200_000,
+          resolvedVerboseLevel: "off",
+          isNewSession: false,
+          blockStreamingEnabled: false,
+          resolvedBlockStreamingBreak: "message_end",
+          shouldInjectGroupIntro: false,
+          typingMode: "instant",
+        }),
+    };
+  }
+
+  it("queues continue_work even when the turn has no visible reply payload", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-cont-work-"));
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      sessionFile: "/tmp/session.jsonl",
+      updatedAt: Date.now(),
+    };
+    await seedSessionStore({ storePath, sessionKey: "main", entry: sessionEntry });
+
+    runEmbeddedPiAgentMock.mockImplementationOnce(
+      async (params: { continueWorkOpts?: unknown }) => {
+        (
+          params.continueWorkOpts as
+            | { requestContinuation: (request: { reason: string; delaySeconds: number }) => void }
+            | undefined
+        )?.requestContinuation({
+          reason: "finish the audit",
+          delaySeconds: 0,
+        });
+        return {
+          payloads: [],
+          meta: {
+            agentMeta: {
+              usage: { input: 3, output: 2 },
+            },
+          },
+        };
+      },
+    );
+
+    const { run } = createContinuationRun({ storePath, sessionEntry });
+    const result = await run();
+
+    expect(result).toBeUndefined();
+    expect(vi.mocked(enqueueFollowupRun)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(enqueueFollowupRun).mock.calls[0]?.[1]).toMatchObject({
+      summaryLine: "Continue: finish the audit",
+      run: expect.objectContaining({ sessionId: "session" }),
+    });
+
+    const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
+    expect(stored.main.continuationChainCount).toBe(1);
+    expect(stored.main.continuationChainTokens).toBe(5);
+  });
+
+  it("dispatches queued delegates even when the turn emits no visible payload", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-cont-delegate-"));
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      sessionFile: "/tmp/session.jsonl",
+      updatedAt: Date.now(),
+    };
+    await seedSessionStore({ storePath, sessionKey: "main", entry: sessionEntry });
+    enqueuePendingDelegate("main", {
+      task: "inspect shard health",
+      delayMs: 0,
+    });
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [],
+      meta: {
+        agentMeta: {
+          usage: { input: 2, output: 1 },
+        },
+      },
+    });
+
+    const { run } = createContinuationRun({ storePath, sessionEntry });
+    const result = await run();
+
+    expect(result).toBeUndefined();
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      task: expect.stringContaining("[continuation:chain-hop:1]"),
+    });
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      task: expect.stringContaining("inspect shard health"),
+    });
+
+    const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
+    expect(stored.main.continuationChainCount).toBe(1);
+    expect(stored.main.continuationChainTokens).toBe(3);
+    expect(consumePendingDelegates("main")).toEqual([]);
+  });
+
+  it("wires request_compaction callbacks into the embedded run when continuation is enabled", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-request-compaction-"));
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      sessionFile: "/tmp/session.jsonl",
+      updatedAt: Date.now(),
+      totalTokens: 180_000,
+      totalTokensFresh: true,
+      contextTokens: 200_000,
+    };
+    await seedSessionStore({ storePath, sessionKey: "main", entry: sessionEntry });
+
+    runEmbeddedPiAgentMock.mockImplementationOnce(
+      async (params: {
+        requestCompactionOpts?: {
+          getContextUsage: () => number;
+          triggerCompaction: () => Promise<unknown>;
+        };
+      }) => {
+        expect(params.requestCompactionOpts).toMatchObject({
+          getContextUsage: expect.any(Function),
+          triggerCompaction: expect.any(Function),
+        });
+        await params.requestCompactionOpts?.triggerCompaction();
+        return {
+          payloads: [{ text: "done" }],
+          meta: {
+            agentMeta: {
+              usage: { input: 1, output: 1 },
+            },
+          },
+        };
+      },
+    );
+    compactState.compactEmbeddedPiSessionMock.mockResolvedValueOnce({
+      ok: true,
+      compacted: true,
+    });
+
+    const { run } = createContinuationRun({ storePath, sessionEntry });
+    await run();
+
+    expect(compactState.compactEmbeddedPiSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "main",
+        trigger: "volitional",
+      }),
+    );
   });
 });
 

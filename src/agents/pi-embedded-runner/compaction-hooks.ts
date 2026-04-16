@@ -1,12 +1,16 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { consumeStagedPostCompactionDelegates } from "../../auto-reply/continuation-delegate-store.js";
+import { readPostCompactionContext } from "../../auto-reply/reply/post-compaction-context.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createInternalHookEvent, triggerInternalHook } from "../../hooks/internal-hooks.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { getActiveMemorySearchManager } from "../../plugins/memory-runtime.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import { spawnSubagentDirect } from "../subagent-spawn.js";
 import { log } from "./logger.js";
 
 function resolvePostCompactionIndexSyncMode(config?: OpenClawConfig): "off" | "async" | "await" {
@@ -79,21 +83,73 @@ function syncPostCompactionSessionMemory(params: {
   return Promise.resolve();
 }
 
+async function releasePostCompactionDelegates(params: {
+  sessionKey?: string;
+  workspaceDir?: string;
+}): Promise<void> {
+  const sessionKey = params.sessionKey?.trim();
+  if (!sessionKey) {
+    return;
+  }
+  const stagedDelegates = consumeStagedPostCompactionDelegates(sessionKey);
+  if (stagedDelegates.length === 0) {
+    return;
+  }
+
+  log.info(
+    `[continuation:post-compaction-release] session=${sessionKey} delegates=${stagedDelegates.length}`,
+  );
+
+  for (const delegate of stagedDelegates) {
+    try {
+      await spawnSubagentDirect(
+        {
+          task: `[continuation:post-compaction] Delegated task after compaction: ${delegate.task}`,
+          expectsCompletionMessage: false,
+        },
+        {
+          agentSessionKey: sessionKey,
+          workspaceDir: params.workspaceDir,
+        },
+      );
+    } catch (err) {
+      log.warn(
+        `[continuation:post-compaction-release-error] session=${sessionKey} error=${formatErrorMessage(err)}`,
+      );
+    }
+  }
+}
+
 export async function runPostCompactionSideEffects(params: {
   config?: OpenClawConfig;
   sessionKey?: string;
   sessionFile: string;
+  workspaceDir?: string;
 }): Promise<void> {
   const sessionFile = params.sessionFile.trim();
   if (!sessionFile) {
     return;
   }
   emitSessionTranscriptUpdate(sessionFile);
+  if (params.sessionKey && params.workspaceDir) {
+    try {
+      const contextContent = await readPostCompactionContext(params.workspaceDir, params.config);
+      if (contextContent) {
+        enqueueSystemEvent(contextContent, { sessionKey: params.sessionKey });
+      }
+    } catch (err) {
+      log.warn(`post-compaction context injection skipped: ${formatErrorMessage(err)}`);
+    }
+  }
   await syncPostCompactionSessionMemory({
     config: params.config,
     sessionKey: params.sessionKey,
     sessionFile,
     mode: resolvePostCompactionIndexSyncMode(params.config),
+  });
+  await releasePostCompactionDelegates({
+    sessionKey: params.sessionKey,
+    workspaceDir: params.workspaceDir,
   });
 }
 

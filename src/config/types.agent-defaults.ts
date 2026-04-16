@@ -367,6 +367,28 @@ export type AgentDefaultsConfig = {
   };
   /** Optional sandbox settings for non-main sessions. */
   sandbox?: AgentSandboxConfig;
+  /** Agent self-elected continuation behavior. */
+  continuation?: {
+    enabled?: boolean;
+    /** Default delay for `continue_work` when no delay is specified. */
+    defaultDelayMs?: number;
+    /** Minimum allowed delay for delayed continuation work. */
+    minDelayMs?: number;
+    /** Maximum allowed delay for delayed continuation work. */
+    maxDelayMs?: number;
+    /** Maximum continuation chain depth before new work is rejected. */
+    maxChainLength?: number;
+    /** Maximum accumulated input+output tokens across a continuation chain. */
+    costCapTokens?: number;
+    /** Maximum `continue_delegate` tool calls accepted in one turn. */
+    maxDelegatesPerTurn?: number;
+    /**
+     * Context-pressure awareness threshold (exclusive (0.0, 1.0]).
+     * When the session's token usage exceeds this fraction of the context
+     * window, a `[system:context-pressure]` event is injected pre-run.
+     */
+    contextPressureThreshold?: number;
+  };
 };
 
 export type AgentCompactionMode = "default" | "safeguard";

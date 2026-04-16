@@ -1,6 +1,6 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** Implemented — gateway hook wired, 172 tests across 8 test files  
+**Status:** Core continuation surfaces are implemented, including TaskFlow-backed post-compaction delegate staging and release; the remaining notes below mostly describe topology tradeoffs and future extensions rather than missing core behavior.  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#38780](https://github.com/openclaw/openclaw/pull/38780)  
@@ -285,7 +285,7 @@ The implementation hooks into existing gateway layers rather than adding a paral
 2. **Signal detection:** `runReplyAgent()` in `src/auto-reply/reply/agent-runner.ts` inspects finalized text payloads before follow-up finalization.
 3. **Turn scheduling:** `scheduleContinuationTurn()` in `src/auto-reply/reply/session-updates.ts` injects `[continuation:wake]` through the existing system-event queue.
 4. **Delegate queueing:** tool-path delegates are enqueued via `enqueuePendingDelegate()` and consumed after the response finishes.
-5. **Lifecycle dispatch:** post-compaction delegates are stored on `SessionEntry.pendingPostCompactionDelegates` and released in the compaction completion path.
+5. **Lifecycle dispatch:** post-compaction delegates are staged in owner-scoped Task Flow records and released in the compaction completion path.
 
 No new transport layer is introduced. Continuation uses system events, existing sub-agent dispatch, and the standard inbound-message wake path.
 
@@ -489,24 +489,25 @@ When Trigger B is disabled, a session can climb from “still usable” to overf
 2. routes into the same compaction machinery already used by platform compaction;
 3. preserves the existing user-visible model in which compaction occurs between turns rather than freezing a live reply.
 
-The tool applies three guards:
+The tool currently applies two active guards:
 
-| Guard            | Threshold           | Purpose                                                        |
-| ---------------- | ------------------- | -------------------------------------------------------------- |
-| Context floor    | below 70% rejected  | prevents wasteful compaction                                   |
-| Rate limit       | max 1 per 5 minutes | prevents compaction loops                                      |
-| Generation guard | reject on drift     | avoids compacting mid-conversation after new external activity |
+| Guard         | Threshold           | Purpose                      |
+| ------------- | ------------------- | ---------------------------- |
+| Context floor | below 70% rejected  | prevents wasteful compaction |
+| Rate limit    | max 1 per 5 minutes | prevents compaction loops    |
+
+An earlier generation-drift rejection was removed during follow-up parity cleanup. Unrelated inbound channel activity should not cancel or interfere with queued continuation work, delegate work, or volitional compaction requests.
 
 Operational flow:
 
 ```text
 1. context-pressure event fires
-2. agent writes files and stages post-compaction work
+2. agent writes files and preserves the working state it cares about
 3. agent calls request_compaction()
 4. current turn finishes normally
 5. compaction runs between turns
-6. after-compaction path releases staged delegates
-7. successor session resumes with boot files, summary, and enrichment
+6. compaction lifecycle hooks restore the next-turn context that is available
+7. successor session resumes with boot files, summary, and any post-compaction context reinjection
 ```
 
 ### 4.4 Continuation relay and post-compaction context rehydration
@@ -527,7 +528,7 @@ The relay pattern proved the need for `continue_work()`, but it also clarified w
 
 A lighter precursor also existed: `requestHeartbeatNow()` could ring the parent session like a doorbell, but it still lacked task payload, chain tracking, and typed continuation semantics.
 
-For `post-compaction` delegates, the release semantics are intentionally fixed: staged work is dispatched with `silentAnnounce: true` and `wakeOnReturn: true`. The return is injected as an internal event into the successor session rather than echoed to the user-facing channel.
+The clean continuation lane ships post-compaction context reinjection via `readPostCompactionContext()`. Pending same-session delegate work, volitional compaction requests, and staged `post-compaction` delegate release are all now backed by owner-scoped Task Flow records in the current branch.
 
 The post-compaction rehydration path consists of three layers:
 
@@ -537,15 +538,16 @@ The post-compaction rehydration path consists of three layers:
 
 What survives compaction today:
 
-- system events and staged metadata in session storage,
+- system events and session metadata relevant to the compaction lifecycle,
 - files written to disk,
-- post-compaction delegate staging.
+- configured post-compaction context reinjection.
 
 What does not survive in full:
 
 - detailed conversational context beyond the compaction summary,
 - associative working-state “temperature” that was held only in the active prompt,
-- some chain metadata that is intentionally reset by lifecycle boundaries.
+- some chain metadata that is intentionally reset by lifecycle boundaries,
+- full durable delegate staging / Task Flow-backed continuity in the clean continuation lane.
 
 The role of staged delegates is therefore not merely to preserve facts, but to restore active working shape after the lifecycle reset.
 
@@ -589,7 +591,6 @@ agents:
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
       # generationGuardTolerance removed — delayed work should not be cancelled by channel noise
-      taskFlowDelegates: true # durable delegate queue via Task Flow (platform feature, ships enabled)
 ```
 
 Operational notes:
@@ -598,6 +599,7 @@ Operational notes:
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
 - `generationGuardTolerance` has been removed from the configuration surface. Delayed work should not be cancelled by unrelated channel noise. See the design decision note in §3.2.
+- `taskFlowDelegates` is not part of the shipped public config surface on this clean lane; Task Flow-backed delegate durability remains future-direction work.
 - all runtime values are hot-reloadable; changes take effect at the next enforcement point.
 
 ### 5.2 Operator profiles
@@ -664,32 +666,27 @@ Representative use cases:
 
 In these patterns, width is normally adjusted before depth. `costCapTokens` remains the primary global safety mechanism.
 
-### 5.4 Task Flow backing and durable delegate queues
+### 5.4 Task Flow backing and durable continuation records
 
-By default, pending delegates live in a volatile in-memory `Map<string, PendingContinuationDelegate[]>`.
+The clean continuation lane uses managed, owner-scoped Task Flow records for queued continuation work instead of the earlier volatile in-memory continuation store from the pre-TaskFlow carry.
 
-An implemented opt-in alternative routes that queue through Task Flow:
+Current internal controller ownership:
 
-```yaml
-agents:
-  defaults:
-    continuation:
-      taskFlowDelegates: true
-```
-
-When enabled, `enqueuePendingDelegate()` and `consumePendingDelegates()` use `createManagedTaskFlow()` with `controllerId = "core/continuation-delegate"`.
+| Continuation surface   | Controller id                  | Purpose                                             |
+| ---------------------- | ------------------------------ | --------------------------------------------------- |
+| `continue_delegate()`  | `core/continuation-delegate`   | queue delayed or silent delegate work for dispatch  |
+| `request_compaction()` | `core/continuation-compaction` | record active volitional compaction requests/guards |
 
 This provides:
 
-| Capability                 | Volatile store | Task Flow                                                     |
-| -------------------------- | -------------- | ------------------------------------------------------------- |
-| Persistence across restart | ❌             | ✅ SQLite-backed                                              |
-| Cancel semantics           | basic drain    | `requestFlowCancel`, terminal cancellation state, audit trail |
-| Lifecycle tracking         | minimal        | queued, spawned, succeeded, cancelled                         |
-| Observability              | manual logging | Task Flow registry queries                                    |
-| Session isolation          | map key        | flow scoping                                                  |
+| Capability                       | Earlier volatile machinery | Current Task Flow backing                     |
+| -------------------------------- | -------------------------- | --------------------------------------------- |
+| Pending-work ownership           | process-local only         | owner-scoped durable flow record              |
+| Already-pending / cooldown guard | ad hoc maps and sets       | queryable managed-flow state                  |
+| Observability                    | manual logs                | Task Flow registry / `openclaw flows` surface |
+| Session isolation                | map key                    | flow owner key + controller id                |
 
-Task Flow therefore aligns continuation delegates with the platform’s broader managed-work infrastructure without changing the public continuation API.
+This backing is an internal implementation detail on the clean lane, not a public `openclaw.json` toggle.
 
 ## 6. Observability
 
@@ -760,12 +757,12 @@ When continuation is enabled and at least one field is non-zero, `/status` can s
 🔄 Continuation: chain 3/10 | 2 delegates pending | 1 post-compaction staged | volitional: 1
 ```
 
-| Field                      | Source                                        | Meaning                                                   |
-| -------------------------- | --------------------------------------------- | --------------------------------------------------------- |
-| `chain X/Y`                | `continuationChainCount` and `maxChainLength` | current depth versus maximum                              |
-| `Z delegates pending`      | pending delegate store                        | delayed or not-yet-spawned work                           |
-| `W post-compaction staged` | `SessionEntry.pendingPostCompactionDelegates` | delegates waiting for the next compaction lifecycle event |
-| `volitional: N`            | request-compaction counter                    | count of agent-initiated compactions in the session       |
+| Field                      | Source                                          | Meaning                                                   |
+| -------------------------- | ----------------------------------------------- | --------------------------------------------------------- |
+| `chain X/Y`                | `continuationChainCount` and `maxChainLength`   | current depth versus maximum                              |
+| `Z delegates pending`      | pending delegate store                          | delayed or not-yet-spawned work                           |
+| `W post-compaction staged` | Task Flow (`core/continuation-post-compaction`) | delegates waiting for the next compaction lifecycle event |
+| `volitional: N`            | request-compaction counter                      | count of agent-initiated compactions in the session       |
 
 ### 6.4 Context-pressure telemetry and fleet evidence
 

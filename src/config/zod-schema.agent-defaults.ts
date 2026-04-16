@@ -239,6 +239,23 @@ export const AgentDefaultsSchema = z
       .strict()
       .optional(),
     sandbox: AgentSandboxSchema,
+    continuation: z
+      .object({
+        enabled: z.boolean().optional(),
+        defaultDelayMs: z.number().int().nonnegative().optional(),
+        minDelayMs: z.number().int().nonnegative().optional(),
+        maxDelayMs: z.number().int().nonnegative().optional(),
+        maxChainLength: z.number().int().positive().optional(),
+        costCapTokens: z.number().int().nonnegative().optional(),
+        maxDelegatesPerTurn: z.number().int().positive().optional(),
+        contextPressureThreshold: z
+          .number()
+          .gt(0, "contextPressureThreshold must be > 0 (0 would fire on empty sessions)")
+          .max(1)
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .optional();

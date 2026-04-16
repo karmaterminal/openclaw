@@ -1004,13 +1004,14 @@ export async function compactEmbeddedPiSessionDirect(
             config: params.config,
             sessionKey: params.sessionKey,
             sessionFile: params.sessionFile,
+            workspaceDir: params.workspaceDir,
           });
           let effectiveFirstKeptEntryId = result.firstKeptEntryId;
           let postCompactionLeafId =
             typeof sessionManager.getLeafId === "function"
               ? (sessionManager.getLeafId() ?? undefined)
               : undefined;
-          if (params.trigger === "manual") {
+          if (params.trigger === "manual" || params.trigger === "volitional") {
             try {
               const hardenedBoundary = await hardenManualCompactionBoundary({
                 sessionFile: params.sessionFile,
