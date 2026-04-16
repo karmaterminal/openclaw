@@ -142,11 +142,44 @@ The main-session tool-delegate consumption path **was NOT broken**. The 10/10
 - Silent continuation finalization
 - SessionEntry extended with chain metadata
 
-### What remains
+### Phase 5 (Step 1): TaskFlow delegate backend (DONE)
 
-- Delegate dispatch module (spawn logic for immediate + delayed delegates)
-- Announce-boundary consumption for chain hops (subagent-announce.ts)
-- System prompt gating (teach tools when available, fallback syntax when not)
-- Context-pressure pre-run injection
-- Full test suite for scheduler, delegate store, signal extraction
-- Full `pnpm check` pass
+- `delegate-store-taskflow.ts`: controllerId='core/continuation-delegate', TaskFlow-backed
+- `delegate-store.ts`: rewritten — TaskFlow is production path, volatile Map is test-only
+- Collect-then-cleanup pattern, cancel preserves audit trail
+
+### Step 9 implementation note (from prince room)
+
+- Current source: `DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH = 1`, leaf = depth >= maxSpawnDepth
+- `drainsContinuationDelegateQueue` flag must exempt chain-hop children from leaf deny
+- Policy: deny `continue_delegate` on leaf workers; allow `continue_work` + `request_compaction` on all children
+- This is a behavior-model change, not just a deny-list edit
+
+### What remains (ordered per approved plan)
+
+**Compaction cluster (Steps 8, 7):**
+
+- request_compaction opts threading through pi-tools → openclaw-tools → attempt
+- Post-compaction delegate release in after-compaction lifecycle path
+- pendingPostCompactionDelegates on SessionEntry for persistence
+
+**Delegate dispatch + observability (Steps 2, 5):**
+
+- delegate-dispatch.ts: spawnSubagentDirect integration, info-level logging on ALL spawns
+- Chain state write-back to session entry after scheduling
+
+**Feature-completing (Steps 3, 4):**
+
+- Context-pressure pre-run injection into runner
+- System prompt gating (tool/token teaching)
+
+**Lifecycle + announce (Step 6):**
+
+- Announce-boundary chain-hop consumption in subagent-announce.ts
+- Silent/wake routing
+
+**Safety + polish (Steps 9, 10, 11):**
+
+- Leaf subagent tool deny (flag-based, not depth-based)
+- /status continuation telemetry
+- Full test suite
