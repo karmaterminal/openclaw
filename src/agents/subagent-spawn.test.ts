@@ -163,6 +163,53 @@ describe("spawnSubagentDirect seam flow", () => {
     expect(operations.indexOf("gateway:agent")).toBeGreaterThan(operations.indexOf("store:update"));
   });
 
+  it("keeps continuation chain-hop spawns at orchestrator scope", async () => {
+    const calls: Array<{ method?: string; params?: Record<string, unknown> }> = [];
+
+    hoisted.callGatewayMock.mockImplementation(
+      async (request: { method?: string; params?: Record<string, unknown> }) => {
+        calls.push(request);
+        if (request.method === "agent") {
+          return { runId: "run-continuation" };
+        }
+        if (request.method?.startsWith("sessions.")) {
+          return { ok: true };
+        }
+        return {};
+      },
+    );
+    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock);
+
+    const result = await spawnSubagentDirect(
+      {
+        task: "continue the audit with delegation rights intact",
+        drainsContinuationDelegateQueue: true,
+      },
+      {
+        agentSessionKey: "agent:main:main",
+        workspaceDir: "/tmp/requester-workspace",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    const spawnDepthPatch = calls.find(
+      (call) =>
+        call.method === "sessions.patch" &&
+        Object.prototype.hasOwnProperty.call(call.params ?? {}, "spawnDepth"),
+    );
+    expect(spawnDepthPatch?.params).toEqual(
+      expect.objectContaining({
+        subagentRole: "orchestrator",
+        subagentControlScope: "children",
+      }),
+    );
+    expect(hoisted.registerSubagentRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        drainsContinuationDelegateQueue: true,
+      }),
+    );
+  });
+
   it("omits requesterOrigin threadId when no requester thread is provided", async () => {
     hoisted.callGatewayMock.mockImplementation(async (request: { method?: string }) => {
       if (request.method === "agent") {

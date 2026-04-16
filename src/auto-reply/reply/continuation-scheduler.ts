@@ -124,13 +124,19 @@ async function spawnContinuationDelegate(
     followupRun: FollowupRun;
   },
 ): Promise<void> {
+  const silentAnnounce =
+    params.delegate.silent === true ||
+    params.delegate.silentWake === true ||
+    params.delegate.postCompaction === true;
   await deps.spawnSubagentDirect(
     {
       task: `[continuation:chain-hop:${params.hop}] Delegated task (turn ${params.hop}/${params.maxChainLength}): ${params.delegate.task}`,
-      expectsCompletionMessage:
-        params.delegate.silent !== true &&
-        params.delegate.silentWake !== true &&
-        params.delegate.postCompaction !== true,
+      expectsCompletionMessage: !silentAnnounce,
+      ...(silentAnnounce ? { silentAnnounce: true } : {}),
+      ...(params.delegate.silentWake === true || params.delegate.postCompaction === true
+        ? { wakeOnReturn: true }
+        : {}),
+      drainsContinuationDelegateQueue: true,
     },
     {
       agentSessionKey: params.sessionKey,

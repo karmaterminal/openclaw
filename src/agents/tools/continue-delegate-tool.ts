@@ -17,13 +17,15 @@ const DELEGATE_MODES = ["normal", "silent", "silent-wake", "post-compaction"] as
 const ContinueDelegateToolSchema = Type.Object({
   task: Type.String({
     description:
-      "The delegated sub-agent task. Include scope, expected return shape, and what the parent should do with the result.",
+      "The delegated sub-agent's task. Treat this like a letter to your future self: include scope, desired return shape, and what the parent should do with the result.",
     maxLength: 4096,
   }),
   delaySeconds: Type.Optional(
     Type.Number({
       minimum: 0,
-      description: "Seconds to wait before spawning the delegate. 0 or omitted means immediate.",
+      description:
+        "Seconds to wait before spawning the delegate. 0 or omitted = immediate. " +
+        "Clamped to continuation.minDelayMs / maxDelayMs from config.",
     }),
   ),
   mode: optionalStringEnum(DELEGATE_MODES, {
@@ -40,7 +42,10 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
     label: "Continuation",
     name: "continue_delegate",
     description:
-      "Schedule a continuation delegate: a background sub-agent that runs now, later, or after compaction and reports back through the normal continuation path.",
+      "Schedule a continuation delegate: a background sub-agent that can run now, later, " +
+      "or after compaction, then return visibly or silently to this session. Use for ambient " +
+      'enrichment, chunked fan-out, or preserving working state across compaction. Use "silent-wake" ' +
+      "when the result should quietly enrich context and wake you to act.",
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

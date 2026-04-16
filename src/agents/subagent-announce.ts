@@ -1,4 +1,6 @@
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
+import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
+import { enqueueSystemEvent } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
@@ -214,6 +216,8 @@ export async function runSubagentAnnounceFlow(params: {
   announceType?: SubagentAnnounceType;
   expectsCompletionMessage?: boolean;
   spawnMode?: SpawnSubagentMode;
+  silentAnnounce?: boolean;
+  wakeOnReturn?: boolean;
   wakeOnDescendantSettle?: boolean;
   signal?: AbortSignal;
   bestEffortDeliver?: boolean;
@@ -465,6 +469,20 @@ export async function runSubagentAnnounceFlow(params: {
       },
     ];
     const triggerMessage = buildAnnounceSteerMessage(internalEvents);
+
+    if (params.silentAnnounce) {
+      const enrichmentText =
+        triggerMessage || `[continuation:enrichment-return] Delegate completed: ${taskLabel}`;
+      enqueueSystemEvent(enrichmentText, { sessionKey: targetRequesterSessionKey });
+      if (params.wakeOnReturn) {
+        defaultRuntime.log?.(
+          `[continuation/silent-wake] wakeOnReturn=true target=${targetRequesterSessionKey} silentAnnounce=true`,
+        );
+        requestHeartbeatNow({ sessionKey: targetRequesterSessionKey, reason: "continuation" });
+      }
+      didAnnounce = true;
+      return true;
+    }
 
     // Send to the requester session. For nested subagents this is an internal
     // follow-up injection (deliver=false) so the orchestrator receives it.

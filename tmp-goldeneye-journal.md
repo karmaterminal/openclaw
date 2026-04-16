@@ -122,3 +122,12 @@ Temporary shared progress log for the continuation rebuild lane on `flesh_beast_
   - token parsing / scheduler staging
   - compaction-hook release dispatch
 - Fresh focused tests, `pnpm build`, and `pnpm check` are green on `flesh_beast_figs/20260414-goldeneye`
+
+## 2026-04-17 00:18 UTC — Claude refinement blended into Goldeneye lane
+
+- Reviewed `flesh_beast_figs/20260414-claude@9a955323e7` for selective carry rather than transplant
+- Kept the Goldeneye architecture (current mainline seams + TaskFlow ownership), but adopted the strongest relay refinements:
+  - explicit silent-return routing via internal system events
+  - explicit heartbeat wake on `silent-wake` / post-compaction delegate return
+  - orchestrator control scope for continuation chain-hop delegates so they can keep delegating when appropriate
+- Fresh subagent + continuation regression tests, `pnpm build`, and `pnpm check` are green after the blend

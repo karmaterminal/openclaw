@@ -106,6 +106,9 @@ async function releasePostCompactionDelegates(params: {
         {
           task: `[continuation:post-compaction] Delegated task after compaction: ${delegate.task}`,
           expectsCompletionMessage: false,
+          silentAnnounce: true,
+          wakeOnReturn: true,
+          drainsContinuationDelegateQueue: true,
         },
         {
           agentSessionKey: sessionKey,

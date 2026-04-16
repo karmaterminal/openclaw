@@ -271,6 +271,9 @@ export function createSubagentRunManager(params: {
     workspaceDir?: string;
     runTimeoutSeconds?: number;
     expectsCompletionMessage?: boolean;
+    silentAnnounce?: boolean;
+    wakeOnReturn?: boolean;
+    drainsContinuationDelegateQueue?: boolean;
     spawnMode?: "run" | "session";
     attachmentsDir?: string;
     attachmentsRootDir?: string;
@@ -318,6 +321,9 @@ export function createSubagentRunManager(params: {
       archiveAtMs,
       cleanupHandled: false,
       completionAnnouncedAt: undefined,
+      silentAnnounce: registerParams.silentAnnounce,
+      wakeOnReturn: registerParams.wakeOnReturn,
+      drainsContinuationDelegateQueue: registerParams.drainsContinuationDelegateQueue,
       wakeOnDescendantSettle: undefined,
       attachmentsDir: registerParams.attachmentsDir,
       attachmentsRootDir: registerParams.attachmentsRootDir,

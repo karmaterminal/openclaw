@@ -588,6 +588,9 @@ describe("compactEmbeddedPiSessionDirect hooks", () => {
       expect.objectContaining({
         task: expect.stringContaining("resume the refactor after compaction"),
         expectsCompletionMessage: false,
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        drainsContinuationDelegateQueue: true,
       }),
       expect.objectContaining({
         agentSessionKey: TEST_SESSION_KEY,

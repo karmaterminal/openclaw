@@ -233,6 +233,9 @@ describe("scheduleContinuation", () => {
     expect(spawnSubagentDirect).toHaveBeenCalledWith(
       expect.objectContaining({
         expectsCompletionMessage: false,
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        drainsContinuationDelegateQueue: true,
       }),
       expect.anything(),
     );

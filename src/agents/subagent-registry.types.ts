@@ -38,6 +38,9 @@ export type SubagentRunRecord = {
   fallbackFrozenResultCapturedAt?: number;
   endedHookEmittedAt?: number;
   completionAnnouncedAt?: number;
+  silentAnnounce?: boolean;
+  wakeOnReturn?: boolean;
+  drainsContinuationDelegateQueue?: boolean;
   attachmentsDir?: string;
   attachmentsRootDir?: string;
   retainAttachmentsOnKeep?: boolean;

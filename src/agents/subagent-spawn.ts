@@ -100,6 +100,15 @@ export type SpawnSubagentParams = {
     mimeType?: string;
   }>;
   attachMountPath?: string;
+  /** Suppress visible channel announce and route completion back as internal context. */
+  silentAnnounce?: boolean;
+  /** Request a wake cycle for the parent session when the silent delegate completes. */
+  wakeOnReturn?: boolean;
+  /**
+   * Mark this spawn as a continuation chain-hop so the child keeps orchestrator
+   * control scope and can schedule further continuation work if needed.
+   */
+  drainsContinuationDelegateQueue?: boolean;
 };
 
 export type SpawnSubagentContext = {
@@ -526,10 +535,17 @@ export async function spawnSubagentDirect(
     }
   };
 
+  const effectiveRole = params.drainsContinuationDelegateQueue
+    ? "orchestrator"
+    : childCapabilities.role;
+  const effectiveControlScope = params.drainsContinuationDelegateQueue
+    ? "children"
+    : childCapabilities.controlScope;
+
   const initialChildSessionPatch: Record<string, unknown> = {
     spawnDepth: childDepth,
-    subagentRole: childCapabilities.role === "main" ? null : childCapabilities.role,
-    subagentControlScope: childCapabilities.controlScope,
+    subagentRole: effectiveRole === "main" ? null : effectiveRole,
+    subagentControlScope: effectiveControlScope,
     ...plan.initialSessionPatch,
   };
 
@@ -811,6 +827,9 @@ export async function spawnSubagentDirect(
       workspaceDir: spawnedMetadata.workspaceDir,
       runTimeoutSeconds,
       expectsCompletionMessage,
+      silentAnnounce: params.silentAnnounce,
+      wakeOnReturn: params.wakeOnReturn,
+      drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
       spawnMode,
       attachmentsDir: attachmentAbsDir,
       attachmentsRootDir: attachmentRootDir,

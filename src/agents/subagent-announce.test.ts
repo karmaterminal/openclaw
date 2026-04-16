@@ -36,6 +36,11 @@ const { subagentRegistryRuntimeMock } = vi.hoisted(() => ({
   },
 }));
 
+const { enqueueSystemEventMock, requestHeartbeatNowMock } = vi.hoisted(() => ({
+  enqueueSystemEventMock: vi.fn(),
+  requestHeartbeatNowMock: vi.fn(),
+}));
+
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
   isEmbeddedPiRunActive: (sessionId: string) => isEmbeddedPiRunActiveMock(sessionId),
@@ -168,6 +173,12 @@ vi.mock("./subagent-announce-delivery.js", () => ({
 }));
 
 vi.mock("./subagent-announce.registry.runtime.js", () => subagentRegistryRuntimeMock);
+vi.mock("../infra/system-events.js", () => ({
+  enqueueSystemEvent: (text: string, opts: unknown) => enqueueSystemEventMock(text, opts),
+}));
+vi.mock("../infra/heartbeat-wake.js", () => ({
+  requestHeartbeatNow: (opts?: unknown) => requestHeartbeatNowMock(opts),
+}));
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 
 describe("subagent announce seam flow", () => {
@@ -224,6 +235,8 @@ describe("subagent announce seam flow", () => {
     subagentRegistryRuntimeMock.replaceSubagentRunAfterSteer.mockReturnValue(true);
     subagentRegistryRuntimeMock.resolveRequesterForChildSession.mockReset();
     subagentRegistryRuntimeMock.resolveRequesterForChildSession.mockReturnValue(null);
+    enqueueSystemEventMock.mockClear();
+    requestHeartbeatNowMock.mockClear();
   });
 
   it("suppresses ANNOUNCE_SKIP delivery while still deleting the child session", async () => {
@@ -446,5 +459,35 @@ describe("subagent announce seam flow", () => {
         to: "-1001234567890",
       }),
     );
+  });
+
+  it("routes silent-wake delegate completions through system events and a heartbeat wake", async () => {
+    const didAnnounce = await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:silent",
+      childRunId: "run-silent-wake",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "quiet enrichment",
+      timeoutMs: 10,
+      cleanup: "keep",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "quiet result",
+      silentAnnounce: true,
+      wakeOnReturn: true,
+    });
+
+    expect(didAnnounce).toBe(true);
+    expect(agentSpy).not.toHaveBeenCalled();
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining("quiet enrichment"),
+      { sessionKey: "agent:main:main" },
+    );
+    expect(requestHeartbeatNowMock).toHaveBeenCalledWith({
+      sessionKey: "agent:main:main",
+      reason: "continuation",
+    });
   });
 });

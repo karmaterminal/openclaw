@@ -524,6 +524,8 @@ export function createSubagentRegistryLifecycleController(params: {
         outcome: entry.outcome,
         spawnMode: entry.spawnMode,
         expectsCompletionMessage: entry.expectsCompletionMessage,
+        silentAnnounce: entry.silentAnnounce === true,
+        wakeOnReturn: entry.wakeOnReturn === true,
         wakeOnDescendantSettle: entry.wakeOnDescendantSettle === true,
       })
       .then((didAnnounce) => {
