@@ -691,6 +691,21 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "TTS",
       detailKeys: ["text", "channel"],
     },
+    continue_work: {
+      emoji: "🔄",
+      title: "Continue Work",
+      detailKeys: ["reason", "delaySeconds"],
+    },
+    continue_delegate: {
+      emoji: "🔀",
+      title: "Delegate",
+      detailKeys: ["task", "mode", "delaySeconds"],
+    },
+    request_compaction: {
+      emoji: "🧹",
+      title: "Compact",
+      detailKeys: ["reason"],
+    },
   },
 };
 
