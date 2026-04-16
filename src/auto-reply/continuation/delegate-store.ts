@@ -5,16 +5,19 @@
  * After the agent's response finalizes, the delegate dispatch module reads and
  * consumes them, feeding them into the scheduler.
  *
- * This is the "tool writes → runner reads" pattern. Same topology as
- * `sessions_spawn` writing to the sub-agent registry during its tool call.
- *
- * Two backends:
- * - Volatile Map (default): delegates live in memory, lost on restart.
- * - TaskFlow (opt-in via `taskFlowDelegates: true`): SQLite-backed, survives restart.
+ * Production backend: TaskFlow (SQLite-backed, survives gateway restarts).
+ * Volatile Map fallback exists for test environments where TaskFlow is not
+ * initialized. This is NOT an opt-out — TaskFlow is required for production.
  *
  * RFC: docs/design/continue-work-signal-v2.md §5.4
  */
 
+import {
+  taskFlowCancelPendingDelegates,
+  taskFlowConsumePendingDelegates,
+  taskFlowEnqueuePendingDelegate,
+  taskFlowPendingDelegateCount,
+} from "./delegate-store-taskflow.js";
 import type {
   DelayedContinuationReservation,
   PendingContinuationDelegate,
@@ -22,21 +25,29 @@ import type {
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
-// TaskFlow gate — routes enqueue/consume through the TaskFlow backend when on
+// TaskFlow readiness gate
+//
+// TaskFlow is the required production backend for delegate persistence.
+// Delegates must survive gateway restarts. The volatile Map fallback is
+// for test environments only where the TaskFlow registry is not initialized.
 // ---------------------------------------------------------------------------
 
-let taskFlowDelegatesEnabled = false;
+let taskFlowReady = false;
 
+/**
+ * Signal that the TaskFlow registry is available. Called once at gateway
+ * startup after the registry is initialized.
+ */
 export function setTaskFlowDelegatesEnabled(enabled: boolean): void {
-  taskFlowDelegatesEnabled = enabled;
+  taskFlowReady = enabled;
 }
 
 export function isTaskFlowDelegatesEnabled(): boolean {
-  return taskFlowDelegatesEnabled;
+  return taskFlowReady;
 }
 
 // ---------------------------------------------------------------------------
-// Volatile pending delegates (default backend)
+// Volatile pending delegates (test-only fallback)
 // ---------------------------------------------------------------------------
 
 const pendingDelegates = new Map<string, PendingContinuationDelegate[]>();
@@ -48,7 +59,10 @@ export function enqueuePendingDelegate(
   sessionKey: string,
   delegate: PendingContinuationDelegate,
 ): void {
-  // TODO: when taskFlowDelegatesEnabled, route through TaskFlow backend
+  if (taskFlowReady) {
+    taskFlowEnqueuePendingDelegate(sessionKey, delegate);
+    return;
+  }
   const existing = pendingDelegates.get(sessionKey);
   if (existing) {
     existing.push(delegate);
@@ -61,7 +75,9 @@ export function enqueuePendingDelegate(
  * Consume all pending delegates for a session. Returns and removes them.
  */
 export function consumePendingDelegates(sessionKey: string): PendingContinuationDelegate[] {
-  // TODO: when taskFlowDelegatesEnabled, route through TaskFlow backend
+  if (taskFlowReady) {
+    return taskFlowConsumePendingDelegates(sessionKey);
+  }
   const delegates = pendingDelegates.get(sessionKey);
   if (!delegates || delegates.length === 0) {
     return [];
@@ -74,7 +90,9 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
  * Count pending delegates without consuming them.
  */
 export function pendingDelegateCount(sessionKey: string): number {
-  // TODO: when taskFlowDelegatesEnabled, route through TaskFlow backend
+  if (taskFlowReady) {
+    return taskFlowPendingDelegateCount(sessionKey);
+  }
   return pendingDelegates.get(sessionKey)?.length ?? 0;
 }
 
@@ -82,19 +100,21 @@ export function pendingDelegateCount(sessionKey: string): number {
  * Cancel all pending delegates for a session.
  */
 export function cancelPendingDelegates(sessionKey: string): void {
+  if (taskFlowReady) {
+    taskFlowCancelPendingDelegates(sessionKey);
+    return;
+  }
   pendingDelegates.delete(sessionKey);
 }
 
 // ---------------------------------------------------------------------------
 // Delayed continuation reservations (volatile, in-memory only)
+// Timers are process-scoped — these do not need TaskFlow backing because
+// a gateway restart clears the timers anyway.
 // ---------------------------------------------------------------------------
 
 const delayedReservations = new Map<string, DelayedContinuationReservation[]>();
 
-/**
- * Add a delayed continuation reservation. The timer callback will take it
- * by ID when it fires.
- */
 export function addDelayedContinuationReservation(
   sessionKey: string,
   reservation: DelayedContinuationReservation,
@@ -107,10 +127,6 @@ export function addDelayedContinuationReservation(
   }
 }
 
-/**
- * Take a specific reservation by ID (removes it from the store).
- * Returns null if already taken or cleared.
- */
 export function takeDelayedContinuationReservation(
   sessionKey: string,
   reservationId: string,
@@ -130,17 +146,10 @@ export function takeDelayedContinuationReservation(
   return reservation;
 }
 
-/**
- * Count delayed reservations for a session.
- */
 export function delayedContinuationReservationCount(sessionKey: string): number {
   return delayedReservations.get(sessionKey)?.length ?? 0;
 }
 
-/**
- * Get the highest planned hop across all delayed reservations for a session.
- * Used for chain-depth enforcement when multiple delays are in flight.
- */
 export function highestDelayedContinuationReservationHop(sessionKey: string): number {
   const list = delayedReservations.get(sessionKey);
   if (!list || list.length === 0) {
@@ -149,9 +158,6 @@ export function highestDelayedContinuationReservationHop(sessionKey: string): nu
   return Math.max(...list.map((r) => r.plannedHop));
 }
 
-/**
- * Clear all delayed reservations for a session.
- */
 export function clearDelayedContinuationReservations(sessionKey: string): void {
   delayedReservations.delete(sessionKey);
 }
@@ -193,13 +199,6 @@ export function stagedPostCompactionDelegateCount(sessionKey: string): number {
 // Continue-work request store (same "tool writes, runner reads" pattern)
 // ---------------------------------------------------------------------------
 
-/**
- * Per-session continue_work request. Set by the tool during execution,
- * consumed by the runner post-response to arm the WORK timer.
- *
- * Using a store instead of a callback avoids threading the callback through
- * 5 layers of function params (runner → execution → embedded Pi → attempt → tools).
- */
 const pendingWorkRequests = new Map<string, { reason: string; delaySeconds: number }>();
 
 export function setPendingWorkRequest(
@@ -228,5 +227,5 @@ export function resetDelegateStoreForTests(): void {
   delayedReservations.clear();
   stagedPostCompactionDelegates.clear();
   pendingWorkRequests.clear();
-  taskFlowDelegatesEnabled = false;
+  taskFlowReady = false;
 }
