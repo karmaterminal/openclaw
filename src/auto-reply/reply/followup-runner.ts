@@ -323,6 +323,45 @@ export function createFollowupRunner(params: {
         return;
       }
 
+      // Consume and dispatch continue_delegate queue enqueued during this
+      // followup turn. Parallels the main-session dispatch in agent-runner.ts:
+      // without this, delegates queued by continue_work-triggered heartbeats
+      // (or any followup turn) stay in the queue until the NEXT inbound
+      // message arrives to trigger the main-session dispatch. RFC §3.2.
+      if (
+        runtimeConfig?.agents?.defaults?.continuation?.enabled === true &&
+        sessionKey
+      ) {
+        const [{ dispatchToolDelegates }, { resolveContinuationRuntimeConfig }] =
+          await Promise.all([
+            import("../continuation/delegate-dispatch.js"),
+            import("../continuation/config.js"),
+          ]);
+        const tailUsage = runResult.meta?.agentMeta?.usage;
+        const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
+        const tailEntry =
+          (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? sessionEntry;
+        const chainState = {
+          currentChainCount: tailEntry?.continuationChainCount ?? 0,
+          chainStartedAt: tailEntry?.continuationChainStartedAt ?? Date.now(),
+          accumulatedChainTokens:
+            (tailEntry?.continuationChainTokens ?? 0) + turnTokens,
+        };
+        await dispatchToolDelegates({
+          sessionKey,
+          chainState,
+          ctx: {
+            sessionKey,
+            agentChannel: queued.originatingChannel ?? undefined,
+            agentAccountId: queued.originatingAccountId ?? undefined,
+            agentTo: queued.originatingTo ?? undefined,
+            agentThreadId: queued.originatingThreadId ?? undefined,
+          },
+          maxChainLength:
+            resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
+        });
+      }
+
       const usage = runResult.meta?.agentMeta?.usage;
       const promptTokens = runResult.meta?.agentMeta?.promptTokens;
       const modelUsed = runResult.meta?.agentMeta?.model ?? fallbackModel ?? defaultModel;

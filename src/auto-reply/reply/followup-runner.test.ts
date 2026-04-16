@@ -12,6 +12,7 @@ const routeReplyMock = vi.fn();
 const isRoutableChannelMock = vi.fn();
 const runPreflightCompactionIfNeededMock = vi.fn();
 const resolveCommandSecretRefsViaGatewayMock = vi.fn();
+const dispatchToolDelegatesMock = vi.fn();
 let createFollowupRunner: typeof import("./followup-runner.js").createFollowupRunner;
 let clearRuntimeConfigSnapshot: typeof import("../../config/config.js").clearRuntimeConfigSnapshot;
 let loadSessionStore: typeof import("../../config/sessions/store.js").loadSessionStore;
@@ -277,6 +278,10 @@ async function loadFreshFollowupRunnerModuleForTest() {
     isRoutableChannel: (...args: unknown[]) => isRoutableChannelMock(...args),
     routeReply: (...args: unknown[]) => routeReplyMock(...args),
   }));
+  vi.doMock("../continuation/delegate-dispatch.js", () => ({
+    dispatchToolDelegates: (...args: unknown[]) =>
+      dispatchToolDelegatesMock(...args),
+  }));
   vi.doMock("../../cli/command-secret-gateway.js", () => ({
     resolveCommandSecretRefsViaGateway: (...args: unknown[]) =>
       resolveCommandSecretRefsViaGatewayMock(...args),
@@ -314,6 +319,8 @@ beforeEach(() => {
   compactEmbeddedPiSessionMock.mockReset();
   runPreflightCompactionIfNeededMock.mockReset();
   resolveCommandSecretRefsViaGatewayMock.mockReset();
+  dispatchToolDelegatesMock.mockReset();
+  dispatchToolDelegatesMock.mockResolvedValue({ dispatched: 0, rejected: 0 });
   runPreflightCompactionIfNeededMock.mockImplementation(
     async (params: { sessionEntry?: SessionEntry }) => params.sessionEntry,
   );
@@ -1290,6 +1297,61 @@ describe("createFollowupRunner typing cleanup", () => {
 
     expect(onBlockReply).toHaveBeenCalled();
     expectTypingCleanup(typing);
+  });
+});
+
+describe("createFollowupRunner continuation delegate dispatch", () => {
+  it("dispatches continue_delegate queue at end of followup turn when continuation is enabled (F-STALL)", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello" }],
+      meta: {},
+    });
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "openai/gpt-5.4",
+      sessionKey: "main",
+    });
+    const queued = createQueuedRun({
+      run: {
+        sessionKey: "main",
+        config: {
+          agents: { defaults: { continuation: { enabled: true } } },
+        } as OpenClawConfig,
+      },
+    });
+
+    await runner(queued);
+
+    expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(1);
+    const call = dispatchToolDelegatesMock.mock.calls[0]?.[0] as {
+      sessionKey?: string;
+      chainState?: { currentChainCount?: number };
+      ctx?: { sessionKey?: string };
+    };
+    expect(call?.sessionKey).toBe("main");
+    expect(call?.ctx?.sessionKey).toBe("main");
+    expect(call?.chainState?.currentChainCount).toBe(0);
+  });
+
+  it("skips dispatch when continuation is disabled", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello" }],
+      meta: {},
+    });
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "openai/gpt-5.4",
+      sessionKey: "main",
+    });
+    const queued = createQueuedRun({
+      run: { sessionKey: "main" },
+    });
+
+    await runner(queued);
+
+    expect(dispatchToolDelegatesMock).not.toHaveBeenCalled();
   });
 });
 
