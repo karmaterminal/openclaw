@@ -109,7 +109,44 @@ The main-session tool-delegate consumption path **was NOT broken**. The 10/10
 
 ---
 
-## Session 1 — Phase 1: Foundation
+## Session 1 — Phases 1-4 Progress
 
-**Goal:** types, config, signal parsing, token integration
-**Status:** starting
+### Phase 1: Foundation (DONE)
+
+- `continuation/types.ts`: ContinuationSignal, PendingDelegate, config types
+- `continuation/config.ts`: resolveContinuationRuntimeConfig (no generation guard)
+- `continuation/signal.ts`: bracket + tool-call merge → unified signal
+- `tokens.ts`: parseContinuationSignal + stripContinuationSignal
+- `config/types.agent-defaults.ts`: continuation config block
+- 37 tests (config, tokens, context-pressure)
+
+### Phase 2: Core modules (DONE)
+
+- `continuation/state.ts`: timer handles, delegate flags (no generation tracking)
+- `continuation/delegate-store.ts`: volatile Map + TaskFlow gate + work request store
+- `continuation/scheduler.ts`: chain/cost enforcement, timer scheduling (no drift guard)
+- `continuation/context-pressure.ts`: band dedup, post-compaction fire
+
+### Phase 3: Tools (DONE)
+
+- `tools/continue-work-tool.ts`: store-based (setPendingWorkRequest, not callback)
+- `tools/continue-delegate-tool.ts`: enqueue to delegate store, mode support
+- Registered conditionally in `openclaw-tools.ts` when `continuation.enabled === true`
+
+### Phase 4: Runner integration (IN PROGRESS)
+
+- Signal extraction wired after payloadArray creation
+- Empty-payload guard accounts for continuation signals/delegates
+- WORK timer scheduling via scheduler module
+- Tool-delegate consumption logged (spawn wiring pending)
+- Silent continuation finalization
+- SessionEntry extended with chain metadata
+
+### What remains
+
+- Delegate dispatch module (spawn logic for immediate + delayed delegates)
+- Announce-boundary consumption for chain hops (subagent-announce.ts)
+- System prompt gating (teach tools when available, fallback syntax when not)
+- Context-pressure pre-run injection
+- Full test suite for scheduler, delegate store, signal extraction
+- Full `pnpm check` pass
