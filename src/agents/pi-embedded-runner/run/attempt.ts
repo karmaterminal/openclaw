@@ -2404,48 +2404,6 @@ export async function runEmbeddedAttempt(
         observeReplayMetadata(getReplayState(), observedReplayMetadata),
       );
 
-      // Consume and dispatch continue_delegate queue enqueued on this
-      // session's key during the attempt. Without this, delegates enqueued
-      // by a subagent (e.g. a chain-hop) stay orphaned in TaskFlow because
-      // the subagent's attempt never returns through agent-runner.ts dispatch
-      // path — the main session's dispatch only sees the main sessionKey's
-      // queue, not subagent sessionKey queues. RFC §3.2, §3.4.
-      if (
-        params.config?.agents?.defaults?.continuation?.enabled === true &&
-        sandboxSessionKey
-      ) {
-        try {
-          const [
-            { dispatchToolDelegates },
-            { resolveContinuationRuntimeConfig },
-          ] = await Promise.all([
-            import("../../../auto-reply/continuation/delegate-dispatch.js"),
-            import("../../../auto-reply/continuation/config.js"),
-          ]);
-          const dispatchConfig = resolveContinuationRuntimeConfig(params.config);
-          await dispatchToolDelegates({
-            sessionKey: sandboxSessionKey,
-            chainState: {
-              currentChainCount: 0,
-              chainStartedAt: Date.now(),
-              accumulatedChainTokens: 0,
-            },
-            ctx: {
-              sessionKey: sandboxSessionKey,
-              agentChannel: params.messageChannel ?? params.messageProvider,
-              agentAccountId: params.agentAccountId,
-              agentTo: params.messageTo,
-              agentThreadId: params.messageThreadId,
-            },
-            maxChainLength: dispatchConfig.maxChainLength,
-          });
-        } catch (err) {
-          log.warn(
-            `subagent continuation delegate dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-
       return {
         replayMetadata,
         itemLifecycle: getItemLifecycle(),
