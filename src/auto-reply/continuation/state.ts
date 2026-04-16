@@ -118,6 +118,31 @@ export function clearTrackedContinuationTimers(sessionKey: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Chain state persistence
+// ---------------------------------------------------------------------------
+
+import type { SessionEntry } from "../../config/sessions/types.js";
+
+/**
+ * Persist continuation chain metadata to the session entry.
+ * Called after scheduling to keep chain depth, start time, and token cost
+ * in sync with the session store.
+ */
+export function persistContinuationChainState(params: {
+  sessionEntry?: SessionEntry;
+  count: number;
+  startedAt: number;
+  tokens: number;
+}): void {
+  if (!params.sessionEntry) {
+    return;
+  }
+  params.sessionEntry.continuationChainCount = params.count;
+  params.sessionEntry.continuationChainStartedAt = params.startedAt;
+  params.sessionEntry.continuationChainTokens = params.tokens;
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 

@@ -1816,6 +1816,23 @@ export async function runReplyAgent(params: {
       });
     }
 
+    // --- Chain state write-back (RFC §3.3) ---
+    // Persist chain metadata to session entry after scheduling/dispatch.
+    if (
+      (effectiveContinuationSignal || hasQueuedDelegateWork) &&
+      sessionKey &&
+      activeSessionEntry
+    ) {
+      const { persistContinuationChainState } = await import("../continuation/state.js");
+      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      persistContinuationChainState({
+        sessionEntry: activeSessionEntry,
+        count: activeSessionEntry.continuationChainCount ?? 0,
+        startedAt: activeSessionEntry.continuationChainStartedAt ?? Date.now(),
+        tokens: (activeSessionEntry.continuationChainTokens ?? 0) + turnTokens,
+      });
+    }
+
     // Track whether this was a silent continuation (stripped to empty payloads).
     const wasSilentContinuation = finalPayloads.length === 0 && !!effectiveContinuationSignal;
     if (wasSilentContinuation) {
