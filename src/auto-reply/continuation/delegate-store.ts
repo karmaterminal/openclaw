@@ -224,8 +224,11 @@ export function consumeStagedPostCompactionDelegates(
     for (const flow of flows) {
       try {
         finishPostCompactionFlow({ flowId: flow.flowId, expectedRevision: flow.revision });
-      } catch {
-        // Best-effort cleanup.
+      } catch (err) {
+        // Best-effort cleanup — log revision conflicts for diagnostic signal.
+        console.debug(
+          `[continuation-post-compaction] finishFlow failed for flowId=${flow.flowId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     return delegates;
@@ -250,6 +253,11 @@ export function stagedPostCompactionDelegateCount(sessionKey: string): number {
 
 // ---------------------------------------------------------------------------
 // Continue-work request store (same "tool writes, runner reads" pattern)
+//
+// DELIBERATELY VOLATILE: this is same-turn ephemeral state. The continue_work
+// tool writes during execution, the runner consumes in the same turn's
+// post-response processing. The request is never live across a turn boundary
+// or a gateway restart. TaskFlow backing is not needed here.
 // ---------------------------------------------------------------------------
 
 const pendingWorkRequests = new Map<string, { reason: string; delaySeconds: number }>();
