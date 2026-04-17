@@ -137,6 +137,31 @@ describe("resolveCommandsSystemPromptBundle", () => {
     );
   });
 
+  it("threads stub requestCompactionOpts when continuation is enabled so request_compaction can register", async () => {
+    const params = makeParams();
+    params.cfg = { agents: { defaults: { continuation: { enabled: true } } } } as never;
+
+    await resolveCommandsSystemPromptBundle(params);
+
+    expect(vi.mocked(createOpenClawCodingTools)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestCompactionOpts: expect.objectContaining({
+          sessionId: "session-1",
+          getContextUsage: expect.any(Function),
+          triggerCompaction: expect.any(Function),
+        }),
+      }),
+    );
+  });
+
+  it("omits requestCompactionOpts when continuation is disabled so request_compaction stays hidden", async () => {
+    await resolveCommandsSystemPromptBundle(makeParams());
+
+    const call = vi.mocked(createOpenClawCodingTools).mock.calls[0]?.[0];
+    expect(call).toBeDefined();
+    expect(call?.requestCompactionOpts).toBeUndefined();
+  });
+
   it("uses the canonical target session for sandbox runtime resolution", async () => {
     const params = makeParams();
     params.ctx.SessionKey = "agent:main:telegram:slash-session";

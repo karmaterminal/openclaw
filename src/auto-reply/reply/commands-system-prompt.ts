@@ -67,6 +67,23 @@ export async function resolveCommandsSystemPromptBundle(
     }
   })();
   const skillsPrompt = skillsSnapshot.prompt ?? "";
+  // Continuation: stub `requestCompactionOpts` so `request_compaction` is
+  // listed in the system-prompt / export tool lists. The real execution opts
+  // are wired at the runner layer; callers of this bundle
+  // (commands-context-report, commands-export-session) use the tool list for
+  // listing/metadata only, not for invocation.
+  const requestCompactionOpts =
+    params.cfg?.agents?.defaults?.continuation?.enabled === true
+      ? {
+          sessionId: targetSessionEntry?.sessionId,
+          getContextUsage: () => 0,
+          triggerCompaction: async () => ({
+            ok: false,
+            compacted: false,
+            reason: "commands system-prompt bundle is a listing surface; compaction not wired here",
+          }),
+        }
+      : undefined;
   const tools = (() => {
     try {
       return createOpenClawCodingTools({
@@ -87,6 +104,7 @@ export async function resolveCommandsSystemPromptBundle(
         senderIsOwner: params.command.senderIsOwner,
         modelProvider: params.provider,
         modelId: params.model,
+        requestCompactionOpts,
       });
     } catch {
       return [];

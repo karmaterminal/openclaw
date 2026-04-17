@@ -116,6 +116,25 @@ export function resolveEffectiveToolInventory(
     modelId: params.modelId,
   });
 
+  // Continuation: stub `requestCompactionOpts` so `request_compaction` is
+  // listed on main-session introspection surfaces (/status, /tools,
+  // tools-effective endpoint, context reports, session exports). The real
+  // execution opts are wired at the runner layer (agent-runner-execution,
+  // followup-runner, pi-embedded-runner/run/attempt); this surface is
+  // listing-only and the tool is not actually invoked through it.
+  const requestCompactionOpts =
+    params.cfg?.agents?.defaults?.continuation?.enabled === true
+      ? {
+          sessionId: params.sessionKey,
+          getContextUsage: () => 0,
+          triggerCompaction: async () => ({
+            ok: false,
+            compacted: false,
+            reason: "tools-effective inventory is a listing surface; compaction not wired here",
+          }),
+        }
+      : undefined;
+
   const effectiveTools = createOpenClawCodingTools({
     agentId,
     sessionKey: params.sessionKey,
@@ -143,6 +162,7 @@ export function resolveEffectiveToolInventory(
     modelHasVision: params.modelHasVision,
     requireExplicitMessageTarget: params.requireExplicitMessageTarget,
     disableMessageTool: params.disableMessageTool,
+    requestCompactionOpts,
   });
   const effectivePolicy = resolveEffectiveToolPolicy({
     config: params.cfg,

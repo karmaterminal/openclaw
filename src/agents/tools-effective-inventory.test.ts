@@ -285,4 +285,39 @@ describe("resolveEffectiveToolInventory", () => {
       }),
     );
   });
+
+  it("threads stub requestCompactionOpts when continuation is enabled so request_compaction can register", async () => {
+    const createToolsMock = vi.fn<typeof createOpenClawCodingTools>(() => [
+      mockTool({ name: "exec", label: "Exec", description: "Run shell commands" }),
+    ]);
+    const { resolveEffectiveToolInventory } = await loadHarness({ createToolsMock });
+
+    resolveEffectiveToolInventory({
+      cfg: { agents: { defaults: { continuation: { enabled: true } } } },
+      sessionKey: "session:main",
+    });
+
+    expect(createToolsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestCompactionOpts: expect.objectContaining({
+          sessionId: "session:main",
+          getContextUsage: expect.any(Function),
+          triggerCompaction: expect.any(Function),
+        }),
+      }),
+    );
+  });
+
+  it("omits requestCompactionOpts when continuation is disabled so request_compaction stays hidden", async () => {
+    const createToolsMock = vi.fn<typeof createOpenClawCodingTools>(() => [
+      mockTool({ name: "exec", label: "Exec", description: "Run shell commands" }),
+    ]);
+    const { resolveEffectiveToolInventory } = await loadHarness({ createToolsMock });
+
+    resolveEffectiveToolInventory({ cfg: {} });
+
+    const callArgs = createToolsMock.mock.calls[0]?.[0];
+    expect(callArgs).toBeDefined();
+    expect(callArgs?.requestCompactionOpts).toBeUndefined();
+  });
 });
