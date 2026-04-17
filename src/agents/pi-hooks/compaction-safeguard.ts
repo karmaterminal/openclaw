@@ -28,6 +28,7 @@ import {
   summarizeInStages,
 } from "../compaction.js";
 import { collectTextContentBlocks } from "../content-blocks.js";
+import { buildCopilotIdeHeaders } from "../copilot-dynamic-headers.js";
 import { isTimeoutError } from "../failover-error.js";
 import { repairToolUseResultPairing } from "../session-transcript-repair.js";
 import { extractToolCallsFromAssistant, extractToolResultId } from "../tool-call-id.js";
@@ -233,7 +234,11 @@ async function resolveModelAuth(
       reason: `Compaction safeguard could not resolve request credentials for ${model.provider}/${model.id}.`,
     };
   }
-  return { ok: true, apiKey: requestAuth.apiKey, headers: requestAuth.headers };
+  const headers =
+    model.provider === "github-copilot"
+      ? { ...buildCopilotIdeHeaders(), ...requestAuth.headers }
+      : requestAuth.headers;
+  return { ok: true, apiKey: requestAuth.apiKey, headers };
 }
 
 function clampNonNegativeInt(value: unknown, fallback: number): number {
