@@ -75,6 +75,52 @@ describe("extractContinuationSignal", () => {
     expect(result.workReason).toBeUndefined();
   });
 
+  // Swim-34 row A1b — Signal extraction mutates payload text (strips bracket).
+  // Row: swims/swim-34-formal-matrix/rows/A1b-signal-payload-mutation.md
+  // Anchor: signal.ts:103-105 (lastTextPayload.text = result.text)
+  describe("row A1b — payload text mutation", () => {
+    it("B-1 work bracket mid-text: row asserts strip, but impl regex anchors to end-of-text — expect spec-impl gap", () => {
+      // Row B-1 input verbatim. Per stripContinuationSignal regex (tokens.ts:283),
+      // CONTINUE_WORK only matches at end-of-trimmed-text. parseContinuationSignal
+      // is the same. So this input produces signal=null and no mutation.
+      // Row spec implicitly assumes mid-text detection; impl does not provide it.
+      const payloads = [{ text: "all done [[CONTINUE_WORK]] more context" }];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      // Documenting actual behaviour: no signal extracted, text unchanged.
+      // (If row spec is the truth, this test would assert .not.toContain('[[CONTINUE_WORK]]')
+      // and would FAIL — flagging spec/impl gap.)
+      expect(result.signal).toBeNull();
+      expect(payloads[0].text).toBe("all done [[CONTINUE_WORK]] more context");
+    });
+
+    it("B-2 delegate bracket at end strips token from payload text", () => {
+      const payloads = [{ text: "handing off [[CONTINUE_DELEGATE:investigate bug #123]]" }];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal?.kind).toBe("delegate");
+      expect(payloads[0].text).not.toContain("[[CONTINUE_DELEGATE");
+      expect(payloads[0].text).toBe("handing off");
+    });
+
+    it("B-3 no bracket → byte-identical text (no spurious mutation)", () => {
+      const original = "plain text";
+      const payloads = [{ text: original }];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal).toBeNull();
+      expect(payloads[0].text).toBe(original);
+    });
+
+    it("B-4 bracket in non-last text payload → backward scan no-mutation on first", () => {
+      // Last text payload is payloads[1] (no bracket); backward scan stops there,
+      // returns null, payloads[0] must not be mutated despite carrying a bracket.
+      const firstOriginal = "first [[CONTINUE_WORK]]";
+      const payloads = [{ text: firstOriginal }, { text: "second" }];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal).toBeNull();
+      expect(payloads[0].text).toBe(firstOriginal);
+      expect(payloads[1].text).toBe("second");
+    });
+  });
+
   it("handles empty payloads", () => {
     const result = extractContinuationSignal({
       payloads: [],
