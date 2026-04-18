@@ -140,6 +140,94 @@ describe("delegate store — TaskFlow-backed", () => {
   });
 });
 
+// Swim-34 row A2 — TaskFlow-backed pending delegate persistence.
+// Row: swims/swim-34-formal-matrix/rows/A2-taskflow-pending-delegate-persistence.md
+// Anchors: delegate-store.ts:131-148 (enqueue), 156-187 (consume + revision/decode guards),
+//          190-192 (count). A2.5 FIFO already covered by 'handles multi-delegate fan-out'.
+describe("row A2 — TaskFlow persistence sub-invariants", () => {
+  it("A2.1b enqueuePendingDelegate({mode:'post-compaction'}) writes with POST_COMPACTION controller", () => {
+    enqueuePendingDelegate("session-1", { task: "alt-flag", mode: "post-compaction" });
+    const flows = [...mockFlows.values()];
+    expect(flows).toHaveLength(1);
+    expect(flows[0].controllerId).toBe(CONTINUATION_POST_COMPACTION_CONTROLLER_ID);
+  });
+
+  it("A2.1c enqueuePendingDelegate({postCompaction:true}) writes with POST_COMPACTION controller", () => {
+    enqueuePendingDelegate("session-1", { task: "alt-flag-2", postCompaction: true });
+    const flows = [...mockFlows.values()];
+    expect(flows).toHaveLength(1);
+    expect(flows[0].controllerId).toBe(CONTINUATION_POST_COMPACTION_CONTROLLER_ID);
+  });
+
+  it("A2.2 pendingDelegateCount stable across repeat calls (no consumption)", () => {
+    enqueuePendingDelegate("session-1", { task: "a" });
+    enqueuePendingDelegate("session-1", { task: "b" });
+    enqueuePendingDelegate("session-1", { task: "c" });
+    const c1 = pendingDelegateCount("session-1");
+    const c2 = pendingDelegateCount("session-1");
+    const c3 = pendingDelegateCount("session-1");
+    expect(c1).toBe(3);
+    expect(c2).toBe(3);
+    expect(c3).toBe(3);
+  });
+
+  it("A2.3 consume skips flows where finishFlow.applied is false (revision conflict)", async () => {
+    const taskFlowReg = await import("../../tasks/task-flow-registry.js");
+    const finishFlowSpy = vi.mocked(taskFlowReg.finishFlow);
+    const realImpl = finishFlowSpy.getMockImplementation();
+    if (!realImpl) {
+      throw new Error("finishFlow mock impl missing");
+    }
+
+    enqueuePendingDelegate("session-1", { task: "will-conflict" });
+    enqueuePendingDelegate("session-1", { task: "will-apply" });
+
+    let callCount = 0;
+    finishFlowSpy.mockImplementation((params) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return { applied: false, reason: "revision_conflict" };
+      }
+      return realImpl(params);
+    });
+
+    const consumed = consumePendingDelegates("session-1");
+    expect(consumed).toHaveLength(1);
+    expect(consumed[0].task).toBe("will-apply");
+
+    finishFlowSpy.mockImplementation(realImpl);
+  });
+
+  it("A2.4 consume marks corrupt-payload flows via failFlow with exact blockedSummary, omits from return", async () => {
+    const taskFlowReg = await import("../../tasks/task-flow-registry.js");
+    const failFlowSpy = vi.mocked(taskFlowReg.failFlow);
+    failFlowSpy.mockClear();
+
+    enqueuePendingDelegate("session-1", { task: "good" });
+    enqueuePendingDelegate("session-1", { task: "will-corrupt" });
+    enqueuePendingDelegate("session-1", { task: "good-2" });
+
+    // Corrupt the middle flow's stateJson so decodeDelegateState returns null/undefined.
+    const flows = [...mockFlows.values()];
+    (flows[1] as { stateJson: string }).stateJson = "{not valid delegate state";
+
+    const consumed = consumePendingDelegates("session-1");
+    expect(consumed).toHaveLength(2);
+    expect(consumed.map((d) => d.task)).toEqual(["good", "good-2"]);
+
+    // failFlow called exactly once with the exact blockedSummary string from impl.
+    expect(failFlowSpy).toHaveBeenCalledTimes(1);
+    expect(failFlowSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blockedSummary: "Pending continuation delegate payload could not be decoded.",
+      }),
+    );
+    expect(flows[1].status).toBe("failed");
+  });
+
+  // A2.5 FIFO order: covered by existing 'handles multi-delegate fan-out (FIFO order)'.
+});
+
 describe("post-compaction delegate staging", () => {
   it("stages and consumes post-compaction delegates", () => {
     stagePostCompactionDelegate("session-1", { task: "rehydrate state", stagedAt: 1000 });
