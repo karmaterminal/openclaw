@@ -1182,7 +1182,17 @@ export async function runReplyAgent(params: {
     // --- Context-pressure pre-run injection (RFC §4.2) ---
     // Fire before the agent turn so the agent can act on pressure in this turn.
     const continuationEnabledForPressure = cfg?.agents?.defaults?.continuation?.enabled === true;
+    // Reach-breadcrumb (#580): emit an info-level log immediately inside the
+    // outer guard so operators can distinguish "guard never entered" from
+    // "entered but inner branch silently no-ops." Post-#164 instrumentation
+    // showed zero `:fire` AND zero `:skip` lines fleet-wide on 9d9b3bae7e
+    // despite debug-level logging on three princes; that pattern is only
+    // explainable if this block isn't reached at all on normal turns.
     if (continuationEnabledForPressure && sessionKey && activeSessionEntry) {
+      const { createSubsystemLogger: createReachLogger } = await import("../../logging/subsystem.js");
+      createReachLogger("continuation/context-pressure").info(
+        `[context-pressure:reach] precondition-check entered session=${sessionKey}`,
+      );
       const { checkContextPressure } = await import("../continuation/context-pressure.js");
       const pressureConfig = resolveContinuationRuntimeConfig(cfg);
       const threshold = pressureConfig.contextPressureThreshold;
