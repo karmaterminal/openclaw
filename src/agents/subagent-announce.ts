@@ -157,10 +157,12 @@ async function drainChildContinuationQueue(params: {
     // subagent-announce.ts`.
     const [dispatchModule, configModule] = await Promise.all([
       importRuntimeModule<ContinuationDispatchModule>(import.meta.url, [
-        "../auto-reply/continuation/delegate-dispatch.js",
+        "./subagent-announce.continuation.runtime",
+        ".js",
       ]),
       importRuntimeModule<ContinuationConfigModule>(import.meta.url, [
-        "../auto-reply/continuation/config.js",
+        "./subagent-announce.continuation.runtime",
+        ".js",
       ]),
     ]);
     const { dispatchToolDelegates } = dispatchModule;
