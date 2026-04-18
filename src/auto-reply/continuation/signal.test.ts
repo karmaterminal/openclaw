@@ -121,6 +121,68 @@ describe("extractContinuationSignal", () => {
     });
   });
 
+  // Swim-34 row A1c — Signal extraction backward payload scan.
+  // Row: swims/swim-34-formal-matrix/rows/A1c-signal-backward-payload-scan.md
+  // Anchor: signal.ts:82-90 (backward scan loop) + coord BRIEF §10
+  describe("row A1c — backward payload scan", () => {
+    it("B-1 text then tool_use: scan walks past tool, finds bracket in text[0]", () => {
+      const payloads = [
+        { text: "handing [[CONTINUE_DELEGATE:investigate]]" },
+        { tool_use: { name: "search" } } as { tool_use: { name: string }; text?: undefined },
+      ];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal?.kind).toBe("delegate");
+      expect(result.fromBracket).toBe(true);
+      if (result.signal?.kind === "delegate") {
+        expect(result.signal.task).toBe("investigate");
+      }
+    });
+
+    it("B-2 text(bracket), text(empty), tool_use: scan skips empty + tool, parses text[0]", () => {
+      // Row spec writes 'done [[CONTINUE_WORK]]' but [[...]] syntax is delegate-only;
+      // work signal is bare 'CONTINUE_WORK' at end-of-text (tokens.ts:253).
+      // Using the valid work form to test the backward-scan invariant.
+      const payloads = [
+        { text: "done CONTINUE_WORK" },
+        { text: "" },
+        { tool_use: { name: "x" } } as { tool_use: { name: string }; text?: undefined },
+      ];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal?.kind).toBe("work");
+      expect(result.fromBracket).toBe(true);
+    });
+
+    it("B-3 text(none), text(bracket), tool_use: scan parses text[1], leaves text[0] unmutated", () => {
+      // Row spec writes '[[CONTINUE_WORK]]' but that's invalid (delegate-only bracket form);
+      // valid work signal is bare 'CONTINUE_WORK'. Adjusted to test the actual backward-scan
+      // invariant the row is reaching for.
+      const text0Original = "first no signal";
+      const payloads = [
+        { text: text0Original },
+        { text: "CONTINUE_WORK" },
+        { tool_use: {} } as { tool_use: Record<string, never>; text?: undefined },
+      ];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal?.kind).toBe("work");
+      expect(result.fromBracket).toBe(true);
+      // A1b co-invariant: only the matched payload is mutated.
+      expect(payloads[0].text).toBe(text0Original);
+    });
+
+    it("B-4 tool_use only: no text payload found, signal null", () => {
+      const payloads = [{ tool_use: {} } as { tool_use: Record<string, never>; text?: undefined }];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal).toBeNull();
+      expect(result.fromBracket).toBe(false);
+    });
+
+    it("B-5 empty array: bracket-parse skipped, signal null", () => {
+      const result = extractContinuationSignal({ payloads: [], enabled: true });
+      expect(result.signal).toBeNull();
+      expect(result.fromBracket).toBe(false);
+    });
+  });
+
   it("handles empty payloads", () => {
     const result = extractContinuationSignal({
       payloads: [],
