@@ -477,6 +477,8 @@ Urgency is banded. In production and canary instrumentation, the practical bands
 
 The dedup rule is equality-based: the same band does not fire twice consecutively, but a new band always fires. This allows post-compaction lifecycles to begin again at lower bands without suppressing fresh advisories.
 
+**Precondition: session token accounting.** The pre-fire check runs only when the reply pipeline has populated the current session's token count for the turn. Specifically, the reply-pipeline call site at `src/auto-reply/reply/agent-runner.ts` gates the entire pressure check on `activeSessionEntry.totalTokens` and a resolved `contextWindow` both being present. If either is unavailable—typically during the first completed turn before session-cost accounting has landed—the pressure check is a no-op for that turn, and the next turn picks it up once accounting is populated. Post-compaction events fire regardless as part of the compaction lifecycle hook. Operators investigating a "no band≥1 fires observed" pattern in a deployed fleet should first check whether `totalTokens` is populated at the call site for the session class in question; a silent short-circuit here is distinguishable from a threshold-configuration issue only via instrumentation at the call site.
+
 ### 4.3 `request_compaction()` in the compaction lifecycle
 
 `request_compaction()` fills the gap that appears when `idleTimeoutSeconds: 0` removes the timeout-based compaction path. At time of writing, that setting is necessary for some copilot proxy configurations and slow providers.
@@ -790,6 +792,8 @@ Operational fleet evidence from 2026-04-03 across four persistent OpenClaw insta
 | Cael 🩸    | 0           | 81%                    | severely degraded (2+ min) | context thrashing |
 
 In that build, `checkContextPressure()` existed but had not yet been wired into the reply pipeline. The result was a measurable divergence between instances that compacted and those that did not.
+
+The current canary (post-2026-04-14) does wire `checkContextPressure()` into the reply pipeline (`src/auto-reply/reply/agent-runner.ts`, pre-run injection). Fleet observation on the current wire is that post-compaction band-0 events fire as specified, while pre-fire (non-post-compaction) band≥1 events have been observed at 0 across n=3 hosts in strict-grep measurement of the `[context-pressure:fire]` log anchor. This is consistent with the §4.2 precondition note: sessions either never cross the configured threshold during steady-state operation, or the `totalTokens` short-circuit drops the check on the turns where they would. Distinguishing the two hypotheses requires instrumentation at the call site to emit which branch skipped (threshold vs. accounting) — that instrumentation is not currently in place.
 
 ### 6.5 Operator observability and hot reload
 
