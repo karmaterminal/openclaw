@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDelegateStoreForTests } from "./delegate-store.js";
-import { checkContinuationBudget, scheduleWorkContinuation } from "./scheduler.js";
+import {
+  checkContinuationBudget,
+  scheduleDelegateContinuation,
+  scheduleWorkContinuation,
+} from "./scheduler.js";
 import { resetContinuationStateForTests } from "./state.js";
 import type { ContinuationRuntimeConfig, ContinuationSignal } from "./types.js";
 
@@ -140,5 +144,32 @@ describe("scheduleWorkContinuation", () => {
     // guard. The timer fires regardless.
     await vi.advanceTimersByTimeAsync(10_000);
     expect(onFire).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("scheduleDelegateContinuation", () => {
+  it("does NOT cancel on channel noise (no generation guard) — F-NOISE delegate mirror (#531)", async () => {
+    // Mirrors the F-NOISE work-path test above on the delegate path.
+    // B4 (#531) drift-guard: scheduleDelegateContinuation has no generation
+    // guard by construction; this test is the regression sentinel for that.
+    const onImmediateSpawn = vi.fn().mockResolvedValue(true);
+    const onDelayedSpawn = vi.fn().mockResolvedValue(true);
+
+    scheduleDelegateContinuation({
+      signal: { kind: "delegate", delayMs: 10_000, task: "probe" },
+      chainState: { currentChainCount: 0, chainStartedAt: 0, accumulatedChainTokens: 0 },
+      config: baseConfig,
+      sessionKey: "test-delegate-noise",
+      onImmediateSpawn,
+      onDelayedSpawn,
+    });
+
+    // Channel-noise simulation: in a generation-guarded world, an inbound
+    // event during the delay would cancel the reservation. The delegate
+    // path has no such guard — the timer must fire and onDelayedSpawn must
+    // be invoked.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(onDelayedSpawn).toHaveBeenCalledTimes(1);
+    expect(onImmediateSpawn).not.toHaveBeenCalled();
   });
 });
