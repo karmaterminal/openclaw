@@ -1201,6 +1201,18 @@ export async function runReplyAgent(params: {
         if (pressureEvent) {
           enqueueSystemEvent(pressureEvent, { sessionKey });
         }
+      } else {
+        // Precondition unmet — emit a single skip log so operators debugging
+        // "no band≥1 fires observed" can distinguish threshold-never-crossed
+        // from silent guard short-circuit. See RFC §4.2 precondition note.
+        const skipReason = !threshold
+          ? "no-threshold-configured"
+          : !activeSessionEntry.totalTokens
+            ? "totalTokens-not-populated"
+            : "contextWindow-unresolved";
+        const { createSubsystemLogger } = await import("../../logging/subsystem.js");
+        const pressureLog = createSubsystemLogger("continuation/context-pressure");
+        pressureLog.debug(`[context-pressure:skip] reason=${skipReason} session=${sessionKey}`);
       }
     }
 
