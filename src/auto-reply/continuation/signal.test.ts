@@ -57,6 +57,24 @@ describe("extractContinuationSignal", () => {
     expect(result.workReason).toBeUndefined();
   });
 
+  // Swim-34 row A1a B-2: delegate bracket beats work tool-call AND preserves the bracket's kind.
+  // Anchor: signal.ts:121-124 (merge expression) + row spec
+  // swims/swim-34-formal-matrix/rows/A1a-signal-bracket-over-tool-precedence.md
+  it("delegate bracket overrides work tool-call (kind preserved, fromBracket true, workReason undefined)", () => {
+    const payloads = [{ text: "done [[CONTINUE_DELEGATE: investigate foo]]" }];
+    const result = extractContinuationSignal({
+      payloads,
+      continueWorkRequest: { reason: "tool", delaySeconds: 5 },
+      enabled: true,
+    });
+    expect(result.signal?.kind).toBe("delegate");
+    if (result.signal?.kind === "delegate") {
+      expect(result.signal.task).toBe("investigate foo");
+    }
+    expect(result.fromBracket).toBe(true);
+    expect(result.workReason).toBeUndefined();
+  });
+
   it("handles empty payloads", () => {
     const result = extractContinuationSignal({
       payloads: [],
