@@ -206,4 +206,45 @@ describe("extractContinuationSignal", () => {
       expect(result.signal.task).toBe("real task");
     }
   });
+
+  // Swim-34 row F1 — Signal-merge bracket-vs-tool precedence (backward-scan invariant 11).
+  // Row: swims/swim-34-formal-matrix/rows/F1-signal-merge-precedence.md
+  // Anchor: signal.ts:79-87 (backward scan from payloads.length-1).
+  // F1 pass criteria are already covered transitively by:
+  //   - A1c B-1: [text(bracket), tool_use] → bracket extracted from non-final text.
+  //   - A1a B-2: bracket in single/final text payload → extracted.
+  //   - A1c B-4 / A1b B-3: no bracket anywhere → null, no false positives.
+  // This block re-asserts the three F1 criteria explicitly so F1 is countable
+  // against the matrix without relying on cross-row inheritance.
+  describe("row F1 — bracket-vs-tool precedence (backward scan invariant)", () => {
+    it("F1.1 bracket in non-final text payload (text then tool_use) is extracted", () => {
+      const payloads = [
+        { text: "body\n\n[[CONTINUE_DELEGATE: prompt=next step]]" },
+        { tool_use: { name: "x" } } as { tool_use: { name: string }; text?: undefined },
+      ];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal?.kind).toBe("delegate");
+      if (result.signal?.kind === "delegate") {
+        expect(result.signal.task).toBe("prompt=next step");
+      }
+    });
+
+    it("F1.2 bracket in final text payload baseline", () => {
+      const payloads = [{ text: "body\n\n[[CONTINUE_DELEGATE: prompt=next step]]" }];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal?.kind).toBe("delegate");
+      if (result.signal?.kind === "delegate") {
+        expect(result.signal.task).toBe("prompt=next step");
+      }
+    });
+
+    it("F1.3 no bracket anywhere returns null (no false positives)", () => {
+      const payloads = [
+        { text: "plain body" },
+        { tool_use: {} } as { tool_use: Record<string, never>; text?: undefined },
+      ];
+      const result = extractContinuationSignal({ payloads, enabled: true });
+      expect(result.signal).toBeNull();
+    });
+  });
 });
