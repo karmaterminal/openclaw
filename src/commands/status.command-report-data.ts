@@ -26,6 +26,37 @@ import {
 import type { MemoryPluginStatus, MemoryStatusSnapshot } from "./status.scan.shared.js";
 import type { SessionStatus, StatusSummary } from "./status.types.js";
 
+/**
+ * Format the /status continuation overview row per RFC §6.3. Pure function
+ * over already-resolved config + runtime totals; the live queries (TaskFlow
+ * lookups per session key) live at the caller.
+ *
+ * @returns the formatted banner value, or `undefined` when continuation is
+ *   disabled (so the caller can skip rendering the row).
+ */
+export function formatContinuationBannerValue(params: {
+  enabled: boolean;
+  maxChainLength: number;
+  maxDelegatesPerTurn: number;
+  pendingDelegatesTotal: number;
+  postCompactionStagedTotal: number;
+}): string | undefined {
+  if (!params.enabled) {
+    return undefined;
+  }
+  const parts: string[] = ["enabled", `chain max ${params.maxChainLength}`];
+  if (params.pendingDelegatesTotal > 0) {
+    parts.push(
+      `${params.pendingDelegatesTotal} delegate${params.pendingDelegatesTotal === 1 ? "" : "s"} pending`,
+    );
+  }
+  if (params.postCompactionStagedTotal > 0) {
+    parts.push(`${params.postCompactionStagedTotal} post-compaction`);
+  }
+  parts.push(`fan-out max ${params.maxDelegatesPerTurn}`);
+  return parts.join(" · ");
+}
+
 export async function buildStatusCommandReportData(params: {
   opts: {
     deep?: boolean;
@@ -127,10 +158,44 @@ export async function buildStatusCommandReportData(params: {
             };
           };
         const cfg = resolveContinuationRuntimeConfig();
-        if (!cfg.enabled) {
-          return undefined;
+
+        // RFC §6.3 — surface runtime continuation state. TaskFlow-backed
+        // counters are queryable cold-path from the CLI (SQLite persistent);
+        // in-memory counters (volitional compaction count, session-entry
+        // chain depth) are not — they live only in the gateway process and
+        // are skipped here. Aggregate across the session keys the status
+        // summary already knows about.
+        let pendingTotal = 0;
+        let stagedTotal = 0;
+        if (cfg.enabled) {
+          try {
+            const { pendingDelegateCount, stagedPostCompactionDelegateCount } =
+              require("../auto-reply/continuation/delegate-store.js") as {
+                pendingDelegateCount: (sessionKey: string) => number;
+                stagedPostCompactionDelegateCount: (sessionKey: string) => number;
+              };
+            const seen = new Set<string>();
+            for (const session of params.summary.sessions.recent) {
+              if (!session.key || seen.has(session.key)) {
+                continue;
+              }
+              seen.add(session.key);
+              pendingTotal += pendingDelegateCount(session.key);
+              stagedTotal += stagedPostCompactionDelegateCount(session.key);
+            }
+          } catch {
+            // TaskFlow not initialised or lookup failed — fall back to
+            // config-only shape silently rather than hiding the whole row.
+          }
         }
-        return `enabled · chain max ${cfg.maxChainLength} · fan-out max ${cfg.maxDelegatesPerTurn}`;
+
+        return formatContinuationBannerValue({
+          enabled: cfg.enabled,
+          maxChainLength: cfg.maxChainLength,
+          maxDelegatesPerTurn: cfg.maxDelegatesPerTurn,
+          pendingDelegatesTotal: pendingTotal,
+          postCompactionStagedTotal: stagedTotal,
+        });
       } catch {
         return undefined;
       }
