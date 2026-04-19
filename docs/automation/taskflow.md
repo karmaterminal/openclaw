@@ -70,6 +70,43 @@ openclaw tasks flow cancel <lookup>
 | `openclaw tasks flow show <id>`   | Inspect one flow by flow id or lookup key     |
 | `openclaw tasks flow cancel <id>` | Cancel a running flow and its active tasks    |
 
+## Cluster ownership (v1.1)
+
+By default, a managed flow is `ownership: "host-local"` — state lives
+on a single gateway, and two gateways on different boxes can each
+"win" a revision race because they're looking at separate per-host
+state.
+
+Setting `ownership: "cluster"` opts the flow into cross-host
+coordination via a ZK `LeaderElection` at `ownershipPath` (default:
+`/openclaw/<env>/taskflow/<flowId>`). Behavior:
+
+- Only the elected leader's gateway may advance the flow.
+- Every other gateway sees `not_owner` on mutation attempts.
+- On leadership loss (session expiry, manual release), the flow
+  transitions to `queued`; the next elected leader picks up from the
+  last persisted revision.
+- On ZK quorum loss mid-step, the flow transitions to `blocked` with
+  `reason: zk-quorum-lost-at-<ts>`. **No transparent replay** — a
+  duplicate step is worse than no step. `openclaw tasks flow resume
+<id>` explicitly re-enters once an operator confirms the state.
+
+See `/plugins/zk` for the ZK coordination primitives + quorum-degradation
+semantics, and `/plugins/zk-parity` for the wire-up evidence template
+that every consumer-side PR must satisfy.
+
+### Current landing state
+
+- **PR 4 (#179):** adds the `ownership` / `ownershipPath` fields to
+  `TaskFlowRecord` + the `not_owner` error code. Contract only — no ZK
+  enforcement yet.
+- **PR 4b (follow-up):** wires the scaffolded `ClusterOwnershipController`
+  in `src/plugins/runtime/runtime-taskflow-zk.ts` to
+  `openclaw/plugin-sdk/zk#createElection`. Integration tests cover
+  leadership failover + quorum-loss-blocked transition.
+- **PR 5 (#180):** first consumer (reply dedup) — deferred until PR 4b
+  and real before/after evidence per the kazoo-parity template.
+
 ## How flows relate to tasks
 
 Flows coordinate tasks, not replace them. A single flow may drive multiple background tasks over its lifetime. Use `openclaw tasks` to inspect individual task records and `openclaw tasks flow` to inspect the orchestrating flow.
