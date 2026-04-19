@@ -1,5 +1,6 @@
 import {
   mergeSessionEntry,
+  resolveSessionStoreEntry,
   setSessionRuntimeModel,
   type SessionEntry,
   updateSessionStore,
@@ -71,7 +72,8 @@ export async function updateSessionStoreAfterAgentRun(params: {
       allowAsyncLoad: false,
     }) ?? DEFAULT_CONTEXT_TOKENS;
 
-  const entry = sessionStore[sessionKey] ?? {
+  const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
+  const entry = memResolved.existing ?? {
     sessionId,
     updatedAt: Date.now(),
   };
@@ -139,9 +141,16 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.compactionCount = (entry.compactionCount ?? 0) + compactionsThisRun;
   }
   const persisted = await updateSessionStore(storePath, (store) => {
-    const merged = mergeSessionEntry(store[sessionKey], next);
-    store[sessionKey] = merged;
+    const resolved = resolveSessionStoreEntry({ store, sessionKey });
+    const merged = mergeSessionEntry(resolved.existing, next);
+    store[resolved.normalizedKey] = merged;
+    for (const legacyKey of resolved.legacyKeys) {
+      delete store[legacyKey];
+    }
     return merged;
   });
-  sessionStore[sessionKey] = persisted;
+  sessionStore[memResolved.normalizedKey] = persisted;
+  for (const legacyKey of memResolved.legacyKeys) {
+    delete sessionStore[legacyKey];
+  }
 }
