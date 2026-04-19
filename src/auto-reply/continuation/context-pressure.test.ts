@@ -77,4 +77,35 @@ describe("checkContextPressure", () => {
   it("returns null for zero context window", () => {
     expect(checkContextPressure({ ...base, contextWindow: 0, totalTokens: 100 })).toBeNull();
   });
+
+  // #580 regression: when configured threshold is below the lowest hard-coded
+  // band (currently 25%), the resolved band is 0. Without the -1 sentinel,
+  // first-time-seen sessions had previous=0 (the `?? 0` default), so the very
+  // first crossing collided band===previous===0 and was dedup-suppressed,
+  // producing zero `:fire` events fleet-wide despite `:reach` firing every
+  // turn. The sentinel ensures the first crossing of any band fires once.
+  it("#580: fires once at sub-25% threshold (band=0) for first-time-seen session", () => {
+    const lowParams = {
+      sessionKey: "low-threshold-session",
+      contextWindow: 200_000,
+      threshold: 0.05, // 5% — well below the lowest hard-coded band (25%)
+      totalTokens: 20_000, // 10% — above threshold, below all bands → resolves to band 0
+    };
+
+    const first = checkContextPressure(lowParams);
+    expect(first).not.toBeNull();
+    expect(first).toContain("[system:context-pressure]");
+    expect(first).toContain("10%");
+
+    // Second call at same band-0 level: dedup should suppress.
+    const second = checkContextPressure(lowParams);
+    expect(second).toBeNull();
+
+    // Escalating into a real band still fires.
+    const escalated = checkContextPressure({
+      ...lowParams,
+      totalTokens: 60_000, // 30% → band 25
+    });
+    expect(escalated).not.toBeNull();
+  });
 });

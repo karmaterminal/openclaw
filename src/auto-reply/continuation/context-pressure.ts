@@ -11,6 +11,12 @@
  * Band dedup: equality-based. The same band doesn't fire twice consecutively,
  * but a new band (including a lower band after compaction) always fires.
  *
+ * The dedup sentinel is -1, NOT 0. A first-time-seen session has previous=-1,
+ * so even band=0 (ratio below the lowest hard-coded band) fires once. This
+ * matters when the configured `contextPressureThreshold` is below the lowest
+ * band (currently 25%): without the sentinel, every session's first crossing
+ * collides band===previous===0 and is suppressed silently. (#580)
+ *
  * RFC: docs/design/continue-work-signal-v2.md §4.2
  */
 
@@ -90,7 +96,11 @@ export function checkContextPressure(params: {
   const band = resolveContextPressureBand(ratio);
 
   // Dedup: same band as last time → suppress.
-  const previous = lastFiredBand.get(sessionKey) ?? 0;
+  // Sentinel -1 ensures first-time-seen sessions fire once even when band===0
+  // (which happens for any ratio below the lowest hard-coded band, currently
+  // 25%). Using `?? 0` here would silently suppress every first crossing of
+  // sub-25% thresholds. See #580 for the bytes.
+  const previous = lastFiredBand.get(sessionKey) ?? -1;
   if (band === previous) {
     return null;
   }
