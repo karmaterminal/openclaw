@@ -148,13 +148,24 @@ export function enqueuePendingDelegate(
 }
 
 /**
- * Consume all pending delegates for a session.
- * Returns delegates in FIFO order. Finishes backing flow records with
- * `releasedAt` audit trail. Skips corrupt payloads via `failFlow`.
- * Only pushes delegates where `finishFlow` was applied (concurrency-safe).
+ * Consume pending delegates for a session whose `delayMs` horizon has matured.
+ *
+ * Filters by `Date.now() >= flow.createdAt + (state.delayMs ?? 0)`. Matured
+ * entries are finished with the `releasedAt` audit trail and returned in FIFO
+ * order. Unmatured entries are left in `queued` state to be re-checked on the
+ * next consume cycle (filter-at-consume; preserves `mode=silent` no-wake
+ * semantics — see swim-35/A2 verdict).
+ *
+ * Skips corrupt payloads via `failFlow`. Only pushes delegates where
+ * `finishFlow` was applied (concurrency-safe).
+ *
+ * Callers that need to know when to retry the consume cycle in a quiet channel
+ * should call `peekSoonestUnmaturedDelegateDueAt(sessionKey)` immediately after
+ * this returns. Pairing avoids a separate query path.
  */
 export function consumePendingDelegates(sessionKey: string): PendingContinuationDelegate[] {
   const delegates: PendingContinuationDelegate[] = [];
+  const now = Date.now();
 
   for (const flow of listQueuedPendingFlows(sessionKey)) {
     const state = decodeDelegateState(flow);
@@ -165,6 +176,15 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
         currentStep: "Rejected invalid continuation payload",
         blockedSummary: "Pending continuation delegate payload could not be decoded.",
       });
+      continue;
+    }
+
+    // Filter-at-consume: leave unmatured entries in `queued` so the next
+    // response-finalize (or the hedge timer armed by the dispatch caller)
+    // re-checks them. Honors `delayMs` on the tool path without threading a
+    // wake-pathway timer (which would change `mode=silent` semantics).
+    const dueAt = flow.createdAt + (state.delayMs ?? 0);
+    if (now < dueAt) {
       continue;
     }
 
@@ -182,6 +202,34 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
   }
 
   return delegates;
+}
+
+/**
+ * Peek the soonest `dueAt` (createdAt + delayMs) across queued, unmatured
+ * pending delegates for a session.
+ *
+ * Returns `undefined` if there are no unmatured entries. Used by
+ * `dispatchToolDelegates` to arm a hedge `setTimeout` so unmatured entries
+ * still fire in fully-quiet channels where no further response-finalize
+ * arrives. See swim-35/A2 verdict.
+ */
+export function peekSoonestUnmaturedDelegateDueAt(sessionKey: string): number | undefined {
+  const now = Date.now();
+  let soonest: number | undefined;
+  for (const flow of listQueuedPendingFlows(sessionKey)) {
+    const state = decodeDelegateState(flow);
+    if (!state) {
+      continue;
+    }
+    const dueAt = flow.createdAt + (state.delayMs ?? 0);
+    if (dueAt <= now) {
+      continue;
+    }
+    if (soonest === undefined || dueAt < soonest) {
+      soonest = dueAt;
+    }
+  }
+  return soonest;
 }
 
 /**

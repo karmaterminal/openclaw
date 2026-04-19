@@ -17,11 +17,67 @@ import type { SpawnSubagentContext } from "../../agents/subagent-spawn.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
-import { consumePendingDelegates } from "./delegate-store.js";
+import { consumePendingDelegates, peekSoonestUnmaturedDelegateDueAt } from "./delegate-store.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
-import { setDelegatePending } from "./state.js";
+import {
+  setDelegatePending,
+  registerContinuationTimerHandle,
+  retainContinuationTimerRef,
+  unregisterContinuationTimerHandle,
+} from "./state.js";
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
+
+// Per-session hedge timer for re-checking unmatured pending delegates in fully
+// quiet channels (no further response-finalize event). Idempotent per
+// sessionKey: a fresh dispatch call cancels + replaces any existing hedge.
+// See swim-35/A2 verdict.
+const hedgeTimers = new Map<string, NodeJS.Timeout>();
+
+function clearHedgeTimer(sessionKey: string): void {
+  const existing = hedgeTimers.get(sessionKey);
+  if (existing) {
+    clearTimeout(existing);
+    hedgeTimers.delete(sessionKey);
+    unregisterContinuationTimerHandle(sessionKey, existing);
+  }
+}
+
+function armHedgeTimer(
+  sessionKey: string,
+  fireAt: number,
+  params: { chainState: ChainState; ctx: DelegateDispatchContext; maxChainLength: number },
+): void {
+  clearHedgeTimer(sessionKey);
+  const fireIn = Math.max(0, fireAt - Date.now());
+  log.info(
+    `[continuation:delegate-hedge-armed] fireIn=${fireIn}ms fireAt=${fireAt} session=${sessionKey}`,
+  );
+  retainContinuationTimerRef(sessionKey);
+  const handle = setTimeout(() => {
+    hedgeTimers.delete(sessionKey);
+    log.info(`[continuation:delegate-hedge-fired] session=${sessionKey}`);
+    void dispatchToolDelegates({ sessionKey, ...params }).catch((err) => {
+      log.info(
+        `[continuation:delegate-hedge-error] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey}`,
+      );
+    });
+  }, fireIn);
+  registerContinuationTimerHandle(sessionKey, handle);
+  handle.unref();
+  hedgeTimers.set(sessionKey, handle);
+}
+
+/**
+ * Test-only: cancel any pending hedge timers and clear the registry.
+ */
+export function resetDelegateDispatchHedgesForTests(): void {
+  for (const [sessionKey, handle] of hedgeTimers) {
+    clearTimeout(handle);
+    unregisterContinuationTimerHandle(sessionKey, handle);
+  }
+  hedgeTimers.clear();
+}
 
 export type DelegateDispatchContext = {
   sessionKey: string;
@@ -46,6 +102,21 @@ export async function dispatchToolDelegates(params: {
   const { sessionKey, chainState, ctx } = params;
   const config = resolveContinuationRuntimeConfig();
   const toolDelegates = consumePendingDelegates(sessionKey);
+
+  // Arm (or re-arm) a hedge timer for any unmatured queued delegates so they
+  // still fire in fully-quiet channels where no further response-finalize
+  // arrives. The hedge re-invokes this function; idempotent per sessionKey.
+  // See swim-35/A2 verdict.
+  const soonestUnmaturedDueAt = peekSoonestUnmaturedDelegateDueAt(sessionKey);
+  if (soonestUnmaturedDueAt !== undefined) {
+    armHedgeTimer(sessionKey, soonestUnmaturedDueAt, {
+      chainState: params.chainState,
+      ctx: params.ctx,
+      maxChainLength: params.maxChainLength,
+    });
+  } else {
+    clearHedgeTimer(sessionKey);
+  }
 
   if (toolDelegates.length === 0) {
     return { dispatched: 0, rejected: 0 };
