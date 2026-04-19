@@ -4,6 +4,7 @@ export {
   loadConfig,
   loadSessionStore,
   resolveSessionKey,
+  resolveSessionStoreEntry,
   resolveStorePath,
   updateSessionStore,
 } from "openclaw/plugin-sdk/config-runtime";
