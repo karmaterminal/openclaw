@@ -53,7 +53,13 @@ export {
   type CommandsMessageOptions,
   type CommandsMessageResult,
 } from "./command-status-builders.js";
+import { getVolitionalCompactionCount } from "../agents/tools/request-compaction-tool.js";
 import { resolveActiveFallbackState } from "../status/fallback-notice-state.js";
+import { resolveContinuationRuntimeConfig } from "./continuation/config.js";
+import {
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
+} from "./continuation/delegate-store.js";
 import { formatProviderModelRef, resolveSelectedAndActiveModel } from "./model-runtime.js";
 import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "./thinking.js";
 
@@ -682,9 +688,9 @@ export function buildStatusMessage(args: StatusArgs): string {
   const queueDetails = formatQueueDetails(args.queue);
   const verboseLabel =
     verboseLevel === "full" ? "verbose:full" : verboseLevel === "on" ? "verbose" : null;
-  const traceLevel = entry?.traceLevel === "raw" ? "raw" : entry?.traceLevel === "on" ? "on" : "off";
-  const traceLabel =
-    traceLevel === "raw" ? "trace:raw" : traceLevel === "on" ? "trace" : null;
+  const traceLevel =
+    entry?.traceLevel === "raw" ? "raw" : entry?.traceLevel === "on" ? "on" : "off";
+  const traceLabel = traceLevel === "raw" ? "trace:raw" : traceLevel === "on" ? "trace" : null;
   const pluginStatusLines = verboseLevel !== "off" ? resolveSessionPluginStatusLines(entry) : [];
   const pluginTraceLines =
     traceLevel === "on" || traceLevel === "raw" ? resolveSessionPluginTraceLines(entry) : [];
@@ -838,6 +844,12 @@ export function buildStatusMessage(args: StatusArgs): string {
   const mediaLine = formatMediaUnderstandingLine(args.mediaDecisions);
   const voiceLine = formatVoiceModeLine(args.config, args.sessionEntry);
 
+  const continuationLine = formatContinuationStatusLine({
+    config: args.config,
+    sessionKey: args.sessionKey,
+    sessionEntry: args.sessionEntry,
+  });
+
   return [
     versionLine,
     args.timeLine,
@@ -847,6 +859,11 @@ export function buildStatusMessage(args: StatusArgs): string {
     usageCostLine,
     cacheLine,
     `📚 ${contextLine}`,
+    // Continuation is a context-adjacent signal (chain depth + pending /
+    // staged delegates live in the same mental bucket as context pressure).
+    // Placing it immediately after the context line matches the RFC §6.3
+    // framing and keeps related fields together for the operator scan.
+    continuationLine,
     mediaLine,
     args.usageLine,
     `🧵 ${sessionLine}`,
@@ -859,6 +876,67 @@ export function buildStatusMessage(args: StatusArgs): string {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * RFC docs/design/continue-work-signal-v2.md §6.3 — `/status` continuation
+ * telemetry. Show only when continuation is enabled AND at least one field
+ * is non-zero. Format:
+ *   🔄 Continuation: chain X/Y | Z delegates pending | W post-compaction staged | volitional: N
+ *
+ * Source modules are imported statically; no status<->continuation cycle
+ * exists (verified — neither continuation/* nor request-compaction-tool.ts
+ * imports auto-reply/status). Inner try/catch around each lookup keeps the
+ * status row resilient if a counter store hasn't been initialised in a
+ * particular runtime path (silently fall back to zero rather than failing
+ * the whole status render).
+ */
+function formatContinuationStatusLine(params: {
+  config?: OpenClawConfig;
+  sessionKey?: string;
+  sessionEntry?: SessionEntry;
+}): string | null {
+  let cfg: { enabled: boolean; maxChainLength: number };
+  try {
+    cfg = resolveContinuationRuntimeConfig(params.config);
+  } catch {
+    return null;
+  }
+  if (!cfg.enabled) {
+    return null;
+  }
+  const sessionKey = params.sessionKey;
+  let pending = 0;
+  let staged = 0;
+  let volitional = 0;
+  if (sessionKey) {
+    try {
+      pending = pendingDelegateCount(sessionKey);
+      staged = stagedPostCompactionDelegateCount(sessionKey);
+    } catch {
+      // delegate-store not initialised — leave counts at zero.
+    }
+    try {
+      volitional = getVolitionalCompactionCount(sessionKey);
+    } catch {
+      // request-compaction tool not loaded — leave at zero.
+    }
+  }
+  const chain = params.sessionEntry?.continuationChainCount ?? 0;
+  if (chain === 0 && pending === 0 && staged === 0 && volitional === 0) {
+    return null;
+  }
+  const parts: string[] = [`chain ${chain}/${cfg.maxChainLength}`];
+  if (pending > 0) {
+    parts.push(`${pending} delegate${pending === 1 ? "" : "s"} pending`);
+  }
+  if (staged > 0) {
+    parts.push(`${staged} post-compaction staged`);
+  }
+  if (volitional > 0) {
+    parts.push(`volitional: ${volitional}`);
+  }
+  return `🔄 Continuation: ${parts.join(" | ")}`;
 }
 
 type ToolsMessageItem = {
