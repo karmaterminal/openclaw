@@ -466,11 +466,19 @@ export async function runPreparedReply(
     if (sessionEntry && sessionStore && sessionKey && sessionEntry.thinkingLevel === "xhigh") {
       sessionEntry.thinkingLevel = "high";
       sessionEntry.updatedAt = Date.now();
-      sessionStore[sessionKey] = sessionEntry;
+      const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
+      sessionStore[memResolved.normalizedKey] = sessionEntry;
+      for (const legacyKey of memResolved.legacyKeys) {
+        delete sessionStore[legacyKey];
+      }
       if (storePath) {
         const { updateSessionStore } = await loadSessionStoreRuntime();
         await updateSessionStore(storePath, (store) => {
-          store[sessionKey] = sessionEntry;
+          const resolved = resolveSessionStoreEntry({ store, sessionKey });
+          store[resolved.normalizedKey] = sessionEntry;
+          for (const legacyKey of resolved.legacyKeys) {
+            delete store[legacyKey];
+          }
         });
       }
     }
