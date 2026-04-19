@@ -28,6 +28,7 @@ import type { PluginsConfig } from "./types.plugins.js";
 import type { SecretsConfig } from "./types.secrets.js";
 import type { SkillsConfig } from "./types.skills.js";
 import type { ToolsConfig } from "./types.tools.js";
+import type { ZkConfig } from "./types.zk.js";
 
 export type OpenClawConfig = {
   meta?: {
@@ -122,6 +123,12 @@ export type OpenClawConfig = {
   gateway?: GatewayConfig;
   memory?: MemoryConfig;
   mcp?: McpConfig;
+  /**
+   * ZooKeeper coordination primitives + cross-host TaskFlow ownership.
+   * See `docs/plugins/zk.md`. Resolution: CLI flag > ZK_HOSTS env var >
+   * this config > default (in-cluster DNS).
+   */
+  zk?: ZkConfig;
 };
 
 declare const openClawConfigStateBrand: unique symbol;

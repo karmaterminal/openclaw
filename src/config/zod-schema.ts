@@ -230,6 +230,18 @@ const McpConfigSchema = z
   .strict()
   .optional();
 
+// ZooKeeper coordination config. See `src/config/types.zk.ts` + `docs/plugins/zk.md`.
+// Resolution: CLI flag > ZK_HOSTS env > persisted config (this schema) > default.
+const ZkConfigSchema = z
+  .object({
+    hosts: z.string().min(1).optional(),
+    chroot: z.string().min(1).optional(),
+    sessionTimeoutMs: z.number().int().positive().optional(),
+    connectTimeoutMs: z.number().int().positive().optional(),
+  })
+  .strict()
+  .optional();
+
 export const OpenClawSchema = z
   .object({
     $schema: z.string().optional(),
@@ -898,6 +910,7 @@ export const OpenClawSchema = z
       .optional(),
     memory: MemorySchema,
     mcp: McpConfigSchema,
+    zk: ZkConfigSchema,
     skills: z
       .object({
         allowBundled: z.array(z.string()).optional(),
