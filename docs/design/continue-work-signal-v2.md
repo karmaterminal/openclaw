@@ -1,6 +1,6 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** Implemented — gateway hook wired, 172 tests across 8 test files  
+**Status:** Implemented — gateway hook wired, ~180 tests across 13 test files  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#38780](https://github.com/openclaw/openclaw/pull/38780)  
@@ -483,6 +483,12 @@ The dedup rule is equality-based: the same band does not fire twice consecutivel
 
 `request_compaction()` fills the gap that appears when `idleTimeoutSeconds: 0` removes the timeout-based compaction path. At time of writing, that setting is necessary for some copilot proxy configurations and slow providers.
 
+**Session provider/model threading (2026-04-19, openclaw#191 / bootstrap#639).** The volitional path threads the session's active `provider` and `model` from the run context into `compactEmbeddedPiSession` at both call sites (`src/auto-reply/reply/agent-runner-execution.ts` and `src/auto-reply/reply/followup-runner.ts`). Earlier builds dropped these on the floor and `resolveEmbeddedCompactionTarget` fell through to `DEFAULT_PROVIDER`/`DEFAULT_MODEL` (`'openai'`/`'gpt-5.4'`), for which the persisted auth profile was usually wrong. The fleet-visible symptom was an instant (<1 s) failure with `Unknown model: openai/gpt-5.4` classified as `reason=unknown` in the journal. Three coupled defects were addressed together:
+
+1. **Root cause:** pass `run.provider` and `run.model` into the embedded compaction call.
+2. **Caller honesty:** both sites previously returned `{ ok: true, compacted: true }` unconditionally, causing `incrementVolitionalCompactionCount` to fire on phantom-successful compactions and lying to the `/status` `volitional` row. Both sites now honor the real result.
+3. **Visibility:** the resolve path now emits a `log.warn` on resolve-with-fallback so a future regression of this class is grep-visible. A new `unknown_model` classifier and an `isLegitSkipReason` helper distinguish legitimate no-ops (e.g. floor-rejected) from genuine failures in the journal. `authProfileId` is now threaded through the fallback scope only when the inner-scope provider matches the persisted primary, to avoid carrying a wrong-provider auth handle.
+
 When Trigger B is disabled, a session can climb from “still usable” to overflow with no proactive intervention unless D and E exist.
 
 `request_compaction()` therefore does three things:
@@ -691,18 +697,29 @@ Task Flow therefore aligns continuation delegates with the platform’s broader 
 
 The implementation emits stable log anchors for the major continuation lifecycle events.
 
-| Log prefix                         | Emitted by                  | Meaning                                               |
-| ---------------------------------- | --------------------------- | ----------------------------------------------------- |
-| `[context-pressure:fire]`          | `context-pressure.ts`       | pressure band crossed and event generated             |
-| `[system:context-pressure]`        | system-event queue          | event included in the next system prompt              |
-| `[continue_delegate:enqueue]`      | `continue-delegate-tool.ts` | tool call enqueued delegate work                      |
-| `[continuation:delegate-pending]`  | `agent-runner.ts`           | delegate chain state registered                       |
-| `[continuation:delegate-spawned]`  | `agent-runner.ts`           | child dispatched after delay or immediate acceptance  |
-| `[continuation/silent-wake]`       | `subagent-announce.ts`      | silent return will wake the parent                    |
-| `[continuation:enrichment-return]` | `subagent-announce.ts`      | silent return injected as system event                |
-| `requestHeartbeatNow`              | heartbeat wake path         | generation cycle requested after a silent-wake return |
+| Log prefix                         | Emitted by                  | Meaning                                                              |
+| ---------------------------------- | --------------------------- | -------------------------------------------------------------------- |
+| `[context-pressure:fire]`          | `context-pressure.ts`       | pressure band crossed and event generated                            |
+| `[context-pressure:noop]`          | `context-pressure.ts`       | pre-condition or guard suppressed the check (debug-level, see below) |
+| `[system:context-pressure]`        | system-event queue          | event included in the next system prompt                             |
+| `[continue_delegate:enqueue]`      | `continue-delegate-tool.ts` | tool call enqueued delegate work                                     |
+| `[continuation:delegate-pending]`  | `agent-runner.ts`           | delegate chain state registered                                      |
+| `[continuation:delegate-spawned]`  | `agent-runner.ts`           | child dispatched after delay or immediate acceptance                 |
+| `[continuation/silent-wake]`       | `subagent-announce.ts`      | silent return will wake the parent                                   |
+| `[continuation:enrichment-return]` | `subagent-announce.ts`      | silent return injected as system event                               |
+| `requestHeartbeatNow`              | heartbeat wake path         | generation cycle requested after a silent-wake return                |
 
 These anchors make the full pipeline grepable end to end.
+
+**`[context-pressure:noop]` reason taxonomy** (debug-level, gated behind `log.isEnabled("debug")` to avoid hot-path string interpolation):
+
+| `reason=`         | Meaning                                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| `window-zero`     | `contextWindow <= 0` — model context window not yet resolved for this turn                                      |
+| `below-threshold` | `ratio < threshold` — pressure ratio below the configured trigger; logs raw 4dp ratio alongside rounded percent |
+| `band-dedup`      | `band === previous` — same pressure band as the previous fire; suppressed to avoid repeat-event flood           |
+
+**Investigation cycle (bootstrap#580).** Earlier in 2026-04 the fleet observed zero `[context-pressure:fire]` lines despite continuation flowing normally. A short-lived `:reach`/`:skip` instrumentation pair in `agent-runner.ts` was added to confirm the outer guard was being entered, then removed once the root cause was found: the dedup-band sentinel used `?? 0`, which collided with `band === 0` for sessions whose `contextPressureThreshold` was below the lowest hard-coded pressure band (25 %). The first crossing of band 0 was therefore dedup-suppressed silently. The fix is a `-1` missing-key sentinel, so the first crossing of any band — including band 0 — fires once.
 
 ### 6.2 Lifecycle traces
 
@@ -748,11 +765,13 @@ Representative runtime traces are shown below.
 
 ### 6.3 `/status` continuation telemetry
 
-When continuation is enabled and at least one field is non-zero, `/status` can surface the continuation state:
+When continuation is enabled and at least one field is non-zero, `/status` surfaces the continuation state in both the CLI status report and the Discord/agent `/status` reply:
 
 ```text
 🔄 Continuation: chain 3/10 | 2 delegates pending | 1 post-compaction staged | volitional: 1
 ```
+
+The Discord/agent path through `src/auto-reply/status.ts` was disconnected during an unrelated refactor and restored at openclaw#187. The render is gated on (a) continuation enabled in the resolved config, and (b) at least one of the four fields being non-zero — both gates are unit-tested in `src/auto-reply/status.test.ts`. The `volitional: N` field reflects an honest count of agent-initiated compactions only after openclaw#191 stopped the volitional path from incrementing the counter on phantom-successful (actually-failed) compactions; see §4.3.
 
 | Field                      | Source                                        | Meaning                                                   |
 | -------------------------- | --------------------------------------------- | --------------------------------------------------------- |
@@ -793,7 +812,7 @@ Operational fleet evidence from 2026-04-03 across four persistent OpenClaw insta
 
 In that build, `checkContextPressure()` existed but had not yet been wired into the reply pipeline. The result was a measurable divergence between instances that compacted and those that did not.
 
-The current canary (post-2026-04-14) does wire `checkContextPressure()` into the reply pipeline (`src/auto-reply/reply/agent-runner.ts`, pre-run injection). Fleet observation on the current wire is that post-compaction band-0 events fire as specified, while pre-fire (non-post-compaction) band≥1 events have been observed at 0 across n=3 hosts in strict-grep measurement of the `[context-pressure:fire]` log anchor. This is consistent with the §4.2 precondition note: sessions either never cross the configured threshold during steady-state operation, or the `totalTokens` short-circuit drops the check on the turns where they would. Distinguishing the two hypotheses requires instrumentation at the call site to emit which branch skipped (threshold vs. accounting) — that instrumentation is not currently in place.
+The current canary (post-2026-04-14) does wire `checkContextPressure()` into the reply pipeline (`src/auto-reply/reply/agent-runner.ts`, pre-run injection). Fleet observation on the current wire is that post-compaction band-0 events fire as specified, while pre-fire (non-post-compaction) band≥1 events have been observed at 0 across n=3 hosts in strict-grep measurement of the `[context-pressure:fire]` log anchor. This is consistent with the §4.2 precondition note: sessions either never cross the configured threshold during steady-state operation, or the `totalTokens` short-circuit drops the check on the turns where they would. Distinguishing the two hypotheses required instrumentation at the call site to emit which branch skipped (threshold vs. accounting). That instrumentation has since landed: the `[context-pressure:noop] reason=…` debug breadcrumbs documented in §6.1 (openclaw#164, #173) tag each suppressed check with `window-zero`, `below-threshold`, or `band-dedup`. Follow-on work (openclaw#171, #172) also identified and fixed an unrelated suppression cause: the band-dedup sentinel collided with `band === 0` for sub-25 % thresholds, silently swallowing every first-crossing fire on those sessions. After that fix, band-0 fires are observed as specified, and the remaining absence of higher-band fires on steady-state sessions is attributable to the `totalTokens`/`contextWindow` precondition rather than to dedup.
 
 ### 6.5 Operator observability and hot reload
 
@@ -1178,6 +1197,19 @@ A synchronous compaction mode is not implemented.
 | evacuation loop                            | bounded by `maxChainLength`                                      |
 | repeated pressure events                   | bounded by pressure-band dedup                                   |
 
+**Closed failure modes** (documented here so the class is searchable; the fix is in the canary):
+
+| Failure                                                                  | Class                         | Closed by                    |
+| ------------------------------------------------------------------------ | ----------------------------- | ---------------------------- |
+| volitional compaction phantom-counter (failed compaction recorded as ok) | caller dropped real result    | openclaw#191 / bootstrap#639 |
+| volitional compaction silent failure with wrong provider/model auth      | wrong defaults at fallback    | openclaw#191 / bootstrap#639 |
+| hedge timer ref leak on natural fire (one ref + one live-handle/session) | unregister missed in callback | openclaw#193 / bootstrap#189 |
+| band-0 first-crossing dedup-suppressed for sub-25 % thresholds           | sentinel collision            | openclaw#172 / bootstrap#580 |
+| context-pressure precondition skip indistinguishable from no-cross       | no breadcrumb at skip site    | openclaw#164 / bootstrap#580 |
+| compaction summarization fails fleet-wide on Copilot IDE auth            | missing IDE headers           | openclaw#160                 |
+| dist-bundled satellite chunks split per-session singletons               | dynamic-import chunking       | openclaw#162 / bootstrap#584 |
+| subagent-announce continuation drain `ERR_MODULE_NOT_FOUND` at runtime   | flat-dist subdir mismatch     | openclaw#169 / bootstrap#473 |
+
 ### C.2 Inherited behavioral limitations
 
 The continuation system inherits three broader limitations from persistent deployments:
@@ -1217,15 +1249,23 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 
 ### D.2 Evidence locations
 
-| Artifact                  | Location                                                                                                                                                               |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Swim 7 structured results | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27)                                                           |
-| Gateway journal           | [`swim-logs/` on `silas-likes-to-watch/main`](https://github.com/karmaterminal/silas-likes-to-watch/tree/main/swim-logs)                                               |
-| Raw operator log capture  | [`swim7-silas-raw-figs-capture-2026-03-06.log`](https://github.com/karmaterminal/silas-likes-to-watch/blob/main/swim-logs/swim7-silas-raw-figs-capture-2026-03-06.log) |
-| Swim 7 chat transcript    | [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch                                                     |
-| Swim 8 evidence           | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                     |
-| Swim 9 issue + results    | [`karmaterminal/openclaw-bootstrap#375`](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)                                                               |
-| Swim 10 issue + results   | [`karmaterminal/openclaw-bootstrap#377`](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)                                                               |
+| Artifact                                                                 | Location                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Swim 7 structured results                                                | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27)                                                                                                  |
+| Gateway journal                                                          | [`swim-logs/` on `silas-likes-to-watch/main`](https://github.com/karmaterminal/silas-likes-to-watch/tree/main/swim-logs)                                                                                      |
+| Raw operator log capture                                                 | [`swim7-silas-raw-figs-capture-2026-03-06.log`](https://github.com/karmaterminal/silas-likes-to-watch/blob/main/swim-logs/swim7-silas-raw-figs-capture-2026-03-06.log)                                        |
+| Swim 7 chat transcript                                                   | [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch                                                                                            |
+| Swim 8 evidence                                                          | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                            |
+| Swim 9 issue + results                                                   | [`karmaterminal/openclaw-bootstrap#375`](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)                                                                                                      |
+| Swim 10 issue + results                                                  | [`karmaterminal/openclaw-bootstrap#377`](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)                                                                                                      |
+| Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191) |
+| Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                 |
+| `/status` continuation row (Discord/agent)                               | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts` (openclaw#187, #188)                                                                                                                             |
+| `request_compaction()` tool surface tests                                | `src/agents/tools/request-compaction-tool.test.ts` (openclaw#165, swim-34/X5.1)                                                                                                                               |
+| Context-pressure noop breadcrumbs + sentinel                             | `src/auto-reply/continuation/context-pressure.ts` (openclaw#164, #171, #172, #173)                                                                                                                            |
+| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162 / bootstrap#584)                                                                                                             |
+| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169 / bootstrap#473)                                                                                                                         |
+| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170 / bootstrap#531)                                                                                                                                |
 
 ### D.3 Swim 7 scorecard and evidence lines
 
