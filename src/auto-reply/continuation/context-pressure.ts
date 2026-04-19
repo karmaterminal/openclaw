@@ -62,6 +62,9 @@ export function checkContextPressure(params: {
   const { sessionKey, totalTokens, contextWindow, threshold, postCompaction } = params;
 
   if (contextWindow <= 0) {
+    log.debug(
+      `[context-pressure:noop] reason=window-zero contextWindow=${contextWindow} session=${sessionKey}`,
+    );
     return null;
   }
 
@@ -84,6 +87,9 @@ export function checkContextPressure(params: {
 
   // Below threshold: don't fire.
   if (ratio < threshold) {
+    log.debug(
+      `[context-pressure:noop] reason=below-threshold ratio=${percentUsed}% threshold=${Math.round(threshold * 100)}% session=${sessionKey}`,
+    );
     return null;
   }
 
@@ -92,6 +98,9 @@ export function checkContextPressure(params: {
   // Dedup: same band as last time → suppress.
   const previous = lastFiredBand.get(sessionKey) ?? 0;
   if (band === previous) {
+    log.debug(
+      `[context-pressure:noop] reason=band-dedup band=${band} previous=${previous} ratio=${percentUsed}% session=${sessionKey}`,
+    );
     return null;
   }
 
