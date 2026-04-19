@@ -1172,7 +1172,11 @@ export async function runReplyAgent(params: {
       usageIsContextSnapshot: isCliProvider(providerUsed, cfg),
     });
 
-    const hasQueuedDelegateWork =
+    // F-STALL fix: use a live closure instead of a snapshot for queued-delegate checks.
+    // Delegates enqueued mid-turn via continue_delegate are invisible to a snapshot taken
+    // before the model run. The closure rechecks on every call so early-return guards
+    // don't bail before delegate consumption.
+    const checkQueuedDelegateWorkNow = () =>
       continuationFeatureEnabled &&
       !!sessionKey &&
       (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
@@ -1181,7 +1185,11 @@ export async function runReplyAgent(params: {
     // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
     // keep the typing indicator stuck. A tool-only continuation turn may have no visible
     // text while still needing delegate consumption/persistence below.
-    if (payloadArray.length === 0 && !hasQueuedDelegateWork && !effectiveContinuationSignal) {
+    if (
+      payloadArray.length === 0 &&
+      !checkQueuedDelegateWorkNow() &&
+      !effectiveContinuationSignal
+    ) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
@@ -1220,7 +1228,8 @@ export async function runReplyAgent(params: {
       // If the agent replied with only a continuation signal (e.g. bare CONTINUE_WORK),
       // the signal was stripped and all payloads became empty. We still need to process
       // the continuation below. Tool-only delegate turns also pass through here.
-      if (!effectiveContinuationSignal && !hasQueuedDelegateWork) {
+      // F-STALL fix: recheck live — same rationale as the guard above.
+      if (!effectiveContinuationSignal && !checkQueuedDelegateWorkNow()) {
         return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
       }
     }

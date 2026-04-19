@@ -67,6 +67,9 @@ export async function resolveCommandsSystemPromptBundle(
     }
   })();
   const skillsPrompt = skillsSnapshot.prompt ?? "";
+  // Continuation: provide no-op requestCompactionOpts so the system prompt tool
+  // list includes request_compaction when continuation is enabled (TC3 §2.1).
+  const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
   const tools = (() => {
     try {
       return createOpenClawCodingTools({
@@ -87,6 +90,20 @@ export async function resolveCommandsSystemPromptBundle(
         senderIsOwner: params.command.senderIsOwner,
         modelProvider: params.provider,
         modelId: params.model,
+        ...(continuationEnabled
+          ? {
+              requestCompactionOpts: {
+                getContextUsage: () => 0,
+                getSessionGeneration: () => 0,
+                turnGeneration: 0,
+                triggerCompaction: async () => ({
+                  ok: false,
+                  compacted: false,
+                  reason: "system-prompt-only",
+                }),
+              },
+            }
+          : {}),
       });
     } catch {
       return [];

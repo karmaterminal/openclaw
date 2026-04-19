@@ -323,6 +323,36 @@ export function createFollowupRunner(params: {
         });
       }
 
+      // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
+      // Without this, delegates enqueued during followup turns stall until
+      // the next inbound message triggers runReplyAgent (F-STALL fix).
+      const followupSessionKey = run.sessionKey ?? sessionKey;
+      if (runtimeConfig?.agents?.defaults?.continuation?.enabled === true && followupSessionKey) {
+        const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+        const currentEntry = sessionKey && sessionStore ? sessionStore[sessionKey] : sessionEntry;
+        const dispatchChainState = {
+          currentChainCount: currentEntry?.continuationChainCount ?? 0,
+          chainStartedAt: currentEntry?.continuationChainStartedAt ?? Date.now(),
+          accumulatedChainTokens: (currentEntry?.continuationChainTokens ?? 0) + turnTokens,
+        };
+        const { dispatchToolDelegates } = await import("../continuation-delegate-dispatch.js");
+        await dispatchToolDelegates({
+          sessionKey: followupSessionKey,
+          chainState: dispatchChainState,
+          ctx: {
+            sessionKey: followupSessionKey,
+            agentChannel: queued.originatingChannel ?? undefined,
+            agentAccountId: queued.originatingAccountId ?? undefined,
+            agentTo: queued.originatingTo ?? undefined,
+            agentThreadId: queued.originatingThreadId ?? undefined,
+          },
+          maxChainLength: (
+            await import("./continuation-runtime.js")
+          ).resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
+          cfg: runtimeConfig,
+        });
+      }
+
       const payloadArray = runResult.payloads ?? [];
       if (payloadArray.length === 0) {
         return;

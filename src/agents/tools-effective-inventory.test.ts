@@ -285,4 +285,40 @@ describe("resolveEffectiveToolInventory", () => {
       }),
     );
   });
+
+  // TC3 regression: request_compaction must appear in tool inventory when continuation is enabled.
+  it("passes requestCompactionOpts when continuation.enabled is true (TC3)", async () => {
+    const createToolsMock = vi.fn<typeof createOpenClawCodingTools>(() => [
+      mockTool({ name: "exec", label: "Exec", description: "Run shell commands" }),
+    ]);
+    const { resolveEffectiveToolInventory } = await loadHarness({ createToolsMock });
+
+    resolveEffectiveToolInventory({
+      cfg: { agents: { defaults: { continuation: { enabled: true } } } },
+    });
+
+    const callOpts = createToolsMock.mock.calls[0]?.[0];
+    expect(callOpts?.requestCompactionOpts).toBeDefined();
+    expect(callOpts?.requestCompactionOpts?.getContextUsage).toBeTypeOf("function");
+    expect(callOpts?.requestCompactionOpts?.getSessionGeneration).toBeTypeOf("function");
+    expect(callOpts?.requestCompactionOpts?.triggerCompaction).toBeTypeOf("function");
+    // Stub must be a no-op: getContextUsage returns 0, triggerCompaction returns not-compacted.
+    expect(callOpts?.requestCompactionOpts?.getContextUsage()).toBe(0);
+    expect(callOpts?.requestCompactionOpts?.getSessionGeneration()).toBe(0);
+    expect(callOpts?.requestCompactionOpts?.turnGeneration).toBe(0);
+    const compactResult = await callOpts?.requestCompactionOpts?.triggerCompaction();
+    expect(compactResult).toMatchObject({ ok: false, compacted: false });
+  });
+
+  it("omits requestCompactionOpts when continuation is not enabled (TC3)", async () => {
+    const createToolsMock = vi.fn<typeof createOpenClawCodingTools>(() => [
+      mockTool({ name: "exec", label: "Exec", description: "Run shell commands" }),
+    ]);
+    const { resolveEffectiveToolInventory } = await loadHarness({ createToolsMock });
+
+    resolveEffectiveToolInventory({ cfg: {} });
+
+    const callOpts = createToolsMock.mock.calls[0]?.[0];
+    expect(callOpts?.requestCompactionOpts).toBeUndefined();
+  });
 });

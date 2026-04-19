@@ -960,6 +960,36 @@ async function agentCommandInternal(
       });
     }
 
+    // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
+    // Without this, delegates enqueued by subagent turns are orphaned because
+    // the agent-command path does not go through runReplyAgent (F7 fix).
+    if (cfg?.agents?.defaults?.continuation?.enabled === true && sessionKey) {
+      const usage = result.meta?.agentMeta?.usage;
+      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const dispatchChainState = {
+        currentChainCount: sessionEntry?.continuationChainCount ?? 0,
+        chainStartedAt: sessionEntry?.continuationChainStartedAt ?? Date.now(),
+        accumulatedChainTokens: (sessionEntry?.continuationChainTokens ?? 0) + turnTokens,
+      };
+      const { dispatchToolDelegates } =
+        await import("../auto-reply/continuation-delegate-dispatch.js");
+      await dispatchToolDelegates({
+        sessionKey,
+        chainState: dispatchChainState,
+        ctx: {
+          sessionKey,
+          agentChannel: opts.channel ?? undefined,
+          agentAccountId: opts.accountId ?? undefined,
+          agentTo: opts.to ?? undefined,
+          agentThreadId: opts.threadId ?? undefined,
+        },
+        maxChainLength: (
+          await import("../auto-reply/reply/continuation-runtime.js")
+        ).resolveContinuationRuntimeConfig(cfg).maxChainLength,
+        cfg,
+      });
+    }
+
     const payloads = result.payloads ?? [];
     return await deliverAgentCommandResult({
       cfg,
