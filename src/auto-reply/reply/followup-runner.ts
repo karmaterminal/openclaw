@@ -277,6 +277,13 @@ export function createFollowupRunner(params: {
                             // dispatcher (line 207) so a fallback-selected model
                             // gets the compaction request, not the persisted primary
                             // (which may be in cooldown — would re-fail immediately).
+                            // bug #639 (scribe follow-up): thread authProfileId only
+                            // when the inner-scope provider matches the persisted primary
+                            // (the persisted profile is keyed to the primary). On fallback
+                            // to a different provider, leave undefined so resolveEmbedded-
+                            // CompactionTarget picks the default profile for that provider.
+                            const compactionAuthProfileId =
+                              provider === run.provider ? run.authProfileId : undefined;
                             const result = await compactEmbeddedPiSession({
                               sessionId: run.sessionId ?? "",
                               sessionKey: run.sessionKey,
@@ -285,6 +292,7 @@ export function createFollowupRunner(params: {
                               messageProvider: run.messageProvider,
                               provider,
                               model,
+                              authProfileId: compactionAuthProfileId,
                             });
                             // bug #639: honor real result instead of unconditionally claiming
                             // success — otherwise volitional-compaction telemetry lies and the
