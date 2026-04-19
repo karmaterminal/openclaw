@@ -13,6 +13,7 @@ import { resolveSandboxRuntimeStatus } from "../agents/sandbox.js";
 import { describeToolForVerbose } from "../agents/tool-description-summary.js";
 import { normalizeToolName } from "../agents/tool-policy-shared.js";
 import type { EffectiveToolInventoryResult } from "../agents/tools-effective-inventory.types.js";
+import { getVolitionalCompactionCount } from "../agents/tools/request-compaction-tool.js";
 import { resolveChannelModelOverride } from "../channels/model-overrides.js";
 import {
   resolveMainSessionKey,
@@ -46,6 +47,11 @@ import {
   resolveModelCostConfig,
 } from "../utils/usage-format.js";
 import { VERSION } from "../version.js";
+import { resolveContinuationRuntimeConfig } from "./continuation/config.js";
+import {
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
+} from "./continuation/delegate-store.js";
 export {
   buildCommandsMessage,
   buildCommandsMessagePaginated,
@@ -682,9 +688,9 @@ export function buildStatusMessage(args: StatusArgs): string {
   const queueDetails = formatQueueDetails(args.queue);
   const verboseLabel =
     verboseLevel === "full" ? "verbose:full" : verboseLevel === "on" ? "verbose" : null;
-  const traceLevel = entry?.traceLevel === "raw" ? "raw" : entry?.traceLevel === "on" ? "on" : "off";
-  const traceLabel =
-    traceLevel === "raw" ? "trace:raw" : traceLevel === "on" ? "trace" : null;
+  const traceLevel =
+    entry?.traceLevel === "raw" ? "raw" : entry?.traceLevel === "on" ? "on" : "off";
+  const traceLabel = traceLevel === "raw" ? "trace:raw" : traceLevel === "on" ? "trace" : null;
   const pluginStatusLines = verboseLevel !== "off" ? resolveSessionPluginStatusLines(entry) : [];
   const pluginTraceLines =
     traceLevel === "on" || traceLevel === "raw" ? resolveSessionPluginTraceLines(entry) : [];
@@ -830,6 +836,58 @@ export function buildStatusMessage(args: StatusArgs): string {
     : null;
   const commit = resolveCommitHash({ moduleUrl: import.meta.url });
   const versionLine = `🦞 OpenClaw ${VERSION}${commit ? ` (${commit})` : ""}`;
+  const continuationLine = (() => {
+    const sk = args.sessionKey;
+    if (!sk) {
+      return null;
+    }
+    let chainCount = 0;
+    let pending = 0;
+    let staged = 0;
+    let volitional = 0;
+    let maxChain = 0;
+    try {
+      chainCount = args.sessionEntry?.continuationChainCount ?? 0;
+    } catch {
+      /* noop */
+    }
+    try {
+      pending = pendingDelegateCount(sk);
+    } catch {
+      /* noop */
+    }
+    try {
+      staged = stagedPostCompactionDelegateCount(sk);
+    } catch {
+      /* noop */
+    }
+    try {
+      volitional = getVolitionalCompactionCount(sk);
+    } catch {
+      /* noop */
+    }
+    try {
+      const cfg = resolveContinuationRuntimeConfig(args.config);
+      maxChain = cfg.maxChainLength;
+    } catch {
+      /* noop */
+    }
+    if (chainCount === 0 && pending === 0 && staged === 0 && volitional === 0) {
+      return null;
+    }
+    const parts: string[] = [];
+    parts.push(`chain ${chainCount}/${maxChain || "?"}`);
+    if (pending > 0) {
+      parts.push(`${pending} delegate${pending === 1 ? "" : "s"} pending`);
+    }
+    if (staged > 0) {
+      parts.push(`${staged} post-compaction staged`);
+    }
+    if (volitional > 0) {
+      parts.push(`volitional: ${volitional}`);
+    }
+    return `🔄 Continuation: ${parts.join(" | ")}`;
+  })();
   const usagePair = formatUsagePair(inputTokens, outputTokens);
   const cacheLine = formatCacheLine(inputTokens, cacheRead, cacheWrite);
   const costLine = costLabel ? `💵 Cost: ${costLabel}` : null;
@@ -847,6 +905,7 @@ export function buildStatusMessage(args: StatusArgs): string {
     usageCostLine,
     cacheLine,
     `📚 ${contextLine}`,
+    continuationLine,
     mediaLine,
     args.usageLine,
     `🧵 ${sessionLine}`,
