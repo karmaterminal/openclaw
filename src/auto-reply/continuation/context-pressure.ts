@@ -62,9 +62,11 @@ export function checkContextPressure(params: {
   const { sessionKey, totalTokens, contextWindow, threshold, postCompaction } = params;
 
   if (contextWindow <= 0) {
-    log.debug(
-      `[context-pressure:noop] reason=window-zero contextWindow=${contextWindow} session=${sessionKey}`,
-    );
+    if (log.isEnabled("debug")) {
+      log.debug(
+        `[context-pressure:noop] reason=window-zero contextWindow=${contextWindow} session=${sessionKey}`,
+      );
+    }
     return null;
   }
 
@@ -87,9 +89,13 @@ export function checkContextPressure(params: {
 
   // Below threshold: don't fire.
   if (ratio < threshold) {
-    log.debug(
-      `[context-pressure:noop] reason=below-threshold ratio=${percentUsed}% threshold=${Math.round(threshold * 100)}% session=${sessionKey}`,
-    );
+    if (log.isEnabled("debug")) {
+      // Log raw ratio/threshold (4dp) alongside rounded percent so the breadcrumb
+      // is unambiguous when rounded values would coincide (e.g. 6%==6% but ratio<threshold).
+      log.debug(
+        `[context-pressure:noop] reason=below-threshold ratio=${percentUsed}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
+      );
+    }
     return null;
   }
 
@@ -98,9 +104,11 @@ export function checkContextPressure(params: {
   // Dedup: same band as last time → suppress.
   const previous = lastFiredBand.get(sessionKey) ?? 0;
   if (band === previous) {
-    log.debug(
-      `[context-pressure:noop] reason=band-dedup band=${band} previous=${previous} ratio=${percentUsed}% session=${sessionKey}`,
-    );
+    if (log.isEnabled("debug")) {
+      log.debug(
+        `[context-pressure:noop] reason=band-dedup band=${band} previous=${previous} ratio=${percentUsed}% session=${sessionKey}`,
+      );
+    }
     return null;
   }
 
