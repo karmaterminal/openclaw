@@ -78,9 +78,7 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
 - [Appendix D. Detailed implementation evidence](#appendix-d-detailed-implementation-evidence)
   - [D.1 Context-pressure inclusion sketch](#d1-context-pressure-inclusion-sketch)
   - [D.2 Evidence locations](#d2-evidence-locations)
-  - [D.3 Swim 7 scorecard and evidence lines](#d3-swim-7-scorecard-and-evidence-lines)
-  - [D.4 Swim 8 detailed results](#d4-swim-8-detailed-results)
-  - [D.5 Swim 9 and Swim 10 detailed results](#d5-swim-9-and-swim-10-detailed-results)
+  - [D.3 Most-recent integration test session results (Swim 9 and Swim 10)](#d3-most-recent-integration-test-session-results-swim-9-and-swim-10)
 
 ## 1. Problem
 
@@ -512,7 +510,7 @@ Operational flow:
 7. successor session resumes with boot files, summary, and enrichment
 ```
 
-**Session provider/model threading (2026-04-19, openclaw#191 / bootstrap#639).** Once the operational flow above lands, the same code path needs the right inputs to actually do the compaction. The volitional path threads the session's active `provider` and `model` from the run context into `compactEmbeddedPiSession` at both call sites (`src/auto-reply/reply/agent-runner-execution.ts` and `src/auto-reply/reply/followup-runner.ts`). Earlier builds dropped these on the floor and `resolveEmbeddedCompactionTarget` fell through to `DEFAULT_PROVIDER`/`DEFAULT_MODEL` (`'openai'`/`'gpt-5.4'`), for which the persisted auth profile was usually wrong. The fleet-visible symptom was an instant (<1 s) failure with `Unknown model: openai/gpt-5.4` classified as `reason=unknown` in the journal. Three coupled defects were addressed together:
+**Session provider/model threading (2026-04-19, openclaw#191).** Once the operational flow above lands, the same code path needs the right inputs to actually do the compaction. The volitional path threads the session's active `provider` and `model` from the run context into `compactEmbeddedPiSession` at both call sites (`src/auto-reply/reply/agent-runner-execution.ts` and `src/auto-reply/reply/followup-runner.ts`). Earlier builds dropped these on the floor and `resolveEmbeddedCompactionTarget` fell through to `DEFAULT_PROVIDER`/`DEFAULT_MODEL` (`'openai'`/`'gpt-5.4'`), for which the persisted auth profile was usually wrong. The deployed-instance symptom was an instant (<1 s) failure with `Unknown model: openai/gpt-5.4` classified as `reason=unknown` in the journal. Three coupled defects were addressed together:
 
 1. **Root cause:** pass `run.provider` and `run.model` into the embedded compaction call.
 2. **Caller honesty:** both sites previously returned `{ ok: true, compacted: true }` unconditionally, causing `incrementVolitionalCompactionCount` to fire on phantom-successful compactions and lying to the `/status` `volitional` row. Both sites now honor the real result.
@@ -719,7 +717,7 @@ These anchors make the full pipeline grepable end to end.
 | `below-threshold` | `ratio < threshold` — pressure ratio below the configured trigger; logs raw 4dp ratio alongside rounded percent |
 | `band-dedup`      | `band === previous` — same pressure band as the previous fire; suppressed to avoid repeat-event flood           |
 
-**Investigation cycle (bootstrap#580).** Earlier in 2026-04 the fleet observed zero `[context-pressure:fire]` lines despite continuation flowing normally. A short-lived `:reach`/`:skip` instrumentation pair in `agent-runner.ts` was added to confirm the outer guard was being entered, then removed once the root cause was found: the dedup-band sentinel used `?? 0`, which collided with `band === 0` for sessions whose `contextPressureThreshold` was below the lowest hard-coded pressure band (25 %). The first crossing of band 0 was therefore dedup-suppressed silently. The fix is a `-1` missing-key sentinel, so the first crossing of any band — including band 0 — fires once.
+**Investigation cycle.** Earlier in 2026-04, deployed instances observed zero `[context-pressure:fire]` lines despite continuation flowing normally. A short-lived `:reach`/`:skip` instrumentation pair in `agent-runner.ts` was added to confirm the outer guard was being entered, then removed once the root cause was found: the dedup-band sentinel used `?? 0`, which collided with `band === 0` for sessions whose `contextPressureThreshold` was below the lowest hard-coded pressure band (25 %). The first crossing of band 0 was therefore dedup-suppressed silently. The fix is a `-1` missing-key sentinel, so the first crossing of any band — including band 0 — fires once.
 
 ### 6.2 Lifecycle traces
 
@@ -812,7 +810,7 @@ Operational fleet evidence from 2026-04-03 across four persistent OpenClaw insta
 
 In that build, `checkContextPressure()` existed but had not yet been wired into the reply pipeline. The result was a measurable divergence between instances that compacted and those that did not.
 
-The current canary (post-2026-04-14) does wire `checkContextPressure()` into the reply pipeline (`src/auto-reply/reply/agent-runner.ts`, pre-run injection). Fleet observation on the current wire is that post-compaction band-0 events fire as specified, while pre-fire (non-post-compaction) band≥1 events have been observed at 0 across n=3 hosts in strict-grep measurement of the `[context-pressure:fire]` log anchor. This is consistent with the §4.2 precondition note: sessions either never cross the configured threshold during steady-state operation, or the `totalTokens` short-circuit drops the check on the turns where they would. Distinguishing the two hypotheses required instrumentation at the call site to emit which branch skipped (threshold vs. accounting). That instrumentation has since landed: the `[context-pressure:noop] reason=…` debug breadcrumbs documented in §6.1 (openclaw#164, #173) tag each suppressed check with `window-zero`, `below-threshold`, or `band-dedup`. Follow-on work (openclaw#171, #172) also identified and fixed an unrelated suppression cause: the band-dedup sentinel collided with `band === 0` for sub-25 % thresholds, silently swallowing every first-crossing fire on those sessions. After that fix, band-0 fires are observed as specified, and the remaining absence of higher-band fires on steady-state sessions is attributable to the `totalTokens`/`contextWindow` precondition rather than to dedup.
+The current canary (post-2026-04-14) does wire `checkContextPressure()` into the reply pipeline (`src/auto-reply/reply/agent-runner.ts`, pre-run injection). Observation on the current wire is that post-compaction band-0 events fire as specified, while pre-fire (non-post-compaction) band≥1 events have been observed at 0 across n=3 instances in strict-grep measurement of the `[context-pressure:fire]` log anchor. This is consistent with the §4.2 precondition note: sessions either never cross the configured threshold during steady-state operation, or the `totalTokens` short-circuit drops the check on the turns where they would. Distinguishing the two hypotheses required instrumentation at the call site to emit which branch skipped (threshold vs. accounting). That instrumentation has since landed: the `[context-pressure:noop] reason=…` debug breadcrumbs documented in §6.1 (openclaw#164, #173) tag each suppressed check with `window-zero`, `below-threshold`, or `band-dedup`. Follow-on work (openclaw#171, #172) also identified and fixed an unrelated suppression cause: the band-dedup sentinel collided with `band === 0` for sub-25 % thresholds, silently swallowing every first-crossing fire on those sessions. After that fix, band-0 fires are observed as specified, and the remaining absence of higher-band fires on steady-state sessions is attributable to the `totalTokens`/`contextWindow` precondition rather than to dedup.
 
 ### 6.5 Operator observability and hot reload
 
@@ -980,48 +978,7 @@ Overall: **10/12 passed**. When dispatch occurred correctly, the accuracy rate w
 
 ### 9.4 Integration test session results
 
-#### Swim 7
-
-Swim 7 validated tolerance hot reload, width hot reload, chain boundary behavior, textless-turn delegate consumption, and silent-return trust boundaries.
-
-Headline scorecard:
-
-- 10 pass,
-- 2 deferred,
-- 0 fail.
-
-Notable confirmations:
-
-- tolerance hot reload from 0 to 300 changed live timer behavior;
-- width widened from 5 to 12 and narrowed back to 3 without restart;
-- `NO_REPLY`-only turns still consumed pending delegates;
-- blind enrichment returned verifiable facts with honest source attribution when probed carefully.
-
-#### Swim 8
-
-Swim 8 focused on tool usage inside delegate chains.
-
-Headline scorecard:
-
-- 6 pass,
-- 1 documented finding,
-- 0 fail.
-
-Validated items included:
-
-- tool-based delegate chain hops,
-- silent propagation into hop 2,
-- `maxDelegatesPerTurn` enforcement,
-- corrected `maxChainLength` behavior,
-- `DENY_LEAF` enforcement.
-
-Three issues were found and fixed live:
-
-1. `doToolSpawn()` was missing the drain flag required for sub-agent delegate consumption.
-2. The chain-length guard used `>` instead of `>=`.
-3. A silent-reply edge case obscured cost-cap rejection logging.
-
-The one documented finding was mixed tool plus bracket usage in the same sub-agent turn. The tool path is reliable; concurrent mixed usage is unsupported and produces ambiguous consumption order.
+Detailed scorecards for the most-recent full-coverage canary sessions are preserved in Appendix D. The headline coverage of feature shipping was Swim 9 (context-pressure and volitional compaction) and Swim 10 (full tool parity).
 
 #### Swim 9
 
@@ -1199,16 +1156,16 @@ A synchronous compaction mode is not implemented.
 
 **Closed failure modes** (documented here so the class is searchable; the fix is in the canary):
 
-| Failure                                                                  | Class                         | Closed by                    |
-| ------------------------------------------------------------------------ | ----------------------------- | ---------------------------- |
-| volitional compaction phantom-counter (failed compaction recorded as ok) | caller dropped real result    | openclaw#191 / bootstrap#639 |
-| volitional compaction silent failure with wrong provider/model auth      | wrong defaults at fallback    | openclaw#191 / bootstrap#639 |
-| hedge timer ref leak on natural fire (one ref + one live-handle/session) | unregister missed in callback | openclaw#193 / bootstrap#189 |
-| band-0 first-crossing dedup-suppressed for sub-25 % thresholds           | sentinel collision            | openclaw#172 / bootstrap#580 |
-| context-pressure precondition skip indistinguishable from no-cross       | no breadcrumb at skip site    | openclaw#164 / bootstrap#580 |
-| compaction summarization fails fleet-wide on Copilot IDE auth            | missing IDE headers           | openclaw#160                 |
-| dist-bundled satellite chunks split per-session singletons               | dynamic-import chunking       | openclaw#162 / bootstrap#584 |
-| subagent-announce continuation drain `ERR_MODULE_NOT_FOUND` at runtime   | flat-dist subdir mismatch     | openclaw#169 / bootstrap#473 |
+| Failure                                                                      | Class                         | Closed by    |
+| ---------------------------------------------------------------------------- | ----------------------------- | ------------ |
+| volitional compaction phantom-counter (failed compaction recorded as ok)     | caller dropped real result    | openclaw#191 |
+| volitional compaction silent failure with wrong provider/model auth          | wrong defaults at fallback    | openclaw#191 |
+| hedge timer ref leak on natural fire (one ref + one live-handle/session)     | unregister missed in callback | openclaw#193 |
+| band-0 first-crossing dedup-suppressed for sub-25 % thresholds               | sentinel collision            | openclaw#172 |
+| context-pressure precondition skip indistinguishable from no-cross           | no breadcrumb at skip site    | openclaw#164 |
+| compaction summarization fails across deployed instances on Copilot IDE auth | missing IDE headers           | openclaw#160 |
+| dist-bundled satellite chunks split per-session singletons                   | dynamic-import chunking       | openclaw#162 |
+| subagent-announce continuation drain `ERR_MODULE_NOT_FOUND` at runtime       | flat-dist subdir mismatch     | openclaw#169 |
 
 ### C.2 Inherited behavioral limitations
 
@@ -1256,94 +1213,33 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 | Raw operator log capture                                                 | [`swim7-silas-raw-figs-capture-2026-03-06.log`](https://github.com/karmaterminal/silas-likes-to-watch/blob/main/swim-logs/swim7-silas-raw-figs-capture-2026-03-06.log)                                        |
 | Swim 7 chat transcript                                                   | [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch                                                                                            |
 | Swim 8 evidence                                                          | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                            |
-| Swim 9 issue + results                                                   | [`karmaterminal/openclaw-bootstrap#375`](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)                                                                                                      |
-| Swim 10 issue + results                                                  | [`karmaterminal/openclaw-bootstrap#377`](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)                                                                                                      |
+| Swim 9 + 10 issue captures and results                                   | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                            |
 | Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191) |
 | Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                 |
 | `/status` continuation row (Discord/agent)                               | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts` (openclaw#187, #188)                                                                                                                             |
 | `request_compaction()` tool surface tests                                | `src/agents/tools/request-compaction-tool.test.ts` (openclaw#165, swim-34/X5.1)                                                                                                                               |
 | Context-pressure noop breadcrumbs + sentinel                             | `src/auto-reply/continuation/context-pressure.ts` (openclaw#164, #171, #172, #173)                                                                                                                            |
-| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162 / bootstrap#584)                                                                                                             |
-| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169 / bootstrap#473)                                                                                                                         |
-| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170 / bootstrap#531)                                                                                                                                |
+| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162)                                                                                                                             |
+| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169)                                                                                                                                         |
+| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170)                                                                                                                                                |
 
-### D.3 Swim 7 scorecard and evidence lines
+### D.3 Most-recent integration test session results (Swim 9 and Swim 10)
 
-Swim 7 scorecard:
-
-| Test | Description                        | Result      |
-| ---- | ---------------------------------- | ----------- |
-| 7-B  | delegate tolerance hot reload      | ✅ PASS     |
-| 7-C  | WORK tolerance hot reload          | ✅ PASS     |
-| 7-D  | width widen without restart        | ✅ PASS     |
-| 7-E  | width narrow without restart       | ✅ PASS     |
-| 7-F  | chain boundary enforcement         | ✅ PASS     |
-| 7-H  | textless-turn delegate consumption | ✅ PASS     |
-| 7-K  | silent return trust boundary       | ✅ PASS     |
-| 7-M  | blind enrichment accuracy          | ✅ PASS     |
-| 7-I  | post-compaction guard parity       | ⏸️ DEFERRED |
-| 7-J  | grandparent reroute ordering       | ⏸️ DEFERRED |
-
-Representative evidence lines:
-
-```text
-07:02:58 Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)  <!-- NOTE: generation guard was active in this build but has been removed from design -->
-07:03:55 config change applied (dynamic reads: agents.defaults.continuation.generationGuardTolerance)  <!-- NOTE: generationGuardTolerance config removed from design -->
-07:04:41 Tool DELEGATE timer fired and spawned turn 1/10
-
-07:07:08 WORK timer cancelled (generation drift 1 > tolerance 0)  <!-- NOTE: generation guard was active in this build but has been removed from design -->
-07:12:22 WORK timer fired for session agent:main:discord:channel:...
-
-07:22:35 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
-07:23:29 [continue_delegate] Consuming 12 tool delegate(s)
-07:25:53 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
-07:26:24 [continue_delegate] Consuming 3 tool delegate(s)
-```
-
-### D.4 Swim 8 detailed results
-
-Swim 8 targeted delegate tool use inside chain hops.
-
-- **Issue:** [karmaterminal/openclaw#57](https://github.com/karmaterminal/openclaw/issues/57)
-- **SUT:** Silas canary build on fleet node (`urudyne`)
-- **Formation:** Cael (coordinator/driver), Elliott (log monitor), Silas (SUT), Ronan (driver Day 1)
-- **Duration:** March 30–31, 2026, approximately 14 hours across two days
-- **Convergence path:** `8ee9dcbe0f` later squashed to `4f3461ee07`
-
-| Test | Description                            | Result     |
-| ---- | -------------------------------------- | ---------- |
-| 8-T1 | tool delegate from chain-hop sub-agent | ✅ PASS    |
-| 8-T2 | silent delegate propagation            | ✅ PASS    |
-| 8-T3 | `maxDelegatesPerTurn` enforcement      | ✅ PASS    |
-| 8-T4 | `maxChainLength` serial proof          | ✅ PASS    |
-| 8-T5 | mixed bracket and tool signals         | ⚠️ FINDING |
-| 8-T6 | cost-cap enforcement                   | ✅ PASS    |
-| 8-T7 | `DENY_LEAF` enforcement                | ✅ PASS    |
-
-Detailed findings preserved from the canary run:
-
-- missing `drainsContinuationDelegateQueue` on `doToolSpawn()`; the one-line fix landed in `649bac1d12`;
-- off-by-one on chain-length comparison; the `>` to `>=` correction landed in `3d26030cdc`;
-- silent-reply cost-cap logging gap; defensive logging landed in `8ee9dcbe0f`;
-- mixed tool and bracket syntax in one turn is unsupported;
-- the debug log line `[continuation] Continuation instructions suppressed for non-drain run` was the decisive diagnostic artifact;
-- compaction during diagnosis did not destroy the investigation because post-compaction continuation recovered working state.
-
-### D.5 Swim 9 and Swim 10 detailed results
+These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and have been omitted from this revision; their captures remain on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch for archival reference.
 
 Swim 9:
 
-- **Issue:** [karmaterminal/openclaw-bootstrap#375](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)
-- **SUT:** Silas canary build on `cael/61-volitional-compaction`
+- **Issue capture:** preserved on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch
+- **SUT:** canary build on `cael/61-volitional-compaction`
 - **Build:** `b2322f5`
 - **Duration:** approximately 2 hours, Phase 1 low-context testing
 - **Result:** 5/5 pass after fixing a missing forwarding of `requestCompactionOpts` from `run.ts` to `attempt.ts`
 
 Swim 10:
 
-- **Issue:** [karmaterminal/openclaw-bootstrap#377](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)
-- **SUT:** Silas canary build on `cael/61-volitional-compaction`
-- **Formation:** Ronan (driver), Elliott (log monitor), Silas (SUT), Cael (coordinator), figs (operator)
+- **Issue capture:** preserved on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch
+- **SUT:** canary build on `cael/61-volitional-compaction`
+- **Formation:** driver, log monitor, SUT, coordinator, operator (5-role canary formation)
 - **Build:** `ad32cde`
 - **Duration:** approximately 5 hours
 - **Result:** 12 pass, 0 fail, 1 deferred
