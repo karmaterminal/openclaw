@@ -273,14 +273,18 @@ export function createFollowupRunner(params: {
                             // bug #639: thread the session's active provider/model through so
                             // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL
                             // (openai/gpt-5.4) which nobody has auth for.
+                            // Use inner-scope provider/model from the fallback
+                            // dispatcher (line 207) so a fallback-selected model
+                            // gets the compaction request, not the persisted primary
+                            // (which may be in cooldown — would re-fail immediately).
                             const result = await compactEmbeddedPiSession({
                               sessionId: run.sessionId ?? "",
                               sessionKey: run.sessionKey,
                               sessionFile: run.sessionFile ?? "",
                               workspaceDir: run.workspaceDir ?? process.cwd(),
                               messageProvider: run.messageProvider,
-                              provider: run.provider,
-                              model: run.model,
+                              provider,
+                              model,
                             });
                             // bug #639: honor real result instead of unconditionally claiming
                             // success — otherwise volitional-compaction telemetry lies and the
