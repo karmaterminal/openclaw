@@ -210,6 +210,77 @@ describe("buildStatusMessage", () => {
     }
   });
 
+  it("renders a partial continuation row showing only the non-zero fields", () => {
+    const key = "agent:main:test-187-partial";
+    // chain + staged only; pending=0 and volitional=0 must be omitted from the line.
+    continuationMocks.staged.set(key, 1);
+    try {
+      const text = buildStatusMessage({
+        config: {
+          agents: {
+            defaults: {
+              continuation: { enabled: true, maxChainLength: 10 },
+            },
+          },
+        } as unknown as OpenClawConfig,
+        agent: { model: "anthropic/pi:opus", contextTokens: 32_000 },
+        sessionEntry: {
+          sessionId: "abc",
+          updatedAt: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          contextTokens: 32_000,
+          continuationChainCount: 2,
+        },
+        sessionKey: key,
+        sessionScope: "per-sender",
+        queue: { mode: "collect", depth: 0 },
+      });
+      const normalized = normalizeTestText(text);
+      // Chain + staged visible; pending / volitional fields omitted entirely.
+      expect(normalized).toMatch(/Continuation: chain 2\/10 \| 1 post-compaction staged$/m);
+      expect(normalized).not.toContain("delegate");
+      expect(normalized).not.toContain("volitional");
+    } finally {
+      continuationMocks.staged.delete(key);
+    }
+  });
+
+  it("renders singular 'delegate' when pending count is 1 (plural boundary)", () => {
+    const key = "agent:main:test-187-singular";
+    continuationMocks.pending.set(key, 1);
+    try {
+      const text = buildStatusMessage({
+        config: {
+          agents: {
+            defaults: {
+              continuation: { enabled: true, maxChainLength: 10 },
+            },
+          },
+        } as unknown as OpenClawConfig,
+        agent: { model: "anthropic/pi:opus", contextTokens: 32_000 },
+        sessionEntry: {
+          sessionId: "abc",
+          updatedAt: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          contextTokens: 32_000,
+          continuationChainCount: 1,
+        },
+        sessionKey: key,
+        sessionScope: "per-sender",
+        queue: { mode: "collect", depth: 0 },
+      });
+      const normalized = normalizeTestText(text);
+      expect(normalized).toMatch(/Continuation: chain 1\/10 \| 1 delegate pending$/m);
+      expect(normalized).not.toMatch(/1 delegates pending/);
+    } finally {
+      continuationMocks.pending.delete(key);
+    }
+  });
+
   it("omits the continuation row when enabled but every field is zero", () => {
     const text = buildStatusMessage({
       config: {

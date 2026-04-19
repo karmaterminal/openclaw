@@ -53,8 +53,8 @@ export {
   type CommandsMessageOptions,
   type CommandsMessageResult,
 } from "./command-status-builders.js";
-import { resolveActiveFallbackState } from "../status/fallback-notice-state.js";
 import { getVolitionalCompactionCount } from "../agents/tools/request-compaction-tool.js";
+import { resolveActiveFallbackState } from "../status/fallback-notice-state.js";
 import { resolveContinuationRuntimeConfig } from "./continuation/config.js";
 import {
   pendingDelegateCount,
@@ -859,6 +859,11 @@ export function buildStatusMessage(args: StatusArgs): string {
     usageCostLine,
     cacheLine,
     `📚 ${contextLine}`,
+    // Continuation is a context-adjacent signal (chain depth + pending /
+    // staged delegates live in the same mental bucket as context pressure).
+    // Placing it immediately after the context line matches the RFC §6.3
+    // framing and keeps related fields together for the operator scan.
+    continuationLine,
     mediaLine,
     args.usageLine,
     `🧵 ${sessionLine}`,
@@ -868,7 +873,6 @@ export function buildStatusMessage(args: StatusArgs): string {
     pluginStatusLine ? `🧩 ${pluginStatusLine}` : null,
     voiceLine,
     activationLine,
-    continuationLine,
   ]
     .filter(Boolean)
     .join("\n");
