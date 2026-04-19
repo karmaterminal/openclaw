@@ -9,9 +9,10 @@
  *     `zk-client.fleet-coordination.svc.cluster.local:2181` — set
  *     `ZK_HOSTS=<node-ip>:32181` when running outside the pod network).
  *   - All operations go under a per-run chroot at
- *     `/openclaw-integration-tests/<run-id>`. The chroot is created +
- *     recursively deleted by the suite's lifecycle hooks so parallel
- *     runs don't interfere and no detritus is left on the ensemble.
+ *     `/test/openclaw-integration/<run-id>` (the fleet convention for
+ *     test-scratch znodes). The chroot is created + recursively deleted
+ *     by the suite's lifecycle hooks so parallel runs don't interfere
+ *     and no detritus is left on the ensemble.
  *   - Recipe session-expiry edges (PR 3 deferred these) are covered
  *     here: a second suite forces session loss by closing a client
  *     mid-hold and asserts the abort/cleanup behavior.
@@ -36,7 +37,7 @@ const ENABLED = process.env.OPENCLAW_ZK_INTEGRATION === "1";
 const HOSTS = process.env.ZK_HOSTS?.trim() || "zk-client.fleet-coordination.svc.cluster.local:2181";
 const RUN_ID =
   process.env.OPENCLAW_ZK_INTEGRATION_RUN_ID?.trim() || `${process.pid}-${Date.now().toString(36)}`;
-const CHROOT = `/openclaw-integration-tests/${RUN_ID}`;
+const CHROOT = `/test/openclaw-integration/${RUN_ID}`;
 
 describe.skipIf(!ENABLED)("zk integration — live ensemble under per-run chroot", () => {
   let setupClient: ZkClient;
@@ -46,7 +47,7 @@ describe.skipIf(!ENABLED)("zk integration — live ensemble under per-run chroot
     // connect with the chroot yet because ZK won't auto-create the path
     // on the client side.
     setupClient = await createZkClient({ hosts: HOSTS, connectTimeoutMs: 8_000 });
-    for (const segment of ["/openclaw-integration-tests", CHROOT]) {
+    for (const segment of ["/test", "/test/openclaw-integration", CHROOT]) {
       try {
         await setupClient.driver.create(segment, Buffer.alloc(0), "persistent");
       } catch (err) {
