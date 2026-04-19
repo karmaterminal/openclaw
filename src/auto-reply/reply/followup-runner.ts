@@ -270,14 +270,38 @@ export function createFollowupRunner(params: {
                           try {
                             const { compactEmbeddedPiSession } =
                               await import("../../agents/pi-embedded-runner/compact.queued.js");
-                            await compactEmbeddedPiSession({
+                            // bug #639: thread the session's active provider/model through so
+                            // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL
+                            // (openai/gpt-5.4) which nobody has auth for.
+                            // Use inner-scope provider/model from the fallback
+                            // dispatcher (line 207) so a fallback-selected model
+                            // gets the compaction request, not the persisted primary
+                            // (which may be in cooldown — would re-fail immediately).
+                            // bug #639 (scribe follow-up): thread authProfileId only
+                            // when the inner-scope provider matches the persisted primary
+                            // (the persisted profile is keyed to the primary). On fallback
+                            // to a different provider, leave undefined so resolveEmbedded-
+                            // CompactionTarget picks the default profile for that provider.
+                            const compactionAuthProfileId =
+                              provider === run.provider ? run.authProfileId : undefined;
+                            const result = await compactEmbeddedPiSession({
                               sessionId: run.sessionId ?? "",
                               sessionKey: run.sessionKey,
                               sessionFile: run.sessionFile ?? "",
                               workspaceDir: run.workspaceDir ?? process.cwd(),
                               messageProvider: run.messageProvider,
+                              provider,
+                              model,
+                              authProfileId: compactionAuthProfileId,
                             });
-                            return { ok: true, compacted: true };
+                            // bug #639: honor real result instead of unconditionally claiming
+                            // success — otherwise volitional-compaction telemetry lies and the
+                            // failure is invisible to the caller.
+                            return {
+                              ok: result.ok,
+                              compacted: result.compacted,
+                              reason: result.reason,
+                            };
                           } catch (err) {
                             return {
                               ok: false,
@@ -328,24 +352,17 @@ export function createFollowupRunner(params: {
       // without this, delegates queued by continue_work-triggered heartbeats
       // (or any followup turn) stay in the queue until the NEXT inbound
       // message arrives to trigger the main-session dispatch. RFC §3.2.
-      if (
-        runtimeConfig?.agents?.defaults?.continuation?.enabled === true &&
-        sessionKey
-      ) {
-        const [{ dispatchToolDelegates }, { resolveContinuationRuntimeConfig }] =
-          await Promise.all([
-            import("../continuation/delegate-dispatch.js"),
-            import("../continuation/config.js"),
-          ]);
+      if (runtimeConfig?.agents?.defaults?.continuation?.enabled === true && sessionKey) {
+        const [{ dispatchToolDelegates }, { resolveContinuationRuntimeConfig }] = await Promise.all(
+          [import("../continuation/delegate-dispatch.js"), import("../continuation/config.js")],
+        );
         const tailUsage = runResult.meta?.agentMeta?.usage;
         const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
-        const tailEntry =
-          (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? sessionEntry;
+        const tailEntry = (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? sessionEntry;
         const chainState = {
           currentChainCount: tailEntry?.continuationChainCount ?? 0,
           chainStartedAt: tailEntry?.continuationChainStartedAt ?? Date.now(),
-          accumulatedChainTokens:
-            (tailEntry?.continuationChainTokens ?? 0) + turnTokens,
+          accumulatedChainTokens: (tailEntry?.continuationChainTokens ?? 0) + turnTokens,
         };
         await dispatchToolDelegates({
           sessionKey,
@@ -357,8 +374,7 @@ export function createFollowupRunner(params: {
             agentTo: queued.originatingTo ?? undefined,
             agentThreadId: queued.originatingThreadId ?? undefined,
           },
-          maxChainLength:
-            resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
+          maxChainLength: resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
         });
       }
 
