@@ -23,6 +23,11 @@ export function classifyCompactionReason(reason?: string): string {
   if (text.includes("nothing to compact")) {
     return "no_compactable_entries";
   }
+  if (text.includes("unknown model")) {
+    // bug #639: surfaced when DEFAULT_PROVIDER/DEFAULT_MODEL fallback hits
+    // a model nobody has auth for (e.g. volitional compaction without provider/model passed).
+    return "unknown_model";
+  }
   if (text.includes("below threshold")) {
     return "below_threshold";
   }

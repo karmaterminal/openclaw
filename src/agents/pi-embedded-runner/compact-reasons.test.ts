@@ -37,4 +37,11 @@ describe("classifyCompactionReason", () => {
       ),
     ).toBe("guard_blocked");
   });
+
+  it("classifies 'Unknown model: ...' as unknown_model (bug #639)", () => {
+    // surfaces when DEFAULT_PROVIDER/DEFAULT_MODEL fallback hits an unsupported model
+    // — e.g. volitional compaction without provider/model passed routes to openai/gpt-5.4
+    expect(classifyCompactionReason("Unknown model: openai/gpt-5.4")).toBe("unknown_model");
+    expect(classifyCompactionReason("unknown model: foo/bar")).toBe("unknown_model");
+  });
 });

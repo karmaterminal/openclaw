@@ -160,6 +160,13 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           (result) => {
             if (result.ok && result.compacted) {
               incrementVolitionalCompactionCount(sessionKey);
+            } else {
+              // bug #639: surface resolve-with-failure (distinct from the catch-path
+              // background-error) so volitional compactions that silently fail
+              // (e.g. wrong provider, model unavailable) are visible in journals.
+              log.warn(
+                `[request_compaction:resolved-failure] session=${sessionKey} ok=${result.ok} compacted=${result.compacted} reason=${result.reason ?? "unspecified"}`,
+              );
             }
           },
           (err: unknown) => {
