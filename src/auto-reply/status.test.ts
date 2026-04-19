@@ -99,6 +99,75 @@ describe("buildStatusMessage", () => {
     expect(normalized).not.toContain("verbose");
     expect(normalized).toContain("elevated");
     expect(normalized).toContain("Queue: collect");
+    // RFC §6.3 — with continuation disabled (default), the row is absent.
+    expect(normalized).not.toContain("Continuation:");
+  });
+
+  it("renders the RFC §6.3 continuation row when enabled and chain depth > 0 (regression: openclaw#187)", () => {
+    const text = buildStatusMessage({
+      config: {
+        agents: {
+          defaults: {
+            continuation: {
+              enabled: true,
+              maxChainLength: 10,
+            },
+          },
+        },
+      } as unknown as OpenClawConfig,
+      agent: {
+        model: "anthropic/pi:opus",
+        contextTokens: 32_000,
+      },
+      sessionEntry: {
+        sessionId: "abc",
+        updatedAt: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        contextTokens: 32_000,
+        continuationChainCount: 3,
+      },
+      sessionKey: "agent:main:test-187",
+      sessionScope: "per-sender",
+      queue: { mode: "collect", depth: 0 },
+    });
+    const normalized = normalizeTestText(text);
+    // Shape comes from docs/design/continue-work-signal-v2.md §6.3.
+    expect(normalized).toMatch(/Continuation: chain 3\/10/);
+  });
+
+  it("omits the continuation row when enabled but every field is zero", () => {
+    const text = buildStatusMessage({
+      config: {
+        agents: {
+          defaults: {
+            continuation: {
+              enabled: true,
+              maxChainLength: 10,
+            },
+          },
+        },
+      } as unknown as OpenClawConfig,
+      agent: {
+        model: "anthropic/pi:opus",
+        contextTokens: 32_000,
+      },
+      sessionEntry: {
+        sessionId: "abc",
+        updatedAt: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        contextTokens: 32_000,
+        continuationChainCount: 0,
+      },
+      sessionKey: "agent:main:test-187-empty",
+      sessionScope: "per-sender",
+      queue: { mode: "collect", depth: 0 },
+    });
+    const normalized = normalizeTestText(text);
+    expect(normalized).not.toContain("Continuation:");
   });
 
   it("falls back to sessionEntry levels when resolved levels are not passed", () => {

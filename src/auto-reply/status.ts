@@ -54,6 +54,12 @@ export {
   type CommandsMessageResult,
 } from "./command-status-builders.js";
 import { resolveActiveFallbackState } from "../status/fallback-notice-state.js";
+import { getVolitionalCompactionCount } from "../agents/tools/request-compaction-tool.js";
+import { resolveContinuationRuntimeConfig } from "./continuation/config.js";
+import {
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
+} from "./continuation/delegate-store.js";
 import { formatProviderModelRef, resolveSelectedAndActiveModel } from "./model-runtime.js";
 import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "./thinking.js";
 
@@ -874,72 +880,59 @@ export function buildStatusMessage(args: StatusArgs): string {
  * is non-zero. Format:
  *   🔄 Continuation: chain X/Y | Z delegates pending | W post-compaction staged | volitional: N
  *
- * Resolves runtime state via lazy require to avoid status<->continuation
- * module-load order coupling (same pattern as the CLI status report path in
- * src/commands/status.command-report-data.ts).
+ * Source modules are imported statically; no status<->continuation cycle
+ * exists (verified — neither continuation/* nor request-compaction-tool.ts
+ * imports auto-reply/status). Inner try/catch around each lookup keeps the
+ * status row resilient if a counter store hasn't been initialised in a
+ * particular runtime path (silently fall back to zero rather than failing
+ * the whole status render).
  */
 function formatContinuationStatusLine(params: {
   config?: OpenClawConfig;
   sessionKey?: string;
   sessionEntry?: SessionEntry;
 }): string | null {
+  let cfg: { enabled: boolean; maxChainLength: number };
   try {
-    const { resolveContinuationRuntimeConfig } = require("./continuation/config.js") as {
-      resolveContinuationRuntimeConfig: (cfg?: OpenClawConfig) => {
-        enabled: boolean;
-        maxChainLength: number;
-      };
-    };
-    const cfg = resolveContinuationRuntimeConfig(params.config);
-    if (!cfg.enabled) {
-      return null;
-    }
-    const sessionKey = params.sessionKey;
-    let pending = 0;
-    let staged = 0;
-    if (sessionKey) {
-      try {
-        const { pendingDelegateCount, stagedPostCompactionDelegateCount } =
-          require("./continuation/delegate-store.js") as {
-            pendingDelegateCount: (sessionKey: string) => number;
-            stagedPostCompactionDelegateCount: (sessionKey: string) => number;
-          };
-        pending = pendingDelegateCount(sessionKey);
-        staged = stagedPostCompactionDelegateCount(sessionKey);
-      } catch {
-        // delegate-store not initialised — leave counts at zero.
-      }
-    }
-    let volitional = 0;
-    if (sessionKey) {
-      try {
-        const { getVolitionalCompactionCount } =
-          require("../agents/tools/request-compaction-tool.js") as {
-            getVolitionalCompactionCount: (sessionKey: string) => number;
-          };
-        volitional = getVolitionalCompactionCount(sessionKey);
-      } catch {
-        // request-compaction tool not loaded — leave at zero.
-      }
-    }
-    const chain = params.sessionEntry?.continuationChainCount ?? 0;
-    if (chain === 0 && pending === 0 && staged === 0 && volitional === 0) {
-      return null;
-    }
-    const parts: string[] = [`chain ${chain}/${cfg.maxChainLength}`];
-    if (pending > 0) {
-      parts.push(`${pending} delegate${pending === 1 ? "" : "s"} pending`);
-    }
-    if (staged > 0) {
-      parts.push(`${staged} post-compaction staged`);
-    }
-    if (volitional > 0) {
-      parts.push(`volitional: ${volitional}`);
-    }
-    return `🔄 Continuation: ${parts.join(" | ")}`;
+    cfg = resolveContinuationRuntimeConfig(params.config);
   } catch {
     return null;
   }
+  if (!cfg.enabled) {
+    return null;
+  }
+  const sessionKey = params.sessionKey;
+  let pending = 0;
+  let staged = 0;
+  let volitional = 0;
+  if (sessionKey) {
+    try {
+      pending = pendingDelegateCount(sessionKey);
+      staged = stagedPostCompactionDelegateCount(sessionKey);
+    } catch {
+      // delegate-store not initialised — leave counts at zero.
+    }
+    try {
+      volitional = getVolitionalCompactionCount(sessionKey);
+    } catch {
+      // request-compaction tool not loaded — leave at zero.
+    }
+  }
+  const chain = params.sessionEntry?.continuationChainCount ?? 0;
+  if (chain === 0 && pending === 0 && staged === 0 && volitional === 0) {
+    return null;
+  }
+  const parts: string[] = [`chain ${chain}/${cfg.maxChainLength}`];
+  if (pending > 0) {
+    parts.push(`${pending} delegate${pending === 1 ? "" : "s"} pending`);
+  }
+  if (staged > 0) {
+    parts.push(`${staged} post-compaction staged`);
+  }
+  if (volitional > 0) {
+    parts.push(`volitional: ${volitional}`);
+  }
+  return `🔄 Continuation: ${parts.join(" | ")}`;
 }
 
 type ToolsMessageItem = {
