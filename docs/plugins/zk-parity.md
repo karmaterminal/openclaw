@@ -74,10 +74,10 @@ reject PRs that ship handwave-evidence.
 
 | kazoo recipe                               | openclaw equivalent               | Status                                                    |
 | ------------------------------------------ | --------------------------------- | --------------------------------------------------------- |
-| `kazoo.recipe.lock.Lock`                   | `createLock` + `withLock`         | ⏳ PR 2                                                   |
-| `kazoo.recipe.election.Election`           | `createElection`                  | ⏳ PR 2                                                   |
-| `kazoo.recipe.party.Party`                 | `createParty`                     | ⏳ PR 2                                                   |
-| `kazoo.recipe.lock.ReadLock` + `WriteLock` | `createReadWriteLock`             | ⏳ PR 2                                                   |
+| `kazoo.recipe.lock.Lock`                   | `createLock` + `withLock`         | ✓ `src/plugin-sdk/zk/lock.test.ts`                        |
+| `kazoo.recipe.election.Election`           | `createElection`                  | ✓ `src/plugin-sdk/zk/election.test.ts`                    |
+| `kazoo.recipe.party.Party`                 | `createParty`                     | ✓ `src/plugin-sdk/zk/party.test.ts`                       |
+| `kazoo.recipe.lock.ReadLock` + `WriteLock` | `createReadWriteLock`             | ✓ `src/plugin-sdk/zk/rwlock.test.ts`                      |
 | `kazoo.recipe.lock.Semaphore`              | `createSemaphore`                 | planned v1.x                                              |
 | `kazoo.recipe.counter.Counter`             | `createCounter`                   | planned v1.x                                              |
 | `kazoo.recipe.queue.LockingQueue`          | `createLockingQueue`              | planned v1.x                                              |

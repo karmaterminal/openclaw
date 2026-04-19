@@ -64,6 +64,19 @@ export {
 } from "./zk/driver-mock.js";
 export type { MockCluster, CreateMockDriverOptions } from "./zk/driver-mock.js";
 
+// Recipes — zero-runtime-cost until invoked. Each recipe is pure logic
+// over `ZkClient.driver`, so re-exporting them from the public barrel
+// doesn't pull in any wire code.
+export { createLock, withLock } from "./zk/lock.js";
+export type { Lock, LockHandle, CreateLockOptions } from "./zk/lock.js";
+export { createElection } from "./zk/election.js";
+export type { LeaderElection } from "./zk/election.js";
+export { createParty } from "./zk/party.js";
+export type { Party } from "./zk/party.js";
+export { createReadWriteLock } from "./zk/rwlock.js";
+export type { ReadWriteLock } from "./zk/rwlock.js";
+export { ensurePath } from "./zk/ensure-path.js";
+
 import type { ZkClient, ZkClientOptions } from "./zk/client.js";
 
 /**
