@@ -106,7 +106,6 @@ describe("delegate store — TaskFlow-backed", () => {
     enqueuePendingDelegate("session-1", {
       task: "silent task",
       mode: "silent-wake",
-      delayMs: 5000,
     });
 
     const delegates = consumePendingDelegates("session-1");
@@ -162,5 +161,69 @@ describe("post-compaction delegate staging", () => {
     expect(regular[0].task).toBe("regular");
     expect(postCompact).toHaveLength(1);
     expect(postCompact[0].task).toBe("post-compact");
+  });
+});
+
+describe("consumePendingDelegates — delayMs gating (swim-35/A2)", () => {
+  it("leaves an unmatured delegate (delayMs in the future) in queued state", () => {
+    enqueuePendingDelegate("session-1", { task: "future", delayMs: 60_000 });
+
+    const matured = consumePendingDelegates("session-1");
+    expect(matured).toEqual([]);
+    expect(pendingDelegateCount("session-1")).toBe(1);
+  });
+
+  it("drains a matured delegate (delayMs elapsed)", () => {
+    enqueuePendingDelegate("session-1", { task: "due", delayMs: 0 });
+
+    const matured = consumePendingDelegates("session-1");
+    expect(matured).toHaveLength(1);
+    expect(matured[0].task).toBe("due");
+    expect(pendingDelegateCount("session-1")).toBe(0);
+  });
+
+  it("drains matured entries and re-parks unmatured entries in the same call", () => {
+    enqueuePendingDelegate("session-1", { task: "due", delayMs: 0 });
+    enqueuePendingDelegate("session-1", { task: "future", delayMs: 60_000 });
+
+    const matured = consumePendingDelegates("session-1");
+    expect(matured.map((d) => d.task)).toEqual(["due"]);
+    // The unmatured entry stays queued for the next consume cycle.
+    expect(pendingDelegateCount("session-1")).toBe(1);
+  });
+
+  it("treats omitted delayMs as zero (matures immediately, preserves legacy behavior)", () => {
+    enqueuePendingDelegate("session-1", { task: "no-delay" });
+
+    const matured = consumePendingDelegates("session-1");
+    expect(matured).toHaveLength(1);
+    expect(matured[0].task).toBe("no-delay");
+  });
+});
+
+describe("peekSoonestUnmaturedDelegateDueAt (swim-35/A2)", () => {
+  it("returns undefined when no entries are queued", async () => {
+    const { peekSoonestUnmaturedDelegateDueAt } = await import("./delegate-store.js");
+    expect(peekSoonestUnmaturedDelegateDueAt("empty")).toBeUndefined();
+  });
+
+  it("returns undefined when all queued entries are already due", async () => {
+    const { peekSoonestUnmaturedDelegateDueAt } = await import("./delegate-store.js");
+    enqueuePendingDelegate("session-1", { task: "due", delayMs: 0 });
+    expect(peekSoonestUnmaturedDelegateDueAt("session-1")).toBeUndefined();
+  });
+
+  it("returns the soonest dueAt across multiple unmatured entries", async () => {
+    const { peekSoonestUnmaturedDelegateDueAt } = await import("./delegate-store.js");
+    const before = Date.now();
+    enqueuePendingDelegate("session-1", { task: "far", delayMs: 120_000 });
+    enqueuePendingDelegate("session-1", { task: "near", delayMs: 30_000 });
+    enqueuePendingDelegate("session-1", { task: "mid", delayMs: 60_000 });
+
+    const soonest = peekSoonestUnmaturedDelegateDueAt("session-1");
+    expect(soonest).toBeDefined();
+    // Soonest should be the 30s one — within tolerance of `before + 30000`.
+    expect(soonest!).toBeGreaterThanOrEqual(before + 30_000);
+    expect(soonest!).toBeLessThan(before + 30_000 + 5_000);
   });
 });
