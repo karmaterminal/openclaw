@@ -56,6 +56,11 @@ function armHedgeTimer(
   retainContinuationTimerRef(sessionKey);
   const handle = setTimeout(() => {
     hedgeTimers.delete(sessionKey);
+    // Release ref + handle registration on natural fire (matches
+    // clearHedgeTimer on cancel). Without this, every hedge that fires
+    // naturally leaks a timer-ref and handle, keeping continuation state
+    // alive past its useful lifetime. openclaw#189.
+    unregisterContinuationTimerHandle(sessionKey, handle);
     log.info(`[continuation:delegate-hedge-fired] session=${sessionKey}`);
     void dispatchToolDelegates({ sessionKey, ...params }).catch((err) => {
       log.info(
