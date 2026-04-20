@@ -130,6 +130,19 @@ type ContinuationConfigModule = {
   resolveContinuationRuntimeConfig: (cfg?: unknown) => { maxChainLength: number };
 };
 
+type ContinuationChainSource = {
+  continuationChainCount?: number;
+  continuationChainStartedAt?: number;
+  continuationChainTokens?: number;
+};
+
+type ContinuationStateModule = {
+  loadContinuationChainState: (
+    source: ContinuationChainSource | undefined,
+    turnTokens?: number,
+  ) => ContinuationChainState;
+};
+
 /**
  * Drain the child session's continue_delegate queue after the subagent has
  * settled. Chain state is inherited from the child session entry so nested
@@ -163,7 +176,7 @@ async function drainChildContinuationQueue(params: {
     // with a literal path would pull `subagent-spawn.js` into a cycle via
     // `delegate-dispatch.js → subagent-spawn.js → subagent-registry.js →
     // subagent-announce.ts`.
-    const [dispatchModule, configModule] = await Promise.all([
+    const [dispatchModule, configModule, stateModule] = await Promise.all([
       importRuntimeModule<ContinuationDispatchModule>(import.meta.url, [
         "./subagent-announce.continuation.runtime",
         ".js",
@@ -172,24 +185,21 @@ async function drainChildContinuationQueue(params: {
         "./subagent-announce.continuation.runtime",
         ".js",
       ]),
+      importRuntimeModule<ContinuationStateModule>(import.meta.url, [
+        "./subagent-announce.continuation.runtime",
+        ".js",
+      ]),
     ]);
     const { dispatchToolDelegates } = dispatchModule;
     const { resolveContinuationRuntimeConfig } = configModule;
+    const { loadContinuationChainState } = stateModule;
     const childEntry = loadSessionEntryByKey(params.childSessionKey) as
-      | {
-          continuationChainCount?: number;
-          continuationChainStartedAt?: number;
-          continuationChainTokens?: number;
-        }
+      | ContinuationChainSource
       | undefined;
     const dispatchConfig = resolveContinuationRuntimeConfig(cfg);
     await dispatchToolDelegates({
       sessionKey: params.childSessionKey,
-      chainState: {
-        currentChainCount: childEntry?.continuationChainCount ?? 0,
-        chainStartedAt: childEntry?.continuationChainStartedAt ?? Date.now(),
-        accumulatedChainTokens: childEntry?.continuationChainTokens ?? 0,
-      },
+      chainState: loadContinuationChainState(childEntry),
       ctx: {
         sessionKey: params.childSessionKey,
         agentChannel: params.requesterOrigin?.channel,

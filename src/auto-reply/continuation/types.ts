@@ -126,3 +126,18 @@ export type ContinueWorkRequest = {
   reason: string;
   delaySeconds: number;
 };
+
+// ---------------------------------------------------------------------------
+// Chain state — passed into scheduler / dispatch / persistence entry points
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-session continuation chain state — depth, start time, accumulated tokens.
+ * Construct from a `SessionEntry` via `loadContinuationChainState(entry, turnTokens)`
+ * in `./state.ts` rather than hand-rolling `?? 0` / `?? Date.now()` at each site.
+ */
+export type ChainState = {
+  currentChainCount: number;
+  chainStartedAt: number;
+  accumulatedChainTokens: number;
+};

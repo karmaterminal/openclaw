@@ -116,6 +116,48 @@ export function clearTrackedContinuationTimers(sessionKey: string): void {
 // ---------------------------------------------------------------------------
 
 import type { SessionEntry } from "../../config/sessions/types.js";
+import type { ChainState } from "./types.js";
+
+/**
+ * Structural subset of `SessionEntry` covering only the fields the
+ * continuation-chain read path needs. Declared independently so callers
+ * that want to avoid a static edge into `src/config/sessions/types.js`
+ * (notably `subagent-announce.ts` — cycle-avoidance) can satisfy the
+ * helper signature without an extra type import.
+ */
+export type ContinuationChainSource = {
+  continuationChainCount?: number;
+  continuationChainStartedAt?: number;
+  continuationChainTokens?: number;
+};
+
+/**
+ * Read continuation chain state from a SessionEntry with safe defaults.
+ *
+ * Collapses the scattered `?? 0` / `?? Date.now()` sentinel pattern from
+ * 6+ call sites (agent-runner, followup-runner, subagent-announce) into
+ * one canonical adapter. The returned ChainState has `turnTokens` folded
+ * into `accumulatedChainTokens` so callers don't repeat the addition.
+ *
+ * - `undefined` source → zeroed chain, `chainStartedAt = Date.now()`
+ * - missing `continuationChainStartedAt` → `Date.now()` (the chain appears
+ *   to start fresh this turn; matches historical sentinel behavior).
+ *
+ * Accepts any shape compatible with `ContinuationChainSource`, including
+ * `SessionEntry` (structural compatibility).
+ *
+ * Ref: karmaterminal/openclaw#216.
+ */
+export function loadContinuationChainState(
+  source: ContinuationChainSource | undefined,
+  turnTokens = 0,
+): ChainState {
+  return {
+    currentChainCount: source?.continuationChainCount ?? 0,
+    chainStartedAt: source?.continuationChainStartedAt ?? Date.now(),
+    accumulatedChainTokens: (source?.continuationChainTokens ?? 0) + turnTokens,
+  };
+}
 
 /**
  * Persist continuation chain metadata to the session entry.
