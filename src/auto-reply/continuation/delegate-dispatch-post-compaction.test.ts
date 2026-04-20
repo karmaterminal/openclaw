@@ -1,9 +1,19 @@
 /**
- * Tests for post-compaction delegate dispatch error handling.
+ * Tests for post-compaction delegate dispatch.
  *
  * Issue #203: Silent catch was swallowing post-compaction delegate spawn failures.
  * This test verifies that spawn failures are now properly logged and surfaced
  * as system events, matching the pattern in the regular delegate dispatch path.
+ *
+ * Issue #211: Post-compaction lifecycle release path had no integration test.
+ * This file now also pins the spawn payload shape (silentAnnounce, wakeOnReturn,
+ * drainsContinuationDelegateQueue) and verifies the happy-path dispatch behavior.
+ *
+ * NOTE: The guard-level behavior (preflightCompactionApplied check, continuationEnabledForPressure,
+ * clearContextPressureState, checkContextPressure calls) lives in agent-runner.ts:1617-1659.
+ * Testing that flow end-to-end requires full agent-runner fixture wiring (>200 lines of setup).
+ * These helper-level tests pin the spawn payload contract; guard branches are verified manually
+ * and through the observability of clearContextPressureState and checkContextPressure's own tests.
  *
  * See also: #639 for the bug-class precedent.
  */
@@ -154,5 +164,133 @@ describe("dispatchPostCompactionDelegates error handling (openclaw#203)", () => 
     // But the system event should contain the full task
     const eventMessage = mockState.enqueueSystemEvent.mock.calls[0][0];
     expect(eventMessage).toContain(longTask);
+  });
+});
+
+/**
+ * Post-compaction lifecycle release tests (openclaw#211)
+ *
+ * These tests verify the happy-path dispatch behavior and spawn payload shape
+ * for the post-compaction continuation lifecycle (RFC §4.4).
+ */
+describe("dispatchPostCompactionDelegates lifecycle release (openclaw#211)", () => {
+  it("dispatches two staged delegates with exactly two spawn calls", async () => {
+    const sessionKey = "session-lifecycle-two-delegates";
+
+    mockState.spawnSubagentDirect
+      .mockResolvedValueOnce({ status: "accepted" })
+      .mockResolvedValueOnce({ status: "accepted" });
+
+    const delegates = [
+      { task: "rehydrate workspace state after compaction" },
+      { task: "restore file context from previous session" },
+    ];
+    const spawnCtx = {
+      agentSessionKey: sessionKey,
+      agentChannel: "test-channel",
+      agentAccountId: "test-account",
+      agentTo: "test-to",
+      agentThreadId: "test-thread",
+    };
+
+    const result = await dispatchPostCompactionDelegates(delegates, sessionKey, spawnCtx);
+
+    // AC 1.c: spawnSubagentDirect called exactly twice (one per staged delegate)
+    expect(mockState.spawnSubagentDirect).toHaveBeenCalledTimes(2);
+    expect(result.dispatched).toBe(2);
+    expect(result.failed).toBe(0);
+  });
+
+  it("passes silentAnnounce, wakeOnReturn, and drainsContinuationDelegateQueue to each spawn", async () => {
+    const sessionKey = "session-lifecycle-flags";
+
+    mockState.spawnSubagentDirect
+      .mockResolvedValueOnce({ status: "accepted" })
+      .mockResolvedValueOnce({ status: "accepted" });
+
+    const delegates = [{ task: "delegate-1" }, { task: "delegate-2" }];
+    const spawnCtx = { agentSessionKey: sessionKey };
+
+    await dispatchPostCompactionDelegates(delegates, sessionKey, spawnCtx);
+
+    // AC 1.d: Each spawn payload has silentAnnounce: true, wakeOnReturn: true, drainsContinuationDelegateQueue: true
+    expect(mockState.spawnSubagentDirect).toHaveBeenCalledTimes(2);
+
+    const [firstCallPayload, firstCallCtx] = mockState.spawnSubagentDirect.mock.calls[0];
+    expect(firstCallPayload).toMatchObject({
+      task: "delegate-1",
+      silentAnnounce: true,
+      wakeOnReturn: true,
+      drainsContinuationDelegateQueue: true,
+    });
+    expect(firstCallCtx).toMatchObject({ agentSessionKey: sessionKey });
+
+    const [secondCallPayload, secondCallCtx] = mockState.spawnSubagentDirect.mock.calls[1];
+    expect(secondCallPayload).toMatchObject({
+      task: "delegate-2",
+      silentAnnounce: true,
+      wakeOnReturn: true,
+      drainsContinuationDelegateQueue: true,
+    });
+    expect(secondCallCtx).toMatchObject({ agentSessionKey: sessionKey });
+  });
+
+  it("makes zero spawn calls when no delegates are staged", async () => {
+    const sessionKey = "session-lifecycle-empty";
+
+    const result = await dispatchPostCompactionDelegates([], sessionKey, {
+      agentSessionKey: sessionKey,
+    });
+
+    // AC 3: No staged delegates → no spawn calls
+    expect(mockState.spawnSubagentDirect).not.toHaveBeenCalled();
+    expect(result.dispatched).toBe(0);
+    expect(result.failed).toBe(0);
+
+    // Info log should still fire (with 0 delegates)
+    expect(mockState.infoLog).toHaveBeenCalledOnce();
+    const infoCall = mockState.infoLog.mock.calls[0][0];
+    expect(infoCall).toContain("[continuation:compaction-delegate]");
+    expect(infoCall).toContain("Consuming 0 compaction delegate(s)");
+  });
+
+  it("passes spawn context through to spawnSubagentDirect", async () => {
+    const sessionKey = "session-lifecycle-context";
+
+    mockState.spawnSubagentDirect.mockResolvedValueOnce({ status: "accepted" });
+
+    const delegates = [{ task: "context-test" }];
+    const spawnCtx = {
+      agentSessionKey: sessionKey,
+      agentChannel: "telegram",
+      agentAccountId: "account-123",
+      agentTo: "+1234567890",
+      agentThreadId: 42,
+    };
+
+    await dispatchPostCompactionDelegates(delegates, sessionKey, spawnCtx);
+
+    const [, receivedCtx] = mockState.spawnSubagentDirect.mock.calls[0];
+    expect(receivedCtx).toEqual(spawnCtx);
+  });
+
+  it("returns correct counts when mixing successes and failures", async () => {
+    const sessionKey = "session-lifecycle-mixed";
+
+    // First two succeed, third fails
+    mockState.spawnSubagentDirect
+      .mockResolvedValueOnce({ status: "accepted" })
+      .mockResolvedValueOnce({ status: "accepted" })
+      .mockRejectedValueOnce(new Error("spawn failed"));
+
+    const delegates = [{ task: "delegate-1" }, { task: "delegate-2" }, { task: "delegate-3" }];
+
+    const result = await dispatchPostCompactionDelegates(delegates, sessionKey, {
+      agentSessionKey: sessionKey,
+    });
+
+    expect(result.dispatched).toBe(2);
+    expect(result.failed).toBe(1);
+    expect(mockState.spawnSubagentDirect).toHaveBeenCalledTimes(3);
   });
 });
