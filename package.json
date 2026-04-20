@@ -1090,6 +1090,10 @@
       "types": "./dist/plugin-sdk/zalouser.d.ts",
       "default": "./dist/plugin-sdk/zalouser.js"
     },
+    "./plugin-sdk/zk": {
+      "types": "./dist/plugin-sdk/zk.d.ts",
+      "default": "./dist/plugin-sdk/zk.js"
+    },
     "./plugin-sdk/zod": {
       "types": "./dist/plugin-sdk/zod.d.ts",
       "default": "./dist/plugin-sdk/zod.js"
@@ -1469,7 +1473,8 @@
     "@matrix-org/matrix-sdk-crypto-nodejs": "^0.4.0",
     "fake-indexeddb": "^6.2.5",
     "music-metadata": "^11.12.3",
-    "openshell": "0.1.0"
+    "openshell": "0.1.0",
+    "zookeeper": "^7.2.0"
   },
   "overrides": {
     "axios": "1.15.0"

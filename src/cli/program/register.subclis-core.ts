@@ -125,6 +125,11 @@ const entrySpecs: readonly CommandGroupDescriptorSpec<SubCliRegistrar>[] = [
       exportName: "registerDnsCli",
     },
     {
+      commandNames: ["zk"],
+      loadModule: () => import("../zk-cli.js"),
+      exportName: "registerZkCli",
+    },
+    {
       commandNames: ["docs"],
       loadModule: () => import("../docs-cli.js"),
       exportName: "registerDocsCli",

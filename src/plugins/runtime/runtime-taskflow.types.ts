@@ -15,7 +15,20 @@ export type ManagedTaskFlowRecord = TaskFlowRecord & {
   controllerId: string;
 };
 
-export type ManagedTaskFlowMutationErrorCode = "not_found" | "not_managed" | "revision_conflict";
+export type ManagedTaskFlowMutationErrorCode =
+  | "not_found"
+  | "not_managed"
+  | "revision_conflict"
+  /**
+   * v1.1 addition. The flow is `ownership: "cluster"` and this
+   * gateway is not the elected ZK leader for the flow. Mutation
+   * must be retried on the owning host (see
+   * `ManagedTaskFlowRecord.ownership*` and `docs/automation/taskflow.md`).
+   *
+   * Until PR 4b wires the ZK LeaderElection, `not_owner` is reserved
+   * but never emitted.
+   */
+  | "not_owner";
 
 export type ManagedTaskFlowMutationResult =
   | {
