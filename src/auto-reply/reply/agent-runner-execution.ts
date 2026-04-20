@@ -30,6 +30,7 @@ import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
   resolveGroupSessionKey,
+  resolveSessionStoreEntry,
   resolveSessionTranscriptPath,
   type SessionEntry,
   updateSessionStore,
@@ -1532,11 +1533,24 @@ export async function runAgentTurnWithFallback(params: {
           }
 
           // Keep the in-memory snapshot consistent with the on-disk store reset.
-          delete params.activeSessionStore[sessionKey];
+          {
+            const memResolved = resolveSessionStoreEntry({
+              store: params.activeSessionStore,
+              sessionKey,
+            });
+            delete params.activeSessionStore[memResolved.normalizedKey];
+            for (const legacyKey of memResolved.legacyKeys) {
+              delete params.activeSessionStore[legacyKey];
+            }
+          }
 
           // Remove session entry from store using a fresh, locked snapshot.
           await updateSessionStore(params.storePath, (store) => {
-            delete store[sessionKey];
+            const resolved = resolveSessionStoreEntry({ store, sessionKey });
+            delete store[resolved.normalizedKey];
+            for (const legacyKey of resolved.legacyKeys) {
+              delete store[legacyKey];
+            }
           });
         } catch (cleanupErr) {
           defaultRuntime.error(

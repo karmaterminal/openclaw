@@ -76,7 +76,11 @@ function applySelectionToSession(params: {
   if (!updated) {
     return;
   }
-  sessionStore[sessionKey] = sessionEntry;
+  const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
+  sessionStore[memResolved.normalizedKey] = sessionEntry;
+  for (const legacyKey of memResolved.legacyKeys) {
+    delete sessionStore[legacyKey];
+  }
   if (storePath) {
     updateSessionStore(storePath, (store) => {
       const resolved = resolveSessionStoreEntry({ store, sessionKey });

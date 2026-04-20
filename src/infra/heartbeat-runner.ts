@@ -37,6 +37,7 @@ import { resolveStorePath } from "../config/sessions/paths.js";
 import { loadSessionStore } from "../config/sessions/store-load.js";
 import {
   archiveRemovedSessionTranscripts,
+  resolveSessionStoreEntry,
   saveSessionStore,
   updateSessionStore,
 } from "../config/sessions/store.js";
@@ -425,7 +426,8 @@ async function restoreHeartbeatUpdatedAt(params: {
     return;
   }
   const store = loadSessionStore(storePath);
-  const entry = store[sessionKey];
+  const resolvedRead = resolveSessionStoreEntry({ store, sessionKey });
+  const entry = resolvedRead.existing;
   if (!entry) {
     return;
   }
@@ -434,7 +436,8 @@ async function restoreHeartbeatUpdatedAt(params: {
     return;
   }
   await updateSessionStore(storePath, (nextStore) => {
-    const nextEntry = nextStore[sessionKey] ?? entry;
+    const resolved = resolveSessionStoreEntry({ store: nextStore, sessionKey });
+    const nextEntry = resolved.existing ?? entry;
     if (!nextEntry) {
       return;
     }
@@ -442,7 +445,10 @@ async function restoreHeartbeatUpdatedAt(params: {
     if (nextEntry.updatedAt === resolvedUpdatedAt) {
       return;
     }
-    nextStore[sessionKey] = { ...nextEntry, updatedAt: resolvedUpdatedAt };
+    nextStore[resolved.normalizedKey] = { ...nextEntry, updatedAt: resolvedUpdatedAt };
+    for (const legacyKey of resolved.legacyKeys) {
+      delete nextStore[legacyKey];
+    }
   });
 }
 
@@ -911,7 +917,8 @@ export async function runHeartbeatOnce(opts: {
     }
 
     const store = loadSessionStore(storePath);
-    const current = store[sessionKey];
+    const resolved = resolveSessionStoreEntry({ store, sessionKey });
+    const current = resolved.existing;
     // Initialize stub entry on first run when current doesn't exist
     const base = current ?? {
       // Generate valid sessionId - derive from sessionKey without colons
@@ -930,7 +937,10 @@ export async function runHeartbeatOnce(opts: {
       }
     }
 
-    store[sessionKey] = { ...base, heartbeatTaskState: taskState };
+    store[resolved.normalizedKey] = { ...base, heartbeatTaskState: taskState };
+    for (const legacyKey of resolved.legacyKeys) {
+      delete store[legacyKey];
+    }
     await saveSessionStore(storePath, store);
   };
 
@@ -1224,13 +1234,17 @@ export async function runHeartbeatOnce(opts: {
     // Record last delivered heartbeat payload for dedupe.
     if (!shouldSkipMain && normalized.text.trim()) {
       const store = loadSessionStore(storePath);
-      const current = store[sessionKey];
+      const resolved = resolveSessionStoreEntry({ store, sessionKey });
+      const current = resolved.existing;
       if (current) {
-        store[sessionKey] = {
+        store[resolved.normalizedKey] = {
           ...current,
           lastHeartbeatText: normalized.text,
           lastHeartbeatSentAt: startedAt,
         };
+        for (const legacyKey of resolved.legacyKeys) {
+          delete store[legacyKey];
+        }
         await saveSessionStore(storePath, store);
       }
     }
