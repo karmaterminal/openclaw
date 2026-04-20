@@ -20,7 +20,11 @@ import {
 import { resolveAndPersistSessionFile } from "../../config/sessions/session-file.js";
 import { resolveSessionKey } from "../../config/sessions/session-key.js";
 import { resolveMaintenanceConfigFromInput } from "../../config/sessions/store-maintenance.js";
-import { loadSessionStore, updateSessionStore } from "../../config/sessions/store.js";
+import {
+  loadSessionStore,
+  resolveSessionStoreEntry,
+  updateSessionStore,
+} from "../../config/sessions/store.js";
 import { parseSessionThreadInfo } from "../../config/sessions/thread-info.js";
 import {
   DEFAULT_RESET_TRIGGERS,
@@ -399,7 +403,7 @@ export async function initSessionState(params: {
   if (retiredLegacyMainDelivery) {
     sessionStore[retiredLegacyMainDelivery.key] = retiredLegacyMainDelivery.entry;
   }
-  const entry = sessionStore[sessionKey];
+  const entry = resolveSessionStoreEntry({ store: sessionStore, sessionKey }).existing;
   const now = Date.now();
   const isThread = resolveThreadFlag({
     sessionKey,
@@ -451,7 +455,7 @@ export async function initSessionState(params: {
     previousSessionId: previousSessionEntry?.sessionId,
   });
 
-  if (!isNewSession && freshEntry) {
+  if (!isNewSession && freshEntry && entry) {
     sessionId = entry.sessionId;
     systemSent = entry.systemSent ?? false;
     abortedLastRun = entry.abortedLastRun ?? false;
@@ -716,12 +720,22 @@ export async function initSessionState(params: {
     sessionEntry.contextTokens = undefined;
   }
   // Preserve per-session overrides while resetting compaction state on /new.
-  sessionStore[sessionKey] = { ...sessionStore[sessionKey], ...sessionEntry };
+  {
+    const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
+    sessionStore[memResolved.normalizedKey] = { ...memResolved.existing, ...sessionEntry };
+    for (const legacyKey of memResolved.legacyKeys) {
+      delete sessionStore[legacyKey];
+    }
+  }
   await updateSessionStore(
     storePath,
     (store) => {
       // Preserve per-session overrides while resetting compaction state on /new.
-      store[sessionKey] = { ...store[sessionKey], ...sessionEntry };
+      const resolved = resolveSessionStoreEntry({ store, sessionKey });
+      store[resolved.normalizedKey] = { ...resolved.existing, ...sessionEntry };
+      for (const legacyKey of resolved.legacyKeys) {
+        delete store[legacyKey];
+      }
       if (retiredLegacyMainDelivery) {
         store[retiredLegacyMainDelivery.key] = retiredLegacyMainDelivery.entry;
       }

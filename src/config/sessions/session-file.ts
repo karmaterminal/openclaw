@@ -1,6 +1,6 @@
 import { resolveSessionFilePath } from "./paths.js";
 import type { ResolvedSessionMaintenanceConfig } from "./store-maintenance.js";
-import { updateSessionStore } from "./store.js";
+import { resolveSessionStoreEntry, updateSessionStore } from "./store.js";
 import type { SessionEntry } from "./types.js";
 
 export async function resolveAndPersistSessionFile(params: {
@@ -16,8 +16,9 @@ export async function resolveAndPersistSessionFile(params: {
   maintenanceConfig?: ResolvedSessionMaintenanceConfig;
 }): Promise<{ sessionFile: string; sessionEntry: SessionEntry }> {
   const { sessionId, sessionKey, sessionStore, storePath } = params;
+  const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
   const baseEntry = params.sessionEntry ??
-    sessionStore[sessionKey] ?? { sessionId, updatedAt: Date.now() };
+    memResolved.existing ?? { sessionId, updatedAt: Date.now() };
   const fallbackSessionFile = params.fallbackSessionFile?.trim();
   const entryForResolve =
     !baseEntry.sessionFile && fallbackSessionFile
@@ -34,14 +35,21 @@ export async function resolveAndPersistSessionFile(params: {
     sessionFile,
   };
   if (baseEntry.sessionId !== sessionId || baseEntry.sessionFile !== sessionFile) {
-    sessionStore[sessionKey] = persistedEntry;
+    sessionStore[memResolved.normalizedKey] = persistedEntry;
+    for (const legacyKey of memResolved.legacyKeys) {
+      delete sessionStore[legacyKey];
+    }
     await updateSessionStore(
       storePath,
       (store) => {
-        store[sessionKey] = {
-          ...store[sessionKey],
+        const resolved = resolveSessionStoreEntry({ store, sessionKey });
+        store[resolved.normalizedKey] = {
+          ...resolved.existing,
           ...persistedEntry,
         };
+        for (const legacyKey of resolved.legacyKeys) {
+          delete store[legacyKey];
+        }
       },
       params.activeSessionKey || params.maintenanceConfig
         ? {
@@ -52,6 +60,9 @@ export async function resolveAndPersistSessionFile(params: {
     );
     return { sessionFile, sessionEntry: persistedEntry };
   }
-  sessionStore[sessionKey] = persistedEntry;
+  sessionStore[memResolved.normalizedKey] = persistedEntry;
+  for (const legacyKey of memResolved.legacyKeys) {
+    delete sessionStore[legacyKey];
+  }
   return { sessionFile, sessionEntry: persistedEntry };
 }

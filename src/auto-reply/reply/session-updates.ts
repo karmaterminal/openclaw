@@ -13,6 +13,7 @@ import {
 import {
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
+  resolveSessionStoreEntry,
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
@@ -35,15 +36,26 @@ async function persistSessionEntryUpdate(params: {
   if (!params.sessionStore || !params.sessionKey) {
     return;
   }
-  params.sessionStore[params.sessionKey] = {
-    ...params.sessionStore[params.sessionKey],
-    ...params.nextEntry,
-  };
+  const sessionKey = params.sessionKey;
+  {
+    const memResolved = resolveSessionStoreEntry({ store: params.sessionStore, sessionKey });
+    params.sessionStore[memResolved.normalizedKey] = {
+      ...memResolved.existing,
+      ...params.nextEntry,
+    };
+    for (const legacyKey of memResolved.legacyKeys) {
+      delete params.sessionStore[legacyKey];
+    }
+  }
   if (!params.storePath) {
     return;
   }
   await updateSessionStore(params.storePath, (store) => {
-    store[params.sessionKey!] = { ...store[params.sessionKey!], ...params.nextEntry };
+    const resolved = resolveSessionStoreEntry({ store, sessionKey });
+    store[resolved.normalizedKey] = { ...resolved.existing, ...params.nextEntry };
+    for (const legacyKey of resolved.legacyKeys) {
+      delete store[legacyKey];
+    }
   });
 }
 
@@ -159,7 +171,7 @@ export async function ensureSkillSnapshot(params: {
 
   if (isFirstTurnInSession && sessionStore && sessionKey) {
     const current = nextEntry ??
-      sessionStore[sessionKey] ?? {
+      resolveSessionStoreEntry({ store: sessionStore, sessionKey }).existing ?? {
         sessionId: sessionId ?? crypto.randomUUID(),
         updatedAt: Date.now(),
       };
@@ -234,7 +246,8 @@ export async function incrementCompactionCount(params: {
   if (!sessionStore || !sessionKey) {
     return undefined;
   }
-  const entry = sessionStore[sessionKey] ?? sessionEntry;
+  const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
+  const entry = memResolved.existing ?? sessionEntry;
   if (!entry) {
     return undefined;
   }
@@ -264,16 +277,23 @@ export async function incrementCompactionCount(params: {
     updates.cacheRead = undefined;
     updates.cacheWrite = undefined;
   }
-  sessionStore[sessionKey] = {
+  sessionStore[memResolved.normalizedKey] = {
     ...entry,
     ...updates,
   };
+  for (const legacyKey of memResolved.legacyKeys) {
+    delete sessionStore[legacyKey];
+  }
   if (storePath) {
     await updateSessionStore(storePath, (store) => {
-      store[sessionKey] = {
-        ...store[sessionKey],
+      const resolved = resolveSessionStoreEntry({ store, sessionKey });
+      store[resolved.normalizedKey] = {
+        ...(resolved.existing ?? entry),
         ...updates,
       };
+      for (const legacyKey of resolved.legacyKeys) {
+        delete store[legacyKey];
+      }
     });
   }
   if (newSessionId && newSessionId !== entry.sessionId && cfg) {
@@ -282,7 +302,7 @@ export async function incrementCompactionCount(params: {
       sessionKey,
       storePath,
       previousEntry: entry,
-      nextEntry: sessionStore[sessionKey],
+      nextEntry: sessionStore[memResolved.normalizedKey],
     });
   }
   return nextCount;
