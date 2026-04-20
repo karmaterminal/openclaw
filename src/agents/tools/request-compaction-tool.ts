@@ -185,7 +185,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
             if (result.ok && result.compacted) {
               incrementVolitionalCompactionCount(sessionKey);
             } else if (isCompactionSkipReason(result.reason)) {
-              // bug #639: legitimate no-ops (below threshold, nothing to
+              // bug karmaterminal/openclaw#639: legitimate no-ops (below threshold, nothing to
               // compact, etc.) are expected outcomes — log at info to keep
               // journals readable.
               log.info(

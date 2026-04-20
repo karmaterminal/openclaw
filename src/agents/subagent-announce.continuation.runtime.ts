@@ -1,6 +1,6 @@
 // Co-located runtime entry for subagent-announce continuation drain.
 //
-// Bug #473 fix: `subagent-announce.ts` lazy-loads
+// Bug karmaterminal/openclaw#473 fix: `subagent-announce.ts` lazy-loads
 // `../auto-reply/continuation/{delegate-dispatch,config}.js` via
 // `importRuntimeModule(import.meta.url, [...])`. The bundler does not rewrite
 // the path expression inside `importRuntimeModule`, and the flat-dist emission

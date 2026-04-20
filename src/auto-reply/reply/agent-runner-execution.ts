@@ -1007,14 +1007,14 @@ export async function runAgentTurnWithFallback(params: {
                           try {
                             const { compactEmbeddedPiSession } =
                               await import("../../agents/pi-embedded-runner/compact.queued.js");
-                            // bug #639: thread the session's active provider/model through so
+                            // bug karmaterminal/openclaw#639: thread the session's active provider/model through so
                             // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL
                             // (openai/gpt-5.4) which nobody has auth for.
                             // Use inner-scope provider/model from the fallback
                             // dispatcher (line 805) so a fallback-selected model
                             // gets the compaction request, not the persisted primary
                             // (which may be in cooldown — would re-fail immediately).
-                            // bug #639 (scribe follow-up): thread authProfileId only
+                            // bug karmaterminal/openclaw#639 (scribe follow-up): thread authProfileId only
                             // when the inner-scope provider matches the persisted primary
                             // (the persisted profile is keyed to the primary). On fallback
                             // to a different provider, leave undefined so resolveEmbedded-
@@ -1034,7 +1034,7 @@ export async function runAgentTurnWithFallback(params: {
                               model,
                               authProfileId: compactionAuthProfileId,
                             });
-                            // bug #639: honor real result instead of unconditionally claiming
+                            // bug karmaterminal/openclaw#639: honor real result instead of unconditionally claiming
                             // success — otherwise volitional-compaction telemetry lies and the
                             // failure is invisible to the caller.
                             return {

@@ -170,7 +170,7 @@ describe("buildStatusMessage", () => {
     expect(normalized).toMatch(/Continuation: chain 3\/10/);
   });
 
-  it("renders the full RFC §6.3 continuation row with all four fields (Silas review gap on #188)", () => {
+  it("renders the full RFC §6.3 continuation row with all four fields (review gap on karmaterminal/openclaw#188)", () => {
     const key = "agent:main:test-187-full-row";
     continuationMocks.pending.set(key, 2);
     continuationMocks.staged.set(key, 1);

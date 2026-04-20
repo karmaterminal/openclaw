@@ -43,7 +43,7 @@ async function discoverUnder(stateDir: string): Promise<DiscoveredSession[]> {
   );
 }
 
-describe("discoverAllSessions — checkpoint dedup (bootstrap#475)", () => {
+describe("discoverAllSessions — checkpoint dedup (karmaterminal/openclaw-bootstrap#475)", () => {
   const suiteRootTracker = createSuiteTempRootTracker({
     prefix: "openclaw-discover-ckp-",
   });

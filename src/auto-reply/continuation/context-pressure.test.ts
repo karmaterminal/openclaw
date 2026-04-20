@@ -85,13 +85,13 @@ describe("checkContextPressure", () => {
     expect(checkContextPressure({ ...base, contextWindow: 0, totalTokens: 100 })).toBeNull();
   });
 
-  // #580 regression: when configured threshold is below the lowest hard-coded
+  // karmaterminal/openclaw#580 regression: when configured threshold is below the lowest hard-coded
   // band (currently 25%), the resolved band is 0. Without the -1 sentinel,
   // first-time-seen sessions had previous=0 (the `?? 0` default), so the very
   // first crossing collided band===previous===0 and was dedup-suppressed,
   // producing zero `:fire` events fleet-wide despite `:reach` firing every
   // turn. The sentinel ensures the first crossing of any band fires once.
-  it("#580: fires once at sub-25% threshold (band=0) for first-time-seen session", () => {
+  it("karmaterminal/openclaw#580: fires once at sub-25% threshold (band=0) for first-time-seen session", () => {
     const lowParams = {
       sessionKey: "low-threshold-session",
       contextWindow: 200_000,
