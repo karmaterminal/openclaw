@@ -22,25 +22,11 @@
 import { Type } from "@sinclair/typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { isCompactionSkipReason } from "../pi-embedded-runner/compact-reasons.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, ToolInputError } from "./common.js";
 
 const log = createSubsystemLogger("continuation/request-compaction");
-
-/**
- * Mirrors `isCompactionSkipReason` from auto-reply/reply/commands-compact.ts.
- * Kept local to avoid cross-package coupling (agents/tools → auto-reply/reply);
- * the predicate is small and stable.
- */
-function isLegitSkipReason(reason?: string): boolean {
-  const text = (reason ?? "").toLowerCase().trim();
-  return (
-    text.includes("nothing to compact") ||
-    text.includes("below threshold") ||
-    text.includes("already compacted") ||
-    text.includes("no real conversation messages")
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Guards
@@ -175,7 +161,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           (result) => {
             if (result.ok && result.compacted) {
               incrementVolitionalCompactionCount(sessionKey);
-            } else if (isLegitSkipReason(result.reason)) {
+            } else if (isCompactionSkipReason(result.reason)) {
               // bug #639: legitimate no-ops (below threshold, nothing to
               // compact, etc.) are expected outcomes — log at info to keep
               // journals readable.
