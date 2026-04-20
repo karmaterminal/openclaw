@@ -38,6 +38,7 @@ import {
 } from "./agent-scope.js";
 import { clearSessionAuthProfileOverride } from "./auth-profiles/session-override.js";
 import { ensureAuthProfileStore } from "./auth-profiles/store.js";
+import { createAcpVisibleTextAccumulator } from "./command/attempt-execution.helpers.js";
 import {
   persistSessionEntry as persistSessionEntryBase,
   prependInternalEventContext,
@@ -1141,4 +1142,5 @@ export async function agentCommandFromIngress(
 export const __testing = {
   resolveAgentRuntimeConfig,
   prepareAgentCommandExecution,
+  createAcpVisibleTextAccumulator,
 };
