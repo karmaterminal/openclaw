@@ -149,6 +149,13 @@ function buildCoreDistEntries(): Record<string, string> {
     // dependencies (delegate-store, state, context-pressure) with the rest of the build,
     // eliminating the dual-chunk split that silently dropped continue_work tool calls.
     "auto-reply/reply/agent-runner.runtime": "src/auto-reply/reply/agent-runner.runtime.ts",
+    // karmaterminal/openclaw#220: single lazy-load boundary for the continuation
+    // subsystem. Every dynamic continuation import (agent-runner, status command,
+    // etc.) routes through this entry so the bundler can dedupe singleton-bearing
+    // modules (config, delegate-store, delegate-dispatch, context-pressure, state)
+    // across the main chunk and the lazy chunk. Replaces the need for individual
+    // coreDistEntries promotion per continuation module.
+    "auto-reply/continuation/lazy.runtime": "src/auto-reply/continuation/lazy.runtime.ts",
     "agents/model-catalog.runtime": "src/agents/model-catalog.runtime.ts",
     "agents/models-config.runtime": "src/agents/models-config.runtime.ts",
     "subagent-registry.runtime": "src/agents/subagent-registry.runtime.ts",

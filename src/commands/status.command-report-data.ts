@@ -147,17 +147,14 @@ export async function buildStatusCommandReportData(params: {
     resolveMemoryFtsState: params.resolveMemoryFtsState,
     resolveMemoryCacheSummary: params.resolveMemoryCacheSummary,
     updateValue: params.updateValue,
-    continuationValue: (() => {
+    continuationValue: await (async () => {
       try {
-        const { resolveContinuationRuntimeConfig } =
-          require("../auto-reply/continuation/config.js") as {
-            resolveContinuationRuntimeConfig: () => {
-              enabled: boolean;
-              maxChainLength: number;
-              maxDelegatesPerTurn: number;
-            };
-          };
-        const cfg = resolveContinuationRuntimeConfig();
+        // karmaterminal/openclaw#220: route through the lazy-runtime boundary
+        // so continuation singletons (config, delegate-store) dedupe with the
+        // static graph and don't split across chunks. Also closes #221's ESM
+        // require() → await import migration at these two sites.
+        const lazy = await import("../auto-reply/continuation/lazy.runtime.js");
+        const cfg = lazy.resolveContinuationRuntimeConfig();
 
         // RFC §6.3 — surface runtime continuation state. TaskFlow-backed
         // counters are queryable cold-path from the CLI (SQLite persistent);
@@ -169,19 +166,14 @@ export async function buildStatusCommandReportData(params: {
         let stagedTotal = 0;
         if (cfg.enabled) {
           try {
-            const { pendingDelegateCount, stagedPostCompactionDelegateCount } =
-              require("../auto-reply/continuation/delegate-store.js") as {
-                pendingDelegateCount: (sessionKey: string) => number;
-                stagedPostCompactionDelegateCount: (sessionKey: string) => number;
-              };
             const seen = new Set<string>();
             for (const session of params.summary.sessions.recent) {
               if (!session.key || seen.has(session.key)) {
                 continue;
               }
               seen.add(session.key);
-              pendingTotal += pendingDelegateCount(session.key);
-              stagedTotal += stagedPostCompactionDelegateCount(session.key);
+              pendingTotal += lazy.pendingDelegateCount(session.key);
+              stagedTotal += lazy.stagedPostCompactionDelegateCount(session.key);
             }
           } catch {
             // TaskFlow not initialised or lookup failed — fall back to
