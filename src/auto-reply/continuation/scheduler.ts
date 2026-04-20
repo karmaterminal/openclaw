@@ -123,6 +123,14 @@ export function scheduleWorkContinuation(params: {
         chainState.accumulatedChainTokens,
         workReason,
       );
+    } catch (err) {
+      // karmaterminal/openclaw#207: the user-supplied onFire callback does
+      // enqueueSystemEvent + requestHeartbeatNow from agent-runner.ts; either
+      // can throw under bounded-queue / disk conditions. Without this catch
+      // the throw propagates to the event loop as an unhandled exception.
+      log.warn(
+        `[continuation:work-fire-failed] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       unregisterContinuationTimerHandle(sessionKey, timerHandle);
     }
@@ -204,13 +212,22 @@ export function scheduleDelegateContinuation(params: {
         log.info(
           `[continuation] DELEGATE timer fired: hop=${nextChainCount}/${config.maxChainLength} session=${sessionKey}`,
         );
-        void params.onDelayedSpawn({
-          plannedHop: nextChainCount,
-          task: signal.task,
-          silent: signal.silent,
-          silentWake: signal.silentWake,
-          startedAt: chainState.chainStartedAt,
-        });
+        // karmaterminal/openclaw#207: `.catch` replaces the previous bare
+        // `void` which discarded rejections and caused them to surface as
+        // unhandled rejections in the Node event loop.
+        params
+          .onDelayedSpawn({
+            plannedHop: nextChainCount,
+            task: signal.task,
+            silent: signal.silent,
+            silentWake: signal.silentWake,
+            startedAt: chainState.chainStartedAt,
+          })
+          .catch((err) => {
+            log.warn(
+              `[continuation:delayed-spawn-failed] hop=${nextChainCount}/${config.maxChainLength} session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
       } finally {
         unregisterContinuationTimerHandle(sessionKey, timerHandle);
       }
@@ -225,11 +242,19 @@ export function scheduleDelegateContinuation(params: {
   log.info(
     `[continuation] DELEGATE immediate spawn: hop=${nextChainCount}/${config.maxChainLength} session=${sessionKey}`,
   );
-  void params.onImmediateSpawn(nextChainCount, signal.task, {
-    silent: signal.silent,
-    silentWake: signal.silentWake,
-    startedAt: chainState.chainStartedAt,
-  });
+  // karmaterminal/openclaw#207: same unhandled-rejection concern as the
+  // delayed branch. Catch + warn rather than `void` discard.
+  params
+    .onImmediateSpawn(nextChainCount, signal.task, {
+      silent: signal.silent,
+      silentWake: signal.silentWake,
+      startedAt: chainState.chainStartedAt,
+    })
+    .catch((err) => {
+      log.warn(
+        `[continuation:immediate-spawn-failed] hop=${nextChainCount}/${config.maxChainLength} session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
 
   return { outcome: "scheduled-immediate", nextChainCount };
 }

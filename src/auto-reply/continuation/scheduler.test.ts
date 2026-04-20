@@ -173,3 +173,66 @@ describe("scheduleDelegateContinuation", () => {
     expect(onImmediateSpawn).not.toHaveBeenCalled();
   });
 });
+
+describe("scheduler timer callbacks swallow rejections (openclaw#207)", () => {
+  it("scheduleWorkContinuation: onFire throw does not propagate past the timer", async () => {
+    const onFire = vi.fn(() => {
+      throw new Error("enqueue-system-event exploded");
+    });
+
+    const result = scheduleWorkContinuation({
+      signal: { kind: "work", delayMs: 10_000 },
+      chainState: { currentChainCount: 0, chainStartedAt: 0, accumulatedChainTokens: 0 },
+      config: baseConfig,
+      sessionKey: "test-work-fire-throw",
+      onFire,
+    });
+    expect(result.outcome).toBe("scheduled");
+
+    // Under vitest fake timers, an unhandled exception thrown from a
+    // setTimeout callback would become a test-level failure. Advancing
+    // the timer without any custom unhandledException assertion is the
+    // regression check: the catch is in place iff this completes cleanly.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(onFire).toHaveBeenCalledTimes(1);
+  });
+
+  it("scheduleDelegateContinuation (delayed): onDelayedSpawn rejection does not propagate", async () => {
+    const onImmediateSpawn = vi.fn().mockResolvedValue(true);
+    const onDelayedSpawn = vi.fn().mockRejectedValue(new Error("spawn-failed"));
+
+    scheduleDelegateContinuation({
+      signal: { kind: "delegate", delayMs: 10_000, task: "probe" },
+      chainState: { currentChainCount: 0, chainStartedAt: 0, accumulatedChainTokens: 0 },
+      config: baseConfig,
+      sessionKey: "test-delayed-reject",
+      onImmediateSpawn,
+      onDelayedSpawn,
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    // Drain the .catch microtask.
+    await vi.runAllTimersAsync();
+    expect(onDelayedSpawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("scheduleDelegateContinuation (immediate): onImmediateSpawn rejection does not propagate", async () => {
+    const onImmediateSpawn = vi.fn().mockRejectedValue(new Error("spawn-failed"));
+    const onDelayedSpawn = vi.fn().mockResolvedValue(true);
+
+    const result = scheduleDelegateContinuation({
+      signal: { kind: "delegate", task: "probe" }, // no delay → immediate
+      chainState: { currentChainCount: 0, chainStartedAt: 0, accumulatedChainTokens: 0 },
+      config: baseConfig,
+      sessionKey: "test-immediate-reject",
+      onImmediateSpawn,
+      onDelayedSpawn,
+    });
+    expect(result.outcome).toBe("scheduled-immediate");
+
+    // Microtask drain for the .catch branch.
+    await vi.runAllTimersAsync();
+    expect(onImmediateSpawn).toHaveBeenCalledTimes(1);
+    expect(onDelayedSpawn).not.toHaveBeenCalled();
+  });
+});
