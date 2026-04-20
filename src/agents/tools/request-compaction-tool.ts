@@ -71,7 +71,14 @@ const RequestCompactionToolSchema = Type.Object({
 export type RequestCompactionToolOpts = {
   agentSessionKey?: string;
   sessionId?: string;
-  getContextUsage: () => number;
+  /**
+   * Returns context usage as a fraction in [0, 1], or `null` if the caller
+   * has no live token count to report (e.g. queued followup runs that don't
+   * receive `sessionTokenInfo`). When `null`, the tool replies with
+   * `guard: "context_unknown"` so callers learn the truth instead of
+   * tripping the 70% floor with a fake `0`. Refs karmaterminal/openclaw#222.
+   */
+  getContextUsage: () => number | null;
   triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
 };
 
@@ -116,6 +123,19 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       // Guard: Context threshold
       const contextUsage = opts.getContextUsage();
+      // Honest "unknown" reply: callers without a live token count return
+      // `null`, and we surface that distinctly from the 70% floor rejection
+      // so the agent can route a follow-up turn to a path that has the data.
+      // (Refs karmaterminal/openclaw#222.)
+      if (contextUsage === null) {
+        log.debug(`[request_compaction:context-unknown] session=${sessionKey}`);
+        return jsonResult({
+          status: "rejected",
+          guard: "context_unknown",
+          reason:
+            "Context usage is not measurable on the current run path; request compaction from the main-session path where sessionTokenInfo is available.",
+        });
+      }
       if (contextUsage < MIN_CONTEXT_THRESHOLD) {
         log.debug(
           `[request_compaction:below-threshold] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}%`,

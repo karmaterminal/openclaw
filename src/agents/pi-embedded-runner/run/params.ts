@@ -141,7 +141,7 @@ export type RunEmbeddedPiAgentParams = {
   /** Continuation: request_compaction tool opts (injected from execution context). */
   requestCompactionOpts?: {
     sessionId?: string;
-    getContextUsage: () => number;
+    getContextUsage: () => number | null;
     triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
   };
 };

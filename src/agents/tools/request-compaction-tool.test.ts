@@ -89,6 +89,22 @@ describe("request_compaction tool (swim-34/X5.1)", () => {
     expect(payload.guard).toBe("context_threshold");
   });
 
+  // (b2) context_unknown guard when getContextUsage returns null (Refs karmaterminal/openclaw#222).
+  // The followup-runner path has no live token count; returning null lets the
+  // tool surface that distinctly from the 70% floor instead of lying with `0`.
+  it("rejects with context_unknown guard when getContextUsage returns null", async () => {
+    const tool = createRequestCompactionTool(buildOpts({ getContextUsage: () => null }));
+    const result = await tool.execute("call-3c", { reason: TURN_REASON });
+    const payload = readJsonPayload(result);
+    expect(payload.status).toBe("rejected");
+    expect(payload.guard).toBe("context_unknown");
+    expect(payload.guard).not.toBe("context_threshold");
+    expect(payload.reason).toMatch(/not measurable/i);
+    // Should NOT carry a contextUsage / threshold field — we don't know.
+    expect(payload.contextUsage).toBeUndefined();
+    expect(payload.threshold).toBeUndefined();
+  });
+
   // (c) enqueue when >=70% no rate limit
   it("enqueues compaction when contextUsage >= MIN_CONTEXT_THRESHOLD and no rate limit", async () => {
     const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
