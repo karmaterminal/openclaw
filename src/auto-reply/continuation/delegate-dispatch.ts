@@ -234,3 +234,65 @@ export async function dispatchToolDelegates(params: {
 
   return { dispatched, rejected };
 }
+
+// ---------------------------------------------------------------------------
+// Post-compaction delegate dispatch (RFC §4.4)
+// ---------------------------------------------------------------------------
+
+const postCompactionLog = createSubsystemLogger("continuation/compaction");
+
+export interface PostCompactionSpawnContext {
+  agentSessionKey: string;
+  agentChannel?: string;
+  agentAccountId?: string;
+  agentTo?: string;
+  agentThreadId?: string | number;
+}
+
+/**
+ * Dispatch post-compaction delegates with silentAnnounce + wakeOnReturn.
+ *
+ * This mirrors dispatchToolDelegates but is specifically for post-compaction
+ * staged delegates. Errors are logged and surfaced as system events rather
+ * than silently swallowed.
+ *
+ * See: issue #203, #639 for bug-class precedent.
+ */
+export async function dispatchPostCompactionDelegates(
+  delegates: Array<{ task: string }>,
+  sessionKey: string,
+  spawnCtx: PostCompactionSpawnContext,
+): Promise<{ dispatched: number; failed: number }> {
+  let dispatched = 0;
+  let failed = 0;
+
+  postCompactionLog.info(
+    `[continuation:compaction-delegate] Consuming ${delegates.length} compaction delegate(s) for session ${sessionKey}`,
+  );
+
+  for (const delegate of delegates) {
+    try {
+      await spawnSubagentDirect(
+        {
+          task: delegate.task,
+          silentAnnounce: true,
+          wakeOnReturn: true,
+          drainsContinuationDelegateQueue: true,
+        },
+        spawnCtx,
+      );
+      dispatched++;
+    } catch (err) {
+      postCompactionLog.warn(
+        `[continuation:post-compaction-spawn-failed] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+      );
+      enqueueSystemEvent(
+        `[continuation] Post-compaction delegate spawn failed: ${String(err)}. Task: ${delegate.task}`,
+        { sessionKey },
+      );
+      failed++;
+    }
+  }
+
+  return { dispatched, failed };
+}
