@@ -243,15 +243,42 @@ export const AgentDefaultsSchema = z
     continuation: z
       .object({
         enabled: z.boolean().optional(),
-        maxChainLength: z.number().optional(),
-        defaultDelayMs: z.number().optional(),
-        minDelayMs: z.number().optional(),
-        maxDelayMs: z.number().optional(),
-        costCapTokens: z.number().optional(),
-        maxDelegatesPerTurn: z.number().optional(),
-        contextPressureThreshold: z.number().optional(),
+        // karmaterminal/openclaw#215: bounds tightened to match semantic
+        // expectations. Pre-#215 every numeric field was bare z.number(),
+        // weaker than sibling compaction / subagents / memoryFlush blocks.
+        // Clamp helpers in continuation/config.ts still apply at read time
+        // as a belt-and-braces layer.
+        maxChainLength: z.number().int().positive().optional(),
+        defaultDelayMs: z.number().int().nonnegative().optional(),
+        minDelayMs: z.number().int().nonnegative().optional(),
+        maxDelayMs: z.number().int().nonnegative().optional(),
+        costCapTokens: z.number().int().nonnegative().optional(),
+        maxDelegatesPerTurn: z.number().int().positive().optional(),
+        contextPressureThreshold: z.number().gt(0).lte(1).optional(),
       })
       .strict()
+      .refine(
+        (cfg) => {
+          // karmaterminal/openclaw#215: min ≤ default ≤ max when all set.
+          // Any omitted field skips its side of the comparison.
+          const min = cfg.minDelayMs;
+          const def = cfg.defaultDelayMs;
+          const max = cfg.maxDelayMs;
+          if (min !== undefined && def !== undefined && min > def) {
+            return false;
+          }
+          if (def !== undefined && max !== undefined && def > max) {
+            return false;
+          }
+          if (min !== undefined && max !== undefined && min > max) {
+            return false;
+          }
+          return true;
+        },
+        {
+          message: "continuation delay bounds violate minDelayMs ≤ defaultDelayMs ≤ maxDelayMs",
+        },
+      )
       .optional(),
   })
   .strict()
