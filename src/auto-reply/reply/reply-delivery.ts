@@ -4,6 +4,7 @@ import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { BlockReplyContext, ReplyPayload } from "../types.js";
 import type { BlockReplyPipeline } from "./block-reply-pipeline.js";
 import { createBlockReplyContentKey } from "./block-reply-pipeline.js";
+import { hasCotFramePrefix } from "./cot-frame.js";
 import { parseReplyDirectives } from "./reply-directives.js";
 import { applyReplyTagsToPayload, isRenderablePayload } from "./reply-payloads.js";
 import type { TypingSignaler } from "./typing-mode.js";
@@ -103,8 +104,25 @@ export function createBlockReplyDeliveryHandler(params: {
     const mediaNormalizedPayload = params.normalizeMediaPaths
       ? await params.normalizeMediaPaths(normalized.payload)
       : normalized.payload;
-    const blockPayload = params.applyReplyToMode(mediaNormalizedPayload);
+    let blockPayload = params.applyReplyToMode(mediaNormalizedPayload);
     const blockHasMedia = resolveSendableOutboundReplyParts(blockPayload).hasMedia;
+
+    // CoT-frame leak suppression for the streaming path.  The model sometimes
+    // emits internal narration as a per-block body prefixed with a bracketed
+    // speaker frame like `[cael] ...` or `[the dandelion cult - ronan] ...`.
+    // `normalizeReplyPayload` (the FINAL-payload normalizer) already drops
+    // these via `hasCotFramePrefix` (#269/#270), but block-streaming ships
+    // text *before* the final payload is ever assembled, so the leak escapes
+    // when `blockStreamingEnabled: true` (the default for chat channels).
+    // Drop the leaked text here, mirroring the final-payload semantics:
+    // suppress entirely when there's no media, otherwise let media still
+    // ship without the frame body.
+    if (blockPayload.text && hasCotFramePrefix(blockPayload.text)) {
+      if (!blockHasMedia) {
+        return;
+      }
+      blockPayload = { ...blockPayload, text: undefined };
+    }
 
     // Skip empty payloads unless they have audioAsVoice flag (need to track it).
     if (!blockPayload.text && !blockHasMedia && !blockPayload.audioAsVoice) {
