@@ -35,10 +35,9 @@ const ContinueWorkToolSchema = Type.Object({
   ),
 });
 
-export type ContinueWorkRequest = {
-  reason: string;
-  delaySeconds: number;
-};
+// ContinueWorkRequest is defined in the continuation types module so the
+// tool and the store/signal consumers share one canonical contract.
+export type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
 
 export function createContinueWorkTool(opts: { agentSessionKey?: string }): AnyAgentTool {
   return {

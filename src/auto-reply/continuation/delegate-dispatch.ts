@@ -20,7 +20,6 @@ import { resolveContinuationRuntimeConfig } from "./config.js";
 import { consumePendingDelegates, peekSoonestUnmaturedDelegateDueAt } from "./delegate-store.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
 import {
-  setDelegatePending,
   registerContinuationTimerHandle,
   retainContinuationTimerRef,
   unregisterContinuationTimerHandle,
@@ -63,7 +62,12 @@ function armHedgeTimer(
     unregisterContinuationTimerHandle(sessionKey, handle);
     log.info(`[continuation:delegate-hedge-fired] session=${sessionKey}`);
     void dispatchToolDelegates({ sessionKey, ...params }).catch((err) => {
-      log.info(
+      // Warn (not info): per-delegate errors inside dispatchToolDelegates
+      // are logged at info by the dispatcher itself; reaching this outer
+      // catch means dispatcher-level failure (TaskFlow store error on
+      // consume / peek / readiness gate). A queued delegate may now be
+      // orphaned — that deserves a louder band. karmaterminal/openclaw#224.
+      log.warn(
         `[continuation:delegate-hedge-error] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey}`,
       );
     });
@@ -176,9 +180,6 @@ export async function dispatchToolDelegates(params: {
     const nextHop = currentChainCount + 1;
     const silent = delegate.mode === "silent" || delegate.mode === "silent-wake";
     const silentWake = delegate.mode === "silent-wake";
-
-    // Mark delegate-pending so the runner knows work is queued.
-    setDelegatePending(sessionKey);
 
     const spawnCtx: SpawnSubagentContext = {
       agentSessionKey: sessionKey,

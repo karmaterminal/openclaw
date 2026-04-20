@@ -21,6 +21,7 @@ import {
   listTaskFlowsForOwnerKey,
 } from "../../tasks/task-flow-runtime-internal.js";
 import type {
+  ContinueWorkRequest,
   DelayedContinuationReservation,
   PendingContinuationDelegate,
   StagedPostCompactionDelegate,
@@ -388,18 +389,13 @@ export function clearDelayedContinuationReservations(sessionKey: string): void {
 // or gateway restarts. TaskFlow is not needed here.
 // ---------------------------------------------------------------------------
 
-const pendingWorkRequests = new Map<string, { reason: string; delaySeconds: number }>();
+const pendingWorkRequests = new Map<string, ContinueWorkRequest>();
 
-export function setPendingWorkRequest(
-  sessionKey: string,
-  request: { reason: string; delaySeconds: number },
-): void {
+export function setPendingWorkRequest(sessionKey: string, request: ContinueWorkRequest): void {
   pendingWorkRequests.set(sessionKey, request);
 }
 
-export function consumePendingWorkRequest(
-  sessionKey: string,
-): { reason: string; delaySeconds: number } | undefined {
+export function consumePendingWorkRequest(sessionKey: string): ContinueWorkRequest | undefined {
   const request = pendingWorkRequests.get(sessionKey);
   if (request) {
     pendingWorkRequests.delete(sessionKey);

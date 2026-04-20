@@ -14,14 +14,10 @@ import type { ContinuationSignal } from "./types.js";
 
 const log = createSubsystemLogger("continuation/signal");
 
-/**
- * The tool-call request shape captured by `continue_work()` during execution.
- * The tool sets this via a callback; the runner reads it after the turn.
- */
-export type ContinueWorkRequest = {
-  reason: string;
-  delaySeconds: number;
-};
+// ContinueWorkRequest now lives in ./types.js — import for local use and
+// re-export for call sites that already depend on this module.
+import type { ContinueWorkRequest } from "./types.js";
+export type { ContinueWorkRequest };
 
 /**
  * A reply payload with optional text content.
