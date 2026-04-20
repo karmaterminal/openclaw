@@ -887,7 +887,7 @@ export function buildStatusMessage(args: StatusArgs): string {
  * Source modules are imported statically; no status<->continuation cycle
  * exists (verified — neither continuation/* nor request-compaction-tool.ts
  * imports auto-reply/status). Inner try/catch around each lookup keeps the
- * status row resilient if a counter store hasn't been initialised in a
+ * status row resilient if a counter store hasn't been initialized in a
  * particular runtime path (silently fall back to zero rather than failing
  * the whole status render).
  */
@@ -914,7 +914,7 @@ function formatContinuationStatusLine(params: {
       pending = pendingDelegateCount(sessionKey);
       staged = stagedPostCompactionDelegateCount(sessionKey);
     } catch {
-      // delegate-store not initialised — leave counts at zero.
+      // delegate-store not initialized — leave counts at zero.
     }
     try {
       volitional = getVolitionalCompactionCount(sessionKey);

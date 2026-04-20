@@ -184,7 +184,7 @@ export async function buildStatusCommandReportData(params: {
               stagedTotal += stagedPostCompactionDelegateCount(session.key);
             }
           } catch {
-            // TaskFlow not initialised or lookup failed — fall back to
+            // TaskFlow not initialized or lookup failed — fall back to
             // config-only shape silently rather than hiding the whole row.
           }
         }
