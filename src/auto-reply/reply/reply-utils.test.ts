@@ -125,6 +125,13 @@ describe("normalizeReplyPayload", () => {
     expect(result!.text).not.toContain("NO_REPLY");
   });
 
+  it("suppresses message when trailing NO_REPLY follows internal reasoning (CoT leak fix)", () => {
+    const result = normalizeReplyPayload({
+      text: "Here's my analysis: figs is asking X, the right move is Y.\n\nNO_REPLY",
+    });
+    expect(result).toBeNull();
+  });
+
   it("strips glued leading NO_REPLY text without leaking the token", () => {
     const result = normalizeReplyPayload({
       text: "NO_REPLYThe user is saying hello",
