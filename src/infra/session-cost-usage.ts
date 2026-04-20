@@ -473,7 +473,7 @@ export async function discoverAllSessions(params?: {
     }
     // Do not exclude by endMs: a session can have activity in range even if it continued later.
 
-    // Checkpoint-twin dedup (issue #475): `<parentId>.checkpoint.<uuid>.jsonl`
+    // Checkpoint-twin dedup (karmaterminal/openclaw#475): `<parentId>.checkpoint.<uuid>.jsonl`
     // files are pre-compaction snapshot siblings of the parent primary
     // session. They must NOT surface as distinct discovered sessions — that
     // lopsides the discover map (one lopsided session can present as

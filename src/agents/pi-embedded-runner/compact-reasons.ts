@@ -79,7 +79,7 @@ export function classifyCompactionReason(reason?: string): CompactionReasonCode 
     return "no_real_conversation_messages";
   }
   if (text.includes("unknown model")) {
-    // bug #639: surfaced when DEFAULT_PROVIDER/DEFAULT_MODEL fallback hits
+    // bug karmaterminal/openclaw#639: surfaced when DEFAULT_PROVIDER/DEFAULT_MODEL fallback hits
     // a model nobody has auth for (e.g. volitional compaction without provider/model passed).
     return "unknown_model";
   }

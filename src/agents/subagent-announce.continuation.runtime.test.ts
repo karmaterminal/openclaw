@@ -1,4 +1,4 @@
-// Regression coverage for issue #473:
+// Regression coverage for issue karmaterminal/openclaw#473:
 // `subagent-announce.ts` lazy-loads the continuation drain via
 // `importRuntimeModule(import.meta.url, [...])`. That dynamic import path
 // is NOT bundler-rewritten; the bundler emits the source modules into a
@@ -49,7 +49,7 @@ function entriesOfMainGraph(): Record<string, string> {
   return main.entry;
 }
 
-describe("subagent-announce continuation runtime entry (issue #473)", () => {
+describe("subagent-announce continuation runtime entry (issue karmaterminal/openclaw#473)", () => {
   it("registers the continuation runtime as a tsdown bundler entry", () => {
     const entries = entriesOfMainGraph();
     expect(entries).toHaveProperty("agents/subagent-announce.continuation.runtime");
