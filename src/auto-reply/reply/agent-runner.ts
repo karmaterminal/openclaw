@@ -35,6 +35,7 @@ import {
 } from "../continuation/delegate-store.js";
 import { scheduleWorkContinuation } from "../continuation/scheduler.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
+import { loadContinuationChainState } from "../continuation/state.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
@@ -1826,11 +1827,9 @@ export async function runReplyAgent(params: {
     if (effectiveContinuationSignal && sessionKey) {
       const continuationConfig = resolveContinuationRuntimeConfig(cfg);
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
-      const chainState = {
-        currentChainCount: activeSessionEntry?.continuationChainCount ?? 0,
-        chainStartedAt: activeSessionEntry?.continuationChainStartedAt ?? Date.now(),
-        accumulatedChainTokens: (activeSessionEntry?.continuationChainTokens ?? 0) + turnTokens,
-      };
+      const chainState = loadContinuationChainState(activeSessionEntry, {
+        extraTokens: turnTokens,
+      });
 
       if (effectiveContinuationSignal.kind === "work") {
         scheduleWorkContinuation({
@@ -1859,11 +1858,9 @@ export async function runReplyAgent(params: {
     // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
     if (continuationFeatureEnabled && sessionKey) {
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
-      const dispatchChainState = {
-        currentChainCount: activeSessionEntry?.continuationChainCount ?? 0,
-        chainStartedAt: activeSessionEntry?.continuationChainStartedAt ?? Date.now(),
-        accumulatedChainTokens: (activeSessionEntry?.continuationChainTokens ?? 0) + turnTokens,
-      };
+      const dispatchChainState = loadContinuationChainState(activeSessionEntry, {
+        extraTokens: turnTokens,
+      });
       const { dispatchToolDelegates } = await import("../continuation/delegate-dispatch.js");
       await dispatchToolDelegates({
         sessionKey,
@@ -1888,11 +1885,14 @@ export async function runReplyAgent(params: {
     ) {
       const { persistContinuationChainState } = await import("../continuation/state.js");
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const persistState = loadContinuationChainState(activeSessionEntry, {
+        extraTokens: turnTokens,
+      });
       persistContinuationChainState({
         sessionEntry: activeSessionEntry,
-        count: activeSessionEntry.continuationChainCount ?? 0,
-        startedAt: activeSessionEntry.continuationChainStartedAt ?? Date.now(),
-        tokens: (activeSessionEntry.continuationChainTokens ?? 0) + turnTokens,
+        count: persistState.currentChainCount,
+        startedAt: persistState.chainStartedAt,
+        tokens: persistState.accumulatedChainTokens,
       });
     }
 

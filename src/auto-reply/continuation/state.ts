@@ -152,6 +152,50 @@ export function persistContinuationChainState(params: {
   params.sessionEntry.continuationChainTokens = params.tokens;
 }
 
+/**
+ * Subset of SessionEntry carrying continuation-chain metadata.
+ *
+ * Read sites can accept this shape instead of importing the full SessionEntry
+ * type — useful for callers that load entries via dynamic-typed helpers
+ * (e.g. subagent-announce.loadSessionEntryByKey).
+ */
+export type ContinuationChainSource = {
+  continuationChainCount?: number;
+  continuationChainStartedAt?: number;
+  continuationChainTokens?: number;
+};
+
+/**
+ * Resolved continuation-chain state — the shape every read site needs.
+ *
+ * Centralized here to (a) eliminate `?? 0` / `?? Date.now()` sentinel sprawl
+ * at six read sites, and (b) make the "all three fields rise/fall as a unit"
+ * invariant explicit. The on-disk shape (three flat optionals on SessionEntry)
+ * is preserved; this helper only normalizes the read path.
+ *
+ * If `extraTokens` is provided (representing the current turn's token usage),
+ * it is added to the persisted chain-token total. Pass `0` (or omit) for
+ * call sites that just want the persisted snapshot.
+ *
+ * Pass `now` to make timestamp defaulting deterministic in tests.
+ */
+export function loadContinuationChainState(
+  source: ContinuationChainSource | undefined,
+  options: { extraTokens?: number; now?: number } = {},
+): {
+  currentChainCount: number;
+  chainStartedAt: number;
+  accumulatedChainTokens: number;
+} {
+  const extraTokens = options.extraTokens ?? 0;
+  const nowFn = options.now ?? Date.now();
+  return {
+    currentChainCount: source?.continuationChainCount ?? 0,
+    chainStartedAt: source?.continuationChainStartedAt ?? nowFn,
+    accumulatedChainTokens: (source?.continuationChainTokens ?? 0) + extraTokens,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------

@@ -60,6 +60,7 @@ import {
   pendingDelegateCount,
   stagedPostCompactionDelegateCount,
 } from "./continuation/delegate-store.js";
+import { loadContinuationChainState } from "./continuation/state.js";
 import { formatProviderModelRef, resolveSelectedAndActiveModel } from "./model-runtime.js";
 import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "./thinking.js";
 
@@ -922,7 +923,7 @@ function formatContinuationStatusLine(params: {
       // request-compaction tool not loaded — leave at zero.
     }
   }
-  const chain = params.sessionEntry?.continuationChainCount ?? 0;
+  const chain = loadContinuationChainState(params.sessionEntry).currentChainCount;
   if (chain === 0 && pending === 0 && staged === 0 && volitional === 0) {
     return null;
   }
