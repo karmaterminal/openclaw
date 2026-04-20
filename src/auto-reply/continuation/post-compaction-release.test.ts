@@ -25,7 +25,8 @@
  *
  * See: openclaw#211.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { releasePostCompactionLifecycle } from "./post-compaction-release.js";
 
 const mockState = vi.hoisted(() => ({
@@ -75,10 +76,6 @@ const ORIGINATING = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockState.spawnSubagentDirect.mockResolvedValue(undefined);
-});
-
-afterEach(() => {
-  vi.clearAllMocks();
 });
 
 describe("releasePostCompactionLifecycle (openclaw#211)", () => {
@@ -269,9 +266,8 @@ describe("releasePostCompactionLifecycle (openclaw#211)", () => {
       activeSessionEntry: { totalTokens: 50_000, contextTokens: undefined },
       originating: ORIGINATING,
     });
-    const lastCall = mockState.checkContextPressure.mock.calls.at(-1);
-    expect(lastCall?.[0]?.contextWindow).toBeGreaterThan(0);
-    expect(lastCall?.[0]?.contextWindow).not.toBe(100_000);
-    expect(lastCall?.[0]?.contextWindow).not.toBe(75_000);
+    expect(mockState.checkContextPressure).toHaveBeenLastCalledWith(
+      expect.objectContaining({ contextWindow: DEFAULT_CONTEXT_TOKENS }),
+    );
   });
 });
