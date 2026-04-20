@@ -11,11 +11,12 @@
  * Band dedup: equality-based. The same band doesn't fire twice consecutively,
  * but a new band (including a lower band after compaction) always fires.
  *
- * The dedup sentinel is -1, NOT 0. A first-time-seen session has previous=-1,
- * so even band=0 (ratio below the lowest hard-coded band) fires once. This
- * matters when the configured `contextPressureThreshold` is below the lowest
- * band (currently 25%): without the sentinel, every session's first crossing
- * collides band===previous===0 and is suppressed silently. (#580)
+ * First-fire is signalled by `lastFiredBand.has(sessionKey) === false`
+ * (previously a `-1` magic sentinel — replaced in #228 per CLAUDE.md). The
+ * #580 collision shape — first-crossing of a sub-lowest-band ratio being
+ * silently suppressed because `band===previous===0` — is now precluded by
+ * checking presence in the map before comparing. The behavior pinned by
+ * `context-pressure.test.ts` (#580 regression) is preserved.
  *
  * RFC: docs/design/continue-work-signal-v2.md §4.2
  */
@@ -28,17 +29,26 @@ const log = createSubsystemLogger("continuation/context-pressure");
 const PRESSURE_BANDS = [25, 80, 90, 95] as const;
 
 /**
+ * Closed union of pressure-band values returned by {@link resolveContextPressureBand}.
+ * `0` represents "below all hard-coded bands".
+ */
+export type PressureBand = 0 | (typeof PRESSURE_BANDS)[number];
+
+/**
  * Per-session dedup state: the last band that fired.
  * Reset when a new lifecycle begins (e.g., after compaction).
+ *
+ * Absence (`!map.has(sessionKey)`) means the session has never fired —
+ * it replaces the prior `-1` magic sentinel.
  */
-const lastFiredBand = new Map<string, number>();
+const lastFiredBand = new Map<string, PressureBand>();
 
 /**
  * Resolve which pressure band the current ratio falls into.
  * Returns 0 if below all bands.
  */
-export function resolveContextPressureBand(ratio: number): number {
-  let band = 0;
+export function resolveContextPressureBand(ratio: number): PressureBand {
+  let band: PressureBand = 0;
   for (const threshold of PRESSURE_BANDS) {
     if (ratio * 100 >= threshold) {
       band = threshold;
@@ -108,12 +118,15 @@ export function checkContextPressure(params: {
   const band = resolveContextPressureBand(ratio);
 
   // Dedup: same band as last time → suppress.
-  // Sentinel -1 ensures first-time-seen sessions fire once even when band===0
-  // (which happens for any ratio below the lowest hard-coded band, currently
-  // 25%). Using `?? 0` here would silently suppress every first crossing of
-  // sub-25% thresholds. See #580 for the bytes.
-  const previous = lastFiredBand.get(sessionKey) ?? -1;
-  if (band === previous) {
+  // First-fire is signalled by absence in the map (previously a `-1`
+  // sentinel — dropped in #228). The shape this protects against (#580):
+  // when `contextPressureThreshold` is below the lowest hard-coded band,
+  // a session's first crossing has band===0; comparing against `?? 0`
+  // silently suppressed it. Using `.has()` instead of a sentinel keeps
+  // the semantics intact without the magic number.
+  const previous = lastFiredBand.get(sessionKey);
+  const isFirstFire = previous === undefined;
+  if (!isFirstFire && band === previous) {
     if (log.isEnabled("debug")) {
       log.debug(
         `[context-pressure:noop] reason=band-dedup band=${band} previous=${previous} ratio=${percentUsed}% session=${sessionKey}`,
@@ -130,7 +143,7 @@ export function checkContextPressure(params: {
     `Consider evacuating working state to memory files or delegating remaining work.`;
 
   log.info(
-    `[context-pressure:fire] band=${band} previous=${previous} ratio=${percentUsed}% session=${sessionKey}`,
+    `[context-pressure:fire] band=${band} previous=${previous ?? "none"} ratio=${percentUsed}% session=${sessionKey}`,
   );
 
   return eventText;

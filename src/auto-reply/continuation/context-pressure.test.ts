@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   checkContextPressure,
   clearContextPressureState,
+  type PressureBand,
   resetContextPressureForTests,
   resolveContextPressureBand,
 } from "./context-pressure.js";
@@ -21,6 +22,12 @@ describe("resolveContextPressureBand", () => {
     expect(resolveContextPressureBand(0.8)).toBe(80);
     expect(resolveContextPressureBand(0.9)).toBe(90);
     expect(resolveContextPressureBand(0.95)).toBe(95);
+  });
+
+  it("return type is the closed PressureBand union (#228)", () => {
+    // Compile-time assertion: assigning to PressureBand forces the closed union.
+    const band: PressureBand = resolveContextPressureBand(0.5);
+    expect(band).toBe(25);
   });
 
   it("returns highest crossed band", () => {
