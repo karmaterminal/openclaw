@@ -43,15 +43,19 @@ export type ContinuationSignal =
  * A delegate waiting to be dispatched after the current turn completes.
  * Enqueued by the `continue_delegate` tool during execution, consumed by
  * the delegate dispatch module after the response finalizes.
+ *
+ * `mode` is the single source of truth for silent/silent-wake/post-compaction
+ * behaviour. Prior to karmaterminal/openclaw#227 this type also carried
+ * `silent`/`silentWake`/`postCompaction` booleans alongside `mode`, which
+ * the encoder resolved with an OR-fallback — creating a silent-disagreement
+ * hazard when the two encodings disagreed. The booleans still appear in the
+ * on-disk TaskFlow state payload (legacy persisted schema) but never on the
+ * runtime object.
  */
 export type PendingContinuationDelegate = {
   task: string;
   delayMs?: number;
   mode?: "normal" | "silent" | "silent-wake" | "post-compaction";
-  /** Convenience booleans for TaskFlow state serialization. */
-  silent?: boolean;
-  silentWake?: boolean;
-  postCompaction?: boolean;
 };
 
 /**

@@ -57,29 +57,29 @@ type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
 
 function buildDelegateGoal(delegate: PendingContinuationDelegate): string {
   const task = delegate.task.trim();
+  const isPostCompaction = delegate.mode === "post-compaction";
   if (!task) {
-    return delegate.postCompaction
-      ? "Post-compaction continuation delegate"
-      : "Continuation delegate";
+    return isPostCompaction ? "Post-compaction continuation delegate" : "Continuation delegate";
   }
   const excerpt = task.length > 80 ? `${task.slice(0, 77)}...` : task;
-  return delegate.postCompaction
+  return isPostCompaction
     ? `Post-compaction delegate: ${excerpt}`
     : `Continuation delegate: ${excerpt}`;
 }
 
 function buildDelegateState(delegate: PendingContinuationDelegate): PendingDelegateState {
+  // karmaterminal/openclaw#227: `mode` is the sole runtime-surface encoding.
+  // Project it into the on-disk boolean flags so existing persisted records
+  // (which predate the mode-only runtime shape) keep their familiar schema
+  // and `decodeDelegateState` / `flowToDelegate` keep working unchanged for
+  // historical TaskFlow rows.
   return {
     kind: "continuation_delegate",
     task: delegate.task,
     ...(delegate.delayMs !== undefined ? { delayMs: delegate.delayMs } : {}),
-    ...(delegate.silent === true || delegate.mode === "silent" ? { silent: true } : {}),
-    ...(delegate.silentWake === true || delegate.mode === "silent-wake"
-      ? { silentWake: true }
-      : {}),
-    ...(delegate.postCompaction === true || delegate.mode === "post-compaction"
-      ? { postCompaction: true }
-      : {}),
+    ...(delegate.mode === "silent" ? { silent: true } : {}),
+    ...(delegate.mode === "silent-wake" ? { silentWake: true } : {}),
+    ...(delegate.mode === "post-compaction" ? { postCompaction: true } : {}),
   };
 }
 
@@ -114,14 +114,23 @@ function flowToDelegate(
   flow: TaskFlowRecord,
   state: PendingDelegateState,
 ): PendingContinuationDelegate {
+  // karmaterminal/openclaw#227: rehydrate runtime shape (mode-only) from
+  // the on-disk boolean flags. silentWake takes precedence over silent
+  // because on-disk rows may have both set (mode === "silent-wake" also
+  // wrote silent in earlier encoders), and silent-wake is the more
+  // specific mode.
+  let mode: PendingContinuationDelegate["mode"];
+  if (state.postCompaction === true) {
+    mode = "post-compaction";
+  } else if (state.silentWake === true) {
+    mode = "silent-wake";
+  } else if (state.silent === true) {
+    mode = "silent";
+  }
   return {
     task: state.task,
     ...(state.delayMs !== undefined ? { delayMs: state.delayMs } : {}),
-    ...(state.silent === true ? { silent: true, mode: "silent" as const } : {}),
-    ...(state.silentWake === true ? { silentWake: true, mode: "silent-wake" as const } : {}),
-    ...(state.postCompaction === true
-      ? { postCompaction: true, mode: "post-compaction" as const }
-      : {}),
+    ...(mode !== undefined ? { mode } : {}),
   };
 }
 
@@ -136,7 +145,7 @@ export function enqueuePendingDelegate(
   sessionKey: string,
   delegate: PendingContinuationDelegate,
 ): void {
-  const isPostCompaction = delegate.postCompaction === true || delegate.mode === "post-compaction";
+  const isPostCompaction = delegate.mode === "post-compaction";
   createManagedTaskFlow({
     ownerKey: sessionKey,
     controllerId: isPostCompaction
@@ -274,9 +283,6 @@ export function stagePostCompactionDelegate(
 ): void {
   enqueuePendingDelegate(sessionKey, {
     task: delegate.task,
-    silent: true,
-    silentWake: true,
-    postCompaction: true,
     mode: "post-compaction",
   });
 }

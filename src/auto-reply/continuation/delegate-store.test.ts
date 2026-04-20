@@ -111,7 +111,6 @@ describe("delegate store — TaskFlow-backed", () => {
     const delegates = consumePendingDelegates("session-1");
     expect(delegates[0]).toMatchObject({
       task: "silent task",
-      silentWake: true,
       mode: "silent-wake",
     });
   });
@@ -147,7 +146,7 @@ describe("post-compaction delegate staging", () => {
     const delegates = consumeStagedPostCompactionDelegates("session-1");
     expect(delegates).toHaveLength(1);
     expect(delegates[0].task).toBe("rehydrate state");
-    expect(delegates[0].postCompaction).toBe(true);
+    expect(delegates[0].mode).toBe("post-compaction");
     expect(stagedPostCompactionDelegateCount("session-1")).toBe(0);
   });
 

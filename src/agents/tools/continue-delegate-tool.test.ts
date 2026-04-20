@@ -102,11 +102,9 @@ describe("continue_delegate tool", () => {
     const queued = consumePendingDelegates(SESSION_KEY);
     expect(queued.length).toBe(1);
     expect(queued[0]?.task).toBe(TASK);
-    // No silent / silentWake / postCompaction flags on a normal-mode delegate.
+    // No mode on a normal-mode delegate; post-#227 the runtime shape carries
+    // mode only (silent/silentWake/postCompaction booleans no longer exist).
     expect(queued[0]?.mode).toBeUndefined();
-    expect(queued[0]?.silent).toBeUndefined();
-    expect(queued[0]?.silentWake).toBeUndefined();
-    expect(queued[0]?.postCompaction).toBeUndefined();
   });
 
   // (d cont) silent — also exercises delaySeconds → delayMs forwarding
@@ -141,7 +139,6 @@ describe("continue_delegate tool", () => {
     const queued = consumePendingDelegates(SESSION_KEY);
     expect(queued.length).toBe(1);
     expect(queued[0]?.mode).toBe("silent-wake");
-    expect(queued[0]?.silentWake).toBe(true);
   });
 
   // (d cont) zero-delay silent → consumable immediately, mode persists in queue
@@ -152,7 +149,6 @@ describe("continue_delegate tool", () => {
     const queued = consumePendingDelegates(SESSION_KEY);
     expect(queued.length).toBe(1);
     expect(queued[0]?.mode).toBe("silent");
-    expect(queued[0]?.silent).toBe(true);
     expect(queued[0]?.delayMs).toBeUndefined();
   });
 
@@ -188,7 +184,6 @@ describe("continue_delegate tool", () => {
     const staged = consumeStagedPostCompactionDelegates(SESSION_KEY);
     expect(staged.length).toBe(1);
     expect(staged[0]?.task).toBe(TASK);
-    expect(staged[0]?.postCompaction).toBe(true);
     expect(staged[0]?.mode).toBe("post-compaction");
   });
 
