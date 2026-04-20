@@ -25,24 +25,8 @@ const continuationTimerRefs = new Map<string, number>();
 
 import { pendingDelegateCount } from "./delegate-store.js";
 
-/**
- * @deprecated No-op. Delegates are tracked in TaskFlow; the pending state
- * is derived from pendingDelegateCount(). Kept for call-site compatibility
- * during migration.
- */
-export function setDelegatePending(_sessionKey: string): void {
-  // No-op: TaskFlow enqueue is the source of truth.
-}
-
 export function hasDelegatePending(sessionKey: string): boolean {
   return pendingDelegateCount(sessionKey) > 0;
-}
-
-/**
- * @deprecated No-op. Delegate pending state is derived from TaskFlow.
- */
-export function clearDelegatePending(_sessionKey: string): void {
-  // No-op: TaskFlow consume/cancel is the source of truth.
 }
 
 // ---------------------------------------------------------------------------

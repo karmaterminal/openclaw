@@ -20,7 +20,6 @@ import {
 import {
   registerContinuationTimerHandle,
   retainContinuationTimerRef,
-  setDelegatePending,
   unregisterContinuationTimerHandle,
 } from "./state.js";
 import type { ContinuationRuntimeConfig, ContinuationSignal } from "./types.js";
@@ -175,8 +174,9 @@ export function scheduleDelegateContinuation(params: {
     Math.max(chainState.currentChainCount, highestDelayedContinuationReservationHop(sessionKey)) +
     1;
 
-  // Mark delegate-pending so the runner knows work is queued even before spawn.
-  setDelegatePending(sessionKey);
+  // TaskFlow enqueue (via addDelayedContinuationReservation / caller's
+  // enqueuePendingDelegate) is the source of truth for pending-state; the
+  // runner reads it via pendingDelegateCount().
 
   if (signal.delayMs && signal.delayMs > 0) {
     // Delayed dispatch: park reservation, arm timer.

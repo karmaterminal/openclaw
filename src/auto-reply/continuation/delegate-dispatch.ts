@@ -20,7 +20,6 @@ import { resolveContinuationRuntimeConfig } from "./config.js";
 import { consumePendingDelegates, peekSoonestUnmaturedDelegateDueAt } from "./delegate-store.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
 import {
-  setDelegatePending,
   registerContinuationTimerHandle,
   retainContinuationTimerRef,
   unregisterContinuationTimerHandle,
@@ -176,9 +175,6 @@ export async function dispatchToolDelegates(params: {
     const nextHop = currentChainCount + 1;
     const silent = delegate.mode === "silent" || delegate.mode === "silent-wake";
     const silentWake = delegate.mode === "silent-wake";
-
-    // Mark delegate-pending so the runner knows work is queued.
-    setDelegatePending(sessionKey);
 
     const spawnCtx: SpawnSubagentContext = {
       agentSessionKey: sessionKey,
