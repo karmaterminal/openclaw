@@ -1621,46 +1621,20 @@ export async function runReplyAgent(params: {
         // --- Post-compaction continuation lifecycle (RFC §4.4) ---
         // Release staged post-compaction delegates and fire context-pressure event.
         if (continuationEnabledForPressure) {
-          const {
-            consumeStagedPostCompactionDelegates,
-            clearContextPressureState,
-            checkContextPressure,
-          } = await import("../continuation/lazy.runtime.js");
-
-          // Clear pressure dedup so post-compaction lifecycle can fire fresh bands.
-          clearContextPressureState(sessionKey);
-
-          // Fire context-pressure unconditionally after compaction — informs the
-          // session it was compacted, enabling rehydration via delegates.
-          const pressureConfig = resolveContinuationRuntimeConfig(cfg);
-          const pressureContextWindow =
-            agentCfgContextTokens ?? activeSessionEntry?.contextTokens ?? DEFAULT_CONTEXT_TOKENS;
-          if (pressureContextWindow && activeSessionEntry?.totalTokens != null) {
-            const postCompactionPressure = checkContextPressure({
-              sessionKey,
-              totalTokens: activeSessionEntry.totalTokens,
-              contextWindow: pressureContextWindow,
-              threshold: pressureConfig.contextPressureThreshold ?? 0.8,
-              postCompaction: true,
-            });
-            if (postCompactionPressure) {
-              enqueueSystemEvent(postCompactionPressure, { sessionKey });
-            }
-          }
-
-          // Release staged post-compaction delegates with silentAnnounce + wakeOnReturn.
-          const stagedDelegates = consumeStagedPostCompactionDelegates(sessionKey);
-          if (stagedDelegates.length > 0) {
-            const { dispatchPostCompactionDelegates } =
-              await import("../continuation/delegate-dispatch.js");
-            await dispatchPostCompactionDelegates(stagedDelegates, sessionKey, {
-              agentSessionKey: sessionKey,
-              agentChannel: followupRun.originatingChannel ?? undefined,
-              agentAccountId: followupRun.originatingAccountId ?? undefined,
-              agentTo: followupRun.originatingTo ?? undefined,
-              agentThreadId: followupRun.originatingThreadId ?? undefined,
-            });
-          }
+          const { releasePostCompactionLifecycle } =
+            await import("../continuation/post-compaction-release.js");
+          await releasePostCompactionLifecycle({
+            sessionKey,
+            cfg,
+            agentCfgContextTokens,
+            activeSessionEntry,
+            originating: {
+              originatingChannel: followupRun.originatingChannel,
+              originatingAccountId: followupRun.originatingAccountId,
+              originatingTo: followupRun.originatingTo,
+              originatingThreadId: followupRun.originatingThreadId,
+            },
+          });
         }
       }
 
@@ -1843,9 +1817,8 @@ export async function runReplyAgent(params: {
     // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
     if (continuationFeatureEnabled && sessionKey) {
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
-      const { dispatchToolDelegates, loadContinuationChainState } = await import(
-        "../continuation/lazy.runtime.js"
-      );
+      const { dispatchToolDelegates, loadContinuationChainState } =
+        await import("../continuation/lazy.runtime.js");
       const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
       await dispatchToolDelegates({
         sessionKey,
@@ -1868,9 +1841,8 @@ export async function runReplyAgent(params: {
       sessionKey &&
       activeSessionEntry
     ) {
-      const { loadContinuationChainState, persistContinuationChainState } = await import(
-        "../continuation/lazy.runtime.js"
-      );
+      const { loadContinuationChainState, persistContinuationChainState } =
+        await import("../continuation/lazy.runtime.js");
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
       const nextState = loadContinuationChainState(activeSessionEntry, turnTokens);
       persistContinuationChainState({
