@@ -22,15 +22,11 @@ import {
   retainContinuationTimerRef,
   unregisterContinuationTimerHandle,
 } from "./state.js";
-import type { ContinuationRuntimeConfig, ContinuationSignal } from "./types.js";
+import type { ChainState, ContinuationRuntimeConfig, ContinuationSignal } from "./types.js";
 
 const log = createSubsystemLogger("continuation/scheduler");
 
-export type ChainState = {
-  currentChainCount: number;
-  chainStartedAt: number;
-  accumulatedChainTokens: number;
-};
+export type { ChainState } from "./types.js";
 
 export type ScheduleWorkResult =
   | { outcome: "scheduled"; timerHandle: ReturnType<typeof setTimeout>; nextChainCount: number }

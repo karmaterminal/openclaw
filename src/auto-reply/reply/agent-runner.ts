@@ -1813,11 +1813,8 @@ export async function runReplyAgent(params: {
     if (effectiveContinuationSignal && sessionKey) {
       const continuationConfig = resolveContinuationRuntimeConfig(cfg);
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
-      const chainState = {
-        currentChainCount: activeSessionEntry?.continuationChainCount ?? 0,
-        chainStartedAt: activeSessionEntry?.continuationChainStartedAt ?? Date.now(),
-        accumulatedChainTokens: (activeSessionEntry?.continuationChainTokens ?? 0) + turnTokens,
-      };
+      const { loadContinuationChainState } = await import("../continuation/lazy.runtime.js");
+      const chainState = loadContinuationChainState(activeSessionEntry, turnTokens);
 
       if (effectiveContinuationSignal.kind === "work") {
         scheduleWorkContinuation({
@@ -1846,12 +1843,10 @@ export async function runReplyAgent(params: {
     // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
     if (continuationFeatureEnabled && sessionKey) {
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
-      const dispatchChainState = {
-        currentChainCount: activeSessionEntry?.continuationChainCount ?? 0,
-        chainStartedAt: activeSessionEntry?.continuationChainStartedAt ?? Date.now(),
-        accumulatedChainTokens: (activeSessionEntry?.continuationChainTokens ?? 0) + turnTokens,
-      };
-      const { dispatchToolDelegates } = await import("../continuation/lazy.runtime.js");
+      const { dispatchToolDelegates, loadContinuationChainState } = await import(
+        "../continuation/lazy.runtime.js"
+      );
+      const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
       await dispatchToolDelegates({
         sessionKey,
         chainState: dispatchChainState,
@@ -1873,13 +1868,16 @@ export async function runReplyAgent(params: {
       sessionKey &&
       activeSessionEntry
     ) {
-      const { persistContinuationChainState } = await import("../continuation/lazy.runtime.js");
+      const { loadContinuationChainState, persistContinuationChainState } = await import(
+        "../continuation/lazy.runtime.js"
+      );
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const nextState = loadContinuationChainState(activeSessionEntry, turnTokens);
       persistContinuationChainState({
         sessionEntry: activeSessionEntry,
-        count: activeSessionEntry.continuationChainCount ?? 0,
-        startedAt: activeSessionEntry.continuationChainStartedAt ?? Date.now(),
-        tokens: (activeSessionEntry.continuationChainTokens ?? 0) + turnTokens,
+        count: nextState.currentChainCount,
+        startedAt: nextState.chainStartedAt,
+        tokens: nextState.accumulatedChainTokens,
       });
     }
 

@@ -358,17 +358,19 @@ export function createFollowupRunner(params: {
       // (or any followup turn) stay in the queue until the NEXT inbound
       // message arrives to trigger the main-session dispatch. RFC §3.2.
       if (runtimeConfig?.agents?.defaults?.continuation?.enabled === true && sessionKey) {
-        const [{ dispatchToolDelegates }, { resolveContinuationRuntimeConfig }] = await Promise.all(
-          [import("../continuation/delegate-dispatch.js"), import("../continuation/config.js")],
-        );
+        const [
+          { dispatchToolDelegates },
+          { resolveContinuationRuntimeConfig },
+          { loadContinuationChainState },
+        ] = await Promise.all([
+          import("../continuation/delegate-dispatch.js"),
+          import("../continuation/config.js"),
+          import("../continuation/state.js"),
+        ]);
         const tailUsage = runResult.meta?.agentMeta?.usage;
         const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
         const tailEntry = (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? sessionEntry;
-        const chainState = {
-          currentChainCount: tailEntry?.continuationChainCount ?? 0,
-          chainStartedAt: tailEntry?.continuationChainStartedAt ?? Date.now(),
-          accumulatedChainTokens: (tailEntry?.continuationChainTokens ?? 0) + turnTokens,
-        };
+        const chainState = loadContinuationChainState(tailEntry, turnTokens);
         await dispatchToolDelegates({
           sessionKey,
           chainState,
