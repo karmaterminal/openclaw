@@ -3,6 +3,13 @@ export type SessionArchiveReason = "bak" | "reset" | "deleted";
 const ARCHIVE_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(?:\.\d{3})?Z$/;
 const LEGACY_STORE_BACKUP_RE = /^sessions\.json\.bak\.\d+$/;
 
+// Anchored at end of file name: literal `.checkpoint.` + UUID-v4 shape + `.jsonl`.
+// Session IDs that happen to contain the substring "checkpoint" (with any suffix
+// shape) do NOT match because the UUID regex requires the exact `[0-9a-f]{8}-…`
+// shape immediately after `.checkpoint.` and `.jsonl` immediately after that.
+const CHECKPOINT_MARKER_RE =
+  /\.checkpoint\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/;
+
 function hasArchiveSuffix(fileName: string, reason: SessionArchiveReason): boolean {
   const marker = `.${reason}.`;
   const index = fileName.lastIndexOf(marker);
@@ -39,6 +46,30 @@ export function isUsageCountedSessionTranscriptFileName(fileName: string): boole
     return true;
   }
   return hasArchiveSuffix(fileName, "reset") || hasArchiveSuffix(fileName, "deleted");
+}
+
+/**
+ * Classify pre-compaction checkpoint-twin transcript files, e.g.
+ * `<parentId>.checkpoint.<uuid>.jsonl`. Uses an anchored UUID-shape match so
+ * session IDs that happen to contain the substring "checkpoint" do not
+ * false-positive.
+ */
+export function isCheckpointSessionTranscriptFileName(fileName: string): boolean {
+  return CHECKPOINT_MARKER_RE.test(fileName);
+}
+
+/**
+ * Extract the parent session id from a checkpoint transcript file name. The
+ * parent session id is the part BEFORE `.checkpoint.<uuid>.jsonl`; it matches
+ * what `isPrimarySessionTranscriptFileName` expects when the parent primary
+ * exists as `<parentId>.jsonl`. Returns `null` if the file is not a checkpoint.
+ */
+export function parseParentSessionIdFromCheckpointFileName(fileName: string): string | null {
+  const match = fileName.match(CHECKPOINT_MARKER_RE);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+  return fileName.slice(0, match.index);
 }
 
 export function parseUsageCountedSessionIdFromFileName(fileName: string): string | null {
