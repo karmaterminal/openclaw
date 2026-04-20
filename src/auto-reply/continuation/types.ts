@@ -107,3 +107,21 @@ export type StagedPostCompactionDelegate = {
   task: string;
   stagedAt: number;
 };
+
+// ---------------------------------------------------------------------------
+// continue_work tool-call request shape
+// ---------------------------------------------------------------------------
+
+/**
+ * Captured by `continue_work()` during tool execution; consumed by the runner
+ * in the same turn's post-response. Same-turn ephemeral — never persisted
+ * across turn boundaries or gateway restarts.
+ *
+ * Single canonical definition. Prior to karmaterminal/openclaw#223 this type
+ * was duplicated in `signal.ts`, `continue-work-tool.ts`, and inline in
+ * `delegate-store.ts`.
+ */
+export type ContinueWorkRequest = {
+  reason: string;
+  delaySeconds: number;
+};
