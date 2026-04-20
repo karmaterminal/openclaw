@@ -278,6 +278,7 @@ export function handleMessageUpdate(
   });
 
   let chunk = "";
+  let shouldRebuildVisibleBuffer = false;
   if (evtType === "text_delta") {
     chunk = delta;
   } else if (evtType === "text_start" || evtType === "text_end") {
@@ -292,6 +293,7 @@ export function handleMessageUpdate(
         chunk = "";
       } else if (!ctx.state.deltaBuffer.includes(content)) {
         chunk = content;
+        shouldRebuildVisibleBuffer = true;
       }
     }
   }
@@ -322,20 +324,10 @@ export function handleMessageUpdate(
     // Handle partial <think> tags: stream whatever reasoning is visible so far.
     ctx.emitReasoningStream(extractThinkingFromTaggedStream(ctx.state.deltaBuffer));
   }
-  const next =
-    phaseAwareVisibleText ||
-    (deliveryPhase === "final_answer"
-      ? ""
-      : ctx
-          .stripBlockTags(ctx.state.deltaBuffer, {
-            thinking: false,
-            final: false,
-            inlineCode: createInlineCodeState(),
-          })
-          .trim());
-  if (next) {
+  let visibleDelta = "";
+  if (chunk) {
     const wasThinking = ctx.state.partialBlockState.thinking;
-    const visibleDelta = chunk ? ctx.stripBlockTags(chunk, ctx.state.partialBlockState) : "";
+    visibleDelta = ctx.stripBlockTags(chunk, ctx.state.partialBlockState);
     if (!wasThinking && ctx.state.partialBlockState.thinking) {
       ctx.state.reasoningStreamOpen = true;
     }
@@ -343,6 +335,30 @@ export function handleMessageUpdate(
     if (wasThinking && !ctx.state.partialBlockState.thinking) {
       emitReasoningEnd(ctx);
     }
+  }
+
+  if (shouldRebuildVisibleBuffer) {
+    const rebuiltBlockState = {
+      thinking: false,
+      final: false,
+      inlineCode: createInlineCodeState(),
+    };
+    const rebuiltVisible = ctx.stripBlockTags(ctx.state.deltaBuffer, rebuiltBlockState);
+    ctx.state.partialBlockState.thinking = rebuiltBlockState.thinking;
+    ctx.state.partialBlockState.final = rebuiltBlockState.final;
+    ctx.state.partialBlockState.inlineCode = rebuiltBlockState.inlineCode;
+    if (!shouldUsePhaseAwareBlockReply) {
+      ctx.state.visibleAssistantBuffer = rebuiltVisible;
+    }
+    visibleDelta = "";
+  } else if (!shouldUsePhaseAwareBlockReply && visibleDelta) {
+    ctx.state.visibleAssistantBuffer += visibleDelta;
+  }
+
+  const next =
+    phaseAwareVisibleText ||
+    (deliveryPhase === "final_answer" ? "" : ctx.state.visibleAssistantBuffer.trim());
+  if (next) {
     const parsedDelta = visibleDelta ? ctx.consumePartialReplyDirectives(visibleDelta) : null;
     const parsedFull = parseReplyDirectives(stripTrailingDirective(next));
     const cleanedText = parsedFull.text;
@@ -491,6 +507,7 @@ export function handleMessageEnd(
 
   const finalizeMessageEnd = () => {
     ctx.state.deltaBuffer = "";
+    ctx.state.visibleAssistantBuffer = "";
     ctx.state.blockBuffer = "";
     ctx.blockChunker?.reset();
     ctx.state.blockState.thinking = false;
