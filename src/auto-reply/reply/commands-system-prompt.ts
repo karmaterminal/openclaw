@@ -95,7 +95,10 @@ export async function resolveCommandsSystemPromptBundle(
         requestCompactionOpts: continuationEnabled
           ? {
               sessionId: targetSessionEntry?.sessionId,
-              getContextUsage: () => 0,
+              // Inventory-only closure (no-op surface for /status & docs).
+              // Returning null is consistent with the new contract — never
+              // actually invoked. Refs karmaterminal/openclaw#222.
+              getContextUsage: () => null,
               triggerCompaction: async () => ({
                 ok: false,
                 compacted: false,

@@ -150,7 +150,7 @@ export function resolveEffectiveToolInventory(
     requestCompactionOpts: continuationEnabled
       ? {
           sessionId: "<inventory-only>",
-          getContextUsage: () => 0,
+          getContextUsage: () => null,
           triggerCompaction: async () => ({
             ok: false,
             compacted: false,

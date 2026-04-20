@@ -262,9 +262,14 @@ export function createFollowupRunner(params: {
                     ? {
                         sessionId: run.sessionId,
                         getContextUsage: () => {
-                          // Followup path doesn't have a live token count yet —
-                          // the context-floor guard (70%) will reject premature calls.
-                          return 0;
+                          // Followup path doesn't have a live token count;
+                          // returning null makes request_compaction reply
+                          // with guard "context_unknown" instead of pretending
+                          // usage is 0% and tripping the 70% floor with a
+                          // misleading reason. Main-session callers (see
+                          // agent-runner-execution.ts) supply the real ratio
+                          // from sessionTokenInfo. Refs karmaterminal/openclaw#222.
+                          return null;
                         },
                         triggerCompaction: async () => {
                           try {
