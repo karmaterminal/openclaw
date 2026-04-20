@@ -1650,33 +1650,15 @@ export async function runReplyAgent(params: {
           // Release staged post-compaction delegates with silentAnnounce + wakeOnReturn.
           const stagedDelegates = consumeStagedPostCompactionDelegates(sessionKey);
           if (stagedDelegates.length > 0) {
-            const { createSubsystemLogger } = await import("../../logging/subsystem.js");
-            const compactionLog = createSubsystemLogger("continuation/compaction");
-            compactionLog.info(
-              `[continuation:compaction-delegate] Consuming ${stagedDelegates.length} compaction delegate(s) for session ${sessionKey}`,
-            );
-            const { spawnSubagentDirect } = await import("../../agents/subagent-spawn.js");
-            for (const delegate of stagedDelegates) {
-              try {
-                await spawnSubagentDirect(
-                  {
-                    task: delegate.task,
-                    silentAnnounce: true,
-                    wakeOnReturn: true,
-                    drainsContinuationDelegateQueue: true,
-                  },
-                  {
-                    agentSessionKey: sessionKey,
-                    agentChannel: followupRun.originatingChannel ?? undefined,
-                    agentAccountId: followupRun.originatingAccountId ?? undefined,
-                    agentTo: followupRun.originatingTo ?? undefined,
-                    agentThreadId: followupRun.originatingThreadId ?? undefined,
-                  },
-                );
-              } catch {
-                // Post-compaction delegate dispatch is best-effort.
-              }
-            }
+            const { dispatchPostCompactionDelegates } =
+              await import("../continuation/delegate-dispatch.js");
+            await dispatchPostCompactionDelegates(stagedDelegates, sessionKey, {
+              agentSessionKey: sessionKey,
+              agentChannel: followupRun.originatingChannel ?? undefined,
+              agentAccountId: followupRun.originatingAccountId ?? undefined,
+              agentTo: followupRun.originatingTo ?? undefined,
+              agentThreadId: followupRun.originatingThreadId ?? undefined,
+            });
           }
         }
       }
