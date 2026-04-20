@@ -1,3 +1,8 @@
+import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
+import {
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
+} from "../auto-reply/continuation/delegate-store.js";
 import type { HeartbeatEventPayload } from "../infra/heartbeat-events.js";
 import type { resolveOsSummary } from "../infra/os-summary.js";
 import type { Tone } from "../memory-host-sdk/status.js";
@@ -149,14 +154,6 @@ export async function buildStatusCommandReportData(params: {
     updateValue: params.updateValue,
     continuationValue: (() => {
       try {
-        const { resolveContinuationRuntimeConfig } =
-          require("../auto-reply/continuation/config.js") as {
-            resolveContinuationRuntimeConfig: () => {
-              enabled: boolean;
-              maxChainLength: number;
-              maxDelegatesPerTurn: number;
-            };
-          };
         const cfg = resolveContinuationRuntimeConfig();
 
         // RFC §6.3 — surface runtime continuation state. TaskFlow-backed
@@ -169,11 +166,6 @@ export async function buildStatusCommandReportData(params: {
         let stagedTotal = 0;
         if (cfg.enabled) {
           try {
-            const { pendingDelegateCount, stagedPostCompactionDelegateCount } =
-              require("../auto-reply/continuation/delegate-store.js") as {
-                pendingDelegateCount: (sessionKey: string) => number;
-                stagedPostCompactionDelegateCount: (sessionKey: string) => number;
-              };
             const seen = new Set<string>();
             for (const session of params.summary.sessions.recent) {
               if (!session.key || seen.has(session.key)) {
