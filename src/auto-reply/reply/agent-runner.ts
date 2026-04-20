@@ -1652,27 +1652,22 @@ export async function runReplyAgent(params: {
               `[continuation:compaction-delegate] Consuming ${stagedDelegates.length} compaction delegate(s) for session ${sessionKey}`,
             );
             const { spawnSubagentDirect } = await import("../../agents/subagent-spawn.js");
-            for (const delegate of stagedDelegates) {
-              try {
-                await spawnSubagentDirect(
-                  {
-                    task: delegate.task,
-                    silentAnnounce: true,
-                    wakeOnReturn: true,
-                    drainsContinuationDelegateQueue: true,
-                  },
-                  {
-                    agentSessionKey: sessionKey,
-                    agentChannel: followupRun.originatingChannel ?? undefined,
-                    agentAccountId: followupRun.originatingAccountId ?? undefined,
-                    agentTo: followupRun.originatingTo ?? undefined,
-                    agentThreadId: followupRun.originatingThreadId ?? undefined,
-                  },
-                );
-              } catch {
-                // Post-compaction delegate dispatch is best-effort.
-              }
-            }
+            const { dispatchPostCompactionDelegates } =
+              await import("../continuation/post-compaction-dispatch.js");
+            await dispatchPostCompactionDelegates({
+              sessionKey,
+              delegates: stagedDelegates,
+              spawnContext: {
+                agentSessionKey: sessionKey,
+                agentChannel: followupRun.originatingChannel ?? undefined,
+                agentAccountId: followupRun.originatingAccountId ?? undefined,
+                agentTo: followupRun.originatingTo ?? undefined,
+                agentThreadId: followupRun.originatingThreadId ?? undefined,
+              },
+              spawnFn: (params, ctx) => spawnSubagentDirect(params, ctx),
+              log: compactionLog,
+              enqueueSystemEvent,
+            });
           }
         }
       }
