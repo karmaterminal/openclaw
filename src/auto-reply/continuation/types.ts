@@ -99,7 +99,8 @@ export type ContinuationRuntimeConfig = {
 
 /**
  * A delegate staged for release after compaction completes.
- * Stored on `SessionEntry.pendingPostCompactionDelegates`.
+ * Serialized into the TaskFlow state payload by `buildDelegateState`
+ * (see `delegate-store.ts`) — no longer lives on `SessionEntry`.
  * Released in the after-compaction lifecycle path with
  * `silentAnnounce: true` and `wakeOnReturn: true`.
  */
