@@ -4,8 +4,8 @@
  * Every delegate operation goes through TaskFlow (SQLite persistence).
  * Zero volatile Maps. Delegates survive gateway restarts by design.
  *
- * Adapted from Goldeneye's implementation with Zod validation on state
- * payloads, `releasedAt` audit trail, and `failFlow` for corrupt records.
+ * Adds Zod validation on state payloads, a `releasedAt` audit trail, and
+ * `failFlow` for corrupt records on top of the base TaskFlow store.
  *
  * RFC: docs/design/continue-work-signal-v2.md §5.4
  */
@@ -154,7 +154,8 @@ export function enqueuePendingDelegate(
  * entries are finished with the `releasedAt` audit trail and returned in FIFO
  * order. Unmatured entries are left in `queued` state to be re-checked on the
  * next consume cycle (filter-at-consume; preserves `mode=silent` no-wake
- * semantics — see swim-35/A2 verdict).
+ * semantics so a quiet-channel session is not woken solely to drain a delegate
+ * whose horizon has not yet matured).
  *
  * Skips corrupt payloads via `failFlow`. Only pushes delegates where
  * `finishFlow` was applied (concurrency-safe).
@@ -211,7 +212,7 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
  * Returns `undefined` if there are no unmatured entries. Used by
  * `dispatchToolDelegates` to arm a hedge `setTimeout` so unmatured entries
  * still fire in fully-quiet channels where no further response-finalize
- * arrives. See swim-35/A2 verdict.
+ * arrives.
  */
 export function peekSoonestUnmaturedDelegateDueAt(sessionKey: string): number | undefined {
   const now = Date.now();

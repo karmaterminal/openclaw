@@ -476,9 +476,9 @@ export async function discoverAllSessions(params?: {
     // Checkpoint-twin dedup (issue #475): `<parentId>.checkpoint.<uuid>.jsonl`
     // files are pre-compaction snapshot siblings of the parent primary
     // session. They must NOT surface as distinct discovered sessions — that
-    // lopsides the discover map (one lopsided prince session can present as
+    // lopsides the discover map (one lopsided session can present as
     // 6 separate sessions) and, worse, opens each file for first-user-message
-    // extraction, which is the dominant read cost on a prince with deep
+    // extraction, which is the dominant read cost on a heavy session with deep
     // checkpoint history. Group them under the parent session id, do not
     // re-read for label (the parent primary already carries it), and advance
     // the parent's mtime if this checkpoint is newer.

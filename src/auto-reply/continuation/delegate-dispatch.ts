@@ -31,7 +31,6 @@ const log = createSubsystemLogger("continuation/delegate-dispatch");
 // Per-session hedge timer for re-checking unmatured pending delegates in fully
 // quiet channels (no further response-finalize event). Idempotent per
 // sessionKey: a fresh dispatch call cancels + replaces any existing hedge.
-// See swim-35/A2 verdict.
 const hedgeTimers = new Map<string, NodeJS.Timeout>();
 
 function clearHedgeTimer(sessionKey: string): void {
@@ -111,7 +110,6 @@ export async function dispatchToolDelegates(params: {
   // Arm (or re-arm) a hedge timer for any unmatured queued delegates so they
   // still fire in fully-quiet channels where no further response-finalize
   // arrives. The hedge re-invokes this function; idempotent per sessionKey.
-  // See swim-35/A2 verdict.
   const soonestUnmaturedDueAt = peekSoonestUnmaturedDelegateDueAt(sessionKey);
   if (soonestUnmaturedDueAt !== undefined) {
     armHedgeTimer(sessionKey, soonestUnmaturedDueAt, {
