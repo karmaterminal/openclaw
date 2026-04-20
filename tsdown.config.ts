@@ -154,6 +154,14 @@ function buildCoreDistEntries(): Record<string, string> {
     "subagent-registry.runtime": "src/agents/subagent-registry.runtime.ts",
     "agents/subagent-announce.continuation.runtime":
       "src/agents/subagent-announce.continuation.runtime.ts",
+    // #220: continuation/lazy.runtime is the dedicated lazy-side boundary for
+    // continuation/{config,delegate-store,delegate-dispatch,state,context-pressure}.
+    // Promoting to a unified-graph entry guarantees rolldown dedupes the
+    // singleton-bearing modules between the lazy chunk and the static-side
+    // hot-path callers (status.ts, agent-runner top-level, continue-*-tool).
+    // Eliminates the same dual-chunk split class of bug that #584 worked around
+    // for agent-runner.runtime.
+    "auto-reply/continuation/lazy.runtime": "src/auto-reply/continuation/lazy.runtime.ts",
     "agents/pi-model-discovery-runtime": "src/agents/pi-model-discovery-runtime.ts",
     "commands/status.summary.runtime": "src/commands/status.summary.runtime.ts",
     "infra/boundary-file-read": "src/infra/boundary-file-read.ts",

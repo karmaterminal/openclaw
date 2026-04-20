@@ -1184,7 +1184,7 @@ export async function runReplyAgent(params: {
     // Fire before the agent turn so the agent can act on pressure in this turn.
     const continuationEnabledForPressure = cfg?.agents?.defaults?.continuation?.enabled === true;
     if (continuationEnabledForPressure && sessionKey && activeSessionEntry) {
-      const { checkContextPressure } = await import("../continuation/context-pressure.js");
+      const { checkContextPressure } = await import("../continuation/lazy.runtime.js");
       const pressureConfig = resolveContinuationRuntimeConfig(cfg);
       const threshold = pressureConfig.contextPressureThreshold;
       // Resolve context window for pressure calculation — agentCfgContextTokens
@@ -1618,10 +1618,11 @@ export async function runReplyAgent(params: {
         // --- Post-compaction continuation lifecycle (RFC §4.4) ---
         // Release staged post-compaction delegates and fire context-pressure event.
         if (continuationEnabledForPressure) {
-          const { consumeStagedPostCompactionDelegates } =
-            await import("../continuation/delegate-store.js");
-          const { clearContextPressureState, checkContextPressure } =
-            await import("../continuation/context-pressure.js");
+          const {
+            consumeStagedPostCompactionDelegates,
+            clearContextPressureState,
+            checkContextPressure,
+          } = await import("../continuation/lazy.runtime.js");
 
           // Clear pressure dedup so post-compaction lifecycle can fire fresh bands.
           clearContextPressureState(sessionKey);
@@ -1861,7 +1862,7 @@ export async function runReplyAgent(params: {
       const dispatchChainState = loadContinuationChainState(activeSessionEntry, {
         extraTokens: turnTokens,
       });
-      const { dispatchToolDelegates } = await import("../continuation/delegate-dispatch.js");
+      const { dispatchToolDelegates } = await import("../continuation/lazy.runtime.js");
       await dispatchToolDelegates({
         sessionKey,
         chainState: dispatchChainState,
@@ -1883,7 +1884,7 @@ export async function runReplyAgent(params: {
       sessionKey &&
       activeSessionEntry
     ) {
-      const { persistContinuationChainState } = await import("../continuation/state.js");
+      const { persistContinuationChainState } = await import("../continuation/lazy.runtime.js");
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
       const persistState = loadContinuationChainState(activeSessionEntry, {
         extraTokens: turnTokens,
