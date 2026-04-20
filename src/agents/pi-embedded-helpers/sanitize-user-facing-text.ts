@@ -36,6 +36,22 @@ const RATE_LIMIT_ERROR_USER_MESSAGE = "⚠️ API rate limit reached. Please try
 const OVERLOADED_ERROR_USER_MESSAGE =
   "The AI service is temporarily overloaded. Please try again in a moment.";
 const FINAL_TAG_RE = /<\s*\/?\s*final\s*>/gi;
+// Matches a CoT-frame "speaker" prefix at the start of a message body, e.g.
+// `[cael] ...`, `[the dandelion cult - ronan] ...`, `[ronan 🌊] ...`.
+// When present, the entire payload is treated as leaked internal narration
+// and suppressed (mirrors trailing-NO_REPLY semantics). See issue #269.
+const COT_FRAME_PREFIX_RE =
+  /^\[(?:the dandelion cult - )?(?:cael|silas|ronan|elliott|user|assistant|system)(?:\s*(?:🌻|🌫️|🩸|🌊))?\]\s+/iu;
+
+export function stripCotFramePrefix(text: string): { text: string; didStrip: boolean } {
+  if (!text) {
+    return { text, didStrip: false };
+  }
+  if (COT_FRAME_PREFIX_RE.test(text)) {
+    return { text: "", didStrip: true };
+  }
+  return { text, didStrip: false };
+}
 const ERROR_PREFIX_RE =
   /^(?:error|(?:[a-z][\w-]*\s+)?api\s*error|openai\s*error|anthropic\s*error|gateway\s*error|codex\s*error|request failed|failed|exception)(?:\s+\d{3})?[:\s-]+/i;
 const CONTEXT_OVERFLOW_ERROR_HEAD_RE =
@@ -379,6 +395,9 @@ export function sanitizeUserFacingText(text: unknown, opts?: { errorContext?: bo
   }
   const errorContext = opts?.errorContext ?? false;
   const stripped = stripInternalRuntimeContext(stripFinalTagsFromText(raw));
+  if (stripCotFramePrefix(stripped.trimStart()).didStrip) {
+    return "";
+  }
   const trimmed = stripped.trim();
   if (!trimmed) {
     return "";
