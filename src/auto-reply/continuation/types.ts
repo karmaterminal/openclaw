@@ -78,8 +78,8 @@ export type DelayedContinuationReservation = {
  * at each enforcement point (hot-reloadable).
  *
  * Note: no `generationGuardTolerance` field. The generation guard mechanism
- * was expunged per figs ruling (2026-04-15): unrelated channel noise must not
- * cancel dispatched continuation work.
+ * was removed (2026-04-15): unrelated channel noise must not cancel
+ * dispatched continuation work.
  */
 export type ContinuationRuntimeConfig = {
   enabled: boolean;

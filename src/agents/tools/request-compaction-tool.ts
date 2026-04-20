@@ -13,8 +13,8 @@
  * - Rate limit (1 per 5 min): prevents compaction loops
  * - Dedup: rejects if compaction already in-flight
  *
- * NO generation guard — removed per figs ruling (2026-04-15). Compaction
- * should not be blocked by unrelated channel activity.
+ * NO generation guard — removed 2026-04-15. Compaction should not be
+ * blocked by unrelated channel activity.
  *
  * RFC: docs/design/continue-work-signal-v2.md §2.4, §4.3
  */
