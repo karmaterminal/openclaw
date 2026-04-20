@@ -22,7 +22,10 @@
 import { Type } from "@sinclair/typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { isCompactionSkipReason } from "../pi-embedded-runner/compact-reasons.js";
+import {
+  classifyCompactionReason,
+  isCompactionSkipReason,
+} from "../pi-embedded-runner/compact-reasons.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, ToolInputError } from "./common.js";
 
@@ -189,17 +192,27 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
                 `[request_compaction:resolved-skip] session=${sessionKey} reason=${result.reason ?? "unspecified"}`,
               );
             } else {
-              // bug #639: surface resolve-with-failure (distinct from the catch-path
-              // background-error) so volitional compactions that silently fail
-              // (e.g. wrong provider, model unavailable) are visible in journals.
+              // karmaterminal/openclaw#639 / #205: surface resolve-with-failure
+              // (distinct from the catch-path background-error) so volitional
+              // compactions that silently fail are visible in journals, AND
+              // emit the structured classifier code so journal queries don't
+              // depend on raw-string grep.
+              const code = classifyCompactionReason(result.reason);
               log.warn(
-                `[request_compaction:resolved-failure] session=${sessionKey} ok=${result.ok} compacted=${result.compacted} reason=${result.reason ?? "unspecified"}`,
+                `[request_compaction:resolved-failure] session=${sessionKey} code=${code} ok=${result.ok} compacted=${result.compacted} reason=${result.reason ?? "unspecified"}`,
               );
             }
           },
           (err: unknown) => {
+            // karmaterminal/openclaw#205: classify here too so transport errors
+            // (AbortError / module-not-found / network) get a structured code
+            // alongside the raw message. Rejection reaches this branch when
+            // triggerCompaction's promise rejects outright (the resolve-shape
+            // `{ok:false, reason}` goes through the resolved-failure branch above).
+            const message = err instanceof Error ? err.message : String(err);
+            const code = classifyCompactionReason(message);
             log.error(
-              `[request_compaction:background-error] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+              `[request_compaction:background-error] session=${sessionKey} code=${code} error=${message}`,
             );
           },
         )
