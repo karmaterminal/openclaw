@@ -1,9 +1,9 @@
 import { resolveAgentDir, resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { isCompactionSkipReason } from "../../agents/pi-embedded-runner/compact-reasons.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
 import {
   normalizeLowercaseStringOrEmpty,
-  normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
 import type { CommandHandler } from "./commands-types.js";
@@ -34,16 +34,6 @@ function extractCompactInstructions(params: {
     rest = rest.slice(1).trimStart();
   }
   return rest.length ? rest : undefined;
-}
-
-function isCompactionSkipReason(reason?: string): boolean {
-  const text = normalizeOptionalLowercaseString(reason) ?? "";
-  return (
-    text.includes("nothing to compact") ||
-    text.includes("below threshold") ||
-    text.includes("already compacted") ||
-    text.includes("no real conversation messages")
-  );
 }
 
 function formatCompactionReason(reason?: string): string | undefined {

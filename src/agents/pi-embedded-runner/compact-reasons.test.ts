@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { classifyCompactionReason, resolveCompactionFailureReason } from "./compact-reasons.js";
+import {
+  classifyCompactionReason,
+  type CompactionReasonCode,
+  isCompactionSkipCode,
+  isCompactionSkipReason,
+  resolveCompactionFailureReason,
+} from "./compact-reasons.js";
 
 describe("resolveCompactionFailureReason", () => {
   it("replaces generic compaction cancellation with the safeguard reason", () => {
@@ -30,6 +36,14 @@ describe("classifyCompactionReason", () => {
     );
   });
 
+  it('classifies "no real conversation messages" as a skip-like reason', () => {
+    // shape #214: this code is added to keep the existing-substring-match behavior
+    // of isLegitSkipReason / isCompactionSkipReason covered by the closed union.
+    expect(classifyCompactionReason("No real conversation messages to compact")).toBe(
+      "no_real_conversation_messages",
+    );
+  });
+
   it("classifies safeguard messages as guard-blocked", () => {
     expect(
       classifyCompactionReason(
@@ -43,5 +57,57 @@ describe("classifyCompactionReason", () => {
     // — e.g. volitional compaction without provider/model passed routes to openai/gpt-5.4
     expect(classifyCompactionReason("Unknown model: openai/gpt-5.4")).toBe("unknown_model");
     expect(classifyCompactionReason("unknown model: foo/bar")).toBe("unknown_model");
+  });
+
+  it("returns 'unknown' for an empty / missing reason", () => {
+    expect(classifyCompactionReason()).toBe("unknown");
+    expect(classifyCompactionReason("")).toBe("unknown");
+  });
+
+  it("return type is the closed CompactionReasonCode union (#214)", () => {
+    // Compile-time: assigning to CompactionReasonCode forces the union shape.
+    const code: CompactionReasonCode = classifyCompactionReason("nothing to compact");
+    expect(code).toBe("no_compactable_entries");
+  });
+});
+
+describe("isCompactionSkipCode (#214)", () => {
+  const ALL_CODES: ReadonlyArray<CompactionReasonCode> = [
+    "unknown",
+    "no_compactable_entries",
+    "no_real_conversation_messages",
+    "unknown_model",
+    "below_threshold",
+    "already_compacted_recently",
+    "live_context_still_exceeds_target",
+    "guard_blocked",
+    "summary_failed",
+    "timeout",
+    "provider_error_4xx",
+    "provider_error_5xx",
+  ];
+
+  const SKIP_CODES = new Set<CompactionReasonCode>([
+    "no_compactable_entries",
+    "no_real_conversation_messages",
+    "below_threshold",
+    "already_compacted_recently",
+  ]);
+
+  it.each(ALL_CODES)("classifies %s correctly as skip vs non-skip", (code) => {
+    expect(isCompactionSkipCode(code)).toBe(SKIP_CODES.has(code));
+  });
+
+  it("isCompactionSkipReason wraps classifier + isCompactionSkipCode", () => {
+    expect(isCompactionSkipReason("Nothing to compact")).toBe(true);
+    expect(isCompactionSkipReason("Below threshold")).toBe(true);
+    expect(isCompactionSkipReason("Already compacted recently")).toBe(true);
+    expect(isCompactionSkipReason("No real conversation messages to compact")).toBe(true);
+
+    expect(isCompactionSkipReason("Compaction timed out")).toBe(false);
+    expect(isCompactionSkipReason("Unknown model: openai/foo")).toBe(false);
+    expect(isCompactionSkipReason("guard_blocked")).toBe(false);
+    expect(isCompactionSkipReason()).toBe(false);
+    expect(isCompactionSkipReason("")).toBe(false);
   });
 });
