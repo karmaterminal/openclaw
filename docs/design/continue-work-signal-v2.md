@@ -1208,7 +1208,7 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 
 | Artifact                                                                 | Location                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Swim 7 evidence                                                          | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch and [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch |
+| Swim 7 evidence                                                          | [`continue-work-signal-v2/swim-evidence/swim-07/`](./continue-work-signal-v2/swim-evidence/swim-07/) (results + gateway log + raw capture) and [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch (chat capture) |
 | Swim 8 evidence                                                          | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                        |
 | Swim 9 + 10 issue captures and results                                   | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                        |
 | Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191)                             |
@@ -1222,7 +1222,7 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 
 ### D.3 Most-recent integration test session results (Swim 9 and Swim 10)
 
-These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and have been omitted from this revision; their captures remain on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch for archival reference.
+These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and are archived: Swim 7 captures in-tree at [`continue-work-signal-v2/swim-evidence/swim-07/`](./continue-work-signal-v2/swim-evidence/swim-07/); Swim 8 captures on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch.
 
 Swim 9:
 
