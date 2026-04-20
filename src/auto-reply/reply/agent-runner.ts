@@ -1610,8 +1610,12 @@ export async function runReplyAgent(params: {
               enqueueSystemEvent(contextContent, { sessionKey });
             }
           })
-          .catch(() => {
-            // Silent failure — post-compaction context is best-effort
+          .catch(async (err) => {
+            const { createSubsystemLogger } = await import("../../logging/subsystem.js");
+            const log = createSubsystemLogger("continuation/post-compaction-context");
+            log.warn(
+              `[continuation:post-compaction-context-failed] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey} workspaceDir=${workspaceDir}`,
+            );
           });
 
         // --- Post-compaction continuation lifecycle (RFC §4.4) ---
