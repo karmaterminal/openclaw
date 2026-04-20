@@ -11,6 +11,7 @@
  */
 
 import { z } from "zod";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 import {
   createManagedTaskFlow,
@@ -24,6 +25,8 @@ import type {
   PendingContinuationDelegate,
   StagedPostCompactionDelegate,
 } from "./types.js";
+
+const log = createSubsystemLogger("continuation/delegate-store");
 
 // ---------------------------------------------------------------------------
 // Controller IDs (exported for test assertions)
@@ -170,6 +173,12 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
   for (const flow of listQueuedPendingFlows(sessionKey)) {
     const state = decodeDelegateState(flow);
     if (!state) {
+      // karmaterminal/openclaw#206: schema-drift / corrupt payload needs a
+      // live breadcrumb. failFlow alone leaves the record in SQLite where
+      // nobody looks until `openclaw status --deep`.
+      log.warn(
+        `[continuation:delegate-decode-failed] flowId=${flow.flowId} session=${sessionKey} raw=${JSON.stringify(flow.stateJson).slice(0, 200)}`,
+      );
       failFlow({
         flowId: flow.flowId,
         expectedRevision: flow.revision,
@@ -281,6 +290,12 @@ export function consumeStagedPostCompactionDelegates(
   for (const flow of listQueuedPostCompactionFlows(sessionKey)) {
     const state = decodeDelegateState(flow);
     if (!state) {
+      // karmaterminal/openclaw#206: mirror the pending-path breadcrumb on
+      // the post-compaction consume lane. Same schema-drift risk, same
+      // dropped-work consequence.
+      log.warn(
+        `[continuation:post-compaction-decode-failed] flowId=${flow.flowId} session=${sessionKey} raw=${JSON.stringify(flow.stateJson).slice(0, 200)}`,
+      );
       failFlow({
         flowId: flow.flowId,
         expectedRevision: flow.revision,

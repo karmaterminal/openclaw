@@ -143,7 +143,15 @@ async function drainChildContinuationQueue(params: {
   let cfg: Awaited<ReturnType<typeof subagentAnnounceDeps.loadConfig>>;
   try {
     cfg = subagentAnnounceDeps.loadConfig();
-  } catch {
+  } catch (err) {
+    // karmaterminal/openclaw#208: config-load failure here silently drops
+    // the child's delegate drain — that's an F7-class stall at a different
+    // entry point. Surface it via the file's existing defaultRuntime.error
+    // pattern so operators can see why a chain stopped after a subagent
+    // settled.
+    defaultRuntime.error?.(
+      `[continuation:drain-config-load-failed] child=${params.childSessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+    );
     return;
   }
   if (cfg?.agents?.defaults?.continuation?.enabled !== true) {
