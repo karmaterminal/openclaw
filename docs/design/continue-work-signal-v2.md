@@ -283,7 +283,7 @@ The implementation hooks into existing gateway layers rather than adding a paral
 2. **Signal detection:** `runReplyAgent()` in `src/auto-reply/reply/agent-runner.ts` inspects finalized text payloads before follow-up finalization.
 3. **Turn scheduling:** `scheduleContinuationTurn()` in `src/auto-reply/reply/session-updates.ts` injects `[continuation:wake]` through the existing system-event queue.
 4. **Delegate queueing:** tool-path delegates are enqueued via `enqueuePendingDelegate()` and consumed after the response finishes.
-5. **Lifecycle dispatch:** post-compaction delegates are staged via `stagePostCompactionDelegate()` (TaskFlow-backed in `src/auto-reply/continuation/delegate-store.ts`) and released by `consumeStagedPostCompactionDelegates()` in the compaction completion path.
+5. **Lifecycle dispatch:** post-compaction delegates are stored on `SessionEntry.pendingPostCompactionDelegates` and released in the compaction completion path.
 
 No new transport layer is introduced. Continuation uses system events, existing sub-agent dispatch, and the standard inbound-message wake path.
 
@@ -701,8 +701,8 @@ The implementation emits stable log anchors for the major continuation lifecycle
 | `[context-pressure:noop]`          | `context-pressure.ts`       | pre-condition or guard suppressed the check (debug-level, see below) |
 | `[system:context-pressure]`        | system-event queue          | event included in the next system prompt                             |
 | `[continue_delegate:enqueue]`      | `continue-delegate-tool.ts` | tool call enqueued delegate work                                     |
-| `[continue_delegate]`              | `delegate-dispatch.ts`      | dispatcher begins consuming queued delegates for a session           |
-| `[continuation:delegate-spawned]`  | `delegate-dispatch.ts`      | child dispatched after delay or immediate acceptance                 |
+| `[continuation:delegate-pending]`  | `agent-runner.ts`           | delegate chain state registered                                      |
+| `[continuation:delegate-spawned]`  | `agent-runner.ts`           | child dispatched after delay or immediate acceptance                 |
 | `[continuation/silent-wake]`       | `subagent-announce.ts`      | silent return will wake the parent                                   |
 | `[continuation:enrichment-return]` | `subagent-announce.ts`      | silent return injected as system event                               |
 | `requestHeartbeatNow`              | heartbeat wake path         | generation cycle requested after a silent-wake return                |
@@ -727,9 +727,9 @@ Representative runtime traces are shown below.
 
 ```text
 [continue_delegate:enqueue] session=agent:main silent=false silentWake=true delayMs=60000 task=check CI status
-[continue_delegate] Consuming 1 tool delegate(s) for session agent:main
+[continuation:delegate-pending] 1 delegate(s) registered for agent:main
 ... 60s later ...
-[continuation:delegate-spawned] hop=1/10 mode=silent-wake session=agent:main task=check CI status
+[continuation:delegate-spawned] task=check CI status delay=60000ms session=agent:main
 ```
 
 **Silent return and wake:**
@@ -771,12 +771,12 @@ When continuation is enabled and at least one field is non-zero, `/status` surfa
 
 The Discord/agent path through `src/auto-reply/status.ts` was disconnected during an unrelated refactor and restored at openclaw#187. The render is gated on (a) continuation enabled in the resolved config, and (b) at least one of the four fields being non-zero — both gates are unit-tested in `src/auto-reply/status.test.ts`. The `volitional: N` field reflects an honest count of agent-initiated compactions only after openclaw#191 stopped the volitional path from incrementing the counter on phantom-successful (actually-failed) compactions; see §4.3.
 
-| Field                      | Source                                                                          | Meaning                                                   |
-| -------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `chain X/Y`                | `continuationChainCount` and `maxChainLength`                                   | current depth versus maximum                              |
-| `Z delegates pending`      | pending delegate store                                                          | delayed or not-yet-spawned work                           |
-| `W post-compaction staged` | `stagedPostCompactionDelegateCount()` (TaskFlow-backed via `delegate-store.ts`) | delegates waiting for the next compaction lifecycle event |
-| `volitional: N`            | request-compaction counter                                                      | count of agent-initiated compactions in the session       |
+| Field                      | Source                                        | Meaning                                                   |
+| -------------------------- | --------------------------------------------- | --------------------------------------------------------- |
+| `chain X/Y`                | `continuationChainCount` and `maxChainLength` | current depth versus maximum                              |
+| `Z delegates pending`      | pending delegate store                        | delayed or not-yet-spawned work                           |
+| `W post-compaction staged` | `SessionEntry.pendingPostCompactionDelegates` | delegates waiting for the next compaction lifecycle event |
+| `volitional: N`            | request-compaction counter                    | count of agent-initiated compactions in the session       |
 
 ### 6.4 Context-pressure telemetry and fleet evidence
 
@@ -1181,51 +1181,48 @@ These are not correctness bugs in continuation itself, but they materially shape
 
 ### D.1 Context-pressure inclusion sketch
 
-The pre-run inclusion path in `src/auto-reply/reply/agent-runner.ts` (around lines 1183-1210) is summarized below. The sketch elides error handling and event-assembly details to keep the control flow visible; the field names match the real call site.
+The pre-run inclusion path can be summarized as follows:
 
 ```typescript
-const continuationEnabledForPressure = cfg?.agents?.defaults?.continuation?.enabled === true;
-if (continuationEnabledForPressure && sessionKey && activeSessionEntry) {
-  const { checkContextPressure } = await import("../continuation/lazy.runtime.js");
-  const pressureConfig = resolveContinuationRuntimeConfig(cfg);
-  const threshold = pressureConfig.contextPressureThreshold;
-  const pressureContextWindow =
-    agentCfgContextTokens ?? activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS;
-  if (threshold && activeSessionEntry.totalTokens && pressureContextWindow) {
-    const event = checkContextPressure({
-      sessionKey,
-      totalTokens: activeSessionEntry.totalTokens,
-      contextWindow: pressureContextWindow,
-      threshold,
-    });
-    if (event) {
-      enqueueSystemEvent(event, { sessionKey });
+const threshold = cfg.agents?.defaults?.continuation?.contextPressureThreshold;
+if (threshold && sessionEntry.totalTokens && sessionEntry.totalTokensFresh) {
+  const contextWindow = resolveMemoryFlushContextWindowTokens({
+    modelId,
+    agentCfgContextTokens: agentCfg?.contextTokens,
+  });
+  if (contextWindow) {
+    const ratio = sessionEntry.totalTokens / contextWindow;
+    if (ratio >= threshold) {
+      enqueueSystemEvent(
+        sessionKey,
+        `[system:context-pressure] ${Math.round(ratio * 100)}% context consumed ...`,
+      );
     }
   }
 }
 ```
 
-The key property is **pre-run inclusion**: the event is enqueued before the model call and then drained into the same upcoming system prompt, so the agent sees context-pressure state on the same turn it crosses the threshold.
+The key property is **pre-run inclusion**: the event is enqueued and then drained into the same upcoming system prompt.
 
 ### D.2 Evidence locations
 
-| Artifact                                                                 | Location                                                                                                                                                                                                                                                                         |
-| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Swim 7 evidence                                                          | [`continue-work-signal-v2/swim-evidence/swim-07/`](./continue-work-signal-v2/swim-evidence/swim-07/) (results + gateway log + raw capture) and [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch (chat capture) |
-| Swim 8 evidence                                                          | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                                                               |
-| Swim 9 + 10 issue captures and results                                   | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                                                               |
-| Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191)                                                                    |
-| Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                                                                                    |
-| `/status` continuation row (Discord/agent)                               | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts` (openclaw#187, #188)                                                                                                                                                                                                |
-| `request_compaction()` tool surface tests                                | `src/agents/tools/request-compaction-tool.test.ts` (openclaw#165, swim-34/X5.1)                                                                                                                                                                                                  |
-| Context-pressure noop breadcrumbs + sentinel                             | `src/auto-reply/continuation/context-pressure.ts` (openclaw#164, #171, #172, #173)                                                                                                                                                                                               |
-| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162)                                                                                                                                                                                                |
-| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169)                                                                                                                                                                                                            |
-| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170)                                                                                                                                                                                                                   |
+| Artifact                                                                 | Location                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Swim 7 evidence                                                          | [`continue-work-signal-v2/swim-evidence/swim-07/SWIM7-RESULTS.md`](./continue-work-signal-v2/swim-evidence/swim-07/SWIM7-RESULTS.md) (results doc, in-tree); raw runtime logs on [`silas/swim7-runtime-evidence`](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence) branch (`gateway.log`, `raw-capture.log`); chat capture on [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch |
+| Swim 8 evidence                                                          | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                        |
+| Swim 9 + 10 issue captures and results                                   | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                        |
+| Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191)                             |
+| Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                                             |
+| `/status` continuation row (Discord/agent)                               | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts` (openclaw#187, #188)                                                                                                                                                         |
+| `request_compaction()` tool surface tests                                | `src/agents/tools/request-compaction-tool.test.ts` (openclaw#165, swim-34/X5.1)                                                                                                                                                           |
+| Context-pressure noop breadcrumbs + sentinel                             | `src/auto-reply/continuation/context-pressure.ts` (openclaw#164, #171, #172, #173)                                                                                                                                                        |
+| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162)                                                                                                                                                         |
+| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169)                                                                                                                                                                     |
+| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170)                                                                                                                                                                            |
 
 ### D.3 Most-recent integration test session results (Swim 9 and Swim 10)
 
-These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and are archived: Swim 7 captures in-tree at [`continue-work-signal-v2/swim-evidence/swim-07/`](./continue-work-signal-v2/swim-evidence/swim-07/); Swim 8 captures on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch.
+These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and are archived: Swim 7 results doc in-tree at [`continue-work-signal-v2/swim-evidence/swim-07/SWIM7-RESULTS.md`](./continue-work-signal-v2/swim-evidence/swim-07/SWIM7-RESULTS.md), raw runtime logs on the [`silas/swim7-runtime-evidence`](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence) branch; Swim 8 captures on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch.
 
 Swim 9:
 
