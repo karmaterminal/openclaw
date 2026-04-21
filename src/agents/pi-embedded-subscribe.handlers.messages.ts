@@ -131,36 +131,6 @@ function replaceBlockReplyBuffer(ctx: EmbeddedPiSubscribeContext, text: string) 
   ctx.state.blockBuffer = text;
 }
 
-function resolveAssistantTextChunk(params: {
-  evtType: "text_delta" | "text_start" | "text_end";
-  delta: string;
-  content: string;
-  accumulatedText: string;
-}): string {
-  const { evtType, delta, content, accumulatedText } = params;
-  if (evtType === "text_delta") {
-    return delta;
-  }
-  if (delta) {
-    return delta;
-  }
-  if (!content) {
-    return "";
-  }
-  // KNOWN: Some providers resend full content on `text_end`.
-  // We only append a suffix (or nothing) to keep output monotonic.
-  if (content.startsWith(accumulatedText)) {
-    return content.slice(accumulatedText.length);
-  }
-  if (accumulatedText.startsWith(content)) {
-    return "";
-  }
-  if (!accumulatedText.includes(content)) {
-    return content;
-  }
-  return "";
-}
-
 export function resolveSilentReplyFallbackText(params: {
   text: unknown;
   messagingToolSentTexts: string[];
@@ -345,12 +315,26 @@ export function handleMessageUpdate(
     content,
   });
 
-  const chunk = resolveAssistantTextChunk({
-    evtType,
-    delta,
-    content,
-    accumulatedText: ctx.state.deltaBuffer,
-  });
+  let chunk = "";
+  let shouldRebuildVisibleBuffer = false;
+  if (evtType === "text_delta") {
+    chunk = delta;
+  } else if (evtType === "text_start" || evtType === "text_end") {
+    if (delta) {
+      chunk = delta;
+    } else if (content) {
+      // KNOWN: Some providers resend full content on `text_end`.
+      // We only append a suffix (or nothing) to keep output monotonic.
+      if (content.startsWith(ctx.state.deltaBuffer)) {
+        chunk = content.slice(ctx.state.deltaBuffer.length);
+      } else if (ctx.state.deltaBuffer.startsWith(content)) {
+        chunk = "";
+      } else if (!ctx.state.deltaBuffer.includes(content)) {
+        chunk = content;
+        shouldRebuildVisibleBuffer = true;
+      }
+    }
+  }
 
   const partialAssistant =
     assistantRecord?.partial && typeof assistantRecord.partial === "object"
@@ -389,20 +373,10 @@ export function handleMessageUpdate(
     // Handle partial <think> tags: stream whatever reasoning is visible so far.
     ctx.emitReasoningStream(extractThinkingFromTaggedStream(ctx.state.deltaBuffer));
   }
-  const next =
-    phaseAwareVisibleText ||
-    (deliveryPhase === "final_answer"
-      ? ""
-      : ctx
-          .stripBlockTags(ctx.state.deltaBuffer, {
-            thinking: false,
-            final: false,
-            inlineCode: createInlineCodeState(),
-          })
-          .trim());
-  if (next) {
+  let visibleDelta = "";
+  if (chunk) {
     const wasThinking = ctx.state.partialBlockState.thinking;
-    const visibleDelta = chunk ? ctx.stripBlockTags(chunk, ctx.state.partialBlockState) : "";
+    visibleDelta = ctx.stripBlockTags(chunk, ctx.state.partialBlockState);
     if (!wasThinking && ctx.state.partialBlockState.thinking) {
       openReasoningStream(ctx);
     }
@@ -410,6 +384,30 @@ export function handleMessageUpdate(
     if (wasThinking && !ctx.state.partialBlockState.thinking) {
       emitReasoningEnd(ctx);
     }
+  }
+
+  if (shouldRebuildVisibleBuffer) {
+    const rebuiltBlockState = {
+      thinking: false,
+      final: false,
+      inlineCode: createInlineCodeState(),
+    };
+    const rebuiltVisible = ctx.stripBlockTags(ctx.state.deltaBuffer, rebuiltBlockState);
+    ctx.state.partialBlockState.thinking = rebuiltBlockState.thinking;
+    ctx.state.partialBlockState.final = rebuiltBlockState.final;
+    ctx.state.partialBlockState.inlineCode = rebuiltBlockState.inlineCode;
+    if (!shouldUsePhaseAwareBlockReply) {
+      ctx.state.visibleAssistantBuffer = rebuiltVisible;
+    }
+    visibleDelta = "";
+  } else if (!shouldUsePhaseAwareBlockReply && visibleDelta) {
+    ctx.state.visibleAssistantBuffer += visibleDelta;
+  }
+
+  const next =
+    phaseAwareVisibleText ||
+    (deliveryPhase === "final_answer" ? "" : ctx.state.visibleAssistantBuffer.trim());
+  if (next) {
     const parsedDelta = visibleDelta ? ctx.consumePartialReplyDirectives(visibleDelta) : null;
     const parsedFull = parseReplyDirectives(stripTrailingDirective(next));
     const cleanedText = parsedFull.text;
@@ -548,6 +546,7 @@ export function handleMessageEnd(
 
   const finalizeMessageEnd = () => {
     ctx.state.deltaBuffer = "";
+    ctx.state.visibleAssistantBuffer = "";
     ctx.state.blockBuffer = "";
     ctx.blockChunker?.reset();
     ctx.state.blockState.thinking = false;
