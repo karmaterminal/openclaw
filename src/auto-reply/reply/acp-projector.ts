@@ -15,6 +15,7 @@ import {
   resolveAcpStreamingConfig,
 } from "./acp-stream-settings.js";
 import { createBlockReplyPipeline } from "./block-reply-pipeline.js";
+import { hasCotFramePrefix } from "./cot-frame.js";
 import type { ReplyDispatchKind } from "./reply-dispatcher.types.js";
 
 const ACP_BLOCK_REPLY_TIMEOUT_MS = 15_000;
@@ -222,6 +223,15 @@ export function createAcpReplyProjector(params: {
     chunker.drain({
       force,
       emit: (chunk) => {
+        // CoT-frame leak suppression: ACP runtime occasionally streams internal
+        // narration prefixed with a bracketed speaker frame (`[cael] ...`,
+        // `[the dandelion cult - ronan] ...`).  Mirror the strip applied in
+        // `reply-delivery.ts` so the ACP-projector path matches the rest of
+        // the dispatch pipeline.  Follow-up to #269/#270/#271
+        // (karmaterminal/openclaw#272).
+        if (hasCotFramePrefix(chunk)) {
+          return;
+        }
         blockReplyPipeline.enqueue({ text: chunk });
       },
     });
