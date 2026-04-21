@@ -686,6 +686,11 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Yield",
       detailKeys: ["message"],
     },
+    no_reply: {
+      emoji: "🤫",
+      title: "Silence",
+      detailKeys: ["reason"],
+    },
     tts: {
       emoji: "🔊",
       title: "TTS",

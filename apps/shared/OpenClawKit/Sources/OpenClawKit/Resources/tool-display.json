@@ -1098,6 +1098,13 @@
         "message"
       ]
     },
+    "no_reply": {
+      "emoji": "🤫",
+      "title": "Silence",
+      "detailKeys": [
+        "reason"
+      ]
+    },
     "tts": {
       "emoji": "🔊",
       "title": "TTS",
