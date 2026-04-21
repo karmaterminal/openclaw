@@ -15,6 +15,7 @@ import {
   resolveAcpStreamingConfig,
 } from "./acp-stream-settings.js";
 import { createBlockReplyPipeline } from "./block-reply-pipeline.js";
+import { hasCotFramePrefix } from "./cot-frame.js";
 import type { ReplyDispatchKind } from "./reply-dispatcher.types.js";
 
 const ACP_BLOCK_REPLY_TIMEOUT_MS = 15_000;
@@ -222,6 +223,18 @@ export function createAcpReplyProjector(params: {
     chunker.drain({
       force,
       emit: (chunk) => {
+        // CoT-frame leak suppression for the ACP-projector chunk path.
+        // The ACP runtime sometimes streams agent narration prefixed with a
+        // bracketed speaker frame like `[ronan] ...` or
+        // `[the dandelion cult - cael] ...`. The block-streaming strip in
+        // `reply-delivery.ts` (#270/#271) only fires for text routed through
+        // that handler; ACP chunks are enqueued here directly, so the leak
+        // escapes when the agent is ACP-routed (the default for prince fleet).
+        // Mirror the streaming-path semantics: drop the chunk silently when
+        // the frame is present.
+        if (hasCotFramePrefix(chunk)) {
+          return;
+        }
         blockReplyPipeline.enqueue({ text: chunk });
       },
     });
