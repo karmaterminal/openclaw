@@ -2220,7 +2220,7 @@ export async function runReplyAgent(params: {
           typeof followupRun.run.workspaceDir === "string" && followupRun.run.workspaceDir.trim()
             ? followupRun.run.workspaceDir
             : resolveAgentWorkspaceDir(cfg, followupRun.run.agentId);
-        readPostCompactionContext(workspaceDir, cfg)
+        readPostCompactionContext(workspaceDir, { cfg })
           .then((contextContent) => {
             if (contextContent) {
               enqueueSystemEvent(contextContent, { sessionKey });
