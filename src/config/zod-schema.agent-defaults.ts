@@ -196,6 +196,7 @@ export const AgentDefaultsSchema = z
           .strict()
           .optional(),
         notifyUser: z.boolean().optional(),
+        truncateAfterCompaction: z.boolean().optional(),
       })
       .strict()
       .optional(),

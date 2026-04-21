@@ -4694,6 +4694,12 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     description:
                       "When enabled, sends brief compaction notices to the user when compaction starts and when it completes (for example, '🧹 Compacting context...' and '🧹 Compaction complete'). Disabled by default to keep compaction silent and non-intrusive.",
                   },
+                  truncateAfterCompaction: {
+                    type: "boolean",
+                    title: "Truncate After Compaction",
+                    description:
+                      "When enabled, rewrites the session JSONL file after compaction to remove entries that were summarized. Prevents unbounded file growth in long-running sessions with many compaction cycles. Default: false.",
+                  },
                 },
                 additionalProperties: false,
                 title: "Compaction",
