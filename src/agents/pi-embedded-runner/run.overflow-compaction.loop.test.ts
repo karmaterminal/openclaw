@@ -91,6 +91,13 @@ describe("overflow compaction in run loop", () => {
         "context overflow detected (attempt 1/3); attempting auto-compaction",
       ),
     );
+    // Regression guard (#61 / #289): overflow compaction must also emit a
+    // [context-pressure:fire] anchor so operators grepping for mid-turn
+    // pressure triggers (trigger F, per RFC §4.1) find the in-turn event
+    // that bypasses the pre-run checkContextPressure() path.
+    expect(mockedLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("[context-pressure:fire] mid-turn trigger=overflow"),
+    );
     expect(mockedLog.info).toHaveBeenCalledWith(
       expect.stringContaining("auto-compaction succeeded"),
     );
