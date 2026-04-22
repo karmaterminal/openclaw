@@ -105,6 +105,28 @@ describe("overflow compaction in run loop", () => {
     expect(result.meta.error).toBeUndefined();
   });
 
+  it("emits [context-pressure:event-skipped] when sessionKey is missing on overflow path", async () => {
+    // Same overflow trigger as the first test but with empty sessionKey — the
+    // enqueueSystemEvent gate should skip and leave a breadcrumb.
+    mockOverflowRetrySuccess({
+      runEmbeddedAttempt: mockedRunEmbeddedAttempt,
+      compactDirect: mockedCompactDirect,
+    });
+
+    await runEmbeddedPiAgent({ ...baseParams, sessionKey: "" });
+
+    // The mid-turn [context-pressure:fire] anchor still emits (it uses
+    // sessionKey ?? sessionId as a display value, not as a gate).
+    expect(mockedLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("[context-pressure:fire] mid-turn trigger=overflow"),
+    );
+    // But the system-event enqueue was skipped → breadcrumb emitted.
+    expect(mockedLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("[context-pressure:event-skipped]"),
+    );
+    expect(mockedLog.warn).toHaveBeenCalledWith(expect.stringContaining("trigger=overflow"));
+  });
+
   it("retries after successful compaction on likely-overflow promptError variants", async () => {
     const overflowHintError = new Error("Context window exceeded: requested 12000 tokens");
 

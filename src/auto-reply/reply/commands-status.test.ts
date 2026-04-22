@@ -19,7 +19,6 @@ import {
   failTaskRunByRunId,
 } from "../../tasks/task-executor.js";
 import { resetTaskRegistryForTests } from "../../tasks/task-registry.js";
-import { configureTaskRegistryRuntime } from "../../tasks/task-registry.store.js";
 import {
   consumePendingDelegates,
   consumeStagedPostCompactionDelegates,
