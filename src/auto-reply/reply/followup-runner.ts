@@ -255,20 +255,23 @@ export function createFollowupRunner(params: {
                   bootstrapPromptWarningSignaturesSeen[
                     bootstrapPromptWarningSignaturesSeen.length - 1
                   ],
-                // Continuation: thread requestCompactionOpts so request_compaction
-                // is callable on queued followup turns, not just the first turn.
+                // Continuation: register requestCompactionOpts on queued
+                // followup turns too, so request_compaction can reject cleanly
+                // through its guards here instead of disappearing from the tool
+                // surface after the first turn.
                 requestCompactionOpts:
                   runtimeConfig?.agents?.defaults?.continuation?.enabled === true
                     ? {
                         sessionId: run.sessionId,
                         getContextUsage: () => {
-                          // Followup path doesn't have a live token count;
-                          // returning null makes request_compaction reply
-                          // with guard "context_unknown" instead of pretending
-                          // usage is 0% and tripping the 70% floor with a
-                          // misleading reason. Main-session callers (see
-                          // agent-runner-execution.ts) supply the real ratio
-                          // from sessionTokenInfo. Refs karmaterminal/openclaw#222.
+                          // Queued followup turns are the post-compaction notify
+                          // path, so they do not have a live token count yet.
+                          // Returning null is load-bearing: request_compaction stays
+                          // registered here, but the guard replies with
+                          // "context_unknown" instead of pretending pressure is
+                          // measurable on a just-compacted session. Main-session
+                          // callers (see agent-runner-execution.ts) supply the real
+                          // ratio from sessionTokenInfo. Refs swim-35, #643, #222.
                           return null;
                         },
                         triggerCompaction: async () => {
