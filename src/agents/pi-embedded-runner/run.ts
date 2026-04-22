@@ -928,6 +928,10 @@ export async function runEmbeddedPiAgent(
                     `continue_delegate(post-compaction) or memory files so the next turn starts with room to grow.`,
                   { sessionKey: timeoutSessionKey },
                 );
+              } else {
+                log.warn(
+                  `[context-pressure:event-skipped] no sessionKey trigger=timeout ratio=${Math.round(tokenUsedRatio * 100)}%`,
+                );
               }
               let timeoutCompactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
               await runOwnsCompactionBeforeHook("timeout recovery");
@@ -1089,6 +1093,10 @@ export async function runEmbeddedPiAgent(
                     `working state earlier via continue_delegate(post-compaction) or memory files; the ` +
                     `pre-run context-pressure band did not catch this growth pattern.`,
                   { sessionKey: overflowSessionKey },
+                );
+              } else {
+                log.warn(
+                  `[context-pressure:event-skipped] no sessionKey trigger=overflow attempt=${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}`,
                 );
               }
               let compactResult: Awaited<ReturnType<typeof contextEngine.compact>>;

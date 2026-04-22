@@ -1,6 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../infra/system-events.js";
+
+const mockedLog = vi.hoisted(() => ({
+  info: vi.fn<(msg: string) => void>(),
+  warn: vi.fn<(msg: string) => void>(),
+  error: vi.fn<(msg: string) => void>(),
+  debug: vi.fn<(msg: string) => void>(),
+  child: vi.fn(),
+}));
+
+vi.mock("../../logging/subsystem.js", () => ({
+  createSubsystemLogger: () => mockedLog,
+}));
 /**
  * Context-pressure awareness tests (#165).
  *
@@ -45,6 +57,8 @@ const CONTEXT_WINDOW = 100_000; // 100k token context window
 
 beforeEach(() => {
   resetSystemEventsForTest();
+  mockedLog.warn.mockClear();
+  mockedLog.debug.mockClear();
 });
 
 afterEach(() => {
@@ -562,5 +576,27 @@ describe("checkContextPressure", () => {
     });
     expect(result2.fired).toBe(true);
     expect(result2.band).toBe(80);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Regression: log.warn for [context-pressure:fire] (not debug)    */
+  /* ---------------------------------------------------------------- */
+
+  it("emits [context-pressure:fire] via log.warn (not log.debug) on pre-run path", () => {
+    mockedLog.warn.mockClear();
+    mockedLog.debug.mockClear();
+    const entry = makeSessionEntry({ totalTokens: 85_000, totalTokensFresh: true });
+    checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+    });
+    expect(mockedLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("[context-pressure:fire]"),
+    );
+    expect(mockedLog.debug).not.toHaveBeenCalledWith(
+      expect.stringContaining("[context-pressure:fire]"),
+    );
   });
 });
