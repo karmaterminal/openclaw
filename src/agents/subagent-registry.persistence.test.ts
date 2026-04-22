@@ -316,7 +316,7 @@ describe("subagent registry persistence", () => {
     });
   });
 
-  it("persists completed subagent timing into the child session entry", async () => {
+  it("persists completed subagent timing through the lifecycle (registerSubagentRun → callGateway → persist)", async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
     process.env.OPENCLAW_STATE_DIR = tempStateDir;
 
