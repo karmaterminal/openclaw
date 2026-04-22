@@ -18,6 +18,7 @@ import { resolveSessionAgentIds } from "../agent-scope.js";
 import { resolveContextWindowInfo } from "../context-window-guard.js";
 import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { maybeCompactAgentHarnessSession } from "../harness/selection.js";
+import { hasAvailableAuthForProvider } from "../model-auth.js";
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
 import type { CompactEmbeddedPiSessionParams } from "./compact.types.js";
 import { asCompactionHookRunner, runPostCompactionSideEffects } from "./compaction-hooks.js";
@@ -69,10 +70,32 @@ export async function compactEmbeddedPiSession(
           defaultProvider: DEFAULT_PROVIDER,
           defaultModel: DEFAULT_MODEL,
         });
+        const usingHardcodedDefaultFallback =
+          !(params.provider?.trim() || params.model?.trim()) &&
+          !params.config?.agents?.defaults?.compaction?.model?.trim() &&
+          resolvedCompactionTarget.provider === DEFAULT_PROVIDER &&
+          resolvedCompactionTarget.model === DEFAULT_MODEL;
         // Resolve token budget from the effective compaction model so engine-
         // owned /compact implementations see the same target as the runtime.
         const ceProvider = resolvedCompactionTarget.provider ?? DEFAULT_PROVIDER;
         const ceModelId = resolvedCompactionTarget.model ?? DEFAULT_MODEL;
+        if (
+          usingHardcodedDefaultFallback &&
+          !(await hasAvailableAuthForProvider({
+            provider: ceProvider,
+            cfg: params.config,
+            preferredProfile: resolvedCompactionTarget.authProfileId,
+            agentDir,
+          }))
+        ) {
+          return {
+            ok: false,
+            compacted: false,
+            reason:
+              `No auth profile available for compaction target ${ceProvider}/${ceModelId}. ` +
+              "Pass provider/model from active session context.",
+          };
+        }
         const { model: ceModel } = await resolveModelAsync(
           ceProvider,
           ceModelId,

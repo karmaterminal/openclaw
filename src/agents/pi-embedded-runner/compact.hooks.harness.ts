@@ -44,6 +44,9 @@ export const resolveModelMock: Mock<
   authStorage: { setRuntimeApiKey: vi.fn() },
   modelRegistry: {},
 }));
+export const hasAvailableAuthForProviderMock: Mock<(params?: unknown) => Promise<boolean>> = vi.fn(
+  async () => true,
+);
 export const sessionCompactImpl = vi.fn(async () => ({
   summary: "summary",
   firstKeptEntryId: "entry-1",
@@ -174,6 +177,8 @@ export function resetCompactHooksHarnessMocks(): void {
     authStorage: { setRuntimeApiKey: vi.fn() },
     modelRegistry: {},
   });
+  hasAvailableAuthForProviderMock.mockReset();
+  hasAvailableAuthForProviderMock.mockResolvedValue(true);
 
   sessionCompactImpl.mockReset();
   sessionCompactImpl.mockResolvedValue({
@@ -306,6 +311,7 @@ export async function loadCompactHooksHarness(): Promise<{
     applyAuthHeaderOverride: vi.fn((model: unknown) => model),
     applyLocalNoAuthHeaderOverride: vi.fn((model: unknown) => model),
     getApiKeyForModel: vi.fn(async () => ({ apiKey: "test", mode: "env" })),
+    hasAvailableAuthForProvider: hasAvailableAuthForProviderMock,
     resolveModelAuthMode: vi.fn(() => "env"),
   }));
 

@@ -7,6 +7,7 @@ import {
   ensureRuntimePluginsLoaded,
   estimateTokensMock,
   getMemorySearchManagerMock,
+  hasAvailableAuthForProviderMock,
   hookRunner,
   loadCompactHooksHarness,
   registerProviderStreamForModelMock,
@@ -821,6 +822,43 @@ describe("compactEmbeddedPiSession hooks (ownsCompaction engine)", () => {
         }),
       }),
     );
+  });
+
+  it("fails fast when compaction falls back to the hardcoded default without auth", async () => {
+    hasAvailableAuthForProviderMock.mockResolvedValue(false);
+
+    const result = await compactEmbeddedPiSession(wrappedCompactionArgs());
+
+    expect(result).toMatchObject({
+      ok: false,
+      compacted: false,
+      reason:
+        "No auth profile available for compaction target openai/fake-model. Pass provider/model from active session context.",
+    });
+    expect(hasAvailableAuthForProviderMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "openai",
+        preferredProfile: undefined,
+      }),
+    );
+    expect(resolveModelMock).not.toHaveBeenCalled();
+    expect(contextEngineCompactMock).not.toHaveBeenCalled();
+    expect(hookRunner.runBeforeCompaction).not.toHaveBeenCalled();
+  });
+
+  it("keeps explicit compaction targets on the existing path", async () => {
+    hasAvailableAuthForProviderMock.mockResolvedValue(false);
+
+    const result = await compactEmbeddedPiSession(
+      wrappedCompactionArgs({
+        provider: "openai",
+        model: "fake-model",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(resolveModelMock).toHaveBeenCalledWith("openai", "fake-model", "/tmp", undefined);
+    expect(contextEngineCompactMock).toHaveBeenCalled();
   });
 
   it("does not fire after_compaction when compaction fails", async () => {
