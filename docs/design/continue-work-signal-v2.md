@@ -71,7 +71,7 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
   - [B.1 Alternatives considered](#b1-alternatives-considered)
   - [B.2 Prior art](#b2-prior-art)
   - [B.3 `continue_delegate()` compared with `sessions_spawn`](#b3-continue_delegate-compared-with-sessions_spawn)
-  - [B.4 Async-only volitional compaction decision record](#b4-async-only-volitional-compaction-decision-record)
+  - [B.4 Async-only volitional compaction design decision](#b4-async-only-volitional-compaction-design-decision)
 - [Appendix C. Failure modes and behavioral limitations](#appendix-c-failure-modes-and-behavioral-limitations)
   - [C.1 Operational failure modes](#c1-operational-failure-modes)
   - [C.2 Inherited behavioral limitations](#c2-inherited-behavioral-limitations)
@@ -607,7 +607,7 @@ Operational notes:
 
 #### Shipped defaults: single-agent, safety-first
 
-````yaml
+```yaml
 agents:
   defaults:
     continuation:
@@ -620,7 +620,10 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
-      taskFlowDelegates: true, strict interruption semantics, and a conservative per-chain budget.
+      taskFlowDelegates: true
+```
+
+This defaults to opt-out behavior with strict interruption semantics, and a conservative per-chain budget.
 
 #### Fleet multi-agent profile
 
@@ -637,7 +640,10 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
-      taskFlowDelegates: true for multiple persistent agents in shared channels. In that environment:
+      taskFlowDelegates: true
+```
+
+This profile is suitable for multiple persistent agents in shared channels. In that environment:
 
 - `generationGuardTolerance: 300` absorbs ambient cross-agent generation drift;
 - `maxDelegatesPerTurn: 20` enables wide fan-out;
@@ -657,7 +663,7 @@ main session
     → sensor 3 reads chunk 3
     → ... up to maxDelegatesPerTurn
   → coordinator synthesizes and returns
-````
+```
 
 Representative use cases:
 
