@@ -3,7 +3,11 @@ import { createOpenClawTools } from "../openclaw-tools.js";
 import "../test-helpers/fast-core-tools.js";
 import { createPerSenderSessionConfig } from "../test-helpers/session-config.js";
 
-describe("continuation tool registration", () => {
+// CI runners are slower than dev hardware; this test transitively loads the full
+// createOpenClawTools dependency graph (~70s on a Spark, ~120s+ on CI). Bump
+// per-test timeout above the default 120s ceiling. Follow-up: lazy-load heavy
+// deps in createOpenClawTools so import is fast (tracked separately).
+describe("continuation tool registration", { timeout: 240000 }, () => {
   const config = {
     session: createPerSenderSessionConfig(),
     agents: {
