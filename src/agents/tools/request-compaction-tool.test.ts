@@ -6,6 +6,7 @@ import {
   _resetVolitionalCounts,
   _setPending,
   createRequestCompactionTool,
+  getVolitionalCompactionCount,
   type RequestCompactionToolOpts,
 } from "./request-compaction-tool.js";
 
@@ -41,6 +42,12 @@ function buildOpts(overrides: Partial<RequestCompactionToolOpts> = {}): RequestC
     triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })),
     ...overrides,
   };
+}
+
+async function flushBackgroundCompaction(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 describe("request_compaction tool (swim-34/X5.1)", () => {
@@ -169,6 +176,96 @@ describe("request_compaction tool (swim-34/X5.1)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("volitional counter integrity (issue #639)", () => {
+    it("increments only when triggerCompaction resolves { ok: true, compacted: true }", async () => {
+      const tool = createRequestCompactionTool(
+        buildOpts({ triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })) }),
+      );
+
+      readJsonPayload(await tool.execute("call-5e", { reason: TURN_REASON }));
+      await flushBackgroundCompaction();
+
+      expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(1);
+    });
+
+    it("does not increment when triggerCompaction resolves { ok: false, compacted: false }", async () => {
+      const tool = createRequestCompactionTool(
+        buildOpts({ triggerCompaction: vi.fn(async () => ({ ok: false, compacted: false })) }),
+      );
+
+      readJsonPayload(await tool.execute("call-5f", { reason: TURN_REASON }));
+      await flushBackgroundCompaction();
+
+      expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(0);
+    });
+
+    it("does not increment when triggerCompaction resolves { ok: true, compacted: false }", async () => {
+      const tool = createRequestCompactionTool(
+        buildOpts({ triggerCompaction: vi.fn(async () => ({ ok: true, compacted: false })) }),
+      );
+
+      readJsonPayload(await tool.execute("call-5g", { reason: TURN_REASON }));
+      await flushBackgroundCompaction();
+
+      expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(0);
+    });
+
+    it("does not increment when triggerCompaction throws", async () => {
+      const tool = createRequestCompactionTool(
+        buildOpts({
+          triggerCompaction: vi.fn(async () => {
+            throw new Error("boom");
+          }),
+        }),
+      );
+
+      readJsonPayload(await tool.execute("call-5h", { reason: TURN_REASON }));
+      await flushBackgroundCompaction();
+
+      expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(0);
+    });
+
+    it("clears pendingCompactionSessions whether triggerCompaction succeeds or fails", async () => {
+      vi.useFakeTimers();
+      const startMs = 1_700_000_100_000;
+      vi.setSystemTime(new Date(startMs));
+      try {
+        const successTool = createRequestCompactionTool(
+          buildOpts({ triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })) }),
+        );
+        readJsonPayload(await successTool.execute("call-5i", { reason: TURN_REASON }));
+        await flushBackgroundCompaction();
+
+        vi.setSystemTime(new Date(startMs + _guards.RATE_LIMIT_MS + 1));
+        expect(
+          readJsonPayload(await successTool.execute("call-5j", { reason: TURN_REASON })).status,
+        ).toBe("compaction_requested");
+
+        _resetGuardState();
+        _resetVolitionalCounts();
+
+        const failureStartMs = startMs + (_guards.RATE_LIMIT_MS + 1) * 2;
+        vi.setSystemTime(new Date(failureStartMs));
+        const failureTool = createRequestCompactionTool(
+          buildOpts({
+            triggerCompaction: vi.fn(async () => {
+              throw new Error("boom");
+            }),
+          }),
+        );
+        readJsonPayload(await failureTool.execute("call-5k", { reason: TURN_REASON }));
+        await flushBackgroundCompaction();
+
+        vi.setSystemTime(new Date(failureStartMs + _guards.RATE_LIMIT_MS + 1));
+        expect(
+          readJsonPayload(await failureTool.execute("call-5l", { reason: TURN_REASON })).status,
+        ).toBe("compaction_requested");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   // (e) [already-pending] short-circuit
