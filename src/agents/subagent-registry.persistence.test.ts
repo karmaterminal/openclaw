@@ -344,7 +344,10 @@ describe("subagent registry persistence", () => {
       cleanup: "keep",
     });
 
-    await flushQueuedRegistryWork();
+    await waitForRegistryWork(async () => {
+      const store = await readSubagentSessionStore(storePath);
+      return store["agent:main:subagent:timing"]?.endedAt === endedAt;
+    });
 
     const store = await readSubagentSessionStore(storePath);
     const persisted = store["agent:main:subagent:timing"];
