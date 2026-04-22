@@ -6,6 +6,7 @@ import {
   mockedContextEngine,
   mockedGetApiKeyForModel,
   mockedGlobalHookRunner,
+  mockedLog,
   mockedPickFallbackThinkingLevel,
   mockedResolveAuthProfileOrder,
   mockedRunEmbeddedAttempt,
@@ -99,6 +100,14 @@ describe("timeout-triggered compaction", () => {
       }),
     );
     expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
+    // Regression guard (#61 / #289): timeout-compaction path must emit a
+    // [context-pressure:fire] anchor in the same format as the overflow path,
+    // so operators grepping for mid-turn pressure triggers (trigger F,
+    // RFC §4.1) see the timeout-driven compaction that bypasses
+    // checkContextPressure() in agent-runner.ts.
+    expect(mockedLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("[context-pressure:fire] mid-turn trigger=timeout"),
+    );
     expect(result.meta.error).toBeUndefined();
   });
 

@@ -891,15 +891,18 @@ export async function runEmbeddedPiAgent(
               log.warn(
                 `[context-pressure:fire] mid-turn trigger=timeout ratio=${Math.round(tokenUsedRatio * 100)}% ` +
                   `tokens=${Math.round((lastTurnPromptTokens ?? 0) / 1000)}k/${Math.round(ctxInfo.tokens / 1000)}k ` +
-                  `session=${params.sessionKey}`,
+                  `sessionKey=${params.sessionKey ?? params.sessionId}`,
               );
-              enqueueSystemEvent(
-                `[system:context-pressure] Mid-turn compaction triggered at ${Math.round(tokenUsedRatio * 100)}% ` +
-                  `context (${Math.round((lastTurnPromptTokens ?? 0) / 1000)}k/${Math.round(ctxInfo.tokens / 1000)}k tokens). ` +
-                  `Your last reply hit the provider timeout ceiling. Consider evacuating working state earlier via ` +
-                  `continue_delegate(post-compaction) or memory files so the next turn starts with room to grow.`,
-                { sessionKey: params.sessionKey ?? "" },
-              );
+              const timeoutSessionKey = params.sessionKey?.trim();
+              if (timeoutSessionKey) {
+                enqueueSystemEvent(
+                  `[system:context-pressure] Mid-turn compaction triggered at ${Math.round(tokenUsedRatio * 100)}% ` +
+                    `context (${Math.round((lastTurnPromptTokens ?? 0) / 1000)}k/${Math.round(ctxInfo.tokens / 1000)}k tokens). ` +
+                    `Your last reply hit the provider timeout ceiling. Consider evacuating working state earlier via ` +
+                    `continue_delegate(post-compaction) or memory files so the next turn starts with room to grow.`,
+                  { sessionKey: timeoutSessionKey },
+                );
+              }
               let timeoutCompactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
               await runOwnsCompactionBeforeHook("timeout recovery");
               try {
@@ -1049,16 +1052,19 @@ export async function runEmbeddedPiAgent(
               log.warn(
                 `[context-pressure:fire] mid-turn trigger=overflow attempt=${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS} ` +
                   `tokens=${observedOverflowTokens !== undefined ? Math.round(observedOverflowTokens / 1000) : "?"}k/${Math.round(ctxInfo.tokens / 1000)}k ` +
-                  `session=${params.sessionKey}`,
+                  `sessionKey=${params.sessionKey ?? params.sessionId}`,
               );
-              enqueueSystemEvent(
-                `[system:context-pressure] Context-overflow compaction triggered mid-turn ` +
-                  `(attempt ${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}). ` +
-                  `Your last reply grew the context past the model's window. Consider evacuating ` +
-                  `working state earlier via continue_delegate(post-compaction) or memory files; the ` +
-                  `pre-run context-pressure band did not catch this growth pattern.`,
-                { sessionKey: params.sessionKey ?? "" },
-              );
+              const overflowSessionKey = params.sessionKey?.trim();
+              if (overflowSessionKey) {
+                enqueueSystemEvent(
+                  `[system:context-pressure] Context-overflow compaction triggered mid-turn ` +
+                    `(attempt ${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}). ` +
+                    `Your last reply grew the context past the model's window. Consider evacuating ` +
+                    `working state earlier via continue_delegate(post-compaction) or memory files; the ` +
+                    `pre-run context-pressure band did not catch this growth pattern.`,
+                  { sessionKey: overflowSessionKey },
+                );
+              }
               let compactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
               await runOwnsCompactionBeforeHook("overflow recovery");
               try {
