@@ -131,10 +131,10 @@ function mapThinkingLevelToEffort(level: ThinkingLevel, modelId: string): Anthro
     case "medium":
       return "medium";
     case "xhigh":
-      if (isClaudeOpus47Model(modelId)) {
-        return "xhigh";
+      if (isClaudeOpus47Model(modelId) || isClaudeOpus46Model(modelId)) {
+        return "max";
       }
-      return isClaudeOpus46Model(modelId) ? "max" : "high";
+      return "high";
     default:
       return "high";
   }

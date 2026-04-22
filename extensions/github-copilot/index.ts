@@ -8,7 +8,13 @@ import { buildGithubCopilotReplayPolicy } from "./replay-policy.js";
 import { wrapCopilotProviderStream } from "./stream.js";
 
 const COPILOT_ENV_VARS = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
-const COPILOT_XHIGH_MODEL_IDS = ["gpt-5.4", "gpt-5.2", "gpt-5.2-codex"] as const;
+const COPILOT_XHIGH_MODEL_IDS = [
+  "gpt-5.4",
+  "gpt-5.2",
+  "gpt-5.2-codex",
+  "claude-opus-4.7",
+  "claude-opus-4-7",
+] as const;
 
 type GithubCopilotPluginConfig = {
   discovery?: {
