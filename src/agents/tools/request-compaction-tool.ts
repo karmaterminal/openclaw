@@ -31,7 +31,6 @@ const sessionGuardState = createExpiringMapCache<
   string,
   {
     lastRequestMs: number;
-    lastGeneration: number;
   }
 >({
   ttlMs: RATE_LIMIT_MS,
@@ -71,18 +70,6 @@ export type RequestCompactionToolOpts = {
    * Injected so the tool does not reach into session internals.
    */
   getContextUsage: () => number;
-  /**
-   * Returns the current session generation counter.
-   * Used for the generation guard — if generation has advanced since the
-   * agent's turn started, another message arrived and compaction should
-   * be deferred to avoid compacting mid-conversation.
-   */
-  getSessionGeneration: () => number;
-  /**
-   * The generation counter at the start of the current agent turn.
-   * Compared against `getSessionGeneration()` to detect drift.
-   */
-  turnGeneration: number;
   /**
    * Async function that triggers compaction. Injected so the tool does not
    * import the heavy compaction module directly. The caller provides a
@@ -182,24 +169,9 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         });
       }
 
-      // ----- Guard 3: Generation guard -----
-      const currentGeneration = opts.getSessionGeneration();
-      if (currentGeneration !== opts.turnGeneration) {
-        log.debug(
-          `[request_compaction:generation-drift] session=${sessionKey} turn=${opts.turnGeneration} current=${currentGeneration}`,
-        );
-        return jsonResult({
-          status: "rejected",
-          guard: "generation_drift",
-          turnGeneration: opts.turnGeneration,
-          currentGeneration,
-          reason:
-            "Session generation has advanced since your turn started — a new message arrived. " +
-            "Compacting now would lose that context. Re-evaluate on your next turn.",
-        });
-      }
-
       // ----- All guards passed — enqueue compaction -----
+      // No generation guard (removed 2026-04-15 RFC): compaction is not blocked
+      // by unrelated channel activity.
       log.info(
         `[request_compaction:enqueuing] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}% reason=${reason}`,
       );
@@ -208,7 +180,6 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       // turn (or a crash during compaction) still respects the cooldown.
       sessionGuardState.set(sessionKey, {
         lastRequestMs: now,
-        lastGeneration: currentGeneration,
       });
 
       // Fire-and-forget: compaction runs via the lane queue after the current

@@ -22,7 +22,6 @@ describe("continuation runtime config", () => {
             maxChainLength: 0,
             costCapTokens: -50,
             maxDelegatesPerTurn: 0,
-            generationGuardTolerance: -3,
             contextPressureThreshold: 2,
           },
         },
@@ -38,7 +37,6 @@ describe("continuation runtime config", () => {
       maxChainLength: 10,
       costCapTokens: 500_000,
       maxDelegatesPerTurn: 5,
-      generationGuardTolerance: 0,
       contextPressureThreshold: undefined,
     });
   });
@@ -54,7 +52,6 @@ describe("continuation runtime config", () => {
             maxChainLength: 2.9,
             costCapTokens: 1234.8,
             maxDelegatesPerTurn: 7.6,
-            generationGuardTolerance: 4.9,
             contextPressureThreshold: 0.8,
           },
         },
@@ -68,7 +65,6 @@ describe("continuation runtime config", () => {
       maxChainLength: 2,
       costCapTokens: 1234,
       maxDelegatesPerTurn: 7,
-      generationGuardTolerance: 4,
       contextPressureThreshold: 0.8,
     });
   });

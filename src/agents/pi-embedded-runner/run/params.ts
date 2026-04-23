@@ -75,8 +75,6 @@ export type RunEmbeddedPiAgentParams = {
   /** Closures for request_compaction tool (Trigger E). Provided by the caller when continuation is enabled. */
   requestCompactionOpts?: {
     getContextUsage: () => number;
-    getSessionGeneration: () => number;
-    turnGeneration: number;
     triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
   };
   sessionFile: string;

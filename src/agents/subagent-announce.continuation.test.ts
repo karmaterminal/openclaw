@@ -109,7 +109,6 @@ function makeBaseConfig(overrides?: {
   maxChainLength?: number;
   maxDelayMs?: number;
   costCapTokens?: number;
-  generationGuardTolerance?: number;
 }): OpenClawConfig {
   return {
     session: { mainKey: "main", scope: "per-sender" as const },
@@ -120,7 +119,6 @@ function makeBaseConfig(overrides?: {
           maxChainLength: overrides?.maxChainLength ?? 10,
           minDelayMs: 0,
           maxDelayMs: overrides?.maxDelayMs ?? 10_000,
-          generationGuardTolerance: overrides?.generationGuardTolerance ?? 0,
           ...(typeof overrides?.costCapTokens === "number"
             ? { costCapTokens: overrides.costCapTokens }
             : {}),
@@ -335,7 +333,7 @@ describe("subagent announce continuation chaining", () => {
     expect(mocked.spawnSubagentDirectMock).not.toHaveBeenCalled();
   });
 
-  it("reads generationGuardTolerance when the delayed chain-hop timer fires", async () => {
+  it("delayed chain-hop timer fires and spawns regardless of generation drift (post-RFC 2026-04-15)", async () => {
     await runContinuationAnnounce({
       childSessionKey: "agent:main:subagent:worker-live-tolerance",
       childTaskPrefix: "[continuation:chain-hop:1]",
@@ -344,11 +342,9 @@ describe("subagent announce continuation chaining", () => {
       maxDelayMs: 10,
     });
 
+    // Simulate generation drift — the RFC amendment (2026-04-15) removed
+    // noise-based cancellation, so the timer must still fire and spawn.
     mocked.generationState.set("agent:main:main", 4);
-    // Update config with tolerance BEFORE the clamped timer fires — the
-    // setTimeout callback calls resolveContinuationRuntimeConfig() which reads
-    // the live config.
-    setRuntimeConfigSnapshot(makeBaseConfig({ maxChainLength: 3, generationGuardTolerance: 3 }));
 
     await new Promise((resolve) => setTimeout(resolve, 25));
     expect(mocked.registerContinuationTimerHandleMock).toHaveBeenCalledWith(

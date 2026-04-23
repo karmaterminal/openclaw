@@ -1,6 +1,6 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** Implemented — gateway hook wired, 172 tests across 8 test files  
+**Status:** Implemented — gateway hook wired, ~180 tests across 13 test files  
 **Authors:** [karmaterminal](https://github.com/karmaterminal)  
 **Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
 **PR:** [openclaw/openclaw#38780](https://github.com/openclaw/openclaw/pull/38780)  
@@ -78,9 +78,7 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
 - [Appendix D. Detailed implementation evidence](#appendix-d-detailed-implementation-evidence)
   - [D.1 Context-pressure inclusion sketch](#d1-context-pressure-inclusion-sketch)
   - [D.2 Evidence locations](#d2-evidence-locations)
-  - [D.3 Swim 7 scorecard and evidence lines](#d3-swim-7-scorecard-and-evidence-lines)
-  - [D.4 Swim 8 detailed results](#d4-swim-8-detailed-results)
-  - [D.5 Swim 9 and Swim 10 detailed results](#d5-swim-9-and-swim-10-detailed-results)
+  - [D.3 Most-recent integration test session results (Swim 9 and Swim 10)](#d3-most-recent-integration-test-session-results-swim-9-and-swim-10)
 
 ## 1. Problem
 
@@ -142,7 +140,7 @@ This yields a strict two-interface model:
 
 If `delaySeconds` is 30 and the current turn is still active, the 30-second timer starts **after turn completion**, not when the tool call is emitted. The same timing model applies to the `CONTINUE_WORK:30` response token.
 
-**Safety model:** the scheduled continuation remains subject to chain-length, token-budget, and generation-drift guards. If the session has already exhausted its configured continuation budget, the call is rejected and the agent may stop, persist state to files, or choose another recovery path.
+**Safety model:** the scheduled continuation remains subject to chain-length and token-budget guards. If the session has already exhausted its configured continuation budget, the call is rejected and the agent may stop, persist state to files, or choose another recovery path.
 
 ### 2.3 `continue_delegate()` semantics and return modes
 
@@ -267,7 +265,7 @@ flowchart TB
 
 ### 2.7 Design rationale
 
-1. **Gate by capability, not turn type.** Tool visibility is controlled by `continuation.enabled`, while abuse prevention is handled by runtime guards such as `maxDelegatesPerTurn`, `maxChainLength`, `costCapTokens`, and `generationGuardTolerance`.
+1. **Gate by capability, not turn type.** Tool visibility is controlled by `continuation.enabled`, while abuse prevention is handled by runtime guards such as `maxDelegatesPerTurn`, `maxChainLength`, and `costCapTokens`.
 2. **Prefer structured invocation.** Tools avoid the fragility of regex parsing and allow explicit schemas.
 3. **Support width.** Fleet-scale fan-out requires multiple delegates in one turn; response syntax cannot express that efficiently.
 4. **Keep the interface self-describing.** When tools are available, the continuation surface appears explicitly in the tool inventory rather than relying on prior knowledge of terminal syntax.
@@ -308,7 +306,7 @@ The gateway then:
 1. Parses the terminal bracket syntax.
 2. Strips it from displayed output, so the user sees only the review summary.
 3. Records delegate-pending state outside the model-visible event queue.
-4. Creates a delayed reservation with task, planned hop, fire time, and generation guard.
+4. Creates a delayed reservation with task, planned hop, and fire time.
 5. Arms a timer for the configured delay.
 
 By default that delayed scheduling is process-scoped. A gateway restart clears the in-memory timer and reservation. When `taskFlowDelegates: true`, delegate queue state is backed by Task Flow in SQLite, so queued work survives restart even though a specific in-memory timer does not.
@@ -365,9 +363,7 @@ Budget inheritance follows four rules:
 1. **Chain index:** child hop labels advance within the configured maximum.
 2. **Token budget:** `continue_work()` chains and tool-path delegate chains accumulate against `costCapTokens`; bracket-chain cost accumulation exists but remains less reliable at the announce boundary because child token data may not yet be written.
 3. **Delay bounds:** each hop is clamped to runtime-configured `minDelayMs` and `maxDelayMs`.
-4. **Generation guard:** the parent generation counter is checked before delayed spawn.
-
-Both `CONTINUE_WORK` and delegate timers use the same generation-drift test: cancel when `drift > generationGuardTolerance`.
+<!-- Generation guard removed by design decision 2026-04-15. Delayed work should not be cancelled by unrelated channel noise. -->
 
 ### 3.4 Tool implementation and prompt gating
 
@@ -479,6 +475,8 @@ Urgency is banded. In production and canary instrumentation, the practical bands
 
 The dedup rule is equality-based: the same band does not fire twice consecutively, but a new band always fires. This allows post-compaction lifecycles to begin again at lower bands without suppressing fresh advisories.
 
+**Precondition: session token accounting.** The pre-fire check runs only when the reply pipeline has populated the current session's token count for the turn. Specifically, the reply-pipeline call site at `src/auto-reply/reply/agent-runner.ts` gates the entire pressure check on `activeSessionEntry.totalTokens` and a resolved `contextWindow` both being present. If either is unavailable—typically during the first completed turn before session-cost accounting has landed—the pressure check is a no-op for that turn, and the next turn picks it up once accounting is populated. Post-compaction events fire regardless as part of the compaction lifecycle hook. Operators investigating a "no band≥1 fires observed" pattern in a deployed fleet should first check whether `totalTokens` is populated at the call site for the session class in question; a silent short-circuit here is distinguishable from a threshold-configuration issue only via instrumentation at the call site.
+
 ### 4.3 `request_compaction()` in the compaction lifecycle
 
 `request_compaction()` fills the gap that appears when `idleTimeoutSeconds: 0` removes the timeout-based compaction path. At time of writing, that setting is necessary for some copilot proxy configurations and slow providers.
@@ -491,13 +489,14 @@ When Trigger B is disabled, a session can climb from “still usable” to overf
 2. routes into the same compaction machinery already used by platform compaction;
 3. preserves the existing user-visible model in which compaction occurs between turns rather than freezing a live reply.
 
-The tool applies three guards:
+The tool applies two guards:
 
-| Guard            | Threshold           | Purpose                                                        |
-| ---------------- | ------------------- | -------------------------------------------------------------- |
-| Context floor    | below 70% rejected  | prevents wasteful compaction                                   |
-| Rate limit       | max 1 per 5 minutes | prevents compaction loops                                      |
-| Generation guard | reject on drift     | avoids compacting mid-conversation after new external activity |
+| Guard         | Threshold           | Purpose                      |
+| ------------- | ------------------- | ---------------------------- |
+| Context floor | below 70% rejected  | prevents wasteful compaction |
+| Rate limit    | max 1 per 5 minutes | prevents compaction loops    |
+
+<!-- Generation guard removed by design decision 2026-04-15. Compaction should not be blocked by unrelated channel noise. -->
 
 Operational flow:
 
@@ -510,6 +509,12 @@ Operational flow:
 6. after-compaction path releases staged delegates
 7. successor session resumes with boot files, summary, and enrichment
 ```
+
+**Session provider/model threading (2026-04-19, openclaw#191).** Once the operational flow above lands, the same code path needs the right inputs to actually do the compaction. The volitional path threads the session's active `provider` and `model` from the run context into `compactEmbeddedPiSession` at both call sites (`src/auto-reply/reply/agent-runner-execution.ts` and `src/auto-reply/reply/followup-runner.ts`). Earlier builds dropped these on the floor and `resolveEmbeddedCompactionTarget` fell through to `DEFAULT_PROVIDER`/`DEFAULT_MODEL` (`'openai'`/`'gpt-5.4'`), for which the persisted auth profile was usually wrong. The deployed-instance symptom was an instant (<1 s) failure with `Unknown model: openai/gpt-5.4` classified as `reason=unknown` in the journal. Three coupled defects were addressed together:
+
+1. **Root cause:** pass `run.provider` and `run.model` into the embedded compaction call.
+2. **Caller honesty:** both sites previously returned `{ ok: true, compacted: true }` unconditionally, causing `incrementVolitionalCompactionCount` to fire on phantom-successful compactions and lying to the `/status` `volitional` row. Both sites now honor the real result.
+3. **Visibility:** the resolve path now emits a `log.warn` on resolve-with-fallback so a future regression of this class is grep-visible. A new `unknown_model` classifier and an `isLegitSkipReason` helper distinguish legitimate no-ops (e.g. floor-rejected) from genuine failures in the journal. `authProfileId` is now threaded through the fallback scope only when the inner-scope provider matches the persisted primary, to avoid carrying a wrong-provider auth handle.
 
 ### 4.4 Continuation relay and post-compaction context rehydration
 
@@ -590,9 +595,8 @@ agents:
       maxDelayMs: 300000
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
-      generationGuardTolerance: 0
-      contextPressureThreshold: 0.8
-      taskFlowDelegates: true # durable delegate queue via Task Flow (platform feature, ships enabled)
+      # generationGuardTolerance removed — delayed work should not be cancelled by channel noise
+      # taskFlowDelegates is always on — delegates must survive restart, no config option
 ```
 
 Operational notes:
@@ -600,7 +604,7 @@ Operational notes:
 - `enabled: false` means explicit opt-in is required in `openclaw.json`.
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
-- `generationGuardTolerance` controls whether incidental chatter cancels delayed work. At the shipped default of `0`, any inbound message during a delayed delegate chain will cancel it. This is deliberately conservative: a single-agent deployment where the only user communicates directly should not have background work running unnoticed. Operators with active channels or multiple users should raise this value (see fleet profile below).
+- `generationGuardTolerance` has been removed from the configuration surface. Delayed work should not be cancelled by unrelated channel noise. See the design decision note in §3.2.
 - all runtime values are hot-reloadable; changes take effect at the next enforcement point.
 
 ### 5.2 Operator profiles
@@ -615,8 +619,8 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 5
       costCapTokens: 500000
-      generationGuardTolerance: 0
-      defaultDelayMs: 15000
+      # generationGuardTolerance removed — see §3.2 design note
+      contextPressureThreshold: 0.8
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
@@ -632,14 +636,13 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 20
       costCapTokens: 1000000
-      generationGuardTolerance: 300
+      # generationGuardTolerance removed — see §3.2 design note
       defaultDelayMs: 15000
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
       taskFlowDelegates: true for multiple persistent agents in shared channels. In that environment:
 
-- `generationGuardTolerance: 300` absorbs ambient cross-agent generation drift;
 - `maxDelegatesPerTurn: 20` enables wide fan-out;
 - `costCapTokens: 1000000` preserves a budget ceiling while permitting broad but shallow work.
 
@@ -670,18 +673,9 @@ In these patterns, width is normally adjusted before depth. `costCapTokens` rema
 
 ### 5.4 Task Flow backing and durable delegate queues
 
-By default, pending delegates live in a volatile in-memory `Map<string, PendingContinuationDelegate[]>`.
+Pending delegates are backed by Task Flow (SQLite persistence) unconditionally. There is no opt-out — delegates must survive gateway restarts for the continuation lifecycle to work correctly, particularly for post-compaction delegate release.
 
-An implemented opt-in alternative routes that queue through Task Flow:
-
-```yaml
-agents:
-  defaults:
-    continuation:
-      taskFlowDelegates: true
-```
-
-When enabled, `enqueuePendingDelegate()` and `consumePendingDelegates()` use `createManagedTaskFlow()` with `controllerId = "core/continuation-delegate"`.
+`enqueuePendingDelegate()` and `consumePendingDelegates()` use `createManagedTaskFlow()` with `controllerId = "core/continuation-delegate"`.
 
 This provides:
 
@@ -701,18 +695,29 @@ Task Flow therefore aligns continuation delegates with the platform’s broader 
 
 The implementation emits stable log anchors for the major continuation lifecycle events.
 
-| Log prefix                         | Emitted by                  | Meaning                                               |
-| ---------------------------------- | --------------------------- | ----------------------------------------------------- |
-| `[context-pressure:fire]`          | `context-pressure.ts`       | pressure band crossed and event generated             |
-| `[system:context-pressure]`        | system-event queue          | event included in the next system prompt              |
-| `[continue_delegate:enqueue]`      | `continue-delegate-tool.ts` | tool call enqueued delegate work                      |
-| `[continuation:delegate-pending]`  | `agent-runner.ts`           | delegate chain state registered                       |
-| `[continuation:delegate-spawned]`  | `agent-runner.ts`           | child dispatched after delay or immediate acceptance  |
-| `[continuation/silent-wake]`       | `subagent-announce.ts`      | silent return will wake the parent                    |
-| `[continuation:enrichment-return]` | `subagent-announce.ts`      | silent return injected as system event                |
-| `requestHeartbeatNow`              | heartbeat wake path         | generation cycle requested after a silent-wake return |
+| Log prefix                         | Emitted by                  | Meaning                                                              |
+| ---------------------------------- | --------------------------- | -------------------------------------------------------------------- |
+| `[context-pressure:fire]`          | `context-pressure.ts`       | pressure band crossed and event generated                            |
+| `[context-pressure:noop]`          | `context-pressure.ts`       | pre-condition or guard suppressed the check (debug-level, see below) |
+| `[system:context-pressure]`        | system-event queue          | event included in the next system prompt                             |
+| `[continue_delegate:enqueue]`      | `continue-delegate-tool.ts` | tool call enqueued delegate work                                     |
+| `[continuation:delegate-pending]`  | `agent-runner.ts`           | delegate chain state registered                                      |
+| `[continuation:delegate-spawned]`  | `agent-runner.ts`           | child dispatched after delay or immediate acceptance                 |
+| `[continuation/silent-wake]`       | `subagent-announce.ts`      | silent return will wake the parent                                   |
+| `[continuation:enrichment-return]` | `subagent-announce.ts`      | silent return injected as system event                               |
+| `requestHeartbeatNow`              | heartbeat wake path         | generation cycle requested after a silent-wake return                |
 
 These anchors make the full pipeline grepable end to end.
+
+**`[context-pressure:noop]` reason taxonomy** (debug-level, gated behind `log.isEnabled("debug")` to avoid hot-path string interpolation):
+
+| `reason=`         | Meaning                                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| `window-zero`     | `contextWindow <= 0` — model context window not yet resolved for this turn                                      |
+| `below-threshold` | `ratio < threshold` — pressure ratio below the configured trigger; logs raw 4dp ratio alongside rounded percent |
+| `band-dedup`      | `band === previous` — same pressure band as the previous fire; suppressed to avoid repeat-event flood           |
+
+**Investigation cycle.** Earlier in 2026-04, deployed instances observed zero `[context-pressure:fire]` lines despite continuation flowing normally. A short-lived `:reach`/`:skip` instrumentation pair in `agent-runner.ts` was added to confirm the outer guard was being entered, then removed once the root cause was found: the dedup-band sentinel used `?? 0`, which collided with `band === 0` for sessions whose `contextPressureThreshold` was below the lowest hard-coded pressure band (25 %). The first crossing of band 0 was therefore dedup-suppressed silently. The fix is a `-1` missing-key sentinel, so the first crossing of any band — including band 0 — fires once.
 
 ### 6.2 Lifecycle traces
 
@@ -751,18 +756,20 @@ Representative runtime traces are shown below.
 **Generation-drift behavior:**
 
 ```text
-Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)
-WORK timer cancelled (generation drift 1 > tolerance 0)
-Tool DELEGATE timer fired and spawned turn 1/10 (drift within tolerance 300)
+<!-- [historical] Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0) — generation guard removed from design -->
+<!-- [historical] WORK timer cancelled (generation drift 1 > tolerance 0) — generation guard removed from design -->
+<!-- [historical] Tool DELEGATE timer fired and spawned turn 1/10 (drift within tolerance 300) — generation guard removed from design -->
 ```
 
 ### 6.3 `/status` continuation telemetry
 
-When continuation is enabled and at least one field is non-zero, `/status` can surface the continuation state:
+When continuation is enabled and at least one field is non-zero, `/status` surfaces the continuation state in both the CLI status report and the Discord/agent `/status` reply:
 
 ```text
 🔄 Continuation: chain 3/10 | 2 delegates pending | 1 post-compaction staged | volitional: 1
 ```
+
+The Discord/agent path through `src/auto-reply/status.ts` was disconnected during an unrelated refactor and restored at openclaw#187. The render is gated on (a) continuation enabled in the resolved config, and (b) at least one of the four fields being non-zero — both gates are unit-tested in `src/auto-reply/status.test.ts`. The `volitional: N` field reflects an honest count of agent-initiated compactions only after openclaw#191 stopped the volitional path from incrementing the counter on phantom-successful (actually-failed) compactions; see §4.3.
 
 | Field                      | Source                                        | Meaning                                                   |
 | -------------------------- | --------------------------------------------- | --------------------------------------------------------- |
@@ -803,6 +810,8 @@ Operational fleet evidence from 2026-04-03 across four persistent OpenClaw insta
 
 In that build, `checkContextPressure()` existed but had not yet been wired into the reply pipeline. The result was a measurable divergence between instances that compacted and those that did not.
 
+The current canary (post-2026-04-14) does wire `checkContextPressure()` into the reply pipeline (`src/auto-reply/reply/agent-runner.ts`, pre-run injection). Observation on the current wire is that post-compaction band-0 events fire as specified, while pre-fire (non-post-compaction) band≥1 events have been observed at 0 across n=3 instances in strict-grep measurement of the `[context-pressure:fire]` log anchor. This is consistent with the §4.2 precondition note: sessions either never cross the configured threshold during steady-state operation, or the `totalTokens` short-circuit drops the check on the turns where they would. Distinguishing the two hypotheses required instrumentation at the call site to emit which branch skipped (threshold vs. accounting). That instrumentation has since landed: the `[context-pressure:noop] reason=…` debug breadcrumbs documented in §6.1 (openclaw#164, #173) tag each suppressed check with `window-zero`, `below-threshold`, or `band-dedup`. Follow-on work (openclaw#171, #172) then identified and fixed a second suppression cause that the new breadcrumbs made visible: the band-dedup sentinel collided with `band === 0` for sub-25 % thresholds, silently swallowing every first-crossing fire on those sessions. After that fix, band-0 fires are observed as specified, and the remaining absence of higher-band fires on steady-state sessions is attributable to the `totalTokens`/`contextWindow` precondition rather than to dedup.
+
 ### 6.5 Operator observability and hot reload
 
 Operators can observe continuation behavior without restart:
@@ -814,7 +823,6 @@ Operators can observe continuation behavior without restart:
 
 Hot-reload validation confirmed live changes to:
 
-- `generationGuardTolerance`,
 - `maxDelegatesPerTurn`,
 - `maxChainLength`,
 - `costCapTokens`,
@@ -826,15 +834,15 @@ Hot-reload validation confirmed live changes to:
 
 The continuation feature is intentionally conservative by default.
 
-| Constraint                 | Default  | Purpose                                                      |
-| -------------------------- | -------- | ------------------------------------------------------------ |
-| `enabled`                  | `false`  | explicit deployment consent required                         |
-| `maxChainLength`           | `10`     | prevents runaway recursion                                   |
-| `costCapTokens`            | `500000` | bounds cost per chain                                        |
-| `minDelayMs`               | `5000`   | prevents tight loops                                         |
-| `maxDelayMs`               | `300000` | bounds scheduling horizon                                    |
-| `generationGuardTolerance` | `0`      | treats any drift as interruption in safety-first deployments |
-| `maxDelegatesPerTurn`      | `5`      | prevents unbounded fan-out                                   |
+| Constraint                 | Default  | Purpose                                                                                                                             |
+| -------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                  | `false`  | explicit deployment consent required                                                                                                |
+| `maxChainLength`           | `10`     | prevents runaway recursion                                                                                                          |
+| `costCapTokens`            | `500000` | bounds cost per chain                                                                                                               |
+| `minDelayMs`               | `5000`   | prevents tight loops                                                                                                                |
+| `maxDelayMs`               | `300000` | bounds scheduling horizon                                                                                                           |
+| `generationGuardTolerance` | removed  | ~~treats any drift as interruption~~ — removed by design decision 2026-04-15: delayed work should not be cancelled by channel noise |
+| `maxDelegatesPerTurn`      | `5`      | prevents unbounded fan-out                                                                                                          |
 
 Additional deployment note: delegate returns rely on an internal announce path. In channels configured with `requireMention: true`, the internal delivery path still bypasses mention gating, which preserves the continuation wake semantics.
 
@@ -951,67 +959,26 @@ This establishes a strong claim: the subject’s only legitimate access path is 
 
 The blind test matrix included:
 
-| #   | Content                                 | Dispatch | Enrichment | Recall | Notes                                     |
-| --- | --------------------------------------- | -------- | ---------- | ------ | ----------------------------------------- |
-| 1   | 6-digit number `847293`                 | ✅       | ✅         | ✅     | binary recall                             |
-| 2   | nonsense string `chrysanthemum-vapor-9` | ✅       | ✅         | ✅     | cross-machine via SSH                     |
-| 3   | prose sentence                          | ✅       | ✅         | ✅     | no channel contamination                  |
-| 4   | image description via file + image tool | ✅       | ✅         | ✅     | instruction file plus sibling image       |
-| 5   | dream summary                           | ❌       | —          | ❌     | generation guard cancelled dispatch       |
-| 6   | image via DM chain (catboy)             | ✅       | ✅         | ✅     | `read()` fallback after `image()` failure |
-| 7   | image via DM chain (N from Pokémon)     | ✅       | ⚠️         | ✅     | output correct, tool path unreliable      |
-| 8   | keyword-tagged file (`winterFloor`)     | ✅       | ✅         | ✅     | keyword recall validated                  |
-| 9   | image + keyword, narrated dispatch      | ❌       | —          | ❌     | syntax posted visibly rather than parsed  |
-| 10  | image + keyword, clean retry            | ✅       | ✅         | ✅     | retry succeeded                           |
-| 11  | two-hop chain, wrong path               | ✅       | ❌         | ❌     | workspace path error                      |
-| 12  | two-hop chain, corrected path           | ✅       | ✅         | ✅     | full two-hop pipeline validated           |
+| #   | Content                                 | Dispatch | Enrichment | Recall | Notes                                                               |
+| --- | --------------------------------------- | -------- | ---------- | ------ | ------------------------------------------------------------------- |
+| 1   | 6-digit number `847293`                 | ✅       | ✅         | ✅     | binary recall                                                       |
+| 2   | nonsense string `chrysanthemum-vapor-9` | ✅       | ✅         | ✅     | cross-machine via SSH                                               |
+| 3   | prose sentence                          | ✅       | ✅         | ✅     | no channel contamination                                            |
+| 4   | image description via file + image tool | ✅       | ✅         | ✅     | instruction file plus sibling image                                 |
+| 5   | dream summary                           | ❌       | —          | ❌     | ~~generation guard cancelled dispatch~~ (guard removed from design) |
+| 6   | image via DM chain (catboy)             | ✅       | ✅         | ✅     | `read()` fallback after `image()` failure                           |
+| 7   | image via DM chain (N from Pokémon)     | ✅       | ⚠️         | ✅     | output correct, tool path unreliable                                |
+| 8   | keyword-tagged file (`winterFloor`)     | ✅       | ✅         | ✅     | keyword recall validated                                            |
+| 9   | image + keyword, narrated dispatch      | ❌       | —          | ❌     | syntax posted visibly rather than parsed                            |
+| 10  | image + keyword, clean retry            | ✅       | ✅         | ✅     | retry succeeded                                                     |
+| 11  | two-hop chain, wrong path               | ✅       | ❌         | ❌     | workspace path error                                                |
+| 12  | two-hop chain, corrected path           | ✅       | ✅         | ✅     | full two-hop pipeline validated                                     |
 
 Overall: **10/12 passed**. When dispatch occurred correctly, the accuracy rate was **10/10**.
 
 ### 9.4 Integration test session results
 
-#### Swim 7
-
-Swim 7 validated tolerance hot reload, width hot reload, chain boundary behavior, textless-turn delegate consumption, and silent-return trust boundaries.
-
-Headline scorecard:
-
-- 10 pass,
-- 2 deferred,
-- 0 fail.
-
-Notable confirmations:
-
-- tolerance hot reload from 0 to 300 changed live timer behavior;
-- width widened from 5 to 12 and narrowed back to 3 without restart;
-- `NO_REPLY`-only turns still consumed pending delegates;
-- blind enrichment returned verifiable facts with honest source attribution when probed carefully.
-
-#### Swim 8
-
-Swim 8 focused on tool usage inside delegate chains.
-
-Headline scorecard:
-
-- 6 pass,
-- 1 documented finding,
-- 0 fail.
-
-Validated items included:
-
-- tool-based delegate chain hops,
-- silent propagation into hop 2,
-- `maxDelegatesPerTurn` enforcement,
-- corrected `maxChainLength` behavior,
-- `DENY_LEAF` enforcement.
-
-Three issues were found and fixed live:
-
-1. `doToolSpawn()` was missing the drain flag required for sub-agent delegate consumption.
-2. The chain-length guard used `>` instead of `>=`.
-3. A silent-reply edge case obscured cost-cap rejection logging.
-
-The one documented finding was mixed tool plus bracket usage in the same sub-agent turn. The tool path is reliable; concurrent mixed usage is unsupported and produces ambiguous consumption order.
+Detailed scorecards for the most-recent full-coverage canary sessions are preserved in Appendix D. The headline coverage of feature shipping was Swim 9 (context-pressure and volitional compaction) and Swim 10 (full tool parity).
 
 #### Swim 9
 
@@ -1187,6 +1154,19 @@ A synchronous compaction mode is not implemented.
 | evacuation loop                            | bounded by `maxChainLength`                                      |
 | repeated pressure events                   | bounded by pressure-band dedup                                   |
 
+**Closed failure modes** (documented here so the class is searchable; the fix is in the canary):
+
+| Failure                                                                      | Class                         | Closed by    |
+| ---------------------------------------------------------------------------- | ----------------------------- | ------------ |
+| volitional compaction phantom-counter (failed compaction recorded as ok)     | caller dropped real result    | openclaw#191 |
+| volitional compaction silent failure with wrong provider/model auth          | wrong defaults at fallback    | openclaw#191 |
+| hedge timer ref leak on natural fire (one ref + one live-handle/session)     | unregister missed in callback | openclaw#193 |
+| band-0 first-crossing dedup-suppressed for sub-25 % thresholds               | sentinel collision            | openclaw#172 |
+| context-pressure precondition skip indistinguishable from no-cross           | no breadcrumb at skip site    | openclaw#164 |
+| compaction summarization fails across deployed instances on Copilot IDE auth | missing IDE headers           | openclaw#160 |
+| dist-bundled satellite chunks split per-session singletons                   | dynamic-import chunking       | openclaw#162 |
+| subagent-announce continuation drain `ERR_MODULE_NOT_FOUND` at runtime       | flat-dist subdir mismatch     | openclaw#169 |
+
 ### C.2 Inherited behavioral limitations
 
 The continuation system inherits three broader limitations from persistent deployments:
@@ -1226,93 +1206,37 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 
 ### D.2 Evidence locations
 
-| Artifact                  | Location                                                                                                                                                               |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Swim 7 structured results | [`karmaterminal/silas-likes-to-watch` PR #27](https://github.com/karmaterminal/silas-likes-to-watch/pull/27)                                                           |
-| Gateway journal           | [`swim-logs/` on `silas-likes-to-watch/main`](https://github.com/karmaterminal/silas-likes-to-watch/tree/main/swim-logs)                                               |
-| Raw operator log capture  | [`swim7-silas-raw-figs-capture-2026-03-06.log`](https://github.com/karmaterminal/silas-likes-to-watch/blob/main/swim-logs/swim7-silas-raw-figs-capture-2026-03-06.log) |
-| Swim 7 chat transcript    | [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch                                                     |
-| Swim 8 evidence           | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                     |
-| Swim 9 issue + results    | [`karmaterminal/openclaw-bootstrap#375`](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)                                                               |
-| Swim 10 issue + results   | [`karmaterminal/openclaw-bootstrap#377`](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)                                                               |
+| Artifact                                                                 | Location                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Swim 7 evidence                                                          | [`continue-work-signal-v2/swim-evidence/swim-07/SWIM7-RESULTS.md`](./continue-work-signal-v2/swim-evidence/swim-07/SWIM7-RESULTS.md) (results doc, in-tree); raw runtime logs on [`silas/swim7-runtime-evidence`](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence) branch (`gateway.log`, `raw-capture.log`); chat capture on [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch |
+| Swim 8 evidence                                                          | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                                                                                                                                                                                                                                                           |
+| Swim 9 + 10 issue captures and results                                   | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                                                                                                                                                                                                                                                           |
+| Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191)                                                                                                                                                                                                                                                                |
+| Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                                                                                                                                                                                                                                                                                |
+| `/status` continuation row (Discord/agent)                               | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts` (openclaw#187, #188)                                                                                                                                                                                                                                                                                                                                                                                            |
+| `request_compaction()` tool surface tests                                | `src/agents/tools/request-compaction-tool.test.ts` (openclaw#165, swim-34/X5.1)                                                                                                                                                                                                                                                                                                                                                                                              |
+| Context-pressure noop breadcrumbs + sentinel                             | `src/auto-reply/continuation/context-pressure.ts` (openclaw#164, #171, #172, #173)                                                                                                                                                                                                                                                                                                                                                                                           |
+| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162)                                                                                                                                                                                                                                                                                                                                                                                            |
+| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169)                                                                                                                                                                                                                                                                                                                                                                                                        |
+| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170)                                                                                                                                                                                                                                                                                                                                                                                                               |
 
-### D.3 Swim 7 scorecard and evidence lines
+### D.3 Most-recent integration test session results (Swim 9 and Swim 10)
 
-Swim 7 scorecard:
-
-| Test | Description                        | Result      |
-| ---- | ---------------------------------- | ----------- |
-| 7-B  | delegate tolerance hot reload      | ✅ PASS     |
-| 7-C  | WORK tolerance hot reload          | ✅ PASS     |
-| 7-D  | width widen without restart        | ✅ PASS     |
-| 7-E  | width narrow without restart       | ✅ PASS     |
-| 7-F  | chain boundary enforcement         | ✅ PASS     |
-| 7-H  | textless-turn delegate consumption | ✅ PASS     |
-| 7-K  | silent return trust boundary       | ✅ PASS     |
-| 7-M  | blind enrichment accuracy          | ✅ PASS     |
-| 7-I  | post-compaction guard parity       | ⏸️ DEFERRED |
-| 7-J  | grandparent reroute ordering       | ⏸️ DEFERRED |
-
-Representative evidence lines:
-
-```text
-07:02:58 Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0)
-07:03:55 config change applied (dynamic reads: agents.defaults.continuation.generationGuardTolerance)
-07:04:41 Tool DELEGATE timer fired and spawned turn 1/10
-
-07:07:08 WORK timer cancelled (generation drift 1 > tolerance 0)
-07:12:22 WORK timer fired for session agent:main:discord:channel:...
-
-07:22:35 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
-07:23:29 [continue_delegate] Consuming 12 tool delegate(s)
-07:25:53 config change applied (dynamic reads: agents.defaults.continuation.maxDelegatesPerTurn)
-07:26:24 [continue_delegate] Consuming 3 tool delegate(s)
-```
-
-### D.4 Swim 8 detailed results
-
-Swim 8 targeted delegate tool use inside chain hops.
-
-- **Issue:** [karmaterminal/openclaw#57](https://github.com/karmaterminal/openclaw/issues/57)
-- **SUT:** Silas canary build on fleet node (`urudyne`)
-- **Formation:** Cael (coordinator/driver), Elliott (log monitor), Silas (SUT), Ronan (driver Day 1)
-- **Duration:** March 30–31, 2026, approximately 14 hours across two days
-- **Convergence path:** `8ee9dcbe0f` later squashed to `4f3461ee07`
-
-| Test | Description                            | Result     |
-| ---- | -------------------------------------- | ---------- |
-| 8-T1 | tool delegate from chain-hop sub-agent | ✅ PASS    |
-| 8-T2 | silent delegate propagation            | ✅ PASS    |
-| 8-T3 | `maxDelegatesPerTurn` enforcement      | ✅ PASS    |
-| 8-T4 | `maxChainLength` serial proof          | ✅ PASS    |
-| 8-T5 | mixed bracket and tool signals         | ⚠️ FINDING |
-| 8-T6 | cost-cap enforcement                   | ✅ PASS    |
-| 8-T7 | `DENY_LEAF` enforcement                | ✅ PASS    |
-
-Detailed findings preserved from the canary run:
-
-- missing `drainsContinuationDelegateQueue` on `doToolSpawn()`; the one-line fix landed in `649bac1d12`;
-- off-by-one on chain-length comparison; the `>` to `>=` correction landed in `3d26030cdc`;
-- silent-reply cost-cap logging gap; defensive logging landed in `8ee9dcbe0f`;
-- mixed tool and bracket syntax in one turn is unsupported;
-- the debug log line `[continuation] Continuation instructions suppressed for non-drain run` was the decisive diagnostic artifact;
-- compaction during diagnosis did not destroy the investigation because post-compaction continuation recovered working state.
-
-### D.5 Swim 9 and Swim 10 detailed results
+These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and are archived: Swim 7 results doc in-tree at [`continue-work-signal-v2/swim-evidence/swim-07/SWIM7-RESULTS.md`](./continue-work-signal-v2/swim-evidence/swim-07/SWIM7-RESULTS.md), raw runtime logs on the [`silas/swim7-runtime-evidence`](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence) branch; Swim 8 captures on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch.
 
 Swim 9:
 
-- **Issue:** [karmaterminal/openclaw-bootstrap#375](https://github.com/karmaterminal/openclaw-bootstrap/issues/375)
-- **SUT:** Silas canary build on `cael/61-volitional-compaction`
+- **Issue capture:** preserved on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch
+- **SUT:** canary build on `cael/61-volitional-compaction`
 - **Build:** `b2322f5`
 - **Duration:** approximately 2 hours, Phase 1 low-context testing
 - **Result:** 5/5 pass after fixing a missing forwarding of `requestCompactionOpts` from `run.ts` to `attempt.ts`
 
 Swim 10:
 
-- **Issue:** [karmaterminal/openclaw-bootstrap#377](https://github.com/karmaterminal/openclaw-bootstrap/issues/377)
-- **SUT:** Silas canary build on `cael/61-volitional-compaction`
-- **Formation:** Ronan (driver), Elliott (log monitor), Silas (SUT), Cael (coordinator), figs (operator)
+- **Issue capture:** preserved on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch
+- **SUT:** canary build on `cael/61-volitional-compaction`
+- **Formation:** driver, log monitor, SUT, coordinator, operator (5-role canary formation)
 - **Build:** `ad32cde`
 - **Duration:** approximately 5 hours
 - **Result:** 12 pass, 0 fail, 1 deferred

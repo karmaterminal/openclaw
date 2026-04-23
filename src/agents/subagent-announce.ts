@@ -10,7 +10,6 @@ import {
   resolveStorePath,
   updateSessionStore,
 } from "../config/sessions.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
@@ -89,8 +88,6 @@ function loadSubagentSpawnRuntime() {
   subagentSpawnRuntimePromise ??= import("./subagent-spawn.js");
   return subagentSpawnRuntimePromise;
 }
-
-const continuationGuardLog = createSubsystemLogger("continuation/guard");
 
 export { buildSubagentSystemPrompt } from "./subagent-system-prompt.js";
 export { captureSubagentCompletionReply } from "./subagent-announce-output.js";
@@ -532,8 +529,7 @@ export async function runSubagentAnnounceFlow(params: {
     if (continuationEnabled && isContinuationChainDelegate) {
       let childEntry = readSessionEntryByKey(params.childSessionKey);
       const hasTokenData =
-        typeof childEntry?.inputTokens === "number" ||
-        typeof childEntry?.outputTokens === "number";
+        typeof childEntry?.inputTokens === "number" || typeof childEntry?.outputTokens === "number";
       if (!hasTokenData) {
         // Best-effort single retry — avoid blocking the announce hot path
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -715,27 +711,9 @@ export async function runSubagentAnnounceFlow(params: {
 
           if (chainDelayMs && chainDelayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, chainDelayMs));
-            const hopGeneration =
-              continuationStateRuntime.bumpContinuationGeneration(targetRequesterSessionKey);
-            continuationGuardLog.debug(
-              `[continuation-guard] Chain-hop timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
-            );
             continuationStateRuntime.retainContinuationTimerRef(targetRequesterSessionKey);
             const timerHandle = setTimeout(() => {
               try {
-                const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-                const currentGen =
-                  continuationStateRuntime.currentContinuationGeneration(targetRequesterSessionKey);
-                const drift = currentGen - hopGeneration;
-                continuationGuardLog.debug(
-                  `[continuation-guard] Chain-hop timer check: stored=${hopGeneration} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${targetRequesterSessionKey}`,
-                );
-                if (drift > generationGuardTolerance) {
-                  defaultRuntime.log(
-                    `[subagent-chain-hop] Timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
-                  );
-                  return;
-                }
                 doChainSpawn(true).catch((err) => {
                   defaultRuntime.log(
                     `[subagent-chain-hop] Unhandled bracket delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
@@ -851,24 +829,9 @@ export async function runSubagentAnnounceFlow(params: {
 
           if (toolDelayMs && toolDelayMs > 0) {
             const clampedDelay = Math.max(toolMinDelayMs, Math.min(toolMaxDelayMs, toolDelayMs));
-            const hopGeneration =
-              continuationStateRuntime.bumpContinuationGeneration(targetRequesterSessionKey);
-            continuationGuardLog.debug(
-              `[continuation-guard] Tool delegate timer set: generation=${hopGeneration} delayMs=${clampedDelay} session=${targetRequesterSessionKey}`,
-            );
             continuationStateRuntime.retainContinuationTimerRef(targetRequesterSessionKey);
             const timerHandle = setTimeout(() => {
               try {
-                const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-                const currentGen =
-                  continuationStateRuntime.currentContinuationGeneration(targetRequesterSessionKey);
-                const drift = currentGen - hopGeneration;
-                if (drift > generationGuardTolerance) {
-                  defaultRuntime.log(
-                    `[subagent-chain-hop] Tool delegate timer cancelled (generation drift=${drift} > tolerance=${generationGuardTolerance}) for ${targetRequesterSessionKey}`,
-                  );
-                  return;
-                }
                 doToolChainSpawn(true).catch((err) => {
                   defaultRuntime.log(
                     `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,

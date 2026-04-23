@@ -15,7 +15,6 @@ describe("request_compaction tool", () => {
   const SESSION_ID = "session-uuid-1234";
 
   let contextUsage: number;
-  let sessionGeneration: number;
   let mockTriggerCompaction: ReturnType<
     typeof vi.fn<RequestCompactionToolOpts["triggerCompaction"]>
   >;
@@ -25,8 +24,6 @@ describe("request_compaction tool", () => {
       agentSessionKey: SESSION_KEY,
       sessionId: SESSION_ID,
       getContextUsage: () => contextUsage,
-      getSessionGeneration: () => sessionGeneration,
-      turnGeneration: 1,
       triggerCompaction: mockTriggerCompaction,
       ...overrides,
     };
@@ -45,7 +42,6 @@ describe("request_compaction tool", () => {
 
   beforeEach(() => {
     contextUsage = 0.85; // above threshold by default
-    sessionGeneration = 1; // matches turnGeneration by default
     _resetGuardState();
     _resetVolitionalCounts();
     mockTriggerCompaction = vi.fn().mockResolvedValue({
@@ -148,29 +144,16 @@ describe("request_compaction tool", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Guard: generation drift
+  // No generation guard (RFC 2026-04-15): compaction is not blocked by
+  // unrelated channel activity.
   // -------------------------------------------------------------------------
 
-  it("rejects when session generation has advanced", async () => {
-    sessionGeneration = 2; // drift from turnGeneration=1
+  it("proceeds regardless of session generation drift (post-RFC 2026-04-15)", async () => {
     const tool = makeTool();
     const result = await executeTool(tool);
 
-    expect(result).toMatchObject({
-      status: "rejected",
-      guard: "generation_drift",
-      turnGeneration: 1,
-      currentGeneration: 2,
-    });
-    expect(mockTriggerCompaction).not.toHaveBeenCalled();
-  });
-
-  it("accepts when generation matches", async () => {
-    sessionGeneration = 1;
-    const tool = makeTool({ turnGeneration: 1 });
-    const result = await executeTool(tool);
-
     expect(result).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
   });
 
   // -------------------------------------------------------------------------
