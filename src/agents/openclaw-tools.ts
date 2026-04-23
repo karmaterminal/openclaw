@@ -122,8 +122,6 @@ export function createOpenClawTools(
     /** Closures for request_compaction tool (Trigger E). Only set when continuation is enabled. */
     requestCompactionOpts?: {
       getContextUsage: () => number;
-      getSessionGeneration: () => number;
-      turnGeneration: number;
       triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
     };
   } & SpawnedToolContext,

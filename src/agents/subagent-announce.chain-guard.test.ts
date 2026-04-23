@@ -83,7 +83,6 @@ function makeConfig(
           costCapTokens: overrides.costCapTokens ?? 500_000,
           minDelayMs: 0,
           maxDelayMs: 0, // zero delay to avoid timer issues
-          generationGuardTolerance: 0,
         },
       },
     },

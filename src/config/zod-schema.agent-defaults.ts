@@ -278,7 +278,6 @@ export const AgentDefaultsSchema = z
         maxChainLength: z.number().int().positive().optional(),
         costCapTokens: z.number().int().nonnegative().optional(),
         maxDelegatesPerTurn: z.number().int().positive().optional(),
-        generationGuardTolerance: z.number().int().nonnegative().optional(),
         contextPressureThreshold: z
           .number()
           .gt(0, "contextPressureThreshold must be > 0 (0 would fire on empty sessions)")

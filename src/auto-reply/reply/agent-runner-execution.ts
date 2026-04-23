@@ -1085,14 +1085,6 @@ export async function runAgentTurnWithFallback(params: {
                           const contextWindow = entry.contextTokens ?? 200_000;
                           return entry.totalTokens / contextWindow;
                         },
-                        getSessionGeneration: () => {
-                          return params.sessionKey
-                            ? (params.getCurrentContinuationGeneration?.(params.sessionKey) ?? 0)
-                            : 0;
-                        },
-                        turnGeneration: params.sessionKey
-                          ? (params.getCurrentContinuationGeneration?.(params.sessionKey) ?? 0)
-                          : 0,
                         triggerCompaction: async () => {
                           try {
                             const result = await compactEmbeddedPiSession({

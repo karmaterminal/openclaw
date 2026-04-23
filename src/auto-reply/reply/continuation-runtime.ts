@@ -10,7 +10,6 @@ export type ContinuationRuntimeConfig = {
   maxChainLength: number;
   costCapTokens: number;
   maxDelegatesPerTurn: number;
-  generationGuardTolerance: number;
   contextPressureThreshold?: number;
 };
 
@@ -20,7 +19,6 @@ const DEFAULT_CONTINUATION_MAX_DELAY_MS = 300_000;
 const DEFAULT_CONTINUATION_MAX_CHAIN_LENGTH = 10;
 const DEFAULT_CONTINUATION_COST_CAP_TOKENS = 500_000;
 const DEFAULT_CONTINUATION_MAX_DELEGATES_PER_TURN = 5;
-const DEFAULT_CONTINUATION_GENERATION_GUARD_TOLERANCE = 0;
 
 function clampPositiveInt(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -81,10 +79,6 @@ export function resolveContinuationRuntimeConfig(
     maxDelegatesPerTurn: clampPositiveInt(
       continuation?.maxDelegatesPerTurn,
       DEFAULT_CONTINUATION_MAX_DELEGATES_PER_TURN,
-    ),
-    generationGuardTolerance: clampNonNegativeInt(
-      continuation?.generationGuardTolerance,
-      DEFAULT_CONTINUATION_GENERATION_GUARD_TOLERANCE,
     ),
     contextPressureThreshold: clampOptionalUnitInterval(continuation?.contextPressureThreshold),
   };

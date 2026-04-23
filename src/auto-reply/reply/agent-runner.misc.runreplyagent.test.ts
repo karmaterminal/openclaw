@@ -239,7 +239,6 @@ describe("runReplyAgent continuation volatile state", () => {
                   minDelayMs: 0,
                   maxDelayMs: 1_000,
                   defaultDelayMs: 1_000,
-                  generationGuardTolerance: 0,
                   maxChainLength: 4,
                 },
               },
@@ -305,7 +304,7 @@ describe("runReplyAgent continuation volatile state", () => {
     expect(currentContinuationGeneration(run.sessionKey)).toBe(0);
   });
 
-  it("drops continuation generation state after a delayed work timer fires", async () => {
+  it("fires a delayed WORK timer after CONTINUE_WORK is parsed", async () => {
     vi.useFakeTimers();
 
     const run = createContinuationRun({ sessionKey: "continuation-work-timer" });
@@ -345,7 +344,6 @@ describe("runReplyAgent continuation volatile state", () => {
     });
 
     expect(result).toMatchObject({ text: "Normal reply" });
-    expect(currentContinuationGeneration(run.sessionKey)).toBeGreaterThan(0);
 
     await vi.advanceTimersByTimeAsync(1_000);
 
@@ -353,10 +351,9 @@ describe("runReplyAgent continuation volatile state", () => {
       sessionKey: run.sessionKey,
       reason: "continuation",
     });
-    expect(currentContinuationGeneration(run.sessionKey)).toBe(0);
   });
 
-  it("clears delayed work timers when a plain inbound turn arrives", async () => {
+  it("delayed work survives a plain inbound turn (post-RFC 2026-04-15: no noise-based cancellation)", async () => {
     vi.useFakeTimers();
 
     const run = createContinuationRun({ sessionKey: "continuation-work-cancel" });
@@ -389,8 +386,6 @@ describe("runReplyAgent continuation volatile state", () => {
       typingMode: "instant",
     });
 
-    expect(currentContinuationGeneration(run.sessionKey)).toBeGreaterThan(0);
-
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "Interrupting message" }],
       meta: {},
@@ -421,8 +416,12 @@ describe("runReplyAgent continuation volatile state", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
 
-    expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
-    expect(currentContinuationGeneration(run.sessionKey)).toBe(0);
+    // RFC 2026-04-15: generation-guard removed — unrelated inbound traffic
+    // does not cancel delayed work. The WORK timer still fires.
+    expect(requestHeartbeatNowMock).toHaveBeenCalledWith({
+      sessionKey: run.sessionKey,
+      reason: "continuation",
+    });
   });
 
   it("clears delayed delegate reservations and timers on explicit cancellation", async () => {
@@ -459,7 +458,6 @@ describe("runReplyAgent continuation volatile state", () => {
     });
 
     expect(delayedContinuationReservationCount(run.sessionKey)).toBe(1);
-    expect(currentContinuationGeneration(run.sessionKey)).toBeGreaterThan(0);
 
     cancelContinuationTimer(run.sessionKey, {
       sessionEntry: run.sessionEntry,
@@ -471,7 +469,6 @@ describe("runReplyAgent continuation volatile state", () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(currentContinuationGeneration(run.sessionKey)).toBe(0);
   });
 });
 

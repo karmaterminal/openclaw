@@ -127,7 +127,6 @@ describe("delayed continuation reservations", () => {
       task: "inspect shard health",
       createdAt: 1,
       fireAt: 2,
-      generation: 3,
       plannedHop: 4,
       silentWake: true,
     });
@@ -139,7 +138,6 @@ describe("delayed continuation reservations", () => {
         task: "inspect shard health",
         createdAt: 1,
         fireAt: 2,
-        generation: 3,
         plannedHop: 4,
         silentWake: true,
       },
@@ -154,7 +152,6 @@ describe("delayed continuation reservations", () => {
       task: "session A task",
       createdAt: 1,
       fireAt: 2,
-      generation: 3,
       plannedHop: 1,
     });
     addDelayedContinuationReservation("other-session", {
@@ -163,7 +160,6 @@ describe("delayed continuation reservations", () => {
       task: "session B task",
       createdAt: 1,
       fireAt: 2,
-      generation: 3,
       plannedHop: 1,
     });
 
@@ -180,7 +176,6 @@ describe("delayed continuation reservations", () => {
       task: "first",
       createdAt: 1,
       fireAt: 2,
-      generation: 3,
       plannedHop: 1,
     });
     addDelayedContinuationReservation("test-session", {
@@ -189,7 +184,6 @@ describe("delayed continuation reservations", () => {
       task: "second",
       createdAt: 2,
       fireAt: 3,
-      generation: 4,
       plannedHop: 2,
     });
 
@@ -211,7 +205,6 @@ describe("delayed continuation reservations", () => {
       task: "first",
       createdAt: 1,
       fireAt: 2,
-      generation: 3,
       plannedHop: 1,
     });
 
@@ -228,7 +221,6 @@ describe("delayed continuation reservations", () => {
       task: "first",
       createdAt: 1,
       fireAt: 2,
-      generation: 3,
       plannedHop: 1,
     });
     addDelayedContinuationReservation("test-session", {
@@ -237,7 +229,6 @@ describe("delayed continuation reservations", () => {
       task: "second",
       createdAt: 2,
       fireAt: 3,
-      generation: 4,
       plannedHop: 2,
     });
 
@@ -254,7 +245,6 @@ describe("delayed continuation reservations", () => {
       task: "first",
       createdAt: 1,
       fireAt: 2,
-      generation: 3,
       plannedHop: 2,
     });
     addDelayedContinuationReservation("test-session", {
@@ -263,7 +253,6 @@ describe("delayed continuation reservations", () => {
       task: "second",
       createdAt: 2,
       fireAt: 3,
-      generation: 4,
       plannedHop: 5,
     });
 

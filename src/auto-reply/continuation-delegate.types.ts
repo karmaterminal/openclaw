@@ -11,7 +11,6 @@ export interface DelayedContinuationReservation {
   task: string;
   createdAt: number;
   fireAt: number;
-  generation: number;
   plannedHop: number;
   silent?: boolean;
   silentWake?: boolean;

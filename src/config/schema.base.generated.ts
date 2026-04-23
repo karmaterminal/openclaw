@@ -5711,11 +5711,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     exclusiveMinimum: 0,
                     maximum: 9007199254740991,
                   },
-                  generationGuardTolerance: {
-                    type: "integer",
-                    minimum: 0,
-                    maximum: 9007199254740991,
-                  },
                   contextPressureThreshold: {
                     type: "number",
                     exclusiveMinimum: 0,

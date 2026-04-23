@@ -333,8 +333,6 @@ export function createOpenClawCodingTools(options?: {
   /** Closures for request_compaction tool (Trigger E). */
   requestCompactionOpts?: {
     getContextUsage: () => number;
-    getSessionGeneration: () => number;
-    turnGeneration: number;
     triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
   };
   /** If true, the model has native vision capability */

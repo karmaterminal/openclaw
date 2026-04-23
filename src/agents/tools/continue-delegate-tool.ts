@@ -56,11 +56,8 @@ const ContinueDelegateToolSchema = Type.Object({
  * The tool can be called multiple times per turn (multi-delegate fan-out).
  * Each call enqueues independently. No single-per-response regex limitation.
  *
- * NOTE: Delayed fan-out (multiple delegates with delaySeconds > 0) is subject
- * to the generation guard — each scheduled timer checks that the session's
- * generation counter hasn't advanced. In busy channels, intervening messages
- * may cancel earlier timers. Use delaySeconds: 0 for reliable parallel fan-out,
- * or set generationGuardTolerance >= N-1 for N delayed delegates.
+ * No generation guard — delayed delegates survive channel noise (RFC
+ * 2026-04-15: unrelated inbound traffic does not cancel scheduled work).
  */
 export function createContinueDelegateTool(opts: { agentSessionKey?: string }): AnyAgentTool {
   return {
@@ -72,8 +69,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
       'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
       "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
-      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
-      "Note: delayed delegates share the same generation guard as delayed CONTINUE_WORK — use delay 0 for reliable parallel dispatch in noisy channels, or raise generationGuardTolerance.",
+      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work.",
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

@@ -42,7 +42,6 @@ import {
   cancelPendingDelegates,
   clearDelayedContinuationReservations,
   consumeStagedPostCompactionDelegates,
-  delayedContinuationReservationCount,
   highestDelayedContinuationReservationHop,
   takeDelayedContinuationReservation,
   setTaskFlowDelegatesEnabled,
@@ -88,8 +87,6 @@ import {
   clearDelegatePendingIfNoDelayedReservations,
   clearTrackedContinuationTimers,
   currentContinuationGeneration,
-  hasDelegatePending,
-  hasLiveContinuationTimerRefs,
   maybeDropContinuationGeneration,
   registerContinuationTimerHandle,
   retainContinuationTimerRef,
@@ -1228,7 +1225,6 @@ export async function runReplyAgent(params: {
     sessionCtx,
     shouldInjectGroupIntro,
     typingMode,
-    isContinuationWake,
     resetTriggered,
     replyOperation: providedReplyOperation,
   } = params;
@@ -1247,92 +1243,10 @@ export async function runReplyAgent(params: {
   // before any inbound-message cancellation logic runs.
   setTaskFlowDelegatesEnabled(continuationFeatureEnabled && taskFlowDelegatesConfigured);
 
-  // Detect whether this turn is a continuation wake or an external message.
-  // The isContinuationWake flag is set by the caller (get-reply-run) by peeking
-  // system events BEFORE they are drained by buildQueuedSystemPrompt. This avoids
-  // the race where draining empties the queue before we can check it here.
-  const isContinuationEvent = isContinuationWake === true;
-
-  if (!isContinuationEvent && !isHeartbeat && sessionKey) {
-    // External (non-heartbeat) message — reset chain tracking and cancel timers.
-    // Regular heartbeats (including periodic polls) must NOT preempt pending
-    // continuation timers; only real user/external messages should.
-    const hadActiveChain = (activeSessionEntry?.continuationChainCount ?? 0) > 0;
-    const hadStaleTokens =
-      !hadActiveChain &&
-      typeof activeSessionEntry?.continuationChainTokens === "number" &&
-      activeSessionEntry.continuationChainTokens > 0;
-    const hadDelayedReservations = delayedContinuationReservationCount(sessionKey) > 0;
-    const hadLiveTimerRefs = hasLiveContinuationTimerRefs(sessionKey);
-    const hadPendingDelegateQueue = pendingDelegateCount(sessionKey) > 0;
-    const hadDelegatePendingFlag = hasDelegatePending(sessionKey);
-    if (activeSessionEntry && (hadActiveChain || hadStaleTokens)) {
-      activeSessionEntry.continuationChainCount = 0;
-      activeSessionEntry.continuationChainStartedAt = undefined;
-      activeSessionEntry.continuationChainTokens = undefined;
-    }
-    // Every inbound user message on a continuation-enabled session must advance
-    // the generation so in-flight guards observe the new turn, even when the
-    // session had not armed a timer or created state yet.
-    // Skip when clearDelegatePending will bump below to avoid double-incrementing.
-    const willClearDelegates =
-      continuationFeatureEnabled &&
-      (hadDelayedReservations || hadPendingDelegateQueue || hadDelegatePendingFlag);
-    const shouldBumpGeneration =
-      continuationFeatureEnabled && !willClearDelegates && hadLiveTimerRefs;
-    if (shouldBumpGeneration) {
-      bumpContinuationGeneration(sessionKey);
-    }
-    if (hadLiveTimerRefs) {
-      clearTrackedContinuationTimers(sessionKey);
-    }
-    if (hadDelayedReservations) {
-      clearDelayedContinuationReservations(sessionKey);
-    }
-    // Task Flow-backed delegates can survive restarts even after volatile
-    // delayed reservations are gone, so external input must cancel them on
-    // the first post-restart turn. The volatile store remains turn-local.
-    if (willClearDelegates) {
-      cancelPendingDelegates(sessionKey);
-      clearDelegatePending(sessionKey);
-    }
-    if ((hadActiveChain || hadStaleTokens) && activeSessionStore && activeSessionEntry) {
-      const resolved = resolveSessionStoreEntry({ store: activeSessionStore, sessionKey });
-      activeSessionStore[resolved.normalizedKey] = {
-        ...activeSessionEntry,
-        continuationChainCount: 0,
-        continuationChainStartedAt: undefined,
-        continuationChainTokens: undefined,
-      };
-      for (const legacyKey of resolved.legacyKeys) {
-        delete activeSessionStore[legacyKey];
-      }
-    }
-    // Persist reset to disk only when a chain was actually active — avoids
-    // unnecessary lock + disk write on every normal message.
-    if ((hadActiveChain || hadStaleTokens) && storePath) {
-      try {
-        await updateSessionStore(storePath, (store) => {
-          const resolved = resolveSessionStoreEntry({ store, sessionKey });
-          if (resolved.existing) {
-            store[resolved.normalizedKey] = {
-              ...resolved.existing,
-              continuationChainCount: 0,
-              continuationChainStartedAt: undefined,
-              continuationChainTokens: undefined,
-            };
-            for (const legacyKey of resolved.legacyKeys) {
-              delete store[legacyKey];
-            }
-          }
-        });
-      } catch (err) {
-        defaultRuntime.log(
-          `Failed to persist continuation chain reset for ${sessionKey}: ${String(err)}`,
-        );
-      }
-    }
-  }
+  // RFC 2026-04-15: session-entry cleanup of continuation state on non-heartbeat
+  // inbound was removed. Delayed continuation work is not cancelled by unrelated
+  // channel noise; it survives until it fires naturally, is explicitly cancelled
+  // via `cancelContinuationTimer`, or crosses its own guards (chain length, cost).
 
   const typingSignals = createTypingSignaler({
     typing,
@@ -1832,12 +1746,6 @@ export async function runReplyAgent(params: {
         `[continuation:trace] bracket-parse skipped: empty payloadArray session=${sessionKey}`,
       );
     }
-    // Reserve generation at parse time so external messages arriving during
-    // the ~660-line gap before the scheduling block are visible as drift.
-    const earlyDelegateGeneration =
-      continuationSignal?.kind === "delegate" && sessionKey
-        ? bumpContinuationGeneration(sessionKey)
-        : null;
     const effectiveContinuationSignal: ContinuationSignal | null =
       continuationSignal ??
       (continuationFeatureEnabled && continueWorkRequest
@@ -2460,7 +2368,8 @@ export async function runReplyAgent(params: {
         ...(runResult.meta?.contextManagement &&
         typeof runResult.meta.contextManagement.preflightCompactionApplied === "boolean"
           ? {
-              preflightCompactionApplied: runResult.meta.contextManagement.preflightCompactionApplied,
+              preflightCompactionApplied:
+                runResult.meta.contextManagement.preflightCompactionApplied,
             }
           : preflightCompactionApplied
             ? { preflightCompactionApplied }
@@ -2665,10 +2574,6 @@ export async function runReplyAgent(params: {
                 // Timed dispatch: spawn after delay. Timer does not survive
                 // gateway restart — acceptable for v1 (see #176 for durable timers).
                 const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
-                // Generation guard: use the generation reserved at parse time so
-                // external messages that arrived during the gap are visible as drift.
-                const delegateGeneration =
-                  earlyDelegateGeneration ?? bumpContinuationGeneration(sessionKey);
                 const reservationId = generateSecureUuid();
                 addDelayedContinuationReservation(sessionKey, {
                   id: reservationId,
@@ -2676,7 +2581,6 @@ export async function runReplyAgent(params: {
                   task: delegateTask,
                   createdAt: chainStartedAt,
                   fireAt: Date.now() + clampedDelay,
-                  generation: delegateGeneration,
                   plannedHop: nextChainCount,
                   silent: effectiveContinuationSignal.silent,
                   silentWake: effectiveContinuationSignal.silentWake,
@@ -2686,9 +2590,6 @@ export async function runReplyAgent(params: {
                   startedAt: chainStartedAt,
                   tokens: accumulatedChainTokens,
                 });
-                continuationGuardLog.debug(
-                  `[continuation-guard] DELEGATE timer set: generation=${delegateGeneration} delayMs=${clampedDelay} session=${sessionKey}`,
-                );
                 retainContinuationTimerRef(sessionKey);
                 const timerHandle = setTimeout(() => {
                   try {
@@ -2697,21 +2598,8 @@ export async function runReplyAgent(params: {
                       reservationId,
                     );
                     if (!reservation) {
-                      continuationGuardLog.info(
-                        `[continuation-guard] DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
-                      );
-                      return;
-                    }
-                    const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-                    const currentGen = currentContinuationGeneration(sessionKey);
-                    const drift = currentGen - reservation.generation;
-                    continuationGuardLog.info(
-                      `[continuation-guard] DELEGATE timer check: stored=${reservation.generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
-                    );
-                    if (drift > generationGuardTolerance) {
-                      clearDelegatePendingIfNoDelayedReservations(sessionKey);
                       defaultRuntime.log(
-                        `DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
+                        `DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
                       );
                       return;
                     }
@@ -2744,28 +2632,9 @@ export async function runReplyAgent(params: {
               const requestedDelay = effectiveContinuationSignal.delayMs ?? defaultDelayMs;
               const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, requestedDelay));
 
-              // Schedule continuation with the same live-read guard used for
-              // delegate timers. In busy channels, generation drift reflects
-              // generic session interruption, not just direct human preemption.
-              const generation = bumpContinuationGeneration(sessionKey);
-              continuationGuardLog.debug(
-                `[continuation-guard] WORK timer set: generation=${generation} delayMs=${clampedDelay} session=${sessionKey}`,
-              );
               retainContinuationTimerRef(sessionKey);
               const timerHandle = setTimeout(() => {
                 try {
-                  const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-                  const currentGen = currentContinuationGeneration(sessionKey);
-                  const drift = currentGen - generation;
-                  continuationGuardLog.info(
-                    `[continuation-guard] WORK timer check: stored=${generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
-                  );
-                  if (drift > generationGuardTolerance) {
-                    defaultRuntime.log(
-                      `WORK timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
-                    );
-                    return;
-                  }
                   defaultRuntime.log(`WORK timer fired for session ${sessionKey}`);
                   enqueueSystemEvent(
                     `[continuation:wake] Turn ${nextChainCount}/${maxChainLength}. ` +
@@ -2940,8 +2809,6 @@ export async function runReplyAgent(params: {
 
           if (delegate.delayMs && delegate.delayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));
-            // Generation guard: same as bracket-path delegate timers
-            const toolDelegateGeneration = bumpContinuationGeneration(sessionKey);
             const reservationId = generateSecureUuid();
             addDelayedContinuationReservation(sessionKey, {
               id: reservationId,
@@ -2949,7 +2816,6 @@ export async function runReplyAgent(params: {
               task: delegate.task,
               createdAt: chainStartedAt,
               fireAt: Date.now() + clampedDelay,
-              generation: toolDelegateGeneration,
               plannedHop: nextChainCount,
               silent: delegate.silent,
               silentWake: delegate.silentWake,
@@ -2959,29 +2825,13 @@ export async function runReplyAgent(params: {
               startedAt: chainStartedAt,
               tokens: accumulatedChainTokens,
             });
-            continuationGuardLog.debug(
-              `[continuation-guard] Tool DELEGATE timer set: generation=${toolDelegateGeneration} delayMs=${clampedDelay} session=${sessionKey}`,
-            );
             retainContinuationTimerRef(sessionKey);
             const timerHandle = setTimeout(() => {
               try {
                 const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
                 if (!reservation) {
-                  continuationGuardLog.info(
-                    `[continuation-guard] Tool DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
-                  );
-                  return;
-                }
-                const { generationGuardTolerance } = resolveContinuationRuntimeConfig();
-                const currentGen = currentContinuationGeneration(sessionKey);
-                const drift = currentGen - reservation.generation;
-                continuationGuardLog.info(
-                  `[continuation-guard] Tool DELEGATE timer check: stored=${reservation.generation} current=${currentGen} drift=${drift} tolerance=${generationGuardTolerance} session=${sessionKey}`,
-                );
-                if (drift > generationGuardTolerance) {
-                  clearDelegatePendingIfNoDelayedReservations(sessionKey);
                   defaultRuntime.log(
-                    `Tool DELEGATE timer cancelled (generation drift ${drift} > tolerance ${generationGuardTolerance}) for session ${sessionKey}`,
+                    `Tool DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
                   );
                   return;
                 }
