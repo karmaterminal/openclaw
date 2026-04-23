@@ -28,7 +28,6 @@ import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnosti
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { defaultRuntime } from "../../runtime.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
@@ -125,7 +124,6 @@ export {
 } from "./continuation-state.js";
 
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
-const continuationGuardLog = createSubsystemLogger("continuation/guard");
 
 function buildInlinePluginStatusPayload(params: {
   entry: SessionEntry | undefined;
@@ -1722,38 +1720,13 @@ export async function runReplyAgent(params: {
           break;
         }
       }
-      // [continuation:trace] Log what the backward scan sees for bracket diagnosis (#102 F4)
-      const payloadSummary = payloadArray
-        .map(
-          (p: ReplyPayload, i: number) =>
-            `[${i}]text=${!!p.text}${p.text ? `:"${p.text.slice(-60).replace(/\n/g, "\\n")}"` : ""}`,
-        )
-        .join(" ");
-      continuationGuardLog.info(
-        `[continuation:trace] payload-scan: count=${payloadArray.length} lastTextIdx=${lastTextPayload ? payloadArray.indexOf(lastTextPayload) : -1} ${payloadSummary} session=${sessionKey}`,
-      );
       if (lastTextPayload?.text) {
         const continuationResult = stripContinuationSignal(lastTextPayload.text);
         if (continuationResult.signal) {
           continuationSignal = continuationResult.signal;
           lastTextPayload.text = continuationResult.text;
-          continuationGuardLog.info(
-            `[continuation:trace] bracket-parse: kind=${continuationResult.signal.kind} ` +
-              `task=${continuationResult.signal.kind === "delegate" ? continuationResult.signal.task.slice(0, 80) : ""} delayMs=${continuationResult.signal.delayMs} ` +
-              `silent=${continuationResult.signal.kind === "delegate" ? continuationResult.signal.silent : undefined} ` +
-              `silentWake=${continuationResult.signal.kind === "delegate" ? continuationResult.signal.silentWake : undefined} ` +
-              `payloads=${payloadArray.length} textPayloadIdx=${payloadArray.indexOf(lastTextPayload)} session=${sessionKey}`,
-          );
         }
       }
-    } else if (!continuationFeatureEnabled) {
-      continuationGuardLog.info(
-        `[continuation:trace] bracket-parse skipped: feature disabled session=${sessionKey}`,
-      );
-    } else if (payloadArray.length === 0) {
-      continuationGuardLog.info(
-        `[continuation:trace] bracket-parse skipped: empty payloadArray session=${sessionKey}`,
-      );
     }
     const effectiveContinuationSignal: ContinuationSignal | null =
       continuationSignal ??
@@ -1763,10 +1736,6 @@ export async function runReplyAgent(params: {
             delayMs: continueWorkRequest.delaySeconds * 1000,
           }
         : null);
-    continuationGuardLog.info(
-      `[continuation:trace] effective-signal: origin=${continuationSignal ? "bracket" : effectiveContinuationSignal ? "tool-call" : "none"} ` +
-        `kind=${effectiveContinuationSignal?.kind ?? "none"} session=${sessionKey}`,
-    );
     const continuationWorkReason =
       !continuationSignal && effectiveContinuationSignal?.kind === "work"
         ? continueWorkRequest?.reason
@@ -2492,12 +2461,6 @@ export async function runReplyAgent(params: {
             if (effectiveContinuationSignal.kind === "delegate") {
               const delegateTask = effectiveContinuationSignal.task;
               const delegateDelayMs = effectiveContinuationSignal.delayMs;
-              continuationGuardLog.info(
-                `[continuation:trace] delegate-schedule: generation=${currentContinuationGeneration(sessionKey)} ` +
-                  `hop=${nextChainCount}/${maxChainLength} delayMs=${delegateDelayMs} ` +
-                  `origin=${continuationSignal ? "bracket" : "tool-call"} session=${sessionKey}`,
-              );
-
               const doSpawn = async (
                 plannedHop: number,
                 task: string,
@@ -2508,11 +2471,6 @@ export async function runReplyAgent(params: {
                   startedAt?: number;
                 },
               ) => {
-                continuationGuardLog.info(
-                  `[continuation:trace] doSpawn: hop=${plannedHop}/${maxChainLength} ` +
-                    `timerTriggered=${options?.timerTriggered ?? false} silent=${options?.silent ?? false} ` +
-                    `silentWake=${options?.silentWake ?? false} session=${sessionKey}`,
-                );
                 try {
                   const spawnResult = await spawnSubagentDirect(
                     {
@@ -2664,10 +2622,6 @@ export async function runReplyAgent(params: {
           }
         }
       }
-    } else if (effectiveContinuationSignal && !sessionKey) {
-      continuationGuardLog.info(
-        `[continuation:trace] scheduling skipped: no sessionKey for signal kind=${effectiveContinuationSignal.kind}`,
-      );
     }
     // Handle tool-dispatched continuation delegates (continue_delegate tool).
     // These are enqueued by the tool during execution and consumed here,
