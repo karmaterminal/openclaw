@@ -800,6 +800,8 @@ export async function runEmbeddedAttempt(
               senderIsOwner: params.senderIsOwner,
               ownerOnlyToolAllowlist: params.ownerOnlyToolAllowlist,
               allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
+              continueWorkOpts: params.continueWorkOpts,
+              requestCompactionOpts: params.requestCompactionOpts,
               sessionKey: sandboxSessionKey,
               sessionId: params.sessionId,
               runId: params.runId,
@@ -1226,6 +1228,7 @@ export async function runEmbeddedAttempt(
         includeMemorySection: !activeContextEngine || activeContextEngine.info.id === "legacy",
         memoryCitationsMode: params.config?.memory?.citations,
         promptContribution,
+        continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
       });
     const appendPrompt = isRawModelRun
       ? ""
