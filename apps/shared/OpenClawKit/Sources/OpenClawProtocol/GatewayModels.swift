@@ -590,6 +590,7 @@ public struct AgentParams: Codable, Sendable {
     public let timeout: Int?
     public let besteffortdeliver: Bool?
     public let lane: String?
+    public let continuationtrigger: String?
     public let extrasystemprompt: String?
     public let bootstrapcontextmode: AnyCodable?
     public let bootstrapcontextrunkind: AnyCodable?
@@ -597,6 +598,7 @@ public struct AgentParams: Codable, Sendable {
     public let inputprovenance: [String: AnyCodable]?
     public let idempotencykey: String
     public let label: String?
+    public let drainscontinuationdelegatequeue: Bool?
 
     public init(
         message: String,
@@ -621,13 +623,15 @@ public struct AgentParams: Codable, Sendable {
         timeout: Int?,
         besteffortdeliver: Bool?,
         lane: String?,
+        continuationtrigger: String?,
         extrasystemprompt: String?,
         bootstrapcontextmode: AnyCodable?,
         bootstrapcontextrunkind: AnyCodable?,
         internalevents: [[String: AnyCodable]]?,
         inputprovenance: [String: AnyCodable]?,
         idempotencykey: String,
-        label: String?)
+        label: String?,
+        drainscontinuationdelegatequeue: Bool?)
     {
         self.message = message
         self.agentid = agentid
@@ -651,6 +655,7 @@ public struct AgentParams: Codable, Sendable {
         self.timeout = timeout
         self.besteffortdeliver = besteffortdeliver
         self.lane = lane
+        self.continuationtrigger = continuationtrigger
         self.extrasystemprompt = extrasystemprompt
         self.bootstrapcontextmode = bootstrapcontextmode
         self.bootstrapcontextrunkind = bootstrapcontextrunkind
@@ -658,6 +663,7 @@ public struct AgentParams: Codable, Sendable {
         self.inputprovenance = inputprovenance
         self.idempotencykey = idempotencykey
         self.label = label
+        self.drainscontinuationdelegatequeue = drainscontinuationdelegatequeue
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -683,6 +689,7 @@ public struct AgentParams: Codable, Sendable {
         case timeout
         case besteffortdeliver = "bestEffortDeliver"
         case lane
+        case continuationtrigger = "continuationTrigger"
         case extrasystemprompt = "extraSystemPrompt"
         case bootstrapcontextmode = "bootstrapContextMode"
         case bootstrapcontextrunkind = "bootstrapContextRunKind"
@@ -690,6 +697,7 @@ public struct AgentParams: Codable, Sendable {
         case inputprovenance = "inputProvenance"
         case idempotencykey = "idempotencyKey"
         case label
+        case drainscontinuationdelegatequeue = "drainsContinuationDelegateQueue"
     }
 }
 
