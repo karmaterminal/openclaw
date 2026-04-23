@@ -100,9 +100,13 @@ function applySelectionToSession(params: {
   sessionStore[sessionKey] = sessionEntry;
   if (storePath) {
     void import("../../config/sessions.js")
-      .then(({ updateSessionStore }) =>
+      .then(({ resolveSessionStoreEntry, updateSessionStore }) =>
         updateSessionStore(storePath, (store) => {
-          store[sessionKey] = sessionEntry;
+          const resolved = resolveSessionStoreEntry({ store, sessionKey });
+          store[resolved.normalizedKey] = sessionEntry;
+          for (const legacyKey of resolved.legacyKeys) {
+            delete store[legacyKey];
+          }
         }),
       )
       .catch(() => {
