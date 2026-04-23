@@ -358,6 +358,10 @@ export const agentHandlers: GatewayRequestHandlers = {
       groupChannel?: string;
       groupSpace?: string;
       lane?: string;
+      continuationTrigger?: "work-wake" | "delegate-return";
+      /** When true, the run drains the continuation delegate queue after completion.
+       *  Set by continuation delegate spawns so sub-agents can use the continue_delegate tool. */
+      drainsContinuationDelegateQueue?: boolean;
       extraSystemPrompt?: string;
       bootstrapContextMode?: "full" | "lightweight";
       bootstrapContextRunKind?: "default" | "heartbeat" | "cron";
@@ -988,21 +992,28 @@ export const agentHandlers: GatewayRequestHandlers = {
           groupId: resolvedGroupId,
           groupChannel: resolvedGroupChannel,
           groupSpace: resolvedGroupSpace,
-          spawnedBy: spawnedByValue,
-          timeout: request.timeout?.toString(),
-          bestEffortDeliver,
-          messageChannel: originMessageChannel,
-          runId,
-          lane: request.lane,
-          cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd === true,
-          extraSystemPrompt: request.extraSystemPrompt,
-          bootstrapContextMode: request.bootstrapContextMode,
-          bootstrapContextRunKind: request.bootstrapContextRunKind,
-          internalEvents: request.internalEvents,
-          inputProvenance,
-          abortSignal: activeRunAbort.controller.signal,
-          // Internal-only: allow workspace override for spawned subagent runs.
-          workspaceDir: resolveIngressWorkspaceOverrideForSpawnedRun({
+          currentThreadTs: resolvedThreadId != null ? String(resolvedThreadId) : undefined,
+        },
+        groupId: resolvedGroupId,
+        groupChannel: resolvedGroupChannel,
+        groupSpace: resolvedGroupSpace,
+        spawnedBy: spawnedByValue,
+        timeout: request.timeout?.toString(),
+        bestEffortDeliver,
+        messageChannel: originMessageChannel,
+        runId,
+        lane: request.lane,
+        cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd === true,
+        continuationTrigger: request.continuationTrigger,
+        drainsContinuationDelegateQueue: request.drainsContinuationDelegateQueue,
+        extraSystemPrompt: request.extraSystemPrompt,
+        bootstrapContextMode: request.bootstrapContextMode,
+        bootstrapContextRunKind: request.bootstrapContextRunKind,
+        internalEvents: request.internalEvents,
+        inputProvenance,
+        abortSignal: activeRunAbort.controller.signal,
+        // Internal-only: allow workspace override for spawned subagent runs.
+        workspaceDir: resolveIngressWorkspaceOverrideForSpawnedRun({
             spawnedBy: spawnedByValue,
             workspaceDir: sessionEntry?.spawnedWorkspaceDir,
           }),
