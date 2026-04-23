@@ -13,11 +13,9 @@ import { runCliAgent } from "../../agents/cli-runner.js";
 import { getCliSessionBinding } from "../../agents/cli-session.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { runWithModelFallback, isFallbackSummaryError } from "../../agents/model-fallback.js";
-import { resolveCliRuntimeExecutionProvider } from "../../agents/model-runtime-aliases.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import {
   BILLING_ERROR_USER_MESSAGE,
-  formatRateLimitOrOverloadedErrorCopy,
   isCompactionFailureError,
   isContextOverflowError,
   isBillingErrorMessage,
@@ -27,9 +25,9 @@ import {
   isTransientHttpError,
 } from "../../agents/pi-embedded-helpers.js";
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
+import { compactEmbeddedPiSession } from "../../agents/pi-embedded-runner/compact.queued.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
-import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
+import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
   resolveGroupSessionKey,
   resolveSessionTranscriptPath,
@@ -62,6 +60,7 @@ import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
   startsWithSilentToken,
+  stripContinuationSignal,
   stripLeadingSilentToken,
 } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
@@ -72,13 +71,35 @@ import {
   resolveModelFallbackOptions,
 } from "./agent-runner-utils.js";
 import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
-import { resolveOriginMessageProvider } from "./origin-routing.js";
 import type { FollowupRun } from "./queue.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
 import type { ReplyMediaContext } from "./reply-media-paths.js";
 import { createReplyMediaContext } from "./reply-media-paths.runtime.js";
 import type { ReplyOperation } from "./reply-run-registry.js";
 import type { TypingSignaler } from "./typing-mode.js";
+
+type EmbeddedPiAgentRunResult = Awaited<
+  ReturnType<typeof import("../../agents/pi-embedded.runtime.js").runEmbeddedPiAgent>
+>;
+
+async function runEmbeddedPiAgentDefault(
+  ...args: Parameters<typeof import("../../agents/pi-embedded.runtime.js").runEmbeddedPiAgent>
+): Promise<EmbeddedPiAgentRunResult> {
+  const { runEmbeddedPiAgent } = await import("../../agents/pi-embedded.runtime.js");
+  return await runEmbeddedPiAgent(...args);
+}
+
+/** Type guard for wrapped continuation run results. */
+function isContinuationWrappedRunResult(
+  result: unknown,
+): result is { result: EmbeddedPiAgentRunResult; continueWorkRequest?: ContinueWorkRequest } {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "result" in result &&
+    "continueWorkRequest" in result
+  );
+}
 
 // Maximum number of LiveSessionModelSwitchError retries before surfacing a
 // user-visible error. Prevents infinite ping-pong when the persisted session
@@ -107,18 +128,17 @@ export type AgentRunLoopResult =
   | {
       kind: "success";
       runId: string;
-      runResult: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
+      runResult: EmbeddedPiAgentRunResult;
       fallbackProvider?: string;
       fallbackModel?: string;
       fallbackAttempts: RuntimeFallbackAttempt[];
       didLogHeartbeatStrip: boolean;
       autoCompactionCount: number;
       /** Payload keys sent directly (not via pipeline) during tool flush. */
+      continueWorkRequest?: import("../../agents/tools/continue-work-tool.js").ContinueWorkRequest;
       directlySentBlockKeys?: Set<string>;
     }
   | { kind: "final"; payload: ReplyPayload };
-
-type EmbeddedAgentRunResult = Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
 
 type FallbackSelectionState = Pick<
   SessionEntry,
@@ -361,7 +381,7 @@ function buildMissingApiKeyFailureText(message: string): string | null {
     return null;
   }
   if (provider === "openai" && normalizedMessage.includes("OpenAI Codex OAuth")) {
-    return "⚠️ Missing API key for OpenAI on the gateway. Use `openai-codex/gpt-5.5`, or set `OPENAI_API_KEY`, then try again.";
+    return "⚠️ Missing API key for OpenAI on the gateway. Use `openai-codex/gpt-5.4` for OAuth, or set `OPENAI_API_KEY`, then try again.";
   }
   if (SAFE_MISSING_API_KEY_PROVIDERS.has(provider)) {
     return `⚠️ Missing API key for provider "${provider}". Configure the gateway auth for that provider, then try again.`;
@@ -570,7 +590,6 @@ function isReplyOperationRestartAbort(replyOperation?: ReplyOperation): boolean 
 
 export async function runAgentTurnWithFallback(params: {
   commandBody: string;
-  transcriptCommandBody?: string;
   followupRun: FollowupRun;
   sessionCtx: TemplateContext;
   replyThreading?: TemplateContext["ReplyThreading"];
@@ -595,6 +614,7 @@ export async function runAgentTurnWithFallback(params: {
   isHeartbeat: boolean;
   sessionKey?: string;
   runtimePolicySessionKey?: string;
+  getCurrentContinuationGeneration?: (sessionKey: string) => number;
   getActiveSessionEntry: () => SessionEntry | undefined;
   activeSessionStore?: Record<string, SessionEntry>;
   storePath?: string;
@@ -680,42 +700,17 @@ export async function runAgentTurnWithFallback(params: {
       isControlUiVisible: shouldSurfaceToControlUi,
     });
   }
-  let runResult: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
+  let runResult: EmbeddedPiAgentRunResult;
   let fallbackProvider = params.followupRun.run.provider;
   let fallbackModel = params.followupRun.run.model;
   let fallbackAttempts: RuntimeFallbackAttempt[] = [];
+  let continueWorkRequest: ContinueWorkRequest | undefined;
   let didResetAfterCompactionFailure = false;
   let didRetryTransientHttpError = false;
   let liveModelSwitchRetries = 0;
   let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
     params.getActiveSessionEntry()?.systemPromptReport,
   );
-  let pendingFallbackCandidateRollback:
-    | {
-        provider: string;
-        model: string;
-        rollback: () => Promise<void>;
-      }
-    | undefined;
-  const clearPendingFallbackRollback = (rollback?: () => Promise<void>) => {
-    if (!rollback || pendingFallbackCandidateRollback?.rollback === rollback) {
-      pendingFallbackCandidateRollback = undefined;
-    }
-  };
-  const rollbackClassifiedFallbackCandidateSelection = async (provider: string, model: string) => {
-    const pending = pendingFallbackCandidateRollback;
-    if (!pending || pending.provider !== provider || pending.model !== model) {
-      return;
-    }
-    pendingFallbackCandidateRollback = undefined;
-    try {
-      await pending.rollback();
-    } catch (rollbackError) {
-      logVerbose(
-        `failed to roll back classified fallback candidate selection (non-fatal): ${String(rollbackError)}`,
-      );
-    }
-  };
   const persistFallbackCandidateSelection = async (
     provider: string,
     model: string,
@@ -841,6 +836,21 @@ export async function runAgentTurnWithFallback(params: {
         if (text && startsWithSilentToken(text, SILENT_REPLY_TOKEN)) {
           text = stripLeadingSilentToken(text, SILENT_REPLY_TOKEN);
         }
+        // Strip continuation markers (CONTINUE_WORK, [[CONTINUE_DELEGATE:…]])
+        // from streamed blocks so they never reach the channel. The regex anchors
+        // to the end of the text, so mid-sentence mentions are safe. Final-payload
+        // stripping in runReplyAgent still runs for the assembled payloads.
+        // Only strip when continuation is enabled — otherwise the tokens are
+        // regular text the model happened to generate. (#104)
+        if (
+          text &&
+          params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+        ) {
+          const cont = stripContinuationSignal(text);
+          if (cont.signal) {
+            text = cont.text;
+          }
+        }
         if (!text) {
           // Allow media-only payloads (e.g. tool result screenshots) through.
           if (reply.hasMedia) {
@@ -887,25 +897,12 @@ export async function runAgentTurnWithFallback(params: {
           })
         : undefined;
       const onToolResult = params.opts?.onToolResult;
-      const outcomePlan = buildAgentRuntimeOutcomePlan();
-      const fallbackResult = await runWithModelFallback<EmbeddedAgentRunResult>({
+      const fallbackResult = await runWithModelFallback<
+        | EmbeddedPiAgentRunResult
+        | { result: EmbeddedPiAgentRunResult; continueWorkRequest?: ContinueWorkRequest }
+      >({
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
-        classifyResult: async ({ result, provider, model }) => {
-          const classification = outcomePlan.classifyRunResult({
-            result,
-            provider,
-            model,
-            hasDirectlySentBlockReply: directlySentBlockKeys.size > 0,
-            hasBlockReplyPipelineOutput: Boolean(
-              blockReplyPipeline?.hasBuffered() || blockReplyPipeline?.didStream(),
-            ),
-          });
-          if (classification) {
-            await rollbackClassifiedFallbackCandidateSelection(provider, model);
-          }
-          return classification;
-        },
         run: async (provider, model, runOptions) => {
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.
@@ -920,31 +917,13 @@ export async function runAgentTurnWithFallback(params: {
               provider,
               model,
             );
-            if (rollbackFallbackCandidateSelection) {
-              pendingFallbackCandidateRollback = {
-                provider,
-                model,
-                rollback: rollbackFallbackCandidateSelection,
-              };
-            }
           } catch (error) {
             logVerbose(
               `failed to persist fallback candidate selection (non-fatal): ${String(error)}`,
             );
           }
 
-          const agentRuntimeOverride = normalizeOptionalString(
-            params.getActiveSessionEntry()?.agentRuntimeOverride,
-          );
-          const cliExecutionProvider =
-            resolveCliRuntimeExecutionProvider({
-              provider,
-              cfg: runtimeConfig,
-              agentId: params.followupRun.run.agentId,
-              runtimeOverride: agentRuntimeOverride,
-            }) ?? provider;
-
-          if (isCliProvider(cliExecutionProvider, runtimeConfig)) {
+          if (isCliProvider(provider, runtimeConfig)) {
             const startedAt = Date.now();
             notifyAgentRunStart();
             emitAgentEvent({
@@ -957,19 +936,12 @@ export async function runAgentTurnWithFallback(params: {
             });
             const cliSessionBinding = getCliSessionBinding(
               params.getActiveSessionEntry(),
-              cliExecutionProvider,
+              provider,
             );
-            const authProfile = resolveRunAuthProfile(
-              params.followupRun.run,
-              cliExecutionProvider,
-              {
-                config: runtimeConfig,
-              },
-            );
-            const hookMessageProvider = resolveOriginMessageProvider({
-              originatingChannel: params.followupRun.originatingChannel,
-              provider: params.sessionCtx.Provider,
-            });
+            const authProfileId =
+              provider === params.followupRun.run.provider
+                ? params.followupRun.run.authProfileId
+                : undefined;
             return (async () => {
               let lifecycleTerminalEmitted = false;
               try {
@@ -977,13 +949,11 @@ export async function runAgentTurnWithFallback(params: {
                   sessionId: params.followupRun.run.sessionId,
                   sessionKey: params.sessionKey,
                   agentId: params.followupRun.run.agentId,
-                  trigger: params.isHeartbeat ? "heartbeat" : "user",
                   sessionFile: params.followupRun.run.sessionFile,
                   workspaceDir: params.followupRun.run.workspaceDir,
                   config: runtimeConfig,
                   prompt: params.commandBody,
-                  transcriptPrompt: params.transcriptCommandBody,
-                  provider: cliExecutionProvider,
+                  provider,
                   model,
                   thinkLevel: params.followupRun.run.thinkLevel,
                   timeoutMs: params.followupRun.run.timeoutMs,
@@ -993,7 +963,7 @@ export async function runAgentTurnWithFallback(params: {
                   ownerNumbers: params.followupRun.run.ownerNumbers,
                   cliSessionId: cliSessionBinding?.sessionId,
                   cliSessionBinding,
-                  authProfileId: authProfile.authProfileId,
+                  authProfileId,
                   bootstrapPromptWarningSignaturesSeen,
                   bootstrapPromptWarningSignature:
                     bootstrapPromptWarningSignaturesSeen[
@@ -1002,8 +972,7 @@ export async function runAgentTurnWithFallback(params: {
                   images: params.opts?.images,
                   imageOrder: params.opts?.imageOrder,
                   skillsSnapshot: params.followupRun.run.skillsSnapshot,
-                  messageChannel: params.followupRun.originatingChannel ?? undefined,
-                  messageProvider: hookMessageProvider,
+                  messageProvider: params.followupRun.run.messageProvider,
                   agentAccountId: params.followupRun.run.agentAccountId,
                   senderIsOwner: params.followupRun.run.senderIsOwner,
                   abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
@@ -1041,7 +1010,6 @@ export async function runAgentTurnWithFallback(params: {
                 if (rollbackFallbackCandidateSelection) {
                   try {
                     await rollbackFallbackCandidateSelection();
-                    clearPendingFallbackRollback(rollbackFallbackCandidateSelection);
                   } catch (rollbackError) {
                     logVerbose(
                       `failed to roll back fallback candidate selection (non-fatal): ${String(rollbackError)}`,
@@ -1091,8 +1059,9 @@ export async function runAgentTurnWithFallback(params: {
           );
           return (async () => {
             let attemptCompactionCount = 0;
+            let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
             try {
-              const result = await runEmbeddedPiAgent({
+              const result = await runEmbeddedPiAgentDefault({
                 ...embeddedContext,
                 allowGatewaySubagentBinding: true,
                 trigger: params.isHeartbeat ? "heartbeat" : "user",
@@ -1103,15 +1072,56 @@ export async function runAgentTurnWithFallback(params: {
                 groupSpace: normalizeOptionalString(params.sessionCtx.GroupSpace),
                 ...senderContext,
                 ...runBaseParams,
-                ...(agentRuntimeOverride &&
-                agentRuntimeOverride !== "auto" &&
-                agentRuntimeOverride !== "default"
-                  ? { agentHarnessId: agentRuntimeOverride }
-                  : {}),
                 sandboxSessionKey: params.runtimePolicySessionKey,
                 prompt: params.commandBody,
-                transcriptPrompt: params.transcriptCommandBody,
                 extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
+                drainsContinuationDelegateQueue:
+                  params.followupRun.run.drainsContinuationDelegateQueue,
+                continueWorkOpts:
+                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        requestContinuation: (request) => {
+                          attemptContinueWorkRequest = request;
+                        },
+                      }
+                    : undefined,
+                requestCompactionOpts:
+                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        getContextUsage: () => {
+                          const entry = params.sessionKey
+                            ? params.activeSessionStore?.[params.sessionKey]
+                            : undefined;
+                          if (!entry?.totalTokens || entry.totalTokensFresh === false) {
+                            return 0;
+                          }
+                          const contextWindow = entry.contextTokens ?? 200_000;
+                          return entry.totalTokens / contextWindow;
+                        },
+                        triggerCompaction: async () => {
+                          try {
+                            const result = await compactEmbeddedPiSession({
+                              sessionId:
+                                params.followupRun.run.sessionId ??
+                                params.getActiveSessionEntry()?.sessionId ??
+                                "",
+                              sessionKey: params.sessionKey ?? "",
+                              sessionFile: params.followupRun.run.sessionFile,
+                              workspaceDir: params.followupRun.run.workspaceDir,
+                              config: params.followupRun.run.config,
+                              trigger: "volitional",
+                            });
+                            return {
+                              ok: result?.ok ?? false,
+                              compacted: result?.compacted ?? false,
+                              reason: result?.reason,
+                            };
+                          } catch (err) {
+                            return { ok: false, compacted: false, reason: String(err) };
+                          }
+                        },
+                      }
+                    : undefined,
                 toolResultFormat: (() => {
                   const channel = resolveMessageChannel(
                     params.sessionCtx.Surface,
@@ -1160,13 +1170,6 @@ export async function runAgentTurnWithFallback(params: {
                     : undefined,
                 onReasoningEnd: params.opts?.onReasoningEnd,
                 onAgentEvent: async (evt) => {
-                  if (evt.stream.startsWith("codex_app_server.")) {
-                    emitAgentEvent({
-                      runId,
-                      stream: evt.stream,
-                      data: evt.data,
-                    });
-                  }
                   // Signal run start only after the embedded agent emits real activity.
                   const hasLifecyclePhase =
                     evt.stream === "lifecycle" && typeof evt.data.phase === "string";
@@ -1357,12 +1360,14 @@ export async function runAgentTurnWithFallback(params: {
                 result.meta?.agentMeta?.compactionCount ?? 0,
               );
               attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
-              return result;
+              return {
+                result,
+                continueWorkRequest: attemptContinueWorkRequest,
+              };
             } catch (err) {
               if (rollbackFallbackCandidateSelection) {
                 try {
                   await rollbackFallbackCandidateSelection();
-                  clearPendingFallbackRollback(rollbackFallbackCandidateSelection);
                 } catch (rollbackError) {
                   logVerbose(
                     `failed to roll back fallback candidate selection (non-fatal): ${String(rollbackError)}`,
@@ -1376,7 +1381,16 @@ export async function runAgentTurnWithFallback(params: {
           })();
         },
       });
-      runResult = fallbackResult.result;
+      const fallbackRunResult = fallbackResult.result as
+        | EmbeddedPiAgentRunResult
+        | { result: EmbeddedPiAgentRunResult; continueWorkRequest?: ContinueWorkRequest };
+      if (isContinuationWrappedRunResult(fallbackRunResult)) {
+        runResult = fallbackRunResult.result;
+        continueWorkRequest = fallbackRunResult.continueWorkRequest;
+      } else {
+        runResult = fallbackRunResult;
+        continueWorkRequest = undefined;
+      }
       fallbackProvider = fallbackResult.provider;
       fallbackModel = fallbackResult.model;
       fallbackAttempts = Array.isArray(fallbackResult.attempts)
@@ -1601,34 +1615,24 @@ export async function runAgentTurnWithFallback(params: {
       // underlying error. FallbackSummaryError messages embed per-attempt
       // reason labels like `(rate_limit)`, so string-matching the summary text
       // would misclassify mixed-cause exhaustion as a pure transient cooldown.
-      const isFallbackSummary = isFallbackSummaryError(err);
-      const isPureTransientSummary = isFallbackSummary
+      const isRateLimit = isFallbackSummaryError(err)
         ? isPureTransientRateLimitSummary(err)
-        : false;
-      const isRateLimit = isFallbackSummary
-        ? isPureTransientSummary
         : isRateLimitErrorMessage(message);
-      const rateLimitOrOverloadedCopy =
-        !isFallbackSummary || isPureTransientSummary
-          ? formatRateLimitOrOverloadedErrorCopy(message)
-          : undefined;
       const safeMessage = isTransientHttp
         ? sanitizeUserFacingText(message, { errorContext: true })
         : message;
       const trimmedMessage = safeMessage.replace(/\.\s*$/, "");
       const fallbackText = isBilling
         ? BILLING_ERROR_USER_MESSAGE
-        : isRateLimit && !isOverloadedErrorMessage(message)
+        : isRateLimit
           ? buildRateLimitCooldownMessage(err)
-          : rateLimitOrOverloadedCopy
-            ? rateLimitOrOverloadedCopy
-            : isContextOverflow
-              ? "⚠️ Context overflow — prompt too large for this model. Try a shorter message or a larger-context model."
-              : isRoleOrderingError
-                ? "⚠️ Message ordering conflict - please try again. If this persists, use /new to start a fresh session."
-                : shouldSurfaceToControlUi
-                  ? `⚠️ Agent failed before reply: ${trimmedMessage}.\nLogs: openclaw logs --follow`
-                  : buildExternalRunFailureText(message);
+          : isContextOverflow
+            ? "⚠️ Context overflow — prompt too large for this model. Try a shorter message or a larger-context model."
+            : isRoleOrderingError
+              ? "⚠️ Message ordering conflict - please try again. If this persists, use /new to start a fresh session."
+              : shouldSurfaceToControlUi
+                ? `⚠️ Agent failed before reply: ${trimmedMessage}.\nLogs: openclaw logs --follow`
+                : buildExternalRunFailureText(message);
 
       params.replyOperation?.fail("run_failed", err);
       return {
@@ -1685,13 +1689,16 @@ export async function runAgentTurnWithFallback(params: {
           (p) => p.isError && hasNonEmptyString(p.text) && !p.text.startsWith("⚠️"),
         )?.text ?? "";
       const errorCandidate = metaErrorMsg || rawErrorPayloadText;
-      const formattedErrorCandidate = errorCandidate
-        ? formatRateLimitOrOverloadedErrorCopy(errorCandidate)
-        : undefined;
-      if (formattedErrorCandidate) {
+      if (
+        errorCandidate &&
+        (isRateLimitErrorMessage(errorCandidate) || isOverloadedErrorMessage(errorCandidate))
+      ) {
+        const isOverloaded = isOverloadedErrorMessage(errorCandidate);
         runResult.payloads = [
           {
-            text: formattedErrorCandidate,
+            text: isOverloaded
+              ? "⚠️ The AI service is temporarily overloaded. Please try again in a moment."
+              : "⚠️ API rate limit reached — the model couldn't generate a response. Please try again in a moment.",
             isError: true,
           },
         ];
@@ -1717,5 +1724,6 @@ export async function runAgentTurnWithFallback(params: {
     didLogHeartbeatStrip,
     autoCompactionCount,
     directlySentBlockKeys: directlySentBlockKeys.size > 0 ? directlySentBlockKeys : undefined,
+    continueWorkRequest,
   };
 }

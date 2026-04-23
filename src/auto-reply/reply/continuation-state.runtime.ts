@@ -1,8 +1,9 @@
-export { clearDelegatePending, runReplyAgent } from "./agent-runner.js";
 export {
   bumpContinuationGeneration,
+  clearDelegatePending,
   currentContinuationGeneration,
   registerContinuationTimerHandle,
+  releaseContinuationTimerRef,
   retainContinuationTimerRef,
   setDelegatePending,
   unregisterContinuationTimerHandle,
