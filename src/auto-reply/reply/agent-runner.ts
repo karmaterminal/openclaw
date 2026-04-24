@@ -2451,6 +2451,10 @@ export async function runReplyAgent(params: {
           defaultRuntime.log(
             `Continuation chain capped at ${maxChainLength} for session ${sessionKey}`,
           );
+          enqueueSystemEvent(
+            `[continuation] Bracket continuation rejected: chain length ${maxChainLength} reached.`,
+            { sessionKey },
+          );
           // Bump (not clear) to invalidate stale timers without reuse risk.
           // Clearing would reset to 0, letting a new chain's generation collide
           // with a stale in-flight timer's captured value.
@@ -2466,6 +2470,10 @@ export async function runReplyAgent(params: {
           if (costCapTokens > 0 && accumulatedChainTokens > costCapTokens) {
             defaultRuntime.log(
               `Continuation cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}) for session ${sessionKey}`,
+            );
+            enqueueSystemEvent(
+              `[continuation] Bracket continuation rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}).`,
+              { sessionKey },
             );
             bumpContinuationGeneration(sessionKey);
             maybeDropContinuationGeneration(sessionKey);
