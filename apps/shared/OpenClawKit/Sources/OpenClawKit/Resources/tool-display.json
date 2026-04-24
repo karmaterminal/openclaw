@@ -900,14 +900,15 @@
       "detailKeys": [
         "task",
         "mode",
-        "fireAfterMs"
+        "delaySeconds"
       ]
     },
     "continue_work": {
       "emoji": "⏩",
       "title": "Continue Work",
       "detailKeys": [
-        "reason"
+        "reason",
+        "delaySeconds"
       ]
     },
     "request_compaction": {
