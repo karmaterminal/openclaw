@@ -1571,8 +1571,10 @@ export async function runReplyAgent(params: {
 
     replyOperation.setPhase("running");
 
-    // Trigger D: check context pressure before the agent turn and inject
-    // a [system:context-pressure] event when a threshold band is crossed.
+    // Trigger D: check context pressure before the agent's model call and
+    // inject a [system:context-pressure] event when a threshold band is
+    // crossed. Runs after setPhase("running") for state-tracking reasons,
+    // but unconditionally before the actual provider request below.
     if (activeSessionEntry && sessionKey) {
       const { contextPressureThreshold } = resolveContinuationRuntimeConfig(cfg);
       const contextWindowTokens =
