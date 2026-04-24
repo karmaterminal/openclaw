@@ -1,3 +1,4 @@
+import type { ContinuationTrigger } from "../auto-reply/get-reply-options.types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ConversationRef } from "../infra/outbound/session-binding-service.js";
 import { stringifyRouteThreadId } from "../plugin-sdk/channel-route.js";
@@ -462,7 +463,7 @@ async function maybeQueueSubagentAnnounce(params: {
   sourceChannel?: string;
   sourceTool?: string;
   internalEvents?: AgentInternalEvent[];
-  continuationTriggerOverride?: string;
+  continuationTriggerOverride?: ContinuationTrigger;
   signal?: AbortSignal;
 }): Promise<"steered" | "queued" | "none" | "dropped"> {
   if (params.signal?.aborted) {
@@ -671,7 +672,7 @@ async function sendSubagentAnnounceDirectly(params: {
   sourceChannel?: string;
   sourceTool?: string;
   requesterIsSubagent: boolean;
-  continuationTriggerOverride?: string;
+  continuationTriggerOverride?: ContinuationTrigger;
   signal?: AbortSignal;
 }): Promise<SubagentAnnounceDeliveryResult> {
   if (params.signal?.aborted) {
@@ -931,7 +932,7 @@ export async function deliverSubagentAnnouncement(params: {
   signal?: AbortSignal;
   silentEnrichment?: boolean;
   silentWakeEnrichment?: boolean;
-  continuationTriggerOverride?: string;
+  continuationTriggerOverride?: ContinuationTrigger;
 }): Promise<SubagentAnnounceDeliveryResult> {
   return await runSubagentAnnounceDispatch({
     expectsCompletionMessage: params.expectsCompletionMessage,
