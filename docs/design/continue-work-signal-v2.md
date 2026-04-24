@@ -435,15 +435,18 @@ The two-layer model is:
 
 The continuation contribution can also be described as a five-trigger taxonomy:
 
-| Trigger                   | Type                 | Who decides         | Source                                                          |
-| ------------------------- | -------------------- | ------------------- | --------------------------------------------------------------- |
-| A: overflow               | reactive automatic   | platform            | existing 100% context trigger                                   |
-| B: timeout + high usage   | reactive automatic   | platform            | existing idle-timeout path; disabled by `idleTimeoutSeconds: 0` |
-| C: `/compact`             | manual               | user                | existing slash command                                          |
-| D: context-pressure       | proactive advisory   | continuation system | `checkContextPressure()` in the reply pipeline                  |
-| E: `request_compaction()` | initiated volitional | agent               | new tool-driven trigger                                         |
+| Trigger                   | Type                 | Who decides         | Source                                                               |
+| ------------------------- | -------------------- | ------------------- | -------------------------------------------------------------------- |
+| A: overflow               | reactive automatic   | platform            | existing 100% context trigger                                        |
+| B: timeout + high usage   | reactive automatic   | platform            | existing idle-timeout path; disabled by `idleTimeoutSeconds: 0`      |
+| C: `/compact`             | manual               | user                | existing slash command                                               |
+| D: context-pressure       | proactive advisory   | continuation system | `checkContextPressure()` in the reply pipeline                       |
+| E: `request_compaction()` | initiated volitional | agent               | new tool-driven trigger                                              |
+| F: mid-turn pressure-fire | reactive in-turn     | platform (in-turn)  | overflow / timeout-recovery emit path in `pi-embedded-runner/run.ts` |
 
-Triggers A–C predate this work. Triggers D and E are the continuation additions.
+Triggers A–C predate this work. Triggers D and E are the continuation additions. **Trigger F** is not a new compaction _cause_ — it is the in-turn emission shape that the existing Trigger A (overflow) and Trigger B (timeout + high usage) paths take when they fire from inside `pi-embedded-runner/run.ts` rather than from the pre-run `checkContextPressure()` gate. It is named separately because it is what operators grep for: A and B emit a `[context-pressure:fire] mid-turn trigger=overflow` / `mid-turn trigger=timeout` log anchor in the same format as the pre-run band fires, plus a `[system:context-pressure]` system event to the session, so a single grep across the `[context-pressure:fire]` anchor surfaces both pre-run (D) and in-turn (F) compaction events. Trigger F is therefore a _convergent emission_ of Triggers A and B, not an independent decision path; it is the operator-visible name for the thing that lets one grep find every mid-turn compaction that bypassed the pre-run pressure check.
+
+Code anchors for Trigger F: `src/agents/pi-embedded-runner/run.ts:1085` (overflow recovery emit), the timeout-recovery emit a few hundred lines up in the same file, and regression guards in `src/agents/pi-embedded-runner/run.overflow-compaction.loop.test.ts:96` and `src/agents/pi-embedded-runner/run.timeout-triggered-compaction.test.ts:105` that pin the shared anchor format across both paths.
 
 ### 4.2 Context-pressure awareness
 
