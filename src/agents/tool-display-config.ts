@@ -570,12 +570,12 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
     continue_delegate: {
       emoji: "🔄",
       title: "Continue Delegate",
-      detailKeys: ["task", "mode", "fireAfterMs"],
+      detailKeys: ["task", "mode", "delaySeconds"],
     },
     continue_work: {
       emoji: "⏩",
       title: "Continue Work",
-      detailKeys: ["reason"],
+      detailKeys: ["reason", "delaySeconds"],
     },
     request_compaction: {
       emoji: "📦",
