@@ -51,4 +51,40 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
 
     expect(tools.some((tool) => tool.name === "continue_work")).toBe(true);
   });
+
+  // Truth-table coverage for the drainsContinuationDelegateQueue gate predicate
+  // in createOpenClawTools (`!== false`). Three states must be pinned so a future
+  // refactor cannot silently regress to `=== true` (which broke the
+  // "normal turns" case on PR #306 commit c825009e9b8 before the !== false fix
+  // landed in 9f00132dd67). See discussion at
+  // https://github.com/karmaterminal/openclaw/pull/306
+  it("exposes continue_delegate when drainsContinuationDelegateQueue is undefined (default normal turns)", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+      // drainsContinuationDelegateQueue intentionally omitted to assert default behavior
+    });
+
+    expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
+  });
+
+  it("exposes continue_delegate when drainsContinuationDelegateQueue is explicitly true (explicit drainers)", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+      drainsContinuationDelegateQueue: true,
+    });
+
+    expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
+  });
+
+  it("hides continue_delegate when drainsContinuationDelegateQueue is explicitly false (e.g. llm-slug-generator)", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+      drainsContinuationDelegateQueue: false,
+    });
+
+    expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(false);
+  });
 });
