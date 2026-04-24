@@ -159,3 +159,9 @@ extensions/**/.openclaw-runtime-deps.json
 extensions/**/.openclaw-runtime-deps-stamp.json
 .gitnexus
 dist.bak-3.28/
+
+# Local rebase working notes
+_BRIEF.md
+_PURGE_BRIEF.md
+_outcome.md
+_purge_outcome.md

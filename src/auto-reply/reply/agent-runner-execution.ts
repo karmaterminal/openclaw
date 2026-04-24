@@ -1190,6 +1190,8 @@ export async function runAgentTurnWithFallback(params: {
                               sessionKey: params.sessionKey ?? "",
                               sessionFile: params.followupRun.run.sessionFile,
                               workspaceDir: params.followupRun.run.workspaceDir,
+                              provider: params.followupRun.run.provider,
+                              model: params.followupRun.run.model,
                               config: params.followupRun.run.config,
                               trigger: "volitional",
                             });
