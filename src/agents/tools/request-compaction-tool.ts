@@ -93,10 +93,13 @@ export type RequestCompactionToolOpts = {
  * compaction runs between turns via the lane queue, not during the tool call.
  *
  * Guards (all checked before compaction is enqueued):
+ *   - **Dedup:** a compaction request is not already pending for this session.
  *   - **Context threshold:** context usage must be >= 70%.
  *   - **Rate limit:** at most one compaction per 5 minutes per session.
- *   - **Generation guard:** if the session generation has advanced since the
- *     agent's turn started, another message arrived.
+ *
+ * (The earlier "generation guard" was removed 2026-04-15 by RFC: compaction
+ * is no longer blocked by mid-turn message arrival because the lane queue
+ * already serializes compaction relative to subsequent messages.)
  */
 export function createRequestCompactionTool(opts: RequestCompactionToolOpts): AnyAgentTool {
   return {
@@ -105,8 +108,8 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
     description:
       "Request compaction of the current session to reclaim context window space. " +
       "Call this AFTER you have evacuated working state (memory files, post-compaction delegates, RESUMPTION.md). " +
-      "Guards: context must be >= 70% full, rate-limited to once per 5 minutes, and no new messages " +
-      "may have arrived since your turn started. Compaction is async — it runs after your turn completes. " +
+      "Guards: context must be >= 70% full, and rate-limited to once per 5 minutes per session. " +
+      "Compaction is async — it runs after your turn completes. " +
       "Prefer this over waiting for automatic compaction when you have context-pressure awareness and want " +
       "to control the timing of state evacuation.",
     parameters: RequestCompactionToolSchema,
