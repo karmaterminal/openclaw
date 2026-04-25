@@ -643,9 +643,10 @@ export async function runSubagentAnnounceFlow(params: {
       const orphaned = consumePendingDelegates(params.childSessionKey);
       if (orphaned.length > 0) {
         const rawTask = (orphaned[0] as { task?: unknown })?.task;
-        const firstTaskPrefix = (typeof rawTask === "string" ? rawTask : "").slice(0, 80);
+        const rawTaskStr = typeof rawTask === "string" ? rawTask : "";
+        const firstTaskPrefix = rawTaskStr.slice(0, 80);
         const taskPrefixDisplay =
-          firstTaskPrefix.length === 80 ? `${firstTaskPrefix}\u2026` : firstTaskPrefix;
+          rawTaskStr.length > 80 ? `${firstTaskPrefix}\u2026` : firstTaskPrefix;
         defaultRuntime.error(
           `[subagent-chain-hop] ERROR error.continuationDelegate.orphanedOnSpawnFinish: ${orphaned.length} tool delegate(s) orphaned from non-chain-hop subagent childSessionKey=${params.childSessionKey} — drainsContinuationDelegateQueue was set but task has no chain-hop prefix; firstTaskPrefix=${JSON.stringify(taskPrefixDisplay)}`,
         );
