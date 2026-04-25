@@ -634,11 +634,20 @@ export async function runSubagentAnnounceFlow(params: {
     }
 
     // Safety: drain orphaned delegates from non-chain-hop subagents that had tool access.
+    // Loud-drop ERROR (not WARN): a delegate the agent elected has been silently discarded
+    // because the spawning task lacked the chain-hop prefix needed to receive them. Reviewers
+    // and operators MUST notice this — it indicates a routing-shape mismatch between
+    // `drainsContinuationDelegateQueue` exposure and chain-hop intent.
+    // Stable error code: error.continuationDelegate.orphanedOnSpawnFinish (tracker: #321 subtask 1)
     if (!isContinuationChainDelegate && continuationEnabled) {
       const orphaned = consumePendingDelegates(params.childSessionKey);
       if (orphaned.length > 0) {
-        defaultRuntime.log(
-          `[subagent-chain-hop] WARNING: ${orphaned.length} tool delegate(s) orphaned from non-chain-hop subagent ${params.childSessionKey} — drainsContinuationDelegateQueue was set but task has no chain-hop prefix`,
+        const rawTask = (orphaned[0] as { task?: unknown })?.task;
+        const firstTaskPrefix = (typeof rawTask === "string" ? rawTask : "").slice(0, 80);
+        const taskPrefixDisplay =
+          firstTaskPrefix.length === 80 ? `${firstTaskPrefix}\u2026` : firstTaskPrefix;
+        defaultRuntime.error(
+          `[subagent-chain-hop] ERROR error.continuationDelegate.orphanedOnSpawnFinish: ${orphaned.length} tool delegate(s) orphaned from non-chain-hop subagent childSessionKey=${params.childSessionKey} — drainsContinuationDelegateQueue was set but task has no chain-hop prefix; firstTaskPrefix=${JSON.stringify(taskPrefixDisplay)}`,
         );
       }
     }

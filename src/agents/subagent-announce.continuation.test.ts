@@ -86,11 +86,16 @@ vi.mock("../plugins/hook-runner-global.js", () => ({
 }));
 
 import {
+  enqueuePendingDelegate,
+  consumePendingDelegates,
+} from "../auto-reply/continuation-delegate-store.js";
+import {
   setRuntimeConfigSnapshot,
   clearRuntimeConfigSnapshot,
   type OpenClawConfig,
 } from "../config/config.js";
 import { resolveStorePath } from "../config/sessions.js";
+import { defaultRuntime } from "../runtime.js";
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 import * as subagentSpawn from "./subagent-spawn.js";
 
@@ -357,5 +362,57 @@ describe("subagent announce continuation chaining", () => {
       expect.any(Object),
     );
     expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Subtask 1 (#321): WARN → ERROR loud-drop on orphaned delegate consumption.
+  // Spawn-with-`continue_delegate`-but-no-chain-hop-prefix → delegate is silently
+  // discarded; we now log at ERROR with a stable code, child session key, count,
+  // and a trimmed first-task prefix for triageability.
+  it("logs ERROR with stable code when orphaned delegates are dropped from non-chain-hop subagent", async () => {
+    const childSessionKey = "agent:main:subagent:orphan-emitter";
+    // Pre-clear any leftover delegates from prior tests on this key.
+    consumePendingDelegates(childSessionKey);
+
+    // Simulate a `continue_delegate` tool call that ran inside the spawned
+    // subagent: it enqueued a pending delegate against its own session key.
+    const longTask = "x".repeat(200);
+    enqueuePendingDelegate(childSessionKey, {
+      task: longTask,
+      mode: "silent",
+      delaySeconds: 0,
+    } as unknown as Parameters<typeof enqueuePendingDelegate>[1]);
+
+    const errorSpy = vi.spyOn(defaultRuntime, "error").mockImplementation(() => {});
+
+    try {
+      await runContinuationAnnounce({
+        // childTaskPrefix "" → no [continuation:chain-hop:N] prefix →
+        // isContinuationChainDelegate is false at announce time. Reply has no
+        // bracket either, so the orphan-drain branch is the only consumer.
+        childSessionKey,
+        childTaskPrefix: "",
+        reply: "step complete",
+      });
+      await new Promise((r) => setTimeout(r, 25));
+
+      const errorCalls = errorSpy.mock.calls.map((call) =>
+        typeof call[0] === "string" ? call[0] : "",
+      );
+      const orphanedCall = errorCalls.find((msg) =>
+        msg.includes("error.continuationDelegate.orphanedOnSpawnFinish"),
+      );
+      expect(
+        orphanedCall,
+        `expected ERROR with stable code; got: ${errorCalls.join(" || ")}`,
+      ).toBeDefined();
+      expect(orphanedCall).toContain(`childSessionKey=${childSessionKey}`);
+      expect(orphanedCall).toContain("1 tool delegate(s) orphaned");
+      // Task prefix is trimmed to 80 chars + ellipsis when longer.
+      expect(orphanedCall).toContain("firstTaskPrefix=");
+      expect(orphanedCall).toMatch(/firstTaskPrefix="x{80}\u2026"/);
+    } finally {
+      errorSpy.mockRestore();
+      consumePendingDelegates(childSessionKey);
+    }
   });
 });
