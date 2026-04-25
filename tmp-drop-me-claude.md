@@ -2,34 +2,48 @@
 
 Run dir: `tmp/codeagents/325-rebase/claude-20260425-2223/`
 Worktree: `/tmp/oc-325-rebase`
-Branch: `flesh_beast_figs/20260424-claude` (will be created)
+Branch: `flesh_beast_figs/20260424-claude`
 Brief: see `tmp/codeagents/325-rebase/claude-20260425-2223/brief.md`
 
 ## Progress
-
-(agent appends here)
 
 ### 2026-04-25T22:25 — Branch created
 
 - Created `flesh_beast_figs/20260424-claude` from `140f74956d`
 - Converted `rebase-plan.txt` → `rebase-plan.todo` (21 pick, 28 drop)
 
-### 2026-04-25T22:26 — Rebase started
+### 2026-04-25T22:26 — Rebase attempt 1
 
 - `GIT_SEQUENCE_EDITOR="cp rebase-plan.todo" git rebase -i --onto cbcfdf62 c8aec6b9`
 - Commit 8/49 (`aef4fc9178 test(docker): make e2e temp logs portable`): EMPTY after rebase — already upstream. Skipped.
-- Commit 10/49 (`e515ea1f31 test(gateway): harden live docker harness probes`): **CONFLICT** in 3 files:
-  - `src/gateway/gateway-acp-bind.live.test.ts` — `waitForAssistantText` (HEAD) vs `waitForAssistantTurn` (branch), different API
-  - `src/gateway/gateway-codex-harness.live-helpers.ts` — HEAD added 2 extra string checks; branch removed them
-  - `src/gateway/gateway-codex-harness.live.test.ts` — HEAD says "with escalated permissions"; branch simplifies to just "once"
+- Commit 10/49 (`e515ea1f31 test(gateway): harden live docker harness probes`): **CONFLICT** in 3 gateway live test files
 - **Classification**: gateway live test infrastructure, NOT continuation core or release-plumbing
-- **Per conflict policy**: these are "anything else" → STOP, abort, report
+- Aborted. Awaited Cael's call.
 
-### 2026-04-25T22:27 — Abort + analysis
+### 2026-04-25T22:27 — Cael's resolution for e515ea1f31
 
-- `git rebase --abort`
-- **Recommendation**: This commit (`e515ea1f31`) is test-infrastructure hardening for gateway live probes. The v2026.4.24 base has evolved these same files with different changes. Two options:
-  1. **Skip this commit** (like we skipped aef4fc9178 which was also empty/upstream). The base already has its own version of these hardenings.
-  2. **Resolve manually**: accept HEAD (theirs) for all 3 files — the base version has the most current test infrastructure.
-- The remaining 19 continuation-feature PICKs are likely clean since they touch different files.
-- Awaiting Cael's call on how to proceed.
+- **DROP** `e515ea1f31` — parallel-evolution: base v2026.4.24 has equivalent at `f07b00de66+a53fea3905+5f702b464b`
+
+### 2026-04-25 (attempt 2) — Rebase with e515ea1f31 dropped
+
+- Reset to `140f74956d`, edited `rebase-plan.todo` to drop `e515ea1f31`
+- Re-ran rebase. Same empty skip at 8/49 (`aef4fc9178`), same skip at 14/49 (`7e5f67c6a2`)
+- **NEW CONFLICT** at commit 17/49: `aa1908bf38 test: harden docker live backend probes`
+  - Conflicted files:
+    - `scripts/test-live-cli-backend-docker.sh` — HEAD added `PROFILE_STATUS` echo + `SOURCE_STAGE_MODE` env var; branch side empty (HEAD supersedes)
+    - `src/gateway/gateway-cli-backend.live.test.ts` — HEAD has `requestWithProviderCapacityRetry` wrapper, MCP schema probe constants, null payload guards; branch has simpler direct `client.request` calls
+  - **Classification**: gateway/docker live test infrastructure, same category as dropped `e515ea1f31`
+  - **Pattern**: parallel-evolution — base v2026.4.24 has more sophisticated versions of these exact test hardenings
+  - **Per conflict policy**: not release-plumbing → STOP, abort, report
+  - Aborted. Awaiting Cael's call.
+
+#### Recommendation
+
+DROP `aa1908bf38` — same parallel-evolution pattern as `e515ea1f31`. The base has strictly superior versions of these test hardenings (`requestWithProviderCapacityRetry`, MCP schema probes, profile status checks). The branch commit adds nothing the base doesn't already have in better form.
+
+**Also note**: 2 additional PICK commits were empty after rebase (already upstream):
+
+- `aef4fc9178 test(docker): make e2e temp logs portable`
+- `7e5f67c6a2 fix(sessions): preserve active route updates during maintenance`
+
+Effective PICK count so far: 21 planned - 1 dropped (e515ea1f31) - 1 to-drop (aa1908bf38) - 2 empty = 17 remaining.
