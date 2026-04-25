@@ -128,7 +128,10 @@ Execution plan:
 
 ## §5 — push savegame BEFORE any squash
 
-(pending — post-rebase savegame push follows this checkpoint)
+2026-04-25T23:05:42+00:00 — post-rebase savegame pushed.
+
+- Pushed rebased branch to `origin/frond-scribe/20260424/candidate-gpt` at `f735466d3f67`.
+- This was the one lease-protected update needed to replace the pre-rebase journal savegame with the rebased savegame. From here forward: fast-forward pushes only; no force-push, no delete, no reset-and-replay.
 
 ## §6 — verification
 
@@ -140,6 +143,7 @@ checkpoints pushed:
 
 - 2026-04-25T22:37:07+00:00 seed journal + §0 acked
 - 2026-04-25T23:05:00+00:00 §4 rebase completed; generated baselines regenerated and committed separately
+- 2026-04-25T23:05:42+00:00 §5 post-rebase savegame pushed
 
 ## §8 — declare done
 
