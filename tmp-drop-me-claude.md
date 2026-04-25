@@ -47,3 +47,30 @@ DROP `aa1908bf38` — same parallel-evolution pattern as `e515ea1f31`. The base 
 - `7e5f67c6a2 fix(sessions): preserve active route updates during maintenance`
 
 Effective PICK count so far: 21 planned - 1 dropped (e515ea1f31) - 1 to-drop (aa1908bf38) - 2 empty = 17 remaining.
+
+### 2026-04-25T22:30 — Cael's resolution for aa1908bf38
+
+- **DROP** `aa1908bf38` — same parallel-evolution pattern as `e515ea1f31`
+
+### 2026-04-25 (attempt 3) — Rebase with aa1908bf38 dropped
+
+- Reset to `140f74956d`, both `e515ea1f31` and `aa1908bf38` confirmed `drop` in `rebase-plan.todo`
+- Re-ran rebase. Same empties skipped:
+  - 8/49 (`aef4fc9178`): empty, skipped
+  - 14/49 (`7e5f67c6a2`): empty, skipped
+  - 25/49 (`dfcce38a36 fix(qa): timestamp telegram update batches`): **NEW** empty, skipped (not seen in prior attempts — already upstream)
+- **NEW CONFLICT** at commit 28/49: `7ee46a3ab9 fix: Add runner label to /status (#70595)`
+  - Conflicted files:
+    - `CHANGELOG.md` — base already contains the exact same PR #70595 entry (with "Thanks @Takhoffman" attribution)
+    - `src/auto-reply/status.test.ts` — naming divergence: base uses `Execution:` + `Runtime: OpenClaw Pi Default`, branch uses `Runtime:` + `Runner: pi (embedded)`
+    - `src/status/status-message.ts` — base has `resolveAgentRuntimeLabel()` with `AGENT_RUNTIME_LABELS` lookup table + `resolvedHarness` param; branch has simpler `resolveRunnerLabel()`
+  - **Classification**: PR #70595 is **already in the base** — the CHANGELOG entry proves it. The base evolved the naming/implementation after landing. This commit is a misclassified PICK; it should be DROP (already-upstream).
+  - **Pattern**: not just parallel-evolution — literally the same PR already landed and evolved in base
+  - **Per conflict policy**: substantive code conflict → STOP, abort, report
+  - Aborted. Awaiting Cael's call.
+
+#### Recommendation
+
+DROP `7ee46a3ab9` — PR #70595 is already in base v2026.4.24 (proven by identical CHANGELOG entry). The base has an evolved version with richer naming (`Execution:`/`Runtime:` vs `Runtime:`/`Runner:`) and a lookup table for agent runtime labels. Keeping the branch version would regress the feature.
+
+**Updated effective PICK count**: 21 planned - 3 dropped (e515ea1f31, aa1908bf38, 7ee46a3ab9) - 3 empty (aef4fc9178, 7e5f67c6a2, dfcce38a36) = 15 remaining.
