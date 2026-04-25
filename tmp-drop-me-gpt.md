@@ -96,7 +96,27 @@
 
 ## §4 — perform the rebase
 
-(pending)
+2026-04-26T00:04:00+00:00 — plan/classification locked before executing rebase.
+
+- Target fetched: `cbcfdf62c729` from `https://github.com/openclaw/openclaw.git`.
+- Replay count before this classification journal commit: 53 commits (`cbcfdf62..HEAD`), consisting of 49 pre-existing source/rebase commits plus 4 GPT-lane journal commits.
+- `git cherry -v cbcfdf62 HEAD` semantics observed: `-` means patch-equivalent already in target; `+` means not patch-equivalent. Seven `+` non-continuation commits had same-subject counterparts already ancestor of target, so I classified them as already-upstream by subject/ancestor cross-check.
+- Cael plan diff: `/tmp/oc-325-rebase/rebase-plan.txt` is not accessible from this lane, so there is no file-level Cael classification to compare. Issue #325 locked base/target selection matches this workorder.
+
+Classification:
+
+- DROP-release-prep: `579f00313b` v2026.4.22 beta 1, `0ec75a6ab4` v2026.4.22 beta 2, `5cd79da5b1` beta 1 metadata refresh, `945a1922cb` v2026.4.22 stable. Reason: version/release metadata superseded by target `cbcfdf62` v2026.4.24.
+- DROP-already-upstream via `git cherry -`: `bef298d97f`, `435136de8f`, `fdfc901e42`, `c9bb56998a`, `e96087892e`, `27184bcb5e`, `fb81fbe470`, `974e994193`, `6c8a7fd967`, `d8df6d308f`, `744f6b3f6d`, `00ae0db05f`, `dcc406a05c`, `959622f8a4`, `ed263dd564`, `ccac4db2d5`, `73f9cc262e`, `98f5cd4a62`, `3ae78c3055`, `ec925a0a57`, `8fdec301a9`, `71b787387d`. Reason: patch-equivalent in target.
+- DROP-already-upstream via same-subject target ancestor despite `git cherry +`: `aef4fc9178` -> target `af03832134`; `e515ea1f31` -> `47f131f6ae`; `7e5f67c6a2` -> `1263d4278e`; `aa1908bf38` -> `9dd097a7a5`; `dfcce38a36` -> `1bd8c5f362`; `7ee46a3ab9` -> `03477ccb82`; `00bd2cf7a3` -> `d3dc890821`. Reason: equivalent upstream commit exists in target ancestry with same subject, but patch-id changed.
+- PICK continuation/source: `198758e66b` core continuation implementation; `cf2cecf979` RFC; `4cab9cf2cd` continuation tests; `2b57a3bd3f` generated/schema/build/Swift/tool-display support; `b2b2616f64` removes spurious `note.txt` added by core cherry-pick; `827d3e9150` old baseline regen commit (will still regenerate fresh after rebase); `0dd5d05426` generation-guard purge; `9c6a8bc6ba` RFC Trigger F taxonomy; `e4d971bf13` pre-merge review fixes; `74aa14f173` provider/model volitional compaction threading; `5469b3b3e5` RFC band-dedup note; `1640105a62` RFC evidence link fix; `c825009e9b` delegate drain gate + tool display detail keys; `9f00132dd6` default-allow delegate drain fix; `788b0abe1d` drain truth-table test; `140f74956d` continuationTrigger type tightening. Reason: continuation feature/fix/test/doc surface to preserve.
+- PICK lane journal: `67f4635a47` seed journal, `f2e76c6bf4` §1, `c8d518e4e4` §2, `9dec85530e` §3, plus this classification commit once created. Reason: workorder-required savegame journal.
+- FOLD: none. I considered folding `b2b2616f64`, but because it is not immediately after the core PICK in the existing order and this lane is intentionally preserving unsquashed savegame history, I will keep it as an explicit cleanup PICK rather than reorder history pre-savegame.
+
+Execution plan:
+
+- Run interactive rebase onto `cbcfdf62` with the DROP commits above marked as `drop`; leave all PICK commits in chronological order.
+- Conflict heuristic: release/version files take target; continuation files take feature intent; generated config/docs baselines resolved minimally and regenerated after rebase with `pnpm config:docs:gen` and `pnpm plugin-sdk:api:gen`.
+- Post-rebase: regenerate baselines, commit changed `.sha256` files separately if they change, push candidate branch as the post-rebase savegame, then run §6 gates in order.
 
 ## §5 — push savegame BEFORE any squash
 
