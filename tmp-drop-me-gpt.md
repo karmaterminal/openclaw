@@ -52,7 +52,47 @@
 
 ## §3 — full walk of tests of concern
 
-(pending)
+2026-04-25T23:48:00+00:00 — tests-of-concern walk completed; no tests run in this section.
+
+- `extensions/whatsapp/src/auto-reply/heartbeat-runner.test.ts`: exercises WhatsApp `runWebHeartbeatOnce` dry-run/send/current-time/token-only/log redaction/error paths; stubs heartbeat runtime, session snapshot, reconnect/send; TaskFlow no; heartbeat yes.
+- `extensions/whatsapp/src/heartbeat-recipients.test.ts`: exercises WhatsApp heartbeat recipient resolution across session recipients, allowFrom, explicit `--to`, account/defaultAccount/pairing stores; stubs heartbeat-recipients runtime; TaskFlow no; heartbeat yes.
+- `src/agents/heartbeat-system-prompt.test.ts`: exercises heartbeat system-prompt inclusion/omission and default-agent override behavior; no TaskFlow stubs; heartbeat yes.
+- `src/agents/subagent-announce.continuation.test.ts`: exercises continuation chain hops emitted from subagent announce, silent-wake stickiness, max-depth/cost caps, grandparent reroute, and timer generation-drift behavior; stubs heartbeat wake, continuation-state runtime, registry/spawn, session store; TaskFlow no; heartbeat wake yes.
+- `src/agents/tools/continuation-tools-registration.test.ts`: exercises `createOpenClawTools` exposure of `continue_delegate`/`continue_work` and `drainsContinuationDelegateQueue` truth table; no TaskFlow stubs; heartbeat no.
+- `src/agents/tools/request-compaction-tool.test.ts`: exercises request-compaction guards, async fire-and-forget, reason validation/truncation, pending/rate isolation, and volitional count TTL; stubs injected compaction trigger; TaskFlow no; heartbeat no.
+- `src/auto-reply/continuation-delegate-store-taskflow.test.ts`: exercises TaskFlow delegate persistence/lifecycle/restart recovery and facade routing; stubs TaskFlow `finishFlow` and registry temp dirs; TaskFlow yes; heartbeat no.
+- `src/auto-reply/continuation-delegate-store.test.ts`: exercises volatile delegate queue, delayed reservations, highest-hop, and post-compaction staging; no TaskFlow stubs; heartbeat no.
+- `src/auto-reply/heartbeat-filter.test.ts`: exercises heartbeat prompt/user-message detection, `HEARTBEAT_OK` ack detection, ackMaxChars, and transcript pair filtering; no TaskFlow stubs; heartbeat yes.
+- `src/auto-reply/heartbeat.test.ts`: exercises heartbeat token stripping, effectively-empty HEARTBEAT.md detection, and task parsing without top-level field bleed; no TaskFlow stubs; heartbeat yes.
+- `src/auto-reply/reply/context-pressure.integration.test.ts`: exercises context-pressure event queue visibility before drain, escalation/dedup, low thresholds, disabled config; no TaskFlow stubs; heartbeat no.
+- `src/auto-reply/reply/context-pressure.test.ts`: exercises context-pressure thresholds, bands, dedup, guards, event text, custom thresholds, compaction reset refire, and warn log anchor; mocks logger; TaskFlow no; heartbeat no.
+- `src/auto-reply/reply/continuation-runtime.test.ts`: exercises continuation runtime config clamping/truncation/live accessor; no TaskFlow stubs; heartbeat no.
+- `src/auto-reply/reply/post-compaction-context.test.ts`: exercises AGENTS.md post-compaction context extraction, custom sections, truncation, link escape refusal, date/time substitution, legacy fallbacks; no TaskFlow stubs; heartbeat no.
+- `src/auto-reply/reply/session.heartbeat-no-reset.test.ts`: exercises `initSessionState` preserving stale sessions for `heartbeat`, `cron-event`, and `exec-event` providers while resetting normal stale messages; no TaskFlow stubs; heartbeat yes.
+- `src/config/heartbeat-config-honor.inventory.test.ts`: exercises heartbeat config audit inventory alignment with schema leaf keys and runtime/reload/test proof rows; no TaskFlow stubs; heartbeat yes.
+- `src/config/zod-schema.continuation.test.ts`: exercises continuation zod schema bounds/types/strict unknown-key rejection; no TaskFlow stubs; heartbeat no.
+- `src/cron/heartbeat-policy.test.ts`: exercises suppressing heartbeat-only delivery payloads and cron main-summary enqueue policy; no TaskFlow stubs; heartbeat yes.
+- `src/cron/service.heartbeat-ok-summary-suppressed.test.ts`: exercises CronService not relaying `HEARTBEAT_OK` summaries into the main session or waking main for legacy summaries; stubs service harness/requestHeartbeatNow; TaskFlow no; heartbeat yes.
+- `src/cron/service.main-job-passes-heartbeat-target-last.test.ts`: exercises cron main jobs preserving `heartbeat.target=last` for wakeMode `now`, fallback `requestHeartbeatNow`, and `next-heartbeat`; stubs service harness/requestHeartbeatNow/runHeartbeatOnce; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-active-hours.test.ts`: exercises active-hours parsing including invalid windows, zero-width, user/explicit time zones, overnight ranges; no TaskFlow stubs; heartbeat yes.
+- `src/infra/heartbeat-events-filter.test.ts`: exercises heartbeat event prompt construction/classification and filtering of noop heartbeat text; no TaskFlow stubs; heartbeat yes.
+- `src/infra/heartbeat-events.test.ts`: exercises heartbeat indicator mapping, event storage/listeners/failure isolation/unsubscribe, and duplicate-module singleton sharing; no TaskFlow stubs; heartbeat yes.
+- `src/infra/heartbeat-reason.test.ts`: exercises wake/cron/hook/acp reason normalization and priority matching; no TaskFlow stubs; heartbeat wake yes.
+- `src/infra/heartbeat-runner.ghost-reminder.test.ts`: exercises heartbeat runner prompt selection/routing around HEARTBEAT_OK noise, cron/exec/hook events, owner downgrade, queued delivery context, stale route avoidance, and Telegram topic pinning; stubs heartbeat runner test runtime/system events/reply; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.isolated-key-stability.test.ts`: exercises isolated `:heartbeat` session key stability, suffix convergence, base-session event consumption, hook:wake classification, forced real heartbeat sessions, and no-task skip behavior; stubs outbound delivery/test sandbox; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.model-override.test.ts`: exercises heartbeat model/lightContext/timeout/bootstrap overrides and isolated/main session key selection across defaults/per-agent config; stubs outbound delivery/test sandbox; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.respects-ackmaxchars-heartbeat-acks.test.ts`: exercises ackMaxChars, showOk, responsePrefix stripping, markup-wrapped acks, updatedAt preservation, delivery skips, and Telegram accountId passthrough; uses heartbeat test harness/runtime; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.returns-default-unset.test.ts`: broad heartbeat runner suite for interval/prompt defaults, agent enablement, delivery target/sender resolution, runHeartbeatOnce skip/delivery/dedup, templated stores, HEARTBEAT.md gating, and internal-only cron/exec prompts; uses plugin registry/test plugins/temp sandbox; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.scheduler.test.ts`: exercises heartbeat scheduler reloads, error recovery, cleanup idempotency, requests-in-flight retry behavior, targeted wake routing, heartbeat override merge, and no fan-out for session-scoped exec wakes; stubs timers/wake handler; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.sender-prefers-delivery-target.test.ts`: exercises sender context preferring delivery target when `lastTo` differs; uses heartbeat test runtime/sandbox; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.skips-busy-session-lane.test.ts`: exercises heartbeat runner returning `requests-in-flight` when session lane has queued work and proceeding when idle; stubs plugin registry/jiti/system events; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.subagent-session-guard.test.ts`: exercises forced subagent session key falling back to main heartbeat session; uses heartbeat runtime/sandbox; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.transcript-prune.test.ts`: exercises append-only transcript behavior so heartbeat replies do not truncate transcript for token-only or meaningful content; uses heartbeat test utils; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-runner.typing.test.ts`: exercises heartbeat typing start/clear on success/failure and suppression when typing mode/delivery disabled; stubs channel plugin heartbeat typing; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-schedule.test.ts`: exercises stable per-agent heartbeat phases, next future slot, and preserving unchanged future schedules on reload; no TaskFlow stubs; heartbeat yes.
+- `src/infra/heartbeat-typing.test.ts`: exercises heartbeat typing callback cadence defaults; stubs fake channel heartbeat typing plugin; TaskFlow no; heartbeat yes.
+- `src/infra/heartbeat-visibility.test.ts`: exercises heartbeat visibility resolution from defaults, channel defaults, per-channel/per-account overrides, missing accounts, and webchat special handling; no TaskFlow stubs; heartbeat yes.
+- `src/infra/heartbeat-wake.test.ts`: exercises wake coalescing, retry cooldowns, handler re-registration, timer preemption, reason priority, pending drain, target-field forwarding, override preservation, and distinct targeted wakes; no TaskFlow stubs; heartbeat wake yes.
 
 ## §4 — perform the rebase
 
