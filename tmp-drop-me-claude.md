@@ -74,3 +74,51 @@ Effective PICK count so far: 21 planned - 1 dropped (e515ea1f31) - 1 to-drop (aa
 DROP `7ee46a3ab9` — PR #70595 is already in base v2026.4.24 (proven by identical CHANGELOG entry). The base has an evolved version with richer naming (`Execution:`/`Runtime:` vs `Runtime:`/`Runner:`) and a lookup table for agent runtime labels. Keeping the branch version would regress the feature.
 
 **Updated effective PICK count**: 21 planned - 3 dropped (e515ea1f31, aa1908bf38, 7ee46a3ab9) - 3 empty (aef4fc9178, 7e5f67c6a2, dfcce38a36) = 15 remaining.
+
+### 2026-04-25T22:35 — Cael's resolution for 7ee46a3ab9
+
+- **DROP** `7ee46a3ab9` — already in base, CHANGELOG byte-pin confirms, evolved implementation
+- Standing approval granted: auto-drop future commits where CHANGELOG entry exists in base, `git cherry` equivalent upstream, or pure release-prep/changelog-only
+
+### 2026-04-25 (attempt 4) — Rebase with 7ee46a3ab9 + 00bd2cf7a3 dropped
+
+- Also auto-dropped `00bd2cf7a3 fix: allow installed plugins through allowlist` per standing approval:
+  - `git log --grep="allow installed plugins"` found `d3dc890821` in base — cherry-pick source already upstream
+  - CHANGELOG "Plugins/install" entry identical in both sides
+- Re-ran rebase. Same empties skipped (8/49, 14/49, 25/49)
+- **CONFLICT** at commit 34/49: `198758e66b feat(continuation): core implementation — context-pressure, request-compaction, post-compaction relay`
+  - **This is THE core feature commit.** 9 conflicted files:
+
+  | #   | File                                             | Conflict nature                                                                                                                                                                                                                                                                                                                          |
+  | --- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | 1   | `src/agents/subagent-announce-delivery.ts`       | Branch wraps delivery call in try/catch + adds `threadCompletionFallbackText`. Base restructured same call signature.                                                                                                                                                                                                                    |
+  | 2   | `src/agents/subagent-announce.ts`                | Branch adds `skipAnnounceDelivery` + `childCompletionFindings` chain-hop + wake continuation. Base reorganized conditional flow.                                                                                                                                                                                                         |
+  | 3   | `src/agents/subagent-spawn.test-helpers.ts`      | Base renamed module `subagent-registry.js` → `subagent-registry-spawn-runtime.js`. Branch mocks old name + adds `params.countActiveRunsForSession`.                                                                                                                                                                                      |
+  | 4   | `src/agents/system-prompt.ts`                    | Base added `context:"fork"` subagent guidance. Branch adds `continue_delegate` tool guidance. Adjacent additions, both needed.                                                                                                                                                                                                           |
+  | 5   | `src/auto-reply/reply/agent-runner-execution.ts` | Imports: base adds `runEmbeddedPiAgent` + `buildAgentRuntimeOutcomePlan`; branch adds `ContinueWorkRequest`. Return type: base `EmbeddedAgentRunResult`; branch `EmbeddedPiAgentRunResult                                                                                                                                                | { result; continueWorkRequest }`. Branch adds `drainsContinuationDelegateQueue`, `continueWorkOpts`, `requestCompactionOpts`params. Base adds`outcomePlan`, `classifyResult`, `agentHarnessId`, `transcriptPrompt`. |
+  | 6   | `src/auto-reply/reply/agent-runner.ts`           | Imports: base adds `freezeDiagnosticTraceContext`; branch adds `requestHeartbeatNow`, `generateSecureUuid`, `createSubsystemLogger`, `defaultRuntime`. Branch adds large continuation-delegate persistence functions (`syncPendingPostCompactionDelegates`, `normalizePostCompactionDelegate`, `persistPendingPostCompactionDelegates`). |
+  | 7   | `src/auto-reply/reply/session-reset-model.ts`    | Base uses dynamic `import("../../config/sessions.js")` for `updateSessionStore`; branch uses static import + `resolveSessionStoreEntry` + legacy key cleanup. Conflicting session store patterns.                                                                                                                                        |
+  | 8   | `src/gateway/server-methods/agent.ts`            | Both sides add params to agent handler call. Branch adds `continuationTrigger`, `drainsContinuationDelegateQueue`, `currentThreadTs`. Base adds `abortSignal`, `abortController`, dispatched-cleanup `finally`.                                                                                                                          |
+  | 9   | `src/status/status-text.ts`                      | Imports: base adds `selectAgentHarness`, `ThinkLevel`. Branch adds `getVolitionalCompactionCount`, `pendingDelegateCount`, `stagedPostCompactionDelegateCount`, `resolveContinuationRuntimeConfig`, expanded thinking type imports.                                                                                                      |
+  - **Classification**: substantive feature/runtime conflicts across the entire continuation + agent-runner surface
+  - **Resolution complexity**: NOT mechanical. #3 needs module rename adaptation. #5 needs both sides' additions merged with correct return-type union. #7 has genuinely different session-store persistence patterns. #8 needs both param sets interleaved correctly.
+  - **Per conflict policy**: agent-runner + continuation core → STOP, abort, report
+  - Aborted. Awaiting Cael's guidance.
+
+#### Analysis
+
+The 9 conflicts fall into 3 categories:
+
+**A. Import conflicts (trivially resolvable)**: #4, #6, #9 — both sides added different imports in adjacent regions. Resolution: keep both sets.
+
+**B. Additive param/feature conflicts (resolvable with care)**: #1, #2, #8 — both sides add features to the same call sites. Need both additions, but interleaving requires understanding the semantic interaction.
+
+**C. Structural conflicts (require design judgment)**: #3, #5, #7 — base refactored module names, return types, or persistence patterns that the continuation feature assumes the old shape of.
+
+If Cael wants me to resolve these, I'd need clear guidance on:
+
+1. **#3**: Should `subagent-spawn.test-helpers.ts` mock `subagent-registry-spawn-runtime.js` (new base name) with the branch's `params.countActiveRunsForSession` parameterization?
+2. **#5**: What's the correct return type for `runWithModelFallback` — the base's `EmbeddedAgentRunResult` or the branch's union with `continueWorkRequest`? Type was renamed from `EmbeddedPiAgentRunResult` to `EmbeddedAgentRunResult` in base.
+3. **#7**: Which session-store persistence pattern wins — base's dynamic import or branch's static import + `resolveSessionStoreEntry`?
+
+**Updated effective PICK count**: 21 planned - 4 dropped - 3 empty = 14 remaining (but the first PICK is blocked by 9 conflicts).
