@@ -135,7 +135,16 @@ Execution plan:
 
 ## §6 — verification
 
-(pending)
+2026-04-25T23:06:00+00:00 — gate failed; stopping per workorder.
+
+- `pnpm tsgo`: **FAIL**.
+- Failure shape: 26 TypeScript errors across 7 files:
+  - `src/agents/openai-transport-stream.ts`: `compat` inferred as `{}`, so fields like `supportsStore`, `supportsReasoningEffort`, `supportsDeveloperRole`, `maxTokensField`, `supportsStrictMode`, and `visibleReasoningDetailTypes` are missing.
+  - `src/config/types.models.ts`: `@mariozechner/pi-ai` no longer exports `AnthropicMessagesCompat`; OpenAI compat key picks now reference fields missing from the current upstream type surface, including `supportsLongCacheRetention` / session-affinity keys.
+  - `src/commands/onboard-custom-config.ts`, `src/config/zod-schema.core.ts`, `src/plugin-sdk/provider-catalog-shared.ts`, and `src/plugin-sdk/provider-tools.ts`: `ModelCompatConfig` incompatibilities around `supportsLongCacheRetention` being required/optional/missing.
+  - `src/media/qr-runtime.ts`: missing module/type declaration for `@vincentkoc/qrcode-tui`.
+- Suspected cause: upstream v2026.4.24 provider/model compat dependency/type surface drifted relative to the replayed continuation branch. The errors are outside the resolved continuation conflict files, but they are in the rebased tree and block the first required gate.
+- Per workorder §6: no further gates run, no test mutation/skips, and project status remains `in_coding_agent`.
 
 ## §7 — push cadence
 
@@ -144,7 +153,8 @@ checkpoints pushed:
 - 2026-04-25T22:37:07+00:00 seed journal + §0 acked
 - 2026-04-25T23:05:00+00:00 §4 rebase completed; generated baselines regenerated and committed separately
 - 2026-04-25T23:05:42+00:00 §5 post-rebase savegame pushed
+- 2026-04-25T23:06:00+00:00 §6 `pnpm tsgo` failed; lane stopped per gate policy
 
 ## §8 — declare done
 
-(pending)
+(not reached — §6 gate failed)
