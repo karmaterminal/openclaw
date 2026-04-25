@@ -193,7 +193,91 @@ pnpm test src/infra/heartbeat-runner.scheduler.test.ts \
 
 ## §4 — perform the rebase
 
-(pending)
+### Replay set: 52 commits (49 silas-feature + 3 lane journal)
+
+`git log --oneline cbcfdf62..HEAD` gave 52. `git cherry cbcfdf62 HEAD` produced 25 `-` marks (already-upstream by patch-id) and 27 `+` marks (not patch-id-equivalent in upstream).
+
+### Classification (independent — comparing to gpt afterward)
+
+**DROP-release-prep (4 commits)** — version-bump commits made obsolete by sitting on cbcfdf62:
+
+- `579f00313b` chore(release): prepare 2026.4.22 beta 1
+- `0ec75a6ab4` chore(release): prepare 2026.4.22 beta 2
+- `5cd79da5b1` chore(release): refresh beta 1 metadata
+- `945a1922cb` chore(release): prepare 2026.4.22 stable
+
+These will conflict on `package.json` + `src/config/schema.base.generated.ts`; resolve via `git rebase --skip`.
+
+**DROP-already-upstream (22 commits)** — `git cherry -` marks; patches already in upstream by patch-id:
+
+- `bef298d97f` Telegram status sessions, `435136de8f` fast mode in status
+- `fdfc901e42` WeCom onboarding, `c9bb56998a` discord monitor narrowing
+- `e96087892e` lazy discord subagent hooks, `27184bcb5e` defer model pricing
+- `fb81fbe470` codex live discovery, `974e994193` updateLastRoute (#49515)
+- `6c8a7fd967` Azure OpenAI image (#70570), `d8df6d308f` thinking-medium default (#70601)
+- `744f6b3f6d`, `00ae0db05f`, `dcc406a05c`, `959622f8a4`, `ed263dd564` Discord smoke
+- `ccac4db2d5`, `73f9cc262e`, `98f5cd4a62` telegram forum cache
+- `3ae78c3055` (#70562), `ec925a0a57` Azure OpenAI image docs
+- `8fdec301a9` wecom blurb, `71b787387d` release notes policy
+
+`git rebase` auto-drops these because their patches become empty when replayed on cbcfdf62.
+
+**PICK-but-may-empty (7 commits)** — `git cherry +` marked but subjects suggest upstream has equivalent. Conservative call: PICK and let rebase auto-drop if empty. (gpt lane drops these explicitly per its journal — that's the divergence.)
+
+- `aef4fc9178` test(docker) e2e temp logs portable
+- `e515ea1f31` test(gateway) docker harness probes
+- `7e5f67c6a2` fix(sessions) preserve route updates during maintenance
+- `aa1908bf38` test docker live backend probes
+- `dfcce38a36` fix(qa) timestamp telegram update batches
+- `7ee46a3ab9` fix runner label /status (#70595)
+- `00bd2cf7a3` fix allow installed plugins through allowlist
+
+**PICK continuation feature (16 commits)** — the meat of what we're preserving:
+
+- `198758e66b` feat(continuation): core implementation
+- `cf2cecf979` docs(continuation): RFC continue-work-signal-v2
+- `4cab9cf2cd` test(continuation): coverage
+- `2b57a3bd3f` chore(continuation): generated baselines + i18n + swift + gitignore
+- `b2b2616f64` chore: remove spurious note.txt from cherry-pick
+- `827d3e9150` chore: regenerate config + plugin-sdk baselines
+- `0dd5d05426` fix(continuation): purge generation-guard per RFC 2026-04-15 (#299)
+- `9c6a8bc6ba` docs(continuation): absorb Trigger F into RFC §4.1
+- `e4d971bf13` fix(continuation): pre-merge minors from 2026-04-23 review fleet
+- `74aa14f173` fix(continuation): plumb provider+model into volitional compaction (#191)
+- `5469b3b3e5` docs(continuation): annotate band-dedup equivalent-idiom
+- `1640105a62` docs(continuation): fix Swim 7 evidence links
+- `c825009e9b` fix(continuation): gate continue_delegate on drain
+- `9f00132dd6` fix(continuation): default-allow continue_delegate
+- `788b0abe1d` test(continuation): drainsContinuationDelegateQueue truth-table
+- `140f74956d` fix(types): tighten continuationTriggerOverride
+
+**PICK journal (3 commits — savegame)**:
+
+- `53f6d3edfc` seed journal, `c063a394dd` §1, `b59c88814a` §2+§3
+
+**FOLD: none.** I considered folding `b2b2616f64` (note.txt cleanup) into `198758e66b` (the core impl that left the artifact), but per #326 the candidate branch IS the savegame and rewriting non-adjacent history before push violates the no-rewrite rule.
+
+### Diff vs gpt lane (peeked at gpt journal AFTER deriving mine)
+
+- Same: 4 DROP-release-prep, 22 DROP-already-upstream-via-`git-cherry-`, 16 PICK continuation
+- **Differs:** the 7 `+`-marked-but-subject-equivalent commits. **gpt drops them explicitly; claude PICKS them and lets `git rebase` auto-drop empties.** Two valid approaches; mine preserves history if any of the 7 has a non-trivial diff vs upstream's equivalent.
+
+### Conflict resolution heuristic (per workorder §4)
+
+- Release-prep + version files (`package.json`, `apps/*/build.gradle*`, `apps/*/Info.plist`, `appcast.xml`): `git rebase --skip` for the 4 release-prep commits entirely — newer upstream wins by definition.
+- Continuation feature surface (`src/auto-reply/continuation*`, `src/auto-reply/reply/context-pressure*`, `src/auto-reply/reply/continuation*`, `src/agents/tools/{request-compaction,continue-*}*`, `docs/design/continue-*`): feature wins.
+- Generated baselines (`src/config/schema.base.generated.ts`, `docs/.generated/*.sha256`): take ours during rebase, regenerate fresh after via `pnpm config:docs:gen` + `pnpm plugin-sdk:api:gen`.
+
+### Execution
+
+Using non-interactive `git rebase cbcfdf62` rather than `-i`, because:
+
+1. The DROP-already-upstream-via-cherry commits auto-drop on empty replay — no todo-edit needed
+2. The 4 DROP-release-prep commits surface as conflicts, resolved via `git rebase --skip`
+3. PICK commits replay normally
+4. Cleaner audit trail than a hand-baked todo
+
+Proceeding to execute.
 
 ## §5 — push savegame BEFORE any squash
 
@@ -211,6 +295,7 @@ checkpoints pushed:
 - 2026-04-25T22:51:00+00:00 §1 read-complete (RFC walked, surface mapped)
 - 2026-04-25T23:05:00+00:00 §2 code-walk-noted (production surface, RFC/code drift, upstream-diff shape)
 - 2026-04-25T23:08:00+00:00 §3 tests-walk-noted (11 core + 27 heartbeat, scoped verification plan)
+- 2026-04-25T23:16:00+00:00 §4 classification-locked (4 DROP-release / 22 DROP-cherry / 7 PICK-may-empty / 16 PICK-feature / 3 PICK-journal)
 
 ## §8 — declare done
 
