@@ -118,9 +118,17 @@ Execution plan:
 - Conflict heuristic: release/version files take target; continuation files take feature intent; generated config/docs baselines resolved minimally and regenerated after rebase with `pnpm config:docs:gen` and `pnpm plugin-sdk:api:gen`.
 - Post-rebase: regenerate baselines, commit changed `.sha256` files separately if they change, push candidate branch as the post-rebase savegame, then run §6 gates in order.
 
+2026-04-25T23:05:00+00:00 — rebase completed and baselines regenerated.
+
+- Rebase execution note: first automated todo rewrite missed the embedded drop list, so Git stopped on already-upstream `bef298d97f` as an empty commit. I corrected the remaining todo with explicit `drop` lines and skipped the empty already-upstream commit; no history reset/abort.
+- Conflict set resolved at `198758e66b` (`feat(continuation): core implementation — context-pressure, request-compaction, post-compaction relay`): merged continuation trigger/delegate fields into upstream gateway ingress and subagent announce delivery, kept upstream restart/failed-terminal/thread fallback behavior, preserved lazy runtime seams (`pi-embedded.runtime.js`, `subagent-registry-spawn-runtime.js`), and kept continuation chain accounting for silent/skip replies.
+- Generated baseline conflict: `827d3e9150` was a stale baseline-only regen commit. Per workorder heuristic, I skipped it instead of hand-resolving `.sha256` conflicts and regenerated fresh on the rebased tree.
+- Baselines regenerated with `pnpm config:docs:gen` and `pnpm plugin-sdk:api:gen`, then committed as separate hash-file commits: `33de3540e1` config baseline and `8c5d0d0e40` plugin SDK API baseline.
+- Rebased HEAD before post-rebase savegame push: `8c5d0d0e406e`.
+
 ## §5 — push savegame BEFORE any squash
 
-(pending — first push happens after this seed commit)
+(pending — post-rebase savegame push follows this checkpoint)
 
 ## §6 — verification
 
@@ -131,6 +139,7 @@ Execution plan:
 checkpoints pushed:
 
 - 2026-04-25T22:37:07+00:00 seed journal + §0 acked
+- 2026-04-25T23:05:00+00:00 §4 rebase completed; generated baselines regenerated and committed separately
 
 ## §8 — declare done
 
