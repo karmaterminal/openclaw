@@ -285,7 +285,111 @@ Proceeding to execute.
 
 ## §6 — verification
 
-(pending)
+### Gate 1: `pnpm tsgo` — **FAILED**
+
+Substantial type errors. Categorized:
+
+**Category A: third-party `@mariozechner/pi-ai` shape drift** (load-bearing for the cohort)
+
+- `SupportedOpenAICompatFields` now requires `supportsLongCacheRetention` on every model `compat` block.
+- Errors at: `src/config/types.models.ts:25`, `src/config/types.models.ts:44`, `src/config/zod-schema.core.ts:226`, `src/commands/onboard-custom-config.ts:541`, `src/plugin-sdk/provider-catalog-shared.ts:116`, `src/plugin-sdk/provider-tools.ts:76`, `src/agents/openai-transport-stream.ts:1552–1561`.
+- `AnthropicMessagesCompat` no longer exported from `@mariozechner/pi-ai`.
+- These are dependency-shape drift; not feature-side.
+
+**Category B: missing dep**
+
+- `@vincentkoc/qrcode-tui` not found at `src/media/qr-runtime.ts:1` and `:5`. Either upstream added a dep we don't have in `package.json`, or upstream renamed/refactored the module.
+
+**Category C: feature-adjacent surface**
+
+- `src/auto-reply/reply/get-reply-run.ts:838` — `transcriptCommandBody` doesn't exist on the type. Likely from the agent-runner rewrite (see §6a).
+
+### Gate 1 DECISION: **STOP per workorder §6** ("if any gate fails: stop, write failure shape, do NOT proceed").
+
+Did NOT run gate 2 (`pnpm check`), gate 3 (scoped tests), gate 4 (`pnpm build`), gate 5 (heartbeat scope).
+
+## §6a — architectural alignment review (per figs's directive 2026-04-25 mid-§6)
+
+> Figs flagged: "review phase should lean hard on 'are we aligned with architectures for the control of the turn cycle, TaskFlow, sub-agent dispatch, and compaction mechanics'"
+
+`git diff --stat 140f74956d..cbcfdf62` on the load-bearing boundaries surfaces a much larger finding than tsgo's symptom set:
+
+### A. Turn-cycle control / agent-runner — **major rewrite upstream**
+
+```
+src/auto-reply/reply/agent-runner.ts             | 1477 +++---------------------    -1207 net
+src/auto-reply/reply/agent-runner-execution.ts   |  276 +++--                          -8 net
+src/auto-reply/reply/followup-runner.ts          |  134 ++-                            +60 net
+src/agents/pi-embedded-runner/run.ts             |  258 +++--                          +60 net
+src/agents/pi-embedded-runner/compact.ts         |  145 ++-                          +60 net
+```
+
+Upstream **deleted ~1200 net lines of `agent-runner.ts`** and **rewrote the per-turn execution flow**. Our continuation-runtime code (pre-run pressure check, post-response delegate consumption, scheduleContinuationTurn injection) lived inside the OLD `agent-runner.ts` shape.
+
+When I resolved the §4 conflict at `198758e66b` with `git checkout --theirs`, I **preserved the OLD agent-runner shape** (because in rebase context "theirs" = the commit being applied = our feature). That means our agent-runner.ts is **architecturally pre-rewrite**; the new upstream simplification is gone from this lane's tree.
+
+Visible symptom: `get-reply-run.ts:838 transcriptCommandBody` type error — that field belongs to a type contract that changed in the agent-runner rewrite.
+
+### B. Sub-agent dispatch — **major rewrite upstream**
+
+```
+src/agents/subagent-announce.ts                  | 518 ++++------------------------    -418 net
+src/agents/subagent-spawn.ts                     | 267 ++++++++++++++++++---           +120 net
+```
+
+`subagent-announce.ts` lost ~418 net lines upstream — major simplification. Our announce-boundary delegate consumption (the `silentAnnounce` + `wakeOnReturn` plumbing) lived here. Same `--theirs` resolution preserved the OLD shape; upstream's simplified path is missing.
+
+`subagent-spawn.ts` grew +120 net. Likely absorbed announce responsibilities. Our continuation chain-tracking (chain-hop labels, accepted-hop counter, parent rerouting) needs to be re-derived against this new spawn surface.
+
+### C. Compaction mechanics + persistence — **NEW upstream surface, our integration absent**
+
+```
+src/gateway/server-restart-sentinel.ts            | 286 +++++++++++++++-------
+src/infra/session-delivery-queue.ts               |  29 (NEW)
+src/infra/session-delivery-queue-recovery.ts      | 271 (NEW)
+src/infra/session-delivery-queue-storage.ts       | 255 (NEW)
+src/infra/session-delivery-queue.recovery.test.ts | 151 (NEW)
+src/infra/session-delivery-queue.storage.test.ts  |  95 (NEW)
+src/infra/system-events.ts                        |  33 ---       (refactored away)
+```
+
+Upstream's #70780 introduced an entire **session-delivery-queue subsystem** with SQLite-backed persistence, recovery, and storage layers (~800 LOC of new infra). The rebase pulled these in (they're new upstream-only files), but **our continuation post-compaction delegate release is not yet wired into them**.
+
+The interaction figs flagged is real: when `request_compaction()` enqueues compaction, the post-compaction lifecycle releases staged delegates via the OLD `enqueueSystemEvent` path. Upstream now expects routing through the new `enqueueSessionDelivery` queue instead. The rebased tree has BOTH paths live — ours via system-events, upstream's via the queue — so post-compaction delegates may double-deliver or lose ordering against restart-sentinel handoffs.
+
+### D. Heartbeat surface — **major new code in attempt.ts**
+
+```
+src/agents/pi-embedded-runner/run/attempt.ts | 506 ++++++++++++++++++++++-----   +314 net
+```
+
+`+314 net` lines in `attempt.ts`. This is where #69079/#69278 heartbeat-prompt suppression fix lives, plus presumably the upstream Trigger F overflow-recovery emit at line 1085. Our local `shouldInjectHeartbeatPrompt` (per RFC §6.1 line 822) is at ~`attempt.ts:860`. The rebase pulled in upstream's version (since this commit was DROP-already-upstream'd earlier in cherry); we did not preserve our local `shouldInjectHeartbeatPrompt` — which is correct, upstream's fixed version supersedes ours. **No action needed here.**
+
+### E. TaskFlow surface — **stable**
+
+```
+$ git diff --stat 140f74956d..cbcfdf62 -- src/tasks/
+(empty — no upstream changes to TaskFlow runtime)
+```
+
+Our `continuation-delegate-store-taskflow.ts` integration with `createManagedTaskFlow` / `controllerId="core/continuation-delegate"` is undisturbed. **Aligned with TaskFlow architecture**; no rework needed on this axis.
+
+### Architectural verdict
+
+Of the four axes figs named:
+
+| axis                 | aligned?    | note                                                                                                                                                |
+| -------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Turn-cycle control   | **NO**      | agent-runner.ts kept our pre-rewrite shape; upstream's simplification missing                                                                       |
+| TaskFlow             | **YES**     | substrate stable, integration undisturbed                                                                                                           |
+| Sub-agent dispatch   | **NO**      | subagent-announce.ts kept our pre-rewrite shape; upstream's simplification missing                                                                  |
+| Compaction mechanics | **PARTIAL** | request_compaction() guards + lifecycle hooks fine, but post-compaction delegate release not yet wired through new session-delivery-queue subsystem |
+
+**Bottom line:** the mechanical rebase landed, but the result is **architecturally misaligned on 2 of 4 axes** because the workorder's "feature wins → take theirs" heuristic was wrong for files that upstream rewrote (rather than just patched). The right resolution for those files is **manual three-way merge**: take upstream's new shape, then re-derive our continuation-runtime hooks on top of it.
+
+This is the hard work the cohort still needs to do post-#325. The mechanical rebase was a necessary first step; it surfaces exactly which files need three-way reconciliation.
+
+§6 done — proceeding to §8 declare-done with **needs-rework** recommendation.
 
 ## §7 — push cadence
 
@@ -299,4 +403,72 @@ checkpoints pushed:
 
 ## §8 — declare done
 
-(pending)
+### Final HEAD
+
+`2fb731ce3c chore(continuation): regen plugin-sdk-api baseline on cbcfdf62 base`
+On origin: `frond-scribe/20260424/candidate-claude` @ `2fb731ce3c`. **Frozen** (no force-push, no delete) per #326.
+
+### Replay summary
+
+21 commits on `cbcfdf62`:
+
+- 16 PICK continuation feature commits (replayed cleanly except `198758e66b` core impl which needed 9-file feature-side resolution)
+- 3 lane journal commits
+- 2 baseline regen commits (`bd9901f8ec`, `2fb731ce3c`)
+
+### Drops (33 from the 49-commit silas-feature replay set)
+
+- 22 DROP-already-upstream via `git cherry -` (auto-skipped during replay)
+- 4 DROP-release-prep: `579f00313b`, `0ec75a6ab4`, `5cd79da5b1`, `945a1922cb`
+- 4 DROP-may-empty hit conflicts and skipped: `e515ea1f31` (gateway docker), `aa1908bf38` (docker live backend), `7ee46a3ab9` (status runner label), `00bd2cf7a3` (allowlist installed plugins). These appeared `+`-marked in git cherry but had subject-equivalent upstream commits — same outcome the gpt lane reached by classification rather than conflict.
+- 1 DROP-stale-baseline-regen: `827d3e9150` (baselines regenerated fresh on cbcfdf62 base instead)
+- 1 auto-dropped on empty replay: `dfcce38a36` (qa timestamp telegram batches)
+- 1 auto-dropped: `b2b2616f64` (note.txt cleanup) — the file it removes wasn't present after rebase, so nothing to do
+
+### Gate results
+
+| gate                 | result    | shape                                                                                                                                                                                               |
+| -------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §6.1 `pnpm tsgo`     | ❌ FAILED | dep-shape drift (`@mariozechner/pi-ai` requires `supportsLongCacheRetention`) + missing dep (`@vincentkoc/qrcode-tui`) + feature-adjacent type error (`get-reply-run.ts:838 transcriptCommandBody`) |
+| §6.2 `pnpm check`    | not run   | per workorder, stopped after first gate fail                                                                                                                                                        |
+| §6.3 scoped tests    | not run   | same                                                                                                                                                                                                |
+| §6.4 `pnpm build`    | not run   | same                                                                                                                                                                                                |
+| §6.5 heartbeat scope | not run   | same                                                                                                                                                                                                |
+
+### Diffs vs gpt lane (peeked AFTER my own classification was locked)
+
+| dimension                                       | claude lane                                                                            | gpt lane                          |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------- |
+| DROP-release-prep                               | 4 (same)                                                                               | 4 (same)                          |
+| DROP-already-upstream via cherry `-`            | 22 (same)                                                                              | 22 (same)                         |
+| Handling of 7 `+`-marked-but-equivalent commits | PICK them, let rebase auto-drop empties                                                | DROP explicitly via subject-match |
+| Outcome on those 7                              | 2 applied (`7e5f67c6a2`, `aef4fc9178`); 4 skipped on conflict; 1 auto-dropped on empty | All 7 dropped pre-rebase          |
+| Result equivalence                              | Same final tree-content for the 7 either way                                           | Same                              |
+
+The two approaches converged on the same content. gpt's pre-classify-then-drop is cleaner; claude's let-the-tool-handle-it is more conservative. **No meaningful divergence in the artifact.**
+
+### Recommendation: **needs-rework**
+
+The mechanical rebase succeeded. The savegame is on origin. But the §6 architectural review surfaces **2 of 4 axes are misaligned** (turn-cycle control + sub-agent dispatch). These cannot be fixed by re-running the rebase with different conflict heuristics — they require **three-way reconciliation** with the upstream rewrite of `agent-runner.ts` and `subagent-announce.ts`, then re-deriving the continuation-runtime hooks on top of upstream's simplified shape.
+
+This is the load-bearing finding from the lane: **the workorder's "feature wins → take theirs" heuristic is wrong for files where upstream did a structural rewrite, not just a patch.** Both lanes (claude and presumably gpt, depending on how they resolved the same conflicts) likely have this same architectural debt.
+
+### What's superior on this candidate vs Cael's lineage
+
+Don't yet know — Cael's `/tmp/oc-325-rebase` plan is on his prince host, not visible from ronan. The diff vs Cael will become tractable once he produces a head from #325 phase-2.
+
+What this candidate _provably_ surfaces over Cael's lineage:
+
+1. **The "feature wins → take theirs" heuristic is incomplete.** Cael's plan uses the same heuristic per #325 phase-3 docs; this candidate is empirical evidence that it produces architecturally-misaligned output.
+2. **The rebase target boundary needs to be defined more precisely.** "Up onto cbcfdf62" mechanically works; "up onto cbcfdf62 _while preserving alignment with upstream's agent-runner rewrite_" is a different and harder operation.
+3. **Three-way merge tooling (`git merge-file --diff3` or interactive `git mergetool`) probably needed** for `agent-runner.ts` and `subagent-announce.ts` specifically. The two-way `--theirs`/`--ours` choice that auto-rebase offers isn't sufficient.
+
+### Comparison axis suggestion for prince review
+
+Compare claude lane (this) vs gpt lane (#328) on:
+
+- Did gpt's pre-classify-then-drop on the 7 `+`-marked-equivalent commits produce a cleaner history? (probably tie)
+- Did either lane handle the agent-runner.ts conflict differently? (need to byte-walk gpt's tree at HEAD to see if `--theirs` was also their resolution; if so, both are misaligned)
+- Did either lane spot the architectural-rewrite issue earlier and choose `--ours` instead for those files? (this is the interesting question)
+
+§8 done — savegame frozen at `2fb731ce3c`. Issue #327 stays at `in_coding_agent` per workorder §7a (gate fail = no status flip).
