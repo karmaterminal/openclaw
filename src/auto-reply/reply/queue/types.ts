@@ -86,6 +86,7 @@ export type FollowupRun = {
     enforceFinalTag?: boolean;
     skipProviderRuntimeHints?: boolean;
     silentExpected?: boolean;
+    drainsContinuationDelegateQueue?: boolean;
   };
 };
 
