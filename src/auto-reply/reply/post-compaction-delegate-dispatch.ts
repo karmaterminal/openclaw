@@ -447,7 +447,7 @@ export async function deliverQueuedPostCompactionDelegate(
   );
   await persistPostCompactionDelegateChainState({
     count: nextCompactionChainCount,
-    log: deps.log,
+    log: (message) => deps.log(message),
     sessionEntry,
     sessionKey: params.entry.sessionKey,
     sessionStore,
