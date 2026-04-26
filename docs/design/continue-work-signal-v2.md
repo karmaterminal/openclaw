@@ -149,7 +149,13 @@ If `delaySeconds` is 30 and the current turn is still active, the 30-second time
 
 `continue_delegate()` is the delegated continuation primitive.
 
-**Purpose:** dispatch a sub-agent with typed task, mode, and delay parameters, then route its completion back into the parent continuation chain. In the current implementation, delegate results return to their immediate caller (the session that dispatched them). However, delegates using `normal` mode announce their results to the channel, where the main session can observe them directly regardless of chain depth. For `silent` and `silent-wake` modes, results propagate up through the chain; direct root-return from arbitrary depth is a natural extension of the delivery architecture but is not yet exposed as a distinct mode.
+**Purpose:** dispatch a sub-agent with typed task, mode, and delay parameters, then route its completion back into the parent continuation chain.
+
+The shipped runtime has one canonical completion recipient per delegate. By default, that recipient is the session that dispatched the delegate. Delegates using `normal` mode also announce their result to the channel, where the main session can observe it directly regardless of chain depth. For `silent` and `silent-wake` modes, the result is routed through the continuation chain without visible channel echo.
+
+The descriptor surface also includes `targetSessionKey?: string` as the explicit local-recipient seam. Current execution still rejects a provided `targetSessionKey` as descriptor-only, so this RFC treats explicit cross-session return as an exposed design seam whose runtime wiring is pending, not as shipped behavior.
+
+The next shape is multi-recipient delegate return, tracked in #355: `targetSessionKeys: string[]`. Its goal is "generate once, deliver byte-identically to many" for cases such as "return to the parent and announce to an operations session." This is distinct from multi-delegate fan-out. Multi-delegate fan-out runs N delegates that may produce N different artifacts; multi-recipient return runs one delegate and delivers the same completion envelope to N recipients. Each recipient should resolve independently through the `FallbackResolver` policy shape (`"follow" | "echo" | "drop"` or a resolver function), so one unavailable receiver does not implicitly drop the whole fan-out. Aspect multiplexing, per-receiver transformation, and backpressure-aware multicast remain future surfaces outside this RFC.
 
 Compared with bracket syntax, `continue_delegate()` adds three core properties:
 
@@ -312,7 +318,7 @@ The gateway then:
 4. Creates a delayed reservation with task, planned hop, and fire time.
 5. Arms a timer for the configured delay.
 
-By default that delayed scheduling is process-scoped. A gateway restart clears the in-memory timer and reservation. When `taskFlowDelegates: true`, delegate queue state is backed by Task Flow in SQLite, so queued work survives restart even though a specific in-memory timer does not.
+The concrete timer handle is process-scoped, so a gateway restart clears that handle. The recoverable delegate record is durable: pending delegate state is backed by Task Flow in SQLite, and post-compaction delegate delivery is carried by `session-delivery-queue`. A restart may change the exact wake timing, but it should not erase the queued work.
 
 #### Gap window
 
@@ -357,11 +363,11 @@ Session metadata tracks continuation state through:
 - `continuationChainStartedAt`
 - `continuationChainTokens`
 
-Delayed delegates reserve future hop labels in a separate module-level reservation store. Those reservations are process-scoped and remain distinct from the persisted accepted-hop counter.
+Delayed delegates reserve future hop labels before spawn and persist accepted hop state only after acceptance. This keeps planned work distinct from accepted chain state and prevents retries or pre-spawn failures from consuming chain budget.
 
 For bracket-parsed chain hops, the hop label is encoded directly in the task prefix as `[continuation:chain-hop:N]`. This is necessary because inbound messages reset some session-level counters between hops.
 
-Budget inheritance follows four rules:
+Budget inheritance follows three rules:
 
 1. **Chain index:** child hop labels advance within the configured maximum.
 2. **Token budget:** `continue_work()` chains and tool-path delegate chains accumulate against `costCapTokens`; bracket-chain cost accumulation exists but remains less reliable at the announce boundary because child token data may not yet be written.
@@ -421,9 +427,11 @@ This turns `sessions_spawn` from “start a task” into “start a task with sc
 
 ### 3.6 Persistence and restart-survival
 
-The substrate underneath continuation primitives changed in v2026.4.24 from in-process `enqueueSystemEvent` state, which was lost on gateway restart, to `session-delivery-queue`: a **cross-session addressable enrichment substrate** with filesystem-backed atomic writes, sha256 idempotency, bounded exponential-backoff retry, and gateway-restart survival. Restart survival is one capability, not the defining one. The queue accepts payloads addressed by `sessionKey` against any session in the gateway namespace, making it the load-bearing transport for deep-child to root-session enrichment, fan-out multi-target reporting, and silent-wake without a channel-message round trip.
+The substrate underneath continuation primitives changed in v2026.4.24 from in-process `enqueueSystemEvent` state, which was lost on gateway restart, to `session-delivery-queue`: a **cross-session addressable enrichment substrate** with filesystem-backed atomic writes, sha256 idempotency, bounded exponential-backoff retry (5s, 25s, 2m, 10m, cap 5), and gateway-restart survival. Restart survival is one capability, not the defining one. The queue accepts payloads addressed by `sessionKey` against any session in the gateway namespace, making it the load-bearing transport for deep-child to root-session enrichment, fan-out multi-target reporting, and silent-wake without a channel-message round trip.
 
 The change does not alter the agent-facing tool surface. It changes the durability contract and the addressability surface underneath.
+
+The load-bearing claim is that post-compaction survival becomes a substrate property, not an agent property. Agents express intent; the tool selects the queue or lifecycle path; the substrate supplies idempotency, retry, atomic persistence, and restart recovery.
 
 **Substrate symbols:**
 
@@ -670,8 +678,6 @@ agents:
       maxDelayMs: 300000
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
-      # generationGuardTolerance removed — delayed work should not be cancelled by channel noise
-      # taskFlowDelegates is always on — delegates must survive restart, no config option
 ```
 
 Operational notes:
@@ -680,6 +686,7 @@ Operational notes:
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
 - `generationGuardTolerance` has been removed from the configuration surface. Delayed work should not be cancelled by unrelated channel noise. See the design decision note in §3.2.
+- `taskFlowDelegates` is no longer a user-facing switch; delegate durability is mandatory.
 - all runtime values are hot-reloadable; changes take effect at the next enforcement point.
 
 ### 5.2 Operator profiles
@@ -694,15 +701,12 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 5
       costCapTokens: 500000
-      # generationGuardTolerance removed — see §3.2 design note
       contextPressureThreshold: 0.8
       minDelayMs: 5000
       maxDelayMs: 300000
-      contextPressureThreshold: 0.8
-      taskFlowDelegates: true
 ```
 
-This defaults to opt-out behavior with strict interruption semantics, and a conservative per-chain budget.
+This defaults to opt-in behavior with strict interruption semantics and a conservative per-chain budget.
 
 #### Fleet multi-agent profile
 
@@ -714,12 +718,10 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 20
       costCapTokens: 1000000
-      # generationGuardTolerance removed — see §3.2 design note
       defaultDelayMs: 15000
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
-      taskFlowDelegates: true
 ```
 
 This profile is suitable for multiple persistent agents in shared channels. In that environment:
@@ -776,17 +778,18 @@ Task Flow therefore aligns continuation delegates with the platform’s broader 
 
 The implementation emits stable log anchors for the major continuation lifecycle events.
 
-| Log prefix                         | Emitted by                  | Meaning                                                              |
-| ---------------------------------- | --------------------------- | -------------------------------------------------------------------- |
-| `[context-pressure:fire]`          | `context-pressure.ts`       | pressure band crossed and event generated                            |
-| `[context-pressure:noop]`          | `context-pressure.ts`       | pre-condition or guard suppressed the check (debug-level, see below) |
-| `[system:context-pressure]`        | system-event queue          | event included in the next system prompt                             |
-| `[continue_delegate:enqueue]`      | `continue-delegate-tool.ts` | tool call enqueued delegate work                                     |
-| `[continuation:delegate-pending]`  | `agent-runner.ts`           | delegate chain state registered                                      |
-| `[continuation:delegate-spawned]`  | `agent-runner.ts`           | child dispatched after delay or immediate acceptance                 |
-| `[continuation/silent-wake]`       | `subagent-announce.ts`      | silent return will wake the parent                                   |
-| `[continuation:enrichment-return]` | `subagent-announce.ts`      | silent return injected as system event                               |
-| `requestHeartbeatNow`              | heartbeat wake path         | generation cycle requested after a silent-wake return                |
+| Log prefix                                        | Emitted by                           | Meaning                                                              |
+| ------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------- |
+| `[context-pressure:fire]`                         | `context-pressure.ts`                | pressure band crossed and event generated                            |
+| `[context-pressure:noop]`                         | `context-pressure.ts`                | pre-condition or guard suppressed the check (debug-level, see below) |
+| `[system:context-pressure]`                       | system-event queue                   | event included in the next system prompt                             |
+| `[continue_delegate:enqueue]`                     | `continue-delegate-tool.ts`          | tool call enqueued delegate work                                     |
+| `[continuation:delegate-pending]`                 | `agent-runner.ts`                    | delegate chain state registered                                      |
+| `[continuation:delegate-spawned]`                 | `agent-runner.ts`                    | child dispatched after delay or immediate acceptance                 |
+| `[continuation/silent-wake]`                      | `subagent-announce.ts`               | silent return will wake the parent                                   |
+| `[continuation:enrichment-return]`                | `subagent-announce.ts`               | silent return injected as system event                               |
+| `[session-delivery-queue:retry-budget-exhausted]` | `session-delivery-queue-recovery.ts` | queued post-compaction delegate hit retry cap before accepted spawn  |
+| `requestHeartbeatNow`                             | heartbeat wake path                  | generation cycle requested after a silent-wake return                |
 
 These anchors make the full pipeline grepable end to end.
 
@@ -1156,14 +1159,15 @@ The deferred test (`10-H1`) concerned fallback behavior under `tools.deny`; the 
 
 This RFC documents a continuation system that changes OpenClaw sessions from purely reactive units into bounded, observable, agent-directed processes.
 
-The implemented capability consists of six parts:
+The implemented capability consists of seven parts:
 
 1. `continue_work()` for self-elected same-session continuation,
 2. `continue_delegate()` for delegated continuation with typed modes,
 3. context-pressure events for pre-compaction awareness,
 4. post-compaction delegate release for lifecycle-aware recovery—pre-compaction work staged electively and released directly into the post-compaction lifecycle event,
 5. `request_compaction()` for volitional compaction,
-6. tool-primary design with response-token fallback.
+6. tool-primary design with response-token fallback,
+7. a durable `session-delivery-queue` substrate that makes idempotency, retry, restart recovery, and cross-session addressability substrate responsibilities rather than agent responsibilities.
 
 The feature ships disabled by default, respects operator guardrails, and integrates with the existing compaction and sub-agent machinery rather than replacing it.
 
@@ -1174,6 +1178,8 @@ Several future directions are now technically credible because the continuation 
 - richer post-compaction recovery strategies,
 - stronger integrity guarantees on delegate payloads,
 - more durable background-work management through Task Flow,
+- explicit cross-session return wiring for `targetSessionKey`,
+- multi-recipient delegate return via `targetSessionKeys: string[]`, delivering one byte-identical completion envelope to multiple local recipients with per-recipient fallback resolution,
 - inter-session enrichment between persistent OpenClaw instances, including multi-channel presence where a single instance spans several channels,
 - compaction-time preservation strategies that better retain working-state shape rather than only summary facts.
 
@@ -1299,7 +1305,7 @@ The continuation system inherits three broader limitations from persistent deplo
 
 1. **Self-bound context occlusion.** Too many recurring lifecycle messages can displace the agent's useful conversational context.
 2. **Channel context poisoning.** In open-listen multi-agent channels, one agent's passive status messages can influence the rest of the fleet.
-3. **Volatile delayed-work state.** Without Task Flow backing, delayed timers and reservations remain process-scoped.
+3. **Timer-handle volatility.** Task Flow and `session-delivery-queue` provide durable records, but concrete in-process timer handles can still be lost on restart; recovery may preserve the work while changing exact wake timing.
 
 These are not correctness bugs in continuation itself, but they materially shape safe deployment and future design work.
 

@@ -28,3 +28,10 @@
 
 - Verified `targetSessionKey` state before narrative edit: `src/auto-reply/continuation-delegate.types.ts:11` and `src/agents/tools/continue-delegate-tool.ts:40` expose the descriptor/type, but `src/agents/tools/continue-delegate-tool.ts:91-94` still throws `targetSessionKey is descriptor-only in v2.5; runtime in #332`.
 - Therefore the RFC should not claim single-recipient explicit `targetSessionKey` runtime support is shipped on canonical2/PR #354. Honest wording: default single-recipient return-to-caller is shipped; explicit cross-session `targetSessionKey` is descriptor-shipped with runtime wiring pending; multi-recipient `targetSessionKeys: string[]` is #355 design-locked/plumbing-active future shape.
+
+## §2c narrative/current capability pass - 2026-04-26T23:03:14+00:00
+
+- Reworked §2.3 to distinguish default single-recipient return-to-caller, descriptor-only explicit `targetSessionKey`, and #355 multi-recipient `targetSessionKeys: string[]` fanout with per-recipient fallback resolution.
+- Smoothed §3.2/§3.3 restart and chain-budget wording: timer handles are process-scoped, but recoverable records are durable; accepted hop state is persisted after accepted spawn.
+- Made §3.6's substrate claim explicit: post-compaction survival is a substrate property backed by idempotency, retry, atomic persistence, and restart recovery.
+- Added the retry-budget-exhausted anchor to §6.1, fixed the configuration examples by removing retired/duplicated keys, and updated §10/C.2 to reflect the durable substrate and remaining timer-handle volatility.
