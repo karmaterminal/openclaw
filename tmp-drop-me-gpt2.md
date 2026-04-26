@@ -130,6 +130,10 @@ Descriptor-test TBDs for §B-execute: extend `src/agents/tools/continuation-tool
 
 ## §5 — savegame push (copilot fills in)
 
+- §5 savegame push completed at `03ec29e4a29806309eb586ed127819a0a5a59b71`, then journal annotation continued by fast-forward only. The savegame stack at push time was 22 commits over `karmaterminal-2026.4.24-base`.
+- Original 49 replay commits: 34 dropped (4 release-prep, 1 generated-baseline/regenerate, 29 upstream-equivalent/already-upstream), 1 fixup folded, 14 continuation/doc/test/fix commits replayed. The branch also carries journal/plan/baseline-regeneration commits for cohort visibility.
+- Savegame discipline active from here forward: no force-push, no rewrite, no delete on `frond-scribe/20260424/candidate-gpt2`.
+
 ## §6 — verification (copilot fills in)
 
 ## §B-execute — Surfaces 1+2 descriptor edits (copilot fills in)
