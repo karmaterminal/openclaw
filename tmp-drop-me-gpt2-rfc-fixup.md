@@ -11,3 +11,8 @@
 - Source read: #335 tracker/comments, #338 body/comment plus `docs/design/continuation-integration.md` from PR #338, #355 body, PRs #342/#345/#346/#347/#348/#350/#351/#354, local `src/infra/substrate-capability-registry.ts`, and PR #354 head files for queue-drain chain-budget extraction.
 - PR pins recorded: #342 merge `cc08bbc9fef`, #345 merge `8338d37bda9`, #346 merge `c96e2d7955`, #347 merge `96d1304d47`, #348 merge `b0bc4b4ee2`, #350 merge `25ff4f0138`, #351 merge `b04484465a`; #354 open at head `f883d87fe3`.
 - Editing plan: (1) regenerate ToC from actual `##`/`###` headings; (2) strip dev-state labels, cohort nicknames, Discord/process cite-pins, and named fleet/person markers while preserving technical decisions; (3) incorporate locked/current capability prose for idempotency B-shape, retry-cost/chain-budget-at-spawn, cleanup TTL/soft-cap, #347 registry/lint discipline, PR #354 queue-drain extraction, and #355 multi-recipient future shape; (4) final read/check for heading/ToC match, cite accuracy, and smooth upstream tone.
+
+## §2a ToC regeneration - 2026-04-26T23:00:19+00:00
+
+- Regenerated the visible ToC against the actual heading walk by adding missing entries for §3.6, §4.6, and §6.6.
+- No prose semantics changed in this checkpoint.
