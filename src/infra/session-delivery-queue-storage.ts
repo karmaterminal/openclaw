@@ -9,6 +9,23 @@ const QUEUE_DIRNAME = "session-delivery-queue";
 const FAILED_DIRNAME = "failed";
 const TMP_SWEEP_MAX_AGE_MS = 5_000;
 
+export const DEFAULT_FAILED_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+export const DEFAULT_QUEUE_DIR_MAX_FILES = 10_000;
+
+export class SessionDeliveryQueueOverflowError extends Error {
+  readonly kind = "session-delivery-queue-overflow" as const;
+  readonly count: number;
+  readonly maxFiles: number;
+  constructor(count: number, maxFiles: number) {
+    super(
+      `session-delivery-queue overflow: ${count} queued files at top level, soft-cap is ${maxFiles}`,
+    );
+    this.name = "SessionDeliveryQueueOverflowError";
+    this.count = count;
+    this.maxFiles = maxFiles;
+  }
+}
+
 export type SessionDeliveryContext = {
   channel?: string;
   to?: string;
@@ -158,9 +175,29 @@ export async function ensureSessionDeliveryQueueDir(stateDir?: string): Promise<
   return queueDir;
 }
 
+export async function countQueuedFiles(queueDir: string): Promise<number> {
+  let entries: string[];
+  try {
+    entries = await fs.promises.readdir(queueDir);
+  } catch (err) {
+    if (getErrnoCode(err) === "ENOENT") {
+      return 0;
+    }
+    throw err;
+  }
+  let count = 0;
+  for (const entry of entries) {
+    if (entry.endsWith(".json") || entry.endsWith(".tmp") || entry.endsWith(".delivered")) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 export async function enqueueSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   stateDir?: string,
+  opts?: { maxQueuedFiles?: number },
 ): Promise<string> {
   const queueDir = await ensureSessionDeliveryQueueDir(stateDir);
   const id = buildEntryId(params.idempotencyKey);
@@ -176,6 +213,17 @@ export async function enqueueSessionDelivery(
       if (getErrnoCode(err) !== "ENOENT") {
         throw err;
       }
+    }
+  }
+
+  const maxQueuedFiles = opts?.maxQueuedFiles ?? DEFAULT_QUEUE_DIR_MAX_FILES;
+  if (Number.isFinite(maxQueuedFiles) && maxQueuedFiles > 0) {
+    const count = await countQueuedFiles(queueDir);
+    if (count >= maxQueuedFiles) {
+      console.warn(
+        `[session-delivery-queue] enqueue rejected: ${count} queued files at top level, soft-cap is ${maxQueuedFiles}`,
+      );
+      throw new SessionDeliveryQueueOverflowError(count, maxQueuedFiles);
     }
   }
 
@@ -282,4 +330,50 @@ export async function moveSessionDeliveryToFailed(id: string, stateDir?: string)
   const failedDir = resolveFailedDir(stateDir);
   await fs.promises.mkdir(failedDir, { recursive: true, mode: 0o700 });
   await fs.promises.rename(path.join(queueDir, `${id}.json`), path.join(failedDir, `${id}.json`));
+}
+
+export async function pruneFailedOlderThan(
+  maxAgeMs: number,
+  now: number,
+  stateDir?: string,
+): Promise<{ scanned: number; removed: number }> {
+  const failedDir = resolveFailedDir(stateDir);
+  let entries: string[];
+  try {
+    entries = await fs.promises.readdir(failedDir);
+  } catch (err) {
+    if (getErrnoCode(err) === "ENOENT") {
+      return { scanned: 0, removed: 0 };
+    }
+    throw err;
+  }
+
+  let scanned = 0;
+  let removed = 0;
+  for (const entry of entries) {
+    const filePath = path.join(failedDir, entry);
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (!stat.isFile()) {
+        continue;
+      }
+      scanned += 1;
+      if (now - stat.mtimeMs > maxAgeMs) {
+        try {
+          await fs.promises.unlink(filePath);
+          removed += 1;
+        } catch (unlinkErr) {
+          if (getErrnoCode(unlinkErr) !== "ENOENT") {
+            throw unlinkErr;
+          }
+        }
+      }
+    } catch (err) {
+      if (getErrnoCode(err) === "ENOENT") {
+        continue;
+      }
+      throw err;
+    }
+  }
+  return { scanned, removed };
 }
