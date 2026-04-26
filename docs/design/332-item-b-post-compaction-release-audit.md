@@ -65,11 +65,26 @@ is bypassed at the release-dispatch step.
 ## What this audit does NOT do
 
 - Does not call (A)/(B)/(C) — those are post-audit coordination labels.
-- Does not foreclose substrate-extension future-work; if chain-budget
-  enforcement is lifted into queue-drain layer (substrate-side), the
-  bespoke justification dissolves and substrate-adoption becomes clean.
+- Does not foreclose substrate-extension future-work.
 - Does not enforce; per Insert 4 enforcement-note (open), this remains
   review-discipline-only at v2026.4.24.
+
+## Counterfactual: what would make substrate-adoption clean
+
+The bespoke justification dissolves IFF in-turn chain-budget enforcement
+lifts into the queue-drain layer (substrate-side). That is: if
+`deliverQueuedSessionDelivery` (or a sibling drainer) gains chain-budget
+awareness — checking `currentCompactionChainCount` against
+`maxCompactionChainLength` and `compactionBudget` at drain time, and
+reporting back to the originating session-state for re-staging on
+rejection — then the agent-runner could enqueue post-compaction releases
+instead of spawning them directly, and the named functional reason
+for bespoke evaporates.
+
+This is **future-mechanization seed**, not in scope for this audit. Filing
+it so the door stays legible: substrate-adoption is not blocked by the
+seam, only by where chain-budget enforcement currently lives. (Per 🌫
+at #342-thread.)
 
 ## Cross-refs
 
