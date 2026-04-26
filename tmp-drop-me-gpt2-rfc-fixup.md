@@ -50,5 +50,6 @@
 - `pnpm docs:check-links` passed: `checked_internal_links=3587`, `broken_links=0`.
 - ToC script passed: 72 headings matched.
 - Table sanity script passed.
-- `pnpm check:changed` passed; it expanded to all lanes because pre-existing `.agents/skills/...` surfaces are visible to the smart gate.
+- `pnpm check:changed` initially passed; it expanded to all lanes because pre-existing `.agents/skills/...` surfaces are visible to the smart gate.
+- Final exact-state rerun of `pnpm check:changed` re-ran docs gates successfully, then failed only in out-of-scope `extensions/amazon-bedrock/index.test.ts` cache-point tests during all-lanes execution; immediate targeted rerun `pnpm test extensions/amazon-bedrock/index.test.ts` passed all 22 tests.
 - `pnpm docs:check-links:anchors` could not be used as a clean gate: under the default Node 25 runtime Mintlify refuses to run; under temporary Node 22 the edited RFC parses cleanly, then the audit fails on unrelated existing docs `plugins/sdk-overview.md` and `tools/exec-approvals.md`.
