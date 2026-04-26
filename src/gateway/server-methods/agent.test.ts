@@ -1020,6 +1020,7 @@ describe("gateway agent handler", () => {
         context: {
           dedupe: new Map(),
           addChatRun: vi.fn(),
+          chatAbortControllers: new Map(),
           logGateway: { info: vi.fn(), error: vi.fn() },
           broadcastToConnIds,
           getSessionEventSubscriberConnIds: () => new Set(["conn-1"]),
@@ -1100,6 +1101,7 @@ describe("gateway agent handler", () => {
         context: {
           dedupe: new Map(),
           addChatRun: vi.fn(),
+          chatAbortControllers: new Map(),
           logGateway: { info: vi.fn(), error: vi.fn() },
           broadcastToConnIds,
           getSessionEventSubscriberConnIds: () => new Set(["conn-1"]),
