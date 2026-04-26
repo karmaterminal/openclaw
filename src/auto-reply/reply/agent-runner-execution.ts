@@ -936,8 +936,9 @@ export async function runAgentTurnWithFallback(params: {
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
         classifyResult: async ({ result, provider, model }) => {
+          const effectiveResult = isContinuationWrappedRunResult(result) ? result.result : result;
           const classification = outcomePlan.classifyRunResult({
-            result,
+            result: effectiveResult,
             provider,
             model,
             hasDirectlySentBlockReply: directlySentBlockKeys.size > 0,
