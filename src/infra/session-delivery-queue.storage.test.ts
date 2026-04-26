@@ -6,10 +6,14 @@ import { describe, expect, it, vi } from "vitest";
 import { withTempDir } from "../test-helpers/temp-dir.js";
 import {
   ackSessionDelivery,
+  countQueuedFiles,
   enqueueSessionDelivery,
   failSessionDelivery,
   loadPendingSessionDeliveries,
+  moveSessionDeliveryToFailed,
+  pruneFailedOlderThan,
   resolveSessionDeliveryQueueDir,
+  SessionDeliveryQueueOverflowError,
 } from "./session-delivery-queue.js";
 
 describe("session-delivery queue storage", () => {
@@ -247,6 +251,149 @@ describe("session-delivery queue storage", () => {
       await loadPendingSessionDeliveries(tempDir);
 
       expect(fs.existsSync(tmpPath)).toBe(true);
+    });
+  });
+
+  it("prunes failed/ records older than maxAgeMs and leaves fresh ones alone", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const queueDir = resolveSessionDeliveryQueueDir(tempDir);
+      const failedDir = path.join(queueDir, "failed");
+      fs.mkdirSync(failedDir, { recursive: true });
+
+      const now = 1_700_000_000_000;
+      const dayMs = 24 * 60 * 60 * 1000;
+      const fixtures: Array<{ name: string; ageDays: number }> = [
+        { name: "old-20d.json", ageDays: 20 },
+        { name: "mid-10d.json", ageDays: 10 },
+        { name: "fresh-1d.json", ageDays: 1 },
+      ];
+      for (const { name, ageDays } of fixtures) {
+        const filePath = path.join(failedDir, name);
+        fs.writeFileSync(filePath, "{}");
+        const at = new Date(now - ageDays * dayMs);
+        fs.utimesSync(filePath, at, at);
+      }
+
+      const summary = await pruneFailedOlderThan(14 * dayMs, now, tempDir);
+
+      expect(summary).toEqual({ scanned: 3, removed: 1 });
+      expect(fs.existsSync(path.join(failedDir, "old-20d.json"))).toBe(false);
+      expect(fs.existsSync(path.join(failedDir, "mid-10d.json"))).toBe(true);
+      expect(fs.existsSync(path.join(failedDir, "fresh-1d.json"))).toBe(true);
+    });
+  });
+
+  it("returns zero counts when failed/ subdir does not yet exist", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const summary = await pruneFailedOlderThan(1, Date.now(), tempDir);
+      expect(summary).toEqual({ scanned: 0, removed: 0 });
+    });
+  });
+
+  it("counts only top-level queue files and skips the failed/ subdir", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      for (let i = 0; i < 5; i += 1) {
+        await enqueueSessionDelivery(
+          {
+            kind: "agentTurn",
+            sessionKey: "agent:main:main",
+            message: `entry-${i}`,
+            messageId: `id-${i}`,
+          },
+          tempDir,
+        );
+      }
+
+      const queueDir = resolveSessionDeliveryQueueDir(tempDir);
+      expect(await countQueuedFiles(queueDir)).toBe(5);
+
+      const [firstId] = (await loadPendingSessionDeliveries(tempDir)).map((entry) => entry.id);
+      if (!firstId) {
+        throw new Error("expected at least one queued entry");
+      }
+      await moveSessionDeliveryToFailed(firstId, tempDir);
+
+      expect(await countQueuedFiles(queueDir)).toBe(4);
+    });
+  });
+
+  it("rejects enqueue when queueDir.maxFiles soft-cap is reached", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        await enqueueSessionDelivery(
+          {
+            kind: "systemEvent",
+            sessionKey: "agent:main:main",
+            text: "first",
+          },
+          tempDir,
+          { maxQueuedFiles: 2 },
+        );
+        await enqueueSessionDelivery(
+          {
+            kind: "systemEvent",
+            sessionKey: "agent:main:main",
+            text: "second",
+          },
+          tempDir,
+          { maxQueuedFiles: 2 },
+        );
+
+        await expect(
+          enqueueSessionDelivery(
+            {
+              kind: "systemEvent",
+              sessionKey: "agent:main:main",
+              text: "third",
+            },
+            tempDir,
+            { maxQueuedFiles: 2 },
+          ),
+        ).rejects.toMatchObject({
+          kind: "session-delivery-queue-overflow",
+          count: 2,
+          maxFiles: 2,
+        });
+
+        expect(warnSpy).toHaveBeenCalled();
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+  });
+
+  it("preserves the typed overflow error class for caller branching", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        await enqueueSessionDelivery(
+          {
+            kind: "systemEvent",
+            sessionKey: "agent:main:main",
+            text: "only",
+          },
+          tempDir,
+          { maxQueuedFiles: 1 },
+        );
+        let caught: unknown;
+        try {
+          await enqueueSessionDelivery(
+            {
+              kind: "systemEvent",
+              sessionKey: "agent:main:main",
+              text: "overflow",
+            },
+            tempDir,
+            { maxQueuedFiles: 1 },
+          );
+        } catch (err) {
+          caught = err;
+        }
+        expect(caught).toBeInstanceOf(SessionDeliveryQueueOverflowError);
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
   });
 });

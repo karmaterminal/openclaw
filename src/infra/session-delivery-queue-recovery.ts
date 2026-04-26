@@ -5,8 +5,43 @@ import {
   loadPendingSessionDelivery,
   loadPendingSessionDeliveries,
   moveSessionDeliveryToFailed,
+  pruneFailedOlderThan,
   type QueuedSessionDelivery,
 } from "./session-delivery-queue-storage.js";
+
+const FAILED_GC_AMORTIZATION_MS = 60_000;
+let lastGcAt = 0;
+
+export function __resetFailedGcWatermarkForTests(): void {
+  lastGcAt = 0;
+}
+
+async function maybePruneFailedRecords(opts: {
+  failedMaxAgeMs?: number;
+  stateDir?: string;
+  log: SessionDeliveryRecoveryLogger;
+  now: number;
+}): Promise<void> {
+  const { failedMaxAgeMs, stateDir, log, now } = opts;
+  if (failedMaxAgeMs == null || !(failedMaxAgeMs > 0)) {
+    return;
+  }
+  if (now - lastGcAt < FAILED_GC_AMORTIZATION_MS) {
+    return;
+  }
+  try {
+    const summary = await pruneFailedOlderThan(failedMaxAgeMs, now, stateDir);
+    if (summary.removed > 0) {
+      log.info(
+        `Session delivery failed/ prune: removed ${summary.removed} of ${summary.scanned} entries older than ${failedMaxAgeMs}ms`,
+      );
+    }
+  } catch (err) {
+    log.warn(`Session delivery failed/ prune error: ${formatErrorMessage(err)}`);
+  } finally {
+    lastGcAt = now;
+  }
+}
 
 export type SessionDeliveryRecoverySummary = {
   recovered: number;
@@ -126,6 +161,7 @@ export async function drainPendingSessionDeliveries(opts: {
   stateDir?: string;
   deliver: DeliverSessionDeliveryFn;
   selectEntry: (entry: QueuedSessionDelivery, now: number) => PendingSessionDeliveryDrainDecision;
+  failedMaxAgeMs?: number;
 }): Promise<void> {
   if (drainInProgress.get(opts.drainKey)) {
     opts.log.info(`${opts.logLabel}: already in progress for ${opts.drainKey}, skipping`);
@@ -134,6 +170,12 @@ export async function drainPendingSessionDeliveries(opts: {
 
   drainInProgress.set(opts.drainKey, true);
   try {
+    await maybePruneFailedRecords({
+      failedMaxAgeMs: opts.failedMaxAgeMs,
+      stateDir: opts.stateDir,
+      log: opts.log,
+      now: Date.now(),
+    });
     const matchingEntries = (await loadPendingSessionDeliveries(opts.stateDir))
       .filter((entry) => opts.selectEntry(entry, Date.now()).match)
       .toSorted((a, b) => a.enqueuedAt - b.enqueuedAt);
@@ -200,7 +242,14 @@ export async function recoverPendingSessionDeliveries(opts: {
   stateDir?: string;
   maxRecoveryMs?: number;
   maxEnqueuedAt?: number;
+  failedMaxAgeMs?: number;
 }): Promise<SessionDeliveryRecoverySummary> {
+  await maybePruneFailedRecords({
+    failedMaxAgeMs: opts.failedMaxAgeMs,
+    stateDir: opts.stateDir,
+    log: opts.log,
+    now: Date.now(),
+  });
   const pending = (await loadPendingSessionDeliveries(opts.stateDir)).filter(
     (entry) => opts.maxEnqueuedAt == null || entry.enqueuedAt <= opts.maxEnqueuedAt,
   );
