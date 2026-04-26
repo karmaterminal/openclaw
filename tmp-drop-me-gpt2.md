@@ -136,6 +136,10 @@ Descriptor-test TBDs for §B-execute: extend `src/agents/tools/continuation-tool
 
 ## §6 — verification (copilot fills in)
 
+- `pnpm tsgo` first run failed on `src/gateway/server-methods/agent.ts` syntax from the `198758e66b` conflict hunk. I fixed the ingress object shape in `fix(rebase): repair gateway ingress merge` (`c0aa8f70eb`) rather than touching tests.
+- Post-rebase dependency refresh: ran `pnpm install` after the rebase because the v2026.4.24 package set differed from the pre-rebase install (`@vincentkoc/qrcode-tui` and `@mariozechner/pi-ai` types were stale/missing before install). Lockfile remained up to date.
+- `pnpm tsgo` rerun passed at candidate tip including `c0aa8f70eb`.
+
 ## §B-execute — Surfaces 1+2 descriptor edits (copilot fills in)
 
 ## §8 — declare done (copilot fills in)
