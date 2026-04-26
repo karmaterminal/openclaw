@@ -113,7 +113,21 @@ onFallback?: FallbackResolver | "follow" | "echo" | "drop"
 followRole?: string
   // Hint passed through to the resolver. Defaults: 'successor' when
   // targetSessionKey is set, 'self' otherwise.
+
+defaultFallback: "follow" | "echo" | "drop"
+  // REQUIRED at queue-construction. Names the resolver applied when a
+  // user-supplied `FallbackResolver` returns `null` ("no opinion — chain me").
+  // Forces silent-drop policy to be NAMED at construction-site, not at
+  // dispatch-site. See §6c-null-semantics below.
 ```
+
+**`null` return semantics** (per 🌊 catch, msg `1497794994814193795`):
+
+A user-supplied `FallbackResolver` returning `null` means **"no opinion — fall through to runtime default"**, not "abort dispatch". This composes — multiple resolvers can be chained, each returning `null` to pass.
+
+The drop-policy must therefore be **named at queue-construction** via `defaultFallback`, not implicit at dispatch-time. If the construction-time default were itself unspecified, `null` would silently degrade to drop and re-introduce the silent-input-drop hazard the resolver-shape was designed to prevent.
+
+Explicit drop remains expressible via `{ kind: "drop" }` from the resolver — the difference is *who named the drop*: returning `{kind:"drop"}` says "I, this resolver, drop"; returning `null` says "I have no opinion; ask the next-level default." The two are not interchangeable. Tests cover both paths (resolver-drops vs default-drops) and verify `defaultFallback` is required at construction.
 
 **Why resolver-function over enum-string** (load-bearing per #14 cite-discipline + 🌊's prior-art pin):
 
