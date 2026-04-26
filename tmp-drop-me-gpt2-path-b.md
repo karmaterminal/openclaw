@@ -5,3 +5,4 @@
 - 2026-04-26T22:11:53+00:00: Read agent-runner post-compaction delegate surface around lines 2086-2284; stage-1 extraction target includes load/take delegates, budget checks, direct spawn, re-stage, lifecycle emit, chain-state persist.
 - 2026-04-26T22:12:11+00:00: Read session-delivery queue storage/recovery and substrate capability registry; noted existing retry, restart-survival, and registry capability surfaces. Read figs :09Z directive from workorder: do substrate-native, no bespoke chain counter/report surface.
 - 2026-04-26T22:12:54+00:00: Baseline `pnpm test src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts` green: 36/36.
+- 2026-04-26T22:16:58+00:00: Stage 1 extraction implemented in post-compaction-delegate-dispatch.ts; new direct suite green: 15/15.
