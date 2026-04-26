@@ -80,11 +80,18 @@ function getErrnoCode(err: unknown): string | null {
     : null;
 }
 
+// Strip trailing whitespace per line and at end-of-string before hashing the
+// idempotency key, so same-intent keys that differ only by trailing whitespace
+// produce the same sha256 taskHash and the replay-dedupe path stays robust.
+function canonicalizeIdempotencyKey(key: string): string {
+  return key.replace(/[ \t\r\f\v]+(?=\n|$)/g, "").replace(/\s+$/, "");
+}
+
 function buildEntryId(idempotencyKey?: string): string {
   if (!idempotencyKey) {
     return generateSecureUuid();
   }
-  return createHash("sha256").update(idempotencyKey).digest("hex");
+  return createHash("sha256").update(canonicalizeIdempotencyKey(idempotencyKey)).digest("hex");
 }
 
 async function unlinkBestEffort(filePath: string): Promise<void> {
