@@ -78,8 +78,8 @@ describe("continue_delegate tool", () => {
   });
 
   it("uses the runtime default of 5 when maxDelegatesPerTurn is unset", async () => {
-    // No config snapshot set — loadConfig falls back to empty config,
-    // continuation-runtime resolves the default (5).
+    // Pin an empty config so the test doesn't pick up host-level openclaw.json.
+    setRuntimeConfigSnapshot({});
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
     for (let index = 0; index < 5; index += 1) {
