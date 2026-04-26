@@ -1,3 +1,4 @@
+// Surface 1 descriptor coverage for WORKORDER-rebase-20260424-v2.md, tracked in karmaterminal/openclaw#336.
 import { describe, expect, it, vi } from "vitest";
 import { createOpenClawTools } from "../openclaw-tools.js";
 import "../test-helpers/fast-core-tools.js";
@@ -26,6 +27,44 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     });
 
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
+  });
+
+  it("lists targetSessionKey in the continue_delegate schema descriptor", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+    });
+    const tool = tools.find((candidate) => candidate.name === "continue_delegate");
+    if (!tool) {
+      throw new Error("continue_delegate tool not registered");
+    }
+
+    expect(tool.parameters).toMatchObject({
+      properties: {
+        targetSessionKey: {
+          type: "string",
+          description: expect.stringContaining("RPC-style address-recipient"),
+        },
+      },
+    });
+  });
+
+  it("fails loudly when targetSessionKey is used before runtime binding exists", async () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+    });
+    const tool = tools.find((candidate) => candidate.name === "continue_delegate");
+    if (!tool) {
+      throw new Error("continue_delegate tool not registered");
+    }
+
+    await expect(
+      tool.execute("tool-call", {
+        task: "summarize sibling context",
+        targetSessionKey: "prince:cael:agent:main:main",
+      }),
+    ).rejects.toThrow("targetSessionKey is descriptor-only in v2.5; runtime in #332");
   });
 
   it("hides continue_delegate when continuation is disabled", () => {

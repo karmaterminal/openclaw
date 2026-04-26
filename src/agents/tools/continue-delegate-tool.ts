@@ -37,6 +37,14 @@ const ContinueDelegateToolSchema = Type.Object({
       '"post-compaction" = silent-wake delegate that fires when compaction happens, not on a timer. ' +
       "Use for context evacuation: the shard starts at the moment of compaction and returns to the post-compaction session.",
   }),
+  targetSessionKey: Type.Optional(
+    Type.String({
+      description:
+        "Address a sibling session for cross-session enrichment. " +
+        "This is the (a)-shape (RPC-style address-recipient); v3 surfaces broadcast-mode " +
+        "via karmaterminal/binary-canticle#11. Same substrate; different verb-set.",
+    }),
+  ),
 });
 
 /**
@@ -79,6 +87,10 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         throw new ToolInputError(
           "continue_delegate requires an active session. Not available in sessionless contexts.",
         );
+      }
+      if (Object.hasOwn(params, "targetSessionKey") && params.targetSessionKey !== undefined) {
+        // TODO(intra-host-rpc): bind through session-delivery-queue runtime in #332.
+        throw new Error("targetSessionKey is descriptor-only in v2.5; runtime in #332");
       }
 
       const task = readStringParam(params, "task", { required: true });
