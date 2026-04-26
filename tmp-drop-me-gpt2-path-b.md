@@ -7,3 +7,4 @@
 - 2026-04-26T22:12:54+00:00: Baseline `pnpm test src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts` green: 36/36.
 - 2026-04-26T22:16:58+00:00: Stage 1 extraction implemented in post-compaction-delegate-dispatch.ts; new direct suite green: 15/15.
 - 2026-04-26T22:17:29+00:00: Stage 1 gate green: post-compaction dispatch + agent-runner.misc + continuation-runtime tests 56/56; `pnpm tsgo` clean.
+- 2026-04-26T22:21:38+00:00: Stage 1 complete. Remaining continuation suites green: 77/77; combined stage-1 test receipt 133/133; `pnpm tsgo` clean.
