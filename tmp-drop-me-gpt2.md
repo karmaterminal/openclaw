@@ -148,4 +148,15 @@ Descriptor-test TBDs for §B-execute: extend `src/agents/tools/continuation-tool
 
 ## §B-execute — Surfaces 1+2 descriptor edits (copilot fills in)
 
+- Surface 1 landed as `7df92a78b4a7a47b05ee5509383795d36e769ee0`: `continue_delegate` now advertises descriptor-only `targetSessionKey?` in the TypeBox tool schema and shared continuation delegate type. Supplying it fails loudly with `targetSessionKey is descriptor-only in v2.5; runtime in #332`, so the (a)-shape is discoverable without silently mis-routing before the runtime lane exists.
+- Surface 1 scoped verification passed before commit/push: `pnpm test src/agents/tools/continuation-tools-registration.test.ts src/auto-reply/continuation-delegate-store.test.ts` (29 tests).
+- Surface 2 landed as `b948632594463e7e67b67b18d1c16172b7853d76`: `QueuedSessionDeliveryPayload` now carries optional `traceparent?` and `attachments?` metadata uniformly across `systemEvent` and `agentTurn`, plus `AttachmentRef` (`blob-sha256`). The field JSDoc pins `traceparent` to karmaterminal/openclaw#334 and attachment enrichment to karmaterminal/openclaw#332 while preserving the bc#11 conditional voice.
+- Surface 2 scoped verification passed before commit/push: `pnpm test src/infra/session-delivery-queue.storage.test.ts` (5 tests).
+- Descriptor follow-up lint fix landed as `ef076bc7b1b918561107ba54a8facce554fc8ec6`: the runtime-binding note was rephrased away from `TODO(...)` because repo lint rejects warning comments.
+- Full post-descriptor §6 suite passed on the descriptor tree committed as `ef076bc7b1b918561107ba54a8facce554fc8ec6`: `pnpm tsgo`, `pnpm check`, scoped continuation tests (168 tests), session-delivery-queue substrate sanity (9 tests), `pnpm build`, and heartbeat scope (8 tests).
+
 ## §8 — declare done (copilot fills in)
+
+- Final deliverable stack is pushed fast-forward to `frond-scribe/20260424/candidate-gpt2`.
+- Rebase substrate: independent replay of the continuation feature set onto `karmaterminal-2026.4.24-base` (`cbcfdf62c7297bda66009ea7476f053c3e9addab`), verified and comparison-ready.
+- Descriptor substrate: Surface 1 and Surface 2 are separate descriptor-only commits on top of the rebase, ready for review/cherry-pick consideration.
