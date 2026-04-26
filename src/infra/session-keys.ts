@@ -40,7 +40,9 @@ export function requireSessionKeyOrSkip(
   site: string,
 ): string | null {
   const sk = params.sessionKey?.trim();
-  if (sk) return sk;
+  if (sk) {
+    return sk;
+  }
   log.warn(
     `[session-key:missing] site=${site} sessionId=${params.sessionId ?? "?"}`,
   );
