@@ -1,18 +1,21 @@
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SpawnSubagentResult } from "../../agents/subagent-spawn.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { withTempDir } from "../../test-helpers/temp-dir.js";
 import type { ContinuationRuntimeConfig } from "./continuation-runtime.js";
 import {
   buildPostCompactionLifecycleEvent,
+  deliverQueuedPostCompactionDelegate,
   dispatchPostCompactionDelegates,
   normalizePostCompactionDelegate,
   persistPendingPostCompactionDelegates,
   takePendingPostCompactionDelegates,
+  type PostCompactionDelegateDeliveryDeps,
   type PostCompactionDelegateDispatchDeps,
+  type QueuedPostCompactionDelegateDelivery,
 } from "./post-compaction-delegate-dispatch.js";
 import type { FollowupRun } from "./queue/types.js";
 
@@ -71,60 +74,90 @@ function createFollowupRun(overrides?: {
   };
 }
 
-function createDeps(options?: {
+function createDispatchDeps(options?: {
   staged?: SessionPostCompactionDelegate[];
-  runtimeConfig?: Partial<ContinuationRuntimeConfig>;
-  spawnResults?: SpawnSubagentResult[];
-  spawnError?: Error;
   context?: string | null;
-  now?: number;
-}): {
-  deps: PostCompactionDelegateDispatchDeps;
-  enqueueSystemEvent: ReturnType<typeof vi.fn>;
-  log: ReturnType<typeof vi.fn>;
-  readPostCompactionContext: ReturnType<typeof vi.fn>;
-  resolveAgentWorkspaceDir: ReturnType<typeof vi.fn>;
-  spawnSubagentDirect: ReturnType<typeof vi.fn>;
-} {
-  const spawnResults = [...(options?.spawnResults ?? [])];
+  rejectEnqueueAt?: number;
+}) {
   const enqueueSystemEvent = vi.fn();
   const log = vi.fn();
   const readPostCompactionContext = vi.fn(async () => options?.context ?? null);
   const resolveAgentWorkspaceDir = vi.fn(() => "/fallback-workspace");
-  const spawnSubagentDirect = vi.fn(async () => {
-    if (options?.spawnError) {
-      throw options.spawnError;
+  const enqueuePostCompactionDelegateDelivery = vi.fn(async ({ sequence }) => {
+    if (options?.rejectEnqueueAt === sequence) {
+      throw new Error("queue write failed");
     }
-    return (
-      spawnResults.shift() ?? {
-        status: "accepted",
-        childSessionKey: "agent:main:subagent:child",
-        runId: "run-child",
-      }
-    );
+    return `queue-${sequence}`;
   });
-
-  return {
-    deps: {
-      consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),
-      enqueueSystemEvent,
-      log,
-      now: vi.fn(() => options?.now ?? 1_700_000_000_000),
-      readPostCompactionContext,
-      resolveAgentWorkspaceDir,
-      resolveContinuationRuntimeConfig: vi.fn(() => ({
-        ...defaultRuntimeConfig,
-        ...options?.runtimeConfig,
-      })),
-      resolveSessionAgentId: vi.fn(() => "main"),
-      spawnSubagentDirect,
-    },
+  const drainPostCompactionDelegateDeliveries = vi.fn(async () => undefined);
+  const deps: PostCompactionDelegateDispatchDeps = {
+    consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),
+    drainPostCompactionDelegateDeliveries,
+    enqueuePostCompactionDelegateDelivery,
     enqueueSystemEvent,
     log,
     readPostCompactionContext,
     resolveAgentWorkspaceDir,
+    resolveSessionAgentId: vi.fn(() => "main"),
+  };
+  return {
+    deps,
+    drainPostCompactionDelegateDeliveries,
+    enqueuePostCompactionDelegateDelivery,
+    enqueueSystemEvent,
+    log,
+    readPostCompactionContext,
+    resolveAgentWorkspaceDir,
+  };
+}
+
+function createQueuedEntry(
+  overrides?: Partial<QueuedPostCompactionDelegateDelivery>,
+): QueuedPostCompactionDelegateDelivery {
+  return {
+    id: "queue-1",
+    kind: "postCompactionDelegate",
+    sessionKey: "main",
+    task: "queued delegate",
+    createdAt: 1,
+    enqueuedAt: 1,
+    retryCount: 0,
+    ...overrides,
+  };
+}
+
+function createDeliveryDeps(params: {
+  storePath: string;
+  runtimeConfig?: Partial<ContinuationRuntimeConfig>;
+  spawnStatus?: "accepted" | "forbidden" | "error";
+  spawnError?: Error;
+}) {
+  const enqueueSystemEvent = vi.fn();
+  const log = vi.fn();
+  const spawnSubagentDirect = vi.fn(async () => {
+    if (params.spawnError) {
+      throw params.spawnError;
+    }
+    return { status: params.spawnStatus ?? "accepted" };
+  });
+  const deps: PostCompactionDelegateDeliveryDeps = {
+    enqueueSystemEvent,
+    loadConfig: vi.fn(() => cfg),
+    loadSessionStore: vi.fn(
+      (storePath) =>
+        JSON.parse(fsSync.readFileSync(storePath, "utf-8")) as Record<string, SessionEntry>,
+    ),
+    log,
+    now: vi.fn(() => 1_700_000_000_000),
+    resolveContinuationRuntimeConfig: vi.fn(() => ({
+      ...defaultRuntimeConfig,
+      ...params.runtimeConfig,
+    })),
+    resolveSessionAgentId: vi.fn(() => "main"),
+    resolveStorePath: vi.fn(() => params.storePath),
     spawnSubagentDirect,
   };
+  return { deps, enqueueSystemEvent, log, spawnSubagentDirect };
 }
 
 async function flushMicrotasks(): Promise<void> {
@@ -197,41 +230,6 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(sessionStore.main.pendingPostCompactionDelegates).toEqual(persisted);
   });
 
-  it("returns normalized existing delegates when asked to persist an empty list", async () => {
-    const sessionEntry: SessionEntry = {
-      sessionId: "session",
-      updatedAt: 1,
-      pendingPostCompactionDelegates: [delegate("legacy")],
-    };
-
-    await expect(
-      persistPendingPostCompactionDelegates({
-        sessionEntry,
-        sessionKey: "main",
-        delegates: [],
-      }),
-    ).resolves.toEqual([normalizePostCompactionDelegate(delegate("legacy"))]);
-  });
-
-  it("takes and clears local pending delegates", async () => {
-    const sessionEntry: SessionEntry = {
-      sessionId: "session",
-      updatedAt: 1,
-      pendingPostCompactionDelegates: [delegate("carry")],
-    };
-    const sessionStore = { main: sessionEntry };
-
-    const taken = await takePendingPostCompactionDelegates({
-      sessionEntry,
-      sessionStore,
-      sessionKey: "main",
-    });
-
-    expect(taken).toEqual([normalizePostCompactionDelegate(delegate("carry"))]);
-    expect(sessionEntry.pendingPostCompactionDelegates).toBeUndefined();
-    expect(sessionStore.main.pendingPostCompactionDelegates).toBeUndefined();
-  });
-
   it("takes and clears pending delegates from the session store path", async () => {
     await withTempDir({ prefix: "openclaw-post-compaction-dispatch-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
@@ -265,15 +263,20 @@ describe("post-compaction delegate dispatch extraction", () => {
     });
   });
 
-  it("dispatches persisted delegates before staged delegates and persists chain state", async () => {
+  it("queues persisted delegates before staged delegates and starts a drain", async () => {
     const sessionEntry: SessionEntry = {
       sessionId: "session",
       updatedAt: 1,
+      continuationChainCount: 3,
       pendingPostCompactionDelegates: [delegate("persisted")],
     };
-    const sessionStore = { main: sessionEntry };
     const preserve: SessionPostCompactionDelegate[] = [];
-    const { deps, enqueueSystemEvent, spawnSubagentDirect } = createDeps({
+    const {
+      deps,
+      drainPostCompactionDelegateDeliveries,
+      enqueuePostCompactionDelegateDelivery,
+      enqueueSystemEvent,
+    } = createDispatchDeps({
       staged: [delegate("staged")],
       context: "[context] refreshed",
     });
@@ -291,149 +294,61 @@ describe("post-compaction delegate dispatch extraction", () => {
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
         sessionKey: "main",
-        sessionStore,
       },
       deps,
     );
     await flushMicrotasks();
 
-    expect(result).toEqual({
-      dispatchedDelegates: 2,
-      droppedDelegates: 0,
-      currentChainCount: 2,
-    });
-    expect(spawnSubagentDirect).toHaveBeenCalledTimes(2);
-    expect(spawnSubagentDirect.mock.calls.map((call) => call[0].task)).toEqual([
-      "[continuation:post-compaction] [continuation:chain-hop:1] Compaction just completed. Carry this working state to the post-compaction session: persisted",
-      "[continuation:post-compaction] [continuation:chain-hop:2] Compaction just completed. Carry this working state to the post-compaction session: staged",
+    expect(result).toEqual({ queuedDelegates: 2, droppedDelegates: 0 });
+    expect(sessionEntry.continuationChainCount).toBe(3);
+    expect(enqueuePostCompactionDelegateDelivery).toHaveBeenCalledTimes(2);
+    expect(enqueuePostCompactionDelegateDelivery.mock.calls.map((call) => call[0])).toEqual([
+      {
+        sessionKey: "main",
+        delegate: normalizePostCompactionDelegate(delegate("persisted")),
+        sequence: 0,
+        compactionCount: 7,
+        deliveryContext: {
+          channel: "discord",
+          to: "channel",
+          accountId: "account",
+          threadId: "thread",
+        },
+      },
+      {
+        sessionKey: "main",
+        delegate: normalizePostCompactionDelegate(delegate("staged")),
+        sequence: 1,
+        compactionCount: 7,
+        deliveryContext: {
+          channel: "discord",
+          to: "channel",
+          accountId: "account",
+          threadId: "thread",
+        },
+      },
     ]);
-    expect(spawnSubagentDirect.mock.calls[0][1]).toEqual({
-      agentSessionKey: "main",
-      agentChannel: "discord",
-      agentAccountId: "account",
-      agentTo: "channel",
-      agentThreadId: "thread",
+    expect(drainPostCompactionDelegateDeliveries).toHaveBeenCalledWith({
+      entryIds: ["queue-0", "queue-1"],
+      log: expect.any(Object),
+      sessionKey: "main",
     });
-    expect(sessionEntry.continuationChainCount).toBe(2);
-    expect(sessionEntry.continuationChainTokens).toBe(0);
-    expect(sessionEntry.pendingPostCompactionDelegates).toBeUndefined();
-    expect(preserve).toEqual([]);
     expect(enqueueSystemEvent).toHaveBeenCalledWith("[context] refreshed", {
       sessionKey: "main",
     });
     expect(enqueueSystemEvent).toHaveBeenCalledWith(
-      "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: persisted",
-      { sessionKey: "main" },
-    );
-    expect(enqueueSystemEvent).toHaveBeenCalledWith(
       expect.stringContaining("Released 2 post-compaction delegate(s) into the fresh session."),
       { sessionKey: "main" },
     );
+    expect(preserve).toEqual([]);
   });
 
-  it("accounts for a bracket delegate when applying maxDelegatesPerTurn", async () => {
-    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
-    const { deps, enqueueSystemEvent, spawnSubagentDirect } = createDeps({
-      staged: [delegate("first"), delegate("second")],
-      runtimeConfig: { maxDelegatesPerTurn: 2 },
-    });
-
-    const result = await dispatchPostCompactionDelegates(
-      {
-        cfg,
-        compactionCount: 1,
-        continuationSignalKind: "delegate",
-        followupRun: createFollowupRun(),
-        postCompactionDelegatesToPreserve: [],
-        sessionEntry,
-        sessionKey: "main",
-      },
-      deps,
-    );
-
-    expect(result.dispatchedDelegates).toBe(1);
-    expect(result.droppedDelegates).toBe(1);
-    expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
-    expect(enqueueSystemEvent).toHaveBeenCalledWith(
-      expect.stringContaining("1 delegate(s) were not released into the fresh session."),
-      { sessionKey: "main" },
-    );
-  });
-
-  it("rejects delegates when the compaction chain length is already capped", async () => {
-    const sessionEntry: SessionEntry = {
-      sessionId: "session",
-      updatedAt: 1,
-      continuationChainCount: 2,
-    };
-    const { deps, enqueueSystemEvent, log, spawnSubagentDirect } = createDeps({
-      staged: [delegate("too deep")],
-      runtimeConfig: { maxChainLength: 2 },
-    });
-
-    const result = await dispatchPostCompactionDelegates(
-      {
-        cfg,
-        compactionCount: 1,
-        followupRun: createFollowupRun(),
-        postCompactionDelegatesToPreserve: [],
-        sessionEntry,
-        sessionKey: "main",
-      },
-      deps,
-    );
-
-    expect(result).toMatchObject({ dispatchedDelegates: 0, droppedDelegates: 1 });
-    expect(spawnSubagentDirect).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith(
-      "Post-compaction delegate rejected: chain length 2 >= 2 for session main",
-    );
-    expect(enqueueSystemEvent).toHaveBeenCalledWith(
-      "[continuation] Post-compaction delegate rejected: chain length 2 reached. Task: too deep",
-      { sessionKey: "main" },
-    );
-  });
-
-  it("rejects delegates when continuation tokens exceed the cost cap", async () => {
-    const sessionEntry: SessionEntry = {
-      sessionId: "session",
-      updatedAt: 1,
-      continuationChainTokens: 11,
-    };
-    const { deps, enqueueSystemEvent, log, spawnSubagentDirect } = createDeps({
-      staged: [delegate("too expensive")],
-      runtimeConfig: { costCapTokens: 10 },
-    });
-
-    const result = await dispatchPostCompactionDelegates(
-      {
-        cfg,
-        compactionCount: 1,
-        followupRun: createFollowupRun(),
-        postCompactionDelegatesToPreserve: [],
-        sessionEntry,
-        sessionKey: "main",
-      },
-      deps,
-    );
-
-    expect(result).toMatchObject({ dispatchedDelegates: 0, droppedDelegates: 1 });
-    expect(spawnSubagentDirect).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith(
-      "Post-compaction delegate rejected: cost cap exceeded (11 > 10) for session main",
-    );
-    expect(enqueueSystemEvent).toHaveBeenCalledWith(
-      "[continuation] Post-compaction delegate rejected: cost cap exceeded (11 > 10). Task: too expensive",
-      { sessionKey: "main" },
-    );
-  });
-
-  it("re-stages delegates rejected by spawn", async () => {
+  it("re-stages delegates when queue enqueue fails", async () => {
     const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
     const preserve: SessionPostCompactionDelegate[] = [];
-    const { deps, log } = createDeps({
-      staged: [delegate("rejected")],
-      spawnResults: [{ status: "forbidden" }],
+    const { deps, log } = createDispatchDeps({
+      staged: [delegate("first"), delegate("second")],
+      rejectEnqueueAt: 1,
     });
 
     const result = await dispatchPostCompactionDelegates(
@@ -448,47 +363,18 @@ describe("post-compaction delegate dispatch extraction", () => {
       deps,
     );
 
-    expect(result).toMatchObject({ dispatchedDelegates: 0, droppedDelegates: 1 });
+    expect(result).toEqual({ queuedDelegates: 1, droppedDelegates: 1 });
     expect(sessionEntry.pendingPostCompactionDelegates).toEqual([
-      normalizePostCompactionDelegate(delegate("rejected")),
+      normalizePostCompactionDelegate(delegate("second")),
     ]);
     expect(preserve).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Post-compaction delegate rejected (forbidden) for session main (re-staged)",
-    );
-  });
-
-  it("re-stages delegates when spawn throws", async () => {
-    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
-    const { deps, log } = createDeps({
-      staged: [delegate("throws")],
-      spawnError: new Error("boom"),
-    });
-
-    await dispatchPostCompactionDelegates(
-      {
-        cfg,
-        compactionCount: 1,
-        followupRun: createFollowupRun(),
-        postCompactionDelegatesToPreserve: [],
-        sessionEntry,
-        sessionKey: "main",
-      },
-      deps,
-    );
-
-    expect(sessionEntry.pendingPostCompactionDelegates).toEqual([
-      normalizePostCompactionDelegate(delegate("throws")),
-    ]);
-    expect(log).toHaveBeenCalledWith(
-      "Post-compaction delegate failed for session main (re-staged): Error: boom",
+      "Failed to enqueue post-compaction delegate for main (re-staged): Error: queue write failed",
     );
   });
 
   it("uses the fallback workspace resolver only when the run workspace is blank", async () => {
-    const { deps, readPostCompactionContext, resolveAgentWorkspaceDir } = createDeps({
-      staged: [],
-    });
+    const { deps, readPostCompactionContext, resolveAgentWorkspaceDir } = createDispatchDeps();
 
     await dispatchPostCompactionDelegates(
       {
@@ -506,6 +392,144 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(readPostCompactionContext).toHaveBeenCalledWith("/fallback-workspace", {
       cfg,
       agentId: "main",
+    });
+  });
+
+  it("charges chain count only after queued delivery spawns successfully", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: Date.now() } }, null, 2),
+        "utf-8",
+      );
+      const { deps, enqueueSystemEvent, spawnSubagentDirect } = createDeliveryDeps({ storePath });
+
+      await deliverQueuedPostCompactionDelegate(
+        {
+          entry: createQueuedEntry({
+            deliveryContext: {
+              channel: "discord",
+              to: "channel",
+              accountId: "account",
+              threadId: "thread",
+            },
+          }),
+        },
+        deps,
+      );
+
+      const stored = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+        string,
+        SessionEntry
+      >;
+      expect(Object.values(stored).some((entry) => entry.continuationChainCount === 1)).toBe(true);
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          task: "[continuation:post-compaction] [continuation:chain-hop:1] Compaction just completed. Carry this working state to the post-compaction session: queued delegate",
+          silentAnnounce: true,
+          wakeOnReturn: true,
+          drainsContinuationDelegateQueue: true,
+        }),
+        {
+          agentSessionKey: "main",
+          agentChannel: "discord",
+          agentAccountId: "account",
+          agentTo: "channel",
+          agentThreadId: "thread",
+        },
+      );
+      expect(enqueueSystemEvent).toHaveBeenCalledWith(
+        "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
+        { sessionKey: "main" },
+      );
+    });
+  });
+
+  it("does not charge chain count when queued spawn fails", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: Date.now() } }, null, 2),
+        "utf-8",
+      );
+      const { deps } = createDeliveryDeps({
+        storePath,
+        spawnError: new Error("spawn unavailable"),
+      });
+
+      await expect(
+        deliverQueuedPostCompactionDelegate({ entry: createQueuedEntry() }, deps),
+      ).rejects.toThrow("spawn unavailable");
+
+      const stored = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+        string,
+        SessionEntry
+      >;
+      expect(Object.values(stored).some((entry) => entry.continuationChainCount != null)).toBe(
+        false,
+      );
+    });
+  });
+
+  it("rejects queued delivery when the compaction chain length is already capped", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify(
+          { main: { sessionId: "session", updatedAt: 1, continuationChainCount: 2 } },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+      const { deps, enqueueSystemEvent, log, spawnSubagentDirect } = createDeliveryDeps({
+        storePath,
+        runtimeConfig: { maxChainLength: 2 },
+      });
+
+      await deliverQueuedPostCompactionDelegate({ entry: createQueuedEntry() }, deps);
+
+      expect(spawnSubagentDirect).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        "Post-compaction delegate rejected: chain length 2 >= 2 for session main",
+      );
+      expect(enqueueSystemEvent).toHaveBeenCalledWith(
+        "[continuation] Post-compaction delegate rejected: chain length 2 reached. Task: queued delegate",
+        { sessionKey: "main" },
+      );
+    });
+  });
+
+  it("rejects queued delivery when continuation tokens exceed the cost cap", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify(
+          { main: { sessionId: "session", updatedAt: 1, continuationChainTokens: 11 } },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+      const { deps, enqueueSystemEvent, log, spawnSubagentDirect } = createDeliveryDeps({
+        storePath,
+        runtimeConfig: { costCapTokens: 10 },
+      });
+
+      await deliverQueuedPostCompactionDelegate({ entry: createQueuedEntry() }, deps);
+
+      expect(spawnSubagentDirect).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        "Post-compaction delegate rejected: cost cap exceeded (11 > 10) for session main",
+      );
+      expect(enqueueSystemEvent).toHaveBeenCalledWith(
+        "[continuation] Post-compaction delegate rejected: cost cap exceeded (11 > 10). Task: queued delegate",
+        { sessionKey: "main" },
+      );
     });
   });
 });

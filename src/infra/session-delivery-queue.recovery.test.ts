@@ -6,6 +6,7 @@ import { __resetFailedGcWatermarkForTests } from "./session-delivery-queue-recov
 import * as storage from "./session-delivery-queue-storage.js";
 import {
   enqueueSessionDelivery,
+  enqueuePostCompactionDelegateDelivery,
   failSessionDelivery,
   isSessionDeliveryEligibleForRetry,
   loadPendingSessionDeliveries,
@@ -224,5 +225,48 @@ describe("session-delivery queue recovery", () => {
     });
 
     vi.useRealTimers();
+  });
+
+  it("logs retry-budget exhaustion for post-compaction delegates before spawn", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const id = await enqueuePostCompactionDelegateDelivery(
+        {
+          sessionKey: "agent:main:main",
+          delegate: {
+            task: "carry state forward",
+            createdAt: 123,
+            silent: true,
+            silentWake: true,
+          },
+          sequence: 0,
+        },
+        tempDir,
+      );
+      for (let i = 0; i < 5; i += 1) {
+        await failSessionDelivery(id, `spawn failed ${i}`, tempDir);
+      }
+      const log = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+
+      const summary = await recoverPendingSessionDeliveries({
+        deliver: vi.fn(async () => undefined),
+        stateDir: tempDir,
+        log,
+      });
+
+      expect(summary.skippedMaxRetries).toBe(1);
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("[session-delivery-queue:retry-budget-exhausted] entry"),
+      );
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "hit retry cap before post-compaction delegate spawn for session agent:main:main: carry state forward",
+        ),
+      );
+      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+    });
   });
 });

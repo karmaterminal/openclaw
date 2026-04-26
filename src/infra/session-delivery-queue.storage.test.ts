@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 import { withTempDir } from "../test-helpers/temp-dir.js";
 import {
   ackSessionDelivery,
+  buildPostCompactionDelegateDeliveryPayload,
   countQueuedFiles,
+  enqueuePostCompactionDelegateDelivery,
   enqueueSessionDelivery,
   failSessionDelivery,
   loadPendingSessionDeliveries,
@@ -76,6 +78,71 @@ describe("session-delivery queue storage", () => {
       expect(secondId).toBe(firstId);
       const [entry] = await loadPendingSessionDeliveries(tempDir);
       expect(entry?.traceparent).toBe(traceparent);
+    });
+  });
+
+  it("builds and round-trips post-compaction delegate payloads", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const payload = buildPostCompactionDelegateDeliveryPayload({
+        sessionKey: "agent:main:main",
+        delegate: {
+          task: "carry state forward",
+          createdAt: 123,
+          silent: true,
+          silentWake: true,
+        },
+        sequence: 2,
+        compactionCount: 4,
+        deliveryContext: {
+          channel: "discord",
+          to: "channel",
+          accountId: "acct",
+          threadId: "thread",
+        },
+      });
+
+      const id = await enqueuePostCompactionDelegateDelivery(
+        {
+          sessionKey: "agent:main:main",
+          delegate: {
+            task: "carry state forward",
+            createdAt: 123,
+            silent: true,
+            silentWake: true,
+          },
+          sequence: 2,
+          compactionCount: 4,
+          deliveryContext: {
+            channel: "discord",
+            to: "channel",
+            accountId: "acct",
+            threadId: "thread",
+          },
+        },
+        tempDir,
+      );
+      const [entry] = await loadPendingSessionDeliveries(tempDir);
+
+      expect(payload).toMatchObject({
+        kind: "postCompactionDelegate",
+        sessionKey: "agent:main:main",
+        task: "carry state forward",
+        createdAt: 123,
+        silent: true,
+        silentWake: true,
+        deliveryContext: {
+          channel: "discord",
+          to: "channel",
+          accountId: "acct",
+          threadId: "thread",
+        },
+      });
+      expect(entry).toMatchObject(payload);
+      expect(id).toBe(
+        createHash("sha256")
+          .update(payload.idempotencyKey ?? "")
+          .digest("hex"),
+      );
     });
   });
 

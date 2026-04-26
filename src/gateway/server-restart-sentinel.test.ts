@@ -111,6 +111,7 @@ const mocks = vi.hoisted(() => {
       skippedMaxRetries: 0,
       deferredBackoff: 0,
     })),
+    deliverQueuedPostCompactionDelegate: vi.fn(async () => undefined),
     injectTimestamp: vi.fn((message: string) => `stamped:${message}`),
     timestampOptsFromConfig: vi.fn(() => ({})),
     recordInboundSessionAndDispatchReply: vi.fn(
@@ -138,6 +139,10 @@ vi.mock("../infra/session-delivery-queue.js", () => ({
   enqueueSessionDelivery: mocks.enqueueSessionDelivery,
   drainPendingSessionDeliveries: mocks.drainPendingSessionDeliveries,
   recoverPendingSessionDeliveries: mocks.recoverPendingSessionDeliveries,
+}));
+
+vi.mock("../auto-reply/reply/post-compaction-delegate-dispatch.js", () => ({
+  deliverQueuedPostCompactionDelegate: mocks.deliverQueuedPostCompactionDelegate,
 }));
 
 vi.mock("../config/sessions.js", () => ({
@@ -221,7 +226,8 @@ vi.mock("./server-methods/agent-timestamp.js", () => ({
   timestampOptsFromConfig: mocks.timestampOptsFromConfig,
 }));
 
-const { scheduleRestartSentinelWake } = await import("./server-restart-sentinel.js");
+const { recoverPendingRestartContinuationDeliveries, scheduleRestartSentinelWake } =
+  await import("./server-restart-sentinel.js");
 
 describe("scheduleRestartSentinelWake", () => {
   afterEach(() => {
@@ -273,6 +279,7 @@ describe("scheduleRestartSentinelWake", () => {
     mocks.enqueueSessionDelivery.mockClear();
     mocks.drainPendingSessionDeliveries.mockClear();
     mocks.recoverPendingSessionDeliveries.mockClear();
+    mocks.deliverQueuedPostCompactionDelegate.mockClear();
     mocks.removeRestartSentinelFile.mockClear();
     mocks.injectTimestamp.mockClear();
     mocks.timestampOptsFromConfig.mockClear();
@@ -281,6 +288,45 @@ describe("scheduleRestartSentinelWake", () => {
     mocks.logInfo.mockClear();
     mocks.logWarn.mockClear();
     mocks.logError.mockClear();
+  });
+
+  it("recovers queued post-compaction delegates through session delivery recovery", async () => {
+    mocks.recoverPendingSessionDeliveries.mockImplementationOnce(
+      async (params: {
+        deliver: (entry: Record<string, unknown>) => Promise<void>;
+        log: unknown;
+        maxEnqueuedAt?: number;
+      }) => {
+        await params.deliver({
+          id: "post-compaction-1",
+          kind: "postCompactionDelegate",
+          sessionKey: "agent:main:main",
+          task: "carry state forward",
+          createdAt: 123,
+          enqueuedAt: 1,
+          retryCount: 0,
+        });
+        return {
+          recovered: 1,
+          failed: 0,
+          skippedMaxRetries: 0,
+          deferredBackoff: 0,
+        };
+      },
+    );
+
+    await recoverPendingRestartContinuationDeliveries({
+      deps: {} as never,
+      maxEnqueuedAt: 123,
+    });
+
+    expect(mocks.deliverQueuedPostCompactionDelegate).toHaveBeenCalledWith({
+      entry: expect.objectContaining({
+        kind: "postCompactionDelegate",
+        sessionKey: "agent:main:main",
+        task: "carry state forward",
+      }),
+    });
   });
 
   it("enqueues the sentinel note and wakes the session even when outbound delivery succeeds", async () => {

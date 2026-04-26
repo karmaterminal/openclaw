@@ -1,8 +1,25 @@
 import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../../agents/agent-scope.js";
-import { spawnSubagentDirect, type SpawnSubagentResult } from "../../agents/subagent-spawn.js";
+import {
+  spawnSubagentDirect,
+  type SpawnSubagentContext,
+  type SpawnSubagentParams,
+  type SpawnSubagentResult,
+} from "../../agents/subagent-spawn.js";
+import { loadConfig } from "../../config/config.js";
+import { resolveStorePath } from "../../config/sessions/paths.js";
+import { loadSessionStore } from "../../config/sessions/store-load.js";
 import { resolveSessionStoreEntry, updateSessionStore } from "../../config/sessions/store.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  drainPendingSessionDeliveries,
+  type SessionDeliveryRecoveryLogger,
+} from "../../infra/session-delivery-queue-recovery.js";
+import {
+  enqueuePostCompactionDelegateDelivery,
+  type QueuedSessionDelivery,
+  type SessionDeliveryContext,
+} from "../../infra/session-delivery-queue-storage.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { consumeStagedPostCompactionDelegates } from "../continuation-delegate-store.js";
@@ -14,24 +31,50 @@ import {
 import { readPostCompactionContext } from "./post-compaction-context.js";
 import type { FollowupRun } from "./queue/types.js";
 
+export type QueuedPostCompactionDelegateDelivery = Extract<
+  QueuedSessionDelivery,
+  { kind: "postCompactionDelegate" }
+>;
+
 export type PostCompactionDelegateSpawn = (
-  params: Parameters<typeof spawnSubagentDirect>[0],
-  context: Parameters<typeof spawnSubagentDirect>[1],
+  params: SpawnSubagentParams,
+  context: SpawnSubagentContext,
 ) => Promise<SpawnSubagentResult>;
+
+export type PostCompactionDelegateDeliveryDeps = {
+  enqueueSystemEvent(text: string, options: { sessionKey: string }): void;
+  loadConfig(): OpenClawConfig;
+  loadSessionStore(storePath: string): Record<string, SessionEntry>;
+  log(message: string): void;
+  now(): number;
+  resolveContinuationRuntimeConfig(cfg: OpenClawConfig): ContinuationRuntimeConfig;
+  resolveSessionAgentId(params: { sessionKey?: string; config?: OpenClawConfig }): string;
+  resolveStorePath(store?: string, opts?: { agentId?: string; env?: NodeJS.ProcessEnv }): string;
+  spawnSubagentDirect: PostCompactionDelegateSpawn;
+};
 
 export type PostCompactionDelegateDispatchDeps = {
   consumeStagedPostCompactionDelegates(sessionKey: string): SessionPostCompactionDelegate[];
+  drainPostCompactionDelegateDeliveries(params: {
+    entryIds: readonly string[];
+    log: SessionDeliveryRecoveryLogger;
+    sessionKey: string;
+  }): Promise<void>;
+  enqueuePostCompactionDelegateDelivery(params: {
+    sessionKey: string;
+    delegate: SessionPostCompactionDelegate;
+    sequence: number;
+    compactionCount?: number;
+    deliveryContext?: SessionDeliveryContext;
+  }): Promise<string>;
   enqueueSystemEvent(text: string, options: { sessionKey: string }): void;
   log(message: string): void;
-  now(): number;
   readPostCompactionContext(
     workspaceDir: string,
     options: { cfg: OpenClawConfig; agentId: string },
   ): Promise<string | null>;
   resolveAgentWorkspaceDir(cfg: OpenClawConfig, agentId: string): string;
-  resolveContinuationRuntimeConfig(cfg: OpenClawConfig): ContinuationRuntimeConfig;
   resolveSessionAgentId(params: { sessionKey?: string; config?: OpenClawConfig }): string;
-  spawnSubagentDirect: PostCompactionDelegateSpawn;
 };
 
 export type DispatchPostCompactionDelegatesParams = {
@@ -47,21 +90,37 @@ export type DispatchPostCompactionDelegatesParams = {
 };
 
 export type DispatchPostCompactionDelegatesResult = {
-  dispatchedDelegates: number;
+  queuedDelegates: number;
   droppedDelegates: number;
-  currentChainCount: number;
+};
+
+const defaultRecoveryLog: SessionDeliveryRecoveryLogger = {
+  info: (message) => defaultRuntime.log(message),
+  warn: (message) => defaultRuntime.log(message),
+  error: (message) => defaultRuntime.log(message),
+};
+
+const defaultPostCompactionDelegateDeliveryDeps: PostCompactionDelegateDeliveryDeps = {
+  enqueueSystemEvent,
+  loadConfig,
+  loadSessionStore,
+  log: (message) => defaultRuntime.log(message),
+  now: () => Date.now(),
+  resolveContinuationRuntimeConfig,
+  resolveSessionAgentId,
+  resolveStorePath,
+  spawnSubagentDirect,
 };
 
 const defaultPostCompactionDelegateDispatchDeps: PostCompactionDelegateDispatchDeps = {
   consumeStagedPostCompactionDelegates,
+  drainPostCompactionDelegateDeliveries,
+  enqueuePostCompactionDelegateDelivery,
   enqueueSystemEvent,
   log: (message) => defaultRuntime.log(message),
-  now: () => Date.now(),
   readPostCompactionContext,
   resolveAgentWorkspaceDir,
-  resolveContinuationRuntimeConfig,
   resolveSessionAgentId,
-  spawnSubagentDirect,
 };
 
 function syncPendingPostCompactionDelegates(params: {
@@ -246,29 +305,36 @@ async function persistPostCompactionDelegateChainState(params: {
       store: params.sessionStore,
       sessionKey: params.sessionKey,
     });
-    params.sessionStore[resolved.normalizedKey] = {
-      ...(resolved.existing ?? params.sessionEntry!),
-      continuationChainCount: params.count,
-      continuationChainStartedAt: params.startedAt,
-      continuationChainTokens: params.tokens,
-    };
-    for (const legacyKey of resolved.legacyKeys) {
-      delete params.sessionStore[legacyKey];
+    const existingEntry =
+      resolved.existing ?? params.sessionStore[params.sessionKey] ?? params.sessionEntry;
+    if (existingEntry) {
+      params.sessionStore[resolved.normalizedKey] = {
+        ...existingEntry,
+        continuationChainCount: params.count,
+        continuationChainStartedAt: params.startedAt,
+        continuationChainTokens: params.tokens,
+      };
+      for (const legacyKey of resolved.legacyKeys) {
+        delete params.sessionStore[legacyKey];
+      }
     }
   }
   if (params.storePath) {
     try {
       await updateSessionStore(params.storePath, (store) => {
         const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey });
-        if (resolved.existing) {
-          store[resolved.normalizedKey] = {
-            ...resolved.existing,
+        const existingEntry = resolved.existing ?? store[params.sessionKey];
+        if (existingEntry) {
+          store[resolved.existing ? resolved.normalizedKey : params.sessionKey] = {
+            ...existingEntry,
             continuationChainCount: params.count,
             continuationChainStartedAt: params.startedAt,
             continuationChainTokens: params.tokens,
           };
-          for (const legacyKey of resolved.legacyKeys) {
-            delete store[legacyKey];
+          if (resolved.existing) {
+            for (const legacyKey of resolved.legacyKeys) {
+              delete store[legacyKey];
+            }
           }
         }
       });
@@ -280,6 +346,144 @@ async function persistPostCompactionDelegateChainState(params: {
       );
     }
   }
+}
+
+function resolvePostCompactionDeliveryContext(
+  followupRun: FollowupRun,
+): SessionDeliveryContext | undefined {
+  const deliveryContext: SessionDeliveryContext = {
+    ...(followupRun.originatingChannel ? { channel: followupRun.originatingChannel } : {}),
+    ...(followupRun.originatingTo ? { to: followupRun.originatingTo } : {}),
+    ...(followupRun.originatingAccountId ? { accountId: followupRun.originatingAccountId } : {}),
+    ...(followupRun.originatingThreadId != null
+      ? { threadId: followupRun.originatingThreadId }
+      : {}),
+  };
+  return Object.keys(deliveryContext).length > 0 ? deliveryContext : undefined;
+}
+
+function isPostCompactionDelegateEntry(
+  entry: QueuedSessionDelivery,
+): entry is QueuedPostCompactionDelegateDelivery {
+  return entry.kind === "postCompactionDelegate";
+}
+
+export async function deliverQueuedPostCompactionDelegate(
+  params: {
+    entry: QueuedPostCompactionDelegateDelivery;
+  },
+  deps: PostCompactionDelegateDeliveryDeps = defaultPostCompactionDelegateDeliveryDeps,
+): Promise<void> {
+  const cfg = deps.loadConfig();
+  const agentId = deps.resolveSessionAgentId({
+    sessionKey: params.entry.sessionKey,
+    config: cfg,
+  });
+  const storePath = deps.resolveStorePath(cfg.session?.store, { agentId });
+  const sessionStore = deps.loadSessionStore(storePath);
+  const resolved = resolveSessionStoreEntry({
+    store: sessionStore,
+    sessionKey: params.entry.sessionKey,
+  });
+  const sessionEntry = resolved.existing ?? sessionStore[params.entry.sessionKey];
+  const { maxChainLength: maxCompactionChainLength, costCapTokens: compactionCostCapTokens } =
+    deps.resolveContinuationRuntimeConfig(cfg);
+  const currentCompactionChainCount = sessionEntry?.continuationChainCount ?? 0;
+  const compactionChainTokens = sessionEntry?.continuationChainTokens ?? 0;
+
+  if (currentCompactionChainCount >= maxCompactionChainLength) {
+    deps.log(
+      `Post-compaction delegate rejected: chain length ${currentCompactionChainCount} >= ${maxCompactionChainLength} for session ${params.entry.sessionKey}`,
+    );
+    deps.enqueueSystemEvent(
+      `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${params.entry.task}`,
+      { sessionKey: params.entry.sessionKey },
+    );
+    return;
+  }
+
+  if (compactionCostCapTokens > 0 && compactionChainTokens > compactionCostCapTokens) {
+    deps.log(
+      `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}) for session ${params.entry.sessionKey}`,
+    );
+    deps.enqueueSystemEvent(
+      `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${params.entry.task}`,
+      { sessionKey: params.entry.sessionKey },
+    );
+    return;
+  }
+
+  const nextCompactionChainCount = currentCompactionChainCount + 1;
+  deps.log(
+    `Post-compaction delegate dispatch for session ${params.entry.sessionKey}: ${params.entry.task}`,
+  );
+  const delegateWakeOnReturn = params.entry.silentWake ?? true;
+  const delegateSilentAnnounce = params.entry.silent ?? delegateWakeOnReturn;
+  const spawnResult = await deps.spawnSubagentDirect(
+    {
+      task:
+        `[continuation:post-compaction] ` +
+        `[continuation:chain-hop:${nextCompactionChainCount}] ` +
+        `Compaction just completed. Carry this working state to the post-compaction session: ${params.entry.task}`,
+      ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
+      ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+      drainsContinuationDelegateQueue: true,
+    },
+    {
+      agentSessionKey: params.entry.sessionKey,
+      agentChannel: params.entry.deliveryContext?.channel,
+      agentAccountId: params.entry.deliveryContext?.accountId,
+      agentTo: params.entry.deliveryContext?.to,
+      agentThreadId: params.entry.deliveryContext?.threadId,
+    },
+  );
+  if (spawnResult.status !== "accepted") {
+    throw new Error(`post-compaction delegate spawn ${spawnResult.status}`);
+  }
+
+  deps.enqueueSystemEvent(
+    `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${params.entry.task}`,
+    { sessionKey: params.entry.sessionKey },
+  );
+  await persistPostCompactionDelegateChainState({
+    count: nextCompactionChainCount,
+    log: deps.log,
+    sessionEntry,
+    sessionKey: params.entry.sessionKey,
+    sessionStore,
+    startedAt: sessionEntry?.continuationChainStartedAt ?? deps.now(),
+    storePath,
+    tokens: compactionChainTokens,
+  });
+}
+
+export async function drainPostCompactionDelegateDeliveries(params: {
+  entryIds?: readonly string[];
+  log?: SessionDeliveryRecoveryLogger;
+  sessionKey?: string;
+  stateDir?: string;
+  deliveryDeps?: PostCompactionDelegateDeliveryDeps;
+}): Promise<void> {
+  const entryIds = new Set(params.entryIds ?? []);
+  await drainPendingSessionDeliveries({
+    drainKey: `post-compaction-delegate:${params.sessionKey ?? "all"}`,
+    logLabel: "post-compaction delegate",
+    log: params.log ?? defaultRecoveryLog,
+    stateDir: params.stateDir,
+    deliver: async (entry) => {
+      if (!isPostCompactionDelegateEntry(entry)) {
+        return;
+      }
+      await deliverQueuedPostCompactionDelegate({ entry }, params.deliveryDeps);
+    },
+    selectEntry: (entry) => ({
+      match:
+        isPostCompactionDelegateEntry(entry) &&
+        (params.sessionKey == null || entry.sessionKey === params.sessionKey) &&
+        (entryIds.size === 0 || entryIds.has(entry.id)),
+      bypassBackoff: entryIds.size > 0,
+    }),
+  });
 }
 
 export async function dispatchPostCompactionDelegates(
@@ -302,34 +506,18 @@ export async function dispatchPostCompactionDelegates(
     ...persistedCompactionDelegates,
     ...stagedCompactionDelegates,
   ].map(normalizePostCompactionDelegate);
-  const {
-    maxChainLength: maxCompactionChainLength,
-    maxDelegatesPerTurn: maxCompactionDelegates,
-    costCapTokens: compactionCostCapTokens,
-  } = deps.resolveContinuationRuntimeConfig(params.cfg);
-  const bracketDelegateOffset = params.continuationSignalKind === "delegate" ? 1 : 0;
-  const compactionBudget = Math.max(0, maxCompactionDelegates - bracketDelegateOffset);
-  const releasedCompactionDelegates = allCompactionDelegates.slice(0, compactionBudget);
-  let droppedCompactionDelegates = Math.max(
-    0,
-    allCompactionDelegates.length - releasedCompactionDelegates.length,
-  );
-  const originalCompactionChainCount = params.sessionEntry?.continuationChainCount ?? 0;
-  let currentCompactionChainCount = originalCompactionChainCount;
-  const compactionChainStartedAt = params.sessionEntry?.continuationChainStartedAt ?? deps.now();
-  const compactionChainTokens = params.sessionEntry?.continuationChainTokens ?? 0;
-  let dispatchedCompactionDelegates = 0;
 
-  const workspaceDir =
-    typeof params.followupRun.run.workspaceDir === "string" &&
-    params.followupRun.run.workspaceDir.trim()
-      ? params.followupRun.run.workspaceDir
-      : deps.resolveAgentWorkspaceDir(params.cfg, params.followupRun.run.agentId);
   deps
-    .readPostCompactionContext(workspaceDir, {
-      cfg: params.cfg,
-      agentId: deps.resolveSessionAgentId({ sessionKey: params.sessionKey, config: params.cfg }),
-    })
+    .readPostCompactionContext(
+      typeof params.followupRun.run.workspaceDir === "string" &&
+        params.followupRun.run.workspaceDir.trim()
+        ? params.followupRun.run.workspaceDir
+        : deps.resolveAgentWorkspaceDir(params.cfg, params.followupRun.run.agentId),
+      {
+        cfg: params.cfg,
+        agentId: deps.resolveSessionAgentId({ sessionKey: params.sessionKey, config: params.cfg }),
+      },
+    )
     .then((contextContent) => {
       if (contextContent) {
         deps.enqueueSystemEvent(contextContent, { sessionKey: params.sessionKey });
@@ -339,79 +527,36 @@ export async function dispatchPostCompactionDelegates(
       // Silent failure: post-compaction context is best-effort.
     });
 
-  for (const delegate of releasedCompactionDelegates) {
-    if (currentCompactionChainCount >= maxCompactionChainLength) {
-      droppedCompactionDelegates += 1;
-      deps.log(
-        `Post-compaction delegate rejected: chain length ${currentCompactionChainCount} >= ${maxCompactionChainLength} for session ${params.sessionKey}`,
-      );
-      deps.enqueueSystemEvent(
-        `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${delegate.task}`,
-        { sessionKey: params.sessionKey },
-      );
+  const deliveryContext = resolvePostCompactionDeliveryContext(params.followupRun);
+  const enqueueResults = await Promise.allSettled(
+    allCompactionDelegates.map((delegate, sequence) =>
+      deps.enqueuePostCompactionDelegateDelivery({
+        sessionKey: params.sessionKey,
+        delegate,
+        sequence,
+        compactionCount: params.compactionCount,
+        ...(deliveryContext ? { deliveryContext } : {}),
+      }),
+    ),
+  );
+
+  const queuedEntryIds: string[] = [];
+  let droppedCompactionDelegates = 0;
+  for (const [index, result] of enqueueResults.entries()) {
+    if (result.status === "fulfilled") {
+      queuedEntryIds.push(result.value);
       continue;
     }
-
-    if (compactionCostCapTokens > 0 && compactionChainTokens > compactionCostCapTokens) {
-      droppedCompactionDelegates += 1;
-      deps.log(
-        `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}) for session ${params.sessionKey}`,
-      );
-      deps.enqueueSystemEvent(
-        `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${delegate.task}`,
-        { sessionKey: params.sessionKey },
-      );
-      continue;
-    }
-
-    const nextCompactionChainCount = currentCompactionChainCount + 1;
-    deps.log(
-      `Post-compaction delegate dispatch for session ${params.sessionKey}: ${delegate.task}`,
-    );
-    try {
-      const delegateWakeOnReturn = delegate.silentWake ?? true;
-      const delegateSilentAnnounce = delegate.silent ?? delegateWakeOnReturn;
-      const spawnResult = await deps.spawnSubagentDirect(
-        {
-          task:
-            `[continuation:post-compaction] ` +
-            `[continuation:chain-hop:${nextCompactionChainCount}] ` +
-            `Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
-          ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
-          ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
-          drainsContinuationDelegateQueue: true,
-        },
-        {
-          agentSessionKey: params.sessionKey,
-          agentChannel: params.followupRun.originatingChannel ?? undefined,
-          agentAccountId: params.followupRun.originatingAccountId ?? undefined,
-          agentTo: params.followupRun.originatingTo ?? undefined,
-          agentThreadId: params.followupRun.originatingThreadId ?? undefined,
-        },
-      );
-      if (spawnResult.status === "accepted") {
-        currentCompactionChainCount = nextCompactionChainCount;
-        dispatchedCompactionDelegates += 1;
-        deps.enqueueSystemEvent(
-          `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${delegate.task}`,
-          { sessionKey: params.sessionKey },
-        );
-      } else {
-        droppedCompactionDelegates += 1;
-        params.postCompactionDelegatesToPreserve.push(delegate);
-        deps.log(
-          `Post-compaction delegate rejected (${spawnResult.status}) for session ${params.sessionKey} (re-staged)`,
-        );
-      }
-    } catch (err) {
-      droppedCompactionDelegates += 1;
+    droppedCompactionDelegates += 1;
+    const delegate = allCompactionDelegates[index];
+    if (delegate) {
       params.postCompactionDelegatesToPreserve.push(delegate);
-      deps.log(
-        `Post-compaction delegate failed for session ${params.sessionKey} (re-staged): ${String(
-          err,
-        )}`,
-      );
     }
+    deps.log(
+      `Failed to enqueue post-compaction delegate for ${params.sessionKey} (re-staged): ${String(
+        result.reason,
+      )}`,
+    );
   }
 
   if (params.postCompactionDelegatesToPreserve.length > 0) {
@@ -436,28 +581,30 @@ export async function dispatchPostCompactionDelegates(
   deps.enqueueSystemEvent(
     buildPostCompactionLifecycleEvent({
       compactionCount: params.compactionCount,
-      releasedDelegates: dispatchedCompactionDelegates,
+      releasedDelegates: queuedEntryIds.length,
       droppedDelegates: droppedCompactionDelegates,
     }),
     { sessionKey: params.sessionKey },
   );
 
-  if (currentCompactionChainCount > originalCompactionChainCount) {
-    await persistPostCompactionDelegateChainState({
-      count: currentCompactionChainCount,
-      log: deps.log,
-      sessionEntry: params.sessionEntry,
-      sessionKey: params.sessionKey,
-      sessionStore: params.sessionStore,
-      startedAt: compactionChainStartedAt,
-      storePath: params.storePath,
-      tokens: compactionChainTokens,
-    });
+  if (queuedEntryIds.length > 0) {
+    void deps
+      .drainPostCompactionDelegateDeliveries({
+        entryIds: queuedEntryIds,
+        log: defaultRecoveryLog,
+        sessionKey: params.sessionKey,
+      })
+      .catch((err) => {
+        deps.log(
+          `Failed to drain queued post-compaction delegates for ${params.sessionKey}: ${String(
+            err,
+          )}`,
+        );
+      });
   }
 
   return {
-    dispatchedDelegates: dispatchedCompactionDelegates,
+    queuedDelegates: queuedEntryIds.length,
     droppedDelegates: droppedCompactionDelegates,
-    currentChainCount: currentCompactionChainCount,
   };
 }
