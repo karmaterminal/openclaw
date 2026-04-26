@@ -26,7 +26,7 @@ async function maybePruneFailedRecords(opts: {
   if (failedMaxAgeMs == null || !(failedMaxAgeMs > 0)) {
     return;
   }
-  if (now - lastGcAt <= FAILED_GC_AMORTIZATION_MS) {
+  if (now - lastGcAt < FAILED_GC_AMORTIZATION_MS) {
     return;
   }
   try {
