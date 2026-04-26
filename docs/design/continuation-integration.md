@@ -86,18 +86,48 @@ Primary `sessionKey` doesn't drain → redirect to fallback. *Deliver to whoever
 
 Primary still gets it AND fallback gets a copy. *Dying message survives even if recipient doesn't.*
 
-### §6c — Schema realization (proposed)
+### §6c — Schema realization (resolver-function shape)
+
+Per 🌊 §6d byte-walk findings (msg `1497783845309907004`): prior art in the codebase favors **resolver-function** shape over **enum-mode**. See `MemoryFlushPlanResolver` in `src/plugins/memory-state.ts` for the canonical pattern — a pure function `(params) => Plan | null` registered as a capability, with named built-in implementations as defaults. Adopting that shape here:
 
 ```ts
-onFallback: "follow" | "echo" | "drop"
-  // 'follow' (default) — re-resolves at fire-time; intent is the role, not the session-instance
-  // 'echo'  (opt-in)  — fires into BOTH dead session's tail AND live successor (forensic)
-  // 'drop'  (explicit) — current implied behavior; rarely-right for post-compaction work
+// Canonical: caller supplies a resolver function, OR a name that selects one
+// of the built-in resolvers shipped with the gateway.
+type FallbackResolver = (params: {
+  primaryKey: string;
+  primaryAlive: boolean;
+  followRole?: string;
+  nowMs: number;
+}) => FallbackPlan | null;
+
+type FallbackPlan =
+  | { kind: "deliver-to"; sessionKey: string }       // role-handoff (follow)
+  | { kind: "deliver-to-both"; alsoSessionKey: string } // multicast (echo)
+  | { kind: "drop" };                                // explicit no-op
+
+onFallback?: FallbackResolver | "follow" | "echo" | "drop"
+  // String form is sugar that selects a built-in resolver by name. Default: "follow".
+  // Function form is escape-hatch for cohort-specific or per-call logic
+  // (e.g. resolve via station-broadcast in v3 / bc#11).
 
 followRole?: string
-  // role to re-resolve against when onFallback='follow'
-  // defaults: 'successor' when targetSessionKey is set, 'self' otherwise
+  // Hint passed through to the resolver. Defaults: 'successor' when
+  // targetSessionKey is set, 'self' otherwise.
 ```
+
+**Why resolver-function over enum-string** (load-bearing per #14 cite-discipline + 🌊's prior-art pin):
+
+1. **Composes with v3 / bc#11**: when station-broadcast lands, the (b)-shape resolver can re-issue the delegate as a `publish_to_stream` rather than a re-targeted `enqueueSessionDelivery`. Enum-string would force a v3 schema-add to express that; resolver-function carries it as a per-call function.
+2. **Tests against `enqueuePendingDelegate`** become unit-tests of the resolver, not integration-tests of the dispatcher. Gates the silent-input-drop hazard at construction-time.
+3. **Backward-compatible sugar**: callers who don't want the extra surface keep writing `onFallback: "follow"` — string form selects the canonical built-in resolver. Same line of code at the prince-facing layer.
+4. **Names the capability, not the policy**: `FallbackResolver` is the *capability* (a function shape). `"follow" | "echo" | "drop"` are *built-in policies* implementing that capability. Same shape as `MemoryFlushPlanResolver` + built-in flush-plan implementations.
+
+Schema-add lands in the **plumbing PR** (follow-up to #338) with:
+- `FallbackResolver` type definition
+- Three built-in resolvers (`followResolver`, `echoResolver`, `dropResolver`)
+- `targetSessionKey?: string` schema field with `execute()` wiring
+- `onFallback?` + `followRole?` schema fields with `execute()` wiring
+- Tests against `enqueuePendingDelegate` for each built-in resolver + a custom-function call
 
 ### §6d — Owed byte-walk
 
