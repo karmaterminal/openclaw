@@ -140,6 +140,11 @@ Descriptor-test TBDs for §B-execute: extend `src/agents/tools/continuation-tool
 - Post-rebase dependency refresh: ran `pnpm install` after the rebase because the v2026.4.24 package set differed from the pre-rebase install (`@vincentkoc/qrcode-tui` and `@mariozechner/pi-ai` types were stale/missing before install). Lockfile remained up to date.
 - `pnpm tsgo` rerun passed at candidate tip including `c0aa8f70eb`.
 - `pnpm check` first run failed on unused thinking-level type imports in `src/status/status-text.ts` left by conflict resolution. Removed the unused imports, reran `pnpm check`, and it passed.
+- Scoped continuation tests passed: `pnpm test src/auto-reply/continuation-delegate-store-taskflow.test.ts src/auto-reply/continuation-delegate-store.test.ts src/auto-reply/reply/context-pressure.test.ts src/auto-reply/reply/context-pressure.integration.test.ts src/auto-reply/reply/continuation-runtime.test.ts src/auto-reply/reply/post-compaction-context.test.ts src/agents/tools/request-compaction-tool.test.ts src/agents/tools/continuation-tools-registration.test.ts src/config/zod-schema.continuation.test.ts src/agents/subagent-announce.continuation.test.ts` (166 tests across unit-fast/runtime-config/auto-reply/agents shards).
+- Substrate sanity passed: `pnpm test src/infra/session-delivery-queue.storage.test.ts src/infra/session-delivery-queue.recovery.test.ts` (8 tests). This verifies the `session-delivery-queue` substrate at candidate SHA `9041690a82aa1f267f94a6972992ce3aee5c2686`, after starting from the tag-pinned upstream base `karmaterminal-2026.4.24-base` (`cbcfdf62c7297bda66009ea7476f053c3e9addab`).
+- Build passed: `pnpm build`.
+- Heartbeat scope passed: `pnpm test src/infra/heartbeat src/agents/heartbeat-system-prompt.test.ts src/auto-reply/heartbeat src/auto-reply/heartbeat-filter.test.ts`.
+- §6-rebase-passed: rebase ready for comparison at candidate SHA `9041690a82aa1f267f94a6972992ce3aee5c2686`.
 
 ## §B-execute — Surfaces 1+2 descriptor edits (copilot fills in)
 
