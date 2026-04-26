@@ -1,3 +1,5 @@
+// Surface 2 descriptor coverage for WORKORDER-rebase-20260424-v2.md, tracked in karmaterminal/openclaw#336.
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -36,6 +38,40 @@ describe("session-delivery queue storage", () => {
 
       expect(secondId).toBe(firstId);
       expect(await loadPendingSessionDeliveries(tempDir)).toHaveLength(1);
+    });
+  });
+
+  it("round-trips traceparent metadata while preserving sha256 idempotency", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const idempotencyKey = "restart-sentinel:agent:main:main:traceparent:123";
+      const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+      const firstId = await enqueueSessionDelivery(
+        {
+          kind: "agentTurn",
+          sessionKey: "agent:main:main",
+          message: "continue after restart with trace context",
+          messageId: "restart-sentinel:agent:main:main:agentTurn:traceparent:123",
+          idempotencyKey,
+          traceparent,
+        },
+        tempDir,
+      );
+      const secondId = await enqueueSessionDelivery(
+        {
+          kind: "agentTurn",
+          sessionKey: "agent:main:main",
+          message: "deduped duplicate",
+          messageId: "restart-sentinel:agent:main:main:agentTurn:traceparent:duplicate",
+          idempotencyKey,
+          traceparent,
+        },
+        tempDir,
+      );
+
+      expect(firstId).toBe(createHash("sha256").update(idempotencyKey).digest("hex"));
+      expect(secondId).toBe(firstId);
+      const [entry] = await loadPendingSessionDeliveries(tempDir);
+      expect(entry?.traceparent).toBe(traceparent);
     });
   });
 

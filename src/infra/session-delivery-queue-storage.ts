@@ -25,7 +25,28 @@ export type SessionDeliveryRoute = {
   chatType: ChatType;
 };
 
-export type QueuedSessionDeliveryPayload =
+export interface AttachmentRef {
+  kind: "blob-sha256";
+  sha256: string;
+  mediaType?: string;
+}
+
+type QueuedSessionDeliveryPayloadMetadata = {
+  /**
+   * W3C trace-context traceparent for chain-correlation runtime in karmaterminal/openclaw#334.
+   * This is the (a)-shape (RPC-style address-recipient); v3 surfaces broadcast-mode
+   * via karmaterminal/binary-canticle#11. Same substrate; different verb-set.
+   */
+  traceparent?: string;
+  /**
+   * Descriptor-stub attachment references for sibling enrichment runtime in karmaterminal/openclaw#332.
+   * This is the (a)-shape (RPC-style address-recipient); v3 surfaces broadcast-mode
+   * via karmaterminal/binary-canticle#11. Same substrate; different verb-set.
+   */
+  attachments?: AttachmentRef[];
+};
+
+export type QueuedSessionDeliveryPayload = (
   | {
       kind: "systemEvent";
       sessionKey: string;
@@ -41,7 +62,9 @@ export type QueuedSessionDeliveryPayload =
       route?: SessionDeliveryRoute;
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
-    };
+    }
+) &
+  QueuedSessionDeliveryPayloadMetadata;
 
 export type QueuedSessionDelivery = QueuedSessionDeliveryPayload & {
   id: string;
