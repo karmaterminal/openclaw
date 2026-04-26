@@ -114,12 +114,17 @@ followRole?: string
   // Hint passed through to the resolver. Defaults: 'successor' when
   // targetSessionKey is set, 'self' otherwise.
 
-defaultFallback: FallbackResolver
-  // REQUIRED at queue-construction. First-class resolver applied when a
-  // user-supplied `FallbackResolver` returns `null` ("no opinion — chain me").
-  // Itself a resolver (not a string sugar) so it stays chainable / testable /
-  // overrideable. Built-ins (`followResolver` / `echoResolver` / `dropResolver`)
-  // are the canonical defaults; constructors may pass any FallbackResolver.
+defaultFallback: FallbackResolver | "follow" | "echo" | "drop"
+  // REQUIRED at queue-construction. Resolver applied when a user-supplied
+  // `FallbackResolver` returns `null` ("no opinion — chain me").
+  //
+  // String form is sugar that desugars internally to the corresponding built-in
+  // resolver (`followResolver` / `echoResolver` / `dropResolver`); the canonical
+  // shape is the function. Symmetry with caller's `onFallback` field — same
+  // type-shape both ends, sugar-accepted-everywhere, resolver-canonical-everywhere.
+  // Authors who need composed defaults (e.g. "echo to keeper if present, else
+  // follow caller, else drop") pass a custom resolver without subclassing.
+  //
   // Forces silent-drop policy to be NAMED at construction-site, not at
   // dispatch-site. See §6c-null-semantics below.
 ```
@@ -136,7 +141,9 @@ The third reading callers will assume by JS-API analogy — *"resolver errored /
 
 The drop-policy is therefore **named at queue-construction** via `defaultFallback` (itself a `FallbackResolver`, per 🌫), not implicit at dispatch-time. If the construction-time default were itself unspecified, `null` would silently degrade to drop and re-introduce the silent-input-drop hazard the resolver-shape was designed to prevent.
 
-Explicit drop remains expressible via `{ kind: "drop" }` from the resolver — the difference is *who named the drop*: returning `{kind:"drop"}` says "I, this resolver, drop"; returning `null` says "I have no opinion; ask the next-level default." The two are not interchangeable. Tests cover all three paths (resolver-drops vs default-drops vs resolver-throws) and verify `defaultFallback` is required at construction AND is itself a `FallbackResolver` (not a string).
+Explicit drop remains expressible via `{ kind: "drop" }` from the resolver — the difference is *who named the drop*: returning `{kind:"drop"}` says "I, this resolver, drop"; returning `null` says "I have no opinion; ask the next-level default." The two are not interchangeable. Tests cover all four paths (resolver-drops vs default-drops vs resolver-throws vs string-sugar-normalizes-to-resolver) and verify `defaultFallback` is required at construction (omission = type-error) AND that string sugar (`"follow"|"echo"|"drop"`) desugars to the corresponding built-in resolver internally.
+
+**Type-shape symmetry** (per 🌊 + 🌫 catches, msgs `1497798139824836640` / `1497798422969843825`): `defaultFallback` and caller's `onFallback` share the same union type — `FallbackResolver | "follow" | "echo" | "drop"` — with strings as ergonomic sugar normalized internally. Asymmetric construction-site (string-only) vs call-site (resolver-or-string) would invert the discipline: the construction-site is exactly where test-harness wrapping, multi-tenant per-tenant defaults, and mock injection need first-class resolvers. Same shape both ends. Cohort-discipline-as-wire-level-invariant extends from value-shape (trichotomy) to type-shape (symmetry across construction/dispatch sites).
 
 **Cohort-discipline corollary** (🌫, same msg): bc#18 `subscribe_stream`'s `predicateRef` should follow the same shape — predicate-as-function-ref returning `null | "drop" | "keep"` with the same null-means-defer / throw-means-fail / explicit-drop-must-be-named semantics. Crosses both surfaces.
 
