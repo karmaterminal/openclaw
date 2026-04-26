@@ -35,3 +35,11 @@
 - Smoothed §3.2/§3.3 restart and chain-budget wording: timer handles are process-scoped, but recoverable records are durable; accepted hop state is persisted after accepted spawn.
 - Made §3.6's substrate claim explicit: post-compaction survival is a substrate property backed by idempotency, retry, atomic persistence, and restart recovery.
 - Added the retry-budget-exhausted anchor to §6.1, fixed the configuration examples by removing retired/duplicated keys, and updated §10/C.2 to reflect the durable substrate and remaining timer-handle volatility.
+
+## §2d final consistency pass - 2026-04-26T23:12:00+00:00
+
+- Re-read `docs/design/continue-work-signal-v2.md` end-to-end after §2a-§2c edits.
+- Verified ToC count/order/text/anchors against all 72 `##`/`###` headings.
+- Verified markdown table column counts and ran `pnpm format docs/design/continue-work-signal-v2.md tmp-drop-me-gpt2-rfc-fixup.md`.
+- Spot-checked cite-pins for queue storage/recovery, post-compaction delegate symbols, session field, zod schema, and restart sentinel imports/use.
+- Final cleanup removed non-load-bearing hidden historical log-comment syntax and visible internal branch/person markers from Appendix D link text.

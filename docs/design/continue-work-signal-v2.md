@@ -74,7 +74,7 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
   - [B.1 Alternatives considered](#b1-alternatives-considered)
   - [B.2 Prior art](#b2-prior-art)
   - [B.3 `continue_delegate()` compared with `sessions_spawn`](#b3-continue_delegate-compared-with-sessions_spawn)
-  - [B.4 Async-only volitional compaction design decision](#b4-async-only-volitional-compaction-design-decision)
+  - [B.4 Async-only volitional compaction: design decision](#b4-async-only-volitional-compaction-design-decision)
 - [Appendix C. Failure modes and behavioral limitations](#appendix-c-failure-modes-and-behavioral-limitations)
   - [C.1 Operational failure modes](#c1-operational-failure-modes)
   - [C.2 Inherited behavioral limitations](#c2-inherited-behavioral-limitations)
@@ -801,7 +801,7 @@ These anchors make the full pipeline grepable end to end.
 | `below-threshold` | `ratio < threshold` — pressure ratio below the configured trigger; logs raw 4dp ratio alongside rounded percent |
 | `band-dedup`      | `band === previous` — same pressure band as the previous fire; suppressed to avoid repeat-event flood           |
 
-**Investigation cycle.** Earlier in 2026-04, deployed instances observed zero `[context-pressure:fire]` lines despite continuation flowing normally. A short-lived `:reach`/`:skip` instrumentation pair in `agent-runner.ts` was added to confirm the outer guard was being entered, then removed once the root cause was found: the dedup-band sentinel used `?? 0`, which collided with `band === 0` for sessions whose `contextPressureThreshold` was below the lowest hard-coded pressure band (25 %). The first crossing of band 0 was therefore dedup-suppressed silently. The fix is a `-1` missing-key sentinel, so the first crossing of any band — including band 0 — fires once. (Equivalent-idiom note: under the Zod-constrained config — `contextPressureThreshold ≥ 0.005` enforces `thresholdPct ≥ 1`, so `band === 0` is unreachable from valid configs — a `band === 0 || band === (… ?? 0)` short-circuit + `?? 0` sentinel is observably equivalent to the `?? -1` form. Both shapes ship the same first-crossing semantics; the `-1` sentinel is the narratively cleaner expression of the invariant.)
+**Investigation cycle.** Earlier in 2026-04, deployed instances observed zero `[context-pressure:fire]` lines despite continuation flowing normally. The root cause was a dedup-band sentinel collision: missing prior state was treated like band 0, so first crossings at the lowest configured band could be suppressed. The current implementation uses a missing-key sentinel distinct from every valid band, so the first crossing of any band fires once, and the `[context-pressure:noop]` breadcrumbs above make future skips attributable to a specific guard.
 
 **Privacy.** Continuation log anchors that include free-text agent payloads (`[continue_delegate:enqueue] task=…`, `[continuation:enrichment-return] …`) honor the `extensions/diagnostics-otel` content-capture redaction policy (see §6.6). Operators deploying with content-capture enabled should declare `task`, `enrichment`, and `reason` keys in their redaction policy configuration before enabling capture in production.
 
@@ -839,13 +839,7 @@ Representative runtime traces are shown below.
 [continuation] Chain cost cap reached (502000 > 500000) — delegate rejected
 ```
 
-**Generation-drift behavior:**
-
-```text
-<!-- [historical] Tool DELEGATE timer cancelled (generation drift 3 > tolerance 0) — generation guard removed from design -->
-<!-- [historical] WORK timer cancelled (generation drift 1 > tolerance 0) — generation guard removed from design -->
-<!-- [historical] Tool DELEGATE timer fired and spawned turn 1/10 (drift within tolerance 300) — generation guard removed from design -->
-```
+**Generation-drift behavior:** earlier builds could cancel delayed work when unrelated channel activity advanced the session generation. That guard has been removed: delayed work should not be cancelled by channel noise.
 
 ### 6.3 `/status` continuation telemetry
 
@@ -1338,36 +1332,36 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 
 ### D.2 Evidence locations
 
-| Artifact                                                                 | Location                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Swim 7 evidence                                                          | Results doc + raw runtime logs on [`silas/swim7-runtime-evidence`](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence) branch (`SWIM7-RESULTS.md`, `gateway.log`, `raw-capture.log`); chat capture on [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) branch |
-| Swim 8 evidence                                                          | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                                                                                                                                |
-| Swim 9 + 10 issue captures and results                                   | [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch                                                                                                                                                                                                                                |
-| Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191)                                                                                                                                     |
-| Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                                                                                                                                                     |
-| `/status` continuation row (Discord/agent)                               | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts` (openclaw#187, #188)                                                                                                                                                                                                                                                                 |
-| `request_compaction()` tool surface tests                                | `src/agents/tools/request-compaction-tool.test.ts` (openclaw#165, swim-34/X5.1)                                                                                                                                                                                                                                                                   |
-| Context-pressure noop breadcrumbs + sentinel                             | `src/auto-reply/continuation/context-pressure.ts` (openclaw#164, #171, #172, #173)                                                                                                                                                                                                                                                                |
-| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162)                                                                                                                                                                                                                                                                 |
-| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169)                                                                                                                                                                                                                                                                             |
-| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170)                                                                                                                                                                                                                                                                                    |
+| Artifact                                                                 | Location                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Swim 7 evidence                                                          | Results doc + raw runtime logs on the [runtime evidence branch](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence) (`SWIM7-RESULTS.md`, `gateway.log`, `raw-capture.log`); chat capture on the [chat evidence branch](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) |
+| Swim 8 evidence                                                          | [RFC evidence appendix branch](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix)                                                                                                                                                                                                                  |
+| Swim 9 + 10 issue captures and results                                   | [RFC evidence appendix branch](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix)                                                                                                                                                                                                                  |
+| Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191)                                                                                                               |
+| Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                                                                                                                               |
+| `/status` continuation row (Discord/agent)                               | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts` (openclaw#187, #188)                                                                                                                                                                                                                                           |
+| `request_compaction()` tool surface tests                                | `src/agents/tools/request-compaction-tool.test.ts` (openclaw#165, swim-34/X5.1)                                                                                                                                                                                                                                             |
+| Context-pressure noop breadcrumbs + sentinel                             | `src/auto-reply/continuation/context-pressure.ts` (openclaw#164, #171, #172, #173)                                                                                                                                                                                                                                          |
+| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162)                                                                                                                                                                                                                                           |
+| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169)                                                                                                                                                                                                                                                       |
+| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170)                                                                                                                                                                                                                                                              |
 
 ### D.3 Most-recent integration test session results (Swim 9 and Swim 10)
 
-These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and are archived: Swim 7 results doc + raw runtime logs on the [`silas/swim7-runtime-evidence`](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence) branch; Swim 8 captures on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch.
+These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and are archived on the evidence branches listed above.
 
 Swim 9:
 
-- **Issue capture:** preserved on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch
-- **SUT:** canary build on `cael/61-volitional-compaction`
+- **Issue capture:** preserved on the evidence appendix branch
+- **SUT:** canary build for volitional compaction
 - **Build:** `b2322f5`
 - **Duration:** approximately 2 hours, Phase 1 low-context testing
 - **Result:** 5/5 pass after fixing a missing forwarding of `requestCompactionOpts` from `run.ts` to `attempt.ts`
 
 Swim 10:
 
-- **Issue capture:** preserved on the [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix) branch
-- **SUT:** canary build on `cael/61-volitional-compaction`
+- **Issue capture:** preserved on the evidence appendix branch
+- **SUT:** canary build for volitional compaction
 - **Formation:** driver, log monitor, SUT, coordinator, operator (5-role canary formation)
 - **Build:** `ad32cde`
 - **Duration:** approximately 5 hours
