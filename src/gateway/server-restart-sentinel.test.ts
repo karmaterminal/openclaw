@@ -6,6 +6,9 @@ type LoadedSessionEntry = ReturnType<typeof import("./session-utils.js").loadSes
 type RecordInboundSessionAndDispatchReplyParams = Parameters<
   typeof import("../plugin-sdk/inbound-reply-dispatch.js").recordInboundSessionAndDispatchReply
 >[0];
+type RecoverPendingSessionDeliveriesParams = Parameters<
+  typeof import("../infra/session-delivery-queue-recovery.js").recoverPendingSessionDeliveries
+>[0];
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -105,12 +108,14 @@ const mocks = vi.hoisted(() => {
         }
       },
     ),
-    recoverPendingSessionDeliveries: vi.fn(async () => ({
-      recovered: 0,
-      failed: 0,
-      skippedMaxRetries: 0,
-      deferredBackoff: 0,
-    })),
+    recoverPendingSessionDeliveries: vi.fn(
+      async (_opts?: RecoverPendingSessionDeliveriesParams) => ({
+        recovered: 0,
+        failed: 0,
+        skippedMaxRetries: 0,
+        deferredBackoff: 0,
+      }),
+    ),
     deliverQueuedPostCompactionDelegate: vi.fn(async () => undefined),
     injectTimestamp: vi.fn((message: string) => `stamped:${message}`),
     timestampOptsFromConfig: vi.fn(() => ({})),
@@ -292,12 +297,8 @@ describe("scheduleRestartSentinelWake", () => {
 
   it("recovers queued post-compaction delegates through session delivery recovery", async () => {
     mocks.recoverPendingSessionDeliveries.mockImplementationOnce(
-      async (params: {
-        deliver: (entry: Record<string, unknown>) => Promise<void>;
-        log: unknown;
-        maxEnqueuedAt?: number;
-      }) => {
-        await params.deliver({
+      async (params?: RecoverPendingSessionDeliveriesParams) => {
+        await params!.deliver({
           id: "post-compaction-1",
           kind: "postCompactionDelegate",
           sessionKey: "agent:main:main",
@@ -305,7 +306,7 @@ describe("scheduleRestartSentinelWake", () => {
           createdAt: 123,
           enqueuedAt: 1,
           retryCount: 0,
-        });
+        } as never);
         return {
           recovered: 1,
           failed: 0,
