@@ -558,7 +558,7 @@ Operational flow:
 7. successor session resumes with boot files, summary, and enrichment
 ```
 
-**Session provider/model threading (2026-04-19, openclaw#191).** Once the operational flow above lands, the same code path needs the right inputs to actually do the compaction. The volitional path threads the session's active `provider` and `model` from the run context into `compactEmbeddedPiSession` at both call sites (`src/auto-reply/reply/agent-runner-execution.ts` and `src/auto-reply/reply/followup-runner.ts`). Earlier builds dropped these on the floor and `resolveEmbeddedCompactionTarget` fell through to `DEFAULT_PROVIDER`/`DEFAULT_MODEL` (`'openai'`/`'gpt-5.4'`), for which the persisted auth profile was usually wrong. The deployed-instance symptom was an instant (<1 s) failure with `Unknown model: openai/gpt-5.4` classified as `reason=unknown` in the journal. Three coupled defects were addressed together:
+**Session provider/model threading (2026-04-19, openclaw#191).** Once the operational flow above lands, the same code path needs the right inputs to actually do the compaction. The volitional path threads the session's active `provider` and `model` from the run context into `compactEmbeddedPiSession` at both call sites (`src/auto-reply/reply/agent-runner-execution.ts` and `src/auto-reply/reply/followup-runner.ts`). Earlier builds dropped these on the floor and `resolveEmbeddedCompactionTarget` fell through to `DEFAULT_PROVIDER`/`DEFAULT_MODEL` (`'openai'`/`'gpt-5.4'`), for which the persisted auth profile was usually wrong. The deployed-instance symptom was an instant under-one-second failure with `Unknown model: openai/gpt-5.4` classified as `reason=unknown` in the journal. Three coupled defects were addressed together:
 
 1. **Root cause:** pass `run.provider` and `run.model` into the embedded compaction call.
 2. **Caller honesty:** both sites previously returned `{ ok: true, compacted: true }` unconditionally, causing `incrementVolitionalCompactionCount` to fire on phantom-successful compactions and lying to the `/status` `volitional` row. Both sites now honor the real result.
@@ -883,8 +883,8 @@ Operational fleet evidence from 2026-04-03 across four persistent OpenClaw insta
 
 | Instance   | Compactions | Context at observation | Response latency           | Behavior          |
 | ---------- | ----------- | ---------------------- | -------------------------- | ----------------- |
-| Instance A | 6           | 41%                    | normal (<10s)              | responsive        |
-| Instance B | 3           | 62%                    | normal (<15s)              | responsive        |
+| Instance A | 6           | 41%                    | normal under 10s           | responsive        |
+| Instance B | 3           | 62%                    | normal under 15s           | responsive        |
 | Instance C | 1           | 74%                    | degraded (~30s)            | slower tool use   |
 | Instance D | 0           | 81%                    | severely degraded (2+ min) | context thrashing |
 

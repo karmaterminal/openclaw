@@ -43,3 +43,12 @@
 - Verified markdown table column counts and ran `pnpm format docs/design/continue-work-signal-v2.md tmp-drop-me-gpt2-rfc-fixup.md`.
 - Spot-checked cite-pins for queue storage/recovery, post-compaction delegate symbols, session field, zod schema, and restart sentinel imports/use.
 - Final cleanup removed non-load-bearing hidden historical log-comment syntax and visible internal branch/person markers from Appendix D link text.
+
+## §3 verification receipts - 2026-04-26T23:18:00+00:00
+
+- `pnpm docs:check-mdx` passed.
+- `pnpm docs:check-links` passed: `checked_internal_links=3587`, `broken_links=0`.
+- ToC script passed: 72 headings matched.
+- Table sanity script passed.
+- `pnpm check:changed` passed; it expanded to all lanes because pre-existing `.agents/skills/...` surfaces are visible to the smart gate.
+- `pnpm docs:check-links:anchors` could not be used as a clean gate: under the default Node 25 runtime Mintlify refuses to run; under temporary Node 22 the edited RFC parses cleanly, then the audit fails on unrelated existing docs `plugins/sdk-overview.md` and `tools/exec-approvals.md`.
