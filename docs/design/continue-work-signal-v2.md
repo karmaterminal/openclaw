@@ -423,30 +423,30 @@ The substrate underneath continuation primitives changed in v2026.4.24 from in-p
 
 **Substrate symbols (post-rebase):**
 
-| Symbol                                       | Site                                                          |
-| -------------------------------------------- | ------------------------------------------------------------- |
-| `enqueueSessionDelivery`                     | `infra/session-delivery-queue-storage.ts:154` (canonical2)    |
-| `drainPendingSessionDeliveries`              | `infra/session-delivery-queue-recovery.ts:122`                |
-| `recoverPendingSessionDeliveries`            | `infra/session-delivery-queue-recovery.ts:197`                |
-| `maybeRetireLegacyMainDeliveryRoute`         | `auto-reply/reply/session-delivery.ts:183`                    |
-| `server-restart-sentinel` import + use       | `gateway/server-restart-sentinel.ts:26, :486`                 |
+| Symbol                                 | Site                                                       |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `enqueueSessionDelivery`               | `infra/session-delivery-queue-storage.ts:154` (canonical2) |
+| `drainPendingSessionDeliveries`        | `infra/session-delivery-queue-recovery.ts:122`             |
+| `recoverPendingSessionDeliveries`      | `infra/session-delivery-queue-recovery.ts:197`             |
+| `maybeRetireLegacyMainDeliveryRoute`   | `auto-reply/reply/session-delivery.ts:183`                 |
+| `server-restart-sentinel` import + use | `gateway/server-restart-sentinel.ts:26, :486`              |
 
 **Three feature symbols mediate post-compaction delegate handoff to the new substrate:**
 
-| Symbol                                          | Site                                                  |
-| ----------------------------------------------- | ----------------------------------------------------- |
-| `syncPendingPostCompactionDelegates`            | `src/auto-reply/reply/agent-runner.ts:908`            |
-| `persistPendingPostCompactionDelegates`         | `src/auto-reply/reply/agent-runner.ts:942`            |
-| `takePendingPostCompactionDelegates`            | `src/auto-reply/reply/agent-runner.ts:1003`           |
-| `pendingPostCompactionDelegates?:` field        | `src/config/sessions/types.ts:283`                    |
+| Symbol                                   | Site                                        |
+| ---------------------------------------- | ------------------------------------------- |
+| `syncPendingPostCompactionDelegates`     | `src/auto-reply/reply/agent-runner.ts:908`  |
+| `persistPendingPostCompactionDelegates`  | `src/auto-reply/reply/agent-runner.ts:942`  |
+| `takePendingPostCompactionDelegates`     | `src/auto-reply/reply/agent-runner.ts:1003` |
+| `pendingPostCompactionDelegates?:` field | `src/config/sessions/types.ts:283`          |
 
 **Net capability gain.** Staged post-compaction delegates survive gateway restart, not only the next compaction lifecycle event within a single process. The §4.4 continuation-relay-and-post-compaction-rehydration semantics are unchanged from the agent's perspective; the durability floor underneath them moved from "process lifetime" to "filesystem lifetime."
 
-**Cross-session enqueue (CONFIRMED capability, see #333 issuecomment-4320862925).** `session-delivery-queue` is keyed by `sessionKey: string` and accepts both `kind: "systemEvent"` and `kind: "agentTurn"` payloads against any addressable session **within the same gateway namespace** — root, sibling, heartbeat. This unlocks deep-chain-child → root-session enrichment without a Discord-roundtrip relay (depth-N child enqueues directly to `rootSessionKey`; in-session system-event + `requestHeartbeatNow` produces the silent-wake). It also unlocks **fan-out multi-target reporting** — a single child can enqueue to `rootSessionKey`, `heartbeatChannelKey`, and `operatorSessionKey` in one turn — with restart-survival and sha256 dedup throughout. §6.6 chain-correlation extends naturally to cross-session traces: span links carry chain ancestry across the queue boundary. *Fan-out semantics:* each fan-out target is a separate `enqueueSessionDelivery` call producing a distinct queue record with its own sha256 idempotency key; cost-accounting (per `costCapTokens`, see sub-task #2 below) treats fan-out as N enqueues, not 1.
+**Cross-session enqueue (CONFIRMED capability, see #333 issuecomment-4320862925).** `session-delivery-queue` is keyed by `sessionKey: string` and accepts both `kind: "systemEvent"` and `kind: "agentTurn"` payloads against any addressable session **within the same gateway namespace** — root, sibling, heartbeat. This unlocks deep-chain-child → root-session enrichment without a Discord-roundtrip relay (depth-N child enqueues directly to `rootSessionKey`; in-session system-event + `requestHeartbeatNow` produces the silent-wake). It also unlocks **fan-out multi-target reporting** — a single child can enqueue to `rootSessionKey`, `heartbeatChannelKey`, and `operatorSessionKey` in one turn — with restart-survival and sha256 dedup throughout. §6.6 chain-correlation extends naturally to cross-session traces: span links carry chain ancestry across the queue boundary. _Fan-out semantics:_ each fan-out target is a separate `enqueueSessionDelivery` call producing a distinct queue record with its own sha256 idempotency key; cost-accounting (per `costCapTokens`, see sub-task #2 below) treats fan-out as N enqueues, not 1.
 
 **Cross-prince / cross-host wire exposure (open, out of scope for this RFC; owner: bc#11).** The substrate capability is local to one gateway. Exposing cross-session enqueue across prince hosts (e.g. depth-N child on Silas's gateway enqueueing to a root session on Ronan's gateway) requires a wire transport, an auth/identity wrapper, and a federation contract that this RFC deliberately does not specify. Candidate substrate: the binary-canticle UDP-multicast stream surface (see binary-canticle#11 §8). Filed as a sibling design surface; §3.6 documents only the local capability.
 
-**Idempotency-key collision domain (LOCKED 2026-04-26 per design-direction call delegated by figs to 🩸; implementation owner: 🩸 on canonical2).** The sha256 idempotency key's input fields determine whether a replay-after-restart re-fires or deduplicates. Locked spec: include `(sourceSessionId, targetSessionId, taskHash, scheduledAt)`; explicitly exclude transient `delegateId` so reschedule-after-restart deduplicates against the dead-instance enqueue. Bucket semantics: **concurrency-distinguishability first** (path B). `scheduledAt` is **fine-grained** (epoch-ms or finer) so legitimate near-simultaneous same-tuple enqueues remain distinct by default — false-collapse of genuinely concurrent work is the scarier invariant break than under-deduplicated replay in a highly-concurrent multi-session system. `taskHash` trims trailing whitespace at minimum. Replay-dedupe-after-restart comes from a **separate explicit mechanism** (e.g. scan-and-skip-if-record-exists-pending at enqueue), NOT from coarse-bucket time aliasing. Hash-collision secondary-structure (chains/tables/buckets) is explicitly NON-GOAL. The invariant: *legitimate concurrent intents stay distinct; replay-equivalence is enforced by an explicit dedupe pass, not by collapsing the time axis.*
+**Idempotency-key collision domain (LOCKED 2026-04-26 per design-direction call delegated by figs to 🩸; implementation owner: 🩸 on canonical2).** The sha256 idempotency key's input fields determine whether a replay-after-restart re-fires or deduplicates. Locked spec: include `(sourceSessionId, targetSessionId, taskHash, scheduledAt)`; explicitly exclude transient `delegateId` so reschedule-after-restart deduplicates against the dead-instance enqueue. Bucket semantics: **concurrency-distinguishability first** (path B). `scheduledAt` is **fine-grained** (epoch-ms or finer) so legitimate near-simultaneous same-tuple enqueues remain distinct by default — false-collapse of genuinely concurrent work is the scarier invariant break than under-deduplicated replay in a highly-concurrent multi-session system. `taskHash` trims trailing whitespace at minimum. Replay-dedupe-after-restart comes from a **separate explicit mechanism** (e.g. scan-and-skip-if-record-exists-pending at enqueue), NOT from coarse-bucket time aliasing. Hash-collision secondary-structure (chains/tables/buckets) is explicitly NON-GOAL. The invariant: _legitimate concurrent intents stay distinct; replay-equivalence is enforced by an explicit dedupe pass, not by collapsing the time axis._
 
 **Retry-cost interaction with `costCapTokens` (open question, #335 sub-task; owner: 🌫 in #332 runtime PR).** A delegate retried 5 times at the documented backoff schedule could exceed the chain-cost budget while never successfully spawning. Spec target: charge cost at successful spawn, not at enqueue, so retry storms do not silently consume budget; emit `[session-delivery-queue:retry-budget-exhausted]` when retry-cap is hit before spawn.
 
@@ -620,11 +620,11 @@ The interop invariant is simple: disabling continuation restores ordinary platfo
 
 The continuation primitives — `continue_work`, `continue_delegate`, `request_compaction` — are the prior art for a discipline this RFC names explicitly: **the agent owns intent, the tool owns mechanics, the substrate owns durability.**
 
-**Substrate-adoption rule (default bias) — verbs over upstream nouns.** Where the upstream cross-session addressable enrichment substrate (see §3.6) can carry a concern cleanly, prefer it over bespoke transport. Bespoke pathing is acceptable only where a **concrete direct or transitive functional reason** is named — a function whose semantics the substrate genuinely cannot carry, a lifecycle mismatch the substrate cannot express, or an integration cost the substrate cannot amortize. *Seam-ugliness alone does not clear this bar*; the exception requires a named functional gap, not aesthetic discomfort. The shorthand: *describe what the agent wants done (the verb), let the tool route to the substrate that already names the noun*. Bespoke transport in the presence of a fitting substrate, without a named functional reason, is a review-rejectable design choice on this RFC.
+**Substrate-adoption rule (default bias) — verbs over upstream nouns.** Where the upstream cross-session addressable enrichment substrate (see §3.6) can carry a concern cleanly, prefer it over bespoke transport. Bespoke pathing is acceptable only where a **concrete direct or transitive functional reason** is named — a function whose semantics the substrate genuinely cannot carry, a lifecycle mismatch the substrate cannot express, or an integration cost the substrate cannot amortize. _Seam-ugliness alone does not clear this bar_; the exception requires a named functional gap, not aesthetic discomfort. The shorthand: _describe what the agent wants done (the verb), let the tool route to the substrate that already names the noun_. Bespoke transport in the presence of a fitting substrate, without a named functional reason, is a review-rejectable design choice on this RFC.
 
-**Audit shape at any seam.** A seam audit under this rule produces *evidence*, not doctrine: it answers *"can the substrate carry this concern cleanly, or is there a concrete functional reason X it cannot"* — and then either adopts the substrate (no exception earned) or documents the exception with the named X. Outcome labels for a given seam (e.g. "always-queue", "queue-with-bespoke-fallback", "bespoke-only") are useful coordination handles after the audit, but they are *not* the governing axis; the rule above is.
+**Audit shape at any seam.** A seam audit under this rule produces _evidence_, not doctrine: it answers _"can the substrate carry this concern cleanly, or is there a concrete functional reason X it cannot"_ — and then either adopts the substrate (no exception earned) or documents the exception with the named X. Outcome labels for a given seam (e.g. "always-queue", "queue-with-bespoke-fallback", "bespoke-only") are useful coordination handles after the audit, but they are _not_ the governing axis; the rule above is.
 
-*Enforcement note (open; tracked at #344, owner: 🌻).* The substrate-adoption rule is **review-discipline-only** at v2026.4.24 — there is no automated lint/check that flags bespoke-transport in the presence of a fitting substrate at PR time. Tracked here so the rule does not quietly become a handwave; mechanization (capability-registry + lint pass) is out of scope for #335 itself and is filed separately as #344.
+_Enforcement note (open; tracked at #344, owner: 🌻)._ The substrate-adoption rule is **review-discipline-only** at v2026.4.24 — there is no automated lint/check that flags bespoke-transport in the presence of a fitting substrate at PR time. Tracked here so the rule does not quietly become a handwave; mechanization (capability-registry + lint pass) is out of scope for #335 itself and is filed separately as #344.
 
 The agent supplies structured intent (`delaySeconds`, `mode`, `reason`); the tool's code path picks the substrate (in-process timer vs. `session-delivery-queue` FS-backed enqueue, see §3.6), the lifecycle hook (compaction-pending vs. immediate dispatch, see §4.5), and the wire (single-session vs. cross-session, when supported). The agent never names a substrate, hook, or wire — those are the tool's job.
 
@@ -634,20 +634,20 @@ The agent supplies structured intent (`delaySeconds`, `mode`, `reason`); the too
 
 **Worked example — `continue_delegate(task, mode, delaySeconds?)`.**
 
-| Layer     | Owns                                                                                            |
-| --------- | ----------------------------------------------------------------------------------------------- |
-| Agent     | `task`, `mode` (`silent` / `silent-wake` / `post-compaction`), `delaySeconds`                   |
-| Tool      | timer vs. `session-delivery-queue` enqueue, lifecycle-hook attachment, span emission (§6.6)     |
-| Substrate | sha256 idempotency, exp-backoff retry, restart-survival, cross-session routing (§3.6)           |
+| Layer     | Owns                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------- |
+| Agent     | `task`, `mode` (`silent` / `silent-wake` / `post-compaction`), `delaySeconds`               |
+| Tool      | timer vs. `session-delivery-queue` enqueue, lifecycle-hook attachment, span emission (§6.6) |
+| Substrate | sha256 idempotency, exp-backoff retry, restart-survival, cross-session routing (§3.6)       |
 
 **Worked example — projected new tool-surface (binary-canticle#11 `publish_to_stream(streamRef, payload, mode?)`):** the same shape. The agent supplies stream reference, payload bytes, and mode (`broadcast` vs. `addressed`); the tool picks UDP fan-out (substrate: ringbuffer / SeedLink station-broadcast) vs. an `enqueueSessionDelivery` bridge (substrate: §3.6 queue) underneath. The boundary-line is identical to `continue_delegate`'s; the substrate differs.
 
-| Layer (bc#11 example)            | Owns                                                                                                |
-| -------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Agent                            | `streamRef`, `payload` bytes, `mode` (`broadcast` / `addressed`)                                    |
-| Tool                             | UDP fan-out vs. `enqueueSessionDelivery` bridge selection, mode-routing, span emission (§6.6)       |
-| Substrate (broadcast variant)    | FEC encoding, multicast addressing, ringbuffer aging, per-station seq numbers (bc#11 §8)            |
-| Substrate (addressed variant)    | sha256 idempotency, exp-backoff retry, restart-survival, cross-session routing (§3.6, this RFC)     |
+| Layer (bc#11 example)         | Owns                                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| Agent                         | `streamRef`, `payload` bytes, `mode` (`broadcast` / `addressed`)                                |
+| Tool                          | UDP fan-out vs. `enqueueSessionDelivery` bridge selection, mode-routing, span emission (§6.6)   |
+| Substrate (broadcast variant) | FEC encoding, multicast addressing, ringbuffer aging, per-station seq numbers (bc#11 §8)        |
+| Substrate (addressed variant) | sha256 idempotency, exp-backoff retry, restart-survival, cross-session routing (§3.6, this RFC) |
 
 **The discipline this section asserts.** Future tool-surface designs in the openclaw repo SHOULD cite §4.6 as the doctrine. They SHOULD NOT duplicate the boundary-line analysis per-surface; they SHOULD declare the agent/tool/substrate owns-table for their primitive and link back here for the rationale. New surfaces that violate the discipline (agent naming the substrate, or tool exposing substrate-internal retry semantics to the agent) are review-rejectable on this RFC alone.
 
@@ -925,19 +925,19 @@ When runtime instrumentation lands, `extensions/diagnostics-otel` SHALL annotate
 
 **Span schema.** The continuation lifecycle emits the following spans:
 
-| Span name                              | Attributes                                                  | Parent                                                |
-| -------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- |
-| `continuation.delegate.enqueue`        | `session`, `mode`, `delayMs`, `chainDepth`, `chainCostTokens` | tool-call span                                        |
-| `continuation.delegate.spawn`          | `task`, `delegateId`, `actualDelayMs`, `driftMs`            | `continuation.delegate.enqueue` (link, not parent)    |
-| `continuation.delegate.return`         | `mode`, `wakeOnReturn`, `enrichmentBytes`                   | `continuation.delegate.spawn`                         |
-| `continuation.compaction.requested`    | `reason`, `volitional`, `pressureBand`                      | tool-call span (`request_compaction`)                 |
-| `continuation.compaction.enqueued`     | `pendingPostCompactionDelegates`                            | `continuation.compaction.requested`                   |
-| `continuation.compaction.completed`    | `tokensBefore`, `tokensAfter`, `delegatesReleased`          | `continuation.compaction.enqueued`                    |
-| `continuation.context_pressure.fire`   | `band`, `ratio`, `contextWindow`, `totalTokens`             | reply-pipeline span                                   |
+| Span name                            | Attributes                                                    | Parent                                             |
+| ------------------------------------ | ------------------------------------------------------------- | -------------------------------------------------- |
+| `continuation.delegate.enqueue`      | `session`, `mode`, `delayMs`, `chainDepth`, `chainCostTokens` | tool-call span                                     |
+| `continuation.delegate.spawn`        | `task`, `delegateId`, `actualDelayMs`, `driftMs`              | `continuation.delegate.enqueue` (link, not parent) |
+| `continuation.delegate.return`       | `mode`, `wakeOnReturn`, `enrichmentBytes`                     | `continuation.delegate.spawn`                      |
+| `continuation.compaction.requested`  | `reason`, `volitional`, `pressureBand`                        | tool-call span (`request_compaction`)              |
+| `continuation.compaction.enqueued`   | `pendingPostCompactionDelegates`                              | `continuation.compaction.requested`                |
+| `continuation.compaction.completed`  | `tokensBefore`, `tokensAfter`, `delegatesReleased`            | `continuation.compaction.enqueued`                 |
+| `continuation.context_pressure.fire` | `band`, `ratio`, `contextWindow`, `totalTokens`               | reply-pipeline span                                |
 
 **Propagation pattern.** `DiagnosticTraceContext.createChildDiagnosticTraceContext` is carried alongside the system-event payload that the delegate scheduler enqueues (and, post-substrate-rebase, the `session-delivery-queue` payload — see §3.6). The child span at `continuation.delegate.spawn` time uses the carried context as a span **link**, not a parent, because the spawn turn lives in a logically separate trace: a different generation cycle, possibly across a gateway restart, and possibly in a different session entirely.
 
-**Three-tier preservation invariant.** Each preservation tier from §2.6 must emit equivalent telemetry so that the operator can distinguish *"continuation took the response-token path"* from *"continuation was disabled"* from *"continuation worked"* without inspecting per-turn tool-call detail:
+**Three-tier preservation invariant.** Each preservation tier from §2.6 must emit equivalent telemetry so that the operator can distinguish _"continuation took the response-token path"_ from _"continuation was disabled"_ from _"continuation worked"_ without inspecting per-turn tool-call detail:
 
 1. **Tools-first** — `continuation.delegate.enqueue` + `continuation.delegate.spawn` + `continuation.delegate.return` triple per delegate; same-trace-tree reconstruction from any node.
 2. **Response-token fallback** — single `continuation.delegate.enqueue` with attribute `via=response-token`; no `…spawn` span (synthesis happens client-side and the tool path is not entered).
