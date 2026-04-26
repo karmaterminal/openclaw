@@ -74,6 +74,7 @@ export type PostCompactionDelegateDispatchDeps = {
     options: { cfg: OpenClawConfig; agentId: string },
   ): Promise<string | null>;
   resolveAgentWorkspaceDir(cfg: OpenClawConfig, agentId: string): string;
+  resolveContinuationRuntimeConfig(cfg: OpenClawConfig): ContinuationRuntimeConfig;
   resolveSessionAgentId(params: { sessionKey?: string; config?: OpenClawConfig }): string;
 };
 
@@ -120,6 +121,7 @@ const defaultPostCompactionDelegateDispatchDeps: PostCompactionDelegateDispatchD
   log: (message) => defaultRuntime.log(message),
   readPostCompactionContext,
   resolveAgentWorkspaceDir,
+  resolveContinuationRuntimeConfig,
   resolveSessionAgentId,
 };
 
@@ -507,6 +509,26 @@ export async function dispatchPostCompactionDelegates(
     ...stagedCompactionDelegates,
   ].map(normalizePostCompactionDelegate);
 
+  // Enforce maxDelegatesPerTurn budget. Account for any bracket-style delegate
+  // already spawned this turn so the combined per-turn count cannot exceed
+  // the configured cap. Mirrors the pre-extraction behavior at
+  // src/auto-reply/reply/agent-runner.ts (pre-cdc9b6ecd54).
+  const { maxDelegatesPerTurn: maxCompactionDelegates } = deps.resolveContinuationRuntimeConfig(
+    params.cfg,
+  );
+  const bracketDelegateOffset = params.continuationSignalKind === "delegate" ? 1 : 0;
+  const compactionBudget = Math.max(0, maxCompactionDelegates - bracketDelegateOffset);
+  const releasedCompactionDelegates = allCompactionDelegates.slice(0, compactionBudget);
+  const overflowDroppedDelegates = Math.max(
+    0,
+    allCompactionDelegates.length - releasedCompactionDelegates.length,
+  );
+  if (overflowDroppedDelegates > 0) {
+    deps.log(
+      `Post-compaction delegates dropped for ${params.sessionKey}: ${overflowDroppedDelegates} over maxDelegatesPerTurn budget (${maxCompactionDelegates}, bracketOffset=${bracketDelegateOffset})`,
+    );
+  }
+
   deps
     .readPostCompactionContext(
       typeof params.followupRun.run.workspaceDir === "string" &&
@@ -529,7 +551,7 @@ export async function dispatchPostCompactionDelegates(
 
   const deliveryContext = resolvePostCompactionDeliveryContext(params.followupRun);
   const enqueueResults = await Promise.allSettled(
-    allCompactionDelegates.map((delegate, sequence) =>
+    releasedCompactionDelegates.map((delegate, sequence) =>
       deps.enqueuePostCompactionDelegateDelivery({
         sessionKey: params.sessionKey,
         delegate,
@@ -541,14 +563,14 @@ export async function dispatchPostCompactionDelegates(
   );
 
   const queuedEntryIds: string[] = [];
-  let droppedCompactionDelegates = 0;
+  let droppedCompactionDelegates = overflowDroppedDelegates;
   for (const [index, result] of enqueueResults.entries()) {
     if (result.status === "fulfilled") {
       queuedEntryIds.push(result.value);
       continue;
     }
     droppedCompactionDelegates += 1;
-    const delegate = allCompactionDelegates[index];
+    const delegate = releasedCompactionDelegates[index];
     if (delegate) {
       params.postCompactionDelegatesToPreserve.push(delegate);
     }

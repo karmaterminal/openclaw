@@ -78,11 +78,15 @@ function createDispatchDeps(options?: {
   staged?: SessionPostCompactionDelegate[];
   context?: string | null;
   rejectEnqueueAt?: number;
+  runtimeConfig?: ContinuationRuntimeConfig;
 }) {
   const enqueueSystemEvent = vi.fn();
   const log = vi.fn();
   const readPostCompactionContext = vi.fn(async () => options?.context ?? null);
   const resolveAgentWorkspaceDir = vi.fn(() => "/fallback-workspace");
+  const resolveContinuationRuntimeConfig = vi.fn(
+    () => options?.runtimeConfig ?? defaultRuntimeConfig,
+  );
   const enqueuePostCompactionDelegateDelivery = vi.fn(async ({ sequence }) => {
     if (options?.rejectEnqueueAt === sequence) {
       throw new Error("queue write failed");
@@ -98,6 +102,7 @@ function createDispatchDeps(options?: {
     log,
     readPostCompactionContext,
     resolveAgentWorkspaceDir,
+    resolveContinuationRuntimeConfig,
     resolveSessionAgentId: vi.fn(() => "main"),
   };
   return {
@@ -108,6 +113,7 @@ function createDispatchDeps(options?: {
     log,
     readPostCompactionContext,
     resolveAgentWorkspaceDir,
+    resolveContinuationRuntimeConfig,
   };
 }
 
@@ -341,6 +347,95 @@ describe("post-compaction delegate dispatch extraction", () => {
       { sessionKey: "main" },
     );
     expect(preserve).toEqual([]);
+  });
+
+  it("caps queued delegates at maxDelegatesPerTurn and drops the overflow", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const preserve: SessionPostCompactionDelegate[] = [];
+    const { deps, enqueuePostCompactionDelegateDelivery, log } = createDispatchDeps({
+      staged: [
+        delegate("a"),
+        delegate("b"),
+        delegate("c"),
+        delegate("d"),
+        delegate("e"),
+        delegate("f"),
+        delegate("g"),
+      ],
+      runtimeConfig: { ...defaultRuntimeConfig, maxDelegatesPerTurn: 5 },
+    });
+
+    const result = await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: preserve,
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+
+    expect(result).toEqual({ queuedDelegates: 5, droppedDelegates: 2 });
+    expect(enqueuePostCompactionDelegateDelivery).toHaveBeenCalledTimes(5);
+    expect(
+      enqueuePostCompactionDelegateDelivery.mock.calls.map((call) => call[0].delegate.task),
+    ).toEqual(["a", "b", "c", "d", "e"]);
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("2 over maxDelegatesPerTurn budget (5, bracketOffset=0)"),
+    );
+    expect(preserve).toEqual([]);
+  });
+
+  it("reduces compaction budget by one when a bracket delegate was already spawned this turn", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const preserve: SessionPostCompactionDelegate[] = [];
+    const { deps, enqueuePostCompactionDelegateDelivery } = createDispatchDeps({
+      staged: [delegate("a"), delegate("b"), delegate("c"), delegate("d"), delegate("e")],
+      runtimeConfig: { ...defaultRuntimeConfig, maxDelegatesPerTurn: 5 },
+    });
+
+    const result = await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        continuationSignalKind: "delegate",
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: preserve,
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+
+    expect(result).toEqual({ queuedDelegates: 4, droppedDelegates: 1 });
+    expect(enqueuePostCompactionDelegateDelivery).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not enqueue any delegate when the bracket offset zeros the budget", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const preserve: SessionPostCompactionDelegate[] = [];
+    const { deps, enqueuePostCompactionDelegateDelivery } = createDispatchDeps({
+      staged: [delegate("a"), delegate("b")],
+      runtimeConfig: { ...defaultRuntimeConfig, maxDelegatesPerTurn: 1 },
+    });
+
+    const result = await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        continuationSignalKind: "delegate",
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: preserve,
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+
+    expect(result).toEqual({ queuedDelegates: 0, droppedDelegates: 2 });
+    expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
   });
 
   it("re-stages delegates when queue enqueue fails", async () => {
