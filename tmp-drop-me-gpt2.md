@@ -114,6 +114,19 @@ Descriptor-test TBDs for §B-execute: extend `src/agents/tools/continuation-tool
 
 ## §4 — rebase (copilot fills in)
 
+### §4 plan baked + rebase completed
+
+- Ref verification from this worktree before rebase: `karmaterminal-2026.4.24-base` => `cbcfdf62c7297bda66009ea7476f053c3e9addab`; `origin/silas/rebase/v2026.4.22-feature` => `140f74956d84d524e1fc179ca05b4247aa8ca637`; pre-rebase candidate tip => `7fb1c455b723c473ed33dd1fad89338571f86edb`.
+- Replay accounting: target..origin/silas had 49 commits; target..candidate had 53 commits because it included the 49-commit replay set plus 4 journal/seed commits.
+- Cael plan comparison: `/tmp/oc-325-rebase/rebase-plan.txt` was not readable from this lane, so no direct plan diff is available; classification is independent.
+- Baked rebase todo restored as `tmp-rebase-plan-gpt2.txt` on the post-rebase lineage. The todo itself was used by the sequence editor and therefore did not replay as a commit during the rebase; I restored it after rebase completion for cohort visibility.
+- Classification summary for the 49 replay commits: 14 PICK continuation/doc/test/fix commits; 1 FOLD (`b2b2616f64` note cleanup folded into `198758e66b`); 4 DROP-release-prep (`579f00313b`, `0ec75a6ab4`, `5cd79da5b1`, `945a1922cb`); 1 DROP-generated-baseline/regenerate-after-rebase (`827d3e9150`); 29 DROP-already-upstream (all cherry-minus commits plus same-subject v24 replacements for docker/live/session/QA/status/plugin allowlist commits).
+- Non-continuation cherry-plus drops checked against `karmaterminal-2026.4.24-base`: target already has same-subject replacements for `aef4fc9178`, `e515ea1f31`, `7e5f67c6a2`, `aa1908bf38`, `dfcce38a36`, `7ee46a3ab9`, and `00bd2cf7a3`, so replaying old variants would reintroduce release-window noise.
+- Checkpoint incident: committing the unknown-root plan file through the normal hook triggered fail-safe all-lanes; the hook/test path polluted local HEAD with unrelated tiny test-history commits and briefly pushed bad tip `d52657db6a60b95a1443b50f698515002c9452aa`. This was before the §5 savegame boundary. I reset the branch pointer back to the last good OpenClaw tip with the worktree preserved and used `--force-with-lease` only to undo that accidental pre-savegame visibility push.
+- Rebase stopped at `198758e66b feat(continuation): core implementation` with 9 conflicts: `src/agents/subagent-announce-delivery.ts`, `src/agents/subagent-announce.ts`, `src/agents/subagent-spawn.test-helpers.ts`, `src/agents/system-prompt.ts`, `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/agent-runner.ts`, `src/auto-reply/reply/session-reset-model.ts`, `src/gateway/server-methods/agent.ts`, `src/status/status-text.ts`.
+- Conflict resolution shape: preserve v24 host rewrites/retry/fallback/lazy-boundary structures, then thread continuation semantics through them. Specifics: added `continuationTrigger` to direct announce delivery while keeping thread-fallback retry; kept silent/skip announce chain accounting; moved spawn helper mocks to `subagent-registry-spawn-runtime`; kept sessions_spawn isolated-context prompt guidance plus continue_delegate guidance; combined runtime outcome plan with continuation wrapped result typing; kept diagnostic trace freeze plus continuation heartbeat/UUID imports; used normalized session store persistence in reset-model; threaded gateway `continuationTrigger`/`drainsContinuationDelegateQueue`; kept `/status` continuation row imports.
+- Rebase completed at `85675e7ebd8a22c12fc5519f1b2ec624feae8ced` before restoring this §4 journal/plan visibility commit. `note.txt` is absent after the `b2b2616f64` fixup.
+
 ## §5 — savegame push (copilot fills in)
 
 ## §6 — verification (copilot fills in)

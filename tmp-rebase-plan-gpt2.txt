@@ -1,0 +1,53 @@
+drop bef298d97f fix: resolve implicit default Telegram status sessions
+drop 579f00313b chore(release): prepare 2026.4.22 beta 1
+drop 435136de8f fix: show fast mode in status
+drop 0ec75a6ab4 chore(release): prepare 2026.4.22 beta 2
+drop 5cd79da5b1 chore(release): refresh beta 1 metadata
+drop fdfc901e42 fix(onboarding): surface official WeCom channel install
+drop c9bb56998a perf(discord): narrow monitor runtime imports
+drop aef4fc9178 test(docker): make e2e temp logs portable
+drop e96087892e fix(discord): keep subagent hooks lazy in channel entry
+drop e515ea1f31 test(gateway): harden live docker harness probes
+drop 27184bcb5e fix: defer model pricing refresh
+drop fb81fbe470 fix(codex): refresh live discovery config
+drop 974e994193 fix(sessions): updateLastRoute must not bump updatedAt (#49515) (#49588)
+drop 7e5f67c6a2 fix(sessions): preserve active route updates during maintenance
+drop 6c8a7fd967 fix #70487: OpenAI image generation provider does not support Azure OpenAI endpoints (openclaw#70570)
+drop d8df6d308f fix(thinking): default implicit reasoning models to medium (#70601)
+drop aa1908bf38 test: harden docker live backend probes
+drop 744f6b3f6d test(plugins): pin live provider config guards
+drop 00ae0db05f fix: update Discord smoke channel config
+drop dcc406a05c fix: harden Discord roundtrip smoke
+drop 959622f8a4 fix: accept Discord smoke nonce directly
+drop ed263dd564 fix: verify pinned macOS smoke baseline
+drop ccac4db2d5 perf(telegram): cache forum metadata lookup
+drop 73f9cc262e perf(telegram): bound forum metadata cache
+drop dfcce38a36 fix(qa): timestamp telegram update batches
+drop 98f5cd4a62 test(telegram): reset forum metadata cache
+drop 3ae78c3055 fix (#70562)
+drop 7ee46a3ab9 fix: Add runner label to /status (#70595)
+drop ec925a0a57 docs(providers/openai): document Azure OpenAI endpoint usage for image generation (#70501)
+drop 945a1922cb chore(release): prepare 2026.4.22 stable
+drop 8fdec301a9 fix:update wecom blurb (#70614)
+drop 71b787387d docs(release): require full GitHub release notes
+drop 00bd2cf7a3 fix: allow installed plugins through allowlist
+pick 198758e66b feat(continuation): core implementation — context-pressure, request-compaction, post-compaction relay
+fixup b2b2616f64 chore: remove spurious note.txt from cherry-pick
+pick cf2cecf979 docs(continuation): RFC continue-work-signal-v2
+pick 4cab9cf2cd test(continuation): coverage for context-pressure, post-compaction, taskflow durability
+pick 2b57a3bd3f chore(continuation): generated baselines, i18n, build config, swift protocol, gitignore
+drop 827d3e9150 chore: regenerate config + plugin-sdk baselines after continuation merge
+pick 0dd5d05426 fix(continuation): purge generation-guard per RFC 2026-04-15 (#299)
+pick 9c6a8bc6ba docs(continuation): absorb Trigger F into RFC §4.1 taxonomy
+pick e4d971bf13 fix(continuation): pre-merge minors from 2026-04-23 review fleet
+pick 74aa14f173 fix(continuation): plumb provider+model into volitional compaction call
+pick 5469b3b3e5 docs(continuation): annotate RFC §6.1 equivalent-idiom for band-dedup sentinel
+pick 1640105a62 docs(continuation): fix broken Swim 7 evidence links in RFC
+pick c825009e9b fix(continuation): gate continue_delegate on drain + sync display detailKeys
+pick 9f00132dd6 fix(continuation): default-allow continue_delegate; only block explicit non-drainers
+pick 788b0abe1d test(continuation): pin drainsContinuationDelegateQueue truth-table
+pick 140f74956d fix(types): tighten continuationTriggerOverride to ContinuationTrigger union
+pick c62064c954 chore(rebase-candidate): seed journal for gpt2 lane (copilot v2.5 assist, #336)
+pick 67968ba4db docs(rebase): record gpt2 initial read checkpoint
+pick 3079b7a642 docs(rebase): record gpt2 code walk
+pick 7fb1c455b7 docs(rebase): record gpt2 tests walk
