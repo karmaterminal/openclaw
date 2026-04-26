@@ -1,0 +1,1 @@
+- 2026-04-26T23:55:38+00:00: §1 preflight started; verified expected head/branch, gh identity ronan-dandelion-cult, and copilot gpt-5.5 smoke returned ok.
