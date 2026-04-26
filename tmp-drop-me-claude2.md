@@ -5,7 +5,7 @@ branch:          frond-scribe/20260424/candidate-claude2
 base:            silas/rebase/v2026.4.22-feature @ 140f74956d
 target:          karmaterminal-2026.4.24-base (tag, == cbcfdf62c7297bda66009ea7476f053c3e9addab)
 workorder:       /home/figs/flesh_beast_best_beast/WORKORDER-rebase-20260424-v2.md
-tracking issue:  https://github.com/karmaterminal/openclaw/issues/337  (TBD-on-file)
+tracking issue:  https://github.com/karmaterminal/openclaw/issues/337
 project status:  in_coding_agent (project 56)
 seeded:          2026-04-25T19:30-07:00 (approx)
 
