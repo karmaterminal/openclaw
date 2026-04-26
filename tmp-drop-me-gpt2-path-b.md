@@ -3,3 +3,4 @@
 - 2026-04-26T22:11:23+00:00: Read #343 body and figs :33Z challenge comment 4322939813; scope confirms substrate-side queue-drain chain-budget target.
 - 2026-04-26T22:11:35+00:00: Read RFC continue-work-signal-v2 §3.4, §3.6, §4.1; target is charge-at-successful-spawn, retry-cap log anchor, post-compaction release after compaction.
 - 2026-04-26T22:11:53+00:00: Read agent-runner post-compaction delegate surface around lines 2086-2284; stage-1 extraction target includes load/take delegates, budget checks, direct spawn, re-stage, lifecycle emit, chain-state persist.
+- 2026-04-26T22:12:11+00:00: Read session-delivery queue storage/recovery and substrate capability registry; noted existing retry, restart-survival, and registry capability surfaces. Read figs :09Z directive from workorder: do substrate-native, no bespoke chain counter/report surface.
