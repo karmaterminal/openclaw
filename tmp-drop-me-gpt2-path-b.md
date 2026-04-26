@@ -13,3 +13,4 @@
 - 2026-04-26T22:30:23+00:00: Final gate green: `pnpm check` clean after fixing unbound log callback.
 - 2026-04-26T22:30:43+00:00: Final targeted auto-reply gate green: post-compaction-delegate-dispatch + agent-runner.misc = 49/49.
 - 2026-04-26T22:31:07+00:00: Final infra queue gate green: `pnpm test src/infra/session-delivery-queue-storage.ts src/infra/session-delivery-queue-recovery.ts` => 2484 passed, 4 skipped.
+- 2026-04-26T22:31:28+00:00: Final gate green: `pnpm check:additional` clean, including lint:substrate-adoption.
