@@ -900,17 +900,19 @@ Hot-reload validation confirmed live changes to:
 - `costCapTokens`,
 - `contextPressureThreshold`.
 
-Hot-reload also applies post-2026.4.24 to:
+Hot-reload **specification targets** (future-state; not yet present in `src/config/zod-schema.ts` at canonical2 `56cb6f712a6`):
 
-- `diagnostics-otel.contentCapture.enabled` and `.redactionPolicy` (per-key) — operators can flip content capture without restart, with the redaction policy declared per §6.6;
-- `session-delivery-queue.retry.cap` and `.backoffMs[]` — bounded retry policy is read at delivery time per §3.6, so an operator can shorten retry storms during incident response;
-- `continuation.preservationTier` — switching tools-first ↔ response-token ↔ disabled (per §2.6) takes effect on the next reply.
+- `diagnostics.otel.captureContent` (present in schema as `enabled` boolean OR per-message-kind object at `zod-schema.ts:303`) — operators can flip content capture without restart; per-key redaction policy is a spec target, not a current schema key;
+- `session-delivery-queue.retry.cap` and `.backoffMs[]` — spec target; bounded retry policy is documented in §3.6 but not yet exposed as a hot-reloadable config key;
+- `continuation.preservationTier` — spec target; switching tools-first ↔ response-token ↔ disabled (per §2.6) is currently controlled by `continuation.enabled` + tool policy, not a single tier knob.
 
-The runtime-read-at-use-time invariant from the bullets above extends to all three new knobs: no in-flight delegate, queued retry, or staged post-compaction handoff is invalidated by a hot-reload. Operators can adjust policy mid-incident without losing work-in-progress.
+The runtime-read-at-use-time invariant SHOULD extend to all three knobs when implemented: no in-flight delegate, queued retry, or staged post-compaction handoff is invalidated by a hot-reload. (Tagged as spec target per Codex auto-review on PR #342.)
 
 ### 6.6 Chain-correlation via diagnostics-otel
 
-When `extensions/diagnostics-otel` is loaded, continuation lifecycle is annotated with OpenTelemetry spans so a delegate chain is reconstructable as a single trace tree across compactions and gateway restarts. This closes openclaw#334 (the doc-debt gap on chain-correlation) by specifying the span schema, propagation rules, and per-tier emission contract that the existing `[continuation:*]` log anchors (§6.1) imply but do not document.
+**Specification target (future-state design).** As of canonical2 `56cb6f712a6`, `extensions/diagnostics-otel/src/service.ts` and `src/infra/diagnostic-events.ts` emit only generic `openclaw.*` spans; the `continuation.*` span schema below is the **specification target** that closes openclaw#334's doc-debt gap on chain-correlation. Runtime instrumentation to emit these spans is follow-up work, not implemented behavior. (Tagged as spec target per Codex auto-review on PR #342.)
+
+When runtime instrumentation lands, `extensions/diagnostics-otel` SHALL annotate continuation lifecycle with OpenTelemetry spans so a delegate chain is reconstructable as a single trace tree across compactions and gateway restarts, by specifying the span schema, propagation rules, and per-tier emission contract that the existing `[continuation:*]` log anchors (§6.1) imply but do not document.
 
 **Span schema.** The continuation lifecycle emits the following spans:
 
