@@ -16,3 +16,10 @@
 
 - Regenerated the visible ToC against the actual heading walk by adding missing entries for §3.6, §4.6, and §6.6.
 - No prose semantics changed in this checkpoint.
+
+## §2b dev-state strip - 2026-04-26T23:00:42+00:00
+
+- Stripped explicit dev-state/process labels from §3.6, replacing `LOCKED`, owner markers, issuecomment IDs, and open-question prose with standalone technical statements.
+- Replaced cohort/role names and emoji markers in the fleet evidence table and chain-correlation worked example with generic instance/deployment language.
+- Updated §4.6 enforcement prose from "open review discipline" to current #347 registry/lint mechanization, with #354 noted as the `chain-budget-at-spawn` registry extension lane.
+- Removed stale canonical2 and auto-review process pins from hot-reload/diagnostics-otel prose where they were not load-bearing for upstream readers.
