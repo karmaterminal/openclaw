@@ -96,6 +96,7 @@ import {
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
+import { dispatchPostCompactionDelegate } from "./post-compaction-delegate-dispatch.js";
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import {
   enqueueFollowupRun,
@@ -2142,76 +2143,33 @@ export async function runReplyAgent(params: {
           });
 
         // Dispatch compaction-triggered delegates (| post-compaction mode).
+        // Per-delegate chain-budget enforcement and spawn now live in the
+        // portable helper; agent-runner aggregates outcomes here. This is the
+        // structural prerequisite for routing post-compaction releases through
+        // the session-delivery-queue substrate (#332 Item B audit, path B).
         for (const delegate of releasedCompactionDelegates) {
-          if (currentCompactionChainCount >= maxCompactionChainLength) {
-            droppedCompactionDelegates += 1;
-            defaultRuntime.log(
-              `Post-compaction delegate rejected: chain length ${currentCompactionChainCount} >= ${maxCompactionChainLength} for session ${sessionKey}`,
-            );
-            enqueueSystemEvent(
-              `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${delegate.task}`,
-              { sessionKey },
-            );
+          const outcome = await dispatchPostCompactionDelegate({
+            delegate,
+            sessionKey,
+            currentChainCount: currentCompactionChainCount,
+            maxChainLength: maxCompactionChainLength,
+            chainTokens: compactionChainTokens,
+            costCapTokens: compactionCostCapTokens,
+            originatingContext: {
+              channel: followupRun.originatingChannel ?? undefined,
+              accountId: followupRun.originatingAccountId ?? undefined,
+              to: followupRun.originatingTo ?? undefined,
+              threadId: followupRun.originatingThreadId ?? undefined,
+            },
+          });
+          if (outcome.kind === "dispatched") {
+            currentCompactionChainCount = outcome.nextChainCount;
+            dispatchedCompactionDelegates += 1;
             continue;
           }
-
-          if (compactionCostCapTokens > 0 && compactionChainTokens > compactionCostCapTokens) {
-            droppedCompactionDelegates += 1;
-            defaultRuntime.log(
-              `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}) for session ${sessionKey}`,
-            );
-            enqueueSystemEvent(
-              `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${delegate.task}`,
-              { sessionKey },
-            );
-            continue;
-          }
-
-          const nextCompactionChainCount = currentCompactionChainCount + 1;
-          defaultRuntime.log(
-            `Post-compaction delegate dispatch for session ${sessionKey}: ${delegate.task}`,
-          );
-          try {
-            const delegateWakeOnReturn = delegate.silentWake ?? true;
-            const delegateSilentAnnounce = delegate.silent ?? delegateWakeOnReturn;
-            const spawnResult = await spawnSubagentDirect(
-              {
-                task:
-                  `[continuation:post-compaction] ` +
-                  `[continuation:chain-hop:${nextCompactionChainCount}] ` +
-                  `Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
-                ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
-                ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
-                drainsContinuationDelegateQueue: true,
-              },
-              {
-                agentSessionKey: sessionKey,
-                agentChannel: followupRun.originatingChannel ?? undefined,
-                agentAccountId: followupRun.originatingAccountId ?? undefined,
-                agentTo: followupRun.originatingTo ?? undefined,
-                agentThreadId: followupRun.originatingThreadId ?? undefined,
-              },
-            );
-            if (spawnResult.status === "accepted") {
-              currentCompactionChainCount = nextCompactionChainCount;
-              dispatchedCompactionDelegates += 1;
-              enqueueSystemEvent(
-                `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${delegate.task}`,
-                { sessionKey },
-              );
-            } else {
-              droppedCompactionDelegates += 1;
-              postCompactionDelegatesToPreserve.push(delegate);
-              defaultRuntime.log(
-                `Post-compaction delegate rejected (${spawnResult.status}) for session ${sessionKey} (re-staged)`,
-              );
-            }
-          } catch (err) {
-            droppedCompactionDelegates += 1;
+          droppedCompactionDelegates += 1;
+          if (outcome.kind === "rejected-spawn" || outcome.kind === "error") {
             postCompactionDelegatesToPreserve.push(delegate);
-            defaultRuntime.log(
-              `Post-compaction delegate failed for session ${sessionKey} (re-staged): ${String(err)}`,
-            );
           }
         }
 
