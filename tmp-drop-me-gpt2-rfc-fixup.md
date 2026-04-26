@@ -23,3 +23,8 @@
 - Replaced cohort/role names and emoji markers in the fleet evidence table and chain-correlation worked example with generic instance/deployment language.
 - Updated §4.6 enforcement prose from "open review discipline" to current #347 registry/lint mechanization, with #354 noted as the `chain-budget-at-spawn` registry extension lane.
 - Removed stale canonical2 and auto-review process pins from hot-reload/diagnostics-otel prose where they were not load-bearing for upstream readers.
+
+## §2c implementation-state note - 2026-04-26T23:03:14+00:00
+
+- Verified `targetSessionKey` state before narrative edit: `src/auto-reply/continuation-delegate.types.ts:11` and `src/agents/tools/continue-delegate-tool.ts:40` expose the descriptor/type, but `src/agents/tools/continue-delegate-tool.ts:91-94` still throws `targetSessionKey is descriptor-only in v2.5; runtime in #332`.
+- Therefore the RFC should not claim single-recipient explicit `targetSessionKey` runtime support is shipped on canonical2/PR #354. Honest wording: default single-recipient return-to-caller is shipped; explicit cross-session `targetSessionKey` is descriptor-shipped with runtime wiring pending; multi-recipient `targetSessionKeys: string[]` is #355 design-locked/plumbing-active future shape.
