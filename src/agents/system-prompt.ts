@@ -989,6 +989,11 @@ export function buildAgentSystemPrompt(params: {
       "### Delegated continuation",
       ...(availableTools.has("continue_delegate")
         ? [
+            "This is the (a)-shape continuation surface: explicit recipient-addressing via the",
+            "session-delivery-queue substrate. The (b)-shape — broadcast/publish-stream addressing where the",
+            "dispatcher names an aspect-stream and listeners tune in independently — is tracked in",
+            "karmaterminal/binary-canticle#11 and will share the same substrate when it lands.",
+            "",
             "Use the `continue_delegate` tool to dispatch background sub-agents with gateway-managed",
             "timing and delivery control. This is the primary mechanism for delegation.",
             "",

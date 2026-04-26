@@ -69,7 +69,12 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
       'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
       "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
-      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work.",
+      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
+      "This is the (a)-shape continuation surface: explicit recipient-addressing via the " +
+      "session-delivery-queue substrate (intra-host today). The (b)-shape evolution — " +
+      "broadcast/publish-stream addressing across hosts where the dispatcher names an aspect-stream " +
+      "and listeners tune in independently — is tracked in karmaterminal/binary-canticle#11; " +
+      "both shapes share the same substrate when the (b)-shape lands.",
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
