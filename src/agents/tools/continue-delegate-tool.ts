@@ -90,7 +90,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       }
       if (Object.hasOwn(params, "targetSessionKey") && params.targetSessionKey !== undefined) {
         // Runtime binding (intra-host-rpc) belongs in #332's session-delivery-queue lane.
-        throw new Error("targetSessionKey is descriptor-only in v2.5; runtime in #332");
+        throw new ToolInputError("targetSessionKey is descriptor-only in v2.5; runtime in #332");
       }
 
       const task = readStringParam(params, "task", { required: true });
