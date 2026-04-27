@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  emitContinuationWorkSpan,
   getContinuationTracer,
   noopTracer,
   resetContinuationTracer,
@@ -211,5 +212,145 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     for (const name of names) {
       expect(() => noopTracer.startSpan(name)).not.toThrow();
     }
+  });
+});
+
+describe("continuation-tracer :: emitContinuationWorkSpan helper (Slice 2 chunk 2)", () => {
+  type RecordedSpan = {
+    name: string;
+    options?: StartSpanOptions;
+    setAttributesCalls: SpanAttributes[];
+    statusCalls: Array<{ status: SpanStatus; message?: string }>;
+    exceptionCalls: unknown[];
+    ended: boolean;
+  };
+
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const recorded: RecordedSpan = {
+          name,
+          options,
+          setAttributesCalls: [],
+          statusCalls: [],
+          exceptionCalls: [],
+          ended: false,
+        };
+        spans.push(recorded);
+        const span: Span = {
+          setAttributes(attrs) {
+            recorded.setAttributesCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            recorded.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            recorded.exceptionCalls.push(err);
+          },
+          end() {
+            recorded.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  it("emits a continuation.work span with all expected attrs when chainId is present", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationWorkSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262032",
+      chainStepRemaining: 7,
+      delayMs: 30000,
+      reason: "more work to do",
+    });
+    expect(spans).toHaveLength(1);
+    const span = spans[0];
+    expect(span.name).toBe("continuation.work");
+    expect(span.options?.attributes).toEqual({
+      "delay.ms": 30000,
+      "chain.step.remaining": 7,
+      "chain.id": "019dcf57-b536-77cc-834b-b803d9262032",
+      "reason.preview": "more work to do",
+    });
+    expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
+    expect(span.ended).toBe(true);
+  });
+
+  it("omits chain.id and reason.preview when not provided", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationWorkSpan({
+      chainId: undefined,
+      chainStepRemaining: 0,
+      delayMs: 5000,
+    });
+    expect(spans[0].options?.attributes).toEqual({
+      "delay.ms": 5000,
+      "chain.step.remaining": 0,
+    });
+  });
+
+  it("truncates reason to 80 chars", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const long = "x".repeat(200);
+    emitContinuationWorkSpan({
+      chainId: "abc",
+      chainStepRemaining: 1,
+      delayMs: 100,
+      reason: long,
+    });
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["reason.preview"]).toBe("x".repeat(80));
+  });
+
+  it("rounds delayMs to integer", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationWorkSpan({ chainId: undefined, chainStepRemaining: 0, delayMs: 1234.7 });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["delay.ms"]).toBe(1235);
+  });
+
+  it("clamps negative chainStepRemaining to 0", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationWorkSpan({ chainId: undefined, chainStepRemaining: -3, delayMs: 0 });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["chain.step.remaining"]).toBe(0);
+  });
+
+  it("swallows tracer errors and forwards them to the log callback", () => {
+    const throwingTracer: Tracer = {
+      startSpan() {
+        throw new Error("boom");
+      },
+    };
+    setContinuationTracer(throwingTracer);
+    const messages: string[] = [];
+    expect(() =>
+      emitContinuationWorkSpan({
+        chainId: "abc",
+        chainStepRemaining: 1,
+        delayMs: 0,
+        log: (m) => messages.push(m),
+      }),
+    ).not.toThrow();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("boom");
+  });
+
+  it("is a no-op (no throw) against the default noop tracer", () => {
+    expect(getContinuationTracer()).toBe(noopTracer);
+    expect(() =>
+      emitContinuationWorkSpan({
+        chainId: "abc",
+        chainStepRemaining: 1,
+        delayMs: 0,
+        reason: "r",
+      }),
+    ).not.toThrow();
   });
 });

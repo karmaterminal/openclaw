@@ -236,3 +236,43 @@ export function setContinuationTracer(tracer: Tracer | null | undefined): void {
 export function resetContinuationTracer(): void {
   activeTracer = noopTracer;
 }
+
+/**
+ * Emit a `continuation.work` span at the runner-side accept seam
+ * (#334 Slice 2 chunk 2). Centralized helper so the runner stays
+ * narrow at the call site and the span shape is testable in
+ * isolation. Sites that don't have a chainId yet (chain not
+ * persisted, or substrate-disabled deploys) MAY pass `chainId:
+ * undefined` — the attribute is omitted, downstream collectors
+ * see a span without a correlation key.
+ *
+ * Wraps tracer interactions in a try/catch and logs via the caller's
+ * `log` callback if provided — the accept path must never block on
+ * span emission.
+ */
+export function emitContinuationWorkSpan(args: {
+  chainId: string | undefined;
+  chainStepRemaining: number;
+  delayMs: number;
+  reason?: string | undefined;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const reasonPreview = args.reason
+      ? args.reason.length > 80
+        ? args.reason.slice(0, 80)
+        : args.reason
+      : undefined;
+    const attrs: ContinuationSpanAttrs = {
+      "delay.ms": Math.round(args.delayMs),
+      "chain.step.remaining": Math.max(0, args.chainStepRemaining),
+      ...(args.chainId !== undefined && { "chain.id": args.chainId }),
+      ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
+    };
+    const span = activeTracer.startSpan("continuation.work", { attributes: attrs });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.work span: ${String(err)}`);
+  }
+}
