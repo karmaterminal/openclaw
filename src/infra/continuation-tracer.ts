@@ -122,6 +122,27 @@ export type ContinuationSpanAttrs = {
    * cleanly through OTLP without rounding ambiguity.
    */
   readonly "fire.deferred_ms"?: number;
+  /**
+   * #334 chunk 6a — only set on `continuation.queue.drain` spans. Total
+   * count of system-event entries pulled from the substrate queue at this
+   * drain tick (`drainSystemEventEntries(...).length`). Integer ≥ 0.
+   *
+   * Aggregate, not per-event: one `continuation.queue.drain` span per
+   * `drainFormattedSystemEvents` call regardless of how many entries the
+   * pull returned. Per-event surfacing is deferred to OTEL `addEvent` on
+   * the single drain span (Slice 3), not to additional spans.
+   */
+  readonly "queue.drained_count"?: number;
+  /**
+   * #334 chunk 6a — only set on `continuation.queue.drain` spans. Subset
+   * of `queue.drained_count` whose entry text begins with the
+   * continuation-prefix marker (`[continuation:`). Best-effort prefix
+   * match at emit-time; structural `traceparent` reconstruction belongs
+   * to Slice 3's adapter, not Slice 2 instrumentation.
+   *
+   * Always `≤ queue.drained_count`. Integer ≥ 0.
+   */
+  readonly "queue.drained_continuation_count"?: number;
 };
 
 /**
@@ -637,5 +658,56 @@ export function emitContinuationWorkFireSpan(args: {
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.work.fire span: ${String(err)}`);
+  }
+}
+
+/**
+ * Emit a `continuation.queue.drain` span at the substrate system-events
+ * queue consumer seam (#334 Slice 2 chunk 6a). Fired once per
+ * `drainFormattedSystemEvents` call, regardless of how many entries the
+ * synchronous bulk-pull returned (including empty drains).
+ *
+ * **Cohort 4/4 contract (PR #393 memo, sprites-of-thornfield 2026-04-27):**
+ *  - **Naming:** `continuation.queue.drain` (parallel grammar with
+ *    `continuation.queue.enqueue` — producer-verb / consumer-verb on the
+ *    substrate queue mechanical pair).
+ *  - **Attrs:** `queue.drained_count` (total) and
+ *    `queue.drained_continuation_count` (best-effort continuation-prefix
+ *    subset). NO `chain.id` — the substrate queue is session-scoped and
+ *    multi-chain at drain time; attaching a single `chain.id` would lie.
+ *  - **Live counts (no snapshot):** drain is a single-tick synchronous
+ *    bulk-pull. There is no temporal gap to bridge.
+ *  - **No `disabled` sibling on empty drain:** a 0-count drain is the
+ *    absence of work, not the rejection of work. The
+ *    `continuation.disabled` family is reserved for gates that prevented
+ *    follow-through (cap.*, reservation.missing).
+ *  - **Aggregate emit:** one span per drain call. Per-event recordation,
+ *    if cohort wants it later, slots under OTEL `addEvent` on this single
+ *    span \u2014 NOT additional spans. Deferred to Slice 3.
+ *
+ * Wraps tracer interactions in a try/catch and forwards exceptions to the
+ * caller's `log` callback if provided \u2014 the drain path must never block
+ * on span emission, and must not perturb drain semantics (the span fires
+ * AFTER the drain completes; emit failure is invisible to the consumer).
+ */
+export function emitContinuationQueueDrainSpan(args: {
+  drainedCount: number;
+  drainedContinuationCount: number;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const drainedCount = Math.max(0, Math.floor(args.drainedCount));
+    const drainedContinuationCount = Math.max(0, Math.floor(args.drainedContinuationCount));
+    const attrs: ContinuationSpanAttrs = {
+      "queue.drained_count": drainedCount,
+      "queue.drained_continuation_count": drainedContinuationCount,
+    };
+    const span = activeTracer.startSpan("continuation.queue.drain", {
+      attributes: attrs,
+    });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.queue.drain span: ${String(err)}`);
   }
 }
