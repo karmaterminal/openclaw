@@ -697,7 +697,15 @@ export function emitContinuationQueueDrainSpan(args: {
 }): void {
   try {
     const drainedCount = Math.max(0, Math.floor(args.drainedCount));
-    const drainedContinuationCount = Math.max(0, Math.floor(args.drainedContinuationCount));
+    // Defense-in-depth: cap continuation subset by total drained count.
+    // The wire site at session-system-events.ts already guarantees this
+    // (continuation count is a filter over the same array we measured),
+    // but a less-disciplined caller could violate the `≤` invariant.
+    // Per 🩸's byte-walk on PR #395 (msg `1498427153543335967`).
+    const drainedContinuationCount = Math.min(
+      drainedCount,
+      Math.max(0, Math.floor(args.drainedContinuationCount)),
+    );
     const attrs: ContinuationSpanAttrs = {
       "queue.drained_count": drainedCount,
       "queue.drained_continuation_count": drainedContinuationCount,

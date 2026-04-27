@@ -1065,6 +1065,21 @@ describe("continuation-tracer :: emitContinuationQueueDrainSpan helper (Slice 2 
     expect(attrs["queue.drained_continuation_count"]).toBe(0);
   });
 
+  it("caps drainedContinuationCount by drainedCount (\u2264 invariant defense-in-depth)", () => {
+    // Per \ud83e\ude78's PR #395 byte-walk nit (msg `1498427153543335967`):
+    // wire site already guarantees continuation ≤ total (filter over same array),
+    // but a less-disciplined caller could violate. Helper enforces the invariant.
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationQueueDrainSpan({
+      drainedCount: 2,
+      drainedContinuationCount: 5,
+    });
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["queue.drained_count"]).toBe(2);
+    expect(attrs["queue.drained_continuation_count"]).toBe(2);
+  });
+
   it("floors fractional counts to integers (OTLP integer round-trip)", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
