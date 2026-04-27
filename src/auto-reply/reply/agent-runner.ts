@@ -21,6 +21,7 @@ import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import {
+  emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
@@ -2338,25 +2339,61 @@ export async function runReplyAgent(params: {
                 // here, not at fire-time — cancelled-but-accepted dispatches
                 // (compaction, reset, gateway shutdown) still count as
                 // accepted and must not be silently underreported.
-                {
-                  // Ladder handles silent-wake / silent / normal only — see immediate-arm comment above; post-compaction dispatches travel a separate persist path.
-                  const delegateMode = effectiveContinuationSignal.silentWake
+                //
+                // Ladder handles silent-wake / silent / normal only — see immediate-arm comment above; post-compaction dispatches travel a separate persist path.
+                const delegateMode: "normal" | "silent" | "silent-wake" =
+                  effectiveContinuationSignal.silentWake
                     ? "silent-wake"
                     : effectiveContinuationSignal.silent
                       ? "silent"
                       : "normal";
-                  emitContinuationDelegateSpan({
-                    chainId: persistedChainIdForTimer,
-                    chainStepRemaining: maxChainLength - nextChainCount,
-                    delayMs: clampedDelay,
-                    delivery: "timer",
-                    delegateMode,
-                    log: (message) => defaultRuntime.log(message),
-                  });
-                }
+                // #334 Slice 2 chunk 5b — dispatch-time snapshots for
+                // the eventual fire-span. Closed-over by the setTimeout
+                // callback so chain.id / step.remaining are NOT re-read
+                // at fire-time (no-mint-on-fire invariant; matches
+                // chunks 3/4 enclosure discipline).
+                const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
+                const fireChainIdForTimer = persistedChainIdForTimer;
+                emitContinuationDelegateSpan({
+                  chainId: persistedChainIdForTimer,
+                  chainStepRemaining: chainStepRemainingAtDispatch,
+                  delayMs: clampedDelay,
+                  delivery: "timer",
+                  delegateMode,
+                  log: (message) => defaultRuntime.log(message),
+                });
                 retainContinuationTimerRef(sessionKey);
+                // #334 Slice 2 chunk 5b — capture arm-time so the timer
+                // callback can compute `fire.deferred_ms` (drift from
+                // the requested `delay.ms` under runtime pressure).
+                const armedAt = Date.now();
                 const timerHandle = setTimeout(() => {
                   try {
+                    // #334 Slice 2 chunk 5b — emit `continuation.delegate.fire`
+                    // FIRST, before reservation lookup. The fire event is
+                    // truthful (timer DID fire) regardless of what happens
+                    // next. Helper try/catch ensures span emission cannot
+                    // block the timer-callback path.
+                    //
+                    // Defense-in-depth: chunk 3 invariant guarantees
+                    // `chainId` is always defined post-persist, but if a
+                    // future invariant break ever slipped through, skip
+                    // emit rather than crash the timer callback.
+                    const fireDeferredMs = Date.now() - armedAt;
+                    if (fireChainIdForTimer !== undefined) {
+                      emitContinuationDelegateFireSpan({
+                        chainId: fireChainIdForTimer,
+                        chainStepRemainingAtDispatch,
+                        delegateMode,
+                        delayMs: clampedDelay,
+                        fireDeferredMs,
+                        log: (message) => defaultRuntime.log(message),
+                      });
+                    } else {
+                      defaultRuntime.log(
+                        `DELEGATE timer fired without chainId for session ${sessionKey} (invariant violation; skipping fire span emit)`,
+                      );
+                    }
                     const reservation = takeDelayedContinuationReservation(
                       sessionKey,
                       reservationId,
@@ -2365,6 +2402,21 @@ export async function runReplyAgent(params: {
                       defaultRuntime.log(
                         `DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
                       );
+                      // #334 Slice 2 chunk 5b — reservation cleared between
+                      // arm and fire (compaction, cancel, session teardown).
+                      // Emit `continuation.disabled` sibling sharing chain.id
+                      // so the trace pair (fire → disabled) is visible to ops.
+                      // No fire-time cap rechecks introduced — reservation.missing
+                      // is the ONLY fire-time divergence in current behavior.
+                      emitContinuationDisabledSpan({
+                        chainId: fireChainIdForTimer,
+                        chainStepRemaining: chainStepRemainingAtDispatch,
+                        disabledReason: "reservation.missing",
+                        signalKind: "bracket-delegate",
+                        delegateDelivery: "timer",
+                        delegateMode,
+                        log: (message) => defaultRuntime.log(message),
+                      });
                       return;
                     }
                     void doSpawn(reservation.plannedHop, reservation.task, {
@@ -2693,30 +2745,79 @@ export async function runReplyAgent(params: {
             // span at the timer-deferred enqueue seam (tool-side, after
             // persist, before `setTimeout` arms). Same enqueue-time
             // semantic anchor as the bracket-timer site above.
-            {
-              // Ladder handles silent-wake / silent / normal only — see tool-immediate comment above; post-compaction path is a sibling, not handled here.
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
-                  : "normal";
-              emitContinuationDelegateSpan({
-                chainId: persistedChainIdForTimer,
-                chainStepRemaining: maxChainLength - nextChainCount,
-                delayMs: clampedDelay,
-                delivery: "timer",
-                delegateMode,
-                log: (message) => defaultRuntime.log(message),
-              });
-            }
+            //
+            // Ladder handles silent-wake / silent / normal only — see tool-immediate comment above; post-compaction path is a sibling, not handled here.
+            const delegateMode: "normal" | "silent" | "silent-wake" = delegate.silentWake
+              ? "silent-wake"
+              : delegate.silent
+                ? "silent"
+                : "normal";
+            // #334 Slice 2 chunk 5b — dispatch-time snapshots for
+            // the eventual fire-span (tool-side mirror of bracket-side
+            // capture). Closed-over by the setTimeout callback so
+            // chain.id / step.remaining are NOT re-read at fire-time.
+            const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
+            const fireChainIdForTimer = persistedChainIdForTimer;
+            emitContinuationDelegateSpan({
+              chainId: persistedChainIdForTimer,
+              chainStepRemaining: chainStepRemainingAtDispatch,
+              delayMs: clampedDelay,
+              delivery: "timer",
+              delegateMode,
+              log: (message) => defaultRuntime.log(message),
+            });
             retainContinuationTimerRef(sessionKey);
+            // #334 Slice 2 chunk 5b — capture arm-time so the timer
+            // callback can compute `fire.deferred_ms` (drift from the
+            // requested `delay.ms` under runtime pressure).
+            const armedAt = Date.now();
             const timerHandle = setTimeout(() => {
               try {
+                // #334 Slice 2 chunk 5b — emit `continuation.delegate.fire`
+                // FIRST, before reservation lookup. The fire event is
+                // truthful (timer DID fire) regardless of what happens
+                // next. Helper try/catch ensures span emission cannot
+                // block the timer-callback path.
+                //
+                // Defense-in-depth: chunk 3 invariant guarantees
+                // `chainId` is always defined post-persist, but if a
+                // future invariant break ever slipped through, skip
+                // emit rather than crash the timer callback.
+                const fireDeferredMs = Date.now() - armedAt;
+                if (fireChainIdForTimer !== undefined) {
+                  emitContinuationDelegateFireSpan({
+                    chainId: fireChainIdForTimer,
+                    chainStepRemainingAtDispatch,
+                    delegateMode,
+                    delayMs: clampedDelay,
+                    fireDeferredMs,
+                    log: (message) => defaultRuntime.log(message),
+                  });
+                } else {
+                  defaultRuntime.log(
+                    `Tool DELEGATE timer fired without chainId for session ${sessionKey} (invariant violation; skipping fire span emit)`,
+                  );
+                }
                 const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
                 if (!reservation) {
                   defaultRuntime.log(
                     `Tool DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
                   );
+                  // #334 Slice 2 chunk 5b — reservation cleared between
+                  // arm and fire (compaction, cancel, session teardown).
+                  // Emit `continuation.disabled` sibling sharing chain.id
+                  // so the trace pair (fire → disabled) is visible to ops.
+                  // No fire-time cap rechecks introduced — reservation.missing
+                  // is the ONLY fire-time divergence in current behavior.
+                  emitContinuationDisabledSpan({
+                    chainId: fireChainIdForTimer,
+                    chainStepRemaining: chainStepRemainingAtDispatch,
+                    disabledReason: "reservation.missing",
+                    signalKind: "tool-delegate",
+                    delegateDelivery: "timer",
+                    delegateMode,
+                    log: (message) => defaultRuntime.log(message),
+                  });
                   return;
                 }
                 void doToolSpawn(reservation.plannedHop, reservation.task, {

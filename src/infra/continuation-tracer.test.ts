@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
@@ -718,5 +719,291 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 ch
         signalKind: "tool-delegate",
       }),
     ).not.toThrow();
+  });
+});
+
+describe("continuation-tracer :: emitContinuationDelegateFireSpan helper (Slice 2 chunk 5b)", () => {
+  type RecordedSpan = {
+    name: string;
+    options?: StartSpanOptions;
+    setAttributesCalls: SpanAttributes[];
+    statusCalls: Array<{ status: SpanStatus; message?: string }>;
+    exceptionCalls: unknown[];
+    ended: boolean;
+  };
+
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const recorded: RecordedSpan = {
+          name,
+          options,
+          setAttributesCalls: [],
+          statusCalls: [],
+          exceptionCalls: [],
+          ended: false,
+        };
+        spans.push(recorded);
+        const span: Span = {
+          setAttributes(attrs) {
+            recorded.setAttributesCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            recorded.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            recorded.exceptionCalls.push(err);
+          },
+          end() {
+            recorded.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  afterEach(() => resetContinuationTracer());
+
+  it("emits continuation.delegate.fire with all required attrs", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationDelegateFireSpan({
+      chainId: "01HXYZ-fire-chain-id",
+      chainStepRemainingAtDispatch: 5,
+      delegateMode: "normal",
+      delayMs: 30000,
+      fireDeferredMs: 30042,
+    });
+
+    expect(spans).toHaveLength(1);
+    const [span] = spans;
+    expect(span.name).toBe("continuation.delegate.fire");
+    expect(span.options?.attributes).toMatchObject({
+      "chain.id": "01HXYZ-fire-chain-id",
+      "chain.step.remaining": 5,
+      "delay.ms": 30000,
+      "fire.deferred_ms": 30042,
+      "delegate.delivery": "timer",
+      "delegate.mode": "normal",
+    });
+    expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
+    expect(span.ended).toBe(true);
+  });
+
+  it("floors fire.deferred_ms to integer ms via Math.floor", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationDelegateFireSpan({
+      chainId: "01HXYZ-floor-test",
+      chainStepRemainingAtDispatch: 3,
+      delegateMode: "silent",
+      delayMs: 1000,
+      fireDeferredMs: 1234.789,
+    });
+
+    const attrs = spans[0]?.options?.attributes as Record<string, unknown>;
+    expect(attrs?.["fire.deferred_ms"]).toBe(1234);
+  });
+
+  it("clamps negative chain.step.remaining and fire.deferred_ms to 0", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationDelegateFireSpan({
+      chainId: "01HXYZ-clamp-test",
+      chainStepRemainingAtDispatch: -1,
+      delegateMode: "silent-wake",
+      delayMs: 500,
+      fireDeferredMs: -10,
+    });
+
+    const attrs = spans[0]?.options?.attributes as Record<string, unknown>;
+    expect(attrs?.["chain.step.remaining"]).toBe(0);
+    expect(attrs?.["fire.deferred_ms"]).toBe(0);
+  });
+
+  it("truncates reason.preview to 80 chars (consistency w/ chunks 2-4)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    const longReason = "x".repeat(200);
+    emitContinuationDelegateFireSpan({
+      chainId: "01HXYZ-truncate-test",
+      chainStepRemainingAtDispatch: 5,
+      delegateMode: "normal",
+      delayMs: 100,
+      fireDeferredMs: 102,
+      reason: longReason,
+    });
+
+    const attrs = spans[0]?.options?.attributes as Record<string, unknown>;
+    expect(attrs?.["reason.preview"]).toBe("x".repeat(80));
+  });
+
+  it("omits reason.preview when reason absent", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationDelegateFireSpan({
+      chainId: "01HXYZ-no-reason",
+      chainStepRemainingAtDispatch: 1,
+      delegateMode: "normal",
+      delayMs: 100,
+      fireDeferredMs: 102,
+    });
+
+    const attrs = spans[0]?.options?.attributes as Record<string, unknown>;
+    expect(attrs).not.toHaveProperty("reason.preview");
+  });
+
+  it("emits delegate.delivery=timer as fixed attr (fire is timer-only by Q1)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationDelegateFireSpan({
+      chainId: "01HXYZ-delivery-test",
+      chainStepRemainingAtDispatch: 2,
+      delegateMode: "normal",
+      delayMs: 100,
+      fireDeferredMs: 100,
+    });
+
+    const attrs = spans[0]?.options?.attributes as Record<string, unknown>;
+    expect(attrs?.["delegate.delivery"]).toBe("timer");
+  });
+
+  it("try/catch swallows tracer failures and calls log callback", () => {
+    const failingTracer: Tracer = {
+      startSpan() {
+        throw new Error("tracer boom");
+      },
+    };
+    setContinuationTracer(failingTracer);
+
+    const logged: string[] = [];
+    expect(() =>
+      emitContinuationDelegateFireSpan({
+        chainId: "01HXYZ-log-test",
+        chainStepRemainingAtDispatch: 1,
+        delegateMode: "normal",
+        delayMs: 100,
+        fireDeferredMs: 100,
+        log: (m) => logged.push(m),
+      }),
+    ).not.toThrow();
+
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("Failed to emit continuation.delegate.fire span");
+    expect(logged[0]).toContain("tracer boom");
+  });
+
+  it("never throws even when log callback is absent", () => {
+    const failingTracer: Tracer = {
+      startSpan() {
+        throw new Error("tracer boom");
+      },
+    };
+    setContinuationTracer(failingTracer);
+
+    expect(() =>
+      emitContinuationDelegateFireSpan({
+        chainId: "01HXYZ-no-log",
+        chainStepRemainingAtDispatch: 1,
+        delegateMode: "normal",
+        delayMs: 100,
+        fireDeferredMs: 100,
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("continuation-tracer :: emitContinuationDisabledSpan reason=reservation.missing (Slice 2 chunk 5b)", () => {
+  type RecordedSpan = {
+    name: string;
+    options?: StartSpanOptions;
+    setAttributesCalls: SpanAttributes[];
+    statusCalls: Array<{ status: SpanStatus; message?: string }>;
+    exceptionCalls: unknown[];
+    ended: boolean;
+  };
+
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const recorded: RecordedSpan = {
+          name,
+          options,
+          setAttributesCalls: [],
+          statusCalls: [],
+          exceptionCalls: [],
+          ended: false,
+        };
+        spans.push(recorded);
+        const span: Span = {
+          setAttributes(attrs) {
+            recorded.setAttributesCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            recorded.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            recorded.exceptionCalls.push(err);
+          },
+          end() {
+            recorded.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  afterEach(() => resetContinuationTracer());
+
+  it("accepts reservation.missing as fourth reason in 4-value enum", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationDisabledSpan({
+      chainId: "01HXYZ-resmissing",
+      chainStepRemaining: 7,
+      disabledReason: "reservation.missing",
+      signalKind: "bracket-delegate",
+      delegateDelivery: "timer",
+      delegateMode: "normal",
+    });
+
+    expect(spans).toHaveLength(1);
+    const attrs = spans[0]?.options?.attributes as Record<string, unknown>;
+    expect(attrs?.["disabled.reason"]).toBe("reservation.missing");
+    expect(attrs?.["signal.kind"]).toBe("bracket-delegate");
+    expect(attrs?.["delegate.delivery"]).toBe("timer");
+    expect(attrs?.["continuation.disabled"]).toBe(true);
+  });
+
+  it("supports tool-delegate signal.kind for tool-side reservation.missing", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationDisabledSpan({
+      chainId: "01HXYZ-resmissing-tool",
+      chainStepRemaining: 3,
+      disabledReason: "reservation.missing",
+      signalKind: "tool-delegate",
+      delegateDelivery: "timer",
+      delegateMode: "silent-wake",
+    });
+
+    const attrs = spans[0]?.options?.attributes as Record<string, unknown>;
+    expect(attrs?.["disabled.reason"]).toBe("reservation.missing");
+    expect(attrs?.["signal.kind"]).toBe("tool-delegate");
+    expect(attrs?.["delegate.mode"]).toBe("silent-wake");
   });
 });
