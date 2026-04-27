@@ -11,6 +11,7 @@ import { loadSessionStore } from "../../config/sessions/store-load.js";
 import { resolveSessionStoreEntry, updateSessionStore } from "../../config/sessions/store.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { generateChainId } from "../../infra/secure-random.js";
 import {
   drainPendingSessionDeliveries,
   type SessionDeliveryRecoveryLogger,
@@ -312,10 +313,20 @@ async function persistPostCompactionDelegateChainState(params: {
   storePath?: string;
   tokens: number;
 }): Promise<void> {
+  // #334 Slice 2 — mint or reuse `continuationChainId` (UUIDv7) so the
+  // post-compaction handoff carries the same correlation key that
+  // `agent-runner.ts:persistContinuationChainState` would have used
+  // before compaction. If the pre-compaction sessionEntry already had
+  // a chain id, reuse it (chain survives the compaction boundary);
+  // otherwise mint fresh (this is the chain's first persisted step
+  // post-handoff).
+  const previousChainId = params.sessionEntry?.continuationChainId;
+  const chainId = previousChainId ?? generateChainId();
   if (params.sessionEntry) {
     params.sessionEntry.continuationChainCount = params.count;
     params.sessionEntry.continuationChainStartedAt = params.startedAt;
     params.sessionEntry.continuationChainTokens = params.tokens;
+    params.sessionEntry.continuationChainId = chainId;
   }
   if (params.sessionStore) {
     const resolved = resolveSessionStoreEntry({
@@ -330,6 +341,7 @@ async function persistPostCompactionDelegateChainState(params: {
         continuationChainCount: params.count,
         continuationChainStartedAt: params.startedAt,
         continuationChainTokens: params.tokens,
+        continuationChainId: chainId,
       };
       for (const legacyKey of resolved.legacyKeys) {
         delete params.sessionStore[legacyKey];
@@ -347,6 +359,7 @@ async function persistPostCompactionDelegateChainState(params: {
             continuationChainCount: params.count,
             continuationChainStartedAt: params.startedAt,
             continuationChainTokens: params.tokens,
+            continuationChainId: chainId,
           };
           if (resolved.existing) {
             for (const legacyKey of resolved.legacyKeys) {

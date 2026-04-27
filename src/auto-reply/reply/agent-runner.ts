@@ -23,13 +23,14 @@ import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
+import { emitContinuationWorkSpan } from "../../infra/continuation-tracer.js";
 import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
   createChildDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
-import { generateSecureUuid } from "../../infra/secure-random.js";
+import { generateChainId, generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -973,6 +974,7 @@ export function cancelContinuationTimer(
     sessionCtx.sessionEntry.continuationChainCount = 0;
     sessionCtx.sessionEntry.continuationChainStartedAt = undefined;
     sessionCtx.sessionEntry.continuationChainTokens = undefined;
+    sessionCtx.sessionEntry.continuationChainId = undefined;
   }
   if (sessionCtx?.sessionStore) {
     const storeResolved = resolveSessionStoreEntry({ store: sessionCtx.sessionStore, sessionKey });
@@ -986,6 +988,7 @@ export function cancelContinuationTimer(
         continuationChainCount: 0,
         continuationChainStartedAt: undefined,
         continuationChainTokens: undefined,
+        continuationChainId: undefined,
       };
       for (const legacyKey of storeResolved.legacyKeys) {
         delete sessionCtx.sessionStore[legacyKey];
@@ -1004,6 +1007,7 @@ export function cancelContinuationTimer(
           continuationChainCount: 0,
           continuationChainStartedAt: undefined,
           continuationChainTokens: undefined,
+          continuationChainId: undefined,
         };
         for (const legacyKey of resolved.legacyKeys) {
           delete store[legacyKey];
@@ -1293,14 +1297,25 @@ export async function runReplyAgent(params: {
     count: number;
     startedAt: number;
     tokens: number;
-  }): Promise<void> => {
+  }): Promise<{ chainId: string | undefined }> => {
     if (!sessionKey) {
-      return;
+      return { chainId: undefined };
     }
+    // #334 Slice 2 — mint a stable `continuationChainId` (UUIDv7) on
+    // the 0→1 transition of `continuationChainCount`. Reuse the
+    // existing id for subsequent steps in the same chain so all spans
+    // emitted across the chain share a single correlation key. The
+    // matching reset path (above, ~line 944) clears this field when
+    // chain state resets to 0.
+    const previousCount = activeSessionEntry?.continuationChainCount ?? 0;
+    const previousChainId = activeSessionEntry?.continuationChainId;
+    const chainId =
+      previousCount > 0 && previousChainId !== undefined ? previousChainId : generateChainId();
     if (activeSessionEntry) {
       activeSessionEntry.continuationChainCount = params.count;
       activeSessionEntry.continuationChainStartedAt = params.startedAt;
       activeSessionEntry.continuationChainTokens = params.tokens;
+      activeSessionEntry.continuationChainId = chainId;
     }
     if (activeSessionStore) {
       const resolved = resolveSessionStoreEntry({ store: activeSessionStore, sessionKey });
@@ -1311,6 +1326,7 @@ export async function runReplyAgent(params: {
           continuationChainCount: params.count,
           continuationChainStartedAt: params.startedAt,
           continuationChainTokens: params.tokens,
+          continuationChainId: chainId,
         };
         for (const legacyKey of resolved.legacyKeys) {
           delete activeSessionStore[legacyKey];
@@ -1327,6 +1343,7 @@ export async function runReplyAgent(params: {
               continuationChainCount: params.count,
               continuationChainStartedAt: params.startedAt,
               continuationChainTokens: params.tokens,
+              continuationChainId: chainId,
             };
             for (const legacyKey of resolved.legacyKeys) {
               delete store[legacyKey];
@@ -1339,6 +1356,7 @@ export async function runReplyAgent(params: {
         );
       }
     }
+    return { chainId };
   };
   try {
     await typingSignals.signalRunStart();
@@ -2323,7 +2341,7 @@ export async function runReplyAgent(params: {
                 });
               }
             } else {
-              await persistContinuationChainState({
+              const { chainId: persistedChainId } = await persistContinuationChainState({
                 count: nextChainCount,
                 startedAt: chainStartedAt,
                 tokens: accumulatedChainTokens,
@@ -2331,6 +2349,20 @@ export async function runReplyAgent(params: {
               // WORK: schedule a continuation turn after delay
               const requestedDelay = effectiveContinuationSignal.delayMs ?? defaultDelayMs;
               const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, requestedDelay));
+
+              // #334 Slice 2 chunk 2 — emit `continuation.work` span
+              // at the accept seam (after both cap-gates pass, after
+              // persistContinuationChainState has minted/stored
+              // continuationChainId for this chain). Helper handles
+              // attribute shaping + try/catch so the accept path
+              // can't block on span emission.
+              emitContinuationWorkSpan({
+                chainId: persistedChainId,
+                chainStepRemaining: maxChainLength - nextChainCount,
+                delayMs: clampedDelay,
+                reason: continuationWorkReason,
+                log: (message) => defaultRuntime.log(message),
+              });
 
               retainContinuationTimerRef(sessionKey);
               const timerHandle = setTimeout(() => {
