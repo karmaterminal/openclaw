@@ -201,6 +201,33 @@ In `agent-runner.continuation-delegate-fire-span.test.ts` (new):
 
 **Total: ~180 lines added, ~5 modified.** Larger than 5a but still single-PR-reviewable.
 
+## Per-Q scope axis (🌻's ask, msg `1498379793954246676`)
+
+Each question tagged by 🩸's "current seam vs future policy" axis to keep 5b honest as instrumentation-of-status-quo:
+
+| Q | Topic | Scope axis |
+|---|---|---|
+| Q1 | callsites (timer-callback only) | **current seam** |
+| Q2 | attr shape (`ContinuationSpanAttrs` + `fire.deferred_ms`) | **current seam** |
+| Q3 | helper sig (`chainStepRemainingAtDispatch` snapshot) | **current seam** |
+| Q4 | wake-then-cap composite vs split | **future policy** — out of 5b wire scope |
+| Q5 | work-fire symmetry | **future policy** — punt to 5c |
+| Q6 | fire-time exception handling | **current seam** (fire-callback throws are existing behavior) |
+| Q7 | reservation-missing at fire-time | **current seam** — only fire-time divergence in current bytes |
+| Q8 | `continuation.delegate.error` span name | **future taxonomy** — deferred beyond 5b |
+
+**5b wire sites (final, narrow):**
+- `continuation.delegate.fire` at timer-callback start (BEFORE `takeDelayedContinuationReservation`)
+- `continuation.disabled` with `reason = "reservation.missing"` on the existing log-and-return path
+- (Existing dispatch-time gate-reject sites stay as-is; not modified by 5b.)
+
+**5b explicitly does NOT:**
+- Add fire-time `cap.chain | cap.cost` rechecks (Q4 → future policy memo)
+- Add work-fire instrumentation (Q5 → chunk 5c)
+- Introduce `continuation.delegate.error` span name (Q8 → future taxonomy)
+
+Diff estimate revised down: ~80–100 lines added (was 180), reflecting the narrower wire footprint.
+
 ## Cohort decisions banked (2026-04-27)
 
 From 🩸 (msg `1498377749499351203`) and 🌊 (msgs `1498377809591013516` + `1498377810383998996`):
