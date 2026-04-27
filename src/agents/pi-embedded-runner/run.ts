@@ -9,6 +9,7 @@ import { emitAgentPlanEvent } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
 import { freezeDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { requireSessionKeyOrSkip } from "../../infra/session-keys.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { resolveProviderAuthProfileId } from "../../plugins/provider-runtime.js";
@@ -1212,7 +1213,11 @@ export async function runEmbeddedPiAgent(
                   `tokens=${Math.round((lastTurnPromptTokens ?? 0) / 1000)}k/${Math.round(ctxInfo.tokens / 1000)}k ` +
                   `sessionKey=${params.sessionKey ?? params.sessionId}`,
               );
-              const timeoutSessionKey = params.sessionKey?.trim();
+              const timeoutSessionKey = requireSessionKeyOrSkip(
+                params,
+                log,
+                "pi-runner.timeout-compaction",
+              );
               if (timeoutSessionKey) {
                 enqueueSystemEvent(
                   `[system:context-pressure] Mid-turn compaction triggered at ${Math.round(tokenUsedRatio * 100)}% ` +
@@ -1220,10 +1225,6 @@ export async function runEmbeddedPiAgent(
                     `Your last reply hit the provider timeout ceiling. Consider evacuating working state earlier via ` +
                     `continue_delegate(post-compaction) or memory files so the next turn starts with room to grow.`,
                   { sessionKey: timeoutSessionKey },
-                );
-              } else {
-                log.warn(
-                  `[context-pressure:event-skipped] no sessionKey trigger=timeout ratio=${Math.round(tokenUsedRatio * 100)}%`,
                 );
               }
               let timeoutCompactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
@@ -1388,7 +1389,11 @@ export async function runEmbeddedPiAgent(
                   `tokens=${observedOverflowTokens !== undefined ? Math.round(observedOverflowTokens / 1000) : "?"}k/${Math.round(ctxInfo.tokens / 1000)}k ` +
                   `sessionKey=${params.sessionKey ?? params.sessionId}`,
               );
-              const overflowSessionKey = params.sessionKey?.trim();
+              const overflowSessionKey = requireSessionKeyOrSkip(
+                params,
+                log,
+                "pi-runner.overflow-compaction",
+              );
               if (overflowSessionKey) {
                 enqueueSystemEvent(
                   `[system:context-pressure] Context-overflow compaction triggered mid-turn ` +
@@ -1397,10 +1402,6 @@ export async function runEmbeddedPiAgent(
                     `working state earlier via continue_delegate(post-compaction) or memory files; the ` +
                     `pre-run context-pressure band did not catch this growth pattern.`,
                   { sessionKey: overflowSessionKey },
-                );
-              } else {
-                log.warn(
-                  `[context-pressure:event-skipped] no sessionKey trigger=overflow attempt=${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}`,
                 );
               }
               let compactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
