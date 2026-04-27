@@ -2518,11 +2518,34 @@ export async function runReplyAgent(params: {
             `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${droppedDelegate.task}`,
             { sessionKey },
           );
-          // #334 Slice 2 chunk 5 — per-turn cap reject is a different
-          // cap-axis from chunk 4's per-chain (chain/cost) family and
-          // lands in its own sibling seam. Cohort design call
-          // (sprites-of-thornfield, 2026-04-27, 🩸): keep chunk 4 taxonomy
-          // crisp; don't braid two cap-axes on wiring proximity.
+          // #334 Slice 2 chunk 5a — per-turn cap reject span. Per-turn
+          // cap is a different cap-axis from chunk 4's per-chain
+          // (chain/cost) family but reuses `continuation.disabled` with
+          // `disabled.reason = "cap.delegates_per_turn"`. `chain.step.remaining`
+          // carries actual headroom (per-turn cap can fire while chain budget
+          // still has room).
+          {
+            const delegateMode = droppedDelegate.silentWake
+              ? "silent-wake"
+              : droppedDelegate.silent
+                ? "silent"
+                : "normal";
+            const delegateDelivery: "immediate" | "timer" =
+              droppedDelegate.delayMs && droppedDelegate.delayMs > 0 ? "timer" : "immediate";
+            emitContinuationDisabledSpan({
+              chainId: activeSessionEntry?.continuationChainId,
+              chainStepRemaining: Math.max(
+                0,
+                maxChainLength - (activeSessionEntry?.continuationChainCount ?? 0),
+              ),
+              disabledReason: "cap.delegates_per_turn",
+              signalKind: "tool-delegate",
+              delegateDelivery,
+              delegateMode,
+              reason: droppedDelegate.task,
+              log: defaultRuntime.log,
+            });
+          }
         }
 
         let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
