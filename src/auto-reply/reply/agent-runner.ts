@@ -20,7 +20,10 @@ import {
 import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
-import { emitContinuationWorkSpan } from "../../infra/continuation-tracer.js";
+import {
+  emitContinuationDelegateSpan,
+  emitContinuationWorkSpan,
+} from "../../infra/continuation-tracer.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { freezeDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
@@ -2187,7 +2190,7 @@ export async function runReplyAgent(params: {
                         `DELEGATE timer fired and spawned turn ${plannedHop}/${maxChainLength} for session ${sessionKey}: ${task}`,
                       );
                     }
-                    await persistContinuationChainState({
+                    const { chainId: persistedChainId } = await persistContinuationChainState({
                       count: Math.max(activeSessionEntry?.continuationChainCount ?? 0, plannedHop),
                       startedAt: options?.startedAt ?? chainStartedAt,
                       tokens: Math.max(
@@ -2195,6 +2198,26 @@ export async function runReplyAgent(params: {
                         activeSessionEntry?.continuationChainTokens ?? 0,
                       ),
                     });
+                    // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
+                    // span at the immediate accept seam. Timer-deferred dispatches
+                    // already emitted at enqueue-time (before setTimeout); skip
+                    // re-emission when `timerTriggered` to preserve
+                    // exactly-one-span-per-accepted-dispatch.
+                    if (!options?.timerTriggered) {
+                      const delegateMode = options?.silentWake
+                        ? "silent-wake"
+                        : options?.silent
+                          ? "silent"
+                          : "normal";
+                      emitContinuationDelegateSpan({
+                        chainId: persistedChainId,
+                        chainStepRemaining: maxChainLength - plannedHop,
+                        delayMs: 0,
+                        delivery: "immediate",
+                        delegateMode,
+                        log: (message) => defaultRuntime.log(message),
+                      });
+                    }
                     enqueueSystemEvent(
                       `[continuation:delegate-spawned] Spawned turn ${plannedHop}/${maxChainLength}: ${task}`,
                       { sessionKey },
@@ -2244,11 +2267,32 @@ export async function runReplyAgent(params: {
                   silent: effectiveContinuationSignal.silent,
                   silentWake: effectiveContinuationSignal.silentWake,
                 });
-                await persistContinuationChainState({
+                const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
                   count: currentChainCount,
                   startedAt: chainStartedAt,
                   tokens: accumulatedChainTokens,
                 });
+                // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
+                // span at the timer-deferred enqueue seam (after persist,
+                // before `setTimeout` arms). The chain-step is committed
+                // here, not at fire-time — cancelled-but-accepted dispatches
+                // (compaction, reset, gateway shutdown) still count as
+                // accepted and must not be silently underreported.
+                {
+                  const delegateMode = effectiveContinuationSignal.silentWake
+                    ? "silent-wake"
+                    : effectiveContinuationSignal.silent
+                      ? "silent"
+                      : "normal";
+                  emitContinuationDelegateSpan({
+                    chainId: persistedChainIdForTimer,
+                    chainStepRemaining: maxChainLength - nextChainCount,
+                    delayMs: clampedDelay,
+                    delivery: "timer",
+                    delegateMode,
+                    log: (message) => defaultRuntime.log(message),
+                  });
+                }
                 retainContinuationTimerRef(sessionKey);
                 const timerHandle = setTimeout(() => {
                   try {
@@ -2433,7 +2477,7 @@ export async function runReplyAgent(params: {
                   );
                 }
                 currentChainCount = Math.max(currentChainCount, plannedHop);
-                await persistContinuationChainState({
+                const { chainId: persistedChainId } = await persistContinuationChainState({
                   count: currentChainCount,
                   startedAt: options?.startedAt ?? chainStartedAt,
                   tokens: Math.max(
@@ -2441,6 +2485,25 @@ export async function runReplyAgent(params: {
                     activeSessionEntry?.continuationChainTokens ?? 0,
                   ),
                 });
+                // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
+                // span at the immediate accept seam (tool-side). Timer-deferred
+                // dispatches already emitted at enqueue-time; skip when
+                // `timerTriggered` to preserve exactly-one-span-per-accepted-dispatch.
+                if (!options?.timerTriggered) {
+                  const delegateMode = options?.silentWake
+                    ? "silent-wake"
+                    : options?.silent
+                      ? "silent"
+                      : "normal";
+                  emitContinuationDelegateSpan({
+                    chainId: persistedChainId,
+                    chainStepRemaining: maxChainLength - plannedHop,
+                    delayMs: 0,
+                    delivery: "immediate",
+                    delegateMode,
+                    log: (message) => defaultRuntime.log(message),
+                  });
+                }
                 enqueueSystemEvent(
                   `[continuation:delegate-spawned] Tool delegate turn ${plannedHop}/${maxChainLength}: ${task}`,
                   { sessionKey },
@@ -2488,11 +2551,30 @@ export async function runReplyAgent(params: {
               silent: delegate.silent,
               silentWake: delegate.silentWake,
             });
-            await persistContinuationChainState({
+            const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
               count: currentChainCount,
               startedAt: chainStartedAt,
               tokens: accumulatedChainTokens,
             });
+            // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
+            // span at the timer-deferred enqueue seam (tool-side, after
+            // persist, before `setTimeout` arms). Same enqueue-time
+            // semantic anchor as the bracket-timer site above.
+            {
+              const delegateMode = delegate.silentWake
+                ? "silent-wake"
+                : delegate.silent
+                  ? "silent"
+                  : "normal";
+              emitContinuationDelegateSpan({
+                chainId: persistedChainIdForTimer,
+                chainStepRemaining: maxChainLength - nextChainCount,
+                delayMs: clampedDelay,
+                delivery: "timer",
+                delegateMode,
+                log: (message) => defaultRuntime.log(message),
+              });
+            }
             retainContinuationTimerRef(sessionKey);
             const timerHandle = setTimeout(() => {
               try {

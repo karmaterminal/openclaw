@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  emitContinuationDelegateSpan,
   emitContinuationWorkSpan,
   getContinuationTracer,
   noopTracer,
@@ -350,6 +351,173 @@ describe("continuation-tracer :: emitContinuationWorkSpan helper (Slice 2 chunk 
         chainStepRemaining: 1,
         delayMs: 0,
         reason: "r",
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("continuation-tracer :: emitContinuationDelegateSpan helper (Slice 2 chunk 3)", () => {
+  type RecordedSpan = {
+    name: string;
+    options?: StartSpanOptions;
+    setAttributesCalls: SpanAttributes[];
+    statusCalls: Array<{ status: SpanStatus; message?: string }>;
+    exceptionCalls: unknown[];
+    ended: boolean;
+  };
+
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const recorded: RecordedSpan = {
+          name,
+          options,
+          setAttributesCalls: [],
+          statusCalls: [],
+          exceptionCalls: [],
+          ended: false,
+        };
+        spans.push(recorded);
+        const span: Span = {
+          setAttributes(attrs) {
+            recorded.setAttributesCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            recorded.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            recorded.exceptionCalls.push(err);
+          },
+          end() {
+            recorded.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  it("emits a continuation.delegate.dispatch span with all expected attrs", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262032",
+      chainStepRemaining: 5,
+      delayMs: 60000,
+      delivery: "timer",
+      delegateMode: "silent-wake",
+      reason: "fan out three queries",
+    });
+    expect(spans).toHaveLength(1);
+    const span = spans[0];
+    expect(span.name).toBe("continuation.delegate.dispatch");
+    expect(span.options?.attributes).toEqual({
+      "delay.ms": 60000,
+      "chain.step.remaining": 5,
+      "delegate.delivery": "timer",
+      "chain.id": "019dcf57-b536-77cc-834b-b803d9262032",
+      "delegate.mode": "silent-wake",
+      "reason.preview": "fan out three queries",
+    });
+    expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
+    expect(span.ended).toBe(true);
+  });
+
+  it("immediate-delivery shape with no chainId or mode", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateSpan({
+      chainId: undefined,
+      chainStepRemaining: 0,
+      delayMs: 0,
+      delivery: "immediate",
+    });
+    expect(spans[0].options?.attributes).toEqual({
+      "delay.ms": 0,
+      "chain.step.remaining": 0,
+      "delegate.delivery": "immediate",
+    });
+  });
+
+  it("threads delegate.mode through unchanged", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    for (const mode of ["normal", "silent", "silent-wake", "post-compaction"] as const) {
+      emitContinuationDelegateSpan({
+        chainId: "abc",
+        chainStepRemaining: 1,
+        delayMs: 0,
+        delivery: "immediate",
+        delegateMode: mode,
+      });
+    }
+    expect(
+      spans.map((s) => (s.options?.attributes as ContinuationSpanAttrs)["delegate.mode"]),
+    ).toEqual(["normal", "silent", "silent-wake", "post-compaction"]);
+  });
+
+  it("truncates reason to 80 chars", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateSpan({
+      chainId: "abc",
+      chainStepRemaining: 1,
+      delayMs: 100,
+      delivery: "timer",
+      reason: "y".repeat(200),
+    });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["reason.preview"]).toBe(
+      "y".repeat(80),
+    );
+  });
+
+  it("rounds delayMs and clamps negative chainStepRemaining", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateSpan({
+      chainId: undefined,
+      chainStepRemaining: -2,
+      delayMs: 4567.89,
+      delivery: "timer",
+    });
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["delay.ms"]).toBe(4568);
+    expect(attrs["chain.step.remaining"]).toBe(0);
+  });
+
+  it("swallows tracer errors and forwards to log callback", () => {
+    const throwingTracer: Tracer = {
+      startSpan() {
+        throw new Error("kaboom");
+      },
+    };
+    setContinuationTracer(throwingTracer);
+    const messages: string[] = [];
+    expect(() =>
+      emitContinuationDelegateSpan({
+        chainId: "abc",
+        chainStepRemaining: 1,
+        delayMs: 0,
+        delivery: "immediate",
+        log: (m) => messages.push(m),
+      }),
+    ).not.toThrow();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("kaboom");
+    expect(messages[0]).toContain("continuation.delegate.dispatch");
+  });
+
+  it("is a no-op against the default noop tracer", () => {
+    expect(getContinuationTracer()).toBe(noopTracer);
+    expect(() =>
+      emitContinuationDelegateSpan({
+        chainId: "abc",
+        chainStepRemaining: 1,
+        delayMs: 0,
+        delivery: "immediate",
+        delegateMode: "normal",
       }),
     ).not.toThrow();
   });

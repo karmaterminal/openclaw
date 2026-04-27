@@ -64,6 +64,16 @@ export type ContinuationSpanAttrs = {
   /** Mode of a `continue_delegate` dispatch (normal/silent/silent-wake/post-compaction). */
   readonly "delegate.mode"?: string;
   /**
+   * Delivery shape of the delegate dispatch — `"immediate"` when no
+   * delay was requested (or delay was 0), `"timer"` when `setTimeout`
+   * armed for a non-zero clamped delay. Distinct from `delegate.mode`
+   * (which captures *intent*: normal/silent/silent-wake/post-compaction).
+   * Threaded so chunk 4's `continuation.disabled` reject-spans can
+   * distinguish cap-rejected-immediate (no timer ever armed) from
+   * cap-rejected-timer (timer armed then reaped).
+   */
+  readonly "delegate.delivery"?: string;
+  /**
    * `true` when `ChainBudget.declineToCarry` silenced emission for this
    * step. Carried on the `continuation.disabled` event-span and on the
    * `heartbeat` span when continuation context is present.
@@ -274,5 +284,67 @@ export function emitContinuationWorkSpan(args: {
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.work span: ${String(err)}`);
+  }
+}
+
+/**
+ * Emit a `continuation.delegate.dispatch` span at the runner-side
+ * delegate accept seam (#334 Slice 2 chunk 3). Mirrors
+ * `emitContinuationWorkSpan` shape — same try/catch wrap, same
+ * `chain.id` / `chain.step.remaining` / `delay.ms` / `reason.preview`
+ * plumbing — plus two delegate-specific axes:
+ *
+ *  - `delegate.delivery` (`"immediate" | "timer"`): runner-internal
+ *    scheduling axis. `"immediate"` when no delay was requested or
+ *    the delay was 0 (no `setTimeout` armed); `"timer"` when a
+ *    non-zero clamped delay armed `setTimeout`.
+ *  - `delegate.mode` (`"normal" | "silent" | "silent-wake" |
+ *    "post-compaction"`): caller-intent semantic axis. Optional
+ *    because some call sites (e.g. bracket-`CONTINUE_DELEGATE` without
+ *    the `silent`/`silent-wake` modifier) emit without a mode
+ *    annotation; the attribute is omitted in that case.
+ *
+ * Per cohort design (sprites-of-thornfield, 2026-04-27): emit at the
+ * **enqueue/accept seam**, NOT at the timer-fire callback. The chain-step
+ * is committed when the runner accepts the dispatch into the chain;
+ * the `setTimeout` is a delivery mechanism, not a chain semantic.
+ * Cancelled-but-accepted dispatches (compaction, reset, gateway shutdown)
+ * still happened, and a fire-time span would underreport them.
+ * `continuation.delegate.fire` remains a future name, not preempted.
+ *
+ * Wraps tracer interactions in a try/catch and logs via the caller's
+ * `log` callback if provided — the accept path must never block on
+ * span emission.
+ */
+export function emitContinuationDelegateSpan(args: {
+  chainId: string | undefined;
+  chainStepRemaining: number;
+  delayMs: number;
+  delivery: "immediate" | "timer";
+  delegateMode?: string | undefined;
+  reason?: string | undefined;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const reasonPreview = args.reason
+      ? args.reason.length > 80
+        ? args.reason.slice(0, 80)
+        : args.reason
+      : undefined;
+    const attrs: ContinuationSpanAttrs = {
+      "delay.ms": Math.round(args.delayMs),
+      "chain.step.remaining": Math.max(0, args.chainStepRemaining),
+      "delegate.delivery": args.delivery,
+      ...(args.chainId !== undefined && { "chain.id": args.chainId }),
+      ...(args.delegateMode !== undefined && { "delegate.mode": args.delegateMode }),
+      ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
+    };
+    const span = activeTracer.startSpan("continuation.delegate.dispatch", {
+      attributes: attrs,
+    });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.delegate.dispatch span: ${String(err)}`);
   }
 }
