@@ -649,6 +649,77 @@ describe("post-compaction delegate dispatch extraction", () => {
     });
   });
 
+  it("keeps queued delivery for retry when chain-state persistence fails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T23:10:00.000Z"));
+
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: Date.now() } }, null, 2),
+        "utf-8",
+      );
+      const spawnSubagentDirect = vi.fn(async () => ({ status: "accepted" as const }));
+      const { deps, log } = createDeliveryDeps({ storePath, spawnSubagentDirect });
+      const recoveryLog = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+      const entryId = await enqueueQueuedPostCompactionDelegateDelivery(
+        {
+          sessionKey: "main",
+          delegate: delegate("persist retry"),
+          sequence: 0,
+          compactionCount: 1,
+        },
+        tempDir,
+      );
+      const mkdirSpy = vi.spyOn(fsSync.promises, "mkdir").mockImplementationOnce(async () => {
+        throw new Error("session store unwritable");
+      });
+
+      try {
+        await drainPostCompactionDelegateDeliveries({
+          entryIds: [entryId],
+          stateDir: tempDir,
+          deliveryDeps: deps,
+          log: recoveryLog,
+          sessionKey: "main",
+        });
+      } finally {
+        mkdirSpy.mockRestore();
+      }
+
+      const [failedEntry] = await loadPendingSessionDeliveries(tempDir);
+      expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
+      expect(failedEntry?.retryCount).toBe(1);
+      expect(failedEntry?.lastError).toBe("session store unwritable");
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Failed to persist post-compaction delegate chain state for main: Error: session store unwritable",
+        ),
+      );
+
+      vi.setSystemTime(new Date("2026-04-26T23:10:05.000Z"));
+      await drainPostCompactionDelegateDeliveries({
+        stateDir: tempDir,
+        deliveryDeps: deps,
+        log: recoveryLog,
+        sessionKey: "main",
+      });
+
+      expect(spawnSubagentDirect).toHaveBeenCalledTimes(2);
+      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+      const stored = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+        string,
+        SessionEntry
+      >;
+      expect(stored.main?.continuationChainCount).toBe(1);
+    });
+  });
+
   it("rejects queued delivery when the compaction chain length is already capped", async () => {
     await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");

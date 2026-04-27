@@ -346,6 +346,7 @@ async function persistPostCompactionDelegateChainState(params: {
           err,
         )}`,
       );
+      throw err;
     }
   }
 }
