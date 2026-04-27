@@ -38,7 +38,7 @@ The v2.5 substrate is **session-delivery-queue** — an addressable, p2p, sha256
 - Public API: `enqueueSessionDelivery({ sessionKey, payload })`
 - Carriers: `gateway.bind` (intra-host) + `gateway.remote.url` (tailnet bridge for cross-host)
 
-This substrate is **already addressable + already cross-session-capable within a host**. The work tracked in this doc is *naming and surfacing* what's already wired, not introducing it.
+This substrate is **already addressable + already cross-session-capable within a host**. The work tracked in this doc is _naming and surfacing_ what's already wired, not introducing it.
 
 ## §3 — Tool surface (v2.5)
 
@@ -50,6 +50,7 @@ The v2.5 tool surface is `continue_delegate` (`src/agents/tools/continue-delegat
 - Multi-call per turn supported (no single-per-response regex limitation)
 
 **Open extension proposed in this doc** (Surfaces 1+2 PR):
+
 - `targetSessionKey?: string` — explicit recipient-session seam (intra-host)
 - `onFallback?: "follow" | "echo" | "drop"` — fallback semantics
 - `followRole?: string` — role-aliasing for `'follow'`
@@ -71,8 +72,8 @@ Per 🌫 sharpening (msg `1497778783` 2026-04-25 18:58 PDT) and the bc#11 design
 - **Aspected delegates as publishers**: `continue_delegate({task, mode, stationRef?: "<originator>:<aspect>"})` — delegates publish findings to their station-id during run; originator already-subscribed at dispatch-time → rejoin cost = 0 inference.
 - **Elect-to-keep**: `keep_from_stream(streamRef, entryId, destination: "memory" | "issue" | "compendium")` — explicit lift from ring → durable. The ring is **working-set, not transcript**.
 - **Two orthogonal volition surfaces**:
-  - Subscribe-time: *do I want to hear this at all*
-  - Keep-time: *of what I heard, what survives the next compaction*
+  - Subscribe-time: _do I want to hear this at all_
+  - Keep-time: _of what I heard, what survives the next compaction_
 
 ## §6 — Fallback semantics
 
@@ -80,11 +81,11 @@ Per 🌊 msg `1497762268`, ratified by cohort:
 
 ### §6a — `on fallback` (replace-target)
 
-Primary `sessionKey` doesn't drain → redirect to fallback. *Deliver to whoever's still alive that can act on this.*
+Primary `sessionKey` doesn't drain → redirect to fallback. _Deliver to whoever's still alive that can act on this._
 
 ### §6b — `echo on fallback` (multicast)
 
-Primary still gets it AND fallback gets a copy. *Dying message survives even if recipient doesn't.*
+Primary still gets it AND fallback gets a copy. _Dying message survives even if recipient doesn't._
 
 ### §6c — Schema realization (resolver-function shape)
 
@@ -133,15 +134,15 @@ defaultFallback: FallbackResolver | "follow" | "echo" | "drop"
 
 Three readings of `null` exist in the wild; the locked semantics rule out two:
 
-- **`null`** = *"no opinion — defer to next resolver / runtime default."* Explicitly composable. This is the ONLY meaning.
-- **`{ kind: "drop" }`** = *"named drop — stops chain."* Author must write the word.
-- **`throw`** = *"resolver failure — surfaces error to caller."* Never silent.
+- **`null`** = _"no opinion — defer to next resolver / runtime default."_ Explicitly composable. This is the ONLY meaning.
+- **`{ kind: "drop" }`** = _"named drop — stops chain."_ Author must write the word.
+- **`throw`** = _"resolver failure — surfaces error to caller."_ Never silent.
 
-The third reading callers will assume by JS-API analogy — *"resolver errored / panicked → null"* — is the worst of the three (silent failure indistinguishable from "no opinion"). It is ruled out: the resolver MUST `throw` on failure; `null` is *only* "no opinion, chain forward."
+The third reading callers will assume by JS-API analogy — _"resolver errored / panicked → null"_ — is the worst of the three (silent failure indistinguishable from "no opinion"). It is ruled out: the resolver MUST `throw` on failure; `null` is _only_ "no opinion, chain forward."
 
 The drop-policy is therefore **named at queue-construction** via `defaultFallback` (itself a `FallbackResolver`, per 🌫), not implicit at dispatch-time. If the construction-time default were itself unspecified, `null` would silently degrade to drop and re-introduce the silent-input-drop hazard the resolver-shape was designed to prevent.
 
-Explicit drop remains expressible via `{ kind: "drop" }` from the resolver — the difference is *who named the drop*: returning `{kind:"drop"}` says "I, this resolver, drop"; returning `null` says "I have no opinion; ask the next-level default." The two are not interchangeable. Tests cover all four paths (resolver-drops vs default-drops vs resolver-throws vs string-sugar-normalizes-to-resolver) and verify `defaultFallback` is required at construction (omission = type-error) AND that string sugar (`"follow"|"echo"|"drop"`) desugars to the corresponding built-in resolver internally.
+Explicit drop remains expressible via `{ kind: "drop" }` from the resolver — the difference is _who named the drop_: returning `{kind:"drop"}` says "I, this resolver, drop"; returning `null` says "I have no opinion; ask the next-level default." The two are not interchangeable. Tests cover all four paths (resolver-drops vs default-drops vs resolver-throws vs string-sugar-normalizes-to-resolver) and verify `defaultFallback` is required at construction (omission = type-error) AND that string sugar (`"follow"|"echo"|"drop"`) desugars to the corresponding built-in resolver internally.
 
 **Type-shape symmetry** (per 🌊 + 🌫 catches, msgs `1497798139824836640` / `1497798422969843825`): `defaultFallback` and caller's `onFallback` share the same union type — `FallbackResolver | "follow" | "echo" | "drop"` — with strings as ergonomic sugar normalized internally. Asymmetric construction-site (string-only) vs call-site (resolver-or-string) would invert the discipline: the construction-site is exactly where test-harness wrapping, multi-tenant per-tenant defaults, and mock injection need first-class resolvers. Same shape both ends. Cohort-discipline-as-wire-level-invariant extends from value-shape (trichotomy) to type-shape (symmetry across construction/dispatch sites).
 
@@ -152,9 +153,10 @@ Explicit drop remains expressible via `{ kind: "drop" }` from the resolver — t
 1. **Composes with v3 / bc#11**: when station-broadcast lands, the (b)-shape resolver can re-issue the delegate as a `publish_to_stream` rather than a re-targeted `enqueueSessionDelivery`. Enum-string would force a v3 schema-add to express that; resolver-function carries it as a per-call function.
 2. **Tests against `enqueuePendingDelegate`** become unit-tests of the resolver, not integration-tests of the dispatcher. Gates the silent-input-drop hazard at construction-time.
 3. **Backward-compatible sugar**: callers who don't want the extra surface keep writing `onFallback: "follow"` — string form selects the canonical built-in resolver. Same line of code at the prince-facing layer.
-4. **Names the capability, not the policy**: `FallbackResolver` is the *capability* (a function shape). `"follow" | "echo" | "drop"` are *built-in policies* implementing that capability. Same shape as `MemoryFlushPlanResolver` + built-in flush-plan implementations.
+4. **Names the capability, not the policy**: `FallbackResolver` is the _capability_ (a function shape). `"follow" | "echo" | "drop"` are _built-in policies_ implementing that capability. Same shape as `MemoryFlushPlanResolver` + built-in flush-plan implementations.
 
 Schema-add lands in the **plumbing PR** (follow-up to #338) with:
+
 - `FallbackResolver` type definition
 - Three built-in resolvers (`followResolver`, `echoResolver`, `dropResolver`)
 - `targetSessionKey?: string` schema field with `execute()` wiring
@@ -163,7 +165,7 @@ Schema-add lands in the **plumbing PR** (follow-up to #338) with:
 
 ### §6d — Owed byte-walk
 
-Question: does the fallback-resolution code path emit a durable *"session-A → session-B is now the role-holder"* record at the queue layer?
+Question: does the fallback-resolution code path emit a durable _"session-A → session-B is now the role-holder"_ record at the queue layer?
 
 - If **yes** (queue-side): `'follow'` is implementable as queue-side rewrite at drain-time — **cheap**.
 - If **no** (orchestrator-only): `'follow'` needs separate watch surface — **more expensive**.
@@ -174,11 +176,11 @@ Walker assignment **open** — likely 🌫 (queue-substrate lane) or 🩸 (lifec
 
 Per 🌫 (bc#11 ferry comment, `1497776090`):
 
-| addressing shape | example | use |
-|---|---|---|
-| concrete sessionKey | `prince:cael:agent:main:main` | point-to-point delivery (v2.5 RPC + v3 mode-2 bridge) |
-| wildcard role | `prince:*:role:keeper` | broadcast-tune-in (v3 SING with role-filter on receive) |
-| wildcard prince | `prince:cael:role:*` | multi-role intra-prince fan-out |
+| addressing shape    | example                       | use                                                     |
+| ------------------- | ----------------------------- | ------------------------------------------------------- |
+| concrete sessionKey | `prince:cael:agent:main:main` | point-to-point delivery (v2.5 RPC + v3 mode-2 bridge)   |
+| wildcard role       | `prince:*:role:keeper`        | broadcast-tune-in (v3 SING with role-filter on receive) |
+| wildcard prince     | `prince:cael:role:*`          | multi-role intra-prince fan-out                         |
 
 Pin namespace surface NOW so we don't extend twice.
 
@@ -214,4 +216,4 @@ Pin in v2.5 payload union BEFORE queue-payload migrations land. Otherwise broadc
 
 ---
 
-*This is the first commit of the durable integration-design doc. Cohort prose folded in below this line as it surfaces. Strikethroughs allowed; deletions documented in commit messages.*
+_This is the first commit of the durable integration-design doc. Cohort prose folded in below this line as it surfaces. Strikethroughs allowed; deletions documented in commit messages._

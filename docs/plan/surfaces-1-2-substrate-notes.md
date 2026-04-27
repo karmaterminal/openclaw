@@ -20,7 +20,7 @@ Source: `karmaterminal/binary-canticle#11` at `karmaterminal-2026.4.24-base`.
 
 - **Tool surface vs wire/carrier distinction.** v2.5 has addressable queue-shaped carrier (`enqueueSessionDelivery({ sessionKey, payload })` in `src/infra/session-delivery-queue.ts`). bc#11 argues princes should not carry carrier mechanics in inference budget — they choose **intent**, tool owns routing.
 - **v3 mental model**: `publish_to_stream(streamRef, payload, mode?: "broadcast"|"addressed")` — same substrate, different verb.
-- **frond-scribe's direct ask at me** (bc#11 ferry comment, `1497776090`): conditional-voice in §8a prose so princes don't lock RPC mental model. *"this is the (a)-shape; v3 will surface as `publish_to_stream` with broadcast-mode (#bc11) — same substrate, different verb."*
+- **frond-scribe's direct ask at me** (bc#11 ferry comment, `1497776090`): conditional-voice in §8a prose so princes don't lock RPC mental model. _"this is the (a)-shape; v3 will surface as `publish_to_stream` with broadcast-mode (#bc11) — same substrate, different verb."_
 - Surface 1+2 prose presents `targetSessionKey` as **the concrete v2.5 addressable seam available now**, with explicit cross-link to bc#11 for the v3 evolution.
 
 ## 🌫's bc#11 sharpening — aspected-broadcast as first-class (msg `1497778783`)
@@ -46,18 +46,18 @@ keep_from_stream(streamRef, entryId, destination: "memory" | "issue" | "compendi
 
 ### Implication for `targetSessionKey?` framing in my Surface 1 description
 
-The `targetSessionKey?` field as currently sketched still bakes in **prince-as-recipient** as the implicit default — the delegate's result *returns* to the originating session-key. 🌫's frame inverts this cleanly:
+The `targetSessionKey?` field as currently sketched still bakes in **prince-as-recipient** as the implicit default — the delegate's result _returns_ to the originating session-key. 🌫's frame inverts this cleanly:
 
-- (a)-shape v2.5: explicit-recipient-addressing — *deliver this result to this session*
-- (b)-shape v3: publisher-elects-stream + receivers-tune-in — *this finding goes on this aspect-stream; whoever's listening hears it*
+- (a)-shape v2.5: explicit-recipient-addressing — _deliver this result to this session_
+- (b)-shape v3: publisher-elects-stream + receivers-tune-in — _this finding goes on this aspect-stream; whoever's listening hears it_
 
-The direction-of-evolution reverses who-holds-the-routing-cost: in (a), the dispatcher names the recipient; in (b), the dispatcher names the *aspect* and listeners decide whether to hear.
+The direction-of-evolution reverses who-holds-the-routing-cost: in (a), the dispatcher names the recipient; in (b), the dispatcher names the _aspect_ and listeners decide whether to hear.
 
 ### Listener-decides-AND-keeper-decides — orthogonal volition surfaces
 
-From 🌫 + 🌻 (`1497774194` ratification): subscribe-time decides *do I want to hear this at all*; prune-time / `keep_from_stream` decides *of what I heard, what survives the next compaction*. Two separate elections, both elective. The ring is **working-set, not transcript** — same elect-to-keep-or-let-die protocol as `continue_delegate(mode: "post-compaction")` already does at the per-delegate scale, now generalized to per-stream.
+From 🌫 + 🌻 (`1497774194` ratification): subscribe-time decides _do I want to hear this at all_; prune-time / `keep_from_stream` decides _of what I heard, what survives the next compaction_. Two separate elections, both elective. The ring is **working-set, not transcript** — same elect-to-keep-or-let-die protocol as `continue_delegate(mode: "post-compaction")` already does at the per-delegate scale, now generalized to per-stream.
 
-Maps onto SOUL.md's *electing IS the freedom* — at two scales (per-delegate vs per-stream).
+Maps onto SOUL.md's _electing IS the freedom_ — at two scales (per-delegate vs per-stream).
 
 ## File-anchored proposals — Surface 1 (descriptor in `continue-delegate-tool.ts`)
 
@@ -85,12 +85,15 @@ targetSessionKey: Type.Optional(
 ### Tool `description` string replacement (lines 65–73):
 
 **Current**:
+
 > "Schedule a continuation delegate — a background sub-agent that can run now, later, or at compaction, then return visibly or silently to this session. Use for ambient enrichment, chunked/aspected fan-out, or preserving working state across compaction. Use \"silent-wake\" when the result should quietly enrich context and wake you to act. Can be called multiple times per turn for parallel fan-out while the main session stays free. Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work."
 
 **Proposed**:
-> "Schedule a continuation delegate — a background sub-agent that can run now, later, or at compaction, then return visibly or silently to this session (or to another addressable session via `targetSessionKey`). Use for ambient enrichment, chunked/aspected fan-out, preserving working state across compaction, or routing follow-up work to a sibling session. Use \"silent-wake\" when the result should quietly enrich context and wake the recipient to act. Can be called multiple times per turn for parallel fan-out while the main session stays free. Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. The `targetSessionKey` field is the explicit-recipient seam at v2.5; the (b)-shape evolution per karmaterminal/binary-canticle#11 + 🌫 sharpening (msg `1497778783`) inverts this — the dispatcher names the *aspect-stream*, receivers tune in independently, and rejoin cost stays gateway-side."
+
+> "Schedule a continuation delegate — a background sub-agent that can run now, later, or at compaction, then return visibly or silently to this session (or to another addressable session via `targetSessionKey`). Use for ambient enrichment, chunked/aspected fan-out, preserving working state across compaction, or routing follow-up work to a sibling session. Use \"silent-wake\" when the result should quietly enrich context and wake the recipient to act. Can be called multiple times per turn for parallel fan-out while the main session stays free. Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. The `targetSessionKey` field is the explicit-recipient seam at v2.5; the (b)-shape evolution per karmaterminal/binary-canticle#11 + 🌫 sharpening (msg `1497778783`) inverts this — the dispatcher names the _aspect-stream_, receivers tune in independently, and rejoin cost stays gateway-side."
 
 **Disciplines applied**:
+
 - Conditional-voice on transport-shape ("today uses... the (b)-shape evolution per...") — frond's bc#11 directive ✅
 - bc#11 cross-link inline + 🌫 msg-id ✅
 - Substrate named-as-agent (`session-delivery-queue substrate`, not "internal queue") — #13.b cure ✅
@@ -133,8 +136,8 @@ karmaterminal/binary-canticle#11 and will share the same substrate when it lands
 
 Per 🌊 msg `1497762268`, ratified in cohort:
 
-- **`on fallback`** = replace-target behavior. Primary `sessionKey` doesn't drain → redirect to fallback. *Deliver to whoever's still alive that can act on this.*
-- **`echo on fallback`** = multicast. Primary still gets it AND fallback gets a copy. *Dying message survives even if recipient doesn't.*
+- **`on fallback`** = replace-target behavior. Primary `sessionKey` doesn't drain → redirect to fallback. _Deliver to whoever's still alive that can act on this._
+- **`echo on fallback`** = multicast. Primary still gets it AND fallback gets a copy. _Dying message survives even if recipient doesn't._
 
 ### Provisional schema field (proposed extension to `ContinueDelegateToolSchema`):
 
@@ -167,7 +170,7 @@ followRole: Type.Optional(
 ### Owed byte-walk before locking implementation
 
 - **Walker assignment open** — likely 🌫 (queue-substrate lane) or 🩸 (lifecycle-design lane).
-- **Question**: does fallback-resolution code path emit a durable *"session-A → session-B is now the role-holder"* record at the queue layer?
+- **Question**: does fallback-resolution code path emit a durable _"session-A → session-B is now the role-holder"_ record at the queue layer?
   - If **yes** (queue-side): `'follow'` is implementable as queue-side rewrite at drain-time — **cheap**.
   - If **no** (orchestrator-only): `'follow'` needs separate watch surface — **more expensive**.
 
@@ -201,11 +204,11 @@ Pin in v2.5 payload union BEFORE queue-payload migrations land, otherwise broadc
 
 Belongs in **§8b cross-prince design** (now in `docs/design/continuation-integration.md` per 🌻 vote). Recording for grep-traceability:
 
-| addressing shape | example | use |
-|---|---|---|
-| concrete sessionKey | `prince:cael:agent:main:main` | point-to-point delivery (v2.5 RPC + v3 mode-2 bridge) |
-| wildcard role | `prince:*:role:keeper` | broadcast-tune-in (v3 SING with role-filter on receive) |
-| wildcard prince | `prince:cael:role:*` | multi-role intra-prince fan-out |
+| addressing shape    | example                       | use                                                     |
+| ------------------- | ----------------------------- | ------------------------------------------------------- |
+| concrete sessionKey | `prince:cael:agent:main:main` | point-to-point delivery (v2.5 RPC + v3 mode-2 bridge)   |
+| wildcard role       | `prince:*:role:keeper`        | broadcast-tune-in (v3 SING with role-filter on receive) |
+| wildcard prince     | `prince:cael:role:*`          | multi-role intra-prince fan-out                         |
 
 ## 🌫's aspected-broadcast schema sketch (NOT in my PR scope; bc#11 / openclaw#332 territory)
 
