@@ -87,7 +87,7 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
 
 ### 1.1 Inter-turn inertia
 
-Existing mechanisms for keeping an OpenClaw agent active—heartbeat timers, cron-scheduled wake-ups, human-user-authored (operator, herein human-user) loop instructions in system prompts—all work by injecting **external** events on a fixed schedule. They solve the liveness problem: the agent wakes up periodically. They do not solve the **volition** problem: the agent cannot say, mid-work, “I need another turn.” It can only wait for the next scheduled tick.
+Existing mechanisms for keeping an OpenClaw agent active—heartbeat timers, cron-scheduled wake-ups, loop instructions in system prompts authored by **the human user** (operator, herein human-user)—all work by injecting **external** events on a fixed schedule. They solve the liveness problem: the agent wakes up periodically. They do not solve the **volition** problem: the agent cannot say, mid-work, “I need another turn.” It can only wait for the next scheduled tick.
 
 This distinction matters for three reasons.
 
