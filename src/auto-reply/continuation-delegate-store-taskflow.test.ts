@@ -33,9 +33,7 @@ import {
   cancelPendingDelegates,
   consumePendingDelegates,
   enqueuePendingDelegate,
-  isTaskFlowDelegatesEnabled,
   pendingDelegateCount,
-  setTaskFlowDelegatesEnabled,
 } from "./continuation-delegate-store.js";
 
 const ORIGINAL_STATE_DIR = process.env.OPENCLAW_STATE_DIR;
@@ -66,7 +64,6 @@ describe("continuation-delegate-store-taskflow", () => {
         hoisted.realFinishFlow!(params),
       );
     }
-    setTaskFlowDelegatesEnabled(false);
     if (ORIGINAL_STATE_DIR === undefined) {
       delete process.env.OPENCLAW_STATE_DIR;
     } else {
@@ -337,15 +334,9 @@ describe("continuation-delegate-store-taskflow", () => {
   });
 });
 
-describe("config-gated delegate store routing", () => {
-  beforeEach(() => {
-    vi.useRealTimers();
-    setTaskFlowDelegatesEnabled(false);
-  });
-
+describe("delegate store facade (TaskFlow-only)", () => {
   afterEach(() => {
     vi.useRealTimers();
-    setTaskFlowDelegatesEnabled(false);
     if (ORIGINAL_STATE_DIR === undefined) {
       delete process.env.OPENCLAW_STATE_DIR;
     } else {
@@ -354,21 +345,8 @@ describe("config-gated delegate store routing", () => {
     resetTaskFlowRegistryForTests();
   });
 
-  it("defaults to volatile store when taskFlowDelegates is disabled", () => {
-    expect(isTaskFlowDelegatesEnabled()).toBe(false);
-
-    enqueuePendingDelegate("test-session", { task: "volatile task" });
-    expect(pendingDelegateCount("test-session")).toBe(1);
-
-    const delegates = consumePendingDelegates("test-session");
-    expect(delegates).toHaveLength(1);
-    expect(delegates[0].task).toBe("volatile task");
-  });
-
-  it("routes through TaskFlow store when enabled", async () => {
+  it("facade enqueue/consume delegates to TaskFlow", async () => {
     await withFlowRegistryTempDir(async () => {
-      setTaskFlowDelegatesEnabled(true);
-
       enqueuePendingDelegate("test-session", { task: "taskflow task", delayMs: 1000 });
       expect(pendingDelegateCount("test-session")).toBe(1);
 
@@ -379,53 +357,13 @@ describe("config-gated delegate store routing", () => {
     });
   });
 
-  it("cancelPendingDelegates works for volatile store", () => {
-    enqueuePendingDelegate("test-session", { task: "will be cancelled" });
-    expect(pendingDelegateCount("test-session")).toBe(1);
-
-    cancelPendingDelegates("test-session");
-    expect(pendingDelegateCount("test-session")).toBe(0);
-  });
-
-  it("cancelPendingDelegates routes to TaskFlow when enabled", async () => {
+  it("facade cancel delegates to TaskFlow", async () => {
     await withFlowRegistryTempDir(async () => {
-      setTaskFlowDelegatesEnabled(true);
-
       enqueuePendingDelegate("test-session", { task: "will be cancelled" });
       expect(pendingDelegateCount("test-session")).toBe(1);
 
       cancelPendingDelegates("test-session");
       expect(pendingDelegateCount("test-session")).toBe(0);
-    });
-  });
-
-  it("volatile and TaskFlow stores are independent (migration scenario)", async () => {
-    // Stage a volatile delegate with TaskFlow disabled.
-    enqueuePendingDelegate("test-session", { task: "volatile delegate" });
-    expect(pendingDelegateCount("test-session")).toBe(1);
-
-    await withFlowRegistryTempDir(async () => {
-      // Enable TaskFlow — volatile delegate is invisible to TaskFlow.
-      setTaskFlowDelegatesEnabled(true);
-      expect(pendingDelegateCount("test-session")).toBe(0);
-
-      // Enqueue a TaskFlow delegate.
-      enqueuePendingDelegate("test-session", { task: "taskflow delegate" });
-      expect(pendingDelegateCount("test-session")).toBe(1);
-
-      // Disable TaskFlow — volatile delegate reappears.
-      setTaskFlowDelegatesEnabled(false);
-      expect(pendingDelegateCount("test-session")).toBe(1);
-
-      const volatile = consumePendingDelegates("test-session");
-      expect(volatile).toHaveLength(1);
-      expect(volatile[0].task).toBe("volatile delegate");
-
-      // Re-enable — TaskFlow delegate is still there.
-      setTaskFlowDelegatesEnabled(true);
-      const taskflow = consumePendingDelegates("test-session");
-      expect(taskflow).toHaveLength(1);
-      expect(taskflow[0].task).toBe("taskflow delegate");
     });
   });
 });

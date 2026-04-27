@@ -8,8 +8,7 @@
  * This gives delegates SQLite-backed persistence (survive gateway restarts),
  * cancel/retry semantics, and lifecycle tracking through the Task Flow registry.
  *
- * Gated behind `agents.defaults.continuation.taskFlowDelegates` (opt-in).
- * The volatile Map store remains the default fallback.
+ * Delegate durability is mandatory per RFC §5.1.
  */
 
 import type { TaskFlowRecord, JsonValue } from "../tasks/task-flow-registry.types.js";
