@@ -98,12 +98,13 @@ export type ContinuationSpanAttrs = {
    */
   readonly "disabled.reason"?: string;
   /**
-   * Signal shape that was rejected. Pinned set:
+   * Signal-family classifier. Pinned set:
    *   - `"bracket-work"` — bracket CONTINUE_WORK signal at the bracket gate
    *   - `"bracket-delegate"` — bracket CONTINUE_DELEGATE signal at the bracket gate
    *   - `"tool-delegate"` — `continue_delegate` tool signal at the tool gate
-   * Lets observers separate self-elected (work) from delegated (delegate)
-   * rejection rates without parsing other attributes.
+   *   - `"compaction-release"` — post-compaction delegates released for dispatch (#334 chunk 6b)
+   * On `continuation.disabled` spans, identifies the rejected signal shape.
+   * On `continuation.compaction.released` spans, classifies the release event.
    */
   readonly "signal.kind"?: string;
   /**
@@ -143,6 +144,18 @@ export type ContinuationSpanAttrs = {
    * Always `≤ queue.drained_count`. Integer ≥ 0.
    */
   readonly "queue.drained_continuation_count"?: number;
+  /**
+   * #334 chunk 6b — only set on `continuation.compaction.released` spans.
+   * Aggregate count of staged post-compaction delegates released for
+   * dispatch by a single auto-compaction event. Snapshotted from
+   * `sessionEntry.pendingPostCompactionDelegates.length` at the moment
+   * `dispatchPostCompactionDelegates` is invoked.
+   *
+   * Integer ≥ 0. May be 0 when auto-compaction occurred but no delegates
+   * were staged (the dispatch still runs to consume staged-but-unflushed
+   * state); the span is still emitted to mark the compaction event itself.
+   */
+  readonly "compaction.released"?: number;
 };
 
 /**
@@ -717,5 +730,41 @@ export function emitContinuationQueueDrainSpan(args: {
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.queue.drain span: ${String(err)}`);
+  }
+}
+
+/**
+ * Emit a `continuation.compaction.released` span at the agent-runner
+ * post-compaction-delegate dispatch seam (#334 Slice 2 chunk 6b). Fired
+ * once per `autoCompactionCount > 0` branch, after
+ * `dispatchPostCompactionDelegates` returns, with the released-count
+ * snapshotted before the dispatch call.
+ *
+ * Mirrors `emitContinuationQueueDrainSpan` shape — separate-helper rule
+ * (chunk 6a precedent). Integer hygiene (`Math.max(0, Math.floor(...))`)
+ * per chunk-6a defense-in-depth: helper enforces invariant even though
+ * the caller snapshots from a `.length` (structurally non-negative).
+ *
+ * Wraps tracer interactions in a try/catch and forwards exceptions to the
+ * caller's `log` callback if provided — the release path must never block
+ * on span emission.
+ */
+export function emitContinuationCompactionReleasedSpan(args: {
+  releasedCount: number;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const releasedCount = Math.max(0, Math.floor(args.releasedCount));
+    const attrs: ContinuationSpanAttrs = {
+      "signal.kind": "compaction-release",
+      "compaction.released": releasedCount,
+    };
+    const span = activeTracer.startSpan("continuation.compaction.released", {
+      attributes: attrs,
+    });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.compaction.released span: ${String(err)}`);
   }
 }
