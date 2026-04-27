@@ -450,9 +450,19 @@ describe("runReplyAgent :: continuation.work span (Slice 2 chunk 2)", () => {
     const workSpans = spans.filter((s) => s.name === "continuation.work");
     expect(workSpans).toHaveLength(0);
 
-    // Confirms chunk 2's narrow scope: no other span names get
-    // accidentally emitted on the reject path either (chunk 4 owns
-    // `continuation.disabled` for these reject branches).
-    expect(spans).toHaveLength(0);
+    // #334 Slice 2 chunk 4: the chain-cap reject branch now emits exactly
+    // one `continuation.disabled` span (replaces the chunk-2 placeholder
+    // "spans.length === 0" expectation). Span carries `disabled.reason =
+    // cap.chain` and `signal.kind = bracket-work` (CONTINUE_WORK signal).
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({
+      name: "continuation.disabled",
+      attributes: {
+        "disabled.reason": "cap.chain",
+        "signal.kind": "bracket-work",
+        "continuation.disabled": true,
+        "chain.id": seededChainId,
+      },
+    });
   });
 });

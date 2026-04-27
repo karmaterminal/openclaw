@@ -25,6 +25,7 @@ import { logVerbose } from "../../globals.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import {
   emitContinuationDelegateSpan,
+  emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
 } from "../../infra/continuation-tracer.js";
 import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
@@ -2186,6 +2187,37 @@ export async function runReplyAgent(params: {
             `[continuation] Bracket continuation rejected: chain length ${maxChainLength} reached.`,
             { sessionKey },
           );
+          // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
+          // bracket cap-gate reject. No mint-on-reject (🌊, 2026-04-27): the
+          // chain never advanced for this signal, so chainId passes through
+          // as-is from the live session entry (undefined when the rejected
+          // signal would have been the first chain step). Delegate-only
+          // attrs (delegate.delivery / delegate.mode) are conditional on
+          // signal.kind === "delegate".
+          {
+            const isDelegate = effectiveContinuationSignal.kind === "delegate";
+            const delegateMode = isDelegate
+              ? effectiveContinuationSignal.silentWake
+                ? "silent-wake"
+                : effectiveContinuationSignal.silent
+                  ? "silent"
+                  : "normal"
+              : undefined;
+            const delegateDelivery: "immediate" | "timer" | undefined = isDelegate
+              ? (effectiveContinuationSignal.delayMs ?? defaultDelayMs) > 0
+                ? "timer"
+                : "immediate"
+              : undefined;
+            emitContinuationDisabledSpan({
+              chainId: activeSessionEntry?.continuationChainId,
+              chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
+              disabledReason: "cap.chain",
+              signalKind: isDelegate ? "bracket-delegate" : "bracket-work",
+              delegateDelivery,
+              delegateMode,
+              log: defaultRuntime.log,
+            });
+          }
           // Bump (not clear) to invalidate stale timers without reuse risk.
           // Clearing would reset to 0, letting a new chain's generation collide
           // with a stale in-flight timer's captured value.
@@ -2206,6 +2238,33 @@ export async function runReplyAgent(params: {
               `[continuation] Bracket continuation rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}).`,
               { sessionKey },
             );
+            // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
+            // bracket cost-cap reject. Same conditional-delegate-attr
+            // pattern as the chain-cap site above.
+            {
+              const isDelegate = effectiveContinuationSignal.kind === "delegate";
+              const delegateMode = isDelegate
+                ? effectiveContinuationSignal.silentWake
+                  ? "silent-wake"
+                  : effectiveContinuationSignal.silent
+                    ? "silent"
+                    : "normal"
+                : undefined;
+              const delegateDelivery: "immediate" | "timer" | undefined = isDelegate
+                ? (effectiveContinuationSignal.delayMs ?? defaultDelayMs) > 0
+                  ? "timer"
+                  : "immediate"
+                : undefined;
+              emitContinuationDisabledSpan({
+                chainId: activeSessionEntry?.continuationChainId,
+                chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
+                disabledReason: "cap.cost",
+                signalKind: isDelegate ? "bracket-delegate" : "bracket-work",
+                delegateDelivery,
+                delegateMode,
+                log: defaultRuntime.log,
+              });
+            }
             bumpContinuationGeneration(sessionKey);
             maybeDropContinuationGeneration(sessionKey);
           } else {
@@ -2459,6 +2518,11 @@ export async function runReplyAgent(params: {
             `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${droppedDelegate.task}`,
             { sessionKey },
           );
+          // #334 Slice 2 chunk 5 — per-turn cap reject is a different
+          // cap-axis from chunk 4's per-chain (chain/cost) family and
+          // lands in its own sibling seam. Cohort design call
+          // (sprites-of-thornfield, 2026-04-27, 🩸): keep chunk 4 taxonomy
+          // crisp; don't braid two cap-axes on wiring proximity.
         }
 
         let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
@@ -2489,6 +2553,28 @@ export async function runReplyAgent(params: {
               `[continuation] Tool delegate rejected: chain length ${maxChainLength} reached. Task: ${delegate.task}`,
               { sessionKey },
             );
+            // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
+            // tool chain-cap reject. Chain didn't advance; chainId passes
+            // through as-is.
+            {
+              const delegateMode = delegate.silentWake
+                ? "silent-wake"
+                : delegate.silent
+                  ? "silent"
+                  : "normal";
+              const delegateDelivery: "immediate" | "timer" =
+                delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
+              emitContinuationDisabledSpan({
+                chainId: activeSessionEntry?.continuationChainId,
+                chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
+                disabledReason: "cap.chain",
+                signalKind: "tool-delegate",
+                delegateDelivery,
+                delegateMode,
+                reason: delegate.task,
+                log: defaultRuntime.log,
+              });
+            }
             break;
           }
 
@@ -2500,6 +2586,27 @@ export async function runReplyAgent(params: {
               `[continuation] Tool delegate rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}). Task: ${delegate.task}`,
               { sessionKey },
             );
+            // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
+            // tool cost-cap reject. Same conditional-delegate-attr pattern.
+            {
+              const delegateMode = delegate.silentWake
+                ? "silent-wake"
+                : delegate.silent
+                  ? "silent"
+                  : "normal";
+              const delegateDelivery: "immediate" | "timer" =
+                delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
+              emitContinuationDisabledSpan({
+                chainId: activeSessionEntry?.continuationChainId,
+                chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
+                disabledReason: "cap.cost",
+                signalKind: "tool-delegate",
+                delegateDelivery,
+                delegateMode,
+                reason: delegate.task,
+                log: defaultRuntime.log,
+              });
+            }
             break;
           }
 
