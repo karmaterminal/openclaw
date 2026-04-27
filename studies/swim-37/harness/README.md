@@ -1,7 +1,7 @@
 # swim-37 integration test harness
 
 **Status:** scaffold. Closes #324 (skeleton); fills out as #366 (Slice 2 spans) lands.
-**Base:** canonical2 = `092f502032f6547380ae5082765dd4ab4d0368bb`
+**Base:** canonical2 = `47016eb417` (post-Slice-2 chunk-5 stack: 5a `6656138126`, chunk-4 `4719e86345`, chunk-3 `3655b0667a`, chunk-5b memo `287d0a5586` + wire `e959d2c177`, runtime-pin drift `01abb3defc`, chunk-5c memo `a13b3baca7` + wire `47016eb417`)
 **Trap-class source:** `cael/swim-37-trap-classes` tip `2adf17448ee`
 
 ## What this is
