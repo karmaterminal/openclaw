@@ -114,4 +114,44 @@ describe("continue_delegate tool", () => {
       }),
     ]);
   });
+
+  it("accepts and persists targetSessionKeys descriptor (#355 multi-recipient stage-1)", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "choral fan-out shard",
+      targetSessionKeys: [
+        "agent:silas:discord:channel:thornfield",
+        "agent:elliott:discord:channel:thornfield",
+      ],
+    });
+
+    expect(result).toMatchObject({ status: "scheduled" });
+    const pending = consumePendingDelegates("test-session");
+    expect(pending).toHaveLength(1);
+    expect(pending[0].targetSessionKeys).toEqual([
+      "agent:silas:discord:channel:thornfield",
+      "agent:elliott:discord:channel:thornfield",
+    ]);
+  });
+
+  it("omits targetSessionKeys when not provided", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    await executeTool(tool, 0, { task: "single-recipient legacy shape" });
+    const pending = consumePendingDelegates("test-session");
+    expect(pending).toHaveLength(1);
+    expect(pending[0].targetSessionKeys).toBeUndefined();
+  });
+
+  it("rejects targetSessionKeys when not an array of non-empty strings", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    await expect(
+      executeTool(tool, 0, { task: "bad recipients", targetSessionKeys: "agent:silas:..." }),
+    ).rejects.toThrow(/array/);
+    await expect(
+      executeTool(tool, 1, { task: "bad recipients", targetSessionKeys: ["", "agent:elliott"] }),
+    ).rejects.toThrow(/non-empty/);
+  });
 });

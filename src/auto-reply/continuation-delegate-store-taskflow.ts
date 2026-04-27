@@ -35,6 +35,9 @@ function delegateToStateJson(delegate: PendingContinuationDelegate): JsonValue {
   if (delegate.silentWake != null) {
     state.silentWake = delegate.silentWake;
   }
+  if (delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0) {
+    state.targetSessionKeys = [...delegate.targetSessionKeys];
+  }
   return state;
 }
 
@@ -51,6 +54,14 @@ function flowToDelegate(flow: TaskFlowRecord): PendingContinuationDelegate {
   }
   if (typeof state.silentWake === "boolean") {
     delegate.silentWake = state.silentWake;
+  }
+  if (Array.isArray(state.targetSessionKeys)) {
+    const keys = state.targetSessionKeys.filter(
+      (k): k is string => typeof k === "string" && k.length > 0,
+    );
+    if (keys.length > 0) {
+      delegate.targetSessionKeys = keys;
+    }
   }
   return delegate;
 }

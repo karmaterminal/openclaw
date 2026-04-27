@@ -37,12 +37,15 @@ const ContinueDelegateToolSchema = Type.Object({
       '"post-compaction" = silent-wake delegate that fires when compaction happens, not on a timer. ' +
       "Use for context evacuation: the shard starts at the moment of compaction and returns to the post-compaction session.",
   }),
-  targetSessionKey: Type.Optional(
-    Type.String({
+  targetSessionKeys: Type.Optional(
+    Type.Array(Type.String(), {
       description:
-        "Address a sibling session for cross-session enrichment. " +
-        "This is the (a)-shape (RPC-style address-recipient); v3 surfaces broadcast-mode " +
-        "via karmaterminal/binary-canticle#11. Same substrate; different verb-set.",
+        "Address one or more sibling sessions for cross-session enrichment. " +
+        "One delegate completion \u2192 N receivers (the choral fan-out shape). " +
+        "Stage-1: persisted as descriptor on the pending delegate. " +
+        "Stage-2 (follow-up under #355): dispatch wires one substrate-queue row " +
+        "per recipient with per-target fail-isolation via existing FallbackResolver. " +
+        "Binary-canticle (a)-shape; broadcast (b)-shape lands on top via canticle#11.",
     }),
   ),
 });
@@ -88,9 +91,26 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           "continue_delegate requires an active session. Not available in sessionless contexts.",
         );
       }
-      if (Object.hasOwn(params, "targetSessionKey") && params.targetSessionKey !== undefined) {
-        // Runtime binding (intra-host-rpc) belongs in #332's session-delivery-queue lane.
-        throw new ToolInputError("targetSessionKey is descriptor-only in v2.5; runtime in #332");
+      let targetSessionKeys: string[] | undefined;
+      if (Object.hasOwn(params, "targetSessionKeys") && params.targetSessionKeys !== undefined) {
+        const raw = params.targetSessionKeys;
+        if (!Array.isArray(raw)) {
+          throw new ToolInputError("targetSessionKeys must be an array of session-key strings.");
+        }
+        const keys = raw.filter((k): k is string => typeof k === "string" && k.trim().length > 0);
+        if (keys.length !== raw.length) {
+          throw new ToolInputError(
+            "targetSessionKeys must contain only non-empty session-key strings.",
+          );
+        }
+        if (keys.length > 0) {
+          targetSessionKeys = keys;
+        }
+        // Stage-1: descriptor-only. Stage-2 (follow-up under #355) wires the
+        // substrate-queue dispatch (one row per recipient, per-target
+        // fail-isolation via existing FallbackResolver, riding on #354's
+        // session-delivery-queue extension). Until then the descriptor is
+        // persisted/round-tripped via taskflow but does not change dispatch.
       }
 
       const task = readStringParam(params, "task", { required: true });
@@ -153,6 +173,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         delayMs,
         silent,
         silentWake,
+        targetSessionKeys,
       });
 
       const dispatchIndex = currentCount + 1;

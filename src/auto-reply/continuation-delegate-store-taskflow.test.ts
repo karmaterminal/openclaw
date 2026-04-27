@@ -173,6 +173,45 @@ describe("continuation-delegate-store-taskflow", () => {
     });
   });
 
+  it("round-trips targetSessionKeys descriptor (#355 multi-recipient)", async () => {
+    await withFlowRegistryTempDir(async () => {
+      taskFlowEnqueuePendingDelegate("test-session", {
+        task: "choral fan-out",
+        delayMs: 5000,
+        silent: true,
+        silentWake: true,
+        targetSessionKeys: [
+          "agent:main:discord:channel:thornfield",
+          "agent:silas:discord:channel:thornfield",
+          "agent:elliott:discord:channel:thornfield",
+        ],
+      });
+
+      const delegates = taskFlowConsumePendingDelegates("test-session");
+      expect(delegates).toHaveLength(1);
+      expect(delegates[0].targetSessionKeys).toEqual([
+        "agent:main:discord:channel:thornfield",
+        "agent:silas:discord:channel:thornfield",
+        "agent:elliott:discord:channel:thornfield",
+      ]);
+    });
+  });
+
+  it("omits targetSessionKeys when absent or empty", async () => {
+    await withFlowRegistryTempDir(async () => {
+      taskFlowEnqueuePendingDelegate("test-session", {
+        task: "single-recipient legacy shape",
+        targetSessionKeys: [],
+      });
+      taskFlowEnqueuePendingDelegate("test-session", { task: "no field at all" });
+
+      const delegates = taskFlowConsumePendingDelegates("test-session");
+      expect(delegates).toHaveLength(2);
+      expect(delegates[0].targetSessionKeys).toBeUndefined();
+      expect(delegates[1].targetSessionKeys).toBeUndefined();
+    });
+  });
+
   it("handles zero delay (immediate dispatch)", async () => {
     await withFlowRegistryTempDir(async () => {
       taskFlowEnqueuePendingDelegate("test-session", { task: "immediate", delayMs: 0 });

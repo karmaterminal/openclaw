@@ -4,11 +4,19 @@ export interface PendingContinuationDelegate {
   silent?: boolean;
   silentWake?: boolean;
   /**
-   * Address a sibling session for cross-session enrichment.
-   * This is the (a)-shape (RPC-style address-recipient); v3 surfaces broadcast-mode
-   * via karmaterminal/binary-canticle#11. Same substrate; different verb-set.
+   * Address one or more sibling sessions for cross-session enrichment.
+   * One delegate completion → N receivers (the choral fan-out shape).
+   *
+   * Stage-1 (this surface): persisted as descriptor on the pending delegate;
+   * Stage-2 (follow-up under karmaterminal/openclaw#355): dispatch wiring fans
+   * out one substrate-queue row per recipient with per-target fail-isolation
+   * via the existing FallbackResolver, riding on the queue substrate landed
+   * in #354. Single-recipient and N-recipient share the same path.
+   *
+   * Binary-canticle (a)-shape (RPC-style address-recipient); broadcast-mode
+   * (b)-shape lands on top of this via karmaterminal/binary-canticle#11.
    */
-  targetSessionKey?: string;
+  targetSessionKeys?: string[];
 }
 
 export interface DelayedContinuationReservation {
