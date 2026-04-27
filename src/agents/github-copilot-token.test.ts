@@ -47,6 +47,45 @@ describe("resolveCopilotApiToken", () => {
     expect(result.expiresAt).toBe(12_345_678_901_000);
   });
 
+  it("keys cache paths by auth profile so named profiles do not collapse", async () => {
+    const loadJsonFileImpl = vi.fn<(path: string) => unknown>(() => undefined);
+    const saveJsonFileImpl = vi.fn<(path: string, value: unknown) => void>(() => undefined);
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        token: "copilot-token",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    }));
+    const env = { OPENCLAW_STATE_DIR: "/tmp/openclaw-state" } as NodeJS.ProcessEnv;
+
+    await resolveCopilotApiToken({
+      githubToken: "github-token-a",
+      profileId: "github-copilot:github",
+      env,
+      loadJsonFileImpl,
+      saveJsonFileImpl,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await resolveCopilotApiToken({
+      githubToken: "github-token-b",
+      profileId: "github-copilot:pool-1",
+      env,
+      loadJsonFileImpl,
+      saveJsonFileImpl,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(loadJsonFileImpl.mock.calls.map(([cachePath]) => cachePath)).toEqual([
+      "/tmp/openclaw-state/credentials/github-copilot.github-copilot-github.token.json",
+      "/tmp/openclaw-state/credentials/github-copilot.github-copilot-pool-1.token.json",
+    ]);
+    expect(saveJsonFileImpl.mock.calls.map(([cachePath]) => cachePath)).toEqual([
+      "/tmp/openclaw-state/credentials/github-copilot.github-copilot-github.token.json",
+      "/tmp/openclaw-state/credentials/github-copilot.github-copilot-pool-1.token.json",
+    ]);
+  });
+
   it("sends IDE headers when exchanging the GitHub token", async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,

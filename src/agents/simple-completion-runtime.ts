@@ -101,11 +101,13 @@ async function setRuntimeApiKeyForCompletion(params: {
   authStorage: SimpleCompletionAuthStorage;
   model: Model<Api>;
   apiKey: string;
+  profileId?: string;
 }): Promise<CompletionRuntimeCredential> {
   if (params.model.provider === "github-copilot") {
     const { resolveCopilotApiToken } = await import("./github-copilot-token.js");
     const copilotToken = await resolveCopilotApiToken({
       githubToken: params.apiKey,
+      profileId: params.profileId,
     });
     params.authStorage.setRuntimeApiKey(params.model.provider, copilotToken.token);
     return {
@@ -177,6 +179,7 @@ export async function prepareSimpleCompletionModel(params: {
       authStorage: resolved.authStorage,
       model: resolved.model,
       apiKey: rawApiKey,
+      profileId: auth.profileId ?? params.profileId,
     });
     resolvedApiKey = runtimeCredential.apiKey;
     const runtimeBaseUrl = runtimeCredential.baseUrl?.trim();
