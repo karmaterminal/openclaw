@@ -29,7 +29,12 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
   });
 
-  it("lists targetSessionKey in the continue_delegate schema descriptor", () => {
+  it("omits targetSessionKey from the continue_delegate schema descriptor", () => {
+    // Per #362 / #338-successor: cross-session addressing was deferred from this
+    // surface to the #332 session-delivery-queue substrate. The schema MUST NOT
+    // advertise `targetSessionKey` on `continue_delegate` — callers reaching for
+    // sibling-session enrichment use the (b)-shape evolution tracked in
+    // karmaterminal/binary-canticle#11, not this verb.
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -39,17 +44,12 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
       throw new Error("continue_delegate tool not registered");
     }
 
-    expect(tool.parameters).toMatchObject({
-      properties: {
-        targetSessionKey: {
-          type: "string",
-          description: expect.stringContaining("RPC-style address-recipient"),
-        },
-      },
-    });
+    const params = tool.parameters as { properties?: Record<string, unknown> };
+    expect(params.properties).toBeDefined();
+    expect(params.properties).not.toHaveProperty("targetSessionKey");
   });
 
-  it("fails loudly when targetSessionKey is used before runtime binding exists", async () => {
+  it("description points at the (b)-shape lane for cross-session enrichment", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -59,12 +59,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
       throw new Error("continue_delegate tool not registered");
     }
 
-    await expect(
-      tool.execute("tool-call", {
-        task: "summarize sibling context",
-        targetSessionKey: "prince:cael:agent:main:main",
-      }),
-    ).rejects.toThrow("targetSessionKey is descriptor-only in v2.5; runtime in #332");
+    expect(tool.description).toContain("binary-canticle#11");
   });
 
   it("hides continue_delegate when continuation is disabled", () => {
