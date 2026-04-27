@@ -2016,6 +2016,7 @@ export async function runReplyAgent(params: {
         });
         emitContinuationCompactionReleasedSpan({
           releasedCount,
+          compactionId: count,
           log: (message) => defaultRuntime.log(message),
         });
       }
