@@ -9,11 +9,10 @@
  * `emit*Span` helpers from `continuation-tracer.ts`, then read recorded
  * spans back via `recorder.spans()` for assertion.
  *
- * **STDOUT-only discipline.** This shim is the local-process-memory
- * equivalent of OTEL's `InMemorySpanExporter`. It deliberately does NOT
- * spin up `BasicTracerProvider`, `@opentelemetry/sdk-trace-base`, or any
- * real exporter — the harness must NEVER touch a live OTLP collector or
- * STDOUT-export from a worker. All capture stays in-process so vitest
+ * **STDOUT-only discipline.** This shim records into an in-process array;
+ * it never installs `BasicTracerProvider`, `@opentelemetry/sdk-trace-base`,
+ * or any real exporter. The harness must NEVER touch a live OTLP collector
+ * or STDOUT-export from a worker. All capture stays in-process so vitest
  * runs are hermetic.
  *
  * **Shape parallel.** This mirrors the `recordingTracer` pattern already

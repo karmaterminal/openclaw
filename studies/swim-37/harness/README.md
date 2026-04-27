@@ -18,9 +18,28 @@ morning cohort knows what to satisfy.
 
 ## OTEL exporter
 
-**STDOUT only.** No real collector container. The captured spans are read from
-an `InMemorySpanExporter` shim once #366 wires the provider — never from a live
-OTLP endpoint.
+**STDOUT only / in-process.** No real collector container, no
+`BasicTracerProvider`, no live OTLP endpoint.
+
+Spans are captured by `createInMemorySpanRecorder()` (see
+`in-memory-span-recorder.ts`), which returns a recorder + a custom `Tracer`
+installed into the production continuation-tracer registry via
+`setContinuationTracer(tracer)`. Each `emitContinuation*Span` helper called
+by the runtime under test routes through that tracer; the recorder captures
+span name + attributes + status + lifecycle for assertion. `resetContinuationTracer()`
+restores the noop tracer between tests.
+
+This is the recording-tracer pattern already used inline in
+`src/infra/continuation-tracer.test.ts`, lifted into a reusable harness helper
+so every swim-37 test reads the same observer surface.
+
+## Vitest project
+
+Lives in `test/vitest/vitest.swim-37.config.ts` (registered in
+`vitest.config.ts`'s `rootVitestProjects`). Harness sources are also covered by
+root `tsconfig.json` (`include` adds `studies/**/*`), so type-shape drift in
+the recorder or the harness is caught by `tsgo` / `pnpm typecheck`.
+
 
 ## Trap-classes pinned
 
