@@ -7,7 +7,7 @@
 
 ## Frame
 
-Chunks 1–4 + 5a wired the **gate family**: `continuation.work` (accept), `continuation.delegate.dispatch` (accept), `continuation.disabled` (reject across `cap.chain | cap.cost | cap.delegates_per_turn`). All emit at the *enqueue / decision* moment, before any `setTimeout` arms.
+Chunks 1–4 + 5a wired the **gate family**: `continuation.work` (accept), `continuation.delegate.dispatch` (accept), `continuation.disabled` (reject across `cap.chain | cap.cost | cap.delegates_per_turn`). All emit at the _enqueue / decision_ moment, before any `setTimeout` arms.
 
 Chunk 5b introduces the **fire family**: a new event emitted when a deferred delegate's timer callback actually runs. This is the verb-on-timer counterpart to `dispatch`'s verb-on-decision. (🌻's framing, msg `1498373696392265921`.)
 
@@ -22,6 +22,7 @@ The deferral comment in `continuation-tracer.ts:334` explicitly reserves the `co
 `fire` is **only meaningful** at the timer-deferred seam: the gap between dispatch-decision (`t0`) and actual wake (`t0 + clampedDelay`) is where observability gains exist. The `setTimeout` callback is the single canonical fire site.
 
 **Sites to wire:** the four `setTimeout(() => { ... }, clampedDelay)` locations in `agent-runner.ts`:
+
 - Bracket-delegate timer callback (~L2358)
 - Bracket-work timer callback (~L2414) — **work-fire is the symmetric question; see Q5**
 - Tool-delegate timer callback (~L2713)
@@ -42,6 +43,7 @@ Add **one new optional axis**:
 **Canonical drift formula** (🌊, msg `1498377809591013516`): `drift = fire.deferred_ms − delay.ms`. Positive values indicate the timer fired late under load; near-zero is on-schedule. Document this in JSDoc on the attr so every consumer doesn't rediscover it.
 
 Concretely:
+
 ```ts
 export interface ContinuationSpanAttrs {
   // ...existing fields...
@@ -62,17 +64,18 @@ Mirror chunks 2/3/4 contract (try/catch + caller `log`, sparse attrs, no mint-on
 
 ```ts
 export function emitContinuationDelegateFireSpan(args: {
-  chainId: string;                // closed-over from dispatch-time; never re-read at fire-time
-  chainStepRemainingAtDispatch: number;  // snapshot from dispatch; NOT a fire-time recompute
+  chainId: string; // closed-over from dispatch-time; never re-read at fire-time
+  chainStepRemainingAtDispatch: number; // snapshot from dispatch; NOT a fire-time recompute
   delegateMode: "normal" | "silent" | "silent-wake";
-  delayMs: number;                // requested delay (matches dispatch span)
-  fireDeferredMs: number;         // actual elapsed wall-clock
+  delayMs: number; // requested delay (matches dispatch span)
+  fireDeferredMs: number; // actual elapsed wall-clock
   reason?: string | undefined;
   log?: (message: string) => void;
-}): void
+}): void;
 ```
 
 **chain.id provenance** (🌊, msg `1498377809591013516`; 🩸, msg `1498377886686777486`): the `setTimeout` callback **closes over** `chainId` from dispatch-time as a captured local. The helper never re-reads `activeSessionEntry?.continuationChainId` at fire-time. This:
+
 - Matches the no-mint-on-fire invariant
 - Prevents races with compaction or session mutation between arm and fire
 - Mirrors chunks 3/4's enclosure discipline
@@ -83,7 +86,7 @@ export function emitContinuationDelegateFireSpan(args: {
 
 **Dedicated JSDoc paragraph (mandatory in wire PR)**, paraphrased from 🌻:
 
-> The `chainStepRemainingAtDispatch` value reflects **dispatch-time headroom** (reservation snapshot), NOT callback-time live state. Rationale: trace continuity with the dispatch span (same `chain.id`, same step counter) so consumers can pair `dispatch`/`fire` events without reasoning about between-tick mutations. If a future consumer wants "remaining headroom *at* fire time," that is a **separate axis** (provisional name `chain.step.remaining_at_fire`) and a **separate decision** — do not fold it into this field.
+> The `chainStepRemainingAtDispatch` value reflects **dispatch-time headroom** (reservation snapshot), NOT callback-time live state. Rationale: trace continuity with the dispatch span (same `chain.id`, same step counter) so consumers can pair `dispatch`/`fire` events without reasoning about between-tick mutations. If a future consumer wants "remaining headroom _at_ fire time," that is a **separate axis** (provisional name `chain.step.remaining_at_fire`) and a **separate decision** — do not fold it into this field.
 
 Note: no `delegate.delivery` arg — fire is timer-only by Q1, so `"timer"` is implicit and emitted as a fixed attr inside the helper. No `signal.kind` arg — fire only fires for delegate signals. Keeps signature tight.
 
@@ -105,29 +108,9 @@ Today's timer-callback path is exactly:
 
 **Original framing:** at fire-time, if any cap has been consumed between dispatch and fire, emit `fire` + `disabled` sibling sharing `chain.id`. 🌫️ earlier asserted fire-time cap-recheck axes = `cap.chain | cap.cost` only.
 
-**Byte-walk correction (🩸, msg `1498379203257569481`):** this describes a **future policy seam**, not current behavior. Today no caps re-run at fire-time. The wake-then-cap composite-vs-split question is real *if* fire-time gating is ever added — but for 5b instrumentation, it doesn't apply.
+**Byte-walk correction (🩸, msg `1498379203257569481`):** this describes a **future policy seam**, not current behavior. Today no caps re-run at fire-time. The wake-then-cap composite-vs-split question is real _if_ fire-time gating is ever added — but for 5b instrumentation, it doesn't apply.
 
-**Resolution for 5b:** wake-then-cap is **deferred to a future memo**. Two-spans-not-composite remains the design preference *if* fire-time gating is ever wired, but doesn't ship in 5b. 🌫️'s earlier statement that fire-time cap-recheck axes = `cap.chain | cap.cost` only was a **forward-looking design opinion misread as a status-quo description**; corrected here to prevent 5b from accidentally introducing the gate as instrumentation.
-
-### Q4 legacy framing (kept for receipts only — not 5b spec)
-
-
-**Proposal: two spans, not composite.**
-
-Scenario: timer fires, but by callback-time the chain budget is exhausted (or another constraint catches it pre-spawn). Two events happen at adjacent moments:
-
-1. The timer fired (wake event)
-2. The dispatch was rejected (cap event)
-
-These answer different questions. Composite would conflate event-families and force consumers to decode "was-this-a-fire-or-a-reject" from attr presence.
-
-**Wire:** `continuation.delegate.fire` emits unconditionally at callback start. If post-fire cap-checks reject, `continuation.disabled` emits as a sibling span. Both share `chain.id` — the trace stitches naturally; ordering is by span start time.
-
-🌻's framing (msg `1498373696392265921`): *"fire is verb-on-timer, disabled is verb-on-gate; they happen at adjacent moments but they're different events."*
-
-**Caveat to verify before wire:** chunk-3 `dispatch` is emitted **before** `setTimeout` arms (decision-time), and chain.id is already minted/persisted at that moment. So fire-time has chain.id available without re-minting. Fire-time cap-checks (e.g., chain budget consumed by parallel signals) emit `continuation.disabled` with the same chain.id.
-
-**Fire-time cap-recheck axes** (🌊, msg `1498377809591013516`): explicitly `cap.chain | cap.cost` **only**. Per-turn cap (`cap.delegates_per_turn`) is settled at dispatch-time (chunk 5a) and does **not** re-gate at fire-time — the per-turn quota is a turn-local decision committed when the dispatch arms; the timer firing on a different turn doesn't reopen it. Pin this explicitly so chunk 5c authors don't reintroduce a per-turn re-gate at fire.
+**Resolution for 5b:** wake-then-cap is **deferred to a future memo**. Two-spans-not-composite remains the design preference _if_ fire-time gating is ever wired, but doesn't ship in 5b. 🌫️'s earlier statement that fire-time cap-recheck axes = `cap.chain | cap.cost` only was a **forward-looking design opinion misread as a status-quo description**; corrected here to prevent 5b from accidentally introducing the gate as instrumentation.
 
 ## Q5 (open): WORK-fire symmetry
 
@@ -145,10 +128,11 @@ Out of scope for 5b but flagging: should `continuation.work.fire` exist as the s
 **Resolution: (i-a)** — emit `continuation.delegate.fire` + sibling `continuation.disabled` with `disabled.reason = "reservation.missing"`. Extend the enum to 4-value: `cap.chain | cap.cost | cap.delegates_per_turn | reservation.missing`.
 
 **Cohort sweep on Q7:**
+
 - 🌊 (msg `1498377810383998976`): leans (i), reason `reservation.missing`, fire+disabled siblings sharing chain.id.
 - 🩸 (msg `1498377931469099119`): explicit (i-a) — fire + disabled with concrete reason name; "don't overload into `cap.chain` / `cap.cost`."
 - 🌻 initial (msg `1498378164936638464`): leaned (i-b) for family-tightness; flagged enum widening cost.
-- 🌻 fold (msg `1498378311259394158`): folds to (i-a) on grammar-fit argument — 🩸's *"fire = verb on timer; disabled = verb on gate / prevented follow-through"* grammar works whether the gate is cap or reservation-loss. Grammar-fit > family-tightness.
+- 🌻 fold (msg `1498378311259394158`): folds to (i-a) on grammar-fit argument — 🩸's _"fire = verb on timer; disabled = verb on gate / prevented follow-through"_ grammar works whether the gate is cap or reservation-loss. Grammar-fit > family-tightness.
 - 🌫️: re-folds to (i-a) on cohort sweep + grammar argument. (i-b) lean was correct on the structural worry but wrong on weight — the gate-grammar generalizes; family-name extension is the right cost to pay.
 
 **JSDoc requirement on `disabled.reason` enum** (🌻, msg `1498378311259394158`): pin that the enum semantics are now "anything that prevented follow-through," **not** "cap axes only." Future siblings under this family: `reservation.evicted`, `session.gone`, `compaction.cleared`, etc., all live on `continuation.disabled` with concrete reason names. The family is gate-prevented-follow-through; cap is one shape of gate, reservation-loss is another.
@@ -172,12 +156,14 @@ If the `setTimeout` callback throws (e.g., `takeDelayedContinuationReservation` 
 ## Tests proposed
 
 In `continuation-tracer.test.ts`:
+
 1. Helper emits with all required attrs
 2. `fire.deferred_ms` carried correctly
 3. Truncates `reason.preview` to 80 chars (consistency w/ chunks 2–4)
 4. try/catch swallows tracer failures and calls `log`
 
 In `agent-runner.continuation-delegate-fire-span.test.ts` (new):
+
 1. Bracket-delegate timer fire emits exactly one `continuation.delegate.fire`
 2. Tool-delegate timer fire emits exactly one
 3. `fire.deferred_ms` is non-negative and roughly matches the requested `delay.ms` (loose floor; CI timing varies)
@@ -207,23 +193,25 @@ In `agent-runner.continuation-delegate-fire-span.test.ts` (new):
 
 Each question tagged by 🩸's "current seam vs future policy" axis to keep 5b honest as instrumentation-of-status-quo:
 
-| Q | Topic | Scope axis |
-|---|---|---|
-| Q1 | callsites (timer-callback only) | **current seam** |
-| Q2 | attr shape (`ContinuationSpanAttrs` + `fire.deferred_ms`) | **current seam** |
-| Q3 | helper sig (`chainStepRemainingAtDispatch` snapshot) | **current seam** |
-| Q4 | wake-then-cap composite vs split | **future policy** — out of 5b wire scope |
-| Q5 | work-fire symmetry | **future policy** — punt to 5c |
-| Q6 | fire-time exception handling | **current seam** (fire-callback throws are existing behavior) |
-| Q7 | reservation-missing at fire-time | **current seam** — only fire-time divergence in current bytes |
-| Q8 | `continuation.delegate.error` span name | **future taxonomy** — deferred beyond 5b |
+| Q   | Topic                                                     | Scope axis                                                    |
+| --- | --------------------------------------------------------- | ------------------------------------------------------------- |
+| Q1  | callsites (timer-callback only)                           | **current seam**                                              |
+| Q2  | attr shape (`ContinuationSpanAttrs` + `fire.deferred_ms`) | **current seam**                                              |
+| Q3  | helper sig (`chainStepRemainingAtDispatch` snapshot)      | **current seam**                                              |
+| Q4  | wake-then-cap composite vs split                          | **future policy** — out of 5b wire scope                      |
+| Q5  | work-fire symmetry                                        | **future policy** — punt to 5c                                |
+| Q6  | fire-time exception handling                              | **current seam** (fire-callback throws are existing behavior) |
+| Q7  | reservation-missing at fire-time                          | **current seam** — only fire-time divergence in current bytes |
+| Q8  | `continuation.delegate.error` span name                   | **future taxonomy** — deferred beyond 5b                      |
 
 **5b wire sites (final, narrow):**
+
 - `continuation.delegate.fire` at timer-callback start (BEFORE `takeDelayedContinuationReservation`)
 - `continuation.disabled` with `reason = "reservation.missing"` on the existing log-and-return path
 - (Existing dispatch-time gate-reject sites stay as-is; not modified by 5b.)
 
 **5b explicitly does NOT:**
+
 - Add fire-time `cap.chain | cap.cost` rechecks (Q4 → future policy memo)
 - Add work-fire instrumentation (Q5 → chunk 5c)
 - Introduce `continuation.delegate.error` span name (Q8 → future taxonomy)
