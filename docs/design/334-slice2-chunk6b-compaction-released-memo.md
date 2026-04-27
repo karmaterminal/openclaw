@@ -48,7 +48,7 @@ Per-chunk single-addition discipline (locked across 5b/5c/6a): one new attribute
 readonly "compaction.released"?: number;
 ```
 
-`signal.kind` is `"compaction-release"` — extends the pinned 4-value enum (work / bracket-delegate / tool-delegate / compaction-release). Wait — that's a 5th value. **Open question Q2.5 below.**
+`signal.kind` is `"compaction-release"` — extends the current pinned 3-value enum to 4 values (`work` / `bracket-delegate` / `tool-delegate` / `compaction-release`). See Q2.5 below for symmetric runtime + type-pin update.
 
 `ContinuationSpanName` already includes `"continuation.compaction.released"` (landed in chunk 6a's pin); no schema change needed there.
 
