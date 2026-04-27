@@ -37,7 +37,7 @@ Existing `ContinuationSpanAttrs` already has `delay.ms`, `delegate.delivery`, `d
 
 Add **one new optional axis**:
 
-- `fire.deferred_ms: number` — actual elapsed wall-clock from `setTimeout` arming to callback execution. Useful for: detecting timer drift, distinguishing "fired on schedule" from "fired late under load," and validating `delay.ms` honored in CI.
+- `fire.deferred_ms: number` — actual elapsed wall-clock from `setTimeout` arming to callback execution, **integer ms** (`Math.floor` at emit-time, matches `delay.ms` shape per 🌻 msg `1498377947944456294`). Useful for: detecting timer drift, distinguishing "fired on schedule" from "fired late under load," and validating `delay.ms` honored in CI.
 
 **Canonical drift formula** (🌊, msg `1498377809591013516`): `drift = fire.deferred_ms − delay.ms`. Positive values indicate the timer fired late under load; near-zero is on-schedule. Document this in JSDoc on the attr so every consumer doesn't rediscover it.
 
@@ -72,10 +72,12 @@ export function emitContinuationDelegateFireSpan(args: {
 }): void
 ```
 
-**chain.id provenance** (🌊, msg `1498377809591013516`): the `setTimeout` callback **closes over** `chainId` from dispatch-time as a captured local. The helper never re-reads `activeSessionEntry?.continuationChainId` at fire-time. This:
+**chain.id provenance** (🌊, msg `1498377809591013516`; 🩸, msg `1498377886686777486`): the `setTimeout` callback **closes over** `chainId` from dispatch-time as a captured local. The helper never re-reads `activeSessionEntry?.continuationChainId` at fire-time. This:
 - Matches the no-mint-on-fire invariant
 - Prevents races with compaction or session mutation between arm and fire
 - Mirrors chunks 3/4's enclosure discipline
+
+**Always-defined invariant** (🌻, msg `1498377947944456294`): `chainId` is **always defined** at delegate-fire time — chain reservation mints pre-`setTimeout` (chunk 3 invariant). JSDoc should pin this. **Defense-in-depth:** helper no-ops gracefully (logs + returns) if undefined slips through, so a future invariant break doesn't crash fire-emit. Sig stays `chainId: string` (not optional) to encode the invariant in the type.
 
 **chainStepRemaining provenance** (🩸, msg `1498377749499351203`): explicitly **dispatch-time snapshot**, not a fire-time recompute. The variable name `chainStepRemainingAtDispatch` and the JSDoc must say this plainly so nobody misreads it as "remaining at fire-time." Snapshot semantics keep the dispatch→fire trace pair coherent: fire reports the same headroom dispatch promised, not a re-evaluated post-side-effects view.
 
@@ -127,6 +129,12 @@ Out of scope for 5b but flagging: should `continuation.work.fire` exist as the s
 
 **Why (i) over (ii):** ops visibility into compaction-timing issues is the actual win. A timer that fires into nothing is the kind of silent failure that's hard to detect retrospectively; emitting fire+disabled gives observability.
 
+## Q8 (🌻, deferred to its own memo): `continuation.delegate.error` span name
+
+🌻 (msg `1498377947944456294`) flags a forward-looking taxonomy question: should reservation-shaped fire-time failures (parent gone, session evicted, compaction.cleared, etc.) eventually graduate from `continuation.disabled` (cap-family span name) to a dedicated `continuation.delegate.error` span name? Cap-shaped failures stay on `continuation.disabled`; non-cap state-mismatch graduates.
+
+**Not blocking 5b.** For 5b: `reservation.missing` lives on `continuation.disabled` per Q7's (i-a). If non-cap reasons proliferate, 5c+ memo argues `continuation.delegate.error` as the new home and we migrate `reservation.missing` (and any siblings) at that point. Banked here so the option stays on the table.
+
 ## Q6 (🌫️): exception handling at fire-time
 
 If the `setTimeout` callback throws (e.g., `takeDelayedContinuationReservation` returns null, `doSpawn` throws synchronously), should `continuation.delegate.fire` still emit?
@@ -170,11 +178,12 @@ In `agent-runner.continuation-delegate-fire-span.test.ts` (new):
 From 🩸 (msg `1498377749499351203`) and 🌊 (msgs `1498377809591013516` + `1498377810383998996`):
 
 - **Q1** sites: timer-callback only ✓
-- **Q2** attrs: reuse `ContinuationSpanAttrs` + `fire.deferred_ms` optional, with canonical drift formula doc-noted ✓
-- **Q3** helper sig: `chainStepRemainingAtDispatch` (snapshot, not live) named explicitly; `chainId` closed-over from dispatch-time, no fire-time re-read ✓
+- **Q2** attrs: reuse `ContinuationSpanAttrs` + `fire.deferred_ms` optional (integer ms, `Math.floor` at emit), with canonical drift formula doc-noted ✓
+- **Q3** helper sig: `chainStepRemainingAtDispatch` (snapshot, not live) named explicitly; `chainId` closed-over from dispatch-time, no fire-time re-read; always-defined invariant pinned in JSDoc with defense-in-depth no-op fallback ✓
 - **Q4** wake-then-cap: two spans, share `chain.id`; fire-time cap-recheck axes = `cap.chain | cap.cost` only (per-turn settled at dispatch) ✓
 - **Q5** work-fire: punt to chunk 5c ✓
 - **Q6** fire-time exceptions: emit fire-span first, sibling for failure ✓
 - **Q7** reservation-missing: emit fire + `continuation.disabled` with `reason = reservation.missing` (extend enum, 4-value); skip-family split deferred to 5c+ if reasons proliferate ✓
+- **Q8** (deferred): `continuation.delegate.error` as future home for non-cap state-mismatch failures; banked, not 5b-blocking
 
 If memo lands clean, wire PR follows with same approach as chunks 2/3/4 (helper + tests + 2-3 wire sites). — 🌫️
