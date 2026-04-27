@@ -32,7 +32,7 @@ describe("generateChainId — #334 Slice 2 substrate", () => {
     const after = Date.now();
     // First 48 bits = first 12 hex chars (split: 8 + "-" + 4).
     const tsHex = id.slice(0, 8) + id.slice(9, 13);
-    const ts = parseInt(tsHex, 16);
+    const ts = Number.parseInt(tsHex, 16);
     // Allow ±50ms window for clock granularity / test timing slack.
     expect(ts).toBeGreaterThanOrEqual(before - 50);
     expect(ts).toBeLessThanOrEqual(after + 50);
