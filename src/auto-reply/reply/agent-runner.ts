@@ -2204,6 +2204,7 @@ export async function runReplyAgent(params: {
                     // re-emission when `timerTriggered` to preserve
                     // exactly-one-span-per-accepted-dispatch.
                     if (!options?.timerTriggered) {
+                      // Ladder handles silent-wake / silent / normal only. The bracket+tool DELEGATE seams don't carry a `post-compaction` discriminator; that path lives in `persistPostCompactionDelegateChainState` and would emit from a sibling site (chunk 5+ candidate).
                       const delegateMode = options?.silentWake
                         ? "silent-wake"
                         : options?.silent
@@ -2279,6 +2280,7 @@ export async function runReplyAgent(params: {
                 // (compaction, reset, gateway shutdown) still count as
                 // accepted and must not be silently underreported.
                 {
+                  // Ladder handles silent-wake / silent / normal only — see immediate-arm comment above; post-compaction dispatches travel a separate persist path.
                   const delegateMode = effectiveContinuationSignal.silentWake
                     ? "silent-wake"
                     : effectiveContinuationSignal.silent
@@ -2490,6 +2492,7 @@ export async function runReplyAgent(params: {
                 // dispatches already emitted at enqueue-time; skip when
                 // `timerTriggered` to preserve exactly-one-span-per-accepted-dispatch.
                 if (!options?.timerTriggered) {
+                  // Ladder handles silent-wake / silent / normal only — the tool DELEGATE seam doesn't carry a `post-compaction` discriminator (separate persist path).
                   const delegateMode = options?.silentWake
                     ? "silent-wake"
                     : options?.silent
@@ -2561,6 +2564,7 @@ export async function runReplyAgent(params: {
             // persist, before `setTimeout` arms). Same enqueue-time
             // semantic anchor as the bracket-timer site above.
             {
+              // Ladder handles silent-wake / silent / normal only — see tool-immediate comment above; post-compaction path is a sibling, not handled here.
               const delegateMode = delegate.silentWake
                 ? "silent-wake"
                 : delegate.silent
