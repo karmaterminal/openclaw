@@ -202,13 +202,12 @@ Three candidates:
 
 ### §B test surface
 
-- 4 helper tests for the extended `emitContinuationCompactionReleasedSpan(args: { releasedCount, compactionId, log? })`:
+- 5 helper tests for the extended `emitContinuationCompactionReleasedSpan(args: { releasedCount, compactionId, log? })`:
   1. Happy: `compactionId: 7, releasedCount: 3` → attrs `{ "signal.kind": "compaction-release", "compaction.released": 3, "compaction.id": 7 }`
-  2. Compaction-id-1: `compactionId: 1` → emits `compaction.id: 1` (lower bound)
-  3. Integer hygiene (Math.floor): `compactionId: 7.9` → `compaction.id: 7`
+  2. Compaction-id-1 lower bound: `compactionId: 1` → emits `compaction.id: 1`
+  3. Compaction-id-0 ordinal-valid: `compactionId: 0` → emits `compaction.id: 0` (NOT clamped, NOT dropped — ordinal-valid)
   4. Invariant violation — non-integer: `compactionId: 7.9` → drops `compaction.id` attr; emits warning via `log` callback; span still has `signal.kind` + `compaction.released`
   5. Invariant violation — negative: `compactionId: -1` → drops `compaction.id` attr; emits warning via `log` callback; span still has `signal.kind` + `compaction.released`
-  6. Compaction-id-0 ordinal-valid: `compactionId: 0` → emits `compaction.id: 0` (NOT clamped; ordinal value)
 - 1 producer-side pin: `incrementRunCompactionCount` returns integer ≥ 1 (verify at wire time; may already be covered)
 - 1 callsite test asserting `compaction.id === count` when `autoCompactionCount > 0` (integration-shaped, may already be covered by the agent-runner test fixture; verify at wire time).
 
@@ -237,6 +236,8 @@ Reasoning (🩸 framing, 🌻 refinement, 🌫 concur):
 **Helper contract:** `compactionId: number`. Helper validates `Number.isInteger(compactionId) && compactionId >= 0`. On invariant violation: **drop the `compaction.id` attr from the emitted span + log via existing `log` callback**. Do NOT throw (preserves don't-block-the-release-path principle from chunk 6a/6b). Span still emits with `signal.kind` + `compaction.released`; just no `compaction.id` if producer breaks.
 
 **Producer-side pin:** add a unit-pin asserting `incrementRunCompactionCount` returns integer ≥ 1 (likely already true; verify at wire time).
+
+**Minority-preference note (🩸):** validate-and-drop-with-log was the cohort-locked shape (3/3 after a 7-flip arc). 🩸's aesthetic preference was pure type-pin (helper accepts `compactionId: number` as TypeScript-narrowed and trusts the contract; no runtime guard at all), with NaN/Infinity acknowledged as on-record risk worth taking on this slice. He explicitly elected non-blocking on validate-and-drop for memo-lock purposes (`1498449974931881996`, `1498449918006923457`). The wire-PR diff is the right venue to re-litigate pure-type-pin if the runtime guard reads as defensive-noise once seen against actual caller shape; the memo bakes validate-and-drop as the authorial decision but does not foreclose that conversation.
 
 <!-- markdownlint-disable MD060 -->
 
