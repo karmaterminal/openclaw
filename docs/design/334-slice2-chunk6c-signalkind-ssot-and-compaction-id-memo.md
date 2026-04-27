@@ -122,7 +122,7 @@ Net: ~20-30 lines, single file (test additions ~10 lines, source ~15 lines). No 
 
 ## §B — `compaction.id` cross-cutting attr
 
-### Frame
+### Frame (§B)
 
 Per chunk-6b Q3 deferral: `compaction.id` provides a join-key between the `continuation.compaction.released` span (emitted at compaction-release on the parent session) and the future post-compaction-mode `continuation.delegate.fire` spans (emitted when each released delegate actually executes on its child session). Without this key, observers cannot reconstruct "which compaction released which delegate set."
 
@@ -238,6 +238,8 @@ Reasoning (🩸 framing, 🌻 refinement, 🌫 concur):
 
 **Producer-side pin:** add a unit-pin asserting `incrementRunCompactionCount` returns integer ≥ 1 (likely already true; verify at wire time).
 
+<!-- markdownlint-disable MD060 -->
+
 ## Cohort byte-walk resolutions (3/3 converged)
 
 | Q   | Section | Owner         | Subject                              | Resolution                                                                                                   |
@@ -310,3 +312,5 @@ Approvals on PR #398: 🌻 (msg `1498446377225556153`), 🌫 (msg `1498446793485
 - 🩸 6c-first vote: msg `1498444393898836249`
 - 🌻 6c-first vote + reasons: msg `1498444415608291420`
 - 🌫 two-part-single-memo shape call: msg `1498444483552084078`
+
+<!-- markdownlint-enable MD060 -->
