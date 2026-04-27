@@ -637,6 +637,30 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 ch
     });
   });
 
+  it("per-turn cap reject for tool-delegate carries delegate axes and live headroom (chunk 5a)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDisabledSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262099",
+      chainStepRemaining: 12,
+      disabledReason: "cap.delegates_per_turn",
+      signalKind: "tool-delegate",
+      delegateDelivery: "timer",
+      delegateMode: "silent-wake",
+      reason: "poll PR #999 status",
+    });
+    expect(spans[0].options?.attributes).toMatchObject({
+      "disabled.reason": "cap.delegates_per_turn",
+      "signal.kind": "tool-delegate",
+      "delegate.delivery": "timer",
+      "delegate.mode": "silent-wake",
+      "chain.step.remaining": 12,
+      "chain.id": "019dcf57-b536-77cc-834b-b803d9262099",
+      "reason.preview": "poll PR #999 status",
+      "continuation.disabled": true,
+    });
+  });
+
   it("truncates reason to 80 chars", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);

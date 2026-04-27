@@ -377,9 +377,10 @@ export function emitContinuationDelegateSpan(args: {
  * `chain.id` / `chain.step.remaining` / `reason.preview` plumbing. Adds
  * three reject-specific axes:
  *
- *  - `disabled.reason` (`"cap.chain" | "cap.cost"`):
- *    which cap-gate produced the reject. Chunk 4 covers the per-chain
- *    (chain/cost) gate family only; per-turn cap lands in chunk 5.
+ *  - `disabled.reason` (`"cap.chain" | "cap.cost" | "cap.delegates_per_turn"`):
+ *    which cap-gate produced the reject. Per-chain (chain/cost) gates
+ *    landed in chunk 4; per-turn delegate-budget cap landed in chunk 5a
+ *    (cohort design 2026-04-27, 🌊): same span name, distinct taxonomy.
  *  - `signal.kind` (`"bracket-work" | "bracket-delegate" |
  *    "tool-delegate"`): the kind of signal that was rejected.
  *  - `delegate.delivery` / `delegate.mode`: only set when the rejected
@@ -402,7 +403,7 @@ export function emitContinuationDelegateSpan(args: {
 export function emitContinuationDisabledSpan(args: {
   chainId: string | undefined;
   chainStepRemaining: number;
-  disabledReason: "cap.chain" | "cap.cost";
+  disabledReason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn";
   signalKind: "bracket-work" | "bracket-delegate" | "tool-delegate";
   delegateDelivery?: "immediate" | "timer" | undefined;
   delegateMode?: string | undefined;
