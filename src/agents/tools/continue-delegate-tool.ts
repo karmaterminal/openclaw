@@ -7,6 +7,7 @@ import {
 } from "../../auto-reply/continuation-delegate-store.js";
 import { resolveMaxDelegatesPerTurn } from "../../auto-reply/reply/continuation-runtime.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { resolveSnakeCaseParamKey } from "../../param-key.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
@@ -91,9 +92,26 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           "continue_delegate requires an active session. Not available in sessionless contexts.",
         );
       }
+      // Reject the legacy singular field fail-loud (Codex P1, #363 review): the
+      // descriptor is silently dropped if we accept it, which can misroute work
+      // to the current session when the caller intended cross-session delegation.
+      // Make the bad state unrepresentable rather than prohibited — same
+      // structural-cure-vs-vigilance shape as `declineToCarry()` in #366.
+      if (
+        Object.hasOwn(params, "targetSessionKey") ||
+        Object.hasOwn(params, "target_session_key")
+      ) {
+        throw new ToolInputError(
+          "targetSessionKey (singular) was removed in #355 stage-1; use targetSessionKeys: string[] for one-or-many recipients.",
+        );
+      }
       let targetSessionKeys: string[] | undefined;
-      if (Object.hasOwn(params, "targetSessionKeys") && params.targetSessionKeys !== undefined) {
-        const raw = params.targetSessionKeys;
+      // Accept both camelCase (`targetSessionKeys`) and snake_case
+      // (`target_session_keys`) callers — same convention as every other tool
+      // param in the runtime (Codex P2, #363 review).
+      const targetKeysParamKey = resolveSnakeCaseParamKey(params, "targetSessionKeys");
+      if (targetKeysParamKey && params[targetKeysParamKey] !== undefined) {
+        const raw = params[targetKeysParamKey];
         if (!Array.isArray(raw)) {
           throw new ToolInputError("targetSessionKeys must be an array of session-key strings.");
         }

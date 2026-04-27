@@ -154,4 +154,41 @@ describe("continue_delegate tool", () => {
       executeTool(tool, 1, { task: "bad recipients", targetSessionKeys: ["", "agent:elliott"] }),
     ).rejects.toThrow(/non-empty/);
   });
+
+  it("rejects legacy singular targetSessionKey field fail-loud (#363 P1)", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    await expect(
+      executeTool(tool, 0, {
+        task: "caller still using removed singular field",
+        targetSessionKey: "agent:silas:discord:channel:thornfield",
+      }),
+    ).rejects.toThrow(/targetSessionKey \(singular\) was removed/);
+    await expect(
+      executeTool(tool, 1, {
+        task: "snake-case caller still using removed singular field",
+        target_session_key: "agent:silas:discord:channel:thornfield",
+      }),
+    ).rejects.toThrow(/targetSessionKey \(singular\) was removed/);
+  });
+
+  it("accepts snake_case target_session_keys (#363 P2)", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "snake_case caller",
+      target_session_keys: [
+        "agent:silas:discord:channel:thornfield",
+        "agent:cael:discord:channel:thornfield",
+      ],
+    });
+
+    expect(result).toMatchObject({ status: "scheduled" });
+    const pending = consumePendingDelegates("test-session");
+    expect(pending).toHaveLength(1);
+    expect(pending[0].targetSessionKeys).toEqual([
+      "agent:silas:discord:channel:thornfield",
+      "agent:cael:discord:channel:thornfield",
+    ]);
+  });
 });
