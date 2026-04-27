@@ -21,6 +21,7 @@ import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import {
+  emitContinuationCompactionReleasedSpan,
   emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
@@ -1944,6 +1945,7 @@ export async function runReplyAgent(params: {
 
       // Inject post-compaction workspace context for the next agent turn
       if (sessionKey) {
+        const releasedCount = activeSessionEntry?.pendingPostCompactionDelegates?.length ?? 0;
         await dispatchPostCompactionDelegates({
           cfg,
           compactionCount: count,
@@ -1954,6 +1956,10 @@ export async function runReplyAgent(params: {
           sessionKey,
           sessionStore: activeSessionStore,
           storePath,
+        });
+        emitContinuationCompactionReleasedSpan({
+          releasedCount,
+          log: (message) => defaultRuntime.log(message),
         });
       }
 

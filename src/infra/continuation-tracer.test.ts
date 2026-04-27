@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  emitContinuationCompactionReleasedSpan,
   emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
@@ -221,6 +222,42 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     ];
     for (const name of names) {
       expect(() => noopTracer.startSpan(name)).not.toThrow();
+    }
+  });
+
+  it("signal.kind canonical values round-trip through the surface (runtime pin)", () => {
+    const canonicalSignalKinds = [
+      "work",
+      "bracket-delegate",
+      "tool-delegate",
+      "compaction-release",
+    ];
+    let captured: SpanAttributes | undefined;
+    setContinuationTracer({
+      startSpan: (_name, opts) => {
+        captured = opts?.attributes;
+        return noopTracer.startSpan(_name);
+      },
+    });
+    for (const kind of canonicalSignalKinds) {
+      getContinuationTracer().startSpan("heartbeat", {
+        attributes: { "signal.kind": kind },
+      });
+      expect(captured?.["signal.kind"]).toBe(kind);
+    }
+  });
+
+  it("signal.kind canonical values are type-compatible with ContinuationSpanAttrs (type-pin)", () => {
+    const values: Array<NonNullable<ContinuationSpanAttrs["signal.kind"]>> = [
+      "work",
+      "bracket-delegate",
+      "tool-delegate",
+      "compaction-release",
+    ];
+    for (const v of values) {
+      const attrs: ContinuationSpanAttrs = { "signal.kind": v };
+      const broad: SpanAttributes = attrs;
+      expect(broad["signal.kind"]).toBe(v);
     }
   });
 });
@@ -1120,5 +1157,112 @@ describe("continuation-tracer :: emitContinuationQueueDrainSpan helper (Slice 2 
         drainedContinuationCount: 0,
       }),
     ).not.toThrow();
+  });
+});
+
+describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper (Slice 2 chunk 6b)", () => {
+  type RecordedSpan = {
+    name: string;
+    options?: StartSpanOptions;
+    setAttributesCalls: SpanAttributes[];
+    statusCalls: Array<{ status: SpanStatus; message?: string }>;
+    exceptionCalls: unknown[];
+    ended: boolean;
+  };
+
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const recorded: RecordedSpan = {
+          name,
+          options,
+          setAttributesCalls: [],
+          statusCalls: [],
+          exceptionCalls: [],
+          ended: false,
+        };
+        spans.push(recorded);
+        const span: Span = {
+          setAttributes(attrs) {
+            recorded.setAttributesCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            recorded.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            recorded.exceptionCalls.push(err);
+          },
+          end() {
+            recorded.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  it("emits a continuation.compaction.released span with canonical attrs (happy path)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationCompactionReleasedSpan({ releasedCount: 3 });
+    expect(spans).toHaveLength(1);
+    const span = spans[0];
+    expect(span.name).toBe("continuation.compaction.released");
+    expect(span.options?.attributes).toEqual({
+      "signal.kind": "compaction-release",
+      "compaction.released": 3,
+    });
+    expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
+    expect(span.ended).toBe(true);
+  });
+
+  it("emits span with compaction.released: 0 on zero-release (compaction event still recorded)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationCompactionReleasedSpan({ releasedCount: 0 });
+    expect(spans).toHaveLength(1);
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["compaction.released"]).toBe(0);
+    expect(attrs["signal.kind"]).toBe("compaction-release");
+  });
+
+  it("floors fractional releasedCount to integer (OTLP integer round-trip)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationCompactionReleasedSpan({ releasedCount: 3.7 });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["compaction.released"]).toBe(3);
+  });
+
+  it("clamps negative releasedCount to 0 (defense-in-depth)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationCompactionReleasedSpan({ releasedCount: -1 });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["compaction.released"]).toBe(0);
+  });
+
+  it("swallows tracer errors and forwards them to the log callback", () => {
+    const throwing: Tracer = {
+      startSpan() {
+        throw new Error("kaboom-compaction");
+      },
+    };
+    setContinuationTracer(throwing);
+    const logged: string[] = [];
+    expect(() =>
+      emitContinuationCompactionReleasedSpan({
+        releasedCount: 1,
+        log: (m) => logged.push(m),
+      }),
+    ).not.toThrow();
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/Failed to emit continuation\.compaction\.released span/);
+    expect(logged[0]).toContain("kaboom-compaction");
+  });
+
+  it("is a no-op against the default noop tracer", () => {
+    resetContinuationTracer();
+    expect(() => emitContinuationCompactionReleasedSpan({ releasedCount: 0 })).not.toThrow();
   });
 });
