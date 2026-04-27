@@ -1268,9 +1268,9 @@ export async function runReplyAgent(params: {
     count: number;
     startedAt: number;
     tokens: number;
-  }): Promise<void> => {
+  }): Promise<{ chainId: string | undefined }> => {
     if (!sessionKey) {
-      return;
+      return { chainId: undefined };
     }
     // #334 Slice 2 — mint a stable `continuationChainId` (UUIDv7) on
     // the 0→1 transition of `continuationChainCount`. Reuse the
@@ -1327,6 +1327,7 @@ export async function runReplyAgent(params: {
         );
       }
     }
+    return { chainId };
   };
   try {
     await typingSignals.signalRunStart();
@@ -2281,7 +2282,7 @@ export async function runReplyAgent(params: {
                 });
               }
             } else {
-              await persistContinuationChainState({
+              const { chainId: persistedChainId } = await persistContinuationChainState({
                 count: nextChainCount,
                 startedAt: chainStartedAt,
                 tokens: accumulatedChainTokens,
@@ -2297,7 +2298,7 @@ export async function runReplyAgent(params: {
               // attribute shaping + try/catch so the accept path
               // can't block on span emission.
               emitContinuationWorkSpan({
-                chainId: activeSessionEntry?.continuationChainId,
+                chainId: persistedChainId,
                 chainStepRemaining: maxChainLength - nextChainCount,
                 delayMs: clampedDelay,
                 reason: continuationWorkReason,
