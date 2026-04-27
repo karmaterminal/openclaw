@@ -637,23 +637,6 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 ch
     });
   });
 
-  it("delegates_per_turn reject uses cap.delegates_per_turn discriminator", () => {
-    const { tracer, spans } = makeRecordingTracer();
-    setContinuationTracer(tracer);
-    emitContinuationDisabledSpan({
-      chainId: "019dcf57-b536-77cc-834b-b803d9262032",
-      chainStepRemaining: 5,
-      disabledReason: "cap.delegates_per_turn",
-      signalKind: "tool-delegate",
-      delegateDelivery: "timer",
-      delegateMode: "silent-wake",
-    });
-    expect(spans[0].options?.attributes).toMatchObject({
-      "disabled.reason": "cap.delegates_per_turn",
-      "signal.kind": "tool-delegate",
-    });
-  });
-
   it("truncates reason to 80 chars", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);

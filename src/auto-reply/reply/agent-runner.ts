@@ -2459,35 +2459,11 @@ export async function runReplyAgent(params: {
             `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${droppedDelegate.task}`,
             { sessionKey },
           );
-          // #334 Slice 2 chunk 4 — emit `continuation.disabled` for each
-          // per-turn-cap rejected tool delegate. No mint-on-reject; the
-          // chain never advances for these signals. `chain.step.remaining`
-          // is the remaining chain budget at the moment of reject (not
-          // post-decrement). Mode is read from the dropped delegate;
-          // delivery follows the requested-delay shape (timer if delay > 0).
-          {
-            const delegateMode = droppedDelegate.silentWake
-              ? "silent-wake"
-              : droppedDelegate.silent
-                ? "silent"
-                : "normal";
-            const delegateDelivery: "immediate" | "timer" =
-              droppedDelegate.delayMs && droppedDelegate.delayMs > 0 ? "timer" : "immediate";
-            const remainingBudget = Math.max(
-              0,
-              maxChainLength - (activeSessionEntry?.continuationChainCount ?? 0),
-            );
-            emitContinuationDisabledSpan({
-              chainId: activeSessionEntry?.continuationChainId,
-              chainStepRemaining: remainingBudget,
-              disabledReason: "cap.delegates_per_turn",
-              signalKind: "tool-delegate",
-              delegateDelivery,
-              delegateMode,
-              reason: droppedDelegate.task,
-              log: defaultRuntime.log,
-            });
-          }
+          // #334 Slice 2 chunk 5 — per-turn cap reject is a different
+          // cap-axis from chunk 4's per-chain (chain/cost) family and
+          // lands in its own sibling seam. Cohort design call
+          // (sprites-of-thornfield, 2026-04-27, 🩸): keep chunk 4 taxonomy
+          // crisp; don't braid two cap-axes on wiring proximity.
         }
 
         let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;

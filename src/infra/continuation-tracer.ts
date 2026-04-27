@@ -83,10 +83,11 @@ export type ContinuationSpanAttrs = {
    * Cap-gate that produced a `continuation.disabled` reject. Pinned set:
    *   - `"cap.chain"` — `continuationChainCount` reached `maxChainLength`
    *   - `"cap.cost"` — accumulated input+output tokens exceeded `costCapTokens`
-   *   - `"cap.delegates_per_turn"` — tool-delegate batch exceeded `maxDelegatesPerTurn`
-   * Per cohort design (sprites-of-thornfield, 2026-04-27, 🌊): all reject
-   * variants share span name `continuation.disabled`; `disabled.reason`
-   * is the discriminator so observers can
+   * Per cohort design (sprites-of-thornfield, 2026-04-27, 🩸): chunk 4 is
+   * scoped to the per-chain (chain/cost) gate family only. Per-turn cap
+   * (`maxDelegatesPerTurn`) is a different cap-axis and lands in chunk 5
+   * with its own sibling seam — don't braid two cap-axes on wiring
+   * proximity. Observers can
    * `WHERE name = "continuation.disabled" GROUP BY disabled.reason`.
    */
   readonly "disabled.reason"?: string;
@@ -376,8 +377,9 @@ export function emitContinuationDelegateSpan(args: {
  * `chain.id` / `chain.step.remaining` / `reason.preview` plumbing. Adds
  * three reject-specific axes:
  *
- *  - `disabled.reason` (`"cap.chain" | "cap.cost" |
- *    "cap.delegates_per_turn"`): which cap-gate produced the reject.
+ *  - `disabled.reason` (`"cap.chain" | "cap.cost"`):
+ *    which cap-gate produced the reject. Chunk 4 covers the per-chain
+ *    (chain/cost) gate family only; per-turn cap lands in chunk 5.
  *  - `signal.kind` (`"bracket-work" | "bracket-delegate" |
  *    "tool-delegate"`): the kind of signal that was rejected.
  *  - `delegate.delivery` / `delegate.mode`: only set when the rejected
@@ -400,7 +402,7 @@ export function emitContinuationDelegateSpan(args: {
 export function emitContinuationDisabledSpan(args: {
   chainId: string | undefined;
   chainStepRemaining: number;
-  disabledReason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn";
+  disabledReason: "cap.chain" | "cap.cost";
   signalKind: "bracket-work" | "bracket-delegate" | "tool-delegate";
   delegateDelivery?: "immediate" | "timer" | undefined;
   delegateMode?: string | undefined;
