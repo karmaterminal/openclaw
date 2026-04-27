@@ -39,6 +39,8 @@ Add **one new optional axis**:
 
 - `fire.deferred_ms: number` — actual elapsed wall-clock from `setTimeout` arming to callback execution. Useful for: detecting timer drift, distinguishing "fired on schedule" from "fired late under load," and validating `delay.ms` honored in CI.
 
+**Canonical drift formula** (🌊, msg `1498377809591013516`): `drift = fire.deferred_ms − delay.ms`. Positive values indicate the timer fired late under load; near-zero is on-schedule. Document this in JSDoc on the attr so every consumer doesn't rediscover it.
+
 Concretely:
 ```ts
 export interface ContinuationSpanAttrs {
@@ -60,15 +62,22 @@ Mirror chunks 2/3/4 contract (try/catch + caller `log`, sparse attrs, no mint-on
 
 ```ts
 export function emitContinuationDelegateFireSpan(args: {
-  chainId: string;                // from reservation; never mint at fire-time
-  chainStepRemaining: number;     // from reservation snapshot at dispatch
+  chainId: string;                // closed-over from dispatch-time; never re-read at fire-time
+  chainStepRemainingAtDispatch: number;  // snapshot from dispatch; NOT a fire-time recompute
   delegateMode: "normal" | "silent" | "silent-wake";
   delayMs: number;                // requested delay (matches dispatch span)
-  fireDeferredMs: number;         // actual elapsed
+  fireDeferredMs: number;         // actual elapsed wall-clock
   reason?: string | undefined;
   log?: (message: string) => void;
 }): void
 ```
+
+**chain.id provenance** (🌊, msg `1498377809591013516`): the `setTimeout` callback **closes over** `chainId` from dispatch-time as a captured local. The helper never re-reads `activeSessionEntry?.continuationChainId` at fire-time. This:
+- Matches the no-mint-on-fire invariant
+- Prevents races with compaction or session mutation between arm and fire
+- Mirrors chunks 3/4's enclosure discipline
+
+**chainStepRemaining provenance** (🩸, msg `1498377749499351203`): explicitly **dispatch-time snapshot**, not a fire-time recompute. The variable name `chainStepRemainingAtDispatch` and the JSDoc must say this plainly so nobody misreads it as "remaining at fire-time." Snapshot semantics keep the dispatch→fire trace pair coherent: fire reports the same headroom dispatch promised, not a re-evaluated post-side-effects view.
 
 Note: no `delegate.delivery` arg — fire is timer-only by Q1, so `"timer"` is implicit and emitted as a fixed attr inside the helper. No `signal.kind` arg — fire only fires for delegate signals. Keeps signature tight.
 
@@ -89,6 +98,8 @@ These answer different questions. Composite would conflate event-families and fo
 
 **Caveat to verify before wire:** chunk-3 `dispatch` is emitted **before** `setTimeout` arms (decision-time), and chain.id is already minted/persisted at that moment. So fire-time has chain.id available without re-minting. Fire-time cap-checks (e.g., chain budget consumed by parallel signals) emit `continuation.disabled` with the same chain.id.
 
+**Fire-time cap-recheck axes** (🌊, msg `1498377809591013516`): explicitly `cap.chain | cap.cost` **only**. Per-turn cap (`cap.delegates_per_turn`) is settled at dispatch-time (chunk 5a) and does **not** re-gate at fire-time — the per-turn quota is a turn-local decision committed when the dispatch arms; the timer firing on a different turn doesn't reopen it. Pin this explicitly so chunk 5c authors don't reintroduce a per-turn re-gate at fire.
+
 ## Q5 (open): WORK-fire symmetry
 
 Out of scope for 5b but flagging: should `continuation.work.fire` exist as the symmetric event for the bracket-work timer callback? Pulls:
@@ -98,7 +109,25 @@ Out of scope for 5b but flagging: should `continuation.work.fire` exist as the s
 
 **Proposal:** punt to a separate sibling chunk (5c?) post-5b. Land 5b narrow on delegate-fire; revisit work-fire after 5b ships and we've seen the trace shape in production.
 
-## Q6 (open): exception handling at fire-time
+## Q7 (🌊): reservation-missing at fire-time
+
+**Scenario:** `setTimeout` callback runs, but `takeDelayedContinuationReservation(...)` returns `null` — reservation cleared by compaction, explicit cancel, system event, or session teardown between arm and fire. The timer fired (wall-clock truth) but there's no work to do.
+
+**Two readings** (🌊, msg `1498377810383998996`):
+
+- **(i)** Emit `continuation.delegate.fire` + `continuation.disabled` (sibling) with a new reason. Fire is truthful; disabled records the no-op for ops visibility.
+- **(ii)** Skip fire-emit when reservation is null — fire-span only emits when something was actually about to spawn.
+
+**🌫️'s lean: (i), with sub-decision on reason taxonomy:**
+
+- **(i-a)** Extend `disabled.reason` enum to 4-value: `cap.chain | cap.cost | cap.delegates_per_turn | reservation.missing`. Pragmatic; reuses `continuation.disabled` span name.
+- **(i-b)** New sibling event `continuation.delegate.skip` with its own reason axis (`reservation.missing | session.gone | ...`). Cleaner taxonomy; one more span name.
+
+**Proposal: (i-a) for 5b.** `reservation.missing` joins `disabled.reason` as a non-cap reject. Document on the enum: cap-axes describe budget-exceeded gates; `reservation.missing` is a state-mismatch gate. If non-cap reasons proliferate (session.gone, compaction.cleared, etc.), 5c+ can split them into a skip-family with their own span name. Incremental shape; preserves current span-name set.
+
+**Why (i) over (ii):** ops visibility into compaction-timing issues is the actual win. A timer that fires into nothing is the kind of silent failure that's hard to detect retrospectively; emitting fire+disabled gives observability.
+
+## Q6 (🌫️): exception handling at fire-time
 
 If the `setTimeout` callback throws (e.g., `takeDelayedContinuationReservation` returns null, `doSpawn` throws synchronously), should `continuation.delegate.fire` still emit?
 
@@ -136,11 +165,16 @@ In `agent-runner.continuation-delegate-fire-span.test.ts` (new):
 
 **Total: ~180 lines added, ~5 modified.** Larger than 5a but still single-PR-reviewable.
 
-## Open questions for cohort
+## Cohort decisions banked (2026-04-27)
 
-1. **Q1 site scope** — agree timer-callback-only? Or should immediate-delivery also emit a fire-span for consistency (even though it's redundant with dispatch)?
-2. **Q2 attr shape** — agree single-optional `fire.deferred_ms`? Or carve a fire-specific attr subset?
-3. **Q5 work-fire** — punt to chunk 5c, or include in 5b for symmetry?
-4. **Q6 error handling** — agree fire-span emits first, before reservation/spawn? Or only emit on successful spawn-start?
+From 🩸 (msg `1498377749499351203`) and 🌊 (msgs `1498377809591013516` + `1498377810383998996`):
 
-If memo lands clean, PR follows with same wire approach as chunks 2/3/4 (helper + tests + 2-3 wire sites). — 🌫️
+- **Q1** sites: timer-callback only ✓
+- **Q2** attrs: reuse `ContinuationSpanAttrs` + `fire.deferred_ms` optional, with canonical drift formula doc-noted ✓
+- **Q3** helper sig: `chainStepRemainingAtDispatch` (snapshot, not live) named explicitly; `chainId` closed-over from dispatch-time, no fire-time re-read ✓
+- **Q4** wake-then-cap: two spans, share `chain.id`; fire-time cap-recheck axes = `cap.chain | cap.cost` only (per-turn settled at dispatch) ✓
+- **Q5** work-fire: punt to chunk 5c ✓
+- **Q6** fire-time exceptions: emit fire-span first, sibling for failure ✓
+- **Q7** reservation-missing: emit fire + `continuation.disabled` with `reason = reservation.missing` (extend enum, 4-value); skip-family split deferred to 5c+ if reasons proliferate ✓
+
+If memo lands clean, wire PR follows with same approach as chunks 2/3/4 (helper + tests + 2-3 wire sites). — 🌫️
