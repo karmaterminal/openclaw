@@ -37,14 +37,6 @@ const ContinueDelegateToolSchema = Type.Object({
       '"post-compaction" = silent-wake delegate that fires when compaction happens, not on a timer. ' +
       "Use for context evacuation: the shard starts at the moment of compaction and returns to the post-compaction session.",
   }),
-  targetSessionKey: Type.Optional(
-    Type.String({
-      description:
-        "Address a sibling session for cross-session enrichment. " +
-        "This is the (a)-shape (RPC-style address-recipient); v3 surfaces broadcast-mode " +
-        "via karmaterminal/binary-canticle#11. Same substrate; different verb-set.",
-    }),
-  ),
 });
 
 /**
@@ -77,7 +69,12 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
       'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
       "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
-      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work.",
+      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
+      "This is the (a)-shape continuation surface: explicit recipient-addressing via the " +
+      "session-delivery-queue substrate (intra-host today). The (b)-shape evolution — " +
+      "broadcast/publish-stream addressing across hosts where the dispatcher names an aspect-stream " +
+      "and listeners tune in independently — is tracked in karmaterminal/binary-canticle#11; " +
+      "both shapes share the same substrate when the (b)-shape lands.",
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -87,10 +84,6 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         throw new ToolInputError(
           "continue_delegate requires an active session. Not available in sessionless contexts.",
         );
-      }
-      if (Object.hasOwn(params, "targetSessionKey") && params.targetSessionKey !== undefined) {
-        // Runtime binding (intra-host-rpc) belongs in #332's session-delivery-queue lane.
-        throw new ToolInputError("targetSessionKey is descriptor-only in v2.5; runtime in #332");
       }
 
       const task = readStringParam(params, "task", { required: true });

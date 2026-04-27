@@ -347,8 +347,8 @@ function buildMessagingSection(params: {
   const hasSubagents = params.availableTools.has("subagents");
   const subagentOrchestrationGuidance = hasSessionsSpawn
     ? hasSubagents
-      ? '- Sub-agent orchestration → use `sessions_spawn(...)` to start delegated work; omit `context` for isolated children, set `context:"fork"` only when the child needs the current transcript; use `subagents(action=list|steer|kill)` to manage already-spawned children.'
-      : '- Sub-agent orchestration → use `sessions_spawn(...)` to start delegated work; omit `context` for isolated children, set `context:"fork"` only when the child needs the current transcript.'
+      ? "- Sub-agent orchestration → use `sessions_spawn(...)` to start delegated work; use `subagents(action=list|steer|kill)` to manage already-spawned children."
+      : "- Sub-agent orchestration → use `sessions_spawn(...)` to start delegated work."
     : hasSubagents
       ? "- Sub-agent orchestration → use `subagents(action=list|steer|kill)` to manage already-spawned children."
       : "";
@@ -503,8 +503,8 @@ export function buildAgentSystemPrompt(params: {
     sessions_history: "Fetch history for another session/sub-agent",
     sessions_send: "Send a message to another session/sub-agent",
     sessions_spawn: acpSpawnRuntimeEnabled
-      ? 'Spawn a sub-agent or ACP coding session; defaults to isolated, native subagents may use context="fork" when current transcript context is required (runtime="acp" requires `agentId` unless `acp.defaultAgent` is configured; ACP harness ids follow acp.allowedAgents, not agents_list)'
-      : 'Spawn an isolated sub-agent session; use context="fork" only when current transcript context is required',
+      ? 'Spawn an isolated sub-agent or ACP coding session (runtime="acp" requires `agentId` unless `acp.defaultAgent` is configured; ACP harness ids follow acp.allowedAgents, not agents_list)'
+      : "Spawn an isolated sub-agent session",
     subagents: "List, steer, or kill sub-agent runs for this requester session",
     session_status:
       "Show a /status-equivalent status card (usage + time + Reasoning/Verbose/Elevated); use for model-use questions (📊 session_status); optional per-session model override",
@@ -704,7 +704,6 @@ export function buildAgentSystemPrompt(params: {
     "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
     `For long waits, avoid rapid poll loops: use ${execToolName} with enough yieldMs or ${processToolName}(action=poll, timeout=<ms>).`,
     "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
-    'Sub-agents start isolated by default. Use `sessions_spawn` with `context:"fork"` only when the child needs the current transcript context; otherwise omit `context` or use `context:"isolated"`.',
     ...(availableTools.has("continue_delegate")
       ? [
           "For background, delayed, silent, or compaction-aware delegate work, prefer `continue_delegate` over shell sleeps, ad-hoc `openclaw ...` CLI calls, or manual relay patterns.",
@@ -712,8 +711,7 @@ export function buildAgentSystemPrompt(params: {
       : []),
     ...(acpHarnessSpawnAllowed
       ? [
-          'For requests like "do this in claude code/cursor/gemini" or similar ACP harnesses, treat it as ACP harness intent and call `sessions_spawn` with `runtime: "acp"`.',
-          "For Codex conversation binding/control, prefer the native Codex app-server plugin path (`/codex bind`, `/codex threads`, `/codex resume`). Use ACP for Codex only when the user explicitly asks for ACP/`/acp`, or for background child sessions where native Codex runtime spawn is not exposed.",
+          'For requests like "do this in codex/claude code/cursor/gemini" or similar ACP harnesses, treat it as ACP harness intent and call `sessions_spawn` with `runtime: "acp"`.',
           'On Discord, default ACP harness requests to thread-bound persistent sessions (`thread: true`, `mode: "session"`) unless the user asks otherwise.',
           "Set `agentId` explicitly unless `acp.defaultAgent` is configured, and do not route ACP harness requests through `subagents`/`agents_list` or local PTY exec flows.",
           'For ACP harness thread spawns, do not call `message` with `action=thread-create`; use `sessions_spawn` (`runtime: "acp"`, `thread: true`) as the single thread creation path.',
@@ -991,6 +989,11 @@ export function buildAgentSystemPrompt(params: {
       "### Delegated continuation",
       ...(availableTools.has("continue_delegate")
         ? [
+            "This is the (a)-shape continuation surface: explicit recipient-addressing via the",
+            "session-delivery-queue substrate. The (b)-shape — broadcast/publish-stream addressing where the",
+            "dispatcher names an aspect-stream and listeners tune in independently — is tracked in",
+            "karmaterminal/binary-canticle#11 and will share the same substrate when it lands.",
+            "",
             "Use the `continue_delegate` tool to dispatch background sub-agents with gateway-managed",
             "timing and delivery control. This is the primary mechanism for delegation.",
             "",
