@@ -20,6 +20,7 @@ import {
 import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
+import { emitContinuationWorkSpan } from "../../infra/continuation-tracer.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { freezeDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
@@ -2288,6 +2289,20 @@ export async function runReplyAgent(params: {
               // WORK: schedule a continuation turn after delay
               const requestedDelay = effectiveContinuationSignal.delayMs ?? defaultDelayMs;
               const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, requestedDelay));
+
+              // #334 Slice 2 chunk 2 — emit `continuation.work` span
+              // at the accept seam (after both cap-gates pass, after
+              // persistContinuationChainState has minted/stored
+              // continuationChainId for this chain). Helper handles
+              // attribute shaping + try/catch so the accept path
+              // can't block on span emission.
+              emitContinuationWorkSpan({
+                chainId: activeSessionEntry?.continuationChainId,
+                chainStepRemaining: maxChainLength - nextChainCount,
+                delayMs: clampedDelay,
+                reason: continuationWorkReason,
+                log: (message) => defaultRuntime.log(message),
+              });
 
               retainContinuationTimerRef(sessionKey);
               const timerHandle = setTimeout(() => {
