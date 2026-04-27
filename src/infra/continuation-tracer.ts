@@ -80,14 +80,20 @@ export type ContinuationSpanAttrs = {
    */
   readonly "continuation.disabled"?: boolean;
   /**
-   * Cap-gate that produced a `continuation.disabled` reject. Pinned set:
+   * Gate-axis that produced a `continuation.disabled` reject. Pinned set:
    *   - `"cap.chain"` — `continuationChainCount` reached `maxChainLength`
    *   - `"cap.cost"` — accumulated input+output tokens exceeded `costCapTokens`
-   * Per cohort design (sprites-of-thornfield, 2026-04-27, 🩸): chunk 4 is
-   * scoped to the per-chain (chain/cost) gate family only. Per-turn cap
-   * (`maxDelegatesPerTurn`) is a different cap-axis and lands in chunk 5
-   * with its own sibling seam — don't braid two cap-axes on wiring
-   * proximity. Observers can
+   *   - `"cap.delegates_per_turn"` — per-turn delegate-budget cap (chunk 5a)
+   *   - `"reservation.missing"` — fire-time: reservation already cleared
+   *     (compaction, explicit cancel, session teardown) between
+   *     `setTimeout` arming and callback fire (chunk 5b)
+   *
+   * **Family semantics** (🌻's framing, sprites-of-thornfield 2026-04-27):
+   * the enum captures **anything that prevented follow-through**, not only
+   * cap axes. Cap is one shape of gate; reservation-loss is another. Future
+   * siblings (`reservation.evicted`, `session.gone`, `compaction.cleared`)
+   * slot under the same span name — the family is grammar-defined
+   * (verb-on-gate), not enum-cardinality-defined. Observers can
    * `WHERE name = "continuation.disabled" GROUP BY disabled.reason`.
    */
   readonly "disabled.reason"?: string;
@@ -100,6 +106,22 @@ export type ContinuationSpanAttrs = {
    * rejection rates without parsing other attributes.
    */
   readonly "signal.kind"?: string;
+  /**
+   * #334 chunk 5b — only set on `continuation.delegate.fire` spans.
+   * Wall-clock ms between `setTimeout` arming (immediately before the
+   * timer is scheduled at the dispatch site) and the callback actually
+   * executing. Diverges from `delay.ms` (the requested delay) under
+   * runtime pressure — event-loop blockage, GC pauses, etc.
+   *
+   * **Canonical drift formula** (🌊, sprites-of-thornfield 2026-04-27):
+   * `drift = fire.deferred_ms − delay.ms`. Positive values indicate the
+   * timer fired late under load; near-zero is on-schedule. Pinned in JSDoc
+   * so every consumer doesn't rediscover the formula.
+   *
+   * Integer ms (`Math.floor` at emit-time) so the attr round-trips
+   * cleanly through OTLP without rounding ambiguity.
+   */
+  readonly "fire.deferred_ms"?: number;
 };
 
 /**
@@ -111,6 +133,7 @@ export type ContinuationSpanAttrs = {
 export type ContinuationSpanName =
   | "continuation.work"
   | "continuation.delegate.dispatch"
+  | "continuation.delegate.fire"
   | "continuation.queue.enqueue"
   | "continuation.queue.drain"
   | "continuation.compaction.released"
@@ -377,10 +400,14 @@ export function emitContinuationDelegateSpan(args: {
  * `chain.id` / `chain.step.remaining` / `reason.preview` plumbing. Adds
  * three reject-specific axes:
  *
- *  - `disabled.reason` (`"cap.chain" | "cap.cost" | "cap.delegates_per_turn"`):
- *    which cap-gate produced the reject. Per-chain (chain/cost) gates
- *    landed in chunk 4; per-turn delegate-budget cap landed in chunk 5a
- *    (cohort design 2026-04-27, 🌊): same span name, distinct taxonomy.
+ *  - `disabled.reason` (`"cap.chain" | "cap.cost" |
+ *    "cap.delegates_per_turn" | "reservation.missing"`): which gate
+ *    prevented follow-through. Per-chain (chain/cost) gates landed in
+ *    chunk 4; per-turn delegate-budget cap landed in chunk 5a;
+ *    `reservation.missing` (fire-time reservation already cleared) lands
+ *    in chunk 5b. Family semantics (🌻, 2026-04-27): "anything that
+ *    prevented follow-through," not "cap axes only" — the family is
+ *    grammar-defined (verb-on-gate), not enum-cardinality-defined.
  *  - `signal.kind` (`"bracket-work" | "bracket-delegate" |
  *    "tool-delegate"`): the kind of signal that was rejected.
  *  - `delegate.delivery` / `delegate.mode`: only set when the rejected
@@ -403,7 +430,7 @@ export function emitContinuationDelegateSpan(args: {
 export function emitContinuationDisabledSpan(args: {
   chainId: string | undefined;
   chainStepRemaining: number;
-  disabledReason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn";
+  disabledReason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn" | "reservation.missing";
   signalKind: "bracket-work" | "bracket-delegate" | "tool-delegate";
   delegateDelivery?: "immediate" | "timer" | undefined;
   delegateMode?: string | undefined;
@@ -435,5 +462,101 @@ export function emitContinuationDisabledSpan(args: {
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.disabled span: ${String(err)}`);
+  }
+}
+
+/**
+ * Emit a `continuation.delegate.fire` span at the runner-side delegate
+ * timer-callback start (#334 Slice 2 chunk 5b). The verb-on-timer
+ * counterpart to `emitContinuationDelegateSpan`'s verb-on-decision: this
+ * span fires at the moment a deferred delegate's `setTimeout` callback
+ * actually runs, so consumers can pair `dispatch`/`fire` events on the
+ * same `chain.id` and observe scheduling drift / fire-time divergences.
+ *
+ * **Callsite invariants** (cohort design, sprites-of-thornfield 2026-04-27):
+ *
+ *  - Emit BEFORE `takeDelayedContinuationReservation` runs — the fire
+ *    event is wall-clock truth ("the timer fired"); whatever happens next
+ *    (spawn, reservation-missing log-and-return) is a separate concern
+ *    and gets its own sibling span (`continuation.disabled` with
+ *    `reason = reservation.missing` for the existing log-and-return
+ *    divergence; future `continuation.delegate.error` for hard faults).
+ *  - `chainId` is **closed-over from dispatch-time** as a captured local
+ *    in the `setTimeout` closure. The helper never re-reads
+ *    `activeSessionEntry?.continuationChainId` at fire-time. This matches
+ *    the no-mint-on-fire invariant and prevents races with compaction or
+ *    session mutation between arm and fire (mirrors chunks 3/4's
+ *    enclosure discipline).
+ *  - `chainId` is **always defined** at delegate-fire time — chain
+ *    reservation mints pre-`setTimeout` (chunk 3 invariant). Sig encodes
+ *    this with the non-optional `string` type. **Defense-in-depth:**
+ *    helper no-ops gracefully (logs + returns) if `undefined` slips
+ *    through anyway, so a future invariant break never crashes
+ *    fire-emit.
+ *  - `delegate.delivery: "timer"` is implicit — fire spans only emit on
+ *    the timer-deferred path (immediate-delivery dispatches don't
+ *    arm a timer, so there's no fire event for them). The helper sets
+ *    the attr internally rather than taking it as an arg.
+ *  - 5b is **instrumentation-of-status-quo only**: the helper does NOT
+ *    re-evaluate any cap (`cap.chain | cap.cost | cap.delegates_per_turn`)
+ *    at fire-time. Fire-time gating is a future-policy seam, deferred to
+ *    a future memo.
+ *
+ * **`chainStepRemainingAtDispatch` provenance** (🌻 dedicated-paragraph
+ * note, sprites-of-thornfield 2026-04-27): this value reflects
+ * **dispatch-time headroom** (reservation snapshot), NOT callback-time
+ * live state. Rationale: trace continuity with the dispatch span (same
+ * `chain.id`, same step counter) so consumers can pair `dispatch` /
+ * `fire` events without reasoning about between-tick mutations. If a
+ * future consumer wants "remaining headroom _at_ fire time," that is a
+ * **separate axis** (provisional name `chain.step.remaining_at_fire`)
+ * and a **separate decision** — do not fold it into this field.
+ *
+ * Wraps tracer interactions in a try/catch and logs via the caller's
+ * `log` callback if provided — the fire path must never block on span
+ * emission.
+ */
+export function emitContinuationDelegateFireSpan(args: {
+  chainId: string;
+  chainStepRemainingAtDispatch: number;
+  delegateMode: "normal" | "silent" | "silent-wake";
+  delayMs: number;
+  fireDeferredMs: number;
+  reason?: string | undefined;
+  log?: (message: string) => void;
+}): void {
+  // Defense-in-depth: invariant says chainId is always defined at
+  // delegate-fire time (chunk 3 mints pre-setTimeout). Sig encodes the
+  // invariant via non-optional `string`, but a future change that lets
+  // `undefined` slip through must NOT crash fire-emit. No-op + log so
+  // the divergence is visible without taking down the timer callback.
+  if (args.chainId === undefined || args.chainId === null) {
+    args.log?.(
+      "Failed to emit continuation.delegate.fire span: chainId invariant violated (undefined)",
+    );
+    return;
+  }
+  try {
+    const reasonPreview = args.reason
+      ? args.reason.length > 80
+        ? args.reason.slice(0, 80)
+        : args.reason
+      : undefined;
+    const attrs: ContinuationSpanAttrs = {
+      "chain.id": args.chainId,
+      "chain.step.remaining": Math.max(0, args.chainStepRemainingAtDispatch),
+      "delay.ms": Math.round(args.delayMs),
+      "fire.deferred_ms": Math.max(0, Math.floor(args.fireDeferredMs)),
+      "delegate.delivery": "timer",
+      "delegate.mode": args.delegateMode,
+      ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
+    };
+    const span = activeTracer.startSpan("continuation.delegate.fire", {
+      attributes: attrs,
+    });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.delegate.fire span: ${String(err)}`);
   }
 }

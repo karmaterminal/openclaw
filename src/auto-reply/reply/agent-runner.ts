@@ -21,6 +21,7 @@ import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import {
+  emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
@@ -2354,8 +2355,44 @@ export async function runReplyAgent(params: {
                     log: (message) => defaultRuntime.log(message),
                   });
                 }
+                // #334 Slice 2 chunk 5b — snapshot dispatch-time inputs for
+                // the fire-span emission inside the timer callback. `armedAt`
+                // captured immediately before `setTimeout` so
+                // `fireDeferredMs = Date.now() - armedAt` measures wall-clock
+                // drift between arming and callback execution.
+                // `chainStepRemainingAtDispatch` is a snapshot, NOT a
+                // fire-time recompute — keeps the dispatch/fire trace pair
+                // coherent (same `chain.id`, same step counter).
+                const fireDelegateMode: "normal" | "silent" | "silent-wake" =
+                  effectiveContinuationSignal.silentWake
+                    ? "silent-wake"
+                    : effectiveContinuationSignal.silent
+                      ? "silent"
+                      : "normal";
+                const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
                 retainContinuationTimerRef(sessionKey);
+                const armedAt = Date.now();
                 const timerHandle = setTimeout(() => {
+                  // #334 Slice 2 chunk 5b — emit `continuation.delegate.fire`
+                  // FIRST, before reservation lookup. The fire event is
+                  // wall-clock truth ("the timer fired"); whatever happens
+                  // next (spawn, reservation-missing log-and-return) is a
+                  // separate concern. 5b is instrumentation-of-status-quo
+                  // only — no fire-time cap rechecks.
+                  const fireDeferredMs = Date.now() - armedAt;
+                  emitContinuationDelegateFireSpan({
+                    // Invariant: persistedChainIdForTimer is always a string
+                    // here — `persistContinuationChainState` only returns
+                    // undefined when `sessionKey` is falsy, but this branch
+                    // is gated on `sessionKey` being truthy (chunk 3).
+                    // Helper's defense-in-depth no-ops if undefined slips.
+                    chainId: persistedChainIdForTimer as string,
+                    chainStepRemainingAtDispatch,
+                    delegateMode: fireDelegateMode,
+                    delayMs: clampedDelay,
+                    fireDeferredMs,
+                    log: (message) => defaultRuntime.log(message),
+                  });
                   try {
                     const reservation = takeDelayedContinuationReservation(
                       sessionKey,
@@ -2365,6 +2402,20 @@ export async function runReplyAgent(params: {
                       defaultRuntime.log(
                         `DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
                       );
+                      // #334 Slice 2 chunk 5b — fire-time reservation-missing
+                      // is the ONLY fire-time divergence in current bytes
+                      // (per cohort byte-walk, 2026-04-27). Sibling span
+                      // sharing chain.id so consumers can pair fire+disabled
+                      // events on a single trace.
+                      emitContinuationDisabledSpan({
+                        chainId: persistedChainIdForTimer,
+                        chainStepRemaining: chainStepRemainingAtDispatch,
+                        disabledReason: "reservation.missing",
+                        signalKind: "bracket-delegate",
+                        delegateDelivery: "timer",
+                        delegateMode: fireDelegateMode,
+                        log: (message) => defaultRuntime.log(message),
+                      });
                       return;
                     }
                     void doSpawn(reservation.plannedHop, reservation.task, {
@@ -2709,14 +2760,57 @@ export async function runReplyAgent(params: {
                 log: (message) => defaultRuntime.log(message),
               });
             }
+            // #334 Slice 2 chunk 5b — fire-span snapshots for the tool-delegate
+            // timer callback. Same enclosure discipline as the bracket-delegate
+            // site: `delegateMode` and `chainStepRemainingAtDispatch` are
+            // dispatch-time captures, NOT fire-time recomputes; `armedAt` is
+            // captured immediately before `setTimeout` so wall-clock drift
+            // measurement starts at arming.
+            const fireDelegateMode: "normal" | "silent" | "silent-wake" = delegate.silentWake
+              ? "silent-wake"
+              : delegate.silent
+                ? "silent"
+                : "normal";
+            const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
             retainContinuationTimerRef(sessionKey);
+            const armedAt = Date.now();
             const timerHandle = setTimeout(() => {
+              // #334 Slice 2 chunk 5b — fire-span emits FIRST, before
+              // reservation lookup. Wall-clock truth: timer DID fire; what
+              // happens next (spawn or reservation-missing) is a separate
+              // sibling event. 5b is instrumentation-of-status-quo only.
+              const fireDeferredMs = Date.now() - armedAt;
+              emitContinuationDelegateFireSpan({
+                // Invariant: persistedChainIdForTimer is always a string
+                // here — `persistContinuationChainState` only returns
+                // undefined when `sessionKey` is falsy, but this branch
+                // is gated on `sessionKey` being truthy (chunk 3).
+                // Helper's defense-in-depth no-ops if undefined slips.
+                chainId: persistedChainIdForTimer as string,
+                chainStepRemainingAtDispatch,
+                delegateMode: fireDelegateMode,
+                delayMs: clampedDelay,
+                fireDeferredMs,
+                log: (message) => defaultRuntime.log(message),
+              });
               try {
                 const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
                 if (!reservation) {
                   defaultRuntime.log(
                     `Tool DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
                   );
+                  // #334 Slice 2 chunk 5b — sibling `continuation.disabled`
+                  // for the existing log-and-return divergence; same chain.id
+                  // as the fire span so consumers can pair them.
+                  emitContinuationDisabledSpan({
+                    chainId: persistedChainIdForTimer,
+                    chainStepRemaining: chainStepRemainingAtDispatch,
+                    disabledReason: "reservation.missing",
+                    signalKind: "tool-delegate",
+                    delegateDelivery: "timer",
+                    delegateMode: fireDelegateMode,
+                    log: (message) => defaultRuntime.log(message),
+                  });
                   return;
                 }
                 void doToolSpawn(reservation.plannedHop, reservation.task, {
