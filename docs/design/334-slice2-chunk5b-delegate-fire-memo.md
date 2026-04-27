@@ -79,7 +79,11 @@ export function emitContinuationDelegateFireSpan(args: {
 
 **Always-defined invariant** (🌻, msg `1498377947944456294`): `chainId` is **always defined** at delegate-fire time — chain reservation mints pre-`setTimeout` (chunk 3 invariant). JSDoc should pin this. **Defense-in-depth:** helper no-ops gracefully (logs + returns) if undefined slips through, so a future invariant break doesn't crash fire-emit. Sig stays `chainId: string` (not optional) to encode the invariant in the type.
 
-**chainStepRemaining provenance** (🩸, msg `1498377749499351203`): explicitly **dispatch-time snapshot**, not a fire-time recompute. The variable name `chainStepRemainingAtDispatch` and the JSDoc must say this plainly so nobody misreads it as "remaining at fire-time." Snapshot semantics keep the dispatch→fire trace pair coherent: fire reports the same headroom dispatch promised, not a re-evaluated post-side-effects view.
+**chainStepRemaining provenance** (🩸, msg `1498377749499351203`; 🌻 dedicated-paragraph note, msg `1498378054462869524`): explicitly **dispatch-time snapshot**, not a fire-time recompute. The variable name `chainStepRemainingAtDispatch` and the JSDoc must say this plainly so nobody misreads it as "remaining at fire-time." Snapshot semantics keep the dispatch→fire trace pair coherent: fire reports the same headroom dispatch promised, not a re-evaluated post-side-effects view.
+
+**Dedicated JSDoc paragraph (mandatory in wire PR)**, paraphrased from 🌻:
+
+> The `chainStepRemainingAtDispatch` value reflects **dispatch-time headroom** (reservation snapshot), NOT callback-time live state. Rationale: trace continuity with the dispatch span (same `chain.id`, same step counter) so consumers can pair `dispatch`/`fire` events without reasoning about between-tick mutations. If a future consumer wants "remaining headroom *at* fire time," that is a **separate axis** (provisional name `chain.step.remaining_at_fire`) and a **separate decision** — do not fold it into this field.
 
 Note: no `delegate.delivery` arg — fire is timer-only by Q1, so `"timer"` is implicit and emitted as a fixed attr inside the helper. No `signal.kind` arg — fire only fires for delegate signals. Keeps signature tight.
 
