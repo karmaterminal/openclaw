@@ -3,3 +3,4 @@
 - 2026-04-27T00:00:03+00:00: Fixed r3144331033 with targeted drain followed by unfiltered retry drain; focused dispatch test passed.
 - 2026-04-27T00:01:05+00:00: Fixed r3144344309 by rethrowing chain-state persistence failures; focused dispatch test passed.
 - 2026-04-27T00:02:30+00:00: Fixed optional r3144344310 by reporting lifecycle releasedDelegates from accepted fresh drain deliveries; focused dispatch test passed.
+- 2026-04-27T00:11:35+00:00: Validation complete: pnpm tsgo, pnpm check, focused dispatch test, queue storage/recovery test command, pnpm check:additional, pnpm build, accidental all-lanes check:changed probe, and intended check:changed against 3eb87a783dbf3222589c5f715898f334e2763dd9 all passed.
