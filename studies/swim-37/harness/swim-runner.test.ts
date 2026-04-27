@@ -77,18 +77,12 @@ declare function captureSwim(
 
 describe("swim-37 harness :: trap-class coverage [scaffold]", () => {
   describe("trap §1 :: parallel-evolution / cherry-false-negative", () => {
-    it.todo(
-      "rebase bot classifies synthetic squash-rebased commit as DROP (not PICK)",
-    );
-    it.todo(
-      "CHANGELOG-byte-grep discovery channel emits drop-with-reason span",
-    );
+    it.todo("rebase bot classifies synthetic squash-rebased commit as DROP (not PICK)");
+    it.todo("CHANGELOG-byte-grep discovery channel emits drop-with-reason span");
   });
 
   describe("trap §3a :: integration-boundary type-shape drift", () => {
-    it.todo(
-      "tsgo replay catches non-conflicted file that references shifted upstream type-shape",
-    );
+    it.todo("tsgo replay catches non-conflicted file that references shifted upstream type-shape");
   });
 });
 
@@ -100,30 +94,32 @@ describe("swim-37 harness :: continuation primitives [scaffold]", () => {
 
   describe("continue_delegate", () => {
     it.todo("emits continuation.delegate.dispatch span with chain.id (#366)");
+    it.todo("decrements chain-budget; ChainBudget.declineToCarry() observable on cap");
+    it.todo("fan-out across N recipients consumes 1 chain step, not N (#355 Stage-2)");
+    // Chunk 5b (#388) — `continuation.delegate.fire` lands at timer-callback
+    // start, BEFORE `takeDelayedContinuationReservation`. Instrumentation-of-
+    // status-quo only; no fire-time cap rechecks (chunk 5c will add the
+    // WORK-fire seam separately). chainId is closed-over from dispatch-time;
+    // chainStepRemainingAtDispatch is a snapshot, not fire-time live state.
     it.todo(
-      "decrements chain-budget; ChainBudget.declineToCarry() observable on cap",
+      "emits continuation.delegate.fire span at timer callback with persisted chain.id (#388 chunk 5b)",
     );
     it.todo(
-      "fan-out across N recipients consumes 1 chain step, not N (#355 Stage-2)",
+      "fire span carries delegate.delivery + delegate.mode + chain.step.remaining_at_dispatch attrs (#388)",
+    );
+    it.todo(
+      "reservation-missing path emits continuation.disabled with disabled.reason='reservation.missing' (#388)",
     );
   });
 
   describe("heartbeat", () => {
-    it.todo(
-      "emits heartbeat span; continuation.disabled=false while budget remains",
-    );
-    it.todo(
-      "continuation.disabled=true after declineToCarry fires (silenced-by-cap signal)",
-    );
+    it.todo("emits heartbeat span; continuation.disabled=false while budget remains");
+    it.todo("continuation.disabled=true after declineToCarry fires (silenced-by-cap signal)");
   });
 
   describe("lich-shape (post-compaction delegate)", () => {
-    it.todo(
-      "post-compaction delegate retains chain.id across compaction seam (#332 Item B)",
-    );
-    it.todo(
-      "release-seam span signals continuation.compaction.released exactly once",
-    );
+    it.todo("post-compaction delegate retains chain.id across compaction seam (#332 Item B)");
+    it.todo("release-seam span signals continuation.compaction.released exactly once");
   });
 });
 
