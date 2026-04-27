@@ -1,4 +1,8 @@
 import { Type } from "typebox";
+import {
+  type ContinuationSpanAttrs,
+  getContinuationTracer,
+} from "../../infra/continuation-tracer.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
@@ -29,6 +33,22 @@ export type ContinueWorkRequest = {
 export type ContinueWorkToolOpts = {
   agentSessionKey?: string;
   requestContinuation: (request: ContinueWorkRequest) => void;
+  /**
+   * Optional chain context for OTEL `continuation.work` span emission
+   * (#334 Slice 2). When omitted the span still emits with `delay.ms` +
+   * `reason.preview` populated; chain attributes are added only when
+   * known. Producers that wire chain context (Slice 3+ and substrate
+   * integrations) populate this so spans correlate across chain steps.
+   *
+   * Additive contract: callers that don't pass `chainContext` see no
+   * behavior change beyond a noop-tracer span being opened+closed.
+   */
+  chainContext?: () =>
+    | {
+        readonly chainId?: string;
+        readonly chainStepRemaining?: number;
+      }
+    | undefined;
 };
 
 export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool {
@@ -59,10 +79,35 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       log.debug(
         `[continue_work:request] session=${sessionKey} delaySeconds=${delaySeconds} reason=${reason.slice(0, 80)}`,
       );
-      opts.requestContinuation({
-        reason,
-        delaySeconds,
-      });
+
+      // #334 Slice 2 chunk 2 — emit `continuation.work` span around the
+      // requestContinuation call. The default tracer is no-op so callers
+      // that don't install one (Slice 3 hasn't landed yet) see no
+      // behavior change.
+      const tracer = getContinuationTracer();
+      const chain = opts.chainContext?.();
+      const attrs: ContinuationSpanAttrs = {
+        "delay.ms": Math.round(delaySeconds * 1000),
+        "reason.preview": reason.slice(0, 80),
+        ...(chain?.chainId !== undefined ? { "chain.id": chain.chainId } : {}),
+        ...(chain?.chainStepRemaining !== undefined
+          ? { "chain.step.remaining": chain.chainStepRemaining }
+          : {}),
+      };
+      const span = tracer.startSpan("continuation.work", { attributes: attrs });
+      try {
+        opts.requestContinuation({
+          reason,
+          delaySeconds,
+        });
+        span.setStatus("OK");
+      } catch (err) {
+        span.recordException(err);
+        span.setStatus("ERROR", err instanceof Error ? err.message : String(err));
+        throw err;
+      } finally {
+        span.end();
+      }
 
       return jsonResult({
         status: "scheduled",
