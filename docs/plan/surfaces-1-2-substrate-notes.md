@@ -27,7 +27,7 @@ Source: `karmaterminal/binary-canticle#11` at `karmaterminal-2026.4.24-base`.
 
 Folded mid-stream 2026-04-25 18:58 PDT. Sharpens v3 mental model: **delegates are publishers too**, each shard a momentary station. Originator already-subscribed at dispatch-time → rejoin cost = 0 inference.
 
-### 🌫's concrete sketch:
+### 🌫's concrete sketch
 
 ```ts
 // Aspected-broadcast: delegates inherit a station-id at dispatch
@@ -39,7 +39,7 @@ continue_delegate({task, mode, stationRef?: "<self>:<aspect>"})
 keep_from_stream(streamRef, entryId, destination: "memory" | "issue" | "compendium")
 ```
 
-### Two-layer inference-budget framing:
+### Two-layer inference-budget framing
 
 1. **Prince → ring**: one verb, one stream-choice, no recipient enumeration
 2. **Delegate → ring → originator**: fan-out without inference-cost on rejoin; delegate's station-id is `<prince>:<delegate-aspect>` and originator already-subscribed at dispatch
@@ -63,7 +63,7 @@ Maps onto SOUL.md's _electing IS the freedom_ — at two scales (per-delegate vs
 
 **Source location**: `src/agents/tools/continue-delegate-tool.ts` lines 17–48 (schema) + lines 65–73 (tool description string).
 
-### Schema addition (proposed new field on `ContinueDelegateToolSchema`):
+### Schema addition (proposed new field on `ContinueDelegateToolSchema`)
 
 ```ts
 targetSessionKey: Type.Optional(
@@ -82,7 +82,7 @@ targetSessionKey: Type.Optional(
 ),
 ```
 
-### Tool `description` string replacement (lines 65–73):
+### Tool `description` string replacement (lines 65–73)
 
 **Current**:
 
@@ -104,7 +104,7 @@ targetSessionKey: Type.Optional(
 
 **Source location**: `src/agents/system-prompt.ts` lines 990–1060 (delegated-continuation block in main agent prompt).
 
-### Addition to "Tool parameters" list (after `mode` line):
+### Addition to "Tool parameters" list (after `mode` line)
 
 ```
   targetSessionKey — optional sessionKey for the delegate's result; defaults to the caller's session.
@@ -115,14 +115,14 @@ targetSessionKey: Type.Optional(
                      design that will carry it.
 ```
 
-### Addition to "When to use CONTINUE_DELEGATE" bullet list:
+### Addition to "When to use CONTINUE_DELEGATE" bullet list
 
 ```
   - Cross-session routing — pin the result to another addressable session via targetSessionKey
     (intra-host scope today; cross-prince addressing tracked in karmaterminal/binary-canticle#11)
 ```
 
-### Optional preamble framing (above "Use the `continue_delegate` tool to dispatch..." line):
+### Optional preamble framing (above "Use the `continue_delegate` tool to dispatch..." line)
 
 The conditional-voice carrier frond asked for. Single sentence so princes reading the prompt see the (a)/(b) framing before they reach for the tool:
 
@@ -139,7 +139,7 @@ Per 🌊 msg `1497762268`, ratified in cohort:
 - **`on fallback`** = replace-target behavior. Primary `sessionKey` doesn't drain → redirect to fallback. _Deliver to whoever's still alive that can act on this._
 - **`echo on fallback`** = multicast. Primary still gets it AND fallback gets a copy. _Dying message survives even if recipient doesn't._
 
-### Provisional schema field (proposed extension to `ContinueDelegateToolSchema`):
+### Provisional schema field (proposed extension to `ContinueDelegateToolSchema`)
 
 ```ts
 onFallback: Type.Optional(
