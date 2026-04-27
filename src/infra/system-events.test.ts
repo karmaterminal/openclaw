@@ -276,6 +276,73 @@ describe("system events (session routing)", () => {
   });
 });
 
+describe("drainFormattedSystemEvents :: continuation.queue.drain span emission (#334 chunk 6a)", () => {
+  beforeEach(() => {
+    resetSystemEventsForTest();
+  });
+
+  type RecordedSpan = {
+    name: string;
+    attributes?: Record<string, unknown>;
+  };
+
+  async function captureSpansDuringDrain(
+    sessionKey: string,
+    enqueueFn: () => void,
+  ): Promise<RecordedSpan[]> {
+    const tracer = await import("./continuation-tracer.js");
+    const recorded: RecordedSpan[] = [];
+    tracer.setContinuationTracer({
+      startSpan: (name, opts) => {
+        recorded.push({
+          name,
+          attributes: opts?.attributes as Record<string, unknown> | undefined,
+        });
+        return tracer.noopTracer.startSpan(name, opts);
+      },
+    });
+    try {
+      enqueueFn();
+      await drainFormattedEvents(sessionKey);
+    } finally {
+      tracer.resetContinuationTracer();
+    }
+    return recorded.filter((s) => s.name === "continuation.queue.drain");
+  }
+
+  it("emits exactly one continuation.queue.drain span per drain call", async () => {
+    const key = "agent:main:test-queue-drain-span-emit";
+    const drainSpans = await captureSpansDuringDrain(key, () => {
+      enqueueSystemEvent("Node connected", { sessionKey: key });
+    });
+    expect(drainSpans).toHaveLength(1);
+  });
+
+  it("populates queue.drained_count + queue.drained_continuation_count attrs", async () => {
+    const key = "agent:main:test-queue-drain-attrs";
+    const drainSpans = await captureSpansDuringDrain(key, () => {
+      enqueueSystemEvent("[continuation:wake] Turn 1/100. Reason: x", { sessionKey: key });
+      enqueueSystemEvent("Node connected", { sessionKey: key });
+      enqueueSystemEvent("[continuation:delegate-spawned] Tool delegate turn 2", {
+        sessionKey: key,
+      });
+    });
+    expect(drainSpans).toHaveLength(1);
+    expect(drainSpans[0].attributes?.["queue.drained_count"]).toBe(3);
+    expect(drainSpans[0].attributes?.["queue.drained_continuation_count"]).toBe(2);
+  });
+
+  it("emits a 0/0 span on empty drain (absence-of-work, not rejection)", async () => {
+    const key = "agent:main:test-queue-drain-empty";
+    const drainSpans = await captureSpansDuringDrain(key, () => {
+      // intentionally enqueue nothing
+    });
+    expect(drainSpans).toHaveLength(1);
+    expect(drainSpans[0].attributes?.["queue.drained_count"]).toBe(0);
+    expect(drainSpans[0].attributes?.["queue.drained_continuation_count"]).toBe(0);
+  });
+});
+
 describe("isCronSystemEvent", () => {
   it.each([
     "",

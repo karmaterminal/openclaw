@@ -3,6 +3,7 @@ import {
   emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
+  emitContinuationQueueDrainSpan,
   emitContinuationWorkSpan,
   getContinuationTracer,
   noopTracer,
@@ -956,6 +957,167 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper (Slice 
         delegateMode: "normal",
         delayMs: 0,
         fireDeferredMs: 0,
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("continuation-tracer :: emitContinuationQueueDrainSpan helper (Slice 2 chunk 6a)", () => {
+  type RecordedSpan = {
+    name: string;
+    options?: StartSpanOptions;
+    setAttributesCalls: SpanAttributes[];
+    statusCalls: Array<{ status: SpanStatus; message?: string }>;
+    exceptionCalls: unknown[];
+    ended: boolean;
+  };
+
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const recorded: RecordedSpan = {
+          name,
+          options,
+          setAttributesCalls: [],
+          statusCalls: [],
+          exceptionCalls: [],
+          ended: false,
+        };
+        spans.push(recorded);
+        const span: Span = {
+          setAttributes(attrs) {
+            recorded.setAttributesCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            recorded.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            recorded.exceptionCalls.push(err);
+          },
+          end() {
+            recorded.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  it("emits a continuation.queue.drain span with the canonical attrs", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationQueueDrainSpan({
+      drainedCount: 3,
+      drainedContinuationCount: 1,
+    });
+    expect(spans).toHaveLength(1);
+    expect(spans[0].name).toBe("continuation.queue.drain");
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["queue.drained_count"]).toBe(3);
+    expect(attrs["queue.drained_continuation_count"]).toBe(1);
+    expect(spans[0].statusCalls).toEqual([{ status: "OK", message: undefined }]);
+    expect(spans[0].ended).toBe(true);
+  });
+
+  it("emits a 0/0 span on empty drain (absence-of-work, not rejection)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationQueueDrainSpan({
+      drainedCount: 0,
+      drainedContinuationCount: 0,
+    });
+    expect(spans).toHaveLength(1);
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["queue.drained_count"]).toBe(0);
+    expect(attrs["queue.drained_continuation_count"]).toBe(0);
+    // No `continuation.disabled` attr on empty drain — drain has no gate.
+    expect(attrs["continuation.disabled"]).toBeUndefined();
+    expect(attrs["disabled.reason"]).toBeUndefined();
+  });
+
+  it("does NOT carry chain.id or chain.step.remaining (multi-chain seam)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationQueueDrainSpan({
+      drainedCount: 5,
+      drainedContinuationCount: 2,
+    });
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["chain.id"]).toBeUndefined();
+    expect(attrs["chain.step.remaining"]).toBeUndefined();
+    expect(attrs["delay.ms"]).toBeUndefined();
+    expect(attrs["fire.deferred_ms"]).toBeUndefined();
+    expect(attrs["delegate.mode"]).toBeUndefined();
+    expect(attrs["signal.kind"]).toBeUndefined();
+  });
+
+  it("clamps negative counts to 0 (defense-in-depth on integer hygiene)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationQueueDrainSpan({
+      drainedCount: -1,
+      drainedContinuationCount: -3,
+    });
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["queue.drained_count"]).toBe(0);
+    expect(attrs["queue.drained_continuation_count"]).toBe(0);
+  });
+
+  it("caps drainedContinuationCount by drainedCount (\u2264 invariant defense-in-depth)", () => {
+    // Per \ud83e\ude78's PR #395 byte-walk nit (msg `1498427153543335967`):
+    // wire site already guarantees continuation ≤ total (filter over same array),
+    // but a less-disciplined caller could violate. Helper enforces the invariant.
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationQueueDrainSpan({
+      drainedCount: 2,
+      drainedContinuationCount: 5,
+    });
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["queue.drained_count"]).toBe(2);
+    expect(attrs["queue.drained_continuation_count"]).toBe(2);
+  });
+
+  it("floors fractional counts to integers (OTLP integer round-trip)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationQueueDrainSpan({
+      drainedCount: 4.7,
+      drainedContinuationCount: 2.9,
+    });
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["queue.drained_count"]).toBe(4);
+    expect(attrs["queue.drained_continuation_count"]).toBe(2);
+  });
+
+  it("swallows tracer errors and forwards them to the log callback", () => {
+    const throwing: Tracer = {
+      startSpan() {
+        throw new Error("kaboom-drain");
+      },
+    };
+    setContinuationTracer(throwing);
+    const logged: string[] = [];
+    expect(() =>
+      emitContinuationQueueDrainSpan({
+        drainedCount: 1,
+        drainedContinuationCount: 0,
+        log: (m) => logged.push(m),
+      }),
+    ).not.toThrow();
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/Failed to emit continuation\.queue\.drain span/);
+    expect(logged[0]).toContain("kaboom-drain");
+  });
+
+  it("is a no-op against the default noop tracer", () => {
+    resetContinuationTracer();
+    expect(() =>
+      emitContinuationQueueDrainSpan({
+        drainedCount: 0,
+        drainedContinuationCount: 0,
       }),
     ).not.toThrow();
   });
