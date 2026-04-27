@@ -33,6 +33,35 @@ export type SpanAttributeValue =
 export type SpanAttributes = Readonly<Record<string, SpanAttributeValue>>;
 
 /**
+ * Canonical enumeration of all `signal.kind` attribute values emitted by continuation spans.
+ *
+ * SSOT for the value-space. Helper signatures, disabled-helper narrowing, and tests all
+ * derive from this; do not re-enumerate inline.
+ *
+ * @see ContinuationSignalKind — derived union type
+ * @see ContinuationDisabledSignalKind — Extract<>-narrowed subset for `continuation.disabled`
+ */
+export const CONTINUATION_SIGNAL_KINDS = [
+  "work",
+  "bracket-work",
+  "bracket-delegate",
+  "tool-delegate",
+  "compaction-release",
+] as const;
+
+/** Union type derived from {@link CONTINUATION_SIGNAL_KINDS}. */
+export type ContinuationSignalKind = (typeof CONTINUATION_SIGNAL_KINDS)[number];
+
+/**
+ * Subset of {@link ContinuationSignalKind} that may appear on `continuation.disabled` spans.
+ * Excludes `"work"` and `"compaction-release"` per memo §A asymmetry-only-in-disabled-reason rule.
+ */
+export type ContinuationDisabledSignalKind = Extract<
+  ContinuationSignalKind,
+  "bracket-work" | "bracket-delegate" | "tool-delegate"
+>;
+
+/**
  * Normative attribute-key set for continuation spans.
  *
  * **Pinning these names at the shim type — NOT at the adapter — is the
@@ -98,15 +127,14 @@ export type ContinuationSpanAttrs = {
    */
   readonly "disabled.reason"?: string;
   /**
-   * Signal-family classifier. Pinned set:
-   *   - `"bracket-work"` — bracket CONTINUE_WORK signal at the bracket gate
-   *   - `"bracket-delegate"` — bracket CONTINUE_DELEGATE signal at the bracket gate
-   *   - `"tool-delegate"` — `continue_delegate` tool signal at the tool gate
-   *   - `"compaction-release"` — post-compaction delegates released for dispatch (#334 chunk 6b)
+   * Signal-family classifier. Values are pinned by {@link CONTINUATION_SIGNAL_KINDS} (SSOT).
    * On `continuation.disabled` spans, identifies the rejected signal shape.
    * On `continuation.compaction.released` spans, classifies the release event.
+   *
+   * @see CONTINUATION_SIGNAL_KINDS — canonical value list
+   * @see ContinuationDisabledSignalKind — narrowed subset for disabled spans
    */
-  readonly "signal.kind"?: string;
+  readonly "signal.kind"?: ContinuationSignalKind;
   /**
    * #334 chunk 5b — only set on `continuation.delegate.fire` spans.
    * Wall-clock ms between `setTimeout` arming (immediately before the
@@ -156,6 +184,15 @@ export type ContinuationSpanAttrs = {
    * state); the span is still emitted to mark the compaction event itself.
    */
   readonly "compaction.released"?: number;
+  /**
+   * Session-local monotone compaction counter. Join key is `(session.id, compaction.id)`.
+   *
+   * Currently emitted on `continuation.compaction.released` spans. Future post-compaction-mode
+   * `continuation.delegate.fire` spans will join via this attr (chunk 6c memo §B).
+   *
+   * Invariant: integer ≥ 0, monotone-by-construction at producer (incrementRunCompactionCount).
+   */
+  readonly "compaction.id"?: number;
 };
 
 /**
@@ -443,8 +480,8 @@ export function emitContinuationDelegateSpan(args: {
  *    in chunk 5b. Family semantics (🌻, 2026-04-27): "anything that
  *    prevented follow-through," not "cap axes only" — the family is
  *    grammar-defined (verb-on-gate), not enum-cardinality-defined.
- *  - `signal.kind` (`"bracket-work" | "bracket-delegate" |
- *    "tool-delegate"`): the kind of signal that was rejected.
+ *  - `signal.kind` ({@link ContinuationDisabledSignalKind}): the kind of
+ *    signal that was rejected. Values derived from {@link CONTINUATION_SIGNAL_KINDS} SSOT.
  *  - `delegate.delivery` / `delegate.mode`: only set when the rejected
  *    signal was a delegate (bracket-delegate or tool-delegate). Work
  *    signals omit both — they're self-elected single-session and don't
@@ -466,7 +503,7 @@ export function emitContinuationDisabledSpan(args: {
   chainId: string | undefined;
   chainStepRemaining: number;
   disabledReason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn" | "reservation.missing";
-  signalKind: "bracket-work" | "bracket-delegate" | "tool-delegate";
+  signalKind: ContinuationDisabledSignalKind;
   delegateDelivery?: "immediate" | "timer" | undefined;
   delegateMode?: string | undefined;
   reason?: string | undefined;
@@ -751,6 +788,7 @@ export function emitContinuationQueueDrainSpan(args: {
  */
 export function emitContinuationCompactionReleasedSpan(args: {
   releasedCount: number;
+  compactionId?: number;
   log?: (message: string) => void;
 }): void {
   try {
@@ -759,6 +797,20 @@ export function emitContinuationCompactionReleasedSpan(args: {
       "signal.kind": "compaction-release",
       "compaction.released": releasedCount,
     };
+
+    // §B validate-and-drop-with-log: attach compaction.id only when the
+    // producer-side invariant (integer ≥ 0) holds. No clamp, no throw —
+    // the invariant is producer-side; helper is defensive only in the sense
+    // of **not emitting a lie**.
+    const compactionId = args.compactionId;
+    if (typeof compactionId === "number" && Number.isInteger(compactionId) && compactionId >= 0) {
+      (attrs as Record<string, SpanAttributeValue>)["compaction.id"] = compactionId;
+    } else if (compactionId !== undefined) {
+      args.log?.(
+        `emitContinuationCompactionReleasedSpan: invalid compaction.id (${compactionId}); dropping attr`,
+      );
+    }
+
     const span = activeTracer.startSpan("continuation.compaction.released", {
       attributes: attrs,
     });

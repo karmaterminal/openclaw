@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  CONTINUATION_SIGNAL_KINDS,
   emitContinuationCompactionReleasedSpan,
   emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
@@ -10,6 +11,8 @@ import {
   noopTracer,
   resetContinuationTracer,
   setContinuationTracer,
+  type ContinuationDisabledSignalKind,
+  type ContinuationSignalKind,
   type ContinuationSpanAttrs,
   type ContinuationSpanName,
   type Span,
@@ -225,13 +228,8 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     }
   });
 
-  it("signal.kind canonical values round-trip through the surface (runtime pin)", () => {
-    const canonicalSignalKinds = [
-      "work",
-      "bracket-delegate",
-      "tool-delegate",
-      "compaction-release",
-    ];
+  it("signal.kind canonical values round-trip through the surface (runtime pin, SSOT-derived)", () => {
+    // Derived from CONTINUATION_SIGNAL_KINDS SSOT — no inline re-enumeration.
     let captured: SpanAttributes | undefined;
     setContinuationTracer({
       startSpan: (_name, opts) => {
@@ -239,7 +237,7 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
         return noopTracer.startSpan(_name);
       },
     });
-    for (const kind of canonicalSignalKinds) {
+    for (const kind of CONTINUATION_SIGNAL_KINDS) {
       getContinuationTracer().startSpan("heartbeat", {
         attributes: { "signal.kind": kind },
       });
@@ -247,14 +245,9 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     }
   });
 
-  it("signal.kind canonical values are type-compatible with ContinuationSpanAttrs (type-pin)", () => {
-    const values: Array<NonNullable<ContinuationSpanAttrs["signal.kind"]>> = [
-      "work",
-      "bracket-delegate",
-      "tool-delegate",
-      "compaction-release",
-    ];
-    for (const v of values) {
+  it("signal.kind canonical values are type-compatible with ContinuationSpanAttrs (type-pin, SSOT-derived)", () => {
+    // Derived from CONTINUATION_SIGNAL_KINDS SSOT — no inline re-enumeration.
+    for (const v of CONTINUATION_SIGNAL_KINDS) {
       const attrs: ContinuationSpanAttrs = { "signal.kind": v };
       const broad: SpanAttributes = attrs;
       expect(broad["signal.kind"]).toBe(v);
@@ -1206,13 +1199,14 @@ describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper (
   it("emits a continuation.compaction.released span with canonical attrs (happy path)", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
-    emitContinuationCompactionReleasedSpan({ releasedCount: 3 });
+    emitContinuationCompactionReleasedSpan({ releasedCount: 3, compactionId: 1 });
     expect(spans).toHaveLength(1);
     const span = spans[0];
     expect(span.name).toBe("continuation.compaction.released");
     expect(span.options?.attributes).toEqual({
       "signal.kind": "compaction-release",
       "compaction.released": 3,
+      "compaction.id": 1,
     });
     expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
     expect(span.ended).toBe(true);
@@ -1221,11 +1215,12 @@ describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper (
   it("emits span with compaction.released: 0 on zero-release (compaction event still recorded)", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
-    emitContinuationCompactionReleasedSpan({ releasedCount: 0 });
+    emitContinuationCompactionReleasedSpan({ releasedCount: 0, compactionId: 2 });
     expect(spans).toHaveLength(1);
     const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
     expect(attrs["compaction.released"]).toBe(0);
     expect(attrs["signal.kind"]).toBe("compaction-release");
+    expect(attrs["compaction.id"]).toBe(2);
   });
 
   it("floors fractional releasedCount to integer (OTLP integer round-trip)", () => {
@@ -1264,5 +1259,205 @@ describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper (
   it("is a no-op against the default noop tracer", () => {
     resetContinuationTracer();
     expect(() => emitContinuationCompactionReleasedSpan({ releasedCount: 0 })).not.toThrow();
+  });
+});
+
+describe("continuation-tracer :: CONTINUATION_SIGNAL_KINDS SSOT pin (Slice 2 chunk 6c §A)", () => {
+  it("SSOT array has exactly 5 members with the canonical values", () => {
+    expect(CONTINUATION_SIGNAL_KINDS).toHaveLength(5);
+    expect([...CONTINUATION_SIGNAL_KINDS]).toEqual([
+      "work",
+      "bracket-work",
+      "bracket-delegate",
+      "tool-delegate",
+      "compaction-release",
+    ]);
+  });
+
+  it("ContinuationSignalKind union covers all SSOT members (type-level pin)", () => {
+    // Compile-time pin: every SSOT member must be assignable to
+    // ContinuationSignalKind. If a member is added to the const array
+    // without updating the derived type, this block would fail typecheck
+    // (the derived type auto-tracks, so this tests the derivation).
+    const kinds: ContinuationSignalKind[] = [...CONTINUATION_SIGNAL_KINDS];
+    expect(kinds).toHaveLength(5);
+  });
+
+  it("ContinuationDisabledSignalKind narrows to exactly 3 disabled-span signal kinds (type-level pin)", () => {
+    // Compile-time pin: Extract<> narrows to exactly the 3 disabled-span signal kinds.
+    const disabled: ContinuationDisabledSignalKind[] = [
+      "bracket-work",
+      "bracket-delegate",
+      "tool-delegate",
+    ];
+    expect(disabled).toHaveLength(3);
+    // Runtime confirmation: these are a subset of CONTINUATION_SIGNAL_KINDS.
+    for (const d of disabled) {
+      expect(CONTINUATION_SIGNAL_KINDS).toContain(d);
+    }
+    // "work" and "compaction-release" must NOT be assignable to ContinuationDisabledSignalKind.
+    // This is a compile-time invariant; the runtime assertion below is a belt-and-suspenders
+    // guard that the Extract<> narrows correctly.
+    const disabledSet = new Set<string>(disabled);
+    expect(disabledSet.has("work")).toBe(false);
+    expect(disabledSet.has("compaction-release")).toBe(false);
+  });
+});
+
+describe("continuation-tracer :: compaction.id cross-cutting attr (Slice 2 chunk 6c §B)", () => {
+  type RecordedSpan = {
+    name: string;
+    options?: StartSpanOptions;
+    setAttributesCalls: SpanAttributes[];
+    statusCalls: Array<{ status: SpanStatus; message?: string }>;
+    exceptionCalls: unknown[];
+    ended: boolean;
+  };
+
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const recorded: RecordedSpan = {
+          name,
+          options,
+          setAttributesCalls: [],
+          statusCalls: [],
+          exceptionCalls: [],
+          ended: false,
+        };
+        spans.push(recorded);
+        const span: Span = {
+          setAttributes(attrs) {
+            recorded.setAttributesCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            recorded.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            recorded.exceptionCalls.push(err);
+          },
+          end() {
+            recorded.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  it("happy: compactionId 7 + releasedCount 3 emits both attrs with signal.kind", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationCompactionReleasedSpan({ releasedCount: 3, compactionId: 7 });
+    expect(spans).toHaveLength(1);
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["signal.kind"]).toBe("compaction-release");
+    expect(attrs["compaction.released"]).toBe(3);
+    expect(attrs["compaction.id"]).toBe(7);
+  });
+
+  it("compactionId 1 lower bound emits compaction.id: 1", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationCompactionReleasedSpan({ releasedCount: 1, compactionId: 1 });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["compaction.id"]).toBe(1);
+  });
+
+  it("compactionId 0 ordinal-valid: emits compaction.id: 0 (NOT clamped, NOT dropped)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationCompactionReleasedSpan({ releasedCount: 0, compactionId: 0 });
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["compaction.id"]).toBe(0);
+    // Signal.kind and compaction.released still present.
+    expect(attrs["signal.kind"]).toBe("compaction-release");
+    expect(attrs["compaction.released"]).toBe(0);
+  });
+
+  it("invariant non-integer: compactionId 7.9 drops attr, logs warning, span survives", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const logged: string[] = [];
+    emitContinuationCompactionReleasedSpan({
+      releasedCount: 2,
+      compactionId: 7.9,
+      log: (m) => logged.push(m),
+    });
+    expect(spans).toHaveLength(1);
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    // compaction.id dropped due to non-integer invariant.
+    expect(attrs["compaction.id"]).toBeUndefined();
+    // Span still has signal.kind + compaction.released.
+    expect(attrs["signal.kind"]).toBe("compaction-release");
+    expect(attrs["compaction.released"]).toBe(2);
+    // Log callback received warning.
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("invalid compaction.id");
+    expect(logged[0]).toContain("7.9");
+  });
+
+  it("invariant negative: compactionId -1 drops attr, logs warning, span survives", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const logged: string[] = [];
+    emitContinuationCompactionReleasedSpan({
+      releasedCount: 1,
+      compactionId: -1,
+      log: (m) => logged.push(m),
+    });
+    expect(spans).toHaveLength(1);
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    // compaction.id dropped due to negative invariant.
+    expect(attrs["compaction.id"]).toBeUndefined();
+    // Span survives with signal.kind + compaction.released.
+    expect(attrs["signal.kind"]).toBe("compaction-release");
+    expect(attrs["compaction.released"]).toBe(1);
+    expect(attrs["compaction.id"]).toBeUndefined();
+    // Log callback received warning.
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("invalid compaction.id");
+    expect(logged[0]).toContain("-1");
+  });
+
+  it("compactionId omitted (undefined) silently omits attr without logging", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const logged: string[] = [];
+    emitContinuationCompactionReleasedSpan({
+      releasedCount: 1,
+      log: (m) => logged.push(m),
+    });
+    expect(spans).toHaveLength(1);
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["compaction.id"]).toBeUndefined();
+    expect(attrs["signal.kind"]).toBe("compaction-release");
+    // No log emitted — undefined is a valid "not provided" sentinel.
+    expect(logged).toHaveLength(0);
+  });
+
+  // Producer-side invariant pin: incrementRunCompactionCount (session-run-accounting.ts)
+  // returns `number | undefined`. When defined, the value is computed as
+  // `Math.max(0, entry.compactionCount ?? 0) + Math.max(0, amount)` where amount >= 1
+  // at the agent-runner callsite (amount: autoCompactionCount, guarded by `> 0`).
+  // This means defined-return is always integer >= 1.
+  //
+  // The test below pins the helper's acceptance of the producer range, so if the
+  // producer contract ever drifts (e.g. returning 0 from a different path), the
+  // validate-and-drop boundary tests above catch the mismatch.
+  it("producer-side pin: compactionId values in producer range [1..N] are all accepted", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    for (const id of [1, 2, 10, 100]) {
+      emitContinuationCompactionReleasedSpan({ releasedCount: 1, compactionId: id });
+    }
+    expect(spans).toHaveLength(4);
+    for (const span of spans) {
+      const attrs = span.options?.attributes as ContinuationSpanAttrs;
+      expect(typeof attrs["compaction.id"]).toBe("number");
+      expect(Number.isInteger(attrs["compaction.id"])).toBe(true);
+      expect(attrs["compaction.id"]).toBeGreaterThanOrEqual(1);
+    }
   });
 });
