@@ -356,7 +356,9 @@ export function emitContinuationWorkSpan(args: {
  * the `setTimeout` is a delivery mechanism, not a chain semantic.
  * Cancelled-but-accepted dispatches (compaction, reset, gateway shutdown)
  * still happened, and a fire-time span would underreport them.
- * `continuation.delegate.fire` remains a future name, not preempted.
+ * `continuation.delegate.fire` is the timer-callback sibling (#334
+ * Slice 2 chunk 5b, helper `emitContinuationDelegateFireSpan`):
+ * dispatch is the enqueue-time event, fire is the delivery-time event.
  *
  * Wraps tracer interactions in a try/catch and logs via the caller's
  * `log` callback if provided — the accept path must never block on

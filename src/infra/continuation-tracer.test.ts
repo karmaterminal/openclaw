@@ -138,6 +138,7 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     const tracer = getContinuationTracer();
     tracer.startSpan("continuation.work");
     tracer.startSpan("continuation.delegate.dispatch");
+    tracer.startSpan("continuation.delegate.fire");
     tracer.startSpan("continuation.queue.enqueue");
     tracer.startSpan("continuation.queue.drain");
     tracer.startSpan("continuation.compaction.released");
@@ -147,6 +148,7 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     expect(recorded).toEqual([
       "continuation.work",
       "continuation.delegate.dispatch",
+      "continuation.delegate.fire",
       "continuation.queue.enqueue",
       "continuation.queue.drain",
       "continuation.compaction.released",
@@ -206,6 +208,7 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     const names: ContinuationSpanName[] = [
       "continuation.work",
       "continuation.delegate.dispatch",
+      "continuation.delegate.fire",
       "continuation.queue.enqueue",
       "continuation.queue.drain",
       "continuation.compaction.released",
