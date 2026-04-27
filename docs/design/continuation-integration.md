@@ -57,6 +57,8 @@ The v2.5 tool surface is `continue_delegate` (`src/agents/tools/continue-delegat
 
 ## §4 — `targetSessionKey` semantics
 
+> **Status (2026-04-27):** `targetSessionKey` is **proposed pending `karmaterminal/openclaw#332`** — not yet present on the `continue_delegate` schema or runtime wiring. The descriptor + system-prompt block landed in #362 deliberately defer the field; tests pin the omission to avoid the prior schema-vs-runtime divergence that stalled #338. The semantics below describe the planned v2.5 surface; reach for it from #332, not from canonical2 today.
+
 `targetSessionKey` is the **explicit-recipient seam at v2.5**.
 
 - **Default behavior** (omitted): result returns to caller's own session.
