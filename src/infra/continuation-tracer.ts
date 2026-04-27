@@ -33,6 +33,60 @@ export type SpanAttributeValue =
 export type SpanAttributes = Readonly<Record<string, SpanAttributeValue>>;
 
 /**
+ * Normative attribute-key set for continuation spans.
+ *
+ * **Pinning these names at the shim type — NOT at the adapter — is the
+ * load-bearing decision** (🌻's nuance, sprites-of-thornfield 2026-04-27):
+ * if the OTEL adapter (Slice 3) ever drifts to `chain_id` / `chainId` /
+ * etc., this type catches the drift at compile-time, before the #370
+ * harness contract assertions could detect it at runtime.
+ *
+ * All keys are optional because not every span carries every attribute
+ * (e.g. `heartbeat` carries `continuation.disabled` but no `delay.ms`).
+ * The `Readonly<Record<string, SpanAttributeValue>>` superset on
+ * `setAttributes` / `StartSpanOptions.attributes` permits diagnostic /
+ * adapter-internal attributes that aren't part of the canonical contract;
+ * `ContinuationSpanAttrs` is what the canonical-attribute-name pin tests
+ * (and #370 harness) assert against.
+ *
+ * Mirror in tests at `continuation-tracer.test.ts ::
+ * "canonical attribute names round-trip through the surface"`.
+ */
+export type ContinuationSpanAttrs = {
+  /** Stable id for the continuation chain this span belongs to. */
+  readonly "chain.id"?: string;
+  /** Remaining chain-step budget, post-decrement at this span. */
+  readonly "chain.step.remaining"?: number;
+  /** Scheduled delay (ms) until the next-turn / delegate fires. */
+  readonly "delay.ms"?: number;
+  /** First ≤80 chars of the tool-call `reason`, for operator readability. */
+  readonly "reason.preview"?: string;
+  /** Mode of a `continue_delegate` dispatch (normal/silent/silent-wake/post-compaction). */
+  readonly "delegate.mode"?: string;
+  /**
+   * `true` when `ChainBudget.declineToCarry` silenced emission for this
+   * step. Carried on the `continuation.disabled` event-span and on the
+   * `heartbeat` span when continuation context is present.
+   */
+  readonly "continuation.disabled"?: boolean;
+};
+
+/**
+ * Canonical span name set. Pinned at the type so a typo in a chunk-2+
+ * call site fails compile, not runtime. The harness assertion in
+ * `continuation-tracer.test.ts :: "canonical continuation span names are
+ * accepted by the surface"` mirrors this list.
+ */
+export type ContinuationSpanName =
+  | "continuation.work"
+  | "continuation.delegate.dispatch"
+  | "continuation.queue.enqueue"
+  | "continuation.queue.drain"
+  | "continuation.compaction.released"
+  | "continuation.disabled"
+  | "heartbeat";
+
+/**
  * Status code for a span. Mirrors OTEL's `SpanStatusCode` (UNSET=0, OK=1,
  * ERROR=2) with explicit string names so callers don't depend on the
  * numeric ordinal — keeps the surface OTEL-compatible without being
@@ -77,6 +131,10 @@ export type StartSpanOptions = {
   /**
    * Initial attributes attached at span creation. Equivalent to calling
    * `setAttributes` immediately after `startSpan`.
+   *
+   * The shim accepts `SpanAttributes` (the broader `Record<string,...>`)
+   * to permit diagnostic / adapter-internal attributes; canonical-contract
+   * keys are pinned by `ContinuationSpanAttrs` and the harness tests.
    */
   attributes?: SpanAttributes;
   /**

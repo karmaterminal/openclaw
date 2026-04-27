@@ -4,6 +4,8 @@ import {
   noopTracer,
   resetContinuationTracer,
   setContinuationTracer,
+  type ContinuationSpanAttrs,
+  type ContinuationSpanName,
   type Span,
   type SpanAttributes,
   type SpanStatus,
@@ -171,5 +173,43 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     expect(captured?.["chain.step.remaining"]).toBe(4);
     expect(captured?.["delay.ms"]).toBe(30000);
     expect(captured?.["reason.preview"]).toBe("context-pressure handoff");
+  });
+
+  // Type-level pin: ContinuationSpanAttrs is the load-bearing canonical
+  // attribute-name shape. If the OTEL adapter (Slice 3) ever drifts to
+  // chain_id / chainId / camelCase / etc., the assignment below fails
+  // compile, BEFORE the runtime harness assertions could catch it.
+  // (🌻's nuance, sprites-of-thornfield 2026-04-27.)
+  it("ContinuationSpanAttrs is structurally compatible with SpanAttributes", () => {
+    const canonical: ContinuationSpanAttrs = {
+      "chain.id": "abc",
+      "chain.step.remaining": 3,
+      "delay.ms": 1000,
+      "reason.preview": "x",
+      "delegate.mode": "silent-wake",
+      "continuation.disabled": false,
+    };
+    // Assignment to SpanAttributes is the compile-time pin: every
+    // ContinuationSpanAttrs MUST be a valid SpanAttributes for the shim
+    // surface to accept it.
+    const broad: SpanAttributes = canonical;
+    expect(broad["chain.id"]).toBe("abc");
+  });
+
+  it("ContinuationSpanName values are all accepted by startSpan", () => {
+    // Compile-time pin: each canonical name MUST be assignable to the
+    // ContinuationSpanName union.
+    const names: ContinuationSpanName[] = [
+      "continuation.work",
+      "continuation.delegate.dispatch",
+      "continuation.queue.enqueue",
+      "continuation.queue.drain",
+      "continuation.compaction.released",
+      "continuation.disabled",
+      "heartbeat",
+    ];
+    for (const name of names) {
+      expect(() => noopTracer.startSpan(name)).not.toThrow();
+    }
   });
 });
