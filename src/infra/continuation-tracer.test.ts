@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   emitContinuationDelegateSpan,
+  emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
   getContinuationTracer,
   noopTracer,
@@ -518,6 +519,196 @@ describe("continuation-tracer :: emitContinuationDelegateSpan helper (Slice 2 ch
         delayMs: 0,
         delivery: "immediate",
         delegateMode: "normal",
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 chunk 4)", () => {
+  type RecordedSpan = {
+    name: string;
+    options: StartSpanOptions | undefined;
+    statusCalls: { status: SpanStatus; message?: string | undefined }[];
+    attrCalls: SpanAttributes[];
+    exceptions: unknown[];
+    ended: boolean;
+  };
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const rec: RecordedSpan = {
+          name,
+          options,
+          statusCalls: [],
+          attrCalls: [],
+          exceptions: [],
+          ended: false,
+        };
+        spans.push(rec);
+        const span: Span = {
+          setAttributes(attrs) {
+            rec.attrCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            rec.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            rec.exceptions.push(err);
+          },
+          end() {
+            rec.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  it("emits a continuation.disabled span with full attrs for delegate cap.chain reject", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDisabledSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262032",
+      chainStepRemaining: 0,
+      disabledReason: "cap.chain",
+      signalKind: "tool-delegate",
+      delegateDelivery: "timer",
+      delegateMode: "silent",
+      reason: "fan out three queries",
+    });
+    expect(spans).toHaveLength(1);
+    const span = spans[0];
+    expect(span.name).toBe("continuation.disabled");
+    expect(span.options?.attributes).toEqual({
+      "chain.step.remaining": 0,
+      "disabled.reason": "cap.chain",
+      "signal.kind": "tool-delegate",
+      "continuation.disabled": true,
+      "chain.id": "019dcf57-b536-77cc-834b-b803d9262032",
+      "delegate.delivery": "timer",
+      "delegate.mode": "silent",
+      "reason.preview": "fan out three queries",
+    });
+    expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
+    expect(span.ended).toBe(true);
+  });
+
+  it("work-signal reject omits delegate.* attrs (work has no transport/intent axis)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDisabledSpan({
+      chainId: undefined, // first-step reject — chain never started
+      chainStepRemaining: 0,
+      disabledReason: "cap.chain",
+      signalKind: "bracket-work",
+    });
+    expect(spans).toHaveLength(1);
+    const attrs = spans[0].options?.attributes;
+    expect(attrs).toEqual({
+      "chain.step.remaining": 0,
+      "disabled.reason": "cap.chain",
+      "signal.kind": "bracket-work",
+      "continuation.disabled": true,
+    });
+    expect(attrs).not.toHaveProperty("chain.id");
+    expect(attrs).not.toHaveProperty("delegate.delivery");
+    expect(attrs).not.toHaveProperty("delegate.mode");
+  });
+
+  it("cost-cap reject for bracket-delegate carries delegate axes", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDisabledSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262032",
+      chainStepRemaining: 3,
+      disabledReason: "cap.cost",
+      signalKind: "bracket-delegate",
+      delegateDelivery: "immediate",
+      delegateMode: "normal",
+    });
+    expect(spans[0].options?.attributes).toMatchObject({
+      "disabled.reason": "cap.cost",
+      "signal.kind": "bracket-delegate",
+      "delegate.delivery": "immediate",
+      "delegate.mode": "normal",
+      "chain.step.remaining": 3,
+    });
+  });
+
+  it("delegates_per_turn reject uses cap.delegates_per_turn discriminator", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDisabledSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262032",
+      chainStepRemaining: 5,
+      disabledReason: "cap.delegates_per_turn",
+      signalKind: "tool-delegate",
+      delegateDelivery: "timer",
+      delegateMode: "silent-wake",
+    });
+    expect(spans[0].options?.attributes).toMatchObject({
+      "disabled.reason": "cap.delegates_per_turn",
+      "signal.kind": "tool-delegate",
+    });
+  });
+
+  it("truncates reason to 80 chars", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const longReason = "x".repeat(200);
+    emitContinuationDisabledSpan({
+      chainId: undefined,
+      chainStepRemaining: 0,
+      disabledReason: "cap.chain",
+      signalKind: "tool-delegate",
+      reason: longReason,
+    });
+    expect(spans[0].options?.attributes?.["reason.preview"]).toHaveLength(80);
+  });
+
+  it("clamps negative chainStepRemaining to 0", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDisabledSpan({
+      chainId: undefined,
+      chainStepRemaining: -7,
+      disabledReason: "cap.chain",
+      signalKind: "tool-delegate",
+    });
+    expect(spans[0].options?.attributes?.["chain.step.remaining"]).toBe(0);
+  });
+
+  it("swallows tracer errors and forwards them to the log callback", () => {
+    const throwing: Tracer = {
+      startSpan() {
+        throw new Error("tracer-disabled");
+      },
+    };
+    setContinuationTracer(throwing);
+    const logged: string[] = [];
+    expect(() =>
+      emitContinuationDisabledSpan({
+        chainId: undefined,
+        chainStepRemaining: 0,
+        disabledReason: "cap.chain",
+        signalKind: "tool-delegate",
+        log: (m) => logged.push(m),
+      }),
+    ).not.toThrow();
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/Failed to emit continuation\.disabled span/);
+  });
+
+  it("is a no-op against the default noop tracer", () => {
+    resetContinuationTracer();
+    expect(() =>
+      emitContinuationDisabledSpan({
+        chainId: undefined,
+        chainStepRemaining: 0,
+        disabledReason: "cap.chain",
+        signalKind: "tool-delegate",
       }),
     ).not.toThrow();
   });

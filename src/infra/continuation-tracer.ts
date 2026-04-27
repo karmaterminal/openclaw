@@ -79,6 +79,26 @@ export type ContinuationSpanAttrs = {
    * `heartbeat` span when continuation context is present.
    */
   readonly "continuation.disabled"?: boolean;
+  /**
+   * Cap-gate that produced a `continuation.disabled` reject. Pinned set:
+   *   - `"cap.chain"` — `continuationChainCount` reached `maxChainLength`
+   *   - `"cap.cost"` — accumulated input+output tokens exceeded `costCapTokens`
+   *   - `"cap.delegates_per_turn"` — tool-delegate batch exceeded `maxDelegatesPerTurn`
+   * Per cohort design (sprites-of-thornfield, 2026-04-27, 🌊): all reject
+   * variants share span name `continuation.disabled`; `disabled.reason`
+   * is the discriminator so observers can
+   * `WHERE name = "continuation.disabled" GROUP BY disabled.reason`.
+   */
+  readonly "disabled.reason"?: string;
+  /**
+   * Signal shape that was rejected. Pinned set:
+   *   - `"bracket-work"` — bracket CONTINUE_WORK signal at the bracket gate
+   *   - `"bracket-delegate"` — bracket CONTINUE_DELEGATE signal at the bracket gate
+   *   - `"tool-delegate"` — `continue_delegate` tool signal at the tool gate
+   * Lets observers separate self-elected (work) from delegated (delegate)
+   * rejection rates without parsing other attributes.
+   */
+  readonly "signal.kind"?: string;
 };
 
 /**
@@ -346,5 +366,71 @@ export function emitContinuationDelegateSpan(args: {
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.delegate.dispatch span: ${String(err)}`);
+  }
+}
+
+/**
+ * Emit a `continuation.disabled` span at a runner-side cap-gate reject
+ * (#334 Slice 2 chunk 4). Mirrors `emitContinuationWorkSpan` /
+ * `emitContinuationDelegateSpan` shape — same try/catch wrap, same
+ * `chain.id` / `chain.step.remaining` / `reason.preview` plumbing. Adds
+ * three reject-specific axes:
+ *
+ *  - `disabled.reason` (`"cap.chain" | "cap.cost" |
+ *    "cap.delegates_per_turn"`): which cap-gate produced the reject.
+ *  - `signal.kind` (`"bracket-work" | "bracket-delegate" |
+ *    "tool-delegate"`): the kind of signal that was rejected.
+ *  - `delegate.delivery` / `delegate.mode`: only set when the rejected
+ *    signal was a delegate (bracket-delegate or tool-delegate). Work
+ *    signals omit both — they're self-elected single-session and don't
+ *    share that taxonomy.
+ *
+ * IMPORTANT (per cohort design 2026-04-27, 🌊): a reject means the chain
+ * never advanced for this signal. Helper does NOT mint or persist a
+ * `chain.id` for reject spans — callers pass `chainId` through as-is
+ * from the live session entry (which may be `undefined` when the
+ * rejected signal would have been the first chain step). `chain.step.remaining`
+ * is set to the chain-budget remaining at the moment of reject, NOT
+ * post-decrement (no decrement happens on rejects).
+ *
+ * Wraps tracer interactions in a try/catch and logs via the caller's
+ * `log` callback if provided — the reject path must never block on
+ * span emission.
+ */
+export function emitContinuationDisabledSpan(args: {
+  chainId: string | undefined;
+  chainStepRemaining: number;
+  disabledReason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn";
+  signalKind: "bracket-work" | "bracket-delegate" | "tool-delegate";
+  delegateDelivery?: "immediate" | "timer" | undefined;
+  delegateMode?: string | undefined;
+  reason?: string | undefined;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const reasonPreview = args.reason
+      ? args.reason.length > 80
+        ? args.reason.slice(0, 80)
+        : args.reason
+      : undefined;
+    const attrs: ContinuationSpanAttrs = {
+      "chain.step.remaining": Math.max(0, args.chainStepRemaining),
+      "disabled.reason": args.disabledReason,
+      "signal.kind": args.signalKind,
+      "continuation.disabled": true,
+      ...(args.chainId !== undefined && { "chain.id": args.chainId }),
+      ...(args.delegateDelivery !== undefined && {
+        "delegate.delivery": args.delegateDelivery,
+      }),
+      ...(args.delegateMode !== undefined && { "delegate.mode": args.delegateMode }),
+      ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
+    };
+    const span = activeTracer.startSpan("continuation.disabled", {
+      attributes: attrs,
+    });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.disabled span: ${String(err)}`);
   }
 }
