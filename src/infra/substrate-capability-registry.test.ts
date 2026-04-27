@@ -26,6 +26,7 @@ describe("substrate capability registry", () => {
     });
     expect(queue?.["cite-pin"]).toContain("c96e2d7955ab36ff281fedb68437b6c638eb1e0d");
     expect(queue?.capabilities).toContain("cross-session-addressable-enrichment");
+    expect(queue?.capabilities).toContain("chain-budget-at-spawn");
   });
 
   it("answers capability lookups without byte-walking runtime files", () => {
@@ -43,6 +44,8 @@ describe("substrate capability registry", () => {
     expect(listSubstrateRegistrySymbols()).toEqual(
       expect.arrayContaining([
         "enqueueSessionDelivery",
+        "enqueuePostCompactionDelegateDelivery",
+        "deliverQueuedPostCompactionDelegate",
         "QueuedSessionDeliveryPayloadMetadata",
         "createManagedTaskFlow",
         "TaskFlowRecord",

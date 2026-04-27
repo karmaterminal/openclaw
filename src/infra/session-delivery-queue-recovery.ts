@@ -84,6 +84,23 @@ function createEmptyRecoverySummary(): SessionDeliveryRecoverySummary {
   };
 }
 
+function formatRetryBudgetExhaustedLog(entry: QueuedSessionDelivery): string | null {
+  if (entry.kind !== "postCompactionDelegate") {
+    return null;
+  }
+  return `[session-delivery-queue:retry-budget-exhausted] entry ${entry.id} hit retry cap before post-compaction delegate spawn for session ${entry.sessionKey}: ${entry.task}`;
+}
+
+function logRetryBudgetExhausted(
+  log: SessionDeliveryRecoveryLogger,
+  entry: QueuedSessionDelivery,
+): void {
+  const message = formatRetryBudgetExhaustedLog(entry);
+  if (message) {
+    log.warn(message);
+  }
+}
+
 function claimRecoveryEntry(entryId: string): boolean {
   if (entriesInProgress.has(entryId)) {
     return false;
@@ -196,6 +213,7 @@ export async function drainPendingSessionDeliveries(opts: {
           continue;
         }
         if (currentEntry.retryCount >= MAX_SESSION_DELIVERY_RETRIES) {
+          logRetryBudgetExhausted(opts.log, currentEntry);
           try {
             await moveSessionDeliveryToFailed(currentEntry.id, opts.stateDir);
           } catch (err) {
@@ -280,6 +298,7 @@ export async function recoverPendingSessionDeliveries(opts: {
       }
       if (currentEntry.retryCount >= MAX_SESSION_DELIVERY_RETRIES) {
         summary.skippedMaxRetries += 1;
+        logRetryBudgetExhausted(opts.log, currentEntry);
         try {
           await moveSessionDeliveryToFailed(currentEntry.id, opts.stateDir);
         } catch (err) {

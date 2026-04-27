@@ -2,6 +2,7 @@ export const SUBSTRATE_CAPABILITIES = [
   "ack-gc",
   "audit-trail",
   "cancellation",
+  "chain-budget-at-spawn",
   "compaction-return",
   "cross-session-addressable-enrichment",
   "exp-backoff-retry",
@@ -38,6 +39,7 @@ const substrateCapabilityRegistry: readonly SubstrateCapabilityEntry[] = [
     "transport-class": "filesystem-queue",
     capabilities: [
       "ack-gc",
+      "chain-budget-at-spawn",
       "cross-session-addressable-enrichment",
       "exp-backoff-retry",
       "failed-record-quarantine",
@@ -50,8 +52,11 @@ const substrateCapabilityRegistry: readonly SubstrateCapabilityEntry[] = [
       "karmaterminal/openclaw@c96e2d7955ab36ff281fedb68437b6c638eb1e0d src/infra/session-delivery-queue-storage.ts:34,154; src/infra/session-delivery-queue-recovery.ts:64; #332 issuecomment-4322708542",
     "symbol-aliases": [
       "ackSessionDelivery",
+      "buildPostCompactionDelegateDeliveryPayload",
       "computeSessionDeliveryBackoffMs",
       "drainPendingSessionDeliveries",
+      "deliverQueuedPostCompactionDelegate",
+      "enqueuePostCompactionDelegateDelivery",
       "QueuedSessionDeliveryPayload",
       "recoverPendingSessionDeliveries",
     ],
