@@ -40,7 +40,6 @@ import {
   consumeStagedPostCompactionDelegates,
   highestDelayedContinuationReservationHop,
   takeDelayedContinuationReservation,
-  setTaskFlowDelegatesEnabled,
   stagePostCompactionDelegate,
   consumePendingDelegates,
   pendingDelegateCount,
@@ -1076,12 +1075,6 @@ export async function runReplyAgent(params: {
   const isHeartbeat = opts?.isHeartbeat === true;
   const cfg = followupRun.run.config;
   const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
-  const taskFlowDelegatesConfigured =
-    cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
-
-  // Route delegate store operations to the Task Flow-backed implementation
-  // before any inbound-message cancellation logic runs.
-  setTaskFlowDelegatesEnabled(continuationFeatureEnabled && taskFlowDelegatesConfigured);
 
   // RFC 2026-04-15: session-entry cleanup of continuation state on non-heartbeat
   // inbound was removed. Delayed continuation work is not cancelled by unrelated
@@ -1452,14 +1445,6 @@ export async function runReplyAgent(params: {
       }
     }
 
-    // Sync the Task Flow delegate gate BEFORE the agent turn starts.
-    // Tools (continue_delegate) call enqueuePendingDelegate() during the turn,
-    // so the routing flag must be set before any tool execution.
-    const taskFlowDelegatesEarly =
-      cfg.agents?.defaults?.continuation?.enabled === true &&
-      cfg.agents?.defaults?.continuation?.taskFlowDelegates === true;
-    setTaskFlowDelegatesEnabled(taskFlowDelegatesEarly);
-
     const runStartedAt = Date.now();
     const runOutcome = await runAgentTurnWithFallback({
       commandBody,
@@ -1543,11 +1528,6 @@ export async function runReplyAgent(params: {
     // Detect and strip continuation signal only when the feature is enabled.
     // This prevents output mutation on disabled deployments where a model might
     // mention CONTINUE_WORK or [[CONTINUE_DELEGATE:]] in explanatory text.
-    // Sync the Task Flow delegate gate from config so the store routes
-    // enqueue/consume/count through the TaskFlow-backed implementation.
-    setTaskFlowDelegatesEnabled(
-      continuationFeatureEnabled && cfg.agents?.defaults?.continuation?.taskFlowDelegates === true,
-    );
     let continuationSignal: ContinuationSignal | null = null;
     if (continuationFeatureEnabled && payloadArray.length > 0) {
       // Find the last payload with text content — tool-call payloads may follow

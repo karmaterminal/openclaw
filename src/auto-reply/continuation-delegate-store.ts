@@ -25,92 +25,33 @@ import type {
  * (the tool can be called N times in one turn). The runner consumes all pending
  * delegates after the run completes.
  *
- * When `taskFlowDelegates` is enabled, pending delegates are backed by the
- * Task Flow registry (SQLite persistence). Otherwise, the volatile in-memory
- * Map is used (default).
+ * Backed by the Task Flow registry (SQLite persistence). Delegate durability
+ * is mandatory per RFC §5.1.
  */
 
 // ---------------------------------------------------------------------------
-// Task Flow delegate gate
+// Pending delegates — Task Flow backed (mandatory)
 // ---------------------------------------------------------------------------
 
-let taskFlowDelegatesEnabled = false;
-
-/**
- * Enable or disable the Task Flow-backed delegate store.
- * Called by agent-runner at startup based on
- * `agents.defaults.continuation.taskFlowDelegates`.
- */
-export function setTaskFlowDelegatesEnabled(enabled: boolean): void {
-  taskFlowDelegatesEnabled = enabled;
-}
-
-export function isTaskFlowDelegatesEnabled(): boolean {
-  return taskFlowDelegatesEnabled;
-}
-
-// ---------------------------------------------------------------------------
-// Pending delegates — volatile Map (default) or Task Flow (opt-in)
-// ---------------------------------------------------------------------------
-
-const pendingDelegates = new Map<string, PendingContinuationDelegate[]>();
 const delayedReservations = new Map<string, DelayedContinuationReservation[]>();
 
-/**
- * Called by the `continue_delegate` tool during execution.
- * Appends a delegate to the pending list for the session.
- */
 export function enqueuePendingDelegate(
   sessionKey: string,
   delegate: PendingContinuationDelegate,
 ): void {
-  if (taskFlowDelegatesEnabled) {
-    taskFlowEnqueuePendingDelegate(sessionKey, delegate);
-    return;
-  }
-  const existing = pendingDelegates.get(sessionKey) ?? [];
-  existing.push(delegate);
-  pendingDelegates.set(sessionKey, existing);
+  taskFlowEnqueuePendingDelegate(sessionKey, delegate);
 }
 
-/**
- * Called by `agent-runner.ts` after the run completes.
- * Returns and removes all pending delegates for the session.
- * Returns an empty array if none are pending.
- */
 export function consumePendingDelegates(sessionKey: string): PendingContinuationDelegate[] {
-  if (taskFlowDelegatesEnabled) {
-    return taskFlowConsumePendingDelegates(sessionKey);
-  }
-  const delegates = pendingDelegates.get(sessionKey) ?? [];
-  pendingDelegates.delete(sessionKey);
-  return delegates;
+  return taskFlowConsumePendingDelegates(sessionKey);
 }
 
-/**
- * Returns the count of pending delegates for a session without consuming them.
- * Used by the tool to report chain position in its return value.
- */
 export function pendingDelegateCount(sessionKey: string): number {
-  if (taskFlowDelegatesEnabled) {
-    return taskFlowPendingDelegateCount(sessionKey);
-  }
-  return pendingDelegates.get(sessionKey)?.length ?? 0;
+  return taskFlowPendingDelegateCount(sessionKey);
 }
 
-/**
- * Cancel and remove all pending delegates for a session.
- * For the volatile store this is a no-op (delegates are turn-local).
- * For the Task Flow store this cancels and deletes the flow records.
- */
 export function cancelPendingDelegates(sessionKey: string): void {
-  if (taskFlowDelegatesEnabled) {
-    taskFlowCancelPendingDelegates(sessionKey);
-    return;
-  }
-  // Volatile store: delegates are turn-local, no explicit cancel needed.
-  // Drain them to prevent leakage.
-  pendingDelegates.delete(sessionKey);
+  taskFlowCancelPendingDelegates(sessionKey);
 }
 
 export function addDelayedContinuationReservation(
