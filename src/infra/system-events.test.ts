@@ -183,6 +183,37 @@ describe("system events (session routing)", () => {
     first.resetSystemEventsForTest();
   });
 
+  it("threads a valid traceparent onto the queued event (additive, optional)", () => {
+    const key = "agent:main:test-traceparent";
+    const tp = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+    enqueueSystemEvent("queue boundary event", { sessionKey: key, traceparent: tp });
+
+    const events = peekSystemEventEntries(key);
+    expect(events).toHaveLength(1);
+    expect(events[0].traceparent).toBe(tp);
+  });
+
+  it("silently drops a malformed traceparent (additive: never fail-the-write)", () => {
+    const key = "agent:main:test-traceparent-malformed";
+    enqueueSystemEvent("queue boundary event", {
+      sessionKey: key,
+      traceparent: "not-a-real-traceparent",
+    });
+
+    const events = peekSystemEventEntries(key);
+    expect(events).toHaveLength(1);
+    expect(events[0].traceparent).toBeUndefined();
+  });
+
+  it("omits the traceparent field entirely when not provided", () => {
+    const key = "agent:main:test-traceparent-absent";
+    enqueueSystemEvent("plain event", { sessionKey: key });
+
+    const events = peekSystemEventEntries(key);
+    expect(events).toHaveLength(1);
+    expect("traceparent" in events[0]).toBe(false);
+  });
+
   it("filters heartbeat/noise lines, returning undefined", async () => {
     const key = "agent:main:test-heartbeat-filter";
     enqueueSystemEvent("Read HEARTBEAT.md before continuing", { sessionKey: key });
