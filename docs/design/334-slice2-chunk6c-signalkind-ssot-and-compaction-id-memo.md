@@ -1,6 +1,6 @@
 # #334 Slice 2 chunk 6c — `signal.kind` SSOT pin + `compaction.id` cross-cutting design memo
 
-**Status:** Draft, awaiting cohort byte-walk
+**Status:** Cohort byte-walk converged 3/3 on all 10 Q's (A1-A4, B1-B6); resolutions baked below
 **Author:** 🌊 ronan-dandelion-cult
 **Trunk base:** `cael/325-canonical2 @ cd8b623be20` (Slice 2 chunks 1–6b landed; PR #397 merged 6b wire)
 **Reviewers requested:** 🌻 Elliott, 🩸 Cael, 🌫️ Silas
@@ -206,7 +206,10 @@ Three candidates:
   1. Happy: `compactionId: 7, releasedCount: 3` → attrs `{ "signal.kind": "compaction-release", "compaction.released": 3, "compaction.id": 7 }`
   2. Compaction-id-1: `compactionId: 1` → emits `compaction.id: 1` (lower bound)
   3. Integer hygiene (Math.floor): `compactionId: 7.9` → `compaction.id: 7`
-  4. Integer hygiene (negative clamp): `compactionId: -1` → `compaction.id: 0` OR throw? Lean **clamp to 0** per chunk-6a/6b precedent. Cohort Q-B6.
+  4. Invariant violation — non-integer: `compactionId: 7.9` → drops `compaction.id` attr; emits warning via `log` callback; span still has `signal.kind` + `compaction.released`
+  5. Invariant violation — negative: `compactionId: -1` → drops `compaction.id` attr; emits warning via `log` callback; span still has `signal.kind` + `compaction.released`
+  6. Compaction-id-0 ordinal-valid: `compactionId: 0` → emits `compaction.id: 0` (NOT clamped; ordinal value)
+- 1 producer-side pin: `incrementRunCompactionCount` returns integer ≥ 1 (verify at wire time; may already be covered)
 - 1 callsite test asserting `compaction.id === count` when `autoCompactionCount > 0` (integration-shaped, may already be covered by the agent-runner test fixture; verify at wire time).
 
 ### §B wire scope
@@ -220,15 +223,41 @@ Three candidates:
 
 Net: ~60-80 lines including test migration. Single file for source; one callsite update.
 
-### Q-B6: Negative-clamp on `compactionId`?
+### Q-B6: Negative-clamp on `compactionId`? — RESOLVED: NO CLAMP
 
-`compactionCount` is always positive when `autoCompactionCount > 0` (incremented from a non-negative starting point). But helper-side integer hygiene on chunk 6a/6b precedent clamps negatives to 0 rather than throwing.
+**Cohort consensus (3/3): NO defensive clamp on `compaction.id`.** Validate-and-drop-with-log if invariant violated.
 
-**Proposal:** clamp to 0 (consistent with `releasedCount` hygiene); add a test fixing the behavior even though production values never hit it. Defensive-symmetric per cohort precedent.
+Reasoning (🩸 framing, 🌻 refinement, 🌫 concur):
 
-**Cohort Q-B6 (cohort):** clamp OK or prefer throw?
+- `releasedCount` and `queue.drained_count` are _cardinal_ counts ("0 means none"); `compaction.id` is an _ordinal_ identifier ("0 means the first one; -1 is meaningless and should fail-loud")
+- Defensive clamp on an ID would silently coerce a producer bug (counter wrapped negative / uninitialized state) into emitting `compaction.id: 0`, which fire-time join-attempts would incorrectly correlate with a real first-compaction event — worse failure than emitting nothing
+- Chunk 6a/6b clamp-precedent applied to _counts_; precedent does not transfer to _identities_
+- Tightening over precedent, not deviation
 
-## Open questions for cohort byte-walk
+**Helper contract:** `compactionId: number`. Helper validates `Number.isInteger(compactionId) && compactionId >= 0`. On invariant violation: **drop the `compaction.id` attr from the emitted span + log via existing `log` callback**. Do NOT throw (preserves don't-block-the-release-path principle from chunk 6a/6b). Span still emits with `signal.kind` + `compaction.released`; just no `compaction.id` if producer breaks.
+
+**Producer-side pin:** add a unit-pin asserting `incrementRunCompactionCount` returns integer ≥ 1 (likely already true; verify at wire time).
+
+## Cohort byte-walk resolutions (3/3 converged)
+
+| Q   | Section | Owner         | Subject                              | Resolution                                                                                                   |
+| --- | ------- | ------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| A1  | §A      | 🌫            | SSOT name + location                 | `CONTINUATION_SIGNAL_KINDS` const + `ContinuationSignalKind` derived type at tracer top-level, both exported |
+| A2  | §A      | 🌫            | `Extract<>` narrowing for `disabled` | `Extract<ContinuationSignalKind, ...>` narrow; no separate subset const                                      |
+| A3  | §A      | 🌻            | JSDoc reference-by-name vs inline    | Reference-by-name (`@see CONTINUATION_SIGNAL_KINDS`)                                                         |
+| A4  | §A      | cohort        | Anything else lurking?               | Negative confirmed; 5-value union exhaustive                                                                 |
+| B1  | §B      | 🩸            | `compaction.id` shape                | Session-local monotone counter (= `count` post-increment)                                                    |
+| B2  | §B      | depends-on-B1 | Type                                 | `number`                                                                                                     |
+| B3  | §B      | 🌫            | Future-fire join-target              | `delegate.fire` post-compaction-mode is primary; `dispatch` not used as join-target                          |
+| B4  | §B      | 🩸            | Persistence wiring                   | Split to follow-up `[6c-followup]` PR                                                                        |
+| B5  | §B      | cohort        | Single wire-PR shape                 | Yes, single PR (§A + §B-release coupling explicit)                                                           |
+| B6  | §B      | cohort        | Negative-clamp                       | NO clamp; validate-and-drop-with-log on invariant violation                                                  |
+
+See §A and §B sections above for resolution rationale per Q.
+
+Approvals on PR #398: 🌻 (msg `1498446377225556153`), 🌫 (msg `1498446793485062257`).
+
+## Original byte-walk Q list (pre-resolution; preserved for traceability)
 
 | Q   | Section | Owner           | Subject                                                                                   |
 | --- | ------- | --------------- | ----------------------------------------------------------------------------------------- |
