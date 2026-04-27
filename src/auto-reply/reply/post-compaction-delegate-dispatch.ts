@@ -56,7 +56,7 @@ export type PostCompactionDelegateDeliveryDeps = {
 export type PostCompactionDelegateDispatchDeps = {
   consumeStagedPostCompactionDelegates(sessionKey: string): SessionPostCompactionDelegate[];
   drainPostCompactionDelegateDeliveries(params: {
-    entryIds: readonly string[];
+    entryIds?: readonly string[];
     log: SessionDeliveryRecoveryLogger;
     sessionKey: string;
   }): Promise<void>;
@@ -609,21 +609,23 @@ export async function dispatchPostCompactionDelegates(
     { sessionKey: params.sessionKey },
   );
 
-  if (queuedEntryIds.length > 0) {
-    void deps
-      .drainPostCompactionDelegateDeliveries({
+  void (async () => {
+    if (queuedEntryIds.length > 0) {
+      await deps.drainPostCompactionDelegateDeliveries({
         entryIds: queuedEntryIds,
         log: defaultRecoveryLog,
         sessionKey: params.sessionKey,
-      })
-      .catch((err) => {
-        deps.log(
-          `Failed to drain queued post-compaction delegates for ${params.sessionKey}: ${String(
-            err,
-          )}`,
-        );
       });
-  }
+    }
+    await deps.drainPostCompactionDelegateDeliveries({
+      log: defaultRecoveryLog,
+      sessionKey: params.sessionKey,
+    });
+  })().catch((err) => {
+    deps.log(
+      `Failed to drain queued post-compaction delegates for ${params.sessionKey}: ${String(err)}`,
+    );
+  });
 
   return {
     queuedDelegates: queuedEntryIds.length,

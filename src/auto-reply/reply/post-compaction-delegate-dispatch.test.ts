@@ -4,11 +4,16 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  enqueuePostCompactionDelegateDelivery as enqueueQueuedPostCompactionDelegateDelivery,
+  loadPendingSessionDeliveries,
+} from "../../infra/session-delivery-queue.js";
 import { withTempDir } from "../../test-helpers/temp-dir.js";
 import type { ContinuationRuntimeConfig } from "./continuation-runtime.js";
 import {
   buildPostCompactionLifecycleEvent,
   deliverQueuedPostCompactionDelegate,
+  drainPostCompactionDelegateDeliveries,
   dispatchPostCompactionDelegates,
   normalizePostCompactionDelegate,
   persistPendingPostCompactionDelegates,
@@ -137,15 +142,19 @@ function createDeliveryDeps(params: {
   runtimeConfig?: Partial<ContinuationRuntimeConfig>;
   spawnStatus?: "accepted" | "forbidden" | "error";
   spawnError?: Error;
+  spawnSubagentDirect?: PostCompactionDelegateDeliveryDeps["spawnSubagentDirect"];
 }) {
   const enqueueSystemEvent = vi.fn();
   const log = vi.fn();
-  const spawnSubagentDirect = vi.fn(async () => {
-    if (params.spawnError) {
-      throw params.spawnError;
-    }
-    return { status: params.spawnStatus ?? "accepted" };
-  });
+  const spawnSubagentDirect = vi.fn(
+    params.spawnSubagentDirect ??
+      (async () => {
+        if (params.spawnError) {
+          throw params.spawnError;
+        }
+        return { status: params.spawnStatus ?? "accepted" };
+      }),
+  );
   const deps: PostCompactionDelegateDeliveryDeps = {
     enqueueSystemEvent,
     loadConfig: vi.fn(() => cfg),
@@ -334,8 +343,13 @@ describe("post-compaction delegate dispatch extraction", () => {
         },
       },
     ]);
-    expect(drainPostCompactionDelegateDeliveries).toHaveBeenCalledWith({
+    expect(drainPostCompactionDelegateDeliveries).toHaveBeenCalledTimes(2);
+    expect(drainPostCompactionDelegateDeliveries).toHaveBeenNthCalledWith(1, {
       entryIds: ["queue-0", "queue-1"],
+      log: expect.any(Object),
+      sessionKey: "main",
+    });
+    expect(drainPostCompactionDelegateDeliveries).toHaveBeenNthCalledWith(2, {
       log: expect.any(Object),
       sessionKey: "main",
     });
@@ -487,6 +501,73 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(readPostCompactionContext).toHaveBeenCalledWith("/fallback-workspace", {
       cfg,
       agentId: "main",
+    });
+  });
+
+  it("retries prior failed post-compaction delegates during later unfiltered drain cycles", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T23:00:00.000Z"));
+
+    await withTempDir({ prefix: "openclaw-post-compaction-drain-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: Date.now() } }, null, 2),
+        "utf-8",
+      );
+      const spawnSubagentDirect = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("transient spawn failure"))
+        .mockResolvedValue({ status: "accepted" });
+      const { deps } = createDeliveryDeps({ storePath, spawnSubagentDirect });
+      const log = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+      const entryId = await enqueueQueuedPostCompactionDelegateDelivery(
+        {
+          sessionKey: "main",
+          delegate: delegate("retry me"),
+          sequence: 0,
+          compactionCount: 1,
+        },
+        tempDir,
+      );
+
+      await drainPostCompactionDelegateDeliveries({
+        entryIds: [entryId],
+        stateDir: tempDir,
+        deliveryDeps: deps,
+        log,
+        sessionKey: "main",
+      });
+
+      const [failedEntry] = await loadPendingSessionDeliveries(tempDir);
+      expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
+      expect(failedEntry?.retryCount).toBe(1);
+      expect(failedEntry?.lastError).toBe("transient spawn failure");
+
+      vi.setSystemTime(new Date("2026-04-26T23:00:04.999Z"));
+      await drainPostCompactionDelegateDeliveries({
+        stateDir: tempDir,
+        deliveryDeps: deps,
+        log,
+        sessionKey: "main",
+      });
+      expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
+      expect(await loadPendingSessionDeliveries(tempDir)).toHaveLength(1);
+
+      vi.setSystemTime(new Date("2026-04-26T23:00:05.000Z"));
+      await drainPostCompactionDelegateDeliveries({
+        stateDir: tempDir,
+        deliveryDeps: deps,
+        log,
+        sessionKey: "main",
+      });
+
+      expect(spawnSubagentDirect).toHaveBeenCalledTimes(2);
+      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
     });
   });
 
