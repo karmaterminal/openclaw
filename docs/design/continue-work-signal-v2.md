@@ -686,7 +686,7 @@ Operational notes:
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
 - `generationGuardTolerance` has been removed from the configuration surface. Delayed work should not be cancelled by unrelated channel noise. See the design decision note in §3.2.
-- `taskFlowDelegates` is no longer a user-facing switch; delegate durability is mandatory.
+- `taskFlowDelegates` has been removed from the configuration surface; delegate durability is unconditional (PR #365).
 - all runtime values are hot-reloadable; changes take effect at the next enforcement point.
 
 ### 5.2 Operator profiles
