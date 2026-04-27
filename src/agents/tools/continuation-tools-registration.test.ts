@@ -29,7 +29,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
   });
 
-  it("lists targetSessionKey in the continue_delegate schema descriptor", () => {
+  it("lists targetSessionKeys in the continue_delegate schema descriptor (#355 stage-1)", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -41,15 +41,16 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
 
     expect(tool.parameters).toMatchObject({
       properties: {
-        targetSessionKey: {
-          type: "string",
-          description: expect.stringContaining("RPC-style address-recipient"),
+        targetSessionKeys: {
+          type: "array",
+          items: { type: "string" },
+          description: expect.stringContaining("choral fan-out"),
         },
       },
     });
   });
 
-  it("fails loudly when targetSessionKey is used before runtime binding exists", async () => {
+  it("rejects targetSessionKeys that is not an array of non-empty strings", async () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -62,9 +63,9 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     await expect(
       tool.execute("tool-call", {
         task: "summarize sibling context",
-        targetSessionKey: "prince:cael:agent:main:main",
+        targetSessionKeys: "prince:cael:agent:main:main",
       }),
-    ).rejects.toThrow("targetSessionKey is descriptor-only in v2.5; runtime in #332");
+    ).rejects.toThrow(/targetSessionKeys/);
   });
 
   it("hides continue_delegate when continuation is disabled", () => {
