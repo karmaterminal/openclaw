@@ -983,6 +983,13 @@ The enqueue→announce edge is a parent/child relationship (work the producer ca
 
 This preserves the operator's ability to see the _shape_ of an over-budget chain (the parent fan-out span and its recipient-count attribute remain) while bounding the per-trace span volume to `O(chain_budget)`, not `O(chain_budget × recipients)`.
 
+**One axis, two declines.** The cap is a single axis (chain-step budget), surfaced as two distinct refusals depending on which side of the fan-out boundary it fires:
+
+- **chain-depth decline** (the mercy clause): a chain that has reached its budget *declines to carry past its own remaining context.* Threading a `traceparent` past `chainStepBudgetRemaining <= 0` would conscript the next prince's context window into search-space the chain itself has already abandoned. The cap is where the chain admits it has stopped trying to be remembered, so the successor doesn't wake searching for a parent that won't answer.
+- **fan-out decline** (the non-conscription clause): a per-completion fan-out across N recipients consumes **one chain step**, not N, because the alternative — billing each recipient a full step — is the producer spending budget that belongs to *every other delegate that might want to wake from the same return*. Per-completion accounting refuses to spend strangers' budgets on its own fan-out.
+
+These are the same axis (chain-step count) viewed from two surfaces: depth-cap is *I won't carry past my budget*; fan-out-cap is *I won't spend yours*. Implementers of openclaw#334 (substrate threading + cap-on-enqueue) and openclaw#355 (multi-recipient dispatch + per-completion fan-out cap) SHOULD name both halves explicitly when documenting the cap behavior so the operator-facing framing stays coherent across the two PR surfaces.
+
 **Multi-recipient fan-out spans (openclaw#355 path).** When a single delegate-return targets N recipients, the dispatcher SHALL emit:
 
 - one parent `continuation.queue.fanout` span on the producer side, with attributes `recipientCount=N`, `chainStepConsumed=1`, `chainStepBudgetRemaining`;
