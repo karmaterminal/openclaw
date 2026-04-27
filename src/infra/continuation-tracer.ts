@@ -299,10 +299,10 @@ export function emitContinuationWorkSpan(args: {
  *    the delay was 0 (no `setTimeout` armed); `"timer"` when a
  *    non-zero clamped delay armed `setTimeout`.
  *  - `delegate.mode` (`"normal" | "silent" | "silent-wake" |
- *    "post-compaction"`): caller-intent semantic axis. Optional
- *    because some call sites (e.g. bracket-`CONTINUE_DELEGATE` without
- *    the `silent`/`silent-wake` modifier) emit without a mode
- *    annotation; the attribute is omitted in that case.
+ *    "post-compaction"`): caller-intent semantic axis. Optional in
+ *    the helper signature so future call sites (e.g. an exporter
+ *    replaying a partial dispatch record) can emit without a mode
+ *    annotation; current runner wiring always supplies one.
  *
  * Per cohort design (sprites-of-thornfield, 2026-04-27): emit at the
  * **enqueue/accept seam**, NOT at the timer-fire callback. The chain-step
