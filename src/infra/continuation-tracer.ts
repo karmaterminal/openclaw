@@ -132,6 +132,7 @@ export type ContinuationSpanAttrs = {
  */
 export type ContinuationSpanName =
   | "continuation.work"
+  | "continuation.work.fire"
   | "continuation.delegate.dispatch"
   | "continuation.delegate.fire"
   | "continuation.queue.enqueue"
@@ -558,5 +559,83 @@ export function emitContinuationDelegateFireSpan(args: {
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.delegate.fire span: ${String(err)}`);
+  }
+}
+
+/**
+ * Emit a `continuation.work.fire` span at the bracket-work timer-callback
+ * seam (#334 Slice 2 chunk 5c). Symmetric to `emitContinuationDelegateFireSpan`
+ * but scope-narrower: WORK-fire has NO fire-time divergence in current bytes
+ * (no reservation system at the bracket-work seam — `enqueueSystemEvent` and
+ * `requestHeartbeatNow` are synchronous and non-divergent), so 5c emits a
+ * single span with no `continuation.disabled` sibling — unlike 5b which paired
+ * fire+disabled(`reservation.missing`).
+ *
+ * **Cohort 3/3 verdicts (PR #390, sprites-of-thornfield 2026-04-27):**
+ *  - **Naming:** `continuation.work.fire` (parallel grammar). Family rule
+ *    `<noun>.<action>` two-segment dotted-only; `.fire` already means
+ *    timer-callback in the family-grammar.
+ *  - **Helper shape:** separate from `emitContinuationDelegateFireSpan`.
+ *    Unified-parameterized devolves into `if (kind === "work")` branches and
+ *    couples sibling-disabled-emit divergence across helper boundary.
+ *  - **`reason.preview` carry-through:** yes. `continuationWorkReason` is in
+ *    closure scope at dispatch, free to forward; snapshot-by-architecture
+ *    (no recompute path exists), pays off in operator-mode triage.
+ *
+ * **Provenance pins (mirror 5b discipline):**
+ *  - `chainId` is closed-over from dispatch-time `persistContinuationChainState`
+ *    return value. Never recomputed at fire-time.
+ *  - `chainStepRemainingAtDispatch` is a dispatch-time snapshot, NOT a
+ *    fire-time recompute. Trace continuity with the dispatch span (same
+ *    `chain.id`, same step counter) so consumers can pair `work` / `work.fire`
+ *    events without reasoning about between-tick mutations.
+ *  - 5c is **instrumentation-of-status-quo only**: helper does NOT re-evaluate
+ *    any cap (`cap.chain | cap.cost | cap.delegates_per_turn`) at fire-time.
+ *    Fire-time gating is a future-policy seam, deferred to a future memo.
+ *  - `fire.deferred_ms` = wall-clock from `setTimeout`-arm to callback fire,
+ *    `Math.floor` integer ms. Drift formula: `drift = fire.deferred_ms − delay.ms`.
+ *
+ * Wraps tracer interactions in a try/catch and logs via the caller's `log`
+ * callback if provided — the fire path must never block on span emission.
+ */
+export function emitContinuationWorkFireSpan(args: {
+  chainId: string;
+  chainStepRemainingAtDispatch: number;
+  delayMs: number;
+  fireDeferredMs: number;
+  reason?: string | undefined;
+  log?: (message: string) => void;
+}): void {
+  // Defense-in-depth: invariant says chainId is always defined at
+  // work-fire time (chunk 1 mints pre-setTimeout via persistContinuationChainState).
+  // Sig encodes the invariant via non-optional `string`, but a future change
+  // that lets `undefined` slip through must NOT crash fire-emit. No-op + log
+  // so the divergence is visible without taking down the timer callback.
+  if (args.chainId === undefined || args.chainId === null) {
+    args.log?.(
+      "Failed to emit continuation.work.fire span: chainId invariant violated (undefined)",
+    );
+    return;
+  }
+  try {
+    const reasonPreview = args.reason
+      ? args.reason.length > 80
+        ? args.reason.slice(0, 80)
+        : args.reason
+      : undefined;
+    const attrs: ContinuationSpanAttrs = {
+      "chain.id": args.chainId,
+      "chain.step.remaining": Math.max(0, args.chainStepRemainingAtDispatch),
+      "delay.ms": Math.round(args.delayMs),
+      "fire.deferred_ms": Math.max(0, Math.floor(args.fireDeferredMs)),
+      ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
+    };
+    const span = activeTracer.startSpan("continuation.work.fire", {
+      attributes: attrs,
+    });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.work.fire span: ${String(err)}`);
   }
 }
