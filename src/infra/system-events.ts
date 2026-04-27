@@ -13,6 +13,7 @@ import {
   normalizeDeliveryContext,
 } from "../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
+import { parseDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 
 export type SystemEvent = {
   text: string;
@@ -20,6 +21,16 @@ export type SystemEvent = {
   contextKey?: string | null;
   deliveryContext?: DeliveryContext;
   trusted?: boolean;
+  /**
+   * W3C `traceparent` captured at enqueue-time so the substrate-queue drain can
+   * reconstruct the producer trace at announce/deliver time. Per RFC §6.7 the
+   * substrate queue is an asynchronous boundary (enqueue turn != drain turn,
+   * possibly across a gateway restart), so trace context rides on the payload
+   * itself rather than on a runtime ambient. Optional and additive — invalid
+   * traceparent values are silently dropped at enqueue-time so producers never
+   * fail-the-write on a malformed header.
+   */
+  traceparent?: string;
 };
 
 const MAX_EVENTS = 20;
@@ -39,7 +50,25 @@ type SystemEventOptions = {
   contextKey?: string | null;
   deliveryContext?: DeliveryContext;
   trusted?: boolean;
+  /**
+   * Optional W3C `traceparent` to attach to the queued event for cross-boundary
+   * trace correlation. Invalid values are silently dropped (additive contract:
+   * a malformed traceparent never prevents an enqueue).
+   */
+  traceparent?: string;
 };
+
+function normalizeTraceparent(traceparent?: string): string | undefined {
+  if (typeof traceparent !== "string") {
+    return undefined;
+  }
+  const trimmed = traceparent.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  // Round-trip via the parser to validate shape; invalid -> dropped silently.
+  return parseDiagnosticTraceparent(trimmed) ? trimmed.toLowerCase() : undefined;
+}
 
 function requireSessionKey(key?: string | null): string {
   const trimmed = normalizeOptionalString(key) ?? "";
@@ -102,12 +131,14 @@ export function enqueueSystemEvent(text: string, options: SystemEventOptions) {
     return false;
   } // skip consecutive duplicates
   entry.lastText = cleaned;
+  const normalizedTraceparent = normalizeTraceparent(options?.traceparent);
   entry.queue.push({
     text: cleaned,
     ts: Date.now(),
     contextKey: normalizedContextKey,
     deliveryContext: normalizedDeliveryContext,
     trusted: options.trusted !== false,
+    ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
   });
   if (entry.queue.length > MAX_EVENTS) {
     entry.queue.shift();
@@ -145,6 +176,7 @@ function areSystemEventsEqual(left: SystemEvent, right: SystemEvent): boolean {
     left.ts === right.ts &&
     (left.contextKey ?? null) === (right.contextKey ?? null) &&
     (left.trusted ?? true) === (right.trusted ?? true) &&
+    (left.traceparent ?? undefined) === (right.traceparent ?? undefined) &&
     areDeliveryContextsEqual(left.deliveryContext, right.deliveryContext)
   );
 }
