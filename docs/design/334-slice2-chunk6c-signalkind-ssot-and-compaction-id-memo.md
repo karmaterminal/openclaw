@@ -211,14 +211,14 @@ Three candidates:
 
 ### §B wire scope
 
-| Surface                                                                     | Change                                                                                                                    |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `src/infra/continuation-tracer.ts` `ContinuationSpanAttrs`                  | Add `"compaction.id"?: number` with full JSDoc (join-key contract)                                                        |
-| `src/infra/continuation-tracer.ts` `emitContinuationCompactionReleasedSpan` | Add `compactionId: number` to args; attach as `compaction.id` attr; integer hygiene via `Math.max(0, Math.floor(...))`    |
-| `src/auto-reply/reply/agent-runner.ts:1962`                                 | Pass `compactionId: count` to helper                                                                                      |
-| `src/infra/continuation-tracer.test.ts`                                     | Update existing 6b helper tests to pass `compactionId` (will require migration); add 4 new `compaction.id`-specific tests |
+| Surface                                                                     | Change                                                                                                                                                                          |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/infra/continuation-tracer.ts` `ContinuationSpanAttrs`                  | Add `"compaction.id"?: number` with full JSDoc (join-key contract: `(session.id, compaction.id)` correlates release-side ↔ future post-compaction-mode `delegate.fire`)         |
+| `src/infra/continuation-tracer.ts` `emitContinuationCompactionReleasedSpan` | Add `compactionId: number` to args; validate `Number.isInteger && >= 0`; attach as `compaction.id` attr on success; drop attr + log on invariant violation (no clamp, no throw) |
+| `src/auto-reply/reply/agent-runner.ts:1962`                                 | Pass `compactionId: count` to helper                                                                                                                                            |
+| `src/infra/continuation-tracer.test.ts`                                     | Update existing 6b helper tests to pass `compactionId` (migration); add 5 new `compaction.id`-specific tests                                                                    |
 
-Net: ~50-70 lines including test migration. Single file for source; one callsite update.
+Net: ~60-80 lines including test migration. Single file for source; one callsite update.
 
 ### Q-B6: Negative-clamp on `compactionId`?
 
