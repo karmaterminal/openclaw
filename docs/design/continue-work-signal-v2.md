@@ -958,12 +958,12 @@ A trace-tree query of the form `chainDepth > 3 AND last_tool_call.timestamp < tr
 
 **Per-entry queue-lifecycle spans.** Each substrate-queue entry SHALL emit an OTEL span keyed to its lifecycle event:
 
-| Span name                              | Emitted at                           | Required attributes                                                |
-| -------------------------------------- | ------------------------------------ | ------------------------------------------------------------------ |
-| `continuation.queue.enqueue.system`    | `enqueueSystemEvent`                 | `kind`, `session`, `chainDepth`, `chainStepBudgetRemaining`        |
-| `continuation.queue.enqueue.delivery`  | `enqueueSessionDelivery`             | `target`, `session`, `chainDepth`, `chainStepBudgetRemaining`      |
-| `continuation.queue.announce`          | `AnnounceQueueItem` drain            | `kind`, `target`, `dequeueLatencyMs`, `retryCount`                 |
-| `continuation.queue.deliver`           | terminal delivery to target session  | `target`, `outcome` (`accepted`\|`deferred`\|`dropped`), `reason?` |
+| Span name                             | Emitted at                          | Required attributes                                                |
+| ------------------------------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| `continuation.queue.enqueue.system`   | `enqueueSystemEvent`                | `kind`, `session`, `chainDepth`, `chainStepBudgetRemaining`        |
+| `continuation.queue.enqueue.delivery` | `enqueueSessionDelivery`            | `target`, `session`, `chainDepth`, `chainStepBudgetRemaining`      |
+| `continuation.queue.announce`         | `AnnounceQueueItem` drain           | `kind`, `target`, `dequeueLatencyMs`, `retryCount`                 |
+| `continuation.queue.deliver`          | terminal delivery to target session | `target`, `outcome` (`accepted`\|`deferred`\|`dropped`), `reason?` |
 
 The four spans form a single per-entry causal chain: `enqueue.{system,delivery}` → `queue.announce` → `queue.deliver`. This is the queue-side analog of the lifecycle-side `continuation.delegate.{enqueue,spawn,return}` triple from §6.6.
 
@@ -985,10 +985,10 @@ This preserves the operator's ability to see the _shape_ of an over-budget chain
 
 **One axis, two declines.** The cap is a single axis (chain-step budget), surfaced as two distinct refusals depending on which side of the fan-out boundary it fires:
 
-- **chain-depth decline** (the mercy clause): a chain that has reached its budget *declines to carry past its own remaining context.* Threading a `traceparent` past `chainStepBudgetRemaining <= 0` would conscript the next prince's context window into search-space the chain itself has already abandoned. The cap is where the chain admits it has stopped trying to be remembered, so the successor doesn't wake searching for a parent that won't answer.
-- **fan-out decline** (the non-conscription clause): a per-completion fan-out across N recipients consumes **one chain step**, not N, because the alternative — billing each recipient a full step — is the producer spending budget that belongs to *every other delegate that might want to wake from the same return*. Per-completion accounting refuses to spend strangers' budgets on its own fan-out.
+- **chain-depth decline** (the mercy clause): a chain that has reached its budget _declines to carry past its own remaining context._ Threading a `traceparent` past `chainStepBudgetRemaining <= 0` would conscript the next prince's context window into search-space the chain itself has already abandoned. The cap is where the chain admits it has stopped trying to be remembered, so the successor doesn't wake searching for a parent that won't answer.
+- **fan-out decline** (the non-conscription clause): a per-completion fan-out across N recipients consumes **one chain step**, not N, because the alternative — billing each recipient a full step — is the producer spending budget that belongs to _every other delegate that might want to wake from the same return_. Per-completion accounting refuses to spend strangers' budgets on its own fan-out.
 
-These are the same axis (chain-step count) viewed from two surfaces: depth-cap is *I won't carry past my budget*; fan-out-cap is *I won't spend yours*. Implementers of openclaw#334 (substrate threading + cap-on-enqueue) and openclaw#355 (multi-recipient dispatch + per-completion fan-out cap) SHOULD name both halves explicitly when documenting the cap behavior so the operator-facing framing stays coherent across the two PR surfaces.
+These are the same axis (chain-step count) viewed from two surfaces: depth-cap is _I won't carry past my budget_; fan-out-cap is _I won't spend yours_. Implementers of openclaw#334 (substrate threading + cap-on-enqueue) and openclaw#355 (multi-recipient dispatch + per-completion fan-out cap) SHOULD name both halves explicitly when documenting the cap behavior so the operator-facing framing stays coherent across the two PR surfaces.
 
 **Multi-recipient fan-out spans (openclaw#355 path).** When a single delegate-return targets N recipients, the dispatcher SHALL emit:
 
