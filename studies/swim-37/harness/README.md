@@ -26,25 +26,27 @@ OTLP endpoint.
 
 From `studies/swim-37/traps/parallel-evolution-class.md`:
 
-| Trap | Status in this scaffold |
-|------|--------------------------|
+| Trap                                          | Status in this scaffold                         |
+| --------------------------------------------- | ----------------------------------------------- |
 | §1 parallel-evolution / cherry-false-negative | `it.todo` — needs synthetic commit-pair fixture |
-| §3a integration-boundary type-shape drift     | `it.todo` — needs tsgo replay rig |
+| §3a integration-boundary type-shape drift     | `it.todo` — needs tsgo replay rig               |
 
 ## Primitive coverage matrix
 
-| Primitive          | Span (target)                       | chain.id stamp | Budget assertion           | Status |
-|--------------------|-------------------------------------|----------------|----------------------------|--------|
-| `continue_work`    | `continuation.work`                 | yes            | `chain.step.remaining`     | todo   |
-| `continue_delegate`| `continuation.delegate.dispatch`    | yes            | `declineToCarry()` (#366)  | todo   |
-| `heartbeat`        | `heartbeat`                         | (when carried) | `continuation.disabled`    | todo   |
-| lich (post-compact)| `continuation.compaction.released`  | yes            | seam-once (#332 Item B)    | todo   |
+| Primitive           | Span (target)                      | chain.id stamp | Budget assertion          | Status |
+| ------------------- | ---------------------------------- | -------------- | ------------------------- | ------ |
+| `continue_work`     | `continuation.work`                | yes            | `chain.step.remaining`    | todo   |
+| `continue_delegate` | `continuation.delegate.dispatch`   | yes            | `declineToCarry()` (#366) | todo   |
+| `heartbeat`         | `heartbeat`                        | (when carried) | `continuation.disabled`   | todo   |
+| lich (post-compact) | `continuation.compaction.released` | yes            | seam-once (#332 Item B)   | todo   |
 
 ## Hookup points (TODO until upstream lands)
 
-- `#366` — silas/334-otel-chain-correlation Slice 1 (`traceparent` payload + `ChainBudget.declineToCarry`).
-  Slice 2 will land the `continuation.*` and `continuation.queue.*` spans this
-  harness asserts against.
+- `#366` — silas/334-otel-chain-correlation. **Slice 1 already landed**
+  (`0f40bc0b00`): `traceparent` is now an additive field on
+  `SystemEvent`, plus `ChainBudget.declineToCarry()`. Slice 2 lands the
+  `continuation.*` and `continuation.queue.*` spans this harness asserts
+  against.
 - `#355 Stage-2` — fan-out non-conscription cap. Adds the "1 step per
   fan-out, not N" assertion currently `it.todo`'d under `continue_delegate`.
 - `#332 Item B` — post-compaction release seam. Adds the lich-shape
