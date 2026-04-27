@@ -28,6 +28,7 @@ import {
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
+  emitContinuationWorkFireSpan,
 } from "../../infra/continuation-tracer.js";
 import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
@@ -2521,8 +2522,37 @@ export async function runReplyAgent(params: {
               });
 
               retainContinuationTimerRef(sessionKey);
+              // #334 Slice 2 chunk 5c — snapshot dispatch-time inputs for the
+              // fire-span emission inside the timer callback. armedAt captured
+              // immediately before setTimeout so fireDeferredMs = Date.now() - armedAt
+              // measures wall-clock drift between arming and callback execution.
+              // chainStepRemainingAtDispatch is a snapshot, NOT a fire-time recompute
+              // — keeps the work/work.fire trace pair coherent (same chain.id,
+              // same step counter). Symmetric to 5b's delegate.fire pattern.
+              const persistedChainIdForWorkTimer = persistedChainId;
+              const workChainStepRemainingAtDispatch = maxChainLength - nextChainCount;
+              const workArmedAt = Date.now();
               const timerHandle = setTimeout(() => {
                 try {
+                  // #334 Slice 2 chunk 5c — emit `continuation.work.fire` span
+                  // BEFORE the existing log/enqueue/heartbeat sequence. Helper
+                  // wraps in try/catch so emission can never block the
+                  // continuation-wake event. No fire-time cap recheck (5c is
+                  // instrumentation-of-status-quo only).
+                  const workFireDeferredMs = Date.now() - workArmedAt;
+                  emitContinuationWorkFireSpan({
+                    // Invariant: persistedChainIdForWorkTimer is always a string
+                    // here — `persistContinuationChainState` only returns
+                    // undefined when `sessionKey` is falsy, but this branch
+                    // is gated on `sessionKey` being truthy (chunk 1).
+                    // Helper's defense-in-depth no-ops if undefined slips.
+                    chainId: persistedChainIdForWorkTimer as string,
+                    chainStepRemainingAtDispatch: workChainStepRemainingAtDispatch,
+                    delayMs: clampedDelay,
+                    fireDeferredMs: workFireDeferredMs,
+                    reason: continuationWorkReason,
+                    log: (message) => defaultRuntime.log(message),
+                  });
                   defaultRuntime.log(`WORK timer fired for session ${sessionKey}`);
                   enqueueSystemEvent(
                     `[continuation:wake] Turn ${nextChainCount}/${maxChainLength}. ` +

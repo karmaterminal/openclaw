@@ -90,6 +90,20 @@ describe("swim-37 harness :: continuation primitives [scaffold]", () => {
   describe("continue_work", () => {
     it.todo("emits continuation.work span with chain.id stamped (#366)");
     it.todo("span carries chain.step.remaining attribute");
+    // Chunk 5c (#388) — `continuation.work.fire` lands at bracket-work timer-
+    // callback start. Symmetric to 5b's delegate.fire seam but scope-narrower:
+    // no reservation system at this seam, so single span emit, no sibling.
+    // chainId is closed-over from dispatch-time; chainStepRemainingAtDispatch
+    // is a snapshot, not fire-time live state.
+    it.todo(
+      "emits continuation.work.fire span at timer callback with persisted chain.id (#388 chunk 5c)",
+    );
+    it.todo(
+      "fire span carries chain.step.remaining_at_dispatch (snapshot, not live) attr (#388 chunk 5c)",
+    );
+    it.todo(
+      "fire.deferred_ms attr present and integer; drift = fire.deferred_ms − delay.ms (#388 chunk 5c)",
+    );
   });
 
   describe("continue_delegate", () => {
