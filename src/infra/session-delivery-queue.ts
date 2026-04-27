@@ -1,8 +1,10 @@
 export {
   ackSessionDelivery,
+  buildPostCompactionDelegateDeliveryPayload,
   countQueuedFiles,
   DEFAULT_FAILED_MAX_AGE_MS,
   DEFAULT_QUEUE_DIR_MAX_FILES,
+  enqueuePostCompactionDelegateDelivery,
   enqueueSessionDelivery,
   ensureSessionDeliveryQueueDir,
   failSessionDelivery,

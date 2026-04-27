@@ -1,9 +1,5 @@
 import fs from "node:fs/promises";
-import {
-  hasConfiguredModelFallbacks,
-  resolveAgentWorkspaceDir,
-  resolveSessionAgentId,
-} from "../../agents/agent-scope.js";
+import { hasConfiguredModelFallbacks } from "../../agents/agent-scope.js";
 import { resolveContextTokensForModel } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { resolveModelAuthMode } from "../../agents/model-auth.js";
@@ -95,7 +91,10 @@ import {
 } from "./continuation-state.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
-import { readPostCompactionContext } from "./post-compaction-context.js";
+import {
+  dispatchPostCompactionDelegates,
+  persistPendingPostCompactionDelegates,
+} from "./post-compaction-delegate-dispatch.js";
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import {
   enqueueFollowupRun,
@@ -904,170 +903,6 @@ function refreshSessionEntryFromStore(params: {
   } catch {
     return fallbackEntry;
   }
-}
-
-function syncPendingPostCompactionDelegates(params: {
-  sessionEntry?: SessionEntry;
-  sessionStore?: Record<string, SessionEntry>;
-  sessionKey: string;
-  delegates: SessionPostCompactionDelegate[] | undefined;
-}) {
-  if (params.sessionEntry) {
-    params.sessionEntry.pendingPostCompactionDelegates = params.delegates;
-  }
-  if (params.sessionStore?.[params.sessionKey]) {
-    params.sessionStore[params.sessionKey] = {
-      ...params.sessionStore[params.sessionKey],
-      pendingPostCompactionDelegates: params.delegates,
-    };
-  }
-}
-
-function normalizePostCompactionDelegate(
-  delegate: SessionPostCompactionDelegate,
-): SessionPostCompactionDelegate {
-  // Legacy delegates persisted before silent/wake fields existed. Post-compaction
-  // mode is defined as silent-wake, so missing flags must preserve that contract.
-  const legacySilentWake = delegate.silent == null && delegate.silentWake == null;
-  const silentWake = legacySilentWake ? true : delegate.silentWake === true;
-  const silent = legacySilentWake ? true : delegate.silent === true || silentWake;
-
-  return {
-    task: delegate.task,
-    createdAt: delegate.createdAt,
-    ...(delegate.silent != null || legacySilentWake ? { silent } : {}),
-    ...(delegate.silentWake != null || legacySilentWake ? { silentWake } : {}),
-  };
-}
-
-async function persistPendingPostCompactionDelegates(params: {
-  sessionEntry?: SessionEntry;
-  sessionStore?: Record<string, SessionEntry>;
-  sessionKey: string;
-  storePath?: string;
-  delegates: SessionPostCompactionDelegate[];
-}): Promise<SessionPostCompactionDelegate[]> {
-  if (params.delegates.length === 0) {
-    return (params.sessionEntry?.pendingPostCompactionDelegates ?? []).map(
-      normalizePostCompactionDelegate,
-    );
-  }
-
-  const normalizedDelegates = params.delegates.map(normalizePostCompactionDelegate);
-  const localExisting = (params.sessionEntry?.pendingPostCompactionDelegates ?? []).map(
-    normalizePostCompactionDelegate,
-  );
-  const combinedLocal = [...localExisting, ...normalizedDelegates];
-
-  if (!params.storePath) {
-    syncPendingPostCompactionDelegates({
-      sessionEntry: params.sessionEntry,
-      sessionStore: params.sessionStore,
-      sessionKey: params.sessionKey,
-      delegates: combinedLocal,
-    });
-    return combinedLocal;
-  }
-
-  const persisted = await updateSessionStore(params.storePath, (store) => {
-    const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey });
-    const current =
-      resolved.existing ??
-      params.sessionStore?.[params.sessionKey] ??
-      params.sessionEntry ??
-      undefined;
-    const combined = [
-      ...(current?.pendingPostCompactionDelegates ?? []).map(normalizePostCompactionDelegate),
-      ...normalizedDelegates,
-    ];
-    if (current) {
-      store[resolved.normalizedKey] = {
-        ...current,
-        pendingPostCompactionDelegates: combined,
-      };
-      for (const legacyKey of resolved.legacyKeys) {
-        delete store[legacyKey];
-      }
-    }
-    return combined;
-  });
-
-  syncPendingPostCompactionDelegates({
-    sessionEntry: params.sessionEntry,
-    sessionStore: params.sessionStore,
-    sessionKey: params.sessionKey,
-    delegates: persisted.length > 0 ? persisted : combinedLocal,
-  });
-  return persisted.length > 0 ? persisted : combinedLocal;
-}
-
-async function takePendingPostCompactionDelegates(params: {
-  sessionEntry?: SessionEntry;
-  sessionStore?: Record<string, SessionEntry>;
-  sessionKey: string;
-  storePath?: string;
-}): Promise<SessionPostCompactionDelegate[]> {
-  const localDelegates = (params.sessionEntry?.pendingPostCompactionDelegates ?? []).map(
-    normalizePostCompactionDelegate,
-  );
-
-  if (!params.storePath) {
-    syncPendingPostCompactionDelegates({
-      sessionEntry: params.sessionEntry,
-      sessionStore: params.sessionStore,
-      sessionKey: params.sessionKey,
-      delegates: undefined,
-    });
-    return localDelegates;
-  }
-
-  const persisted = await updateSessionStore(params.storePath, (store) => {
-    const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey });
-    const current =
-      resolved.existing ??
-      params.sessionStore?.[params.sessionKey] ??
-      params.sessionEntry ??
-      undefined;
-    const delegates = (current?.pendingPostCompactionDelegates ?? []).map(
-      normalizePostCompactionDelegate,
-    );
-    if (current && delegates.length > 0) {
-      store[resolved.normalizedKey] = {
-        ...current,
-        pendingPostCompactionDelegates: undefined,
-      };
-      for (const legacyKey of resolved.legacyKeys) {
-        delete store[legacyKey];
-      }
-    }
-    return delegates;
-  });
-
-  syncPendingPostCompactionDelegates({
-    sessionEntry: params.sessionEntry,
-    sessionStore: params.sessionStore,
-    sessionKey: params.sessionKey,
-    delegates: undefined,
-  });
-  return persisted.length > 0 ? persisted : localDelegates;
-}
-
-function buildPostCompactionLifecycleEvent(params: {
-  compactionCount?: number;
-  releasedDelegates: number;
-  droppedDelegates: number;
-}): string {
-  const parts = [
-    `[system:post-compaction] Session compacted at ${new Date().toISOString()}.`,
-    typeof params.compactionCount === "number"
-      ? `Compaction count: ${params.compactionCount}.`
-      : undefined,
-    `Released ${params.releasedDelegates} post-compaction delegate(s) into the fresh session.`,
-    params.droppedDelegates > 0
-      ? `${params.droppedDelegates} delegate(s) were not released into the fresh session.`
-      : undefined,
-  ].filter(Boolean);
-  return parts.join(" ");
 }
 
 // clearContinuationGeneration intentionally removed: clearing the map entry
@@ -2085,203 +1920,17 @@ export async function runReplyAgent(params: {
 
       // Inject post-compaction workspace context for the next agent turn
       if (sessionKey) {
-        const stagedCompactionDelegates = consumeStagedPostCompactionDelegates(sessionKey);
-        let persistedCompactionDelegates: SessionPostCompactionDelegate[] = [];
-        try {
-          persistedCompactionDelegates = await takePendingPostCompactionDelegates({
-            sessionEntry: activeSessionEntry,
-            sessionStore: activeSessionStore,
-            sessionKey,
-            storePath,
-          });
-        } catch (err) {
-          defaultRuntime.log(
-            `Failed to load post-compaction delegates for ${sessionKey}: ${String(err)}`,
-          );
-        }
-        const allCompactionDelegates = [
-          ...persistedCompactionDelegates,
-          ...stagedCompactionDelegates,
-        ].map(normalizePostCompactionDelegate);
-        const {
-          maxChainLength: maxCompactionChainLength,
-          maxDelegatesPerTurn: maxCompactionDelegates,
-          costCapTokens: compactionCostCapTokens,
-        } = resolveContinuationRuntimeConfig(cfg);
-        // Account for bracket delegate spawned this turn so combined count
-        // cannot exceed maxDelegatesPerTurn.
-        const bracketDelegateOffset = continuationSignal?.kind === "delegate" ? 1 : 0;
-        const compactionBudget = Math.max(0, maxCompactionDelegates - bracketDelegateOffset);
-        const releasedCompactionDelegates = allCompactionDelegates.slice(0, compactionBudget);
-        let droppedCompactionDelegates = Math.max(
-          0,
-          allCompactionDelegates.length - releasedCompactionDelegates.length,
-        );
-        const originalCompactionChainCount = activeSessionEntry?.continuationChainCount ?? 0;
-        let currentCompactionChainCount = originalCompactionChainCount;
-        const compactionChainStartedAt =
-          activeSessionEntry?.continuationChainStartedAt ?? Date.now();
-        const compactionChainTokens = activeSessionEntry?.continuationChainTokens ?? 0;
-        let dispatchedCompactionDelegates = 0;
-
-        const workspaceDir =
-          typeof followupRun.run.workspaceDir === "string" && followupRun.run.workspaceDir.trim()
-            ? followupRun.run.workspaceDir
-            : resolveAgentWorkspaceDir(cfg, followupRun.run.agentId);
-        readPostCompactionContext(workspaceDir, {
+        await dispatchPostCompactionDelegates({
           cfg,
-          agentId: resolveSessionAgentId({ sessionKey, config: cfg }),
-        })
-          .then((contextContent) => {
-            if (contextContent) {
-              enqueueSystemEvent(contextContent, { sessionKey });
-            }
-          })
-          .catch(() => {
-            // Silent failure — post-compaction context is best-effort
-          });
-
-        // Dispatch compaction-triggered delegates (| post-compaction mode).
-        for (const delegate of releasedCompactionDelegates) {
-          if (currentCompactionChainCount >= maxCompactionChainLength) {
-            droppedCompactionDelegates += 1;
-            defaultRuntime.log(
-              `Post-compaction delegate rejected: chain length ${currentCompactionChainCount} >= ${maxCompactionChainLength} for session ${sessionKey}`,
-            );
-            enqueueSystemEvent(
-              `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${delegate.task}`,
-              { sessionKey },
-            );
-            continue;
-          }
-
-          if (compactionCostCapTokens > 0 && compactionChainTokens > compactionCostCapTokens) {
-            droppedCompactionDelegates += 1;
-            defaultRuntime.log(
-              `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}) for session ${sessionKey}`,
-            );
-            enqueueSystemEvent(
-              `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${delegate.task}`,
-              { sessionKey },
-            );
-            continue;
-          }
-
-          const nextCompactionChainCount = currentCompactionChainCount + 1;
-          defaultRuntime.log(
-            `Post-compaction delegate dispatch for session ${sessionKey}: ${delegate.task}`,
-          );
-          try {
-            const delegateWakeOnReturn = delegate.silentWake ?? true;
-            const delegateSilentAnnounce = delegate.silent ?? delegateWakeOnReturn;
-            const spawnResult = await spawnSubagentDirect(
-              {
-                task:
-                  `[continuation:post-compaction] ` +
-                  `[continuation:chain-hop:${nextCompactionChainCount}] ` +
-                  `Compaction just completed. Carry this working state to the post-compaction session: ${delegate.task}`,
-                ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
-                ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
-                drainsContinuationDelegateQueue: true,
-              },
-              {
-                agentSessionKey: sessionKey,
-                agentChannel: followupRun.originatingChannel ?? undefined,
-                agentAccountId: followupRun.originatingAccountId ?? undefined,
-                agentTo: followupRun.originatingTo ?? undefined,
-                agentThreadId: followupRun.originatingThreadId ?? undefined,
-              },
-            );
-            if (spawnResult.status === "accepted") {
-              currentCompactionChainCount = nextCompactionChainCount;
-              dispatchedCompactionDelegates += 1;
-              enqueueSystemEvent(
-                `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${delegate.task}`,
-                { sessionKey },
-              );
-            } else {
-              droppedCompactionDelegates += 1;
-              postCompactionDelegatesToPreserve.push(delegate);
-              defaultRuntime.log(
-                `Post-compaction delegate rejected (${spawnResult.status}) for session ${sessionKey} (re-staged)`,
-              );
-            }
-          } catch (err) {
-            droppedCompactionDelegates += 1;
-            postCompactionDelegatesToPreserve.push(delegate);
-            defaultRuntime.log(
-              `Post-compaction delegate failed for session ${sessionKey} (re-staged): ${String(err)}`,
-            );
-          }
-        }
-
-        if (postCompactionDelegatesToPreserve.length > 0) {
-          try {
-            await persistPendingPostCompactionDelegates({
-              sessionEntry: activeSessionEntry,
-              sessionStore: activeSessionStore,
-              sessionKey,
-              storePath,
-              delegates: postCompactionDelegatesToPreserve,
-            });
-            postCompactionDelegatesToPreserve.length = 0;
-          } catch (err) {
-            defaultRuntime.log(
-              `Failed to persist re-staged post-compaction delegates for ${sessionKey} (${postCompactionDelegatesToPreserve.length}): ${String(err)}`,
-            );
-          }
-        }
-
-        enqueueSystemEvent(
-          buildPostCompactionLifecycleEvent({
-            compactionCount: count,
-            releasedDelegates: dispatchedCompactionDelegates,
-            droppedDelegates: droppedCompactionDelegates,
-          }),
-          { sessionKey },
-        );
-
-        if (currentCompactionChainCount > originalCompactionChainCount) {
-          if (activeSessionEntry) {
-            activeSessionEntry.continuationChainCount = currentCompactionChainCount;
-            activeSessionEntry.continuationChainStartedAt = compactionChainStartedAt;
-            activeSessionEntry.continuationChainTokens = compactionChainTokens;
-          }
-          if (activeSessionStore) {
-            const resolved = resolveSessionStoreEntry({ store: activeSessionStore, sessionKey });
-            activeSessionStore[resolved.normalizedKey] = {
-              ...(resolved.existing ?? activeSessionEntry!),
-              continuationChainCount: currentCompactionChainCount,
-              continuationChainStartedAt: compactionChainStartedAt,
-              continuationChainTokens: compactionChainTokens,
-            };
-            for (const legacyKey of resolved.legacyKeys) {
-              delete activeSessionStore[legacyKey];
-            }
-          }
-          if (storePath) {
-            try {
-              await updateSessionStore(storePath, (store) => {
-                const resolved = resolveSessionStoreEntry({ store, sessionKey });
-                if (resolved.existing) {
-                  store[resolved.normalizedKey] = {
-                    ...resolved.existing,
-                    continuationChainCount: currentCompactionChainCount,
-                    continuationChainStartedAt: compactionChainStartedAt,
-                    continuationChainTokens: compactionChainTokens,
-                  };
-                  for (const legacyKey of resolved.legacyKeys) {
-                    delete store[legacyKey];
-                  }
-                }
-              });
-            } catch (err) {
-              defaultRuntime.log(
-                `Failed to persist post-compaction delegate chain state for ${sessionKey}: ${String(err)}`,
-              );
-            }
-          }
-        }
+          compactionCount: count,
+          continuationSignalKind: continuationSignal?.kind,
+          followupRun,
+          postCompactionDelegatesToPreserve,
+          sessionEntry: activeSessionEntry,
+          sessionKey,
+          sessionStore: activeSessionStore,
+          storePath,
+        });
       }
 
       if (verboseEnabled) {

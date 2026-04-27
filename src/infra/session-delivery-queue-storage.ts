@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ChatType } from "../channels/chat-type.js";
 import { resolveStateDir } from "../config/paths.js";
+import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
 import { generateSecureUuid } from "./secure-random.js";
 
 const QUEUE_DIRNAME = "session-delivery-queue";
@@ -80,6 +81,16 @@ export type QueuedSessionDeliveryPayload = (
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
     }
+  | {
+      kind: "postCompactionDelegate";
+      sessionKey: string;
+      task: string;
+      createdAt: number;
+      silent?: boolean;
+      silentWake?: boolean;
+      deliveryContext?: SessionDeliveryContext;
+      idempotencyKey?: string;
+    }
 ) &
   QueuedSessionDeliveryPayloadMetadata;
 
@@ -109,6 +120,50 @@ function buildEntryId(idempotencyKey?: string): string {
     return generateSecureUuid();
   }
   return createHash("sha256").update(canonicalizeIdempotencyKey(idempotencyKey)).digest("hex");
+}
+
+function buildPostCompactionDelegateIdempotencyKey(params: {
+  sessionKey: string;
+  delegate: SessionPostCompactionDelegate;
+  sequence: number;
+  compactionCount?: number;
+}): string {
+  const taskHash = createHash("sha256").update(params.delegate.task).digest("hex").slice(0, 16);
+  return [
+    "post-compaction-delegate",
+    params.sessionKey,
+    String(params.compactionCount ?? "unknown"),
+    String(params.delegate.createdAt),
+    String(params.sequence),
+    taskHash,
+  ].join(":");
+}
+
+export function buildPostCompactionDelegateDeliveryPayload(params: {
+  sessionKey: string;
+  delegate: SessionPostCompactionDelegate;
+  sequence: number;
+  compactionCount?: number;
+  deliveryContext?: SessionDeliveryContext;
+  idempotencyKey?: string;
+}): QueuedSessionDeliveryPayload {
+  return {
+    kind: "postCompactionDelegate",
+    sessionKey: params.sessionKey,
+    task: params.delegate.task,
+    createdAt: params.delegate.createdAt,
+    ...(params.delegate.silent != null ? { silent: params.delegate.silent } : {}),
+    ...(params.delegate.silentWake != null ? { silentWake: params.delegate.silentWake } : {}),
+    ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+    idempotencyKey:
+      params.idempotencyKey ??
+      buildPostCompactionDelegateIdempotencyKey({
+        sessionKey: params.sessionKey,
+        delegate: params.delegate,
+        sequence: params.sequence,
+        compactionCount: params.compactionCount,
+      }),
+  };
 }
 
 async function unlinkBestEffort(filePath: string): Promise<void> {
@@ -234,6 +289,25 @@ export async function enqueueSessionDelivery(
     retryCount: 0,
   });
   return id;
+}
+
+export async function enqueuePostCompactionDelegateDelivery(
+  params: {
+    sessionKey: string;
+    delegate: SessionPostCompactionDelegate;
+    sequence: number;
+    compactionCount?: number;
+    deliveryContext?: SessionDeliveryContext;
+    idempotencyKey?: string;
+  },
+  stateDir?: string,
+  opts?: { maxQueuedFiles?: number },
+): Promise<string> {
+  return await enqueueSessionDelivery(
+    buildPostCompactionDelegateDeliveryPayload(params),
+    stateDir,
+    opts,
+  );
 }
 
 export async function ackSessionDelivery(id: string, stateDir?: string): Promise<void> {
