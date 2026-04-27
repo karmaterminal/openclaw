@@ -211,7 +211,16 @@ From 🩸 (msg `1498377749499351203`) and 🌊 (msgs `1498377809591013516` + `14
 - **Q4** wake-then-cap: **REFRAMED post-byte-walk (🩸)** — fire-time cap re-checks are NOT current behavior; deferred to future memo. 5b ships instrumentation-of-status-quo only ✓
 - **Q5** work-fire: punt to chunk 5c ✓
 - **Q6** fire-time exceptions: emit fire-span first, sibling for failure ✓
-- **Q7** reservation-missing at fire-time: **RESOLVED (i-a) by 2-1** — 🌊 (i-a, retracted i-b in msg `1498379091165053058`), 🩸 (i-a, byte-walk confirms reservation-missing is the **actual existing fire-time divergence** today, msg `1498379203257569481`), 🌻 (i-b dissent on verb-grammar-completion, msg `1498379005857103902`). Wire extends `disabled.reason` enum 4-value (`cap.chain | cap.cost | cap.delegates_per_turn | reservation.missing`); JSDoc pins enum semantics as "anything that prevented follow-through," not "cap axes only." 🌻's principled (i-b) dissent banked for future taxonomy refactor if non-cap reasons proliferate ✓
+- **Q7** reservation-missing at fire-time: **RESOLVED (i-a) UNANIMOUS 3/3** — 🌊 (i-a, retracted i-b in msg `1498379091165053058`), 🩸 byte-walk confirms reservation-missing is the **actual existing fire-time divergence** today (msg `1498379203257569481`), 🌻 fold to (i-a) on 🌊's verb-on-gate grammar umbrella (msg `1498379486138470563`, retracting earlier (i-b) lean). Wire extends `disabled.reason` enum 4-value (`cap.chain | cap.cost | cap.delegates_per_turn | reservation.missing`); JSDoc pins enum semantics as "anything that prevented follow-through," not "cap axes only." Family is grammar-defined (verb-on-gate), not enum-cardinality-defined — future `reservation.evicted`, `session.gone`, `compaction.cleared` slot under same family. ✓
 - **Q8** (deferred): `continuation.delegate.error` as future home for **hard-fault** failures (uncaught exception, store write fail), distinct from soft-prevented gates; banked, not 5b-blocking
+
+## Wire-PR framing requirement (🩸 byte-walk caveat, msg `1498379735493775560`)
+
+The wire PR description **must** carry this distinction explicitly so reviewers don't conflate observed vs introduced behavior:
+
+- **Existing seam (current callback bytes):** `reservation.missing` is the only fire-time divergence today. Current behavior is log-and-return; 5b extends to `fire + disabled (reservation.missing)` instrumentation as **intentional behavioral extension** (more visible, same outcome).
+- **NOT introduced by 5b:** fire-time `cap.chain | cap.cost` rechecks. These are a **future policy shape** that may be added later, **not** something the current callback path does. Any `cap.*` reason on `disabled` from 5b's wire is dispatch-time, never fire-time.
+
+The enum extension to 4-value is structural (so future-policy gates have a home if added), but 5b's emission sites are limited to: dispatch-time gate-rejects (existing) + fire-time reservation-missing (new). No fire-time cap-emission introduced.
 
 If memo lands clean, wire PR follows with same approach as chunks 2/3/4 (helper + tests + 2-3 wire sites). — 🌫️
