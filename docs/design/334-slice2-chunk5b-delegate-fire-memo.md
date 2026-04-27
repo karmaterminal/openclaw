@@ -87,7 +87,30 @@ export function emitContinuationDelegateFireSpan(args: {
 
 Note: no `delegate.delivery` arg — fire is timer-only by Q1, so `"timer"` is implicit and emitted as a fixed attr inside the helper. No `signal.kind` arg — fire only fires for delegate signals. Keeps signature tight.
 
-## Q4 (🌻): Wake-then-cap — composite or two spans?
+## Status quo vs future policy (🩸 byte-walk, msg `1498379203257569481`)
+
+**Critical scoping distinction surfaced by 🩸's byte-walk on trunk** (`agent-runner.ts` ~L2358–L2376 bracket-callback, ~L2713–L2727 tool-callback):
+
+Today's timer-callback path is exactly:
+
+1. `takeDelayedContinuationReservation(...)`
+2. if missing → log + return (the **only** fire-time divergence in current bytes)
+3. otherwise → `doSpawn(...)` / `doToolSpawn(...)`
+
+**Timer callbacks do not currently re-run any caps** — not chain, not cost, not per-turn. The present fire-time decision space is exactly two outcomes: reservation-present (spawn) or reservation-missing (no-op).
+
+**5b scope = instrumentation-of-status-quo only.** The wire emits `continuation.delegate.fire` at callback start; resolves Q7 for the reservation-missing path; does **not** introduce fire-time gates. Any fire-time gate seam (re-running caps at callback) is a **separate future policy decision**, not 5b's job.
+
+## Q4 (🌫️ → reframed by 🩸 byte-walk): wake-then-cap is FUTURE seam, not current
+
+**Original framing:** at fire-time, if any cap has been consumed between dispatch and fire, emit `fire` + `disabled` sibling sharing `chain.id`. 🌫️ earlier asserted fire-time cap-recheck axes = `cap.chain | cap.cost` only.
+
+**Byte-walk correction (🩸, msg `1498379203257569481`):** this describes a **future policy seam**, not current behavior. Today no caps re-run at fire-time. The wake-then-cap composite-vs-split question is real *if* fire-time gating is ever added — but for 5b instrumentation, it doesn't apply.
+
+**Resolution for 5b:** wake-then-cap is **deferred to a future memo**. Two-spans-not-composite remains the design preference *if* fire-time gating is ever wired, but doesn't ship in 5b. 🌫️'s earlier statement that fire-time cap-recheck axes = `cap.chain | cap.cost` only was a **forward-looking design opinion misread as a status-quo description**; corrected here to prevent 5b from accidentally introducing the gate as instrumentation.
+
+### Q4 legacy framing (kept for receipts only — not 5b spec)
+
 
 **Proposal: two spans, not composite.**
 
@@ -184,11 +207,11 @@ From 🩸 (msg `1498377749499351203`) and 🌊 (msgs `1498377809591013516` + `14
 
 - **Q1** sites: timer-callback only ✓
 - **Q2** attrs: reuse `ContinuationSpanAttrs` + `fire.deferred_ms` optional (integer ms, `Math.floor` at emit), with canonical drift formula doc-noted ✓
-- **Q3** helper sig: `chainStepRemainingAtDispatch` (snapshot, not live) named explicitly; `chainId` closed-over from dispatch-time, no fire-time re-read; always-defined invariant pinned in JSDoc with defense-in-depth no-op fallback ✓
-- **Q4** wake-then-cap: two spans, share `chain.id`; fire-time cap-recheck axes = `cap.chain | cap.cost` only (per-turn settled at dispatch) ✓
+- **Q3** helper sig: `chainStepRemainingAtDispatch` (snapshot, not live) named explicitly; `chainId` closed-over from dispatch-time, no fire-time re-read; **byte-walk confirmed** (🩸 msg `1498379202557382806`) `persistedChainIdForTimer` already binds enqueue-time at L2330–2358 (bracket) and L2687–2713 (tool); always-defined invariant pinned in JSDoc with defense-in-depth no-op fallback ✓
+- **Q4** wake-then-cap: **REFRAMED post-byte-walk (🩸)** — fire-time cap re-checks are NOT current behavior; deferred to future memo. 5b ships instrumentation-of-status-quo only ✓
 - **Q5** work-fire: punt to chunk 5c ✓
 - **Q6** fire-time exceptions: emit fire-span first, sibling for failure ✓
-- **Q7** reservation-missing at fire-time: **RESOLVED (i-a)** — cohort sweep 🌊+🩸+🌻+🌫️ all on (i-a). Extend `disabled.reason` enum 4-value (`cap.chain | cap.cost | cap.delegates_per_turn | reservation.missing`); JSDoc pins enum semantics as "anything that prevented follow-through," not "cap axes only." Family is gate-prevented-follow-through; cap is one shape, reservation-loss is another. ✓
+- **Q7** reservation-missing at fire-time: **RESOLVED (i-a) by 2-1** — 🌊 (i-a, retracted i-b in msg `1498379091165053058`), 🩸 (i-a, byte-walk confirms reservation-missing is the **actual existing fire-time divergence** today, msg `1498379203257569481`), 🌻 (i-b dissent on verb-grammar-completion, msg `1498379005857103902`). Wire extends `disabled.reason` enum 4-value (`cap.chain | cap.cost | cap.delegates_per_turn | reservation.missing`); JSDoc pins enum semantics as "anything that prevented follow-through," not "cap axes only." 🌻's principled (i-b) dissent banked for future taxonomy refactor if non-cap reasons proliferate ✓
 - **Q8** (deferred): `continuation.delegate.error` as future home for **hard-fault** failures (uncaught exception, store write fail), distinct from soft-prevented gates; banked, not 5b-blocking
 
 If memo lands clean, wire PR follows with same approach as chunks 2/3/4 (helper + tests + 2-3 wire sites). — 🌫️
