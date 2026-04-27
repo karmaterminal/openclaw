@@ -35,6 +35,10 @@ export type QueuedPostCompactionDelegateDelivery = Extract<
   QueuedSessionDelivery,
   { kind: "postCompactionDelegate" }
 >;
+export type PostCompactionDelegateDeliveryResult = "spawned" | "rejected";
+export type PostCompactionDelegateDrainSummary = {
+  deliveredDelegates: number;
+};
 
 export type PostCompactionDelegateSpawn = (
   params: SpawnSubagentParams,
@@ -59,7 +63,7 @@ export type PostCompactionDelegateDispatchDeps = {
     entryIds?: readonly string[];
     log: SessionDeliveryRecoveryLogger;
     sessionKey: string;
-  }): Promise<void>;
+  }): Promise<PostCompactionDelegateDrainSummary>;
   enqueuePostCompactionDelegateDelivery(params: {
     sessionKey: string;
     delegate: SessionPostCompactionDelegate;
@@ -376,7 +380,7 @@ export async function deliverQueuedPostCompactionDelegate(
     entry: QueuedPostCompactionDelegateDelivery;
   },
   deps: PostCompactionDelegateDeliveryDeps = defaultPostCompactionDelegateDeliveryDeps,
-): Promise<void> {
+): Promise<PostCompactionDelegateDeliveryResult> {
   const cfg = deps.loadConfig();
   const agentId = deps.resolveSessionAgentId({
     sessionKey: params.entry.sessionKey,
@@ -402,7 +406,7 @@ export async function deliverQueuedPostCompactionDelegate(
       `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${params.entry.task}`,
       { sessionKey: params.entry.sessionKey },
     );
-    return;
+    return "rejected";
   }
 
   if (compactionCostCapTokens > 0 && compactionChainTokens > compactionCostCapTokens) {
@@ -413,7 +417,7 @@ export async function deliverQueuedPostCompactionDelegate(
       `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${params.entry.task}`,
       { sessionKey: params.entry.sessionKey },
     );
-    return;
+    return "rejected";
   }
 
   const nextCompactionChainCount = currentCompactionChainCount + 1;
@@ -458,6 +462,7 @@ export async function deliverQueuedPostCompactionDelegate(
     storePath,
     tokens: compactionChainTokens,
   });
+  return "spawned";
 }
 
 export async function drainPostCompactionDelegateDeliveries(params: {
@@ -466,8 +471,9 @@ export async function drainPostCompactionDelegateDeliveries(params: {
   sessionKey?: string;
   stateDir?: string;
   deliveryDeps?: PostCompactionDelegateDeliveryDeps;
-}): Promise<void> {
+}): Promise<PostCompactionDelegateDrainSummary> {
   const entryIds = new Set(params.entryIds ?? []);
+  let deliveredDelegates = 0;
   await drainPendingSessionDeliveries({
     drainKey: `post-compaction-delegate:${params.sessionKey ?? "all"}`,
     logLabel: "post-compaction delegate",
@@ -477,7 +483,10 @@ export async function drainPostCompactionDelegateDeliveries(params: {
       if (!isPostCompactionDelegateEntry(entry)) {
         return;
       }
-      await deliverQueuedPostCompactionDelegate({ entry }, params.deliveryDeps);
+      const result = await deliverQueuedPostCompactionDelegate({ entry }, params.deliveryDeps);
+      if (result === "spawned") {
+        deliveredDelegates += 1;
+      }
     },
     selectEntry: (entry) => ({
       match:
@@ -487,6 +496,7 @@ export async function drainPostCompactionDelegateDeliveries(params: {
       bypassBackoff: entryIds.size > 0,
     }),
   });
+  return { deliveredDelegates };
 }
 
 export async function dispatchPostCompactionDelegates(
@@ -601,23 +611,24 @@ export async function dispatchPostCompactionDelegates(
     }
   }
 
-  deps.enqueueSystemEvent(
-    buildPostCompactionLifecycleEvent({
-      compactionCount: params.compactionCount,
-      releasedDelegates: queuedEntryIds.length,
-      droppedDelegates: droppedCompactionDelegates,
-    }),
-    { sessionKey: params.sessionKey },
-  );
-
   void (async () => {
+    let deliveredDelegates = 0;
     if (queuedEntryIds.length > 0) {
-      await deps.drainPostCompactionDelegateDeliveries({
+      const summary = await deps.drainPostCompactionDelegateDeliveries({
         entryIds: queuedEntryIds,
         log: defaultRecoveryLog,
         sessionKey: params.sessionKey,
       });
+      deliveredDelegates = summary.deliveredDelegates;
     }
+    deps.enqueueSystemEvent(
+      buildPostCompactionLifecycleEvent({
+        compactionCount: params.compactionCount,
+        releasedDelegates: deliveredDelegates,
+        droppedDelegates: droppedCompactionDelegates,
+      }),
+      { sessionKey: params.sessionKey },
+    );
     await deps.drainPostCompactionDelegateDeliveries({
       log: defaultRecoveryLog,
       sessionKey: params.sessionKey,

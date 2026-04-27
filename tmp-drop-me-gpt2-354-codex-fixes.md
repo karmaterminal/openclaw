@@ -2,3 +2,4 @@
 - 2026-04-26T23:57:33+00:00: §1 reads complete; posted PR #354 plan update for r3144331033 and r3144344309 at fbbad3ca706632f2a0299ca1fddfabb50d0e3ad7.
 - 2026-04-27T00:00:03+00:00: Fixed r3144331033 with targeted drain followed by unfiltered retry drain; focused dispatch test passed.
 - 2026-04-27T00:01:05+00:00: Fixed r3144344309 by rethrowing chain-state persistence failures; focused dispatch test passed.
+- 2026-04-27T00:02:30+00:00: Fixed optional r3144344310 by reporting lifecycle releasedDelegates from accepted fresh drain deliveries; focused dispatch test passed.

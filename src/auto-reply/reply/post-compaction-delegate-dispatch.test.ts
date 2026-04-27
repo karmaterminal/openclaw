@@ -84,6 +84,7 @@ function createDispatchDeps(options?: {
   context?: string | null;
   rejectEnqueueAt?: number;
   runtimeConfig?: ContinuationRuntimeConfig;
+  deliveredDelegates?: number;
 }) {
   const enqueueSystemEvent = vi.fn();
   const log = vi.fn();
@@ -98,7 +99,15 @@ function createDispatchDeps(options?: {
     }
     return `queue-${sequence}`;
   });
-  const drainPostCompactionDelegateDeliveries = vi.fn(async () => undefined);
+  const drainPostCompactionDelegateDeliveries = vi.fn(
+    async (
+      params: Parameters<
+        PostCompactionDelegateDispatchDeps["drainPostCompactionDelegateDeliveries"]
+      >[0],
+    ) => ({
+      deliveredDelegates: options?.deliveredDelegates ?? params.entryIds?.length ?? 0,
+    }),
+  );
   const deps: PostCompactionDelegateDispatchDeps = {
     consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),
     drainPostCompactionDelegateDeliveries,
@@ -479,6 +488,32 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(preserve).toEqual([]);
     expect(log).toHaveBeenCalledWith(
       "Failed to enqueue post-compaction delegate for main (re-staged): Error: queue write failed",
+    );
+  });
+
+  it("reports released delegates from accepted fresh drain deliveries", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const { deps, enqueueSystemEvent } = createDispatchDeps({
+      staged: [delegate("accepted"), delegate("queued-but-failed")],
+      deliveredDelegates: 1,
+    });
+
+    await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: [],
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+    await flushMicrotasks();
+
+    expect(enqueueSystemEvent).toHaveBeenCalledWith(
+      expect.stringContaining("Released 1 post-compaction delegate(s) into the fresh session."),
+      { sessionKey: "main" },
     );
   });
 
