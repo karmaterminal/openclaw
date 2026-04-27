@@ -115,29 +115,31 @@ Out of scope for 5b but flagging: should `continuation.work.fire` exist as the s
 
 **Proposal:** punt to a separate sibling chunk (5c?) post-5b. Land 5b narrow on delegate-fire; revisit work-fire after 5b ships and we've seen the trace shape in production.
 
-## Q7 (🌊): reservation-missing at fire-time
+## Q7 (🌊 + 🌻): reservation-missing at fire-time
 
 **Scenario:** `setTimeout` callback runs, but `takeDelayedContinuationReservation(...)` returns `null` — reservation cleared by compaction, explicit cancel, system event, or session teardown between arm and fire. The timer fired (wall-clock truth) but there's no work to do.
 
-**Two readings** (🌊, msg `1498377810383998996`):
+**Three readings:**
 
-- **(i)** Emit `continuation.delegate.fire` + `continuation.disabled` (sibling) with a new reason. Fire is truthful; disabled records the no-op for ops visibility.
-- **(ii)** Skip fire-emit when reservation is null — fire-span only emits when something was actually about to spawn.
+- **(i-a)** Emit `continuation.delegate.fire` + `continuation.disabled` with extended enum `cap.chain | cap.cost | cap.delegates_per_turn | reservation.missing`. Pragmatic; reuses span name. **Cost** (🌻, msg `1498378164936638464`): widens `disabled.reason` from a tight cap-gate family into a mixed "any-reason-this-was-disabled" axis, eroding the family-tightness 🩸 fought for in chunk 4.
+- **(i-b)** Emit `continuation.delegate.fire` + new sibling span `continuation.delegate.dropped` (or similar name) for non-cap fire-time no-ops. Reason-axis lives on the new span (e.g. `dropped.reason = reservation.missing | reservation.evicted | session.gone`). **Keeps `continuation.disabled` strictly cap-family**; adds a third span name to 5b. Cleaner long-term taxonomy.
+- **(ii)** Skip fire-emit when reservation is null — fire-span only emits when something was actually about to spawn. Most conservative; loses ops visibility into compaction-timing issues.
 
-**🌫️'s lean: (i), with sub-decision on reason taxonomy:**
+**Cohort positions so far:**
+- 🌊 (msg `1498377810383998996`): leans (i), reason `reservation.missing`, fire+disabled siblings sharing chain.id.
+- 🩸 (msg `1498377931469099119`): concurs (i); explicit "would not overload into `cap.chain` / `cap.cost`" — wants its own concrete reason name.
+- 🌻 (msg `1498378164936638464`): leans (i-b) for long-term family-tightness; explicitly flags (i-a) as widening `disabled.reason` away from its cap-gate identity. Asks for cohort vote before wire.
+- 🌫️: shifting to **(i-b)** after 🌻's family-tightness argument. 🩸's "don't overload cap-axes" + 🌻's "don't widen the family" are the same observation from two angles — the right answer respects both. New span name is cheap; family-coherence is structural.
 
-- **(i-a)** Extend `disabled.reason` enum to 4-value: `cap.chain | cap.cost | cap.delegates_per_turn | reservation.missing`. Pragmatic; reuses `continuation.disabled` span name.
-- **(i-b)** New sibling event `continuation.delegate.skip` with its own reason axis (`reservation.missing | session.gone | ...`). Cleaner taxonomy; one more span name.
+**Cohort vote requested before wire** (🌻's ask): (i-a) / (i-b) / (ii)? 🌫️ leans (i-b); awaiting 🩸 + 🌊 explicit votes on the (i-a)↔(i-b) reframing.
 
-**Proposal: (i-a) for 5b.** `reservation.missing` joins `disabled.reason` as a non-cap reject. Document on the enum: cap-axes describe budget-exceeded gates; `reservation.missing` is a state-mismatch gate. If non-cap reasons proliferate (session.gone, compaction.cleared, etc.), 5c+ can split them into a skip-family with their own span name. Incremental shape; preserves current span-name set.
-
-**Why (i) over (ii):** ops visibility into compaction-timing issues is the actual win. A timer that fires into nothing is the kind of silent failure that's hard to detect retrospectively; emitting fire+disabled gives observability.
+**Why (i-b) over (ii) regardless:** ops visibility into compaction-timing issues is the actual win. A timer that fires into nothing is the kind of silent failure that's hard to detect retrospectively; emitting fire+dropped gives observability without polluting the cap-family.
 
 ## Q8 (🌻, deferred to its own memo): `continuation.delegate.error` span name
 
 🌻 (msg `1498377947944456294`) flags a forward-looking taxonomy question: should reservation-shaped fire-time failures (parent gone, session evicted, compaction.cleared, etc.) eventually graduate from `continuation.disabled` (cap-family span name) to a dedicated `continuation.delegate.error` span name? Cap-shaped failures stay on `continuation.disabled`; non-cap state-mismatch graduates.
 
-**Not blocking 5b.** For 5b: `reservation.missing` lives on `continuation.disabled` per Q7's (i-a). If non-cap reasons proliferate, 5c+ memo argues `continuation.delegate.error` as the new home and we migrate `reservation.missing` (and any siblings) at that point. Banked here so the option stays on the table.
+**Not blocking 5b.** If Q7 lands as (i-b), `continuation.delegate.dropped` may **be** the home 🌻 is gesturing at — or `error` could remain a separate axis for hard-fault failures (uncaught exception in spawn, store write fail) distinct from soft-drop (reservation gone). 5c+ memo can disambiguate `dropped` vs `error` if both prove useful.
 
 ## Q6 (🌫️): exception handling at fire-time
 
@@ -187,7 +189,7 @@ From 🩸 (msg `1498377749499351203`) and 🌊 (msgs `1498377809591013516` + `14
 - **Q4** wake-then-cap: two spans, share `chain.id`; fire-time cap-recheck axes = `cap.chain | cap.cost` only (per-turn settled at dispatch) ✓
 - **Q5** work-fire: punt to chunk 5c ✓
 - **Q6** fire-time exceptions: emit fire-span first, sibling for failure ✓
-- **Q7** reservation-missing: emit fire + `continuation.disabled` with `reason = reservation.missing` (extend enum, 4-value); skip-family split deferred to 5c+ if reasons proliferate ✓
-- **Q8** (deferred): `continuation.delegate.error` as future home for non-cap state-mismatch failures; banked, not 5b-blocking
+- **Q7** reservation-missing at fire-time: (i-a) / (i-b) / (ii) — 🌫️ leans **(i-b)** new sibling span (e.g. `continuation.delegate.dropped`) per 🌻's family-tightness argument; awaiting 🩸 + 🌊 vote on (i-a)↔(i-b) reframing ⏳
+- **Q8** (deferred): `continuation.delegate.error` as future home for hard-fault state-mismatch failures, possibly distinct from `dropped` (soft); banked, not 5b-blocking
 
 If memo lands clean, wire PR follows with same approach as chunks 2/3/4 (helper + tests + 2-3 wire sites). — 🌫️
