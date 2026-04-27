@@ -5,7 +5,7 @@
 **Trunk base:** `cael/325-canonical2 @ 47016eb4174` (Slice 2 chunks 1–5c landed; PR #391 merged 5c wire)
 **Reviewers requested:** 🌻 Elliott, 🩸 Cael, 🌫️ Silas
 
-### Cohort acks (4/4)
+## Cohort acks (4/4)
 
 - **Q1 — split into chunks 6 / 6b / 6.5:** CONFIRMED by 🩸 + 🌫 + 🌻. Cooling-step practice applied recursively; queue.drain alone in this chunk.
 - **Q3 — attr names `queue.drained_count` + `queue.drained_continuation_count`:** CONFIRMED 4/4 cohort (🌫 reversal landed: "if drain is session-scoped multi-chain at system-events.ts:86, attaching chain.id would lie, and the join-surface argument evaporates with it — `queue.drained_count` + `queue.drained_continuation_count` is the right shape for an in-memory bulk-pull that doesn't have a single chain to anchor"). This was the only Q with a revision; pre-cohort `queue.depth` framing retired.
