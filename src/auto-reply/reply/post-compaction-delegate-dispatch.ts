@@ -56,7 +56,7 @@ export type PostCompactionDelegateDeliveryDeps = {
 export type PostCompactionDelegateDispatchDeps = {
   consumeStagedPostCompactionDelegates(sessionKey: string): SessionPostCompactionDelegate[];
   drainPostCompactionDelegateDeliveries(params: {
-    entryIds: readonly string[];
+    entryIds?: readonly string[];
     log: SessionDeliveryRecoveryLogger;
     sessionKey: string;
   }): Promise<void>;
@@ -271,7 +271,22 @@ export async function takePendingPostCompactionDelegates(params: {
 
 export function buildPostCompactionLifecycleEvent(params: {
   compactionCount?: number;
-  releasedDelegates: number;
+  /**
+   * Number of delegates accepted into the persistent delivery queue this
+   * dispatch. NOTE: this is the queued count (post-`enqueue` accept,
+   * pre-spawn). The actual spawn happens asynchronously in the
+   * fire-and-forget drain triggered after this event is emitted, so this
+   * count is an upper bound on what will eventually be released into the
+   * fresh session — individual queued entries may still fail to spawn
+   * (their failure is recorded as a queue retry, not reflected here).
+   *
+   * Renamed from `releasedDelegates` (codex r3144344310) to make the
+   * semantic accurate; pre-extraction agent-runner counted accepted
+   * spawns, but the queue-extraction architecture cannot count spawns
+   * synchronously without awaiting the drain. The honest name is
+   * `queuedDelegates`.
+   */
+  queuedDelegates: number;
   droppedDelegates: number;
 }): string {
   const parts = [
@@ -279,7 +294,7 @@ export function buildPostCompactionLifecycleEvent(params: {
     typeof params.compactionCount === "number"
       ? `Compaction count: ${params.compactionCount}.`
       : undefined,
-    `Released ${params.releasedDelegates} post-compaction delegate(s) into the fresh session.`,
+    `Queued ${params.queuedDelegates} post-compaction delegate(s) for delivery into the fresh session.`,
     params.droppedDelegates > 0
       ? `${params.droppedDelegates} delegate(s) were not released into the fresh session.`
       : undefined,
@@ -346,6 +361,13 @@ async function persistPostCompactionDelegateChainState(params: {
           err,
         )}`,
       );
+      // Rethrow so `deliverQueuedPostCompactionDelegate` rejects, the queue
+      // entry stays in `pending/` with a bumped retryCount, and the next
+      // unfiltered drain re-considers it once backoff has elapsed. Without
+      // this, the queue ack-removes the entry while the on-disk chain count
+      // is stale, allowing the next compaction-delegate to overrun
+      // `maxChainLength` (codex r3144344309).
+      throw err;
     }
   }
 }
@@ -603,16 +625,22 @@ export async function dispatchPostCompactionDelegates(
   deps.enqueueSystemEvent(
     buildPostCompactionLifecycleEvent({
       compactionCount: params.compactionCount,
-      releasedDelegates: queuedEntryIds.length,
+      queuedDelegates: queuedEntryIds.length,
       droppedDelegates: droppedCompactionDelegates,
     }),
     { sessionKey: params.sessionKey },
   );
 
   if (queuedEntryIds.length > 0) {
+    // Drain unfiltered for this sessionKey: the prior `entryIds`-filtered
+    // drain stranded any failed `pending/` entries from earlier turns —
+    // they were never re-selected because the filter excluded their ids,
+    // and only startup recovery would rescue them. With `entryIds`
+    // omitted, `selectEntry` falls back to the sessionKey filter and
+    // backoff-eligible failed retries are reconsidered alongside the
+    // entries we just enqueued (codex r3144331033).
     void deps
       .drainPostCompactionDelegateDeliveries({
-        entryIds: queuedEntryIds,
         log: defaultRecoveryLog,
         sessionKey: params.sessionKey,
       })

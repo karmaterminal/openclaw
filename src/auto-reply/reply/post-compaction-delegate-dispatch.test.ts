@@ -208,11 +208,11 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(
       buildPostCompactionLifecycleEvent({
         compactionCount: 3,
-        releasedDelegates: 2,
+        queuedDelegates: 2,
         droppedDelegates: 1,
       }),
     ).toBe(
-      "[system:post-compaction] Session compacted at 2026-04-26T22:00:00.000Z. Compaction count: 3. Released 2 post-compaction delegate(s) into the fresh session. 1 delegate(s) were not released into the fresh session.",
+      "[system:post-compaction] Session compacted at 2026-04-26T22:00:00.000Z. Compaction count: 3. Queued 2 post-compaction delegate(s) for delivery into the fresh session. 1 delegate(s) were not released into the fresh session.",
     );
   });
 
@@ -335,7 +335,6 @@ describe("post-compaction delegate dispatch extraction", () => {
       },
     ]);
     expect(drainPostCompactionDelegateDeliveries).toHaveBeenCalledWith({
-      entryIds: ["queue-0", "queue-1"],
       log: expect.any(Object),
       sessionKey: "main",
     });
@@ -343,7 +342,9 @@ describe("post-compaction delegate dispatch extraction", () => {
       sessionKey: "main",
     });
     expect(enqueueSystemEvent).toHaveBeenCalledWith(
-      expect.stringContaining("Released 2 post-compaction delegate(s) into the fresh session."),
+      expect.stringContaining(
+        "Queued 2 post-compaction delegate(s) for delivery into the fresh session.",
+      ),
       { sessionKey: "main" },
     );
     expect(preserve).toEqual([]);
@@ -626,5 +627,99 @@ describe("post-compaction delegate dispatch extraction", () => {
         { sessionKey: "main" },
       );
     });
+  });
+
+  // ---- Regression tests for codex queue-model correctness repairs ----
+
+  it("drains unfiltered for sessionKey so prior failed entries are reconsidered (r3144331033)", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const preserve: SessionPostCompactionDelegate[] = [];
+    const { deps, drainPostCompactionDelegateDeliveries } = createDispatchDeps({
+      staged: [delegate("fresh")],
+    });
+
+    await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: preserve,
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+    await flushMicrotasks();
+
+    expect(drainPostCompactionDelegateDeliveries).toHaveBeenCalledTimes(1);
+    const calls = drainPostCompactionDelegateDeliveries.mock.calls as ReadonlyArray<
+      ReadonlyArray<unknown>
+    >;
+    const callArg = calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(callArg).toBeDefined();
+    // Must omit entryIds so the drain is sessionKey-scoped and
+    // backoff-eligible (no bypass), rescuing prior failed pending entries.
+    expect(callArg).not.toHaveProperty("entryIds");
+    expect(callArg).toMatchObject({ sessionKey: "main" });
+  });
+
+  it("propagates chain-state persist failures so the queue entry retries (r3144344309)", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-persist-fail-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: 1 } }, null, 2),
+        "utf-8",
+      );
+      const { deps, log, spawnSubagentDirect } = createDeliveryDeps({ storePath });
+
+      // Block atomic write: chmod parent dir to 0o500 so writeTextAtomic
+      // cannot create the temp file. The initial deps.loadSessionStore
+      // mock reads from disk before this is hit, so the spawn occurs and
+      // the post-spawn persist is what fails.
+      await fs.chmod(tempDir, 0o500);
+      try {
+        await expect(
+          deliverQueuedPostCompactionDelegate({ entry: createQueuedEntry() }, deps),
+        ).rejects.toBeDefined();
+      } finally {
+        await fs.chmod(tempDir, 0o700);
+      }
+
+      expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to persist post-compaction delegate chain state for main"),
+      );
+    });
+  });
+
+  it("reports queuedDelegates count (not delivered count) in the lifecycle event (r3144344310)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T22:30:00.000Z"));
+
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const preserve: SessionPostCompactionDelegate[] = [];
+    const { deps, enqueueSystemEvent } = createDispatchDeps({
+      staged: [delegate("a"), delegate("b"), delegate("c")],
+    });
+
+    const result = await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 4,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: preserve,
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+    await flushMicrotasks();
+
+    expect(result).toEqual({ queuedDelegates: 3, droppedDelegates: 0 });
+    expect(enqueueSystemEvent).toHaveBeenCalledWith(
+      "[system:post-compaction] Session compacted at 2026-04-26T22:30:00.000Z. Compaction count: 4. Queued 3 post-compaction delegate(s) for delivery into the fresh session.",
+      { sessionKey: "main" },
+    );
   });
 });
