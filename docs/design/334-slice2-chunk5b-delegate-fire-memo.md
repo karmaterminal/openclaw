@@ -182,7 +182,9 @@ In `agent-runner.continuation-delegate-fire-span.test.ts` (new):
 2. Tool-delegate timer fire emits exactly one
 3. `fire.deferred_ms` is non-negative and roughly matches the requested `delay.ms` (loose floor; CI timing varies)
 4. chain.id matches the dispatch span's chain.id (trace stitches)
-5. Wake-then-cap: fire emits, then disabled emits, both share chain.id
+5. Reservation-missing: timer-fire emits, sibling `continuation.disabled (reason=reservation.missing)` emits, both share chain.id (replaces the wake-then-cap test which was deferred along with Q4 — 🌊 msg `1498380176445407274`)
+
+**Dropped from earlier draft:** wake-then-cap test (fire-time cap-recheck) — deferred with Q4 to future-policy memo. 5b ships zero new gate behavior.
 
 ## Risks / non-goals
 
