@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
@@ -205,6 +206,7 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
     const names: ContinuationSpanName[] = [
       "continuation.work",
       "continuation.delegate.dispatch",
+      "continuation.delegate.fire",
       "continuation.queue.enqueue",
       "continuation.queue.drain",
       "continuation.compaction.released",
@@ -716,6 +718,239 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 ch
         chainStepRemaining: 0,
         disabledReason: "cap.chain",
         signalKind: "tool-delegate",
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts disabledReason='reservation.missing' (chunk 5b enum extension)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDisabledSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262099",
+      chainStepRemaining: 4,
+      disabledReason: "reservation.missing",
+      signalKind: "tool-delegate",
+      delegateDelivery: "timer",
+      delegateMode: "silent-wake",
+    });
+    expect(spans[0].options?.attributes).toMatchObject({
+      "disabled.reason": "reservation.missing",
+      "signal.kind": "tool-delegate",
+      "delegate.delivery": "timer",
+      "delegate.mode": "silent-wake",
+      "chain.id": "019dcf57-b536-77cc-834b-b803d9262099",
+      "continuation.disabled": true,
+    });
+  });
+});
+
+describe("continuation-tracer :: emitContinuationDelegateFireSpan helper (Slice 2 chunk 5b)", () => {
+  type RecordedSpan = {
+    name: string;
+    options: StartSpanOptions | undefined;
+    statusCalls: { status: SpanStatus; message?: string | undefined }[];
+    attrCalls: SpanAttributes[];
+    exceptions: unknown[];
+    ended: boolean;
+  };
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const rec: RecordedSpan = {
+          name,
+          options,
+          statusCalls: [],
+          attrCalls: [],
+          exceptions: [],
+          ended: false,
+        };
+        spans.push(rec);
+        const span: Span = {
+          setAttributes(attrs) {
+            rec.attrCalls.push(attrs);
+          },
+          setStatus(status, message) {
+            rec.statusCalls.push({ status, message });
+          },
+          recordException(err) {
+            rec.exceptions.push(err);
+          },
+          end() {
+            rec.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  it("emits a continuation.delegate.fire span with all required attrs", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateFireSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262032",
+      chainStepRemainingAtDispatch: 4,
+      delegateMode: "silent-wake",
+      delayMs: 60_000,
+      fireDeferredMs: 60_017,
+      reason: "fan out three queries",
+    });
+    expect(spans).toHaveLength(1);
+    const span = spans[0];
+    expect(span.name).toBe("continuation.delegate.fire");
+    expect(span.options?.attributes).toEqual({
+      "chain.id": "019dcf57-b536-77cc-834b-b803d9262032",
+      "chain.step.remaining": 4,
+      "delay.ms": 60_000,
+      "fire.deferred_ms": 60_017,
+      "delegate.delivery": "timer",
+      "delegate.mode": "silent-wake",
+      "reason.preview": "fan out three queries",
+    });
+    expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
+    expect(span.ended).toBe(true);
+  });
+
+  it("carries fire.deferred_ms with Math.floor (integer ms, drift formula consumer-ready)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateFireSpan({
+      chainId: "abc",
+      chainStepRemainingAtDispatch: 1,
+      delegateMode: "normal",
+      delayMs: 1_000,
+      fireDeferredMs: 1_234.9, // floored to 1234
+    });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["fire.deferred_ms"]).toBe(1234);
+  });
+
+  it("clamps negative fireDeferredMs to 0 (defense; should never happen in practice)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateFireSpan({
+      chainId: "abc",
+      chainStepRemainingAtDispatch: 1,
+      delegateMode: "normal",
+      delayMs: 0,
+      fireDeferredMs: -3,
+    });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["fire.deferred_ms"]).toBe(0);
+  });
+
+  it("truncates reason.preview to 80 chars", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateFireSpan({
+      chainId: "abc",
+      chainStepRemainingAtDispatch: 0,
+      delegateMode: "silent",
+      delayMs: 100,
+      fireDeferredMs: 105,
+      reason: "z".repeat(200),
+    });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["reason.preview"]).toBe(
+      "z".repeat(80),
+    );
+  });
+
+  it("clamps negative chainStepRemainingAtDispatch to 0", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateFireSpan({
+      chainId: "abc",
+      chainStepRemainingAtDispatch: -2,
+      delegateMode: "normal",
+      delayMs: 0,
+      fireDeferredMs: 1,
+    });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["chain.step.remaining"]).toBe(0);
+  });
+
+  it("threads each delegateMode through unchanged", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    for (const mode of ["normal", "silent", "silent-wake"] as const) {
+      emitContinuationDelegateFireSpan({
+        chainId: "abc",
+        chainStepRemainingAtDispatch: 1,
+        delegateMode: mode,
+        delayMs: 0,
+        fireDeferredMs: 0,
+      });
+    }
+    expect(
+      spans.map((s) => (s.options?.attributes as ContinuationSpanAttrs)["delegate.mode"]),
+    ).toEqual(["normal", "silent", "silent-wake"]);
+  });
+
+  it("always emits delegate.delivery='timer' as a fixed attr (not arg-driven)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDelegateFireSpan({
+      chainId: "abc",
+      chainStepRemainingAtDispatch: 0,
+      delegateMode: "normal",
+      delayMs: 0,
+      fireDeferredMs: 0,
+    });
+    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["delegate.delivery"]).toBe(
+      "timer",
+    );
+  });
+
+  it("swallows tracer errors and forwards them to the log callback", () => {
+    const throwing: Tracer = {
+      startSpan() {
+        throw new Error("kaboom-fire");
+      },
+    };
+    setContinuationTracer(throwing);
+    const logged: string[] = [];
+    expect(() =>
+      emitContinuationDelegateFireSpan({
+        chainId: "abc",
+        chainStepRemainingAtDispatch: 0,
+        delegateMode: "normal",
+        delayMs: 0,
+        fireDeferredMs: 0,
+        log: (m) => logged.push(m),
+      }),
+    ).not.toThrow();
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/Failed to emit continuation\.delegate\.fire span/);
+    expect(logged[0]).toContain("kaboom-fire");
+  });
+
+  it("defense-in-depth: undefined chainId no-ops + logs (invariant break must not crash fire-emit)", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const logged: string[] = [];
+    emitContinuationDelegateFireSpan({
+      // Sig says `chainId: string`, but a future invariant break could
+      // let undefined slip through; cast through unknown to simulate.
+      chainId: undefined as unknown as string,
+      chainStepRemainingAtDispatch: 0,
+      delegateMode: "normal",
+      delayMs: 0,
+      fireDeferredMs: 0,
+      log: (m) => logged.push(m),
+    });
+    expect(spans).toHaveLength(0);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/chainId invariant violated/);
+  });
+
+  it("is a no-op against the default noop tracer", () => {
+    resetContinuationTracer();
+    expect(() =>
+      emitContinuationDelegateFireSpan({
+        chainId: "abc",
+        chainStepRemainingAtDispatch: 1,
+        delegateMode: "normal",
+        delayMs: 0,
+        fireDeferredMs: 0,
       }),
     ).not.toThrow();
   });
