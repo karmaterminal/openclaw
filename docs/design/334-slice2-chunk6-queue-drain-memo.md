@@ -274,15 +274,20 @@ The family-grammar canonical-name set, in the union-order 🌻 pinned during coh
 
 Both sites must list the names in the **same order**, with the **same insertions in the same chunk**. This is the post-#389 reconciliation discipline — #389 had to land specifically because chunk 5b added `delegate.fire` to one site and not the other, drifting the contract.
 
-**Per-chunk single-addition discipline (cohort-locked, prevents the post-#389 drift recurrence):**
+**Byte-state correction (🩸 byte-walk on `c7eadc1cf31`):** all three names are **already inserted** at both pin sites on trunk:
 
-- **Chunk 6a** (this chunk, queue.drain wire) inserts `continuation.queue.drain` **only** — same insertion at both sites in the same PR.
-- **Chunk 6b** (compaction.released wire, separate memo + PR) inserts `continuation.compaction.released` **only** — same insertion at both sites in the same PR.
-- **Chunk 6.5** (queue.enqueue wire, separate memo + PR) inserts `continuation.queue.enqueue` **only** — same insertion at both sites in the same PR.
+- runtime canonical-name array: `continuation.queue.enqueue` L143, `continuation.queue.drain` L144, `continuation.compaction.released` L145, `continuation.disabled` L146
+- type-pin loop: same names at L215–L218
 
-**NOT all three at once.** Bundling the three insertions into one chunk re-creates the exact drift surface that #389 cooled. One name per chunk; both sites; same order.
+These inserts landed in earlier substrate chunks (2/3 forward-declarations), so chunk 6a / 6b / 6.5 do **NOT** add canonical-name entries — they wire the _emit-paths_ for names that are already pin-asserted.
 
-The forward-declared `ContinuationSpanName` union in `src/infra/continuation-tracer.ts:137-141` already lists all three pre-wired names — that's the substrate-level pin. The two test sites are the contract-level pins, and they're the ones that need the per-chunk single-addition discipline.
+**Reframed discipline (cohort-locked, preserves the post-#389 reconciliation):** **preserve symmetry — do not re-drift these two sites.**
+
+- Chunk 6a / 6b / 6.5 wire PRs **must not touch** the canonical-name array or the type-pin loop. The names are already there; touching them is gratuitous churn at best, drift surface at worst.
+- If a future chunk adds a _new_ canonical name (e.g. chunk 7 cap-overflow `continuation.disabled` reason variant, or any later span-family extension), the rule is: **same insertion at both sites in the same PR, in the same union-order**. One name per chunk; never split across PRs.
+- The forward-declared `ContinuationSpanName` union in `src/infra/continuation-tracer.ts:137-141` is the substrate-level pin and is also already complete for the chunk-6 family.
+
+The wire author for chunk 6a should treat the canonical-name + type-pin sites as **read-only** for this chunk.
 
 ## Wire scope estimate
 
