@@ -38,7 +38,7 @@ Production callsite wiring is out of scope for this memo (separate issue; same p
 
 ### Required attributes (always present)
 
-- `signal.kind: "rebase.classify"` — fixed string discriminator (matches the same shape `continuation.*` helpers use for downstream filterability)
+- `signal.kind: "rebase-classify"` — fixed string discriminator (matches the family-resemblance shape used by `continuation.*` helpers, e.g. `"compaction-release"` for `continuation.compaction.released`; uses hyphen-form so a downstream filter on `signal.kind` doesn't redundantly slice the span name. Updated 2026-04-27 post-#416 per 🌫 review nit; the original memo had `"rebase.classify"` which exactly matched the span name and was redundant on the wire.)
 - `verdict: "DROP" | "PICK" | "REVIEW"` — the classifier's output
 - `discovery.channel: "changelog-grep:pr" | "changelog-grep:subject" | "cherry-pick-provenance" | "conflict-content" | "none"` — which channel produced the verdict (matches `RebaseDiscoveryChannel` exactly; type re-export from `rebase-classifier.ts`)
 - `pick.sha: string` — the commit SHA being classified (truncated to 12 chars; full SHA available via separate trace correlation if needed)

@@ -39,6 +39,8 @@ import {
 } from "../../../src/infra/continuation-tracer.js";
 import { generateChainId } from "../../../src/infra/secure-random.js";
 import {
+  REBASE_DISCOVERY_CHANNELS,
+  REBASE_VERDICTS,
   emitRebaseClassifySpan,
   type EmitRebaseClassifySpanArgs,
   type RebaseClassifyEvidence,
@@ -320,6 +322,36 @@ export type ClassifyCaptureResult = {
 export async function captureClassify(
   opts: CaptureClassifyOptions,
 ): Promise<ClassifyCaptureResult> {
+  // Memo §3 validation (throw-on-bad-input — matches #405/#411/#412
+  // family-resemblance via the harness boundary, same shape as
+  // `captureSwim`'s `recipients must be a positive integer` throw at
+  // line 180). Enforced here at the Options boundary rather than inside
+  // the helper so the production tracer surface stays drop-with-log
+  // (matches `emitContinuationCompactionReleasedSpan`'s discipline of
+  // never throwing through to the caller).
+  if (!REBASE_VERDICTS.includes(opts.verdict)) {
+    throw new Error(
+      `captureClassify: verdict must be one of ${REBASE_VERDICTS.join("|")}, got ${String(opts.verdict)}`,
+    );
+  }
+  if (!REBASE_DISCOVERY_CHANNELS.includes(opts.channel)) {
+    throw new Error(
+      `captureClassify: channel must be one of ${REBASE_DISCOVERY_CHANNELS.join("|")}, got ${String(opts.channel)}`,
+    );
+  }
+  // pickSha ≥ 7 hex chars per memo §3 (git's minimum unambiguous prefix).
+  // Hex-only check matches the `^[0-9a-f]+$` shape git rev-parse emits.
+  if (typeof opts.pickSha !== "string" || opts.pickSha.length < 7) {
+    throw new Error(
+      `captureClassify: pickSha must be at least 7 hex chars, got ${JSON.stringify(opts.pickSha)}`,
+    );
+  }
+  if (!/^[0-9a-f]+$/.test(opts.pickSha)) {
+    throw new Error(
+      `captureClassify: pickSha must be lowercase hex (matches git rev-parse), got ${JSON.stringify(opts.pickSha)}`,
+    );
+  }
+
   const recorder = createInMemorySpanRecorder();
   setContinuationTracer(recorder.tracer);
   try {
