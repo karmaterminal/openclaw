@@ -390,7 +390,11 @@ Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, *
 | TC-no-genguard | Removal-only (RFC §3.2)                           | RFC §3.2 (NOT §3.6)                                         | Delayed delegate fires N out; channel receives K unrelated msgs between; assert delegate STILL FIRES. **No mechanism-replacement claim.** Phantom cleanup-debt retracted (zero non-doc hits per 🌫 byte-check). | App-J §Config.genguard-removed |
 | D-cfg.sdq-retry-not-hot-reloadable | SDQ retry keys doc'd but not hot-reloadable | RFC §3.6 / §6.5 vs SDQ impl                            | Mutate `session-delivery-queue.retry.cap` + `.backoffMs[]` at runtime; assert NOT picked up live (requires gateway restart). Catches docs/code-shape mismatch per 🌻 second-eye. | App-J §Config.sdq-retry-static |
 
-**Total: 38 cases (28 E-series E1.x–E7.x + E6.5 + E9 + E10 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard).** E9 + E10 are top-level traceability rows covered by static-harness vitest (not net-new swim-37 work) but counted on the canonical board. (Pinned 2026-04-28 08:16 PDT after cohort regex-trap convergence + 🌫 E6.5 inclusion check — 38 byte-verified on `cc84da52a05`.) All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
+**Totals (two pinned numbers per 🌫 proposal 08:19 PDT):**
+- `board_total: 38` — rows on the canonical board (28 E-series E1.x–E7.x + E6.5 + E9 + E10 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard).
+- `net_new_swim_cases: 36` — board_total minus E9 (rebase-classify) + E10 (harness scaffold), which are green-floor static-harness vitest coverage, not net-new swim-37 work.
+
+Disagreement during convergence (08:04–08:18 PDT) was categorical (which bucket E6.5/E9/E10 land in), not arithmetic. Two pinned numbers = no further re-bytes needed. All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
 
 ## Cross-cutting flags lifted to top
 
@@ -413,7 +417,7 @@ Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, *
 Three princes have content represented (🩸 seed §1–§8, 🌫 §A/§B + 8-uncovered, 🌻 E1–E10). This editor pass:
 - collapses 🌫 TC-* into 🌻 E6 (alias-table preserves)
 - adds (c) case-stub + (d) RFC-appendix-slot columns per highlight
-- locks **38-case canonical board** (28 E-series incl. E6.5/E9/E10 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard; E9/E10 covered by static harness)
+- locks **38-row canonical board** (`board_total: 38` / `net_new_swim_cases: 36`; E9/E10 covered by static harness, kept for traceability)
 - pins corrections (no-genguard §3.2, phantom cleanup-debt, feedback-key not-a-config, maxChainLength boundary)
 - surfaces 2 figs-pending Qs
 
