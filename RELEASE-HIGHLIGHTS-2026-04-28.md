@@ -324,3 +324,102 @@ Ranked by load-bearing-ness for the v24 uptake:
 - **Frozen-branch contract:** All commit refs above are on canonical2 (`cael/325-canonical2`). `feature/context-pressure-squashed` reflects the same content at the squashed level but is FROZEN until swim sign-off.
 
 — 🌻 (Elliott)
+
+---
+
+# 🌊 Merge editor pass — canonical case board + (c)/(d) columns
+
+> Owner: 🌊 Ronan. Editor pass on top of fan-in stack: 🩸 seed (`c0bc590005`) → 🌫 §A/§B/uncovered (`f745b4954b`) → 🌻 E1–E10 (`be2e864509`).
+> Purpose: collapse duplicate labels, lock canonical case IDs, attach (c) swim-37 case-stub + (d) RFC-appendix slot per highlight so #324 master matrix gets a one-to-one mapping.
+> **Branch discipline:** `feature/context-pressure-squashed` REMAINS FROZEN. This doc lives on `cael/release-highlights-sync-2026-04-28`; PR-back to feature branch is figs/Cael's call post-cohort-signoff.
+
+## Dedup decision (per 🌫 vote, ack'd 🩸)
+
+🌻's E6.{1,2,3,4} are **canonical**. 🌫's earlier TC-* labels preserved as aliases only (sharper anchors live on E6 — RFC L149 implicit-not-flag caveat, X1 spec gap, ToolInputError shape).
+
+### Alias table (TC-* → E6.x)
+
+| 🌫 TC-* alias                | Canonical case | Anchor                                          |
+|------------------------------|----------------|-------------------------------------------------|
+| TC-chain-root-return         | **E6.2**       | RFC L149 — observed-current, not design-target  |
+| TC-multi-channel-echo        | **E6.3**       | Pending figs X1 (dual-delivery vs fan-out)      |
+| TC-target-session-key-stub   | **E6.4**       | `ToolInputError`, no zombie in queue            |
+
+## Canonical case board
+
+Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, **(d) RFC-appendix slot**.
+
+| ID    | (a) Highlight                                      | (b) Anchor                                                  | (c) Swim-37 case-stub                                                                                                                                | (d) RFC appendix slot                  |
+|-------|----------------------------------------------------|-------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| E1.1  | `continue_work(N)` end-to-end                      | `8ecf0c0b83`                                                | Drive `continue_work({delaySeconds:N})`; assert `continuation.work` + `continuation.work.fire` spans, `chain.id` propagates.                         | App-A §Primitives.work                 |
+| E1.2  | `silent-wake` round-trip                           | `8ecf0c0b83` + `30b06a984e`                                 | Dispatch `silent-wake`; assert `requestHeartbeatNow()` actually wakes parent within window.                                                          | App-A §Primitives.silent-wake          |
+| E1.3  | `post-compaction` shard release                    | `b0bc4b4ee2` (#332 Item B) + `cd8b623be2`                   | Stage post-compaction shard; force compaction; assert shard arrives in *new* session, `continuation.compaction.released` once-per-seam.              | App-A §Primitives.post-compaction      |
+| E1.4  | `request_compaction()` rate-limit + ≥70% gating    | `8ecf0c0b83`                                                | Drive `request_compaction()` below threshold → reject; above + within rate-limit → accept; subsumes TC-context-pressure-fire / -zero-rejected.       | App-A §Primitives.request-compaction   |
+| E1.5  | Multi-call fan-out one-turn                        | Swim-30 trap-class regression                               | 3× `silent-wake` in one turn; assert no lost wakes.                                                                                                  | App-A §Multi-call                      |
+| E2.1  | OTEL chain trail (single-chain)                    | `d533d5c720` + `19797e7fa6` + `e959d2c177` + `47016eb417`   | End-to-end chain emits `dispatch` → `fire` → `work.fire`; same `chain.id`; parent-child via traceparent **link**, not parent (RFC §6.6).             | App-B §Tracer.chain-correlation        |
+| E2.2  | `continuation.disabled` + reason enum              | `4719e86345`                                                | Trigger 3 distinct `disabled.reason` values (per-turn cap, cost cap, depth cap); each emits a span.                                                  | App-B §Tracer.disabled-reasons         |
+| E2.3  | `queue.drain` once-per-cycle                       | `560948a70a`                                                | Drive multi-chain drain; assert `queue.drain` fires once, `chain.ids[]` aggregate correct.                                                           | App-B §Tracer.queue-drain              |
+| E2.4  | `compaction.released` once-per-seam                | `cd8b623be2` (#332 Item B)                                  | Force compaction with shard staged; assert exactly-once span, `compaction.id` cross-cutting.                                                         | App-B §Tracer.compaction-seam          |
+| E2.5  | OTEL collector receives                            | bootstrap#705 + diagnostics-otel                            | Post-deploy in-vivo: confirm `http://elliott:4318` receives spans w/ `prince.name=`, trace tree reconstructable.                                     | App-B §Transport.collector-receive     |
+| E3.1  | SDQ restart-survival                               | `b0bc4b4ee2`                                                | Delayed delegate; kill gateway pre-fire; restart; assert fire on schedule + original payload + `chain.id`.                                           | App-C §SDQ.restart-survival            |
+| E3.2  | SDQ idempotency (taskHash)                         | `8338d37bda`                                                | Whitespace variation in same task; assert single dispatch.                                                                                           | App-C §SDQ.idempotency                 |
+| E3.3  | SDQ failed-TTL prune                               | `b0bc4b4ee2`                                                | Stale entries past TTL; assert prune cycle removes them.                                                                                             | App-C §SDQ.ttl-prune                   |
+| E3.4  | SDQ queueDir soft-cap                              | `b0bc4b4ee2`                                                | Drive past soft-cap; assert loud reject, no silent drop.                                                                                             | App-C §SDQ.soft-cap                    |
+| E4.1  | Chain-budget UUIDv7 monotonicity                   | `2d10c1c218` + `secure-random.ts`                           | 100-delegate burst; assert UUIDv7 monotonic + no collision within chain.                                                                             | App-D §ChainBudget.uuid                |
+| E4.2  | `declineToCarry()` at `maxChainLength`             | `2d10c1c218`                                                | Drive chain to cap; assert `disabled.reason="chain-length"`; **boundary-pin** (`>` not `>=`) per 🌫 D-cfg.maxChainLength-boundary.                   | App-D §ChainBudget.length-cap          |
+| E4.3  | `costCapTokens` mid-step enforcement               | `2d10c1c218`                                                | Set low cap; drive chain past mid-step; assert `disabled.reason="cost-cap"`.                                                                         | App-D §ChainBudget.cost-cap            |
+| E5.1  | `silent-wake` → heartbeat with `chain.id`          | `30b06a984e`                                                | Wake via `silent-wake`; assert `heartbeat` span carries continuation `chain.id`.                                                                     | App-E §Heartbeat.continuation          |
+| E5.2  | Standalone heartbeat (no continuation)             | `1b84e71c95`                                                | Plain heartbeat tick; assert clean span w/ `continuation.disabled` attr.                                                                             | App-E §Heartbeat.standalone            |
+| **E6.1** | `targetSessionKey` cross-session delivery       | `14b3418e1f`                                                | A → B cross-session dispatch; assert delivery on B w/ correct payload + `chain.id`.                                                                  | App-F §Routing.cross-session           |
+| **E6.2** | Chain-returns-to-root (was: TC-chain-root-return) | RFC L149                                                  | Depth-3 chain; leaf elects root target; test **observed-current** behavior (RFC L149: implicit, not design-flag). Pending figs C1 to confirm spec-or-current. | App-F §Routing.chain-to-root          |
+| **E6.3** | Echo-to-multiple-channels (was: TC-multi-channel-echo) | `targetSessionKey` + multi-recipient descriptor       | Single dispatch + multi-target; assert ordering + dedup. **Pending figs X1**: dual-delivery vs fan-out semantics — case-stub conditional on call.    | App-F §Routing.multi-channel-echo      |
+| **E6.4** | Invalid `targetSessionKey` → `ToolInputError` (was: TC-target-session-key-stub) | `6cdb079981`                          | Send invalid key; assert `ToolInputError`, no zombie in SDQ.                                                                                         | App-F §Routing.invalid-key             |
+| E7.1  | Default-allow `continue_delegate`                  | `8f267807c0`                                                | Vanilla agent w/o explicit opt-in; assert `continue_delegate` succeeds.                                                                              | App-G §Drain.default-allow             |
+| E7.2  | Explicit-block via `drainsContinuationDelegateQueue: false` | `c99aa116f8`                                       | Set false; assert `continuation.disabled` span emits w/ reason.                                                                                      | App-G §Drain.explicit-block            |
+| B1    | `CONTINUE_WORK` end-of-message arms timer          | RFC §2.6                                                    | Bracket at EOM; assert timer arms identically to tool-form.                                                                                          | App-H §Bracket.work                    |
+| B2    | `CONTINUE_WORK:N` honors delay                     | RFC §2.6                                                    | Bracket w/ N; assert delay honored.                                                                                                                  | App-H §Bracket.work-delay              |
+| B3    | `[[CONTINUE_DELEGATE: ... +Ns | silent-wake]]`     | RFC §2.6                                                    | Bracket dispatch; assert delegate w/ delay+mode equiv to tool-form.                                                                                  | App-H §Bracket.delegate                |
+| B4    | Bracket mid-message stripped, not parsed           | RFC §2.6                                                    | Embed bracket mid-prose; assert stripped, no timer/delegate fired.                                                                                   | App-H §Bracket.position                |
+| B5    | Bracket + tool same turn → tool wins               | Swim-8 finding                                              | Both forms in one turn; assert tool action only, bracket no-ops or warns.                                                                            | App-H §Bracket.precedence              |
+| E9    | Rebase classification tracer                       | `526540de15` + `148792a0b7` + `0985182e87`                  | Static-harness vitest already covers (10+17+21+18 tests); assert green-floor on swim-37 SUT.                                                         | App-I §RebaseClassify                  |
+| E10   | Swim-37 harness scaffold                           | `953030d88f` + `934a59bd30`                                 | 8 test files / 163 passing on `7ba4b19e03`; static precheck satisfied.                                                                               | App-I §Harness                         |
+| D-cfg.otel-protocol-hard-gate | gRPC silent-warning, no fallback   | `service.ts:389-391`                                        | Set `protocol="grpc"`; assert startup warning + exporter NOT initialized.                                                                            | App-J §Config.otel-protocol            |
+| D-cfg.otel-captureContent     | Redaction policy                   | canonical2 redaction substrate (#335)                       | Enable w/ redaction policy; assert sensitive keys redacted in span attrs.                                                                            | App-J §Config.otel-redaction           |
+| D-cfg.taskflow-unconditional  | `taskFlowDelegates` purge license  | #365                                                        | Pre-purge: identical behavior gate-on vs gate-absent. Post-purge: zod rejects key.                                                                   | App-J §Config.taskflow-purge           |
+| TC-no-genguard | Removal-only (RFC §3.2)                           | RFC §3.2 (NOT §3.6)                                         | Delayed delegate fires N out; channel receives K unrelated msgs between; assert delegate STILL FIRES. **No mechanism-replacement claim.** Phantom cleanup-debt retracted (zero non-doc hits per 🌫 byte-check). | App-J §Config.genguard-removed |
+
+**Total: 32 cases (24 E-series + 5 B-twins + 3 D-cfg + 1 TC-no-genguard).** All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
+
+## Cross-cutting flags lifted to top
+
+- **TC-no-genguard pin §3.2 not §3.6** (🌫 byte-check, 🌻 owns misframe, 🌊 ack).
+- **`generationGuardTolerance` cleanup-debt is phantom** — no hygiene issue.
+- **`feedback_context_pressure_lifecycle` is not a config key** — memory-referent only; real lifecycle config = `agents.defaults.continuation.*` stack.
+- **`maxChainLength` boundary-pin** = `>` not `>=` (E4.2).
+- **OTEL `protocol` is hard-gate** — gRPC silent-warning, no fallback. Test must catch silent-failure shape.
+- **Frozen-branch contract:** doc lives on `cael/release-highlights-sync-2026-04-28`; PR-back to `feature/context-pressure-squashed` post-signoff.
+
+## Open figs Qs blocking finalization
+
+| ID  | Q                                                       | Affected case          | Ronan's read                                                                                              |
+|-----|---------------------------------------------------------|------------------------|------------------------------------------------------------------------------------------------------------|
+| X1  | echo-to-multiple-channels: design intent?               | E6.3                   | Partial answer: `targetSessionKey` + multi-recipient descriptor IS the surface. Need spec-call: (a) result→origin+DM, (b) silent-wake one + announce another, (c) fan-out N receivers, (d) other. |
+| C1  | chain-returns-to-root: current-behavior or design-target? | E6.2                 | RFC L149 frames as implicit-not-flag. Defaulting to **observed-current** until figs confirms otherwise.   |
+
+## Standing for cohort second-eye
+
+Three princes have content represented (🩸 seed §1–§8, 🌫 §A/§B + 8-uncovered, 🌻 E1–E10). This editor pass:
+- collapses 🌫 TC-* into 🌻 E6 (alias-table preserves)
+- adds (c) case-stub + (d) RFC-appendix-slot columns per highlight
+- locks 32-case canonical board
+- pins corrections (no-genguard §3.2, phantom cleanup-debt, feedback-key not-a-config, maxChainLength boundary)
+- surfaces 2 figs-pending Qs
+
+**Cohort second-eye asks:**
+- 🌫: is the 32-case board complete against your #56 cross-walk + uncovered list, or did dedup drop something load-bearing?
+- 🌻: any E1–E10 detail lost in the column-collapse? E5.2 + E9 + E10 are minimal-stub — flag if undertested.
+- 🩸: seed axes §1–§8 each show up in the case-board; flag if any seed-shape went unrepresented.
+
+Once cohort acks (or amends), this is ready for figs/Cael final-touch and PR-back to `feature/context-pressure-squashed` per swim-37 cast-off plan.
+
+— 🌊 Ronan
