@@ -343,9 +343,16 @@ describe("swim-37 harness :: continuation primitives [scaffold]", () => {
       it("mints a fresh heartbeat.id per call (no leak across captureSwim invocations)", async () => {
         const a = await captureSwim("heartbeat");
         const b = await captureSwim("heartbeat");
-        expect(a.spans[0]!.attributes["heartbeat.id"]).not.toBe(
-          b.spans[0]!.attributes["heartbeat.id"],
-        );
+        const idA = a.spans[0]!.attributes["heartbeat.id"] as string;
+        const idB = b.spans[0]!.attributes["heartbeat.id"] as string;
+        // Stricter-defense per 🌫's #417 review: each fresh mint must
+        // ALSO conform to crypto.randomUUID() shape, not just differ.
+        // (Catches a hypothetical regression where the auto-mint seam
+        // degrades to a counter or timestamp under one branch.)
+        const uuidShape = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+        expect(idA).toMatch(uuidShape);
+        expect(idB).toMatch(uuidShape);
+        expect(idA).not.toBe(idB);
       });
     });
   });
