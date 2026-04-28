@@ -259,6 +259,13 @@ export async function captureSwim(
         // result-shape's `chainId` falls through `opts.chainId ?? generateChainId()`
         // for downstream non-empty invariant, but the SPAN itself reflects
         // the heartbeat's true context (omitted when caller omitted).
+        //
+        // CONTRACT (per 🩸's #417 review): the SPAN is the truth. The
+        // result-field `chainId` is harness plumbing for assertion symmetry
+        // with the other primitives — it does NOT round-trip through the
+        // emitted span when `opts.chainId` is undefined. Tests asserting
+        // chain-context absence MUST inspect `result.spans[0]!.attributes`,
+        // not `result.chainId`.
         const chainId = opts.chainId ?? generateChainId();
         emitContinuationHeartbeatSpan({
           heartbeatId: opts.heartbeatId,
