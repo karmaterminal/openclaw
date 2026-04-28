@@ -115,7 +115,64 @@ describe("swim-37 harness :: continuation primitives [scaffold]", () => {
   });
 
   describe("continue_delegate", () => {
-    it.todo("emits continuation.delegate.dispatch span with chain.id (#366)");
+    // 8-cell matrix: delegate.mode x delegate.delivery (per memo Q3).
+    const modes = ["normal", "silent", "silent-wake", "post-compaction"] as const;
+    const deliveries = ["immediate", "timer"] as const;
+    const matrix: Array<{
+      mode: (typeof modes)[number];
+      delivery: (typeof deliveries)[number];
+    }> = [];
+    for (const mode of modes) {
+      for (const delivery of deliveries) {
+        matrix.push({ mode, delivery });
+      }
+    }
+    it.each(matrix)(
+      "emits continuation.delegate.dispatch for mode=$mode delivery=$delivery",
+      async ({ mode, delivery }) => {
+        const result = await captureSwim("continue_delegate", {
+          delegateMode: mode,
+          delivery,
+          delayMs: delivery === "timer" ? 30 : 0,
+        });
+        expect(result.spans).toHaveLength(1);
+        const [span] = result.spans;
+        expect(span?.name).toBe("continuation.delegate.dispatch");
+        expect(span?.attributes["delegate.mode"]).toBe(mode);
+        expect(span?.attributes["delegate.delivery"]).toBe(delivery);
+        expect(span?.attributes["chain.id"]).toBe(result.chainId);
+        expect(span?.status).toBe("OK");
+        expect(span?.ended).toBe(true);
+      },
+    );
+    it("omits delegate.mode attribute when caller passes undefined", async () => {
+      const result = await captureSwim("continue_delegate", {
+        delivery: "immediate",
+      });
+      expect(result.spans).toHaveLength(1);
+      const [span] = result.spans;
+      expect(span?.attributes).not.toHaveProperty("delegate.mode");
+      expect(span?.attributes["delegate.delivery"]).toBe("immediate");
+    });
+    it("fan-out: N recipients emit N spans sharing chain.id", async () => {
+      const result = await captureSwim("continue_delegate", {
+        recipients: 3,
+        delegateMode: "normal",
+      });
+      expect(result.spans).toHaveLength(3);
+      for (const span of result.spans) {
+        expect(span.name).toBe("continuation.delegate.dispatch");
+        expect(span.attributes["chain.id"]).toBe(result.chainId);
+      }
+    });
+    it("rejects non-positive or non-integer recipients", async () => {
+      await expect(captureSwim("continue_delegate", { recipients: 0 })).rejects.toThrow(
+        /positive integer/,
+      );
+      await expect(captureSwim("continue_delegate", { recipients: 1.5 })).rejects.toThrow(
+        /positive integer/,
+      );
+    });
     it.todo("decrements chain-budget; ChainBudget.declineToCarry() observable on cap");
     it.todo("fan-out across N recipients consumes 1 chain step, not N (#355 Stage-2)");
     // Chunk 5b (#388) — `continuation.delegate.fire` lands at timer-callback
@@ -178,7 +235,6 @@ describe("swim-37 harness :: shape contract (live now)", () => {
   });
 
   it("captureSwim() refuses primitives not yet wired", async () => {
-    await expect(captureSwim("continue_delegate")).rejects.toThrow(/not yet wired/);
     await expect(captureSwim("heartbeat")).rejects.toThrow(/not yet wired/);
     await expect(captureSwim("lich")).rejects.toThrow(/not yet wired/);
   });

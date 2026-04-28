@@ -29,6 +29,7 @@
  */
 
 import {
+  emitContinuationDelegateSpan,
   emitContinuationWorkSpan,
   resetContinuationTracer,
   setContinuationTracer,
@@ -66,6 +67,30 @@ export type CaptureSwimOptions = {
    * Useful for tests that want a known stable id for comparison.
    */
   chainId?: string;
+  /**
+   * `continue_delegate` only. Recipient fan-out count: how many
+   * dispatch-accept spans to emit, all sharing the same `chain.id`.
+   * Defaults to 1 (no fan-out). Per cohort design (chunk 3,
+   * 2026-04-27): N recipients = N dispatch spans, NOT one span with
+   * a recipients list. Budget arithmetic still treats fan-out as one
+   * chain step (#355 Stage-2) — that's a budget concern, not a span
+   * cardinality concern.
+   */
+  recipients?: number;
+  /**
+   * `continue_delegate` only. `delegate.delivery` axis on the emitted
+   * span. `"immediate"` = no delay / 0ms delay (no setTimeout armed);
+   * `"timer"` = non-zero clamped delay armed setTimeout. Defaults to
+   * `"immediate"`.
+   */
+  delivery?: "immediate" | "timer";
+  /**
+   * `continue_delegate` only. `delegate.mode` axis on the emitted
+   * span. Pass `undefined` (or omit) to test the omission contract —
+   * the helper conditionally spreads, so `delegate.mode` is absent
+   * from the attribute bag when caller passes undefined.
+   */
+  delegateMode?: "normal" | "silent" | "silent-wake" | "post-compaction";
 };
 
 /**
@@ -108,7 +133,31 @@ export async function captureSwim(
         });
         return { spans: recorder.spans(), chainId };
       }
-      case "continue_delegate":
+      case "continue_delegate": {
+        const chainId = opts.chainId ?? generateChainId();
+        const recipients = opts.recipients ?? 1;
+        if (recipients < 1 || !Number.isInteger(recipients)) {
+          throw new Error(`captureSwim: recipients must be a positive integer, got ${recipients}`);
+        }
+        const delivery = opts.delivery ?? "immediate";
+        const chainStepRemaining = opts.chainStepRemaining ?? 5;
+        const delayMs = opts.delayMs ?? 0;
+        // N recipients = N dispatch spans sharing chain.id.
+        // Budget would treat this as one chain step (#355 Stage-2)
+        // but OTEL emits per-recipient — that's the per-cohort
+        // chunk-3 design pin ("emit at the enqueue/accept seam").
+        for (let i = 0; i < recipients; i++) {
+          emitContinuationDelegateSpan({
+            chainId,
+            chainStepRemaining,
+            delayMs,
+            delivery,
+            delegateMode: opts.delegateMode,
+            reason: opts.reason,
+          });
+        }
+        return { spans: recorder.spans(), chainId };
+      }
       case "heartbeat":
       case "lich": {
         // Reserved for follow-up PRs. We surface a clear error rather
