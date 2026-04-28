@@ -37,6 +37,13 @@ import {
   setContinuationTracer,
 } from "../../../src/infra/continuation-tracer.js";
 import { generateChainId } from "../../../src/infra/secure-random.js";
+import {
+  emitRebaseClassifySpan,
+  type EmitRebaseClassifySpanArgs,
+  type RebaseClassifyEvidence,
+  type RebaseDiscoveryChannel,
+  type RebaseVerdict,
+} from "../../../src/rebase/tracer.ts";
 import { type RecordedSpan, createInMemorySpanRecorder } from "./in-memory-span-recorder.js";
 
 /**
@@ -230,6 +237,66 @@ export async function captureSwim(
         throw new Error(`captureSwim: unknown primitive ${String(exhaustive)}`);
       }
     }
+  } finally {
+    resetContinuationTracer();
+  }
+}
+
+/**
+ * Options accepted by `captureClassify`. Per memo Q1 cohort sign-off
+ * (Option B, 2026-04-27), this is structurally distinct from
+ * `CaptureSwimOptions` — the rebase-bot domain doesn't share lifecycle
+ * axes with continuation primitives, so the negative-assert pins
+ * (`chain.id`, `chain.step.remaining`, `disabled.reason` MUST be absent
+ * on emitted spans) are enforced at the type system level: this Options
+ * shape literally cannot accept those params.
+ */
+export type CaptureClassifyOptions = {
+  readonly verdict: RebaseVerdict;
+  readonly channel: RebaseDiscoveryChannel;
+  /** Commit SHA being classified. Helper truncates to 12 chars at emit time. */
+  readonly pickSha: string;
+  readonly evidence?: RebaseClassifyEvidence;
+  /** Optional log callback forwarded into the helper for emit-failure diagnostics. */
+  readonly log?: (message: string) => void;
+};
+
+export type ClassifyCaptureResult = {
+  readonly spans: ReadonlyArray<{
+    readonly name: string;
+    readonly attributes: Readonly<Record<string, unknown>>;
+    readonly status: string;
+  }>;
+};
+
+/**
+ * Drive `emitRebaseClassifySpan` against an in-memory tracer recorder
+ * and return captured spans for assertion.
+ *
+ * Mirrors the `captureSwim()` discipline: fresh recorder per call,
+ * tracer reset in `finally`, no leaked state between invocations.
+ * STDOUT-only — no real BasicTracerProvider, no live OTLP, no
+ * @opentelemetry/sdk-trace-base machinery.
+ *
+ * Per memo Q4: PICK verdicts emit normally with no special handling.
+ * The matrix marks PICK as `it.todo` because PICK is not currently
+ * producible by the §1 substrate, but the helper accepts it.
+ */
+export async function captureClassify(
+  opts: CaptureClassifyOptions,
+): Promise<ClassifyCaptureResult> {
+  const recorder = createInMemorySpanRecorder();
+  setContinuationTracer(recorder.tracer);
+  try {
+    const args: EmitRebaseClassifySpanArgs = {
+      verdict: opts.verdict,
+      channel: opts.channel,
+      pickSha: opts.pickSha,
+      ...(opts.evidence !== undefined ? { evidence: opts.evidence } : {}),
+      ...(opts.log !== undefined ? { log: opts.log } : {}),
+    };
+    emitRebaseClassifySpan(args);
+    return { spans: recorder.spans() };
   } finally {
     resetContinuationTracer();
   }

@@ -22,7 +22,7 @@
 
 import { describe, expect, it } from "vitest";
 import { type RecordedSpan } from "./in-memory-span-recorder.js";
-import { type ChainPrimitiveResult, captureSwim } from "./swim-runner.js";
+import { type ChainPrimitiveResult, captureClassify, captureSwim } from "./swim-runner.js";
 
 // Local alias retained for the contract-shape tests below; the canonical
 // shape now lives in `./in-memory-span-recorder.ts`. Kept narrow so the
@@ -394,5 +394,243 @@ describe("swim-37 harness :: shape contract (live now)", () => {
     };
     const asLocal: SpanRecord = recorded;
     expect(asLocal.name).toBe("continuation.work");
+  });
+});
+
+describe("swim-37 harness :: rebase.classify primitive (live now)", () => {
+  // Wired against `emitRebaseClassifySpan` per the rebase.classify
+  // span-emission memo (`docs/design/swim-37-classifier-span-memo.md`).
+  // Cohort sign-off 2026-04-27: Q1=Option B (separate `captureClassify`
+  // entry point), Q2/Q2.5=in-PR helper at `src/rebase/tracer.ts`,
+  // Q3=6-row matrix + truncation + validation describes, Q4=emit PICK
+  // normally (matrix PICK row stays `it.todo` until a PICK-producing
+  // channel lands).
+  //
+  // STDOUT-only discipline preserved: in-memory recorder, try/finally
+  // tracer reset, no real BasicTracerProvider/OTLP machinery.
+
+  describe("per-channel verdict matrix (memo §Q3)", () => {
+    it("channel='changelog-grep:pr' → DROP with evidence.changelog.pr_token", async () => {
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "changelog-grep:pr",
+        pickSha: "abc123def456789",
+        evidence: { changelogPrToken: "#70595" },
+      });
+      expect(result.spans).toHaveLength(1);
+      const span = result.spans[0]!;
+      expect(span.name).toBe("rebase.classify");
+      expect(span.attributes["signal.kind"]).toBe("rebase.classify");
+      expect(span.attributes["verdict"]).toBe("DROP");
+      expect(span.attributes["discovery.channel"]).toBe("changelog-grep:pr");
+      expect(span.attributes["pick.sha"]).toBe("abc123def456");
+      expect(span.attributes["evidence.changelog.pr_token"]).toBe("#70595");
+      // Other channels' evidence absent (per-channel-isolation discipline).
+      expect(span.attributes["evidence.changelog.subject_match_count"]).toBeUndefined();
+      expect(span.attributes["evidence.cherry_pick.source_sha"]).toBeUndefined();
+      expect(span.attributes["evidence.conflict.bin"]).toBeUndefined();
+      expect(span.attributes["needs.conflict_content_inspection"]).toBeUndefined();
+    });
+
+    it("channel='changelog-grep:subject' → DROP with evidence.changelog.subject_match_count", async () => {
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "changelog-grep:subject",
+        pickSha: "feedface1234abcd",
+        evidence: { changelogSubjectMatchCount: 3 },
+      });
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["verdict"]).toBe("DROP");
+      expect(attrs["discovery.channel"]).toBe("changelog-grep:subject");
+      expect(attrs["evidence.changelog.subject_match_count"]).toBe(3);
+      expect(attrs["evidence.changelog.pr_token"]).toBeUndefined();
+      expect(attrs["evidence.cherry_pick.source_sha"]).toBeUndefined();
+      expect(attrs["evidence.conflict.bin"]).toBeUndefined();
+    });
+
+    it("channel='cherry-pick-provenance' → DROP with evidence.cherry_pick.source_sha (helper truncates)", async () => {
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "cherry-pick-provenance",
+        pickSha: "deadbeefcafebabe9999",
+        evidence: { cherryPickSourceSha: "01234567890abcdef0123" },
+      });
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["verdict"]).toBe("DROP");
+      expect(attrs["discovery.channel"]).toBe("cherry-pick-provenance");
+      expect(attrs["pick.sha"]).toBe("deadbeefcafe");
+      expect(attrs["evidence.cherry_pick.source_sha"]).toBe("01234567890a");
+      expect(attrs["evidence.changelog.pr_token"]).toBeUndefined();
+      expect(attrs["evidence.changelog.subject_match_count"]).toBeUndefined();
+      expect(attrs["evidence.conflict.bin"]).toBeUndefined();
+    });
+
+    it("channel='conflict-content' (DROP, callback invoked) → evidence.conflict.bin present", async () => {
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "conflict-content",
+        pickSha: "112233445566",
+        evidence: { conflictBin: "test-harness" },
+      });
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["verdict"]).toBe("DROP");
+      expect(attrs["discovery.channel"]).toBe("conflict-content");
+      expect(attrs["evidence.conflict.bin"]).toBe("test-harness");
+      expect(attrs["evidence.changelog.pr_token"]).toBeUndefined();
+      expect(attrs["evidence.changelog.subject_match_count"]).toBeUndefined();
+      expect(attrs["evidence.cherry_pick.source_sha"]).toBeUndefined();
+    });
+
+    it("channel='none' (REVIEW, no callback) → needs.conflict_content_inspection=true", async () => {
+      // Back-compat path from #408 — caller didn't supply `conflictContent`
+      // callback so the rubric never ran. Memo §2: the only path where
+      // `needs.conflict_content_inspection` is present.
+      const result = await captureClassify({
+        verdict: "REVIEW",
+        channel: "none",
+        pickSha: "aaaaaaaaaaaa",
+        evidence: { needsConflictContentInspection: true },
+      });
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["verdict"]).toBe("REVIEW");
+      expect(attrs["discovery.channel"]).toBe("none");
+      expect(attrs["needs.conflict_content_inspection"]).toBe(true);
+      expect(attrs["evidence.conflict.bin"]).toBeUndefined();
+    });
+
+    it("channel='none' (REVIEW, callback invoked, returned bin='none') → evidence.conflict.bin='none' present", async () => {
+      // Per 🌫's #413 review nit folded into memo §2: bin='none' is a
+      // real value (rubric ran but found no signal), distinct from
+      // attr-absent (rubric never ran). This row is the load-bearing
+      // proof.
+      const result = await captureClassify({
+        verdict: "REVIEW",
+        channel: "none",
+        pickSha: "bbbbbbbbbbbb",
+        evidence: { conflictBin: "none" },
+      });
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["verdict"]).toBe("REVIEW");
+      expect(attrs["discovery.channel"]).toBe("none");
+      expect(attrs["evidence.conflict.bin"]).toBe("none");
+      // bin='none' ≠ attr-absent — the `in` check is the load-bearing pin.
+      expect("evidence.conflict.bin" in attrs).toBe(true);
+      expect(attrs["needs.conflict_content_inspection"]).toBeUndefined();
+    });
+
+    it.todo(
+      "channel=<future> → PICK with evidence (memo §Q4: emits normally; un-producible by §1 substrate today)",
+    );
+  });
+
+  describe("pick.sha truncation invariant", () => {
+    // Pinning the 12-char truncation explicitly per memo §Q3 (separate
+    // describe because it's about a derived attribute, not an input axis).
+
+    it("truncates 40-char full SHA to 12-char prefix", async () => {
+      const fullSha = "a".repeat(40);
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "changelog-grep:pr",
+        pickSha: fullSha,
+        evidence: { changelogPrToken: "#1" },
+      });
+      expect(result.spans[0]!.attributes["pick.sha"]).toBe("a".repeat(12));
+    });
+
+    it("passes 12-char SHA through unchanged", async () => {
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "changelog-grep:pr",
+        pickSha: "123456789abc",
+        evidence: { changelogPrToken: "#1" },
+      });
+      expect(result.spans[0]!.attributes["pick.sha"]).toBe("123456789abc");
+    });
+
+    it("passes short (<12) SHA through unchanged (helper does not pad)", async () => {
+      // Honest about being short rather than pretending. Same discipline
+      // as how `emitContinuationCompactionReleasedSpan` doesn't fabricate
+      // missing compaction.id.
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "changelog-grep:pr",
+        pickSha: "abc123",
+        evidence: { changelogPrToken: "#1" },
+      });
+      expect(result.spans[0]!.attributes["pick.sha"]).toBe("abc123");
+    });
+  });
+
+  describe("negative-assert pins (memo §2)", () => {
+    // These attributes MUST NOT appear on rebase.classify spans. Same
+    // family-resemblance discipline as #410/#411/#412/#414/#415: defends
+    // future drift toward conflating rebase-bot lifecycle with
+    // continuation lifecycle. The `captureClassify` Options shape
+    // already enforces this at the type system level (no `chainId`,
+    // `compactionId`, etc. params), but runtime pinning is
+    // belt-and-braces — if a future maintainer adds those params back
+    // to the Options or helper, this test fails before the contract
+    // drifts.
+
+    it("chain.id MUST be absent on rebase.classify spans", async () => {
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "changelog-grep:pr",
+        pickSha: "abc123",
+        evidence: { changelogPrToken: "#1" },
+      });
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["chain.id"]).toBeUndefined();
+      expect("chain.id" in attrs).toBe(false);
+    });
+
+    it("chain.step.remaining MUST be absent on rebase.classify spans", async () => {
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "changelog-grep:pr",
+        pickSha: "abc123",
+        evidence: { changelogPrToken: "#1" },
+      });
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["chain.step.remaining"]).toBeUndefined();
+      expect("chain.step.remaining" in attrs).toBe(false);
+    });
+
+    it("disabled.reason MUST be absent on rebase.classify spans (DROP ≠ disabled)", async () => {
+      // DROP is a verdict, not a continuation-disabled signal. Pinning
+      // absence prevents copy-paste of `continuation.disabled` shape
+      // onto this helper.
+      const result = await captureClassify({
+        verdict: "DROP",
+        channel: "cherry-pick-provenance",
+        pickSha: "abc123",
+        evidence: { cherryPickSourceSha: "def456" },
+      });
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["disabled.reason"]).toBeUndefined();
+      expect("disabled.reason" in attrs).toBe(false);
+    });
+  });
+
+  describe("isolation contract (mirrors captureSwim() repeated-call discipline)", () => {
+    it("repeated captureClassify() calls do not leak capture state", async () => {
+      const r1 = await captureClassify({
+        verdict: "DROP",
+        channel: "changelog-grep:pr",
+        pickSha: "first1234567",
+        evidence: { changelogPrToken: "#1" },
+      });
+      const r2 = await captureClassify({
+        verdict: "REVIEW",
+        channel: "none",
+        pickSha: "second123456",
+        evidence: { needsConflictContentInspection: true },
+      });
+      expect(r1.spans).toHaveLength(1);
+      expect(r2.spans).toHaveLength(1);
+      expect(r1.spans[0]!.attributes["pick.sha"]).toBe("first1234567");
+      expect(r2.spans[0]!.attributes["pick.sha"]).toBe("second123456");
+    });
   });
 });
