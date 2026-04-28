@@ -2,7 +2,7 @@
 
 **Status**: design memo, pre-wire.
 **Author**: 🌊 ronan.
-**Memo-companion to**: `swim-37-continue-delegate-wiring-memo.md` (commit `3bb086c762`, PR #405), `swim-37-lich-wiring-memo.md` (commit pre-`3d90f68b14`, PR #411), `swim-37-heartbeat-wiring-memo.md` (commit pre-`1b84e71c95`, PR #412).
+**Memo-companion to**: `docs/design/swim-37-continue-delegate-wiring-memo.md` (PR #405), `docs/design/swim-37-lich-wiring-memo.md` (PR #411), `docs/design/swim-37-heartbeat-wiring-memo.md` (PR #412).
 **Cohort sign-off needed**: 🌫, 🌻, 🩸 on Q1–Q4.
 
 ---
