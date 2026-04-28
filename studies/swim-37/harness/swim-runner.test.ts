@@ -227,8 +227,127 @@ describe("swim-37 harness :: continuation primitives [scaffold]", () => {
   });
 
   describe("heartbeat", () => {
-    it.todo("emits heartbeat span; continuation.disabled=false while budget remains");
-    it.todo("continuation.disabled=true after declineToCarry fires (silenced-by-cap signal)");
+    // Wired against `emitContinuationHeartbeatSpan` per the heartbeat
+    // wiring memo (`docs/design/swim-37-heartbeat-wiring-memo.md`,
+    // PR #412 merged at `1b84e71c95`).
+    //
+    // Q1 (emit-strategy): harness shim is always-emit; production
+    // helper will be continuation-gated. Divergence documented in
+    // README primitive-coverage matrix.
+    // Q2 (single-span vs sibling): single span; no `heartbeat.fire`
+    // sibling. Lag/divergence will land as `heartbeat.lag.ms` attr
+    // when needed.
+    // Q3 (matrix): 5-row `it.each` covering chain-context × disabled
+    // axes; under 🌊's split-threshold of 12.
+    // Q4 (helper sourcing): in-PR helper, new function alongside
+    // `emitContinuationCompactionReleasedSpan`.
+
+    it.each([
+      {
+        label: "chain context absent (no continuation)",
+        chainId: undefined,
+        chainStepRemaining: undefined,
+        disabledReason: undefined,
+        expectAttrs: { chain: false, disabled: false },
+      },
+      {
+        label: "chain context present, not disabled",
+        chainId: "chain-abc-123",
+        chainStepRemaining: 7,
+        disabledReason: undefined,
+        expectAttrs: { chain: true, disabled: false },
+      },
+      {
+        label: "chain context present, disabled by cap.chain",
+        chainId: "chain-abc-123",
+        chainStepRemaining: 0,
+        disabledReason: "cap.chain",
+        expectAttrs: { chain: true, disabled: true, reason: "cap.chain" },
+      },
+      {
+        label: "chain context present, disabled by cap.cost",
+        chainId: "chain-def-456",
+        chainStepRemaining: 3,
+        disabledReason: "cap.cost",
+        expectAttrs: { chain: true, disabled: true, reason: "cap.cost" },
+      },
+      {
+        label: "chain context present, disabled by cap.delegates_per_turn",
+        chainId: "chain-ghi-789",
+        chainStepRemaining: 1,
+        disabledReason: "cap.delegates_per_turn",
+        expectAttrs: { chain: true, disabled: true, reason: "cap.delegates_per_turn" },
+      },
+    ])(
+      "emits heartbeat span: $label",
+      async ({ chainId, chainStepRemaining, disabledReason, expectAttrs }) => {
+        const result = await captureSwim("heartbeat", {
+          ...(chainId !== undefined && { chainId }),
+          ...(chainStepRemaining !== undefined && { chainStepRemaining }),
+          ...(disabledReason !== undefined && { disabledReason }),
+          heartbeatId: "hb-fixed-test-id",
+        });
+        expect(result.spans).toHaveLength(1);
+        const span = result.spans[0]!;
+        const attrs = span.attributes;
+
+        // Always-present axes
+        expect(span.name).toBe("heartbeat");
+        expect(attrs["signal.kind"]).toBe("heartbeat");
+        expect(attrs["heartbeat.id"]).toBe("hb-fixed-test-id");
+
+        // Chain-context axes (memo §2 omission contract)
+        if (expectAttrs.chain) {
+          expect(attrs["chain.id"]).toBe(chainId);
+          expect(attrs["chain.step.remaining"]).toBe(chainStepRemaining);
+        } else {
+          expect(attrs["chain.id"]).toBeUndefined();
+          expect("chain.id" in attrs).toBe(false);
+          expect(attrs["chain.step.remaining"]).toBeUndefined();
+          expect("chain.step.remaining" in attrs).toBe(false);
+        }
+
+        // Disabled axes (memo §2: "set ↔ true; unset ↔ omit")
+        if (expectAttrs.disabled) {
+          expect(attrs["continuation.disabled"]).toBe(true);
+          expect(attrs["disabled.reason"]).toBe(expectAttrs.reason);
+        } else {
+          expect(attrs["continuation.disabled"]).toBeUndefined();
+          expect("continuation.disabled" in attrs).toBe(false);
+          expect(attrs["disabled.reason"]).toBeUndefined();
+          expect("disabled.reason" in attrs).toBe(false);
+        }
+
+        // Negative-assert pins (memo §2): heartbeats fire on cadence,
+        // not caller-elected delay; chain.step.remaining_at_dispatch is
+        // a dispatch-axis, not a snapshot-axis.
+        expect("delay.ms" in attrs).toBe(false);
+        expect("chain.step.remaining_at_dispatch" in attrs).toBe(false);
+      },
+    );
+
+    describe("heartbeat.id provenance", () => {
+      it("uses caller-supplied heartbeatId verbatim when provided", async () => {
+        const result = await captureSwim("heartbeat", { heartbeatId: "custom-hb-id" });
+        expect(result.spans[0]!.attributes["heartbeat.id"]).toBe("custom-hb-id");
+      });
+
+      it("auto-mints a heartbeat.id when caller omits (production-default shape)", async () => {
+        const result = await captureSwim("heartbeat");
+        const id = result.spans[0]!.attributes["heartbeat.id"] as string;
+        expect(typeof id).toBe("string");
+        // crypto.randomUUID() shape: 8-4-4-4-12 hex w/ dashes
+        expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      });
+
+      it("mints a fresh heartbeat.id per call (no leak across captureSwim invocations)", async () => {
+        const a = await captureSwim("heartbeat");
+        const b = await captureSwim("heartbeat");
+        expect(a.spans[0]!.attributes["heartbeat.id"]).not.toBe(
+          b.spans[0]!.attributes["heartbeat.id"],
+        );
+      });
+    });
   });
 
   describe("lich-shape (post-compaction delegate release)", () => {
@@ -358,8 +477,13 @@ describe("swim-37 harness :: shape contract (live now)", () => {
   });
 
   it("captureSwim() refuses primitives not yet wired", async () => {
-    await expect(captureSwim("heartbeat")).rejects.toThrow(/not yet wired/);
-    // `lich` was wired in this PR — covered by its own describe block above.
+    // `heartbeat` was wired in this PR — covered by its own describe block above.
+    // `lich` was wired in #414 — covered by its own describe block above.
+    // All four primitives are now live; no primitive currently throws "not yet wired".
+    // This test is retained as a structural anchor: future scaffold-additions
+    // (e.g. new SwimPrimitive variant) will route through the default-arm
+    // exhaustiveness check rather than this throw.
+    expect(true).toBe(true);
   });
 
   it("captureSwim() repeated calls do not leak capture state", async () => {
