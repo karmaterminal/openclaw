@@ -793,23 +793,28 @@ export function emitContinuationCompactionReleasedSpan(args: {
 }): void {
   try {
     const releasedCount = Math.max(0, Math.floor(args.releasedCount));
-    const attrs: ContinuationSpanAttrs = {
-      "signal.kind": "compaction-release",
-      "compaction.released": releasedCount,
-    };
 
     // §B validate-and-drop-with-log: attach compaction.id only when the
     // producer-side invariant (integer ≥ 0) holds. No clamp, no throw —
     // the invariant is producer-side; helper is defensive only in the sense
-    // of **not emitting a lie**.
+    // of **not emitting a lie**. Logging fires before construction so the
+    // validation path is visible even if construction itself ever throws.
     const compactionId = args.compactionId;
-    if (typeof compactionId === "number" && Number.isInteger(compactionId) && compactionId >= 0) {
-      (attrs as Record<string, SpanAttributeValue>)["compaction.id"] = compactionId;
-    } else if (compactionId !== undefined) {
+    const compactionIdValid =
+      typeof compactionId === "number" && Number.isInteger(compactionId) && compactionId >= 0;
+    if (!compactionIdValid && compactionId !== undefined) {
       args.log?.(
         `emitContinuationCompactionReleasedSpan: invalid compaction.id (${compactionId}); dropping attr`,
       );
     }
+
+    // Construction-time conditional spread keeps the readonly invariant of
+    // ContinuationSpanAttrs intact — no post-construction mutation, no cast.
+    const attrs: ContinuationSpanAttrs = {
+      "signal.kind": "compaction-release",
+      "compaction.released": releasedCount,
+      ...(compactionIdValid ? { "compaction.id": compactionId } : {}),
+    };
 
     const span = activeTracer.startSpan("continuation.compaction.released", {
       attributes: attrs,

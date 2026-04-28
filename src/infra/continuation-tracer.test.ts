@@ -1460,4 +1460,65 @@ describe("continuation-tracer :: compaction.id cross-cutting attr (Slice 2 chunk
       expect(attrs["compaction.id"]).toBeGreaterThanOrEqual(1);
     }
   });
+
+  // Producer-coupling pin: invoke incrementRunCompactionCount with a stub
+  // session-store, capture the returned `count`, and assert it flows through
+  // to attrs["compaction.id"]. The sampled-range test above pins the helper
+  // accepts the producer's documented range; this test pins the *call-site*
+  // contract — if the producer ever returns a value the helper would drop
+  // (0, fractional, negative, undefined-on-error), the assertion fails with
+  // a precise message identifying which side broke.
+  //
+  // Stub keeps storePath undefined to avoid file IO; cfg undefined to skip
+  // lifecycle hooks. Only the count-arithmetic path is exercised.
+  it("producer-coupling: incrementRunCompactionCount return value flows to compaction.id attr", async () => {
+    const { incrementRunCompactionCount } =
+      await import("../auto-reply/reply/session-run-accounting.js");
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    const sessionKey = "agent:main:test";
+    const baseEntry = {
+      sessionId: "s1",
+      sessionFile: "/tmp/sessions/s1.jsonl",
+      compactionCount: 0,
+      updatedAt: Date.now(),
+    } as unknown as Parameters<typeof incrementRunCompactionCount>[0]["sessionEntry"];
+    const sessionStore: Record<string, NonNullable<typeof baseEntry>> = {
+      [sessionKey]: baseEntry as NonNullable<typeof baseEntry>,
+    };
+
+    // amount=1: producer returns 1 (0 + max(0,1))
+    const count1 = await incrementRunCompactionCount({
+      sessionEntry: baseEntry,
+      sessionStore,
+      sessionKey,
+      amount: 1,
+    });
+    expect(count1).toBe(1);
+    // releasedCount intentionally 0; this test pins compaction.id flow only.
+    emitContinuationCompactionReleasedSpan({
+      releasedCount: 0,
+      compactionId: count1,
+    });
+
+    // amount=3: producer returns 4 (1 + max(0,3)) — sanity-check non-1 increments
+    const count3 = await incrementRunCompactionCount({
+      sessionEntry: sessionStore[sessionKey],
+      sessionStore,
+      sessionKey,
+      amount: 3,
+    });
+    expect(count3).toBe(4);
+    emitContinuationCompactionReleasedSpan({
+      releasedCount: 0,
+      compactionId: count3,
+    });
+
+    expect(spans).toHaveLength(2);
+    const attrs1 = spans[0]?.options?.attributes as ContinuationSpanAttrs;
+    const attrs2 = spans[1]?.options?.attributes as ContinuationSpanAttrs;
+    expect(attrs1["compaction.id"]).toBe(count1);
+    expect(attrs2["compaction.id"]).toBe(count3);
+  });
 });
