@@ -132,7 +132,7 @@ export function emitRebaseClassifySpan(args: EmitRebaseClassifySpanArgs): void {
     // validation — see RebaseClassifyEvidence docstring for why.
     const ev = args.evidence;
     const attrs: SpanAttributes = {
-      "signal.kind": "rebase.classify",
+      "signal.kind": "rebase-classify",
       verdict: args.verdict,
       "discovery.channel": args.channel,
       "pick.sha": truncatedSha,
