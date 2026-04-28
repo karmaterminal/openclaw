@@ -48,7 +48,7 @@ Production callsite wiring is out of scope for this memo (separate issue; same p
 - `evidence.changelog.pr_token: string` — present iff `channel === "changelog-grep:pr"`; the matched PR-token (e.g. `"#70595"`)
 - `evidence.changelog.subject_match_count: number` — present iff `channel === "changelog-grep:subject"`; the count of subject-line hits
 - `evidence.cherry_pick.source_sha: string` — present iff `channel === "cherry-pick-provenance"`; the source SHA from the footer (truncated to 12 chars)
-- `evidence.conflict.bin: "test-harness" | "naming-label" | "release-plumbing" | "feature-runtime" | "none"` — present iff `channel === "conflict-content"`; the rubric bin
+- `evidence.conflict.bin: "test-harness" | "naming-label" | "release-plumbing" | "feature-runtime" | "none"` — present iff `channel === "conflict-content"` OR (`channel === "none"` AND callback was invoked AND returned a REVIEW verdict). The bin reflects whatever the rubric returned regardless of which channel produced the verdict; bin=`"none"` is a real value (rubric ran but found no signal), distinct from attr-absent (rubric never ran). (🌫 #413 review nit, 2026-04-27.)
 - `needs.conflict_content_inspection: true` — present iff `verdict === "REVIEW" && channel === "none"` AND the `conflictContent` callback was NOT supplied (i.e. the back-compat path from #408). Omitted otherwise.
 
 ### Negative-assert pins (non-attributes the contract MUST NOT silently invent)
