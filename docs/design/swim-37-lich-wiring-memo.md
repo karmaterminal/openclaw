@@ -84,7 +84,7 @@ PR #405 established the integration tier (driving `emitContinuationDelegateSpan`
 
 The `lich` work splits the same way:
 
-- **Integration tier** (this memo's PR): wire `captureSwim("lich", { releasedCount, compactionId? })` against `emitContinuationCompactionReleasedSpan`. 6 live tests covering Q2 (empty + non-empty release) × Q3 (present + omitted + invalid `compaction.id`).
+- **Integration tier** (this memo's PR): wire `captureSwim("lich", { releasedCount, compactionId? })` against `emitContinuationCompactionReleasedSpan`. 8 live tests covering Q2 (empty + non-empty release) × Q3 (present + omitted + invalid `compaction.id` across -1 / 1.5 / NaN / Infinity).
 - **Helper tier** (potential follow-up): assert helper's defensive contract directly in a separate file per #406's separate-file precedent — clamp behavior, log-callback invariants, integer hygiene. Whether this needs to land separately depends on whether the integration tier's coverage already pins the helper-tier invariants strongly enough. **Tentative read:** integration-tier tests can pin all three Q3 cases through the public surface, so a separate helper-tier file is NOT required for `lich`. Confirm with cohort.
 
 ## Proposed `CaptureSwimOptions` extensions
@@ -118,7 +118,7 @@ No `delegateMode`-shaped axis exists for `lich` — release-seam attrs are exhau
 
 ## Proposed test list (integration tier)
 
-Six live tests, mirroring #405's structure:
+Eight live tests, mirroring #405's structure (six initial cases + two added per 🌊's #411 review for NaN/Infinity defense parity):
 
 1. `releasedCount=1` + `compactionId=7` → 1 span, `compaction.released=1`, `compaction.id=7`.
 2. `releasedCount=3` + `compactionId=42` → 1 span, `compaction.released=3`, `compaction.id=42`.
