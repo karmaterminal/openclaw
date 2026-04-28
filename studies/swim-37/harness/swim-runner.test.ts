@@ -165,6 +165,26 @@ describe("swim-37 harness :: continuation primitives [scaffold]", () => {
         expect(span.attributes["chain.id"]).toBe(result.chainId);
       }
     });
+    it("GAP-PIN: fan-out spans are currently NOT analytically distinct", async () => {
+      // Per 🩸 caution on the wiring memo (msg 1498507232185286849):
+      // N spans sharing chain.id risks collapsing into analytic mush at
+      // scale unless the per-recipient distinction is visible in attrs.
+      // Currently the production helper `emitContinuationDelegateSpan`
+      // exposes no `recipient.index` axis — so all N spans in a fan-out
+      // are byte-identical except for span-level identity (spanId).
+      // This test PINS the gap so it shows up in code-review when the
+      // production helper grows the axis. Flip the assertion to
+      // `not.toEqual` once `recipient.index` lands.
+      const result = await captureSwim("continue_delegate", {
+        recipients: 2,
+        delegateMode: "normal",
+      });
+      const [a, b] = result.spans;
+      expect(a?.attributes).toEqual(b?.attributes);
+    });
+    it.todo(
+      "recipient.index attr distinguishes per-recipient fan-out spans (🩸 caution; needs production helper axis)",
+    );
     it("rejects non-positive or non-integer recipients", async () => {
       await expect(captureSwim("continue_delegate", { recipients: 0 })).rejects.toThrow(
         /positive integer/,
