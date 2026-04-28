@@ -62,7 +62,22 @@ type SpanRecord = {
 
 describe("swim-37 harness :: trap-class coverage [scaffold]", () => {
   describe("trap §1 :: parallel-evolution / cherry-false-negative", () => {
-    it.todo("rebase bot classifies synthetic squash-rebased commit as DROP (not PICK)");
+    it("rebase bot classifies synthetic squash-rebased commit as DROP (not PICK)", async () => {
+      const { classifyRebasePick } = await import("./rebase-classifier.ts");
+      // Synthetic: commit subject already mentions PR #70595 in the base
+      // CHANGELOG — i.e. the work landed on base via a squash-rebase, and
+      // the candidate pick would re-apply it. Discovery channel:
+      // changelog-grep PR-token. Memo anchor: 7ee46a3ab9 (#70595).
+      const verdict = classifyRebasePick({
+        subject: "feat(foo): add bar (#70595)",
+        commitBody: "feat(foo): add bar (#70595)\n\nLong description.",
+        baseChangelog: "# Changelog\n\n## v2026.4.24\n\n- feat(foo): add bar (#70595)\n",
+        isAncestorOf: () => false,
+      });
+      expect(verdict.verdict).toBe("DROP");
+      expect(verdict.channel).toBe("changelog-grep:pr");
+      expect(verdict.evidence.changelogPrHit).toBeDefined();
+    });
     it.todo("CHANGELOG-byte-grep discovery channel emits drop-with-reason span");
   });
 
