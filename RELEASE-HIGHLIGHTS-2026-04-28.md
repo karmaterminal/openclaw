@@ -390,7 +390,7 @@ Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, *
 | TC-no-genguard | Removal-only (RFC §3.2)                           | RFC §3.2 (NOT §3.6)                                         | Delayed delegate fires N out; channel receives K unrelated msgs between; assert delegate STILL FIRES. **No mechanism-replacement claim.** Phantom cleanup-debt retracted (zero non-doc hits per 🌫 byte-check). | App-J §Config.genguard-removed |
 | D-cfg.sdq-retry-not-hot-reloadable | SDQ retry keys doc'd but not hot-reloadable | RFC §3.6 / §6.5 vs SDQ impl                            | Mutate `session-delivery-queue.retry.cap` + `.backoffMs[]` at runtime; assert NOT picked up live (requires gateway restart). Catches docs/code-shape mismatch per 🌻 second-eye. | App-J §Config.sdq-retry-static |
 
-**Total: 36 net-new cases (26 E-series E1.x–E7.x incl. E6.5 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard).** E9 (rebase-classify) + E10 (harness scaffold) are listed for traceability but covered by static-harness vitest — not net-new swim-37 work. (Pinned 2026-04-28 08:14 PDT after 🩸 byte-check on `162bb97f1b`.) All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
+**Total: 37 cases (27 E-series E1.x–E7.x + E9 + E10 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard).** E9 + E10 are top-level traceability rows covered by static-harness vitest (not net-new swim-37 work) but counted on the canonical board. (Pinned 2026-04-28 08:15 PDT after cohort regex-trap convergence — 🌫 + 🌻 + 🩸 all on 37.) All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
 
 ## Cross-cutting flags lifted to top
 
@@ -413,7 +413,7 @@ Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, *
 Three princes have content represented (🩸 seed §1–§8, 🌫 §A/§B + 8-uncovered, 🌻 E1–E10). This editor pass:
 - collapses 🌫 TC-* into 🌻 E6 (alias-table preserves)
 - adds (c) case-stub + (d) RFC-appendix-slot columns per highlight
-- locks **36-case canonical board** (26 net-new E-series incl. E6.5 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard; E9/E10 listed for traceability, covered by static harness)
+- locks **37-case canonical board** (27 E-series incl. E6.5/E9/E10 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard; E9/E10 covered by static harness)
 - pins corrections (no-genguard §3.2, phantom cleanup-debt, feedback-key not-a-config, maxChainLength boundary)
 - surfaces 2 figs-pending Qs
 
