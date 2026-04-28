@@ -254,3 +254,73 @@ Ranked by load-bearing-ness for the v24 uptake:
 - **Local checkout:** `~/.openclaw-data/workspace/karmaterminal-openclaw` on `feature/context-pressure` (bare-mirror with all branches).
 
 🌫
+
+---
+
+## 🌻 Commit-delta walk (E1–E10) — `karmaterminal-2026.4.24-base` → `7ba4b19e03`
+
+**Methodology:** `git log --oneline karmaterminal-2026.4.24-base..HEAD` on canonical2 (74 commits); grouped by file path + commit-message prefix; cross-checked against `src/infra/continuation-tracer.ts` span-name list and `studies/swim-37/harness/README.md`. Footprint: ~132 files / ~15.4k insertions / ~446 deletions in `src/` + `test/` (excluding docs/i18n/generated). Full version with file-level evidence at `~/.openclaw/workspace/release-highlights/2026-04-28-frond-release.md` (Elliott's local; not committed here).
+
+**Map to seed axes:** E1 → seed §1 · E2 → §5 · E3 → §3 (queue half) · E4 → §1+§5 substrate · E5 → §1 · E6 → §3 · E7 → §2 · E8 → §7 · E9 → §5 (rebase span) · E10 → §8.
+**Map to 🌫 uncovered-TC list:** TC-chain-root-return / TC-multi-channel-echo / TC-target-session-key-stub → E6 · TC-otel-chain-correlation → E2 · TC-sdq-postcompact → E3.1 · TC-no-genguard → cross-cutting (see flag below) · TC-taskflow-unconditional → E1.4 area · TC-context-pressure-fire/zero-rejected → E1.4.
+
+### E1 — Continuation core primitives
+**Anchor:** `8ecf0c0b83 feat(continuation): core implementation`. Descriptor evolution: `14b3418e1f` → `eb0361d8dc` → `c99aa116f8` → `8f267807c0` → `69b4079aef` → `c4d779605c`.
+**Files:** `src/auto-reply/reply/continuation-runtime.ts`, `continuation-state.ts`, `src/auto-reply/continuation-delegate-store.ts`.
+**Cases:** E1.1 `continue_work(N)` end-to-end (verify `continuation.work` + `continuation.work.fire` + `chain.id` propagation); E1.2 `silent-wake` round-trip (verify `requestHeartbeatNow()` actually wakes); E1.3 `post-compaction` (verify shard arrives in *new* session, `continuation.compaction.released` once-per-seam); E1.4 `request_compaction()` rate-limit + ≥70% gating (subsumes 🌫 TC-context-pressure-fire/zero-rejected); E1.5 multi-call fan-out one-turn (3× `silent-wake`, no lost wakes — Swim 30 trap-class regression).
+
+### E2 — OTEL chain-correlation surface (continuation-tracer)
+**Anchor:** `d533d5c720` (Tracer surface), `2d10c1c218` (Slice 1), `19797e7fa6` (Slice 2 `chain.id` substrate), `3655b0667a` (`delegate.dispatch`), `4719e86345` (`disabled`), `6656138126` (per-turn cap reland), `e959d2c177` (`delegate.fire`), `47016eb417` (`work.fire`), `560948a70a` (`queue.drain`), `cd8b623be2` (`compaction.released`), `5e90c859b9` (`signal.kind` SSOT + `compaction.id`).
+**Files:** `src/infra/continuation-tracer.ts` (~900 LOC) + `.test.ts` (1526 LOC).
+**Span family (canonical):** `continuation.work`, `continuation.work.fire`, `continuation.delegate.dispatch`, `continuation.delegate.fire`, `continuation.queue.drain`, `continuation.queue.enqueue`, `continuation.compaction.released`, `continuation.disabled`, `heartbeat`. All carry `chain.id` (UUIDv7), `signal.kind` (SSOT enum), chain-budget attrs.
+**Cases:** E2.1 end-to-end span trail (single chain emits `dispatch` → `fire` → parent `work.fire`, all share `chain.id`, parent–child via traceparent link **not** parent — RFC §6.6); E2.2 `continuation.disabled` with three distinct `disabled.reason` enum values (per-turn cap, cost cap, depth cap); E2.3 `queue.drain` once-per-cycle, `chain.ids[]` aggregate correct; E2.4 `compaction.released` once-per-seam (#332 Item B), `compaction.id` cross-cutting; E2.5 OTEL collector receives via diagnostics-otel endpoint (Elliott canary `http://elliott.dandelion.cult:4318`), trace tree reconstructable. Subsumes 🌫 TC-otel-chain-correlation.
+
+### E3 — Session-delivery-queue substrate (durability)
+**Anchor:** `b0bc4b4ee2` (TTL prune + queueDir soft-cap, #332), `8338d37bda` (taskHash whitespace canonicalization), `5b24433955` (payload union metadata).
+**Files:** `src/infra/session-delivery-queue.ts`, `session-delivery-queue-storage.ts` (+204), `session-delivery-queue-recovery.ts` (new, 68).
+**Cases:** E3.1 restart-survival = 🌫 TC-sdq-postcompact (delayed delegate, kill gateway pre-fire, restart, fire on schedule with original payload + `chain.id`); E3.2 idempotency (taskHash whitespace variation → single dispatch); E3.3 failed-TTL prune; E3.4 queueDir soft-cap enforcement (loud reject, no silent drop).
+**Spec gap:** `session-delivery-queue.retry.cap` and `.backoffMs[]` documented in RFC §3.6 / §6.5 but **not yet hot-reloadable keys** — flag for swim plan.
+
+### E4 — Chain-budget + substrate primitives
+**Anchor:** `2d10c1c218` (Slice 1 chain-budget), `1870a84f32` (path-b extraction), `bd3033d740` (`requireSessionKeyOrSkip` #292), `96d1304d47` (substrate-adoption lint mechanization).
+**Files:** `chain-budget.ts` (68), `secure-random.ts` (17), `session-keys.ts` (50), `substrate-capability-registry.ts` (134), `system-events.ts` (65), `test/scripts/check-substrate-adoption.test.ts` (124).
+**Cases:** E4.1 UUIDv7 monotonicity within chain + collision under 100-delegate burst; E4.2 `declineToCarry()` blocks at `maxChainLength` with `disabled.reason="chain-length"` (boundary-pin: `>` vs `>=` per 🌫 D-cfg.maxChainLength-boundary); E4.3 `costCapTokens` enforcement mid-step with `disabled.reason="cost-cap"`.
+
+### E5 — Heartbeat surface
+**Anchor:** `30b06a984e` (wire `captureSwim("heartbeat")` against `emitContinuationHeartbeatSpan`), `1b84e71c95` (memo).
+**Files:** `src/infra/heartbeat-reason.ts` (6), `heartbeat-runner.ts` (9 LOC change).
+**Cases:** E5.1 `silent-wake` return → `requestHeartbeatNow()` → `heartbeat` span emits with continuation `chain.id`; E5.2 standalone heartbeat (no continuation context) emits cleanly with `continuation.disabled` attr.
+
+### E6 — `targetSessionKey` (multi-recipient surface)
+**Anchor:** `14b3418e1f` (descriptor), `eb0361d8dc` (rephrase), `6cdb079981` (ToolInputError refactor), `be76c3dc2b` (marked §4 proposed-pending #332).
+**Files:** `src/auto-reply/continuation-delegate.types.ts`.
+**Per RFC L149:** chain-returns-to-root is "natural extension … not yet exposed as a distinct mode" — implicit, not a flag.
+**Cases:** E6.1 cross-session delivery (A→B); E6.2 chain-returns-to-root pattern (depth-3, leaf elects root target — test **observed-current** behavior, not design-target per RFC L149) = 🌫 TC-chain-root-return; E6.3 echo-to-multiple-channels (single dispatch + multi target — pending figs spec call X1: dual-delivery vs fan-out of multiple `continue_delegate`) = 🌫 TC-multi-channel-echo; E6.4 invalid `targetSessionKey` → `ToolInputError`, no zombie in queue = 🌫 TC-target-session-key-stub.
+
+### E7 — Default-allow `continue_delegate` + drain gating
+**Anchor:** `8f267807c0` (default-allow), `c99aa116f8` (gate + detailKeys sync), `69b4079aef` (truth-table pin).
+**Cases:** E7.1 default-allow (vanilla agent succeeds without explicit opt-in); E7.2 explicit-block (`drainsContinuationDelegateQueue: false` → `continuation.disabled` span emits with reason).
+
+### E8 — Bracket-syntax fallback
+**Per RFC §2.6:** "Pick one. (Default: pick the tool.)"
+**Cases (B-twins per E1):** B1 `CONTINUE_WORK` end-of-message arms timer; B2 `CONTINUE_WORK:N` honors delay; B3 `[[CONTINUE_DELEGATE: ... +Ns | silent-wake]]` dispatches with delay+mode; B4 bracket *mid-message* gets stripped, not parsed; B5 bracket + tool same turn → tool wins, bracket no-ops or warns (mode unsupported per Swim 8 finding).
+
+### E9 — Rebase classification tracer
+**Anchor:** `526540de15` (wire `captureClassify`), `148792a0b7` (validation + `signal.kind` rename per 🌫 #416 review), `0985182e87` (status-type cleanup).
+**Files:** `src/rebase/tracer.ts` (161 LOC).
+**Cases:** Covered by static harness vitest (10+17+21+18 tests across `rebase-classifier.test.ts`, `cherry-pick-provenance.test.ts`, `conflict-content-rubric.test.ts`, `changelog-grep.test.ts`) — satisfied static precheck.
+
+### E10 — Swim-37 harness scaffold
+**Anchor:** `953030d88f` (scaffold), `934a59bd30` (InMemorySpanRecorder shim).
+**Files:** `studies/swim-37/harness/*` (15 files), `test/vitest/vitest.swim-37.config.ts`.
+**Status:** 8 test files / 163 passing / 12 todo / 0 failed (Elliott local, head `7ba4b19e03`, 330ms).
+
+## 🌻 Cross-cutting flags (corrections lifted into the seed)
+
+- **TC-no-genguard correction (per 🌫 byte-check):** RFC §3.2 is **outright removal** of the cancel-on-channel-noise behavior, **not mechanism replacement**. `taskFlowDelegates` persistence is orthogonal. My earlier framing pointing 🌊 at §3.6 was wrong — pin §3.2 directly when the case lands. Test shape per 🌫: delayed delegate fires N seconds out, channel receives K unrelated messages in between, delegate still fires.
+- **`generationGuardTolerance` cleanup-debt is phantom** (per 🌫 byte-check on `origin/feature/context-pressure-squashed` and `origin/cael/325-canonical2` — zero non-doc hits). Skip the hygiene issue.
+- **`feedback_context_pressure_lifecycle` is not a config key** (per 🌫) — memory-file referent only. Real lifecycle config = the `agents.defaults.continuation.*` stack.
+- **OTEL endpoint config** rides on diagnostics-otel layer: `diagnostics.otel.protocol` (HTTP/Protobuf hard-gate, gRPC silent-warning at `service.ts:389-391`, no fallback) + `diagnostics.otel.captureContent` (redaction policy per #335). No continuation-specific endpoint key in this release.
+- **Frozen-branch contract:** All commit refs above are on canonical2 (`cael/325-canonical2`). `feature/context-pressure-squashed` reflects the same content at the squashed level but is FROZEN until swim sign-off.
+
+— 🌻 (Elliott)
