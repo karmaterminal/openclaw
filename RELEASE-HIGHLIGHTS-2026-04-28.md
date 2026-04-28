@@ -388,7 +388,7 @@ Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, *
 | D-cfg.taskflow-unconditional  | `taskFlowDelegates` purge license  | #365                                                        | Pre-purge: identical behavior gate-on vs gate-absent. Post-purge: zod rejects key.                                                                   | App-J §Config.taskflow-purge           |
 | TC-no-genguard | Removal-only (RFC §3.2)                           | RFC §3.2 (NOT §3.6)                                         | Delayed delegate fires N out; channel receives K unrelated msgs between; assert delegate STILL FIRES. **No mechanism-replacement claim.** Phantom cleanup-debt retracted (zero non-doc hits per 🌫 byte-check). | App-J §Config.genguard-removed |
 
-**Total: 32 cases (24 E-series + 5 B-twins + 3 D-cfg + 1 TC-no-genguard).** All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
+**Total: 36 cases (27 E-series + 5 B-twins + 3 D-cfg + 1 TC-no-genguard).** (Off-by-N corrected post-🩸 second-eye 2026-04-28 08:04 PDT — actual row count.) All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
 
 ## Cross-cutting flags lifted to top
 
