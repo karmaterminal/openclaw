@@ -248,6 +248,16 @@ describe("swim-37 harness :: continuation primitives [scaffold]", () => {
       expect(span.attributes["signal.kind"]).toBe("compaction-release");
       expect(span.attributes["compaction.released"]).toBe(1);
       expect(span.attributes["compaction.id"]).toBe(7);
+      // Negative-assert pins per 🌊's #414 review (msg `1498536746265215046`):
+      // release-seam is chain-agnostic at the helper boundary. The Options
+      // type already prevents callers from supplying chain.id, but pinning
+      // attribute absence guards against future drift toward conflating
+      // release-seam lifecycle with continuation-chain lifecycle. Same
+      // family-resemblance discipline as #410/#411/#412/#413.
+      expect(span.attributes["chain.id"]).toBeUndefined();
+      expect("chain.id" in span.attributes).toBe(false);
+      expect(span.attributes["chain.step.remaining"]).toBeUndefined();
+      expect(span.attributes["disabled.reason"]).toBeUndefined();
     });
 
     it("emits releasedCount=3 + compaction.id=42 (multi-release production-typical)", async () => {
