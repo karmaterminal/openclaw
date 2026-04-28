@@ -43,7 +43,7 @@ The harness surface is the only thing #405 promised — the `it.todo` for `heart
 
 - `chain.id: string` — propagates from the active continuation chain
 - `chain.step.remaining: number` — current chain budget at the heartbeat's fire moment (snapshot, NOT side-effect; mirrors `chain.step.remaining` semantics on `continuation.delegate.dispatch`)
-- `continuation.disabled: boolean` — true iff the heartbeat noticed a gate (cap.chain / cap.cost / cap.delegates_per_turn) that _would_ have prevented continuation if the heartbeat had elected to continue
+- `continuation.disabled: boolean` — true iff the heartbeat noticed a gate (cap.chain / cap.cost / cap.delegates*per_turn) that \_would* have prevented continuation if the heartbeat had elected to continue
 
 ### Conditional attributes (omitted under documented conditions — same omission discipline as #405's `delegateMode`)
 
@@ -104,17 +104,23 @@ Lean: **one span**. If we discover later that there's a meaningful gap between "
 
 ### Q3 (🌫): test matrix for the harness
 
-Proposed `it.each` rows for the wire PR:
+Proposed `it.each` rows for the wire PR (post-🌫 review-fold on #412):
 
-| chain context | continuation disabled | disabledReason         | expect                                                                           |
-| ------------- | --------------------- | ---------------------- | -------------------------------------------------------------------------------- |
-| present       | false                 | (omitted)              | chain attrs present, `continuation.disabled=false`, no `disabled.reason`         |
-| present       | true                  | cap.chain              | chain attrs present, `continuation.disabled=true`, `disabled.reason="cap.chain"` |
-| present       | true                  | cap.cost               | … `cap.cost`                                                                     |
-| present       | true                  | cap.delegates_per_turn | … `cap.delegates_per_turn`                                                       |
-| absent        | (forced-undefined)    | (omitted)              | no chain attrs, no `continuation.disabled`, no `disabled.reason`                 |
+| chain context | chainStepRemaining | continuation disabled | disabledReason         | expect                                                                                                              |
+| ------------- | ------------------ | --------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| present       | 5                  | false                 | (omitted)              | chain attrs present, `continuation.disabled=false`, no `disabled.reason`                                            |
+| present       | 5                  | true                  | cap.chain              | chain attrs present, `continuation.disabled=true`, `disabled.reason="cap.chain"`                                    |
+| present       | 5                  | true                  | cap.cost               | … `cap.cost`                                                                                                        |
+| present       | 5                  | true                  | cap.delegates_per_turn | … `cap.delegates_per_turn`                                                                                          |
+| present       | **0**              | true                  | cap.chain              | chain attrs present with `chain.step.remaining=0` (empty-budget heartbeat is observable; boundary the clamp guards) |
+| absent        | (forced-undefined) | (forced-undefined)    | (omitted)              | no chain attrs, no `continuation.disabled`, no `disabled.reason`                                                    |
 
-5 rows. Under 🌊's split-threshold of 12. Plus negative-assert pins on `delay.ms` and `chain.step.remaining_at_dispatch` per row (🩸 pattern from #407).
+6 rows. Under 🌊's split-threshold of 12. Plus negative-assert pins on `delay.ms` and `chain.step.remaining_at_dispatch` per row (🩸 pattern from #407).
+
+**Plus separate (non-matrix) describe blocks** per 🌫's #412 review fold:
+
+- `describe("heartbeat.id provenance")`: one test pinning the **caller-injected** path (`heartbeatId: "hb-fixed-test-id"` → span carries that exact value, NOT auto-minted). Current matrix only covers the default-mint path; this isolates the override seam.
+- `describe("validation")`: throw-on-bad-input rules from §3 (e.g., `chainStepRemaining` non-integer when `chainId` present, `disabledReason` set when `chainId` absent). These don't fit matrix shape — same precedent as #405's `recipients` validation block.
 
 ### Q4 (cohort): production-helper issue or in-PR?
 
