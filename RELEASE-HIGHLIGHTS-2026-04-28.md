@@ -347,6 +347,10 @@ Ranked by load-bearing-ness for the v24 uptake:
 
 ## Canonical case board
 
+**Base matrix:** `openclaw-bootstrap/SWIM/FORMAL-SWIM-RUNBOOK.md` §4 (Block A `TC1-TC4` infra, Block B `F1-F8` behavioral, Block C `P1-P7` port-specific, Block D `R1-R5` regression/recovery, Block E `V1-V3` validation) **plus** extension rows from `openclaw-bootstrap#427` (formal matrix shape) and `#412` (full continuation public-surface audit). **This is not optional.** Per FORMAL-SWIM-RUNBOOK §1.5: stabilization/pre-ship swims run the whole declared board unless a real blocker exists. Swim-37 is pre-ship for `feature/context-pressure-squashed`.
+
+**Swim-37 overlay (this doc, the 39 rows below):** delta-rows specific to `feature/context-pressure-squashed` since `v2026.4.21` — not a substitute for the base matrix. The full swim-37 matrix = base canonical (`SWIM/` blocks A–E + #427/#412 extensions) ∪ swim-37 overlay (this 39-row board).
+
 Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, **(d) RFC-appendix slot**.
 
 | ID    | (a) Highlight                                      | (b) Anchor                                                  | (c) Swim-37 case-stub                                                                                                                                | (d) RFC appendix slot                  |
