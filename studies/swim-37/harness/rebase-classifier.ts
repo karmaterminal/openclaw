@@ -39,6 +39,7 @@ import {
   parseCherryPickProvenance,
   type CherryPickProvenanceFooter,
 } from "./cherry-pick-provenance.ts";
+import type { ConflictRubricClassification } from "./conflict-content-rubric.ts";
 
 export type RebaseVerdict = "DROP" | "PICK" | "REVIEW";
 
@@ -46,6 +47,7 @@ export type RebaseDiscoveryChannel =
   | "changelog-grep:pr"
   | "changelog-grep:subject"
   | "cherry-pick-provenance"
+  | "conflict-content"
   | "none";
 
 export interface RebaseEvidence {
@@ -61,6 +63,13 @@ export interface RebaseEvidence {
    * support a DROP verdict.
    */
   readonly cherryPickFootersNotAncestor?: readonly CherryPickProvenanceFooter[];
+  /**
+   * Conflict-content rubric classification (third channel, #409).
+   * Present only when the conflict-content callback was invoked,
+   * which happens iff both positive-signal channels miss AND the
+   * caller supplied a `conflictContent` callback.
+   */
+  readonly conflictContent?: ConflictRubricClassification;
 }
 
 export interface RebaseClassification {
@@ -80,6 +89,16 @@ export interface ClassifyRebasePickInput {
   readonly commitBody: string;
   readonly baseChangelog: string;
   readonly isAncestorOf: (sha: string) => boolean;
+  /**
+   * Optional third-channel callback (#409). Invoked iff both
+   * positive-signal channels (cherry-pick-provenance, changelog-grep)
+   * miss. Caller is responsible for assembling the `ConflictReport`
+   * input and invoking `classifyConflictContent` (or any equivalent
+   * shape that returns a `ConflictRubricClassification`). When
+   * omitted, the no-signal path returns the back-compatible
+   * `REVIEW + needsConflictContentInspection: true` shape from #408.
+   */
+  readonly conflictContent?: () => ConflictRubricClassification;
 }
 
 /**
@@ -161,7 +180,31 @@ export function classifyRebasePick(input: ClassifyRebasePickInput): RebaseClassi
     };
   }
 
-  // ── No positive signal: hand off to conflict-content rubric ────────
+  // ── Channel 4: conflict-content rubric (#409) ──────────────────────
+  // Invoked only when both positive-signal channels missed AND the
+  // caller supplied a callback. Side-effect-free precedence: callback
+  // is NOT invoked on the channel-1/2/3 paths above.
+  if (input.conflictContent) {
+    const conflictContent = input.conflictContent();
+    const enrichedEvidence: RebaseEvidence = { ...evidence, conflictContent };
+    if (conflictContent.verdict === "DROP") {
+      return {
+        verdict: "DROP",
+        channel: "conflict-content",
+        evidence: enrichedEvidence,
+      };
+    }
+    // PICK or REVIEW from the rubric: surface its verdict with
+    // `channel: "conflict-content"` for attribution. We do NOT set
+    // `needsConflictContentInspection` because the rubric DID run.
+    return {
+      verdict: conflictContent.verdict,
+      channel: "conflict-content",
+      evidence: enrichedEvidence,
+    };
+  }
+
+  // ── No positive signal AND no callback: back-compat with #408 ──────
   // The memo's §1 third channel is harder than a pure function — needs
   // file paths + diff inspection. The classifier surfaces the gap
   // explicitly rather than defaulting to PICK, which would silently
