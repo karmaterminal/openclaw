@@ -126,6 +126,8 @@ Six live tests, mirroring #405's structure:
 4. `compactionId` omitted → 1 span, `compaction.released=N`, no `compaction.id` attr (omission contract).
 5. `compactionId=-1` → 1 span, no `compaction.id` attr; log-callback invoked with `"invalid compaction.id"` substring.
 6. `compactionId=1.5` → same as case 5 but for non-integer path.
+7. `compactionId=NaN` → same as case 5 (defense parity with #405's `recipients` validation, per 🌊's #411 review note).
+8. `compactionId=Infinity` → same as case 5 (`Number.isInteger(Infinity) === false`, so the existing helper guard catches it; pin explicitly so the invariant is observably tested rather than implicitly assumed).
 
 Plus the existing reserved-primitive tests stay intact (`heartbeat` still throws if 🌻's PR hasn't landed yet).
 
