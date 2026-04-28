@@ -21,34 +21,19 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { type RecordedSpan } from "./in-memory-span-recorder.js";
+import { type ChainPrimitiveResult, captureSwim } from "./swim-runner.js";
 
-// ─── PLACEHOLDER IMPORTS (TODO once #366 merges) ────────────────────────────
-// These will resolve to:
-//   import { runContinueWork, runContinueDelegate } from "src/agents/continuation/primitives";
-//   import { ChainBudget } from "src/infra/chain-budget";
-//   import { emitSystemEvent } from "src/infra/system-events";
-// For the scaffold we keep them as type-only so vitest collects without
-// runtime resolution failing.
+// Local alias retained for the contract-shape tests below; the canonical
+// shape now lives in `./in-memory-span-recorder.ts`. Kept narrow so the
+// shape-pin tests keep documenting the minimum surface a recorded span
+// must expose, even if the recorder grows additional fields.
 type SpanRecord = {
   name: string;
   attributes: Record<string, unknown>;
   traceId?: string;
   parentSpanId?: string;
 };
-
-type ChainPrimitiveResult = {
-  spans: SpanRecord[];
-  chainId: string;
-};
-
-// In-memory STDOUT-style span capture. Real implementation will route through
-// @opentelemetry/sdk-trace-base BasicTracerProvider + InMemorySpanExporter.
-// For the scaffold we model the contract as a pure function the runner will
-// fulfill.
-declare function captureSwim(
-  primitive: "continue_work" | "continue_delegate" | "heartbeat" | "lich",
-  opts?: Record<string, unknown>,
-): Promise<ChainPrimitiveResult>;
 
 // ─── TRAP-CLASS COVERAGE ────────────────────────────────────────────────────
 //
@@ -88,8 +73,31 @@ describe("swim-37 harness :: trap-class coverage [scaffold]", () => {
 
 describe("swim-37 harness :: continuation primitives [scaffold]", () => {
   describe("continue_work", () => {
-    it.todo("emits continuation.work span with chain.id stamped (#366)");
-    it.todo("span carries chain.step.remaining attribute");
+    it("emits continuation.work span with chain.id stamped (#366)", async () => {
+      const result = await captureSwim("continue_work", {
+        chainStepRemaining: 5,
+        delayMs: 30,
+      });
+      expect(result.spans).toHaveLength(1);
+      const [span] = result.spans;
+      expect(span?.name).toBe("continuation.work");
+      expect(span?.attributes["chain.id"]).toBe(result.chainId);
+      // uuid v7 surface (8-4-4-4-12 hex with version nibble 7).
+      expect(result.chainId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
+      expect(span?.status).toBe("OK");
+      expect(span?.ended).toBe(true);
+    });
+    it("span carries chain.step.remaining attribute", async () => {
+      const result = await captureSwim("continue_work", {
+        chainStepRemaining: 7,
+        delayMs: 0,
+      });
+      const [span] = result.spans;
+      expect(span?.attributes["chain.step.remaining"]).toBe(7);
+      expect(span?.attributes["delay.ms"]).toBe(0);
+    });
     // Chunk 5c (#388) — `continuation.work.fire` lands at bracket-work timer-
     // callback start. Symmetric to 5b's delegate.fire seam but scope-narrower:
     // no reservation system at this seam, so single span emit, no sibling.
@@ -162,13 +170,40 @@ describe("swim-37 harness :: shape contract (live now)", () => {
     expect(_span.attributes["chain.id"]).toBe("test-chain");
   });
 
-  it("captureSwim() exists (or is wired) — sentinel", () => {
-    // While captureSwim is a `declare function` the symbol is undefined at
-    // runtime. This sentinel reminds the morning cohort to wire the actual
-    // exporter. Marked .todo on purpose so suite remains green pre-wiring.
-    // Once wired, flip to:
-    //   const result = await captureSwim("continue_work");
-    //   expect(result.chainId).toMatch(/^[A-Z0-9]{26}$/); // ulid
-    expect(typeof captureSwim).toBe("undefined");
+  it("captureSwim() is wired for continue_work", async () => {
+    expect(typeof captureSwim).toBe("function");
+    const result = await captureSwim("continue_work");
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0]?.name).toBe("continuation.work");
+  });
+
+  it("captureSwim() refuses primitives not yet wired", async () => {
+    await expect(captureSwim("continue_delegate")).rejects.toThrow(/not yet wired/);
+    await expect(captureSwim("heartbeat")).rejects.toThrow(/not yet wired/);
+    await expect(captureSwim("lich")).rejects.toThrow(/not yet wired/);
+  });
+
+  it("captureSwim() repeated calls do not leak capture state", async () => {
+    const a = await captureSwim("continue_work");
+    const b = await captureSwim("continue_work");
+    expect(a.spans).toHaveLength(1);
+    expect(b.spans).toHaveLength(1);
+    expect(a.chainId).not.toBe(b.chainId);
+  });
+
+  // Pin the local SpanRecord alias still has a meaningful surface — the
+  // recorder's RecordedSpan must be assignable to it.
+  it("RecordedSpan is structurally a SpanRecord", () => {
+    const recorded: RecordedSpan = {
+      name: "continuation.work",
+      attributes: { "chain.id": "x" },
+      traceparent: undefined,
+      status: "OK",
+      statusMessage: undefined,
+      exceptions: [],
+      ended: true,
+    };
+    const asLocal: SpanRecord = recorded;
+    expect(asLocal.name).toBe("continuation.work");
   });
 });
