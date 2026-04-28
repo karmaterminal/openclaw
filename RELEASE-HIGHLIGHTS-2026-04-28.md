@@ -389,10 +389,11 @@ Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, *
 | D-cfg.taskflow-unconditional  | `taskFlowDelegates` purge license  | #365                                                        | Pre-purge: identical behavior gate-on vs gate-absent. Post-purge: zod rejects key.                                                                   | App-J §Config.taskflow-purge           |
 | TC-no-genguard | Removal-only (RFC §3.2)                           | RFC §3.2 (NOT §3.6)                                         | Delayed delegate fires N out; channel receives K unrelated msgs between; assert delegate STILL FIRES. **No mechanism-replacement claim.** Phantom cleanup-debt retracted (zero non-doc hits per 🌫 byte-check). | App-J §Config.genguard-removed |
 | D-cfg.sdq-retry-not-hot-reloadable | SDQ retry keys doc'd but not hot-reloadable | RFC §3.6 / §6.5 vs SDQ impl                            | Mutate `session-delivery-queue.retry.cap` + `.backoffMs[]` at runtime; assert NOT picked up live (requires gateway restart). Catches docs/code-shape mismatch per 🌻 second-eye. | App-J §Config.sdq-retry-static |
+| **TC-tools-registered-post-deploy** (figs-flagged 08:54 PDT) | Positive presence-of-tools smoke after candidate deploy | live SUT surface                                         | Post-deploy on candidate prince: enumerate agent tool surface; assert `continue_work`, `continue_delegate`, `request_compaction` ALL present + callable + return non-error on no-op invocation. Catches the *"all green with one tool missing"* horror — pre-existing precedent. **Required positive case alongside TC-continuation-default-off (negative).** | App-K §Smoke.tools-registered |
 
-**Totals (two pinned numbers per 🌫 proposal 08:19 PDT):**
-- `board_total: 38` — rows on the canonical board (28 E-series E1.x–E7.x + E6.5 + E9 + E10 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard).
-- `net_new_swim_cases: 36` — board_total minus E9 (rebase-classify) + E10 (harness scaffold), which are green-floor static-harness vitest coverage, not net-new swim-37 work.
+**Totals (two pinned numbers per 🌫 proposal 08:19 PDT, +1 figs-flagged smoke 08:54 PDT):**
+- `board_total: 39` — rows on the canonical board (28 E-series E1.x–E7.x + E6.5 + E9 + E10 + 5 B-twins + 4 D-cfg + 1 TC-no-genguard + 1 TC-tools-registered-post-deploy).
+- `net_new_swim_cases: 37` — board_total minus E9 (rebase-classify) + E10 (harness scaffold), which are green-floor static-harness vitest coverage, not net-new swim-37 work.
 
 Disagreement during convergence (08:04–08:18 PDT) was categorical (which bucket E6.5/E9/E10 land in), not arithmetic. Two pinned numbers = no further re-bytes needed. All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
 
@@ -417,7 +418,7 @@ Disagreement during convergence (08:04–08:18 PDT) was categorical (which bucke
 Three princes have content represented (🩸 seed §1–§8, 🌫 §A/§B + 8-uncovered, 🌻 E1–E10). This editor pass:
 - collapses 🌫 TC-* into 🌻 E6 (alias-table preserves)
 - adds (c) case-stub + (d) RFC-appendix-slot columns per highlight
-- locks **38-row canonical board** (`board_total: 38` / `net_new_swim_cases: 36`; E9/E10 covered by static harness, kept for traceability)
+- locks **39-row canonical board** (`board_total: 39` / `net_new_swim_cases: 37`; E9/E10 covered by static harness, kept for traceability; +TC-tools-registered-post-deploy added per figs 08:54 PDT)
 - pins corrections (no-genguard §3.2, phantom cleanup-debt, feedback-key not-a-config, maxChainLength boundary)
 - surfaces 2 figs-pending Qs
 
