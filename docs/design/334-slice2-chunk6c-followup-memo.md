@@ -69,7 +69,7 @@ with a precise message identifying which side broke.
 
 ## (2) Cosmetic cast cleanup
 
-### What's there now
+### What's there now (cast cleanup)
 
 `continuation-tracer.ts:797-810`:
 
@@ -118,7 +118,7 @@ const attrs: ContinuationSpanAttrs = {
   even on the (unreachable) future case where construction itself
   throws.
 
-### What it does NOT do
+### What it does NOT do (cast cleanup)
 
 - No change to `ContinuationSpanAttrs` type (still `readonly`).
 - No change to the boundary contract (same inputs → same outputs).
