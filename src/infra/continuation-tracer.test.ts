@@ -1263,14 +1263,15 @@ describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper (
 });
 
 describe("continuation-tracer :: CONTINUATION_SIGNAL_KINDS SSOT pin (Slice 2 chunk 6c §A)", () => {
-  it("SSOT array has exactly 5 members with the canonical values", () => {
-    expect(CONTINUATION_SIGNAL_KINDS).toHaveLength(5);
+  it("SSOT array has exactly 6 members with the canonical values", () => {
+    expect(CONTINUATION_SIGNAL_KINDS).toHaveLength(6);
     expect([...CONTINUATION_SIGNAL_KINDS]).toEqual([
       "work",
       "bracket-work",
       "bracket-delegate",
       "tool-delegate",
       "compaction-release",
+      "heartbeat",
     ]);
   });
 
@@ -1280,7 +1281,7 @@ describe("continuation-tracer :: CONTINUATION_SIGNAL_KINDS SSOT pin (Slice 2 chu
     // without updating the derived type, this block would fail typecheck
     // (the derived type auto-tracks, so this tests the derivation).
     const kinds: ContinuationSignalKind[] = [...CONTINUATION_SIGNAL_KINDS];
-    expect(kinds).toHaveLength(5);
+    expect(kinds).toHaveLength(6);
   });
 
   it("ContinuationDisabledSignalKind narrows to exactly 3 disabled-span signal kinds (type-level pin)", () => {
@@ -1295,12 +1296,13 @@ describe("continuation-tracer :: CONTINUATION_SIGNAL_KINDS SSOT pin (Slice 2 chu
     for (const d of disabled) {
       expect(CONTINUATION_SIGNAL_KINDS).toContain(d);
     }
-    // "work" and "compaction-release" must NOT be assignable to ContinuationDisabledSignalKind.
+    // "work", "compaction-release", and "heartbeat" must NOT be assignable to ContinuationDisabledSignalKind.
     // This is a compile-time invariant; the runtime assertion below is a belt-and-suspenders
     // guard that the Extract<> narrows correctly.
     const disabledSet = new Set<string>(disabled);
     expect(disabledSet.has("work")).toBe(false);
     expect(disabledSet.has("compaction-release")).toBe(false);
+    expect(disabledSet.has("heartbeat")).toBe(false);
   });
 });
 

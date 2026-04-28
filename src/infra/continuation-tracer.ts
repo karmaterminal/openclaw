@@ -17,6 +17,8 @@
 // Slice 3 wires the real provider, no test in the harness or in this
 // module's tests should need to change.
 
+import { randomUUID } from "node:crypto";
+
 /**
  * Span attribute values mirror the OTEL semantic-conventions primitive set:
  * string | number | boolean (and arrays thereof). We intentionally restrict
@@ -47,6 +49,7 @@ export const CONTINUATION_SIGNAL_KINDS = [
   "bracket-delegate",
   "tool-delegate",
   "compaction-release",
+  "heartbeat",
 ] as const;
 
 /** Union type derived from {@link CONTINUATION_SIGNAL_KINDS}. */
@@ -193,6 +196,14 @@ export type ContinuationSpanAttrs = {
    * Invariant: integer ≥ 0, monotone-by-construction at producer (incrementRunCompactionCount).
    */
   readonly "compaction.id"?: number;
+  /**
+   * #412 — only set on `heartbeat` spans. Opaque per-fire id, unique
+   * within a process lifetime so heartbeat-cadence traces can be
+   * correlated even when no continuation context is present. Caller-
+   * injected from the harness for deterministic test pins; production
+   * helper mints one via `crypto.randomUUID()` when omitted.
+   */
+  readonly "heartbeat.id"?: string;
 };
 
 /**
@@ -823,5 +834,67 @@ export function emitContinuationCompactionReleasedSpan(args: {
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.compaction.released span: ${String(err)}`);
+  }
+}
+
+/**
+ * Emit a `heartbeat` span at the runtime heartbeat-poll cadence (#412
+ * heartbeat wiring memo). Heartbeats fire on poll cadence regardless of
+ * whether continuation context is present, but the span only emits in
+ * production when continuation context IS present (memo §Q1: production
+ * is continuation-gated; harness shim is always-emit; divergence
+ * documented in the harness README primitive-coverage matrix).
+ *
+ * Span shape:
+ *  - `signal.kind` = `"heartbeat"` (always)
+ *  - `heartbeat.id` (always; auto-minted via `crypto.randomUUID()` if
+ *    omitted by caller)
+ *  - `chain.id` (omitted iff `chainId` is `undefined`)
+ *  - `chain.step.remaining` (omitted iff `chainStepRemaining` is
+ *    `undefined`; otherwise clamped via `Math.max(0, ...)` matching
+ *    `emitContinuationWorkSpan` discipline)
+ *  - `continuation.disabled` (omitted iff `disabledReason` is `undefined`;
+ *    set to `true` whenever `disabledReason` is supplied)
+ *  - `disabled.reason` (omitted iff `disabledReason` is `undefined`;
+ *    otherwise the supplied gate-axis string)
+ *
+ * Negative-asserts (per memo §2 and 🩸's #407 negative-pin pattern):
+ *  - `delay.ms` MUST NOT appear — heartbeats fire on cadence, not
+ *    caller-elected delay
+ *  - `chain.step.remaining_at_dispatch` is NOT a heartbeat axis —
+ *    heartbeats are snapshot-by-nature; the canonical attr is
+ *    `chain.step.remaining`
+ *
+ * Wraps tracer interactions in a try/catch and logs via the caller's
+ * `log` callback if provided — the heartbeat path must never block on
+ * span emission.
+ */
+export function emitContinuationHeartbeatSpan(args: {
+  heartbeatId?: string;
+  chainId?: string;
+  chainStepRemaining?: number;
+  disabledReason?: string;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const heartbeatId = args.heartbeatId ?? randomUUID();
+    const continuationDisabled = args.disabledReason !== undefined;
+    const attrs: ContinuationSpanAttrs = {
+      "signal.kind": "heartbeat",
+      "heartbeat.id": heartbeatId,
+      ...(args.chainId !== undefined && { "chain.id": args.chainId }),
+      ...(args.chainStepRemaining !== undefined && {
+        "chain.step.remaining": Math.max(0, args.chainStepRemaining),
+      }),
+      ...(continuationDisabled && {
+        "continuation.disabled": true,
+        "disabled.reason": args.disabledReason,
+      }),
+    };
+    const span = activeTracer.startSpan("heartbeat", { attributes: attrs });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit heartbeat span: ${String(err)}`);
   }
 }

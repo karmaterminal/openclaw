@@ -32,6 +32,7 @@
 import {
   emitContinuationCompactionReleasedSpan,
   emitContinuationDelegateSpan,
+  emitContinuationHeartbeatSpan,
   emitContinuationWorkSpan,
   resetContinuationTracer,
   setContinuationTracer,
@@ -131,6 +132,23 @@ export type CaptureSwimOptions = {
    * drop-with-log invariant. Per the lich wiring memo §Q3.
    */
   log?: (message: string) => void;
+  /**
+   * `heartbeat` only. Caller-injected heartbeat id for deterministic
+   * test pins. Production helper mints one via `crypto.randomUUID()`
+   * when omitted (always present on the emitted span). Per the
+   * heartbeat wiring memo §Q4.
+   */
+  heartbeatId?: string;
+  /**
+   * `heartbeat` only. Gate-axis string when the heartbeat is firing
+   * inside a continuation context that has been disabled. Drives
+   * BOTH `continuation.disabled=true` AND `disabled.reason=<value>`
+   * implicitly — supplying this attr means the heartbeat saw a
+   * continuation reject in flight; omitting it means either no
+   * continuation context, or context present and not disabled.
+   * Per the heartbeat wiring memo §2 ("set ↔ true; unset ↔ omit").
+   */
+  disabledReason?: string;
 };
 
 /**
@@ -223,14 +241,31 @@ export async function captureSwim(
         return { spans: recorder.spans(), chainId };
       }
       case "heartbeat": {
-        // Reserved for 🌻's follow-up PR (#412 heartbeat memo wire).
-        // Surface a clear error rather than silently returning an empty
-        // result so the spec's `it.todo` markers stay honest about
-        // what is wired.
-        throw new Error(
-          `captureSwim: primitive "${primitive}" is not yet wired ` +
-            `(see studies/swim-37/harness/README.md primitive-coverage matrix)`,
-        );
+        // Wired against `emitContinuationHeartbeatSpan` per the
+        // heartbeat wiring memo (`docs/design/swim-37-heartbeat-wiring-memo.md`,
+        // PR #412 merged at `1b84e71c95`). Synchronous helper, no timers
+        // in scope (memo §Q1: harness shim is always-emit; production
+        // helper is continuation-gated; divergence documented in the
+        // primitive-coverage matrix).
+        //
+        // Chain context is THREADED-THROUGH but optional. When `chainId`
+        // is supplied the helper emits `chain.id` + `chain.step.remaining`
+        // (clamped via `Math.max(0, ...)`); when omitted, both attrs
+        // are absent (no-continuation-context shape).
+        //
+        // No `chainId` is synthesized for the no-context shape — the
+        // result-shape's `chainId` falls through `opts.chainId ?? generateChainId()`
+        // for downstream non-empty invariant, but the SPAN itself reflects
+        // the heartbeat's true context (omitted when caller omitted).
+        const chainId = opts.chainId ?? generateChainId();
+        emitContinuationHeartbeatSpan({
+          heartbeatId: opts.heartbeatId,
+          chainId: opts.chainId,
+          chainStepRemaining: opts.chainStepRemaining,
+          disabledReason: opts.disabledReason,
+          log: opts.log,
+        });
+        return { spans: recorder.spans(), chainId };
       }
       default: {
         const exhaustive: never = primitive;
