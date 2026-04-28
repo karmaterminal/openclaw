@@ -231,9 +231,97 @@ describe("swim-37 harness :: continuation primitives [scaffold]", () => {
     it.todo("continuation.disabled=true after declineToCarry fires (silenced-by-cap signal)");
   });
 
-  describe("lich-shape (post-compaction delegate)", () => {
-    it.todo("post-compaction delegate retains chain.id across compaction seam (#332 Item B)");
-    it.todo("release-seam span signals continuation.compaction.released exactly once");
+  describe("lich-shape (post-compaction delegate release)", () => {
+    // Wired against `emitContinuationCompactionReleasedSpan` per the lich
+    // wiring memo (`docs/design/swim-37-lich-wiring-memo.md`). 8 live tests
+    // covering Q2 (releasedCount: empty + non-empty) × Q3 (compaction.id:
+    // present-and-valid + omitted + invalid across -1/1.5/NaN/Infinity).
+    //
+    // STDOUT-only discipline preserved: in-memory recorder, try/finally
+    // tracer reset, no real BasicTracerProvider/OTLP machinery.
+
+    it("emits continuation.compaction.released span with releasedCount=1 and compaction.id=7", async () => {
+      const result = await captureSwim("lich", { releasedCount: 1, compactionId: 7 });
+      expect(result.spans).toHaveLength(1);
+      const span = result.spans[0]!;
+      expect(span.name).toBe("continuation.compaction.released");
+      expect(span.attributes["signal.kind"]).toBe("compaction-release");
+      expect(span.attributes["compaction.released"]).toBe(1);
+      expect(span.attributes["compaction.id"]).toBe(7);
+    });
+
+    it("emits releasedCount=3 + compaction.id=42 (multi-release production-typical)", async () => {
+      const result = await captureSwim("lich", { releasedCount: 3, compactionId: 42 });
+      expect(result.spans).toHaveLength(1);
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["compaction.released"]).toBe(3);
+      expect(attrs["compaction.id"]).toBe(42);
+    });
+
+    it("defensive: releasedCount=0 emits with compaction.released=0 (helper accepts but caller never invokes)", async () => {
+      // Per memo §Q2: production caller guards with `autoCompactionCount > 0`,
+      // so this shape is NOT production-reachable. Pinned for helper-tier
+      // contract coverage — the helper's `Math.max(0, Math.floor(...))` clamp
+      // is real even if the caller's guard makes it unreachable in production.
+      const result = await captureSwim("lich", { releasedCount: 0, compactionId: 1 });
+      expect(result.spans).toHaveLength(1);
+      expect(result.spans[0]!.attributes["compaction.released"]).toBe(0);
+      expect(result.spans[0]!.attributes["compaction.id"]).toBe(1);
+    });
+
+    it("omits compaction.id attribute when compactionId is omitted (omission contract)", async () => {
+      const result = await captureSwim("lich", { releasedCount: 2 });
+      expect(result.spans).toHaveLength(1);
+      const attrs = result.spans[0]!.attributes;
+      expect(attrs["compaction.released"]).toBe(2);
+      expect(attrs["compaction.id"]).toBeUndefined();
+      expect("compaction.id" in attrs).toBe(false);
+    });
+
+    it("drops compaction.id (with log) when compactionId is negative (-1)", async () => {
+      const messages: string[] = [];
+      const result = await captureSwim("lich", {
+        releasedCount: 1,
+        compactionId: -1,
+        log: (m) => messages.push(m),
+      });
+      expect(result.spans).toHaveLength(1);
+      expect(result.spans[0]!.attributes["compaction.id"]).toBeUndefined();
+      expect(messages.some((m) => m.includes("invalid compaction.id"))).toBe(true);
+    });
+
+    it("drops compaction.id (with log) when compactionId is non-integer (1.5)", async () => {
+      const messages: string[] = [];
+      const result = await captureSwim("lich", {
+        releasedCount: 1,
+        compactionId: 1.5,
+        log: (m) => messages.push(m),
+      });
+      expect(result.spans[0]!.attributes["compaction.id"]).toBeUndefined();
+      expect(messages.some((m) => m.includes("invalid compaction.id"))).toBe(true);
+    });
+
+    it("drops compaction.id (with log) when compactionId is NaN (🌊 #411 review defense parity)", async () => {
+      const messages: string[] = [];
+      const result = await captureSwim("lich", {
+        releasedCount: 1,
+        compactionId: Number.NaN,
+        log: (m) => messages.push(m),
+      });
+      expect(result.spans[0]!.attributes["compaction.id"]).toBeUndefined();
+      expect(messages.some((m) => m.includes("invalid compaction.id"))).toBe(true);
+    });
+
+    it("drops compaction.id (with log) when compactionId is Infinity (🌊 #411 review defense parity)", async () => {
+      const messages: string[] = [];
+      const result = await captureSwim("lich", {
+        releasedCount: 1,
+        compactionId: Number.POSITIVE_INFINITY,
+        log: (m) => messages.push(m),
+      });
+      expect(result.spans[0]!.attributes["compaction.id"]).toBeUndefined();
+      expect(messages.some((m) => m.includes("invalid compaction.id"))).toBe(true);
+    });
   });
 });
 
@@ -271,7 +359,7 @@ describe("swim-37 harness :: shape contract (live now)", () => {
 
   it("captureSwim() refuses primitives not yet wired", async () => {
     await expect(captureSwim("heartbeat")).rejects.toThrow(/not yet wired/);
-    await expect(captureSwim("lich")).rejects.toThrow(/not yet wired/);
+    // `lich` was wired in this PR — covered by its own describe block above.
   });
 
   it("captureSwim() repeated calls do not leak capture state", async () => {

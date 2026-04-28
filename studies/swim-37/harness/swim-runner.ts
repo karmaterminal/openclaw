@@ -15,10 +15,11 @@
  * `@opentelemetry/sdk-trace-base` machinery. All capture flows through
  * `createInMemorySpanRecorder()` + `setContinuationTracer(recorder.tracer)`.
  *
- * **Scope (this PR).** Only `continue_work` is wired. Other primitives
- * (`continue_delegate`, `heartbeat`, lich-shape) remain `it.todo` in the
- * companion spec until the dispatch / heartbeat / compaction-release seams
- * have a comparable single-helper entry point we can drive synthetically.
+ * **Scope (current).** `continue_work`, `continue_delegate`, and `lich`
+ * are wired. `heartbeat` remains `it.todo` pending 🌻's #412 wiring PR.
+ * The lich primitive maps to the post-compaction-delegate release seam
+ * (`emitContinuationCompactionReleasedSpan`) per the lich wiring memo
+ * (`docs/design/swim-37-lich-wiring-memo.md`).
  *
  * **Why a `declare function` was insufficient.** The prior scaffold pinned
  * `captureSwim` as a `declare function` to make the type-shape compile, with
@@ -29,6 +30,7 @@
  */
 
 import {
+  emitContinuationCompactionReleasedSpan,
   emitContinuationDelegateSpan,
   emitContinuationWorkSpan,
   resetContinuationTracer,
@@ -91,6 +93,37 @@ export type CaptureSwimOptions = {
    * from the attribute bag when caller passes undefined.
    */
   delegateMode?: "normal" | "silent" | "silent-wake" | "post-compaction";
+  /**
+   * `lich` only. Number of staged post-compaction delegates released
+   * (`compaction.released` axis on the emitted span). The production
+   * caller in the agent-runner only invokes the release-helper when
+   * `autoCompactionCount > 0`, but the helper itself accepts `0`
+   * defensively (helper-tier clamp via `Math.max(0, Math.floor(...))`).
+   * Defaults to `1`. Pass `0` to exercise the defensive empty-release
+   * path (NOT a production-reachable shape — pinned for helper-contract
+   * coverage). Per the lich wiring memo §Q2.
+   */
+  releasedCount?: number;
+  /**
+   * `lich` only. Per-session monotonic compaction counter from the
+   * agent-runner caller (`compaction.id` axis on the emitted span).
+   * Optional in production — the helper's defensive validator drops
+   * the attr (with log) if the supplied value is not a non-negative
+   * integer. Pass a non-negative integer to exercise the present-and-
+   * valid path; omit to exercise the omission contract; pass an
+   * invalid value (negative / non-integer / NaN / Infinity) to
+   * exercise the drop-with-log path. Per the lich wiring memo §Q3.
+   */
+  compactionId?: number;
+  /**
+   * `lich` only. Optional log callback forwarded into the helper. The
+   * helper invokes this with a `"invalid compaction.id"` substring
+   * when the producer-side invariant on `compaction.id` fails (and
+   * the attr is dropped without throwing). Tests assert on the
+   * log-callback invocation count + substring match to verify the
+   * drop-with-log invariant. Per the lich wiring memo §Q3.
+   */
+  log?: (message: string) => void;
 };
 
 /**
@@ -158,11 +191,35 @@ export async function captureSwim(
         }
         return { spans: recorder.spans(), chainId };
       }
-      case "heartbeat":
       case "lich": {
-        // Reserved for follow-up PRs. We surface a clear error rather
-        // than silently returning an empty result so the spec's
-        // `it.todo` markers stay honest about what is wired.
+        // `lich` (the harness label, named after the post-compaction
+        // phylactery-drink in 🌫's SOUL file) maps to the
+        // post-compaction-delegate release seam:
+        // `emitContinuationCompactionReleasedSpan`. Synchronous helper,
+        // no timers in scope (lich wiring memo §Q1). The helper itself
+        // performs `Math.max(0, Math.floor(releasedCount))` and
+        // `Number.isInteger && >= 0` validation on `compactionId`,
+        // dropping the attr with log on invalid (memo §Q3).
+        //
+        // No `chainId` is emitted on this span — the release seam is
+        // chain-agnostic at the helper boundary. We still synthesize
+        // one for the result shape so `ChainPrimitiveResult.chainId`
+        // stays non-empty across primitives (prevents downstream
+        // tests from special-casing the lich return shape).
+        const chainId = opts.chainId ?? generateChainId();
+        const releasedCount = opts.releasedCount ?? 1;
+        emitContinuationCompactionReleasedSpan({
+          releasedCount,
+          compactionId: opts.compactionId,
+          log: opts.log,
+        });
+        return { spans: recorder.spans(), chainId };
+      }
+      case "heartbeat": {
+        // Reserved for 🌻's follow-up PR (#412 heartbeat memo wire).
+        // Surface a clear error rather than silently returning an empty
+        // result so the spec's `it.todo` markers stay honest about
+        // what is wired.
         throw new Error(
           `captureSwim: primitive "${primitive}" is not yet wired ` +
             `(see studies/swim-37/harness/README.md primitive-coverage matrix)`,
