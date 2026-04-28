@@ -387,8 +387,9 @@ Columns: **(a) highlight**, **(b) feature anchor**, **(c) swim-37 case-stub**, *
 | D-cfg.otel-captureContent     | Redaction policy                   | canonical2 redaction substrate (#335)                       | Enable w/ redaction policy; assert sensitive keys redacted in span attrs.                                                                            | App-J §Config.otel-redaction           |
 | D-cfg.taskflow-unconditional  | `taskFlowDelegates` purge license  | #365                                                        | Pre-purge: identical behavior gate-on vs gate-absent. Post-purge: zod rejects key.                                                                   | App-J §Config.taskflow-purge           |
 | TC-no-genguard | Removal-only (RFC §3.2)                           | RFC §3.2 (NOT §3.6)                                         | Delayed delegate fires N out; channel receives K unrelated msgs between; assert delegate STILL FIRES. **No mechanism-replacement claim.** Phantom cleanup-debt retracted (zero non-doc hits per 🌫 byte-check). | App-J §Config.genguard-removed |
+| D-cfg.sdq-retry-not-hot-reloadable | SDQ retry keys doc'd but not hot-reloadable | RFC §3.6 / §6.5 vs SDQ impl                            | Mutate `session-delivery-queue.retry.cap` + `.backoffMs[]` at runtime; assert NOT picked up live (requires gateway restart). Catches docs/code-shape mismatch per 🌻 second-eye. | App-J §Config.sdq-retry-static |
 
-**Total: 36 cases (27 E-series + 5 B-twins + 3 D-cfg + 1 TC-no-genguard).** (Off-by-N corrected post-🩸 second-eye 2026-04-28 08:04 PDT — actual row count.) All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
+**Total: 37 cases (27 E-series + 5 B-twins + 4 D-cfg + 1 TC-no-genguard).** (Recounted post-🩸 second-eye 08:04 PDT; +1 D-cfg.sdq-retry-not-hot-reloadable per 🌻 second-eye 08:04 PDT.) All filable as additions to PR #370 / #324 master matrix without disturbing existing case IDs.
 
 ## Cross-cutting flags lifted to top
 
