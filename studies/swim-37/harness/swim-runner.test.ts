@@ -420,7 +420,7 @@ describe("swim-37 harness :: rebase.classify primitive (live now)", () => {
       expect(result.spans).toHaveLength(1);
       const span = result.spans[0]!;
       expect(span.name).toBe("rebase.classify");
-      expect(span.attributes["signal.kind"]).toBe("rebase.classify");
+      expect(span.attributes["signal.kind"]).toBe("rebase-classify");
       expect(span.attributes["verdict"]).toBe("DROP");
       expect(span.attributes["discovery.channel"]).toBe("changelog-grep:pr");
       expect(span.attributes["pick.sha"]).toBe("abc123def456");
@@ -548,17 +548,74 @@ describe("swim-37 harness :: rebase.classify primitive (live now)", () => {
       expect(result.spans[0]!.attributes["pick.sha"]).toBe("123456789abc");
     });
 
-    it("passes short (<12) SHA through unchanged (helper does not pad)", async () => {
-      // Honest about being short rather than pretending. Same discipline
-      // as how `emitContinuationCompactionReleasedSpan` doesn't fabricate
-      // missing compaction.id.
+    it("passes short-but-valid (7-char) SHA through unchanged (helper does not pad)", async () => {
+      // Honest about being short rather than pretending. The 7-char
+      // boundary is git's minimum unambiguous prefix per memo §3; the
+      // captureClassify boundary throws on <7, but valid 7-11 char SHAs
+      // pass through to the helper without padding (same discipline as
+      // how `emitContinuationCompactionReleasedSpan` doesn't fabricate
+      // missing compaction.id).
       const result = await captureClassify({
         verdict: "DROP",
         channel: "changelog-grep:pr",
-        pickSha: "abc123",
+        pickSha: "abc1234",
         evidence: { changelogPrToken: "#1" },
       });
-      expect(result.spans[0]!.attributes["pick.sha"]).toBe("abc123");
+      expect(result.spans[0]!.attributes["pick.sha"]).toBe("abc1234");
+    });
+  });
+
+  describe("input validation (memo §3 throw-on-bad-input)", () => {
+    // Memo §3 specs synchronous throw-on-bad-input matching #405/#411/#412
+    // family-resemblance. Enforced at the harness boundary (mirrors
+    // captureSwim's `recipients` invariant at swim-runner.ts:180); the
+    // production helper stays drop-with-log so producer errors don't
+    // propagate to the rebase-bot caller.
+
+    it("throws when verdict is not in the canonical enum", async () => {
+      await expect(
+        captureClassify({
+          // @ts-expect-error — runtime check belt-and-braces over TS narrowing
+          verdict: "BOGUS",
+          channel: "changelog-grep:pr",
+          pickSha: "abc1234",
+          evidence: { changelogPrToken: "#1" },
+        }),
+      ).rejects.toThrow(/verdict must be one of/);
+    });
+
+    it("throws when channel is not in the canonical enum", async () => {
+      await expect(
+        captureClassify({
+          verdict: "DROP",
+          // @ts-expect-error — runtime check belt-and-braces over TS narrowing
+          channel: "made-up-channel",
+          pickSha: "abc1234",
+          evidence: { changelogPrToken: "#1" },
+        }),
+      ).rejects.toThrow(/channel must be one of/);
+    });
+
+    it("throws when pickSha is shorter than 7 hex chars (memo §3 git-prefix-min)", async () => {
+      await expect(
+        captureClassify({
+          verdict: "DROP",
+          channel: "changelog-grep:pr",
+          pickSha: "abc123",
+          evidence: { changelogPrToken: "#1" },
+        }),
+      ).rejects.toThrow(/at least 7 hex chars/);
+    });
+
+    it("throws when pickSha contains non-hex characters", async () => {
+      await expect(
+        captureClassify({
+          verdict: "DROP",
+          channel: "changelog-grep:pr",
+          pickSha: "NOTHEXXX",
+          evidence: { changelogPrToken: "#1" },
+        }),
+      ).rejects.toThrow(/lowercase hex/);
     });
   });
 
@@ -577,7 +634,7 @@ describe("swim-37 harness :: rebase.classify primitive (live now)", () => {
       const result = await captureClassify({
         verdict: "DROP",
         channel: "changelog-grep:pr",
-        pickSha: "abc123",
+        pickSha: "abc1234",
         evidence: { changelogPrToken: "#1" },
       });
       const attrs = result.spans[0]!.attributes;
@@ -589,7 +646,7 @@ describe("swim-37 harness :: rebase.classify primitive (live now)", () => {
       const result = await captureClassify({
         verdict: "DROP",
         channel: "changelog-grep:pr",
-        pickSha: "abc123",
+        pickSha: "abc1234",
         evidence: { changelogPrToken: "#1" },
       });
       const attrs = result.spans[0]!.attributes;
@@ -604,8 +661,8 @@ describe("swim-37 harness :: rebase.classify primitive (live now)", () => {
       const result = await captureClassify({
         verdict: "DROP",
         channel: "cherry-pick-provenance",
-        pickSha: "abc123",
-        evidence: { cherryPickSourceSha: "def456" },
+        pickSha: "abc1234",
+        evidence: { cherryPickSourceSha: "def4567" },
       });
       const attrs = result.spans[0]!.attributes;
       expect(attrs["disabled.reason"]).toBeUndefined();
@@ -618,19 +675,19 @@ describe("swim-37 harness :: rebase.classify primitive (live now)", () => {
       const r1 = await captureClassify({
         verdict: "DROP",
         channel: "changelog-grep:pr",
-        pickSha: "first1234567",
+        pickSha: "f1450123456",
         evidence: { changelogPrToken: "#1" },
       });
       const r2 = await captureClassify({
         verdict: "REVIEW",
         channel: "none",
-        pickSha: "second123456",
+        pickSha: "5ec0d123456",
         evidence: { needsConflictContentInspection: true },
       });
       expect(r1.spans).toHaveLength(1);
       expect(r2.spans).toHaveLength(1);
-      expect(r1.spans[0]!.attributes["pick.sha"]).toBe("first1234567");
-      expect(r2.spans[0]!.attributes["pick.sha"]).toBe("second123456");
+      expect(r1.spans[0]!.attributes["pick.sha"]).toBe("f1450123456");
+      expect(r2.spans[0]!.attributes["pick.sha"]).toBe("5ec0d123456");
     });
   });
 });
