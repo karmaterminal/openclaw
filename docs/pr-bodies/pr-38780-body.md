@@ -3,6 +3,7 @@ Drafted body for openclaw/openclaw#38780 — replaces the existing PR descriptio
 Tracking issue: karmaterminal/openclaw#226
 Lives at: docs/pr-bodies/pr-38780-body.md
 -->
+
 ## Agent Self-Elected Turn Continuation
 
 This PR adds a continuation system that lets persistent OpenClaw agents elect to continue working across turn boundaries, delegate follow-up work to sub-agents, and manage their own compaction lifecycle.
@@ -11,11 +12,11 @@ This PR adds a continuation system that lets persistent OpenClaw agents elect to
 
 Three new agent tools, available when `continuation.enabled: true`:
 
-| Tool | Purpose |
-|---|---|
-| `continue_work()` | Request another turn for the current session after an optional delay |
-| `continue_delegate()` | Dispatch work to a sub-agent with typed modes: normal, silent, silent-wake, post-compaction |
-| `request_compaction()` | Request volitional compaction after preparing working state |
+| Tool                   | Purpose                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `continue_work()`      | Request another turn for the current session after an optional delay                        |
+| `continue_delegate()`  | Dispatch work to a sub-agent with typed modes: normal, silent, silent-wake, post-compaction |
+| `request_compaction()` | Request volitional compaction after preparing working state                                 |
 
 All three tools are also accessible via response-token fallback syntax (`CONTINUE_WORK`, `[[CONTINUE_DELEGATE: ...]]`) for environments where tools are disabled.
 

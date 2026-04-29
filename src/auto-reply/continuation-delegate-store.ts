@@ -16,7 +16,6 @@
 
 import type { SessionPostCompactionDelegate } from "../config/sessions.js";
 import {
-  enqueuePendingDelegate as canonicalEnqueue,
   consumeStagedPostCompactionDelegates as canonicalConsumeStaged,
   stagePostCompactionDelegate as canonicalStage,
 } from "./continuation/delegate-store.js";
