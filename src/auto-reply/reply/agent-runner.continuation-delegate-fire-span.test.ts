@@ -41,7 +41,7 @@ import {
 import {
   clearDelayedContinuationReservations,
   enqueuePendingDelegate,
-} from "../continuation/delegate-store.js";
+} from "../continuation-delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { __testing as replyRunRegistryTesting } from "./reply-run-registry.js";
