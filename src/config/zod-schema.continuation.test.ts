@@ -99,9 +99,9 @@ describe("continuation config schema validation", () => {
   /*  defaultDelayMs / minDelayMs / maxDelayMs / maxChainLength       */
   /* ---------------------------------------------------------------- */
 
-  it("rejects defaultDelayMs = 0 (not positive)", () => {
+  it("accepts defaultDelayMs = 0 (nonnegative per canonical2 widening 6f36158177)", () => {
     const result = parseContinuation({ defaultDelayMs: 0 });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("rejects minDelayMs = -100 (negative)", () => {

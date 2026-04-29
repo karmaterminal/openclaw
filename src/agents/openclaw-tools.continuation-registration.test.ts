@@ -37,6 +37,12 @@ function buildRequestCompactionOpts() {
   };
 }
 
+function buildContinueWorkOpts() {
+  return {
+    requestContinuation: vi.fn(),
+  };
+}
+
 function continuationToolNames(tools: Array<{ name: string }>): string[] {
   return tools
     .map((t) => t.name)
@@ -78,6 +84,7 @@ describe("createOpenClawTools — continuation-tool registration visibility (#15
         session: { mainKey: "main", scope: "per-sender" },
         agents: { defaults: { continuation: { enabled: true } } },
       } as never,
+      continueWorkOpts: buildContinueWorkOpts(),
     });
     const names = continuationToolNames(tools);
     expect(names).toContain("continue_work");
@@ -94,6 +101,7 @@ describe("createOpenClawTools — continuation-tool registration visibility (#15
         session: { mainKey: "main", scope: "per-sender" },
         agents: { defaults: { continuation: { enabled: true } } },
       } as never,
+      continueWorkOpts: buildContinueWorkOpts(),
       requestCompactionOpts: buildRequestCompactionOpts(),
     });
     const names = continuationToolNames(tools);

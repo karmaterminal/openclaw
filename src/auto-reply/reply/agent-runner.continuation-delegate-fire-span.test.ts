@@ -41,7 +41,7 @@ import {
 import {
   clearDelayedContinuationReservations,
   enqueuePendingDelegate,
-} from "../continuation-delegate-store.js";
+} from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { __testing as replyRunRegistryTesting } from "./reply-run-registry.js";
@@ -397,8 +397,7 @@ describe("runReplyAgent :: continuation.delegate.fire span (Slice 2 chunk 5b)", 
       enqueuePendingDelegate(sessionKey, {
         task: "poll PR #999 status",
         delayMs: 1_000,
-        silent: false,
-        silentWake: false,
+        mode: "normal",
       });
       return {
         payloads: [{ text: "Spawning a delegate to handle this." }],

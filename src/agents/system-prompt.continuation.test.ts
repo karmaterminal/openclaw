@@ -47,7 +47,9 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
 
     it("does NOT present the bracket syntax as the primary path", () => {
       expect(prompt).not.toContain("End your response with CONTINUE_WORK to request");
-      expect(prompt).not.toContain("End your response with [[CONTINUE_DELEGATE: task]]");
+      expect(prompt).not.toContain(
+        "End your response with [[CONTINUE_DELEGATE: task description]]",
+      );
     });
   });
 
@@ -68,7 +70,7 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
     });
 
     it("teaches bracket syntax for delegation", () => {
-      expect(prompt).toContain("End your response with [[CONTINUE_DELEGATE: task]]");
+      expect(prompt).toContain("End your response with [[CONTINUE_DELEGATE: task description]]");
       expect(prompt).toContain("[[CONTINUE_DELEGATE: task +30s | silent-wake]]");
     });
 
@@ -95,7 +97,7 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
       });
 
       expect(prompt).toContain("`continue_work` tool");
-      expect(prompt).toContain("End your response with [[CONTINUE_DELEGATE: task]]");
+      expect(prompt).toContain("End your response with [[CONTINUE_DELEGATE: task description]]");
       expect(prompt).not.toContain("`continue_delegate` tool");
       expect(prompt).not.toContain("Use `request_compaction` to trigger compaction");
     });

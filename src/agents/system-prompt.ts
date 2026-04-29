@@ -1030,6 +1030,14 @@ export function buildAgentSystemPrompt(params: {
       "Use `silent` for ambient enrichment or future recall. Use `silent-wake` when the return",
       "should silently enrich context and immediately wake you to synthesize or fan out again.",
       "",
+      ...(availableTools.has("request_compaction")
+        ? [
+            "### Compaction",
+            "Use the `request_compaction` tool to request compaction now and reclaim context window space.",
+            "Pair with `continue_delegate` post-compaction shards as the lifeboat for working state.",
+            "",
+          ]
+        : []),
       "### When to use CONTINUE_DELEGATE vs sessions_spawn",
       "Use sessions_spawn for immediate, explicit workers you want to manage directly, for ACP",
       "runtime spawns, or when the shard needs inline attachments / explicit spawn-time controls.",
