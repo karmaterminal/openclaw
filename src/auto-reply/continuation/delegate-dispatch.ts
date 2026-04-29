@@ -313,7 +313,7 @@ export async function dispatchPostCompactionDelegates(
 
   for (const delegate of delegates) {
     try {
-      await spawnSubagentDirect(
+      const spawnResult = await spawnSubagentDirect(
         {
           task: delegate.task,
           silentAnnounce: true,
@@ -322,7 +322,18 @@ export async function dispatchPostCompactionDelegates(
         },
         spawnCtx,
       );
-      dispatched++;
+      if (spawnResult.status === "accepted") {
+        dispatched++;
+        continue;
+      }
+      postCompactionLog.warn(
+        `[continuation:post-compaction-spawn-rejected] status=${spawnResult.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+      );
+      enqueueSystemEvent(
+        `[continuation] Post-compaction delegate spawn ${spawnResult.status}: delegation was not accepted. Task: ${delegate.task}`,
+        { sessionKey },
+      );
+      failed++;
     } catch (err) {
       postCompactionLog.warn(
         `[continuation:post-compaction-spawn-failed] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,

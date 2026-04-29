@@ -53,7 +53,6 @@ import {
   stagedPostCompactionDelegateCount,
   takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
-import { scheduleWorkContinuation } from "../continuation/scheduler.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import type { ChainState } from "../continuation/types.js";
 import {
@@ -2866,38 +2865,6 @@ export async function runReplyAgent(params: {
     // Silent continuations should produce no user-visible output.
     if (wasSilentContinuation) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
-    }
-
-    // --- Continuation scheduling (RFC §3.1–§3.4) ---
-    // Schedule next turn or dispatch delegates based on the extracted signal.
-    if (effectiveContinuationSignal && sessionKey) {
-      const continuationConfig = resolveContinuationRuntimeConfig(cfg);
-      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
-      const { loadContinuationChainState } = await import("../continuation/lazy.runtime.js");
-      const chainState = loadContinuationChainState(activeSessionEntry, turnTokens);
-
-      if (effectiveContinuationSignal.kind === "work") {
-        scheduleWorkContinuation({
-          signal: effectiveContinuationSignal,
-          chainState,
-          config: continuationConfig,
-          sessionKey,
-          workReason: continuationWorkReason,
-          onFire: (nextChainCount, chainStartedAt, accumulatedTokens, reason) => {
-            enqueueSystemEvent(
-              `[continuation:wake] Turn ${nextChainCount}/${continuationConfig.maxChainLength}. ` +
-                `Chain started at ${new Date(chainStartedAt).toISOString()}. ` +
-                `Accumulated tokens: ${accumulatedTokens}. ` +
-                `The agent elected to continue working.` +
-                (reason ? ` Reason: ${reason}` : ""),
-              { sessionKey },
-            );
-            requestHeartbeatNow({ sessionKey, reason: "continuation" });
-          },
-        });
-      }
-      // Bracket-parsed delegate signals are handled by the scheduler.
-      // Tool-dispatched delegates are consumed separately below.
     }
 
     // Consume and dispatch tool-dispatched delegates (continue_delegate tool).

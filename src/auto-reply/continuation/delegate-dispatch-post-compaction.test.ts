@@ -135,6 +135,29 @@ describe("dispatchPostCompactionDelegates error handling (openclaw#203)", () => 
     expect(mockState.spawnSubagentDirect).toHaveBeenCalledTimes(2);
   });
 
+  it("counts non-accepted spawn statuses as failed, not dispatched", async () => {
+    const sessionKey = "session-post-compact-rejected";
+
+    mockState.spawnSubagentDirect.mockResolvedValueOnce({ status: "forbidden" });
+
+    const delegates = [{ task: "delegate rejected by policy" }];
+    const result = await dispatchPostCompactionDelegates(delegates, sessionKey, {
+      agentSessionKey: sessionKey,
+    });
+
+    expect(result.failed).toBe(1);
+    expect(result.dispatched).toBe(0);
+    expect(mockState.warnLog).toHaveBeenCalledOnce();
+    expect(mockState.warnLog.mock.calls[0][0]).toContain(
+      "[continuation:post-compaction-spawn-rejected]",
+    );
+    expect(mockState.warnLog.mock.calls[0][0]).toContain("status=forbidden");
+    expect(mockState.enqueueSystemEvent).toHaveBeenCalledOnce();
+    expect(mockState.enqueueSystemEvent.mock.calls[0][0]).toContain(
+      "Post-compaction delegate spawn forbidden",
+    );
+  });
+
   it("truncates long task strings in warn log to 80 chars", async () => {
     const sessionKey = "session-truncate";
     const longTask =
