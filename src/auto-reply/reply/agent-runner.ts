@@ -1946,7 +1946,9 @@ export async function runReplyAgent(params: {
         await dispatchPostCompactionDelegates({
           cfg,
           compactionCount: count,
-          continuationSignalKind: continuationSignal?.kind,
+          continuationSignalKind: continuationExtraction.fromBracket
+            ? effectiveContinuationSignal?.kind
+            : undefined,
           followupRun,
           postCompactionDelegatesToPreserve,
           sessionEntry: activeSessionEntry,
@@ -2551,10 +2553,9 @@ export async function runReplyAgent(params: {
           // carries actual headroom (per-turn cap can fire while chain budget
           // still has room).
           {
-            const delegateMode = droppedDelegate.silentWake
-              ? "silent-wake"
-              : droppedDelegate.silent
-                ? "silent"
+            const delegateMode =
+              droppedDelegate.mode === "silent-wake" || droppedDelegate.mode === "silent"
+                ? droppedDelegate.mode
                 : "normal";
             const delegateDelivery: "immediate" | "timer" =
               droppedDelegate.delayMs && droppedDelegate.delayMs > 0 ? "timer" : "immediate";
@@ -2606,10 +2607,9 @@ export async function runReplyAgent(params: {
             // tool chain-cap reject. Chain didn't advance; chainId passes
             // through as-is.
             {
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
+              const delegateMode =
+                delegate.mode === "silent-wake" || delegate.mode === "silent"
+                  ? delegate.mode
                   : "normal";
               const delegateDelivery: "immediate" | "timer" =
                 delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
@@ -2638,10 +2638,9 @@ export async function runReplyAgent(params: {
             // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
             // tool cost-cap reject. Same conditional-delegate-attr pattern.
             {
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
+              const delegateMode =
+                delegate.mode === "silent-wake" || delegate.mode === "silent"
+                  ? delegate.mode
                   : "normal";
               const delegateDelivery: "immediate" | "timer" =
                 delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
@@ -2766,8 +2765,8 @@ export async function runReplyAgent(params: {
               createdAt: chainStartedAt,
               fireAt: Date.now() + clampedDelay,
               plannedHop: nextChainCount,
-              silent: delegate.silent,
-              silentWake: delegate.silentWake,
+              silent: delegate.mode === "silent",
+              silentWake: delegate.mode === "silent-wake",
             });
             const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
               count: currentChainCount,
@@ -2780,10 +2779,9 @@ export async function runReplyAgent(params: {
             // semantic anchor as the bracket-timer site above.
             {
               // Ladder handles silent-wake / silent / normal only — see tool-immediate comment above; post-compaction path is a sibling, not handled here.
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
+              const delegateMode =
+                delegate.mode === "silent-wake" || delegate.mode === "silent"
+                  ? delegate.mode
                   : "normal";
               emitContinuationDelegateSpan({
                 chainId: persistedChainIdForTimer,
@@ -2800,10 +2798,9 @@ export async function runReplyAgent(params: {
             // dispatch-time captures, NOT fire-time recomputes; `armedAt` is
             // captured immediately before `setTimeout` so wall-clock drift
             // measurement starts at arming.
-            const fireDelegateMode: "normal" | "silent" | "silent-wake" = delegate.silentWake
-              ? "silent-wake"
-              : delegate.silent
-                ? "silent"
+            const fireDelegateMode: "normal" | "silent" | "silent-wake" =
+              delegate.mode === "silent-wake" || delegate.mode === "silent"
+                ? delegate.mode
                 : "normal";
             const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
             retainContinuationTimerRef(sessionKey);
@@ -2861,8 +2858,8 @@ export async function runReplyAgent(params: {
             timerHandle.unref();
           } else {
             await doToolSpawn(nextChainCount, delegate.task, {
-              silent: delegate.silent,
-              silentWake: delegate.silentWake,
+              silent: delegate.mode === "silent",
+              silentWake: delegate.mode === "silent-wake",
               startedAt: chainStartedAt,
             });
           }
@@ -2873,16 +2870,24 @@ export async function runReplyAgent(params: {
     if (!autoCompactionCount && continuationFeatureEnabled && sessionKey) {
       const stagedCompactionDelegates = consumeStagedPostCompactionDelegates(sessionKey);
       if (stagedCompactionDelegates.length > 0) {
+        const mappedDelegates: SessionPostCompactionDelegate[] = stagedCompactionDelegates.map(
+          (d) => ({
+            task: d.task,
+            createdAt: Date.now(),
+            silent: d.mode === "silent" || d.mode === "post-compaction",
+            silentWake: d.mode === "silent-wake",
+          }),
+        );
         try {
           await persistPendingPostCompactionDelegates({
             sessionEntry: activeSessionEntry,
             sessionStore: activeSessionStore,
             sessionKey,
             storePath,
-            delegates: stagedCompactionDelegates,
+            delegates: mappedDelegates,
           });
         } catch (err) {
-          postCompactionDelegatesToPreserve.push(...stagedCompactionDelegates);
+          postCompactionDelegatesToPreserve.push(...mappedDelegates);
           defaultRuntime.log(
             `Failed to persist post-compaction delegates for ${sessionKey} (re-staged ${stagedCompactionDelegates.length}): ${String(err)}`,
           );
@@ -3020,7 +3025,10 @@ export async function runReplyAgent(params: {
       consumePendingDelegates(sessionKey);
       consumeStagedPostCompactionDelegates(sessionKey);
       for (const delegate of postCompactionDelegatesToPreserve) {
-        stagePostCompactionDelegate(sessionKey, delegate);
+        stagePostCompactionDelegate(sessionKey, {
+          task: delegate.task,
+          stagedAt: delegate.createdAt,
+        });
       }
     }
     // Safety net: the dispatcher's onIdle callback normally fires
