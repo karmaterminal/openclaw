@@ -128,22 +128,12 @@ export function createBlockReplyDeliveryHandler(params: {
     const mediaNormalizedPayload = params.normalizeMediaPaths
       ? await params.normalizeMediaPaths(normalized.payload)
       : normalized.payload;
-    const blockPayload = carryReplyPayloadMetadata(
+    let blockPayload = carryReplyPayloadMetadata(
       payload,
       params.applyReplyToMode(mediaNormalizedPayload),
     );
     const blockHasMedia = resolveSendableOutboundReplyParts(blockPayload).hasMedia;
 
-    // CoT-frame leak suppression for the streaming path.  The model sometimes
-    // emits internal narration as a per-block body prefixed with a bracketed
-    // speaker frame like `[cael] ...` or `[the dandelion cult - ronan] ...`.
-    // `normalizeReplyPayload` (the FINAL-payload normalizer) already drops
-    // these via `hasCotFramePrefix` (#269/#270), but block-streaming ships
-    // text *before* the final payload is ever assembled, so the leak escapes
-    // when `blockStreamingEnabled: true` (the default for chat channels).
-    // Drop the leaked text here, mirroring the final-payload semantics:
-    // suppress entirely when there's no media, otherwise let media still
-    // ship without the frame body.
     if (blockPayload.text && hasCotFramePrefix(blockPayload.text)) {
       if (!blockHasMedia) {
         return;

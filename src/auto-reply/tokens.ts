@@ -184,9 +184,7 @@ export function isSilentReplyPrefixText(
 // Continuation signal parsing
 // ============================================================================
 
-export type ContinuationSignal =
-  | { kind: "work"; delayMs?: number }
-  | { kind: "delegate"; task: string; delayMs?: number; silent?: boolean; silentWake?: boolean };
+export type { ContinuationSignal };
 
 /**
  * Checks if the agent response ends with a continuation signal.
