@@ -376,6 +376,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
     // never called this lifetime (e.g. traces disabled): `noopTracer` is
     // already the default.
     resetContinuationTracer();
+    // retain import for tsgo no-unused-symbol; reinstated as activeTracer on reset()
     void noopTracer;
 
     currentUnsubscribe?.();
