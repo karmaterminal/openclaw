@@ -1170,63 +1170,6 @@ export async function runAgentTurnWithFallback(params: {
                       }
                     : undefined,
                 requestCompactionOpts:
-                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
-                    ? {
-                        getContextUsage: () => {
-                          const entry = params.sessionKey
-                            ? params.activeSessionStore?.[params.sessionKey]
-                            : undefined;
-                          if (!entry?.totalTokens || entry.totalTokensFresh === false) {
-                            return 0;
-                          }
-                          const contextWindow = entry.contextTokens ?? 200_000;
-                          return entry.totalTokens / contextWindow;
-                        },
-                        triggerCompaction: async () => {
-                          try {
-                            const result = await compactEmbeddedPiSession({
-                              sessionId:
-                                params.followupRun.run.sessionId ??
-                                params.getActiveSessionEntry()?.sessionId ??
-                                "",
-                              sessionKey: params.sessionKey ?? "",
-                              sessionFile: params.followupRun.run.sessionFile,
-                              workspaceDir: params.followupRun.run.workspaceDir,
-                              provider: params.followupRun.run.provider,
-                              model: params.followupRun.run.model,
-                              config: params.followupRun.run.config,
-                              trigger: "volitional",
-                            });
-                            return {
-                              ok: result?.ok ?? false,
-                              compacted: result?.compacted ?? false,
-                              reason: result?.reason,
-                            };
-                          } catch (err) {
-                            return { ok: false, compacted: false, reason: String(err) };
-                          }
-                        },
-                      }
-                    : undefined,
-                toolResultFormat: (() => {
-                  const channel = resolveMessageChannel(
-                    params.sessionCtx.Surface,
-                    params.sessionCtx.Provider,
-                  );
-                  if (!channel) {
-                    return "markdown";
-                  }
-                  return isMarkdownCapableMessageChannel(channel) ? "markdown" : "plain";
-                })(),
-                suppressToolErrorWarnings: params.opts?.suppressToolErrorWarnings,
-                bootstrapContextMode: params.opts?.bootstrapContextMode,
-                bootstrapContextRunKind: params.opts?.isHeartbeat ? "heartbeat" : "default",
-                images: params.opts?.images,
-                imageOrder: params.opts?.imageOrder,
-                abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
-                replyOperation: params.replyOperation,
-                // Continuation: request_compaction opts wired from session state.
-                requestCompactionOpts:
                   runtimeConfig?.agents?.defaults?.continuation?.enabled === true
                     ? {
                         sessionId: params.followupRun.run.sessionId,
@@ -1288,6 +1231,23 @@ export async function runAgentTurnWithFallback(params: {
                         },
                       }
                     : undefined,
+                toolResultFormat: (() => {
+                  const channel = resolveMessageChannel(
+                    params.sessionCtx.Surface,
+                    params.sessionCtx.Provider,
+                  );
+                  if (!channel) {
+                    return "markdown";
+                  }
+                  return isMarkdownCapableMessageChannel(channel) ? "markdown" : "plain";
+                })(),
+                suppressToolErrorWarnings: params.opts?.suppressToolErrorWarnings,
+                bootstrapContextMode: params.opts?.bootstrapContextMode,
+                bootstrapContextRunKind: params.opts?.isHeartbeat ? "heartbeat" : "default",
+                images: params.opts?.images,
+                imageOrder: params.opts?.imageOrder,
+                abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
+                replyOperation: params.replyOperation,
                 blockReplyBreak: params.resolvedBlockStreamingBreak,
                 blockReplyChunking: params.blockReplyChunking,
                 onPartialReply: async (payload) => {
