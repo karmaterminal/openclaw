@@ -1696,6 +1696,73 @@ describe("createFollowupRunner continuation delegate dispatch", () => {
 
     expect(dispatchToolDelegatesMock).not.toHaveBeenCalled();
   });
+
+  it("persists chain tokens even when dispatchResult.dispatched === 0 (r3164418106)", async () => {
+    // Repro: prior guard `dispatched > 0 && tailEntry` dropped chain-token
+    // persistence on followup-only chains (delayed-only delegates, all
+    // deferred, or pure continue_work turns). The chainState carries fresh
+    // accumulatedChainTokens from loadContinuationChainState(tailEntry,
+    // turnTokens) regardless of dispatched count, so we must persist it
+    // unconditionally to keep the token-budget counter advancing across hops.
+    const storePath = path.join(
+      await fs.mkdtemp(path.join(tmpdir(), "openclaw-followup-r3164418106-")),
+      "sessions.json",
+    );
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 2,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 100,
+    };
+    const sessionStore: Record<string, SessionEntry> = {
+      main: sessionEntry,
+    };
+    registerFollowupTestSessionStore(storePath, sessionStore);
+
+    // dispatched === 0 (no delegates spawned this turn) but chainState
+    // returned with the advanced token total.
+    dispatchToolDelegatesMock.mockResolvedValueOnce({
+      dispatched: 0,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 2,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 250,
+      },
+    });
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello" }],
+      meta: { agentMeta: { usage: { input: 100, output: 50 } } },
+    });
+
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "openai/gpt-5.4",
+      sessionEntry,
+      sessionStore,
+      sessionKey: "main",
+      storePath,
+    });
+    const queued = createQueuedRun({
+      run: {
+        sessionKey: "main",
+        config: {
+          agents: { defaults: { continuation: { enabled: true } } },
+        } as OpenClawConfig,
+      },
+    });
+
+    await runner(queued);
+
+    expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(1);
+    // The fix: chain tokens must advance from 100 → 250 even when
+    // dispatched === 0. Pre-fix: this stayed at 100 and the budget drifted.
+    expect(sessionStore.main.continuationChainTokens).toBe(250);
+    expect(sessionStore.main.continuationChainCount).toBe(2);
+  });
 });
 
 describe("createFollowupRunner agentDir forwarding", () => {

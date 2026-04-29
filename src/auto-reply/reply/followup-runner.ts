@@ -470,7 +470,15 @@ export function createFollowupRunner(params: {
         // r3163899586: persist the advanced chain state back to the session
         // entry after dispatch. Without this the followup-path counter never
         // advances and `maxChainLength` enforcement breaks across hops.
-        if (dispatchResult && dispatchResult.dispatched > 0 && tailEntry) {
+        //
+        // r3164418106: persist even when `dispatched === 0`. The chainState
+        // returned from `dispatchToolDelegates` carries the fresh
+        // `accumulatedChainTokens` from `loadContinuationChainState(tailEntry,
+        // turnTokens)` regardless of whether any delegate spawned. Guarding on
+        // `dispatched > 0` drops the token total on followup-only chains
+        // (delayed-only delegates, all-deferred dispatches, or pure
+        // continue_work turns), causing token-budget drift across hops.
+        if (dispatchResult && tailEntry) {
           persistContinuationChainState({
             sessionEntry: tailEntry,
             count: dispatchResult.chainState.currentChainCount,
