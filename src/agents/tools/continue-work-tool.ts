@@ -1,3 +1,13 @@
+/**
+ * `continue_work` tool — self-elected same-session continuation.
+ *
+ * The agent calls this to request another turn after the current one completes.
+ * The runner threads a `requestContinuation` callback through `opts`; the tool
+ * invokes it to arm the timer.
+ *
+ * RFC: docs/design/continue-work-signal-v2.md §2.2
+ */
+
 import { Type } from "typebox";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { AnyAgentTool } from "./common.js";

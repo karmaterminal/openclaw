@@ -56,6 +56,7 @@ export function buildEmbeddedSystemPrompt(params: {
   includeMemorySection?: boolean;
   memoryCitationsMode?: MemoryCitationsMode;
   promptContribution?: ProviderSystemPromptContribution;
+  /** Whether the continuation feature is enabled for this agent. */
   continuationEnabled?: boolean;
 }): string {
   return buildAgentSystemPrompt({

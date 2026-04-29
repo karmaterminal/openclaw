@@ -447,6 +447,8 @@ export function buildAgentSystemPrompt(params: {
   promptMode?: PromptMode;
   /** Whether ACP-specific routing guidance should be included. Defaults to true. */
   acpEnabled?: boolean;
+  /** Whether the continuation feature is enabled for this agent. */
+  continuationEnabled?: boolean;
   runtimeInfo?: {
     agentId?: string;
     host?: string;
@@ -969,6 +971,7 @@ export function buildAgentSystemPrompt(params: {
   lines.push(...buildHeartbeatSection({ isMinimal, heartbeatPrompt }));
 
   // Continuation tokens — only when the feature is enabled and not in subagent mode
+  // RFC §3.4: system prompt branches on tool availability (uses outer `availableTools`).
   if (!isMinimal && params.continuationEnabled) {
     lines.push(
       "## Continuation & Delegation",
@@ -978,9 +981,10 @@ export function buildAgentSystemPrompt(params: {
             "Use the `continue_work` tool to request another turn with structured `reason` and optional `delaySeconds`.",
             "Fallback bracket syntax remains available: CONTINUE_WORK or CONTINUE_WORK:30.",
           ]
-        : []),
-      "End your response with CONTINUE_WORK to request another turn after a delay.",
-      "End with CONTINUE_WORK:30 to specify delay in seconds.",
+        : [
+            "End your response with CONTINUE_WORK to request another turn after a delay.",
+            "End with CONTINUE_WORK:30 to specify delay in seconds.",
+          ]),
       "Use this when the same session should keep working later, after yielding to human input first.",
       "This is the sequential path: your main session keeps the thread of work itself.",
       "Use CONTINUE_WORK when you want your own next turn; use `continue_delegate` when the work",
