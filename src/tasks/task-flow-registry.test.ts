@@ -403,4 +403,40 @@ describe("task-flow-registry", () => {
       });
     });
   });
+
+  // F-37-015 / codex P2 r3158438632: chainId must thread through the typed
+  // managed-flow helper so flow_runs.chain_id is populated on the typed path,
+  // not just when callers bypass via createFlowRecord directly.
+  describe("createManagedTaskFlow chainId threading (r3158438632)", () => {
+    it("persists chainId provided to createManagedTaskFlow", async () => {
+      await withFlowRegistryTempDir(async () => {
+        const created = createManagedTaskFlow({
+          ownerKey: "agent:main:main",
+          controllerId: "tests/chain-id",
+          goal: "Thread chainId through typed managed-flow helper",
+          chainId: "chain-r3158438632",
+        });
+
+        expect(created.chainId).toBe("chain-r3158438632");
+
+        const fetched = getTaskFlowById(created.flowId);
+        expect(fetched?.chainId).toBe("chain-r3158438632");
+      });
+    });
+
+    it("defaults chainId to null when omitted on createManagedTaskFlow", async () => {
+      await withFlowRegistryTempDir(async () => {
+        const created = createManagedTaskFlow({
+          ownerKey: "agent:main:main",
+          controllerId: "tests/chain-id-null",
+          goal: "Omitted chainId stays null",
+        });
+
+        expect(created.chainId ?? null).toBeNull();
+
+        const fetched = getTaskFlowById(created.flowId);
+        expect(fetched?.chainId ?? null).toBeNull();
+      });
+    });
+  });
 });

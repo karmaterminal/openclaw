@@ -3,6 +3,7 @@ export {
   canonicalizeMainSessionAlias,
   loadSessionStore,
   resolveSessionKey,
+  resolveSessionStoreEntry,
   resolveStorePath,
   updateSessionStore,
 } from "openclaw/plugin-sdk/session-store-runtime";

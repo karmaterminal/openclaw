@@ -186,7 +186,7 @@ describe("swim-37 :: continuation.disabled emit-helper contract", () => {
         chainId: "01943f7a-1234-7abc-8def-000000000020",
         chainStepRemaining: 0,
         disabledReason,
-        signalKind: "work",
+        signalKind: "bracket-work",
       });
       const span = recorder.spansByName("continuation.disabled").at(-1);
       expect(span).toBeDefined();
@@ -200,7 +200,7 @@ describe("swim-37 :: continuation.disabled emit-helper contract", () => {
       chainId: "01943f7a-1234-7abc-8def-000000000021",
       chainStepRemaining: 0,
       disabledReason: "cap.delegates_per_turn",
-      signalKind: "delegate",
+      signalKind: "bracket-delegate",
       delegateDelivery: "immediate",
       delegateMode: "silent-wake",
     });
@@ -329,7 +329,7 @@ describe("swim-37 :: emit-failure isolation contract", () => {
         chainId: "x",
         chainStepRemaining: 0,
         disabledReason: "cap.chain",
-        signalKind: "work",
+        signalKind: "bracket-work",
         log: (msg) => logged.push(msg),
       }),
     ).not.toThrow();

@@ -1,6 +1,10 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import {
+  classifyCompactionReason,
+  isCompactionSkipCode,
+} from "../pi-embedded-runner/compact-reasons.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, ToolInputError } from "./common.js";
 
@@ -66,10 +70,11 @@ export type RequestCompactionToolOpts = {
   /** Session id (the Pi session UUID). */
   sessionId?: string;
   /**
-   * Returns the current context usage as a fraction (0-1).
+   * Returns the current context usage as a fraction (0-1), or null when unknown
+   * (e.g. inventory-only path used by /status surface reflection).
    * Injected so the tool does not reach into session internals.
    */
-  getContextUsage: () => number;
+  getContextUsage: () => number | null;
   /**
    * Async function that triggers compaction. Injected so the tool does not
    * import the heavy compaction module directly. The caller provides a
@@ -142,6 +147,14 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       // ----- Guard 1: Context threshold -----
       const contextUsage = opts.getContextUsage();
+      if (contextUsage === null) {
+        log.debug(`[request_compaction:context-unknown] session=${sessionKey}`);
+        return jsonResult({
+          status: "rejected",
+          guard: "context_threshold",
+          reason: `Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.`,
+        });
+      }
       if (contextUsage < MIN_CONTEXT_THRESHOLD) {
         log.debug(
           `[request_compaction:below-threshold] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}%`,
@@ -195,11 +208,25 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           (result) => {
             if (result.ok && result.compacted) {
               incrementVolitionalCompactionCount(sessionKey);
+              return;
             }
+            const code = classifyCompactionReason(result.reason);
+            const reason = result.reason ?? "";
+            if (result.ok && isCompactionSkipCode(code)) {
+              log.info(
+                `[request_compaction:resolved-skip] session=${sessionKey} code=${code} reason=${reason}`,
+              );
+              return;
+            }
+            log.warn(
+              `[request_compaction:resolved-failure] session=${sessionKey} code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
+            );
           },
           (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            const code = classifyCompactionReason(message);
             log.error(
-              `[request_compaction:background-error] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+              `[request_compaction:background-error] session=${sessionKey} code=${code} error=${message}`,
             );
           },
         )

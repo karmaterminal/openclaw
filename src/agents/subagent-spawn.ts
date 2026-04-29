@@ -843,10 +843,19 @@ export async function spawnSubagentDirect(
     }
   };
 
+  // Continuation chain-hop delegates get orchestrator role regardless of depth,
+  // so they can continue_delegate further within the chain. (RFC §3.4)
+  const effectiveRole = params.drainsContinuationDelegateQueue
+    ? "orchestrator"
+    : childCapabilities.role;
+  const effectiveControlScope = params.drainsContinuationDelegateQueue
+    ? "children"
+    : childCapabilities.controlScope;
+
   const initialChildSessionPatch: Record<string, unknown> = {
     spawnDepth: childDepth,
-    subagentRole: childCapabilities.role === "main" ? null : childCapabilities.role,
-    subagentControlScope: childCapabilities.controlScope,
+    subagentRole: effectiveRole === "main" ? null : effectiveRole,
+    subagentControlScope: effectiveControlScope,
     ...plan.initialSessionPatch,
   };
 
@@ -1201,6 +1210,9 @@ export async function spawnSubagentDirect(
       retainAttachmentsOnKeep: retainOnSessionKeep,
       ...(params.silentAnnounce ? { silentAnnounce: true } : {}),
       ...(params.wakeOnReturn ? { wakeOnReturn: true } : {}),
+      ...(params.drainsContinuationDelegateQueue
+        ? { drainsContinuationDelegateQueue: true }
+        : {}),
     });
   } catch (err) {
     await rollbackPreparedContextEngine(contextEnginePreparation);

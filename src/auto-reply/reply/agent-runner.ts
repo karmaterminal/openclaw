@@ -51,15 +51,16 @@ import {
   addDelayedContinuationReservation,
   cancelPendingDelegates,
   clearDelayedContinuationReservations,
+  consumePendingDelegates,
   consumeStagedPostCompactionDelegates,
   highestDelayedContinuationReservationHop,
-  takeDelayedContinuationReservation,
-  setTaskFlowDelegatesEnabled,
-  stagePostCompactionDelegate,
-  consumePendingDelegates,
   pendingDelegateCount,
+  stagePostCompactionDelegate,
   stagedPostCompactionDelegateCount,
+  takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
+import { extractContinuationSignal } from "../continuation/signal.js";
+import type { ChainState } from "../continuation/types.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
@@ -67,7 +68,7 @@ import {
 } from "../fallback-state.js";
 import type { OriginatingChannelType, TemplateContext } from "../templating.js";
 import { resolveResponseUsageMode, type VerboseLevel } from "../thinking.js";
-import { SILENT_REPLY_TOKEN, stripContinuationSignal, type ContinuationSignal } from "../tokens.js";
+import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { runAgentTurnWithFallback } from "./agent-runner-execution.js";
 import {
@@ -1113,12 +1114,6 @@ export async function runReplyAgent(params: {
   const isHeartbeat = opts?.isHeartbeat === true;
   const cfg = followupRun.run.config;
   const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
-  const taskFlowDelegatesConfigured =
-    cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
-
-  // Route delegate store operations to the Task Flow-backed implementation
-  // before any inbound-message cancellation logic runs.
-  setTaskFlowDelegatesEnabled(continuationFeatureEnabled && taskFlowDelegatesConfigured);
 
   // RFC 2026-04-15: session-entry cleanup of continuation state on non-heartbeat
   // inbound was removed. Delayed continuation work is not cancelled by unrelated
@@ -1461,6 +1456,31 @@ export async function runReplyAgent(params: {
         cleanupTranscripts: true,
       });
 
+    // --- Context-pressure pre-run injection (RFC §4.2) ---
+    // Fire before the agent turn so the agent can act on pressure in this turn.
+    const continuationEnabledForPressure = cfg?.agents?.defaults?.continuation?.enabled === true;
+    if (continuationEnabledForPressure && sessionKey && activeSessionEntry) {
+      const { checkContextPressure } = await import("../continuation/lazy.runtime.js");
+      const pressureConfig = resolveContinuationRuntimeConfig(cfg);
+      const threshold = pressureConfig.contextPressureThreshold;
+      // Resolve context window for pressure calculation — agentCfgContextTokens
+      // or session-stored value or default.
+      const pressureContextWindow =
+        agentCfgContextTokens ?? activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS;
+      if (threshold && activeSessionEntry.totalTokens && pressureContextWindow) {
+        const pressureEvent = checkContextPressure({
+          sessionKey,
+          totalTokens: activeSessionEntry.totalTokens,
+          contextWindow: pressureContextWindow,
+          threshold,
+          postCompaction: preflightCompactionApplied,
+        });
+        if (pressureEvent) {
+          enqueueSystemEvent(pressureEvent, { sessionKey });
+        }
+      }
+    }
+
     replyOperation.setPhase("running");
 
     // Trigger D: check context pressure before the agent's model call and
@@ -1505,14 +1525,6 @@ export async function runReplyAgent(params: {
         }
       }
     }
-
-    // Sync the Task Flow delegate gate BEFORE the agent turn starts.
-    // Tools (continue_delegate) call enqueuePendingDelegate() during the turn,
-    // so the routing flag must be set before any tool execution.
-    const taskFlowDelegatesEarly =
-      cfg.agents?.defaults?.continuation?.enabled === true &&
-      cfg.agents?.defaults?.continuation?.taskFlowDelegates === true;
-    setTaskFlowDelegatesEnabled(taskFlowDelegatesEarly);
 
     const runStartedAt = Date.now();
     const runOutcome = await runAgentTurnWithFallback({
@@ -1559,7 +1571,6 @@ export async function runReplyAgent(params: {
       fallbackModel,
       fallbackAttempts,
       directlySentBlockKeys,
-      continueWorkRequest,
     } = runOutcome;
     let { didLogHeartbeatStrip, autoCompactionCount } = runOutcome;
 
@@ -1594,48 +1605,6 @@ export async function runReplyAgent(params: {
 
     const payloadArray = runResult.payloads ?? [];
 
-    // Detect and strip continuation signal only when the feature is enabled.
-    // This prevents output mutation on disabled deployments where a model might
-    // mention CONTINUE_WORK or [[CONTINUE_DELEGATE:]] in explanatory text.
-    // Sync the Task Flow delegate gate from config so the store routes
-    // enqueue/consume/count through the TaskFlow-backed implementation.
-    setTaskFlowDelegatesEnabled(
-      continuationFeatureEnabled && cfg.agents?.defaults?.continuation?.taskFlowDelegates === true,
-    );
-    let continuationSignal: ContinuationSignal | null = null;
-    if (continuationFeatureEnabled && payloadArray.length > 0) {
-      // Find the last payload with text content — tool-call payloads may follow
-      // the text payload, pushing the bracket token out of the final position.
-      // This is critical for subagent chain-hops where the bracket is the ONLY
-      // continuation path (continue_delegate tool is denied for subagents).
-      let lastTextPayload: (typeof payloadArray)[number] | undefined;
-      for (let i = payloadArray.length - 1; i >= 0; i--) {
-        if (payloadArray[i].text) {
-          lastTextPayload = payloadArray[i];
-          break;
-        }
-      }
-      if (lastTextPayload?.text) {
-        const continuationResult = stripContinuationSignal(lastTextPayload.text);
-        if (continuationResult.signal) {
-          continuationSignal = continuationResult.signal;
-          lastTextPayload.text = continuationResult.text;
-        }
-      }
-    }
-    const effectiveContinuationSignal: ContinuationSignal | null =
-      continuationSignal ??
-      (continuationFeatureEnabled && continueWorkRequest
-        ? {
-            kind: "work",
-            delayMs: continueWorkRequest.delaySeconds * 1000,
-          }
-        : null);
-    const continuationWorkReason =
-      !continuationSignal && effectiveContinuationSignal?.kind === "work"
-        ? continueWorkRequest?.reason
-        : undefined;
-
     if (blockReplyPipeline) {
       await blockReplyPipeline.flush({ force: true });
       blockReplyPipeline.stop();
@@ -1646,6 +1615,25 @@ export async function runReplyAgent(params: {
         onTimeout: logVerbose,
       });
     }
+
+    // --- Continuation signal extraction (RFC §3.1) ---
+    // r3162427218: tool-based `continue_work` flows via the closure
+    // `requestContinuation` callback in agent-runner-execution.ts:1166,
+    // captured into `attemptContinueWorkRequest` and surfaced on the
+    // run outcome. Read it directly from `runOutcome.continueWorkRequest`
+    // rather than from the orphaned `pendingWorkRequests` Map (which had
+    // zero `setPendingWorkRequest` writers in the codebase).
+    const continueWorkRequest = runOutcome.continueWorkRequest;
+    const continuationExtraction = extractContinuationSignal({
+      payloads: payloadArray,
+      continueWorkRequest: continueWorkRequest
+        ? { reason: continueWorkRequest.reason, delaySeconds: continueWorkRequest.delaySeconds }
+        : undefined,
+      enabled: continuationFeatureEnabled,
+      sessionKey,
+    });
+    const effectiveContinuationSignal = continuationExtraction.signal;
+    const continuationWorkReason = continuationExtraction.workReason;
 
     const usage = runResult.meta?.agentMeta?.usage;
     const promptTokens = runResult.meta?.agentMeta?.promptTokens;
@@ -2006,7 +1994,7 @@ export async function runReplyAgent(params: {
         await dispatchPostCompactionDelegates({
           cfg,
           compactionCount: count,
-          continuationSignalKind: continuationSignal?.kind,
+          continuationSignalKind: effectiveContinuationSignal?.kind,
           followupRun,
           postCompactionDelegatesToPreserve,
           sessionEntry: activeSessionEntry,
@@ -2613,11 +2601,7 @@ export async function runReplyAgent(params: {
           // carries actual headroom (per-turn cap can fire while chain budget
           // still has room).
           {
-            const delegateMode = droppedDelegate.silentWake
-              ? "silent-wake"
-              : droppedDelegate.silent
-                ? "silent"
-                : "normal";
+            const delegateMode = droppedDelegate.mode ?? "normal";
             const delegateDelivery: "immediate" | "timer" =
               droppedDelegate.delayMs && droppedDelegate.delayMs > 0 ? "timer" : "immediate";
             emitContinuationDisabledSpan({
@@ -2668,11 +2652,7 @@ export async function runReplyAgent(params: {
             // tool chain-cap reject. Chain didn't advance; chainId passes
             // through as-is.
             {
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
-                  : "normal";
+              const delegateMode = delegate.mode ?? "normal";
               const delegateDelivery: "immediate" | "timer" =
                 delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
               emitContinuationDisabledSpan({
@@ -2700,11 +2680,7 @@ export async function runReplyAgent(params: {
             // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
             // tool cost-cap reject. Same conditional-delegate-attr pattern.
             {
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
-                  : "normal";
+              const delegateMode = delegate.mode ?? "normal";
               const delegateDelivery: "immediate" | "timer" =
                 delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
               emitContinuationDisabledSpan({
@@ -2828,8 +2804,8 @@ export async function runReplyAgent(params: {
               createdAt: chainStartedAt,
               fireAt: Date.now() + clampedDelay,
               plannedHop: nextChainCount,
-              silent: delegate.silent,
-              silentWake: delegate.silentWake,
+              silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
+              silentWake: delegate.mode === "silent-wake",
             });
             const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
               count: currentChainCount,
@@ -2842,11 +2818,7 @@ export async function runReplyAgent(params: {
             // semantic anchor as the bracket-timer site above.
             {
               // Ladder handles silent-wake / silent / normal only — see tool-immediate comment above; post-compaction path is a sibling, not handled here.
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
-                  : "normal";
+              const delegateMode = delegate.mode ?? "normal";
               emitContinuationDelegateSpan({
                 chainId: persistedChainIdForTimer,
                 chainStepRemaining: maxChainLength - nextChainCount,
@@ -2862,11 +2834,8 @@ export async function runReplyAgent(params: {
             // dispatch-time captures, NOT fire-time recomputes; `armedAt` is
             // captured immediately before `setTimeout` so wall-clock drift
             // measurement starts at arming.
-            const fireDelegateMode: "normal" | "silent" | "silent-wake" = delegate.silentWake
-              ? "silent-wake"
-              : delegate.silent
-                ? "silent"
-                : "normal";
+            const fireDelegateMode: "normal" | "silent" | "silent-wake" =
+              (delegate.mode as "normal" | "silent" | "silent-wake") ?? "normal";
             const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
             retainContinuationTimerRef(sessionKey);
             const armedAt = Date.now();
@@ -2923,8 +2892,8 @@ export async function runReplyAgent(params: {
             timerHandle.unref();
           } else {
             await doToolSpawn(nextChainCount, delegate.task, {
-              silent: delegate.silent,
-              silentWake: delegate.silentWake,
+              silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
+              silentWake: delegate.mode === "silent-wake",
               startedAt: chainStartedAt,
             });
           }
@@ -2954,6 +2923,63 @@ export async function runReplyAgent(params: {
 
     // Silent continuations should produce no user-visible output.
     if (wasSilentContinuation) {
+      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+    }
+
+    // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
+    let toolDelegateDispatchResult:
+      | { dispatched: number; rejected: number; chainState: ChainState }
+      | undefined;
+    if (continuationFeatureEnabled && sessionKey) {
+      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const { dispatchToolDelegates, loadContinuationChainState } =
+        await import("../continuation/lazy.runtime.js");
+      const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
+      toolDelegateDispatchResult = await dispatchToolDelegates({
+        sessionKey,
+        chainState: dispatchChainState,
+        ctx: {
+          sessionKey,
+          agentChannel: followupRun.originatingChannel ?? undefined,
+          agentAccountId: followupRun.originatingAccountId ?? undefined,
+          agentTo: followupRun.originatingTo ?? undefined,
+          agentThreadId: followupRun.originatingThreadId ?? undefined,
+        },
+        maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
+        // r3163899581: pass a fresh-loader so the hedge timer re-loads the
+        // chain state from the persisted session entry at fire time rather
+        // than re-using the snapshot captured at arm time.
+        loadFreshChainState: () => loadContinuationChainState(activeSessionEntry, 0),
+      });
+    }
+
+    // --- Chain state write-back (RFC §3.3) ---
+    // Persist chain metadata to session entry after scheduling/dispatch.
+    // r3161613184: when delegates were dispatched this turn, persist the
+    // *advanced* chain state returned by `dispatchToolDelegates` rather
+    // than re-loading the unchanged pre-dispatch state. Without this the
+    // counter never advances across hops and `maxChainLength` enforcement
+    // breaks.
+    if (
+      (effectiveContinuationSignal || hasQueuedDelegateWork) &&
+      sessionKey &&
+      activeSessionEntry
+    ) {
+      const { loadContinuationChainState, persistContinuationChainState } =
+        await import("../continuation/lazy.runtime.js");
+      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const nextState =
+        toolDelegateDispatchResult?.chainState ??
+        loadContinuationChainState(activeSessionEntry, turnTokens);
+      persistContinuationChainState({
+        sessionEntry: activeSessionEntry,
+        count: nextState.currentChainCount,
+        startedAt: nextState.chainStartedAt,
+        tokens: nextState.accumulatedChainTokens,
+      });
+    }
+
+    if (finalPayloads.length === 0 && effectiveContinuationSignal) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 

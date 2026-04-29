@@ -95,11 +95,6 @@ export type RunEmbeddedPiAgentParams = {
       request: import("../../tools/continue-work-tool.js").ContinueWorkRequest,
     ) => void;
   };
-  /** Closures for request_compaction tool (Trigger E). Provided by the caller when continuation is enabled. */
-  requestCompactionOpts?: {
-    getContextUsage: () => number;
-    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
-  };
   sessionFile: string;
   workspaceDir: string;
   agentDir?: string;
@@ -195,4 +190,10 @@ export type RunEmbeddedPiAgentParams = {
    * exit promptly after emitting the final JSON result.
    */
   cleanupBundleMcpOnRunEnd?: boolean;
+  /** Continuation: request_compaction tool opts (injected from execution context). */
+  requestCompactionOpts?: {
+    sessionId?: string;
+    getContextUsage: () => number | null;
+    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+  };
 };

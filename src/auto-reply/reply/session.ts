@@ -412,7 +412,7 @@ export async function initSessionState(params: {
   if (retiredLegacyMainDelivery) {
     sessionStore[retiredLegacyMainDelivery.key] = retiredLegacyMainDelivery.entry;
   }
-  const entry = sessionStore[sessionKey];
+  const entry = resolveSessionStoreEntry({ store: sessionStore, sessionKey }).existing;
   const now = Date.now();
   const isThread = resolveThreadFlag({
     sessionKey,
