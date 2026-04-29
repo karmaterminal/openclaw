@@ -307,4 +307,107 @@ describe("subagent-announce continuation drain (F7)", () => {
     // Dispatch failure must not break the announce path — it is best-effort.
     expect(didAnnounce).toBe(true);
   });
+
+  it("r3164380565: persists advanced child chain state after delegates dispatched", async () => {
+    // Regression for r3164380565. `drainChildContinuationQueue` must consume
+    // the `chainState` returned by `dispatchToolDelegates` (advanced past
+    // the dispatched hops) and write it back to both the in-memory child
+    // entry AND the durable session store. Without this, the next drain
+    // reloads stale counters and `maxChainLength` enforcement breaks.
+    const childEntry = {
+      sessionId: "session-child",
+      updatedAt: Date.now(),
+      continuationChainCount: 1,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 5_000,
+    };
+    const store: Record<string, Record<string, unknown>> = {
+      "agent:main:subagent:test": childEntry,
+      "agent:main:main": { sessionId: "session-main", updatedAt: Date.now() },
+    };
+    loadSessionStoreMock.mockImplementation(
+      () => store as unknown as Record<string, unknown>,
+    );
+
+    dispatchToolDelegatesMock.mockResolvedValueOnce({
+      dispatched: 2,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 3,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 12_500,
+      },
+    });
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-persist",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "persist test",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "done",
+    });
+
+    // In-memory child entry must reflect the advanced chain state so any
+    // post-drain readers (e.g. a second drain on the same entry) see fresh
+    // counters rather than the pre-dispatch snapshot.
+    expect(childEntry.continuationChainCount).toBe(3);
+    expect(childEntry.continuationChainStartedAt).toBe(1_700_000_000_000);
+    expect(childEntry.continuationChainTokens).toBe(12_500);
+  });
+
+  it("r3164380565: skips persist when no delegates dispatched", async () => {
+    // Negative case: when `dispatched` is 0, the chain state is unchanged
+    // and we must not re-write the entry (avoid spurious `updatedAt` churn
+    // and unnecessary store I/O).
+    const childEntry = {
+      sessionId: "session-child",
+      updatedAt: Date.now(),
+      continuationChainCount: 1,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 5_000,
+    };
+    const store: Record<string, Record<string, unknown>> = {
+      "agent:main:subagent:test": childEntry,
+      "agent:main:main": { sessionId: "session-main", updatedAt: Date.now() },
+    };
+    loadSessionStoreMock.mockImplementation(
+      () => store as unknown as Record<string, unknown>,
+    );
+
+    dispatchToolDelegatesMock.mockResolvedValueOnce({
+      dispatched: 0,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 1,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 5_000,
+      },
+    });
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-no-dispatch",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "no dispatch test",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "done",
+    });
+
+    // Counter unchanged — no advance to persist.
+    expect(childEntry.continuationChainCount).toBe(1);
+    expect(childEntry.continuationChainTokens).toBe(5_000);
+  });
 });
