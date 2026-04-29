@@ -2965,14 +2965,19 @@ export async function runReplyAgent(params: {
       sessionKey &&
       activeSessionEntry
     ) {
-      const { loadContinuationChainState, persistContinuationChainState } =
-        await import("../continuation/lazy.runtime.js");
+      // r3164418100 (P1): use the local async `persistContinuationChainState`
+      // (defined ~line 1269) which does the durable triple-write — sessionEntry
+      // + sessionStore + disk via `updateSessionStore`. The lazy.runtime helper
+      // of the same name only mutates the in-memory `sessionEntry`, so a
+      // restart or disk-based reload would revert chain depth/tokens/chain-id
+      // for tool-delegate hops, weakening max-chain and cost-cap enforcement
+      // and making continuation telemetry inconsistent.
+      const { loadContinuationChainState } = await import("../continuation/lazy.runtime.js");
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
       const nextState =
         toolDelegateDispatchResult?.chainState ??
         loadContinuationChainState(activeSessionEntry, turnTokens);
-      persistContinuationChainState({
-        sessionEntry: activeSessionEntry,
+      await persistContinuationChainState({
         count: nextState.currentChainCount,
         startedAt: nextState.chainStartedAt,
         tokens: nextState.accumulatedChainTokens,
