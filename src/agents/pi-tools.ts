@@ -336,11 +336,6 @@ export function createOpenClawCodingTools(options?: {
       request: import("./tools/continue-work-tool.js").ContinueWorkRequest,
     ) => void;
   };
-  /** Closures for request_compaction tool (Trigger E). */
-  requestCompactionOpts?: {
-    getContextUsage: () => number;
-    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
-  };
   /** If true, the model has native vision capability */
   modelHasVision?: boolean;
   /** Require explicit message targets (no implicit last-route sends). */

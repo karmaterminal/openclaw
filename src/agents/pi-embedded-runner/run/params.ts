@@ -80,11 +80,6 @@ export type RunEmbeddedPiAgentParams = {
       request: import("../../tools/continue-work-tool.js").ContinueWorkRequest,
     ) => void;
   };
-  /** Closures for request_compaction tool (Trigger E). Provided by the caller when continuation is enabled. */
-  requestCompactionOpts?: {
-    getContextUsage: () => number;
-    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
-  };
   sessionFile: string;
   workspaceDir: string;
   agentDir?: string;
