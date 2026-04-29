@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-
 // Gate 2 receipt for PR #423 (post-compaction tool-path lane).
 //
 // Tool-side staging and agent-runner-side consume must resolve to the SAME
@@ -11,7 +10,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 // LEGACY `continuation-delegate-store.ts`. This test red-flags any future
 // regression that routes the tool path through NEW `continuation/delegate-
 // store.ts` while runner consume stays legacy (or vice versa).
-
 import {
   stagePostCompactionDelegate as toolStage,
   stagedPostCompactionDelegateCount as toolCount,
@@ -41,6 +39,7 @@ describe("PR #423 gate 2 :: post-compaction substrate :: tool-stage and runner-c
     expect(runnerCount(sessionKey)).toBe(0);
     toolStage(sessionKey, {
       task: "post-compaction probe",
+      createdAt: Date.now(),
       silent: true,
       silentWake: true,
     });
@@ -58,8 +57,18 @@ describe("PR #423 gate 2 :: post-compaction substrate :: tool-stage and runner-c
   });
 
   it("post-compaction delegate is not stranded on an alternate substrate", () => {
-    toolStage(sessionKey, { task: "stranding A", silent: false, silentWake: false });
-    toolStage(sessionKey, { task: "stranding B", silent: true, silentWake: false });
+    toolStage(sessionKey, {
+      task: "stranding A",
+      createdAt: Date.now(),
+      silent: false,
+      silentWake: false,
+    });
+    toolStage(sessionKey, {
+      task: "stranding B",
+      createdAt: Date.now(),
+      silent: true,
+      silentWake: false,
+    });
 
     const drained = runnerConsume(sessionKey);
     expect(drained.map((d) => d.task)).toEqual(["stranding A", "stranding B"]);

@@ -964,9 +964,11 @@ export async function runSubagentAnnounceFlow(params: {
             break;
           }
 
-          const toolSilent = toolDelegate.silent || toolDelegate.silentWake || parentWasSilent;
+          const delegateMode = toolDelegate.mode ?? "normal";
+          const toolSilent =
+            delegateMode === "silent" || delegateMode === "silent-wake" || parentWasSilent;
           const toolWake =
-            toolDelegate.silentWake || (parentWasSilent && params.wakeOnReturn === true);
+            delegateMode === "silent-wake" || (parentWasSilent && params.wakeOnReturn === true);
           const toolDelayMs = toolDelegate.delayMs;
           const continuationStateRuntime = await loadContinuationStateRuntime();
 

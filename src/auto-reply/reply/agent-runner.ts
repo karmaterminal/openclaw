@@ -54,7 +54,6 @@ import {
   stagedPostCompactionDelegateCount,
   takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
-import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
 import { scheduleWorkContinuation } from "../continuation/scheduler.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import {
@@ -1544,7 +1543,6 @@ export async function runReplyAgent(params: {
       fallbackModel,
       fallbackAttempts,
       directlySentBlockKeys,
-      continueWorkRequest,
     } = runOutcome;
     let { didLogHeartbeatStrip, autoCompactionCount } = runOutcome;
 
@@ -1579,40 +1577,6 @@ export async function runReplyAgent(params: {
 
     const payloadArray = runResult.payloads ?? [];
 
-    let continuationSignal: ContinuationSignal | null = null;
-    if (continuationFeatureEnabled && payloadArray.length > 0) {
-      // Find the last payload with text content — tool-call payloads may follow
-      // the text payload, pushing the bracket token out of the final position.
-      // This is critical for subagent chain-hops where the bracket is the ONLY
-      // continuation path (continue_delegate tool is denied for subagents).
-      let lastTextPayload: (typeof payloadArray)[number] | undefined;
-      for (let i = payloadArray.length - 1; i >= 0; i--) {
-        if (payloadArray[i].text) {
-          lastTextPayload = payloadArray[i];
-          break;
-        }
-      }
-      if (lastTextPayload?.text) {
-        const continuationResult = stripContinuationSignal(lastTextPayload.text);
-        if (continuationResult.signal) {
-          continuationSignal = continuationResult.signal;
-          lastTextPayload.text = continuationResult.text;
-        }
-      }
-    }
-    const effectiveContinuationSignal: ContinuationSignal | null =
-      continuationSignal ??
-      (continuationFeatureEnabled && continueWorkRequest
-        ? {
-            kind: "work",
-            delayMs: continueWorkRequest.delaySeconds * 1000,
-          }
-        : null);
-    const continuationWorkReason =
-      !continuationSignal && effectiveContinuationSignal?.kind === "work"
-        ? continueWorkRequest?.reason
-        : undefined;
-
     if (blockReplyPipeline) {
       await blockReplyPipeline.flush({ force: true });
       blockReplyPipeline.stop();
@@ -1622,8 +1586,6 @@ export async function runReplyAgent(params: {
     }
 
     // --- Continuation signal extraction (RFC §3.1) ---
-    const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
-
     const continueWorkRequest = sessionKey ? consumePendingWorkRequest(sessionKey) : undefined;
     const continuationExtraction = extractContinuationSignal({
       payloads: payloadArray,
@@ -1635,12 +1597,6 @@ export async function runReplyAgent(params: {
     });
     const effectiveContinuationSignal = continuationExtraction.signal;
     const continuationWorkReason = continuationExtraction.workReason;
-
-    // Check if there's queued delegate work from the continue_delegate tool.
-    const hasQueuedDelegateWork =
-      continuationFeatureEnabled &&
-      !!sessionKey &&
-      (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
 
     const usage = runResult.meta?.agentMeta?.usage;
     const promptTokens = runResult.meta?.agentMeta?.promptTokens;
@@ -1976,7 +1932,7 @@ export async function runReplyAgent(params: {
         await dispatchPostCompactionDelegates({
           cfg,
           compactionCount: count,
-          continuationSignalKind: continuationSignal?.kind,
+          continuationSignalKind: effectiveContinuationSignal?.kind,
           followupRun,
           postCompactionDelegatesToPreserve,
           sessionEntry: activeSessionEntry,
@@ -2581,11 +2537,7 @@ export async function runReplyAgent(params: {
           // carries actual headroom (per-turn cap can fire while chain budget
           // still has room).
           {
-            const delegateMode = droppedDelegate.silentWake
-              ? "silent-wake"
-              : droppedDelegate.silent
-                ? "silent"
-                : "normal";
+            const delegateMode = droppedDelegate.mode ?? "normal";
             const delegateDelivery: "immediate" | "timer" =
               droppedDelegate.delayMs && droppedDelegate.delayMs > 0 ? "timer" : "immediate";
             emitContinuationDisabledSpan({
@@ -2981,9 +2933,7 @@ export async function runReplyAgent(params: {
       });
     }
 
-    // Track whether this was a silent continuation (stripped to empty payloads).
-    const wasSilentContinuation = finalPayloads.length === 0 && !!effectiveContinuationSignal;
-    if (wasSilentContinuation) {
+    if (finalPayloads.length === 0 && effectiveContinuationSignal) {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 

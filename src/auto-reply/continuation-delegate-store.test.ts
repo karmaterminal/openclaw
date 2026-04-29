@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   addDelayedContinuationReservation,
+  cancelPendingDelegates,
   clearDelayedContinuationReservations,
   consumeStagedPostCompactionDelegates,
   delayedContinuationReservationCount,
@@ -16,12 +17,9 @@ import {
 } from "./continuation-delegate-store.js";
 
 describe("continuation-delegate-store", () => {
-  // Clear state between tests by consuming any leftover delegates
   beforeEach(() => {
-    consumePendingDelegates("test-session");
-    consumePendingDelegates("other-session");
-    consumeStagedPostCompactionDelegates("test-session");
-    consumeStagedPostCompactionDelegates("other-session");
+    cancelPendingDelegates("test-session");
+    cancelPendingDelegates("other-session");
     clearDelayedContinuationReservations("test-session");
     clearDelayedContinuationReservations("other-session");
   });
@@ -33,15 +31,13 @@ describe("continuation-delegate-store", () => {
   it("enqueues and consumes a single delegate", () => {
     enqueuePendingDelegate("test-session", {
       task: "summarize the RFC",
-      delayMs: 30000,
-      silent: false,
-      silentWake: false,
+      delayMs: 0,
     });
 
     const delegates = consumePendingDelegates("test-session");
     expect(delegates).toHaveLength(1);
     expect(delegates[0].task).toBe("summarize the RFC");
-    expect(delegates[0].delayMs).toBe(30000);
+    expect(delegates[0].delayMs).toBe(0);
   });
 
   it("consumes removes delegates from store", () => {
@@ -55,21 +51,17 @@ describe("continuation-delegate-store", () => {
   });
 
   it("supports multiple delegates per session (multi-arrow fan-out)", () => {
-    enqueuePendingDelegate("test-session", { task: "arrow 1", delayMs: 10000 });
-    enqueuePendingDelegate("test-session", { task: "arrow 2", delayMs: 20000, silent: true });
-    enqueuePendingDelegate("test-session", {
-      task: "arrow 3",
-      delayMs: 30000,
-      silentWake: true,
-    });
+    enqueuePendingDelegate("test-session", { task: "arrow 1" });
+    enqueuePendingDelegate("test-session", { task: "arrow 2", mode: "silent" });
+    enqueuePendingDelegate("test-session", { task: "arrow 3", mode: "silent-wake" });
 
     const delegates = consumePendingDelegates("test-session");
     expect(delegates).toHaveLength(3);
     expect(delegates[0].task).toBe("arrow 1");
     expect(delegates[1].task).toBe("arrow 2");
-    expect(delegates[1].silent).toBe(true);
+    expect(delegates[1].mode).toBe("silent");
     expect(delegates[2].task).toBe("arrow 3");
-    expect(delegates[2].silentWake).toBe(true);
+    expect(delegates[2].mode).toBe("silent-wake");
   });
 
   it("isolates delegates by session key", () => {
@@ -268,8 +260,8 @@ describe("delayed continuation reservations", () => {
 
 describe("post-compaction delegate staging", () => {
   beforeEach(() => {
-    consumeStagedPostCompactionDelegates("test-session");
-    consumeStagedPostCompactionDelegates("other-session");
+    cancelPendingDelegates("test-session");
+    cancelPendingDelegates("other-session");
   });
 
   it("returns empty array when no staged delegates are pending", () => {
@@ -285,7 +277,7 @@ describe("post-compaction delegate staging", () => {
     const delegates = consumeStagedPostCompactionDelegates("test-session");
     expect(delegates).toHaveLength(1);
     expect(delegates[0].task).toBe("carry working state past compaction");
-    expect(delegates[0].createdAt).toBe(123);
+    expect(typeof delegates[0].createdAt).toBe("number");
   });
 
   it("consuming removes staged delegates from store", () => {

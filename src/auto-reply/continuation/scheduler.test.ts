@@ -10,7 +10,7 @@ import type { ContinuationRuntimeConfig, ContinuationSignal } from "./types.js";
 
 const baseConfig: ContinuationRuntimeConfig = {
   enabled: true,
-  taskFlowDelegates: true,
+
   defaultDelayMs: 15_000,
   minDelayMs: 5_000,
   maxDelayMs: 300_000,

@@ -23,7 +23,6 @@ const cfg: OpenClawConfig = {};
 
 const defaultRuntimeConfig: ContinuationRuntimeConfig = {
   enabled: true,
-  taskFlowDelegates: false,
   defaultDelayMs: 0,
   minDelayMs: 0,
   maxDelayMs: 1_000,

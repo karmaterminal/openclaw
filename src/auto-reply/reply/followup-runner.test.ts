@@ -15,6 +15,7 @@ const runPreflightCompactionIfNeededMock = vi.fn();
 const resolveCommandSecretRefsViaGatewayMock = vi.fn();
 const resolveQueuedReplyExecutionConfigMock = vi.fn();
 const resolveProviderFollowupFallbackRouteMock = vi.fn();
+const dispatchToolDelegatesMock = vi.fn();
 let resolveQueuedReplyExecutionConfigActual:
   | (typeof import("./agent-runner-utils.js"))["resolveQueuedReplyExecutionConfig"]
   | undefined;
@@ -308,6 +309,9 @@ async function loadFreshFollowupRunnerModuleForTest() {
       ) => resolveQueuedReplyExecutionConfigMock(...args),
     };
   });
+  vi.doMock("../continuation/delegate-dispatch.js", () => ({
+    dispatchToolDelegates: (...args: unknown[]) => dispatchToolDelegatesMock(...args),
+  }));
   vi.doMock("../../cli/command-secret-gateway.js", () => ({
     resolveCommandSecretRefsViaGateway: (...args: unknown[]) =>
       resolveCommandSecretRefsViaGatewayMock(...args),
@@ -372,6 +376,8 @@ beforeEach(() => {
   resolveQueuedReplyExecutionConfigMock.mockReset();
   resolveProviderFollowupFallbackRouteMock.mockReset();
   resolveProviderFollowupFallbackRouteMock.mockReturnValue(undefined);
+  dispatchToolDelegatesMock.mockReset();
+  dispatchToolDelegatesMock.mockResolvedValue(undefined);
   const resolveQueuedReplyExecutionConfig = resolveQueuedReplyExecutionConfigActual;
   if (!resolveQueuedReplyExecutionConfig) {
     throw new Error("resolveQueuedReplyExecutionConfig mock not initialized");

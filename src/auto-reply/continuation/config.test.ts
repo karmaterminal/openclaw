@@ -12,7 +12,7 @@ describe("resolveContinuationRuntimeConfig", () => {
     const config = resolveContinuationRuntimeConfig({} as never);
     expect(config).toMatchObject({
       enabled: false,
-      taskFlowDelegates: true, // ships enabled per RFC §5.1
+
       defaultDelayMs: 15_000,
       minDelayMs: 5_000,
       maxDelayMs: 300_000,
@@ -29,7 +29,7 @@ describe("resolveContinuationRuntimeConfig", () => {
         defaults: {
           continuation: {
             enabled: true,
-            taskFlowDelegates: true,
+
             maxChainLength: 100,
             costCapTokens: 0,
             maxDelegatesPerTurn: 20,
@@ -43,7 +43,7 @@ describe("resolveContinuationRuntimeConfig", () => {
     } as never);
     expect(config).toMatchObject({
       enabled: true,
-      taskFlowDelegates: true,
+
       maxChainLength: 100,
       costCapTokens: 0,
       maxDelegatesPerTurn: 20,
@@ -93,7 +93,7 @@ describe("resolveContinuationRuntimeConfig", () => {
 describe("clampDelayMs", () => {
   const config: ContinuationRuntimeConfig = {
     enabled: true,
-    taskFlowDelegates: false,
+
     defaultDelayMs: 15_000,
     minDelayMs: 5_000,
     maxDelayMs: 300_000,
