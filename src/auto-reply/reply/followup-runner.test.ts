@@ -1621,6 +1621,15 @@ describe("createFollowupRunner typing cleanup", () => {
 
 describe("createFollowupRunner continuation delegate dispatch", () => {
   it("dispatches continue_delegate queue at end of followup turn when continuation is enabled (F-STALL)", async () => {
+    dispatchToolDelegatesMock.mockResolvedValueOnce({
+      dispatched: 0,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 0,
+      },
+    });
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "hello" }],
       meta: {},
@@ -1651,6 +1660,116 @@ describe("createFollowupRunner continuation delegate dispatch", () => {
     expect(call?.sessionKey).toBe("main");
     expect(call?.ctx?.sessionKey).toBe("main");
     expect(call?.chainState?.currentChainCount).toBe(0);
+  });
+
+  it("persists returned chain state after followup delegate dispatch", async () => {
+    const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), "openclaw-followup-chain-"));
+    const storePath = path.join(workspaceDir, "sessions.json");
+    const sessionKey = "main";
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { enabled: true } } },
+    } as OpenClawConfig);
+    const sessionEntry: SessionEntry = {
+      sessionId: "session-main",
+      updatedAt: Date.now(),
+      continuationChainCount: 1,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 500,
+    };
+    const sessionStore: Record<string, SessionEntry> = { [sessionKey]: sessionEntry };
+    await saveSessionStore(storePath, sessionStore);
+    dispatchToolDelegatesMock.mockResolvedValueOnce({
+      dispatched: 1,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 2,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 625,
+      },
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello" }],
+      meta: { agentMeta: { usage: { input: 100, output: 25 } } },
+    });
+
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "openai/gpt-5.4",
+      sessionEntry,
+      sessionStore,
+      sessionKey,
+      storePath,
+    });
+    const queued = createQueuedRun({
+      run: {
+        sessionKey,
+        config: {
+          agents: { defaults: { continuation: { enabled: true } } },
+        } as OpenClawConfig,
+      },
+    });
+
+    await runner(queued);
+
+    expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(1);
+    expect(sessionStore[sessionKey]?.continuationChainCount).toBe(2);
+    expect(sessionStore[sessionKey]?.continuationChainStartedAt).toBe(1_700_000_000_000);
+    expect(sessionStore[sessionKey]?.continuationChainTokens).toBe(625);
+    const diskStore = loadSessionStore(storePath, { skipCache: true });
+    expect(diskStore[sessionKey]?.continuationChainCount).toBe(2);
+    expect(diskStore[sessionKey]?.continuationChainTokens).toBe(625);
+  });
+
+  it("persists followup chain tokens even when dispatch only queues delayed delegates", async () => {
+    const sessionKey = "main";
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { enabled: true } } },
+    } as OpenClawConfig);
+    const sessionEntry: SessionEntry = {
+      sessionId: "session-main",
+      updatedAt: Date.now(),
+      continuationChainCount: 1,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 500,
+    };
+    const sessionStore: Record<string, SessionEntry> = { [sessionKey]: sessionEntry };
+    dispatchToolDelegatesMock.mockResolvedValueOnce({
+      dispatched: 0,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 1,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 625,
+      },
+    });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello" }],
+      meta: { agentMeta: { usage: { input: 100, output: 25 } } },
+    });
+
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "openai/gpt-5.4",
+      sessionEntry,
+      sessionStore,
+      sessionKey,
+    });
+    const queued = createQueuedRun({
+      run: {
+        sessionKey,
+        config: {
+          agents: { defaults: { continuation: { enabled: true } } },
+        } as OpenClawConfig,
+      },
+    });
+
+    await runner(queued);
+
+    expect(sessionEntry.continuationChainCount).toBe(1);
+    expect(sessionEntry.continuationChainTokens).toBe(625);
+    expect(sessionStore[sessionKey]?.continuationChainTokens).toBe(625);
   });
 
   it("skips dispatch when continuation is disabled", async () => {

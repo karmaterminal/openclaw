@@ -28,4 +28,8 @@ export {
   pendingDelegateCount,
   stagedPostCompactionDelegateCount,
 } from "./delegate-store.js";
-export { loadContinuationChainState, persistContinuationChainState } from "./state.js";
+export {
+  loadContinuationChainState,
+  persistChainStateAfterDispatch,
+  persistContinuationChainState,
+} from "./state.js";

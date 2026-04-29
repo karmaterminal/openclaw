@@ -305,6 +305,48 @@ describe("runReplyAgent continuation volatile state", () => {
     expect(currentContinuationGeneration(run.sessionKey)).toBe(0);
   });
 
+  it("persists advanced tool delegate chain state after dispatch", async () => {
+    const run = createContinuationRun({ sessionKey: "continuation-tool-persist" });
+    const sessionStore = { [run.sessionKey]: run.sessionEntry };
+    runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      const { enqueuePendingDelegate } = await import("../continuation/delegate-store.js");
+      enqueuePendingDelegate(run.sessionKey, { task: "inspect chain", mode: "normal" });
+      return {
+        payloads: [{ text: "Queued delegate" }],
+        meta: { agentMeta: { usage: { input: 2, output: 3 } } },
+      };
+    });
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun: run.followupRun,
+      queueKey: run.sessionKey,
+      resolvedQueue: run.resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing: run.typing,
+      sessionCtx: run.sessionCtx,
+      sessionEntry: run.sessionEntry,
+      sessionStore,
+      sessionKey: run.sessionKey,
+      defaultModel: "anthropic/claude-opus-4-6",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(sessionStore[run.sessionKey]?.continuationChainCount).toBe(1);
+    expect(sessionStore[run.sessionKey]?.continuationChainTokens).toBe(5);
+    expect(run.sessionEntry.continuationChainCount).toBe(1);
+    expect(run.sessionEntry.continuationChainTokens).toBe(5);
+  });
+
   it("fires a delayed WORK timer after CONTINUE_WORK is parsed", async () => {
     vi.useFakeTimers();
 

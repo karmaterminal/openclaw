@@ -2511,336 +2511,9 @@ export async function runReplyAgent(params: {
       }
     }
     // Handle tool-dispatched continuation delegates (continue_delegate tool).
-    // These are enqueued by the tool during execution and consumed here,
-    // going through the same chain tracking as bracket-parsed signals.
-    // Multiple delegates per turn are supported (multi-arrow fan-out).
-    if (continuationFeatureEnabled && sessionKey) {
-      const toolDelegates = consumePendingDelegates(sessionKey);
-      if (toolDelegates.length > 0) {
-        defaultRuntime.log(
-          `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
-        );
-      }
-      if (toolDelegates.length > 0) {
-        const { maxChainLength, minDelayMs, maxDelayMs, costCapTokens, maxDelegatesPerTurn } =
-          resolveContinuationRuntimeConfig(cfg);
-        // If a bracket-signal delegate was already spawned this turn, count it
-        // against the per-turn cap so mixed-signal turns cannot exceed the limit.
-        const bracketDelegateCount = effectiveContinuationSignal?.kind === "delegate" ? 1 : 0;
-        const remainingBudget = Math.max(0, maxDelegatesPerTurn - bracketDelegateCount);
-        const delegatesWithinLimit = toolDelegates.slice(0, remainingBudget);
-        const delegatesOverLimit = toolDelegates.slice(remainingBudget);
-        for (const droppedDelegate of delegatesOverLimit) {
-          enqueueSystemEvent(
-            `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${droppedDelegate.task}`,
-            { sessionKey },
-          );
-          // #334 Slice 2 chunk 5a — per-turn cap reject span. Per-turn
-          // cap is a different cap-axis from chunk 4's per-chain
-          // (chain/cost) family but reuses `continuation.disabled` with
-          // `disabled.reason = "cap.delegates_per_turn"`. `chain.step.remaining`
-          // carries actual headroom (per-turn cap can fire while chain budget
-          // still has room).
-          {
-            const delegateMode = droppedDelegate.mode ?? "normal";
-            const delegateDelivery: "immediate" | "timer" =
-              droppedDelegate.delayMs && droppedDelegate.delayMs > 0 ? "timer" : "immediate";
-            emitContinuationDisabledSpan({
-              chainId: activeSessionEntry?.continuationChainId,
-              chainStepRemaining: Math.max(
-                0,
-                maxChainLength - (activeSessionEntry?.continuationChainCount ?? 0),
-              ),
-              disabledReason: "cap.delegates_per_turn",
-              signalKind: "tool-delegate",
-              delegateDelivery,
-              delegateMode,
-              reason: droppedDelegate.task,
-              log: defaultRuntime.log,
-            });
-          }
-        }
-
-        let currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
-        // Accumulate current turn's token usage into chain cost.
-        // Skip if the bracket-signal path already accumulated this turn's tokens
-        // (both paths read from the same activeSessionEntry.continuationChainTokens).
-        const bracketAlreadyAccumulated = bracketTokensAccumulated;
-        const toolDelegateUsage = runResult.meta?.agentMeta?.usage;
-        // Count only input + output tokens for cost cap (excludes cache reads/writes
-        // which inflate the count with inherited system prompt context).
-        const toolDelegateTurnTokens = bracketAlreadyAccumulated
-          ? 0
-          : (toolDelegateUsage?.input ?? 0) + (toolDelegateUsage?.output ?? 0);
-        let accumulatedChainTokens =
-          (activeSessionEntry?.continuationChainTokens ?? 0) + toolDelegateTurnTokens;
-        const chainStartedAt = activeSessionEntry?.continuationChainStartedAt ?? Date.now();
-
-        for (const delegate of delegatesWithinLimit) {
-          const allocatedChainHop = Math.max(
-            currentChainCount,
-            highestDelayedContinuationReservationHop(sessionKey),
-          );
-          if (allocatedChainHop >= maxChainLength) {
-            defaultRuntime.log(
-              `Continuation chain capped at ${maxChainLength} for tool delegate in session ${sessionKey}`,
-            );
-            enqueueSystemEvent(
-              `[continuation] Tool delegate rejected: chain length ${maxChainLength} reached. Task: ${delegate.task}`,
-              { sessionKey },
-            );
-            // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
-            // tool chain-cap reject. Chain didn't advance; chainId passes
-            // through as-is.
-            {
-              const delegateMode = delegate.mode ?? "normal";
-              const delegateDelivery: "immediate" | "timer" =
-                delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
-              emitContinuationDisabledSpan({
-                chainId: activeSessionEntry?.continuationChainId,
-                chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
-                disabledReason: "cap.chain",
-                signalKind: "tool-delegate",
-                delegateDelivery,
-                delegateMode,
-                reason: delegate.task,
-                log: defaultRuntime.log,
-              });
-            }
-            break;
-          }
-
-          if (costCapTokens > 0 && accumulatedChainTokens > costCapTokens) {
-            defaultRuntime.log(
-              `Continuation cost cap exceeded for tool delegate in session ${sessionKey}`,
-            );
-            enqueueSystemEvent(
-              `[continuation] Tool delegate rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}). Task: ${delegate.task}`,
-              { sessionKey },
-            );
-            // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
-            // tool cost-cap reject. Same conditional-delegate-attr pattern.
-            {
-              const delegateMode = delegate.mode ?? "normal";
-              const delegateDelivery: "immediate" | "timer" =
-                delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
-              emitContinuationDisabledSpan({
-                chainId: activeSessionEntry?.continuationChainId,
-                chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
-                disabledReason: "cap.cost",
-                signalKind: "tool-delegate",
-                delegateDelivery,
-                delegateMode,
-                reason: delegate.task,
-                log: defaultRuntime.log,
-              });
-            }
-            break;
-          }
-
-          const nextChainCount = allocatedChainHop + 1;
-
-          const doToolSpawn = async (
-            plannedHop: number,
-            task: string,
-            options?: {
-              timerTriggered?: boolean;
-              silent?: boolean;
-              silentWake?: boolean;
-              startedAt?: number;
-            },
-          ) => {
-            try {
-              const spawnResult = await spawnSubagentDirect(
-                {
-                  task: `[continuation:chain-hop:${plannedHop}] Delegated task (turn ${plannedHop}/${maxChainLength}): ${task}`,
-                  ...(options?.silent ? { silentAnnounce: true } : {}),
-                  ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
-                  drainsContinuationDelegateQueue: true,
-                },
-                {
-                  agentSessionKey: sessionKey,
-                  agentChannel: followupRun.originatingChannel ?? undefined,
-                  agentAccountId: followupRun.originatingAccountId ?? undefined,
-                  agentTo: followupRun.originatingTo ?? undefined,
-                  agentThreadId: followupRun.originatingThreadId ?? undefined,
-                },
-              );
-              if (spawnResult.status === "accepted") {
-                if (options?.timerTriggered) {
-                  defaultRuntime.log(
-                    `Tool DELEGATE timer fired and spawned turn ${plannedHop}/${maxChainLength} for session ${sessionKey}: ${task}`,
-                  );
-                }
-                currentChainCount = Math.max(currentChainCount, plannedHop);
-                const { chainId: persistedChainId } = await persistContinuationChainState({
-                  count: currentChainCount,
-                  startedAt: options?.startedAt ?? chainStartedAt,
-                  tokens: Math.max(
-                    accumulatedChainTokens,
-                    activeSessionEntry?.continuationChainTokens ?? 0,
-                  ),
-                });
-                // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
-                // span at the immediate accept seam (tool-side). Timer-deferred
-                // dispatches already emitted at enqueue-time; skip when
-                // `timerTriggered` to preserve exactly-one-span-per-accepted-dispatch.
-                if (!options?.timerTriggered) {
-                  // Ladder handles silent-wake / silent / normal only — the tool DELEGATE seam doesn't carry a `post-compaction` discriminator (separate persist path).
-                  const delegateMode = options?.silentWake
-                    ? "silent-wake"
-                    : options?.silent
-                      ? "silent"
-                      : "normal";
-                  emitContinuationDelegateSpan({
-                    chainId: persistedChainId,
-                    chainStepRemaining: maxChainLength - plannedHop,
-                    delayMs: 0,
-                    delivery: "immediate",
-                    delegateMode,
-                    log: (message) => defaultRuntime.log(message),
-                  });
-                }
-                enqueueSystemEvent(
-                  `[continuation:delegate-spawned] Tool delegate turn ${plannedHop}/${maxChainLength}: ${task}`,
-                  { sessionKey },
-                );
-                return true;
-              }
-              defaultRuntime.log(
-                `Tool DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
-              );
-              enqueueSystemEvent(
-                `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${task}`,
-                { sessionKey },
-              );
-              clearDelegatePendingIfNoDelayedReservations(sessionKey);
-              return false;
-            } catch (err) {
-              clearDelegatePendingIfNoDelayedReservations(sessionKey);
-              defaultRuntime.log(
-                `Tool DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
-              );
-              enqueueSystemEvent(
-                `[continuation] Tool DELEGATE spawn failed: ${String(err)}. Task: ${task}`,
-                { sessionKey },
-              );
-              return false;
-            }
-          };
-
-          // Mark delegate-pending via dedicated flag (not system event queue)
-          // so it survives buildQueuedSystemPrompt draining on intervening turns.
-          if (sessionKey) {
-            setDelegatePending(sessionKey);
-          }
-
-          if (delegate.delayMs && delegate.delayMs > 0) {
-            const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));
-            const reservationId = generateSecureUuid();
-            addDelayedContinuationReservation(sessionKey, {
-              id: reservationId,
-              source: "tool",
-              task: delegate.task,
-              createdAt: chainStartedAt,
-              fireAt: Date.now() + clampedDelay,
-              plannedHop: nextChainCount,
-              silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
-              silentWake: delegate.mode === "silent-wake",
-            });
-            const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
-              count: currentChainCount,
-              startedAt: chainStartedAt,
-              tokens: accumulatedChainTokens,
-            });
-            // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
-            // span at the timer-deferred enqueue seam (tool-side, after
-            // persist, before `setTimeout` arms). Same enqueue-time
-            // semantic anchor as the bracket-timer site above.
-            {
-              // Ladder handles silent-wake / silent / normal only — see tool-immediate comment above; post-compaction path is a sibling, not handled here.
-              const delegateMode = delegate.mode ?? "normal";
-              emitContinuationDelegateSpan({
-                chainId: persistedChainIdForTimer,
-                chainStepRemaining: maxChainLength - nextChainCount,
-                delayMs: clampedDelay,
-                delivery: "timer",
-                delegateMode,
-                log: (message) => defaultRuntime.log(message),
-              });
-            }
-            // #334 Slice 2 chunk 5b — fire-span snapshots for the tool-delegate
-            // timer callback. Same enclosure discipline as the bracket-delegate
-            // site: `delegateMode` and `chainStepRemainingAtDispatch` are
-            // dispatch-time captures, NOT fire-time recomputes; `armedAt` is
-            // captured immediately before `setTimeout` so wall-clock drift
-            // measurement starts at arming.
-            const fireDelegateMode: "normal" | "silent" | "silent-wake" =
-              (delegate.mode as "normal" | "silent" | "silent-wake") ?? "normal";
-            const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
-            retainContinuationTimerRef(sessionKey);
-            const armedAt = Date.now();
-            const timerHandle = setTimeout(() => {
-              // #334 Slice 2 chunk 5b — fire-span emits FIRST, before
-              // reservation lookup. Wall-clock truth: timer DID fire; what
-              // happens next (spawn or reservation-missing) is a separate
-              // sibling event. 5b is instrumentation-of-status-quo only.
-              const fireDeferredMs = Date.now() - armedAt;
-              emitContinuationDelegateFireSpan({
-                // Invariant: persistedChainIdForTimer is always a string
-                // here — `persistContinuationChainState` only returns
-                // undefined when `sessionKey` is falsy, but this branch
-                // is gated on `sessionKey` being truthy (chunk 3).
-                // Helper's defense-in-depth no-ops if undefined slips.
-                chainId: persistedChainIdForTimer as string,
-                chainStepRemainingAtDispatch,
-                delegateMode: fireDelegateMode,
-                delayMs: clampedDelay,
-                fireDeferredMs,
-                log: (message) => defaultRuntime.log(message),
-              });
-              try {
-                const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
-                if (!reservation) {
-                  defaultRuntime.log(
-                    `Tool DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
-                  );
-                  // #334 Slice 2 chunk 5b — sibling `continuation.disabled`
-                  // for the existing log-and-return divergence; same chain.id
-                  // as the fire span so consumers can pair them.
-                  emitContinuationDisabledSpan({
-                    chainId: persistedChainIdForTimer,
-                    chainStepRemaining: chainStepRemainingAtDispatch,
-                    disabledReason: "reservation.missing",
-                    signalKind: "tool-delegate",
-                    delegateDelivery: "timer",
-                    delegateMode: fireDelegateMode,
-                    log: (message) => defaultRuntime.log(message),
-                  });
-                  return;
-                }
-                void doToolSpawn(reservation.plannedHop, reservation.task, {
-                  timerTriggered: true,
-                  silent: reservation.silent,
-                  silentWake: reservation.silentWake,
-                  startedAt: reservation.createdAt,
-                });
-              } finally {
-                unregisterContinuationTimerHandle(sessionKey, timerHandle);
-              }
-            }, clampedDelay);
-            registerContinuationTimerHandle(sessionKey, timerHandle);
-            timerHandle.unref();
-          } else {
-            await doToolSpawn(nextChainCount, delegate.task, {
-              silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
-              silentWake: delegate.mode === "silent-wake",
-              startedAt: chainStartedAt,
-            });
-          }
-        }
-      }
-    }
+    // These are enqueued by the tool during execution and consumed below via
+    // dispatchToolDelegates so returned chain state can be durably persisted in
+    // the common RFC §3.3 write-back block.
 
     if (!autoCompactionCount && continuationFeatureEnabled && sessionKey) {
       const stagedCompactionDelegates = consumeStagedPostCompactionDelegates(sessionKey);
@@ -2876,6 +2549,13 @@ export async function runReplyAgent(params: {
       const { dispatchToolDelegates, loadContinuationChainState } =
         await import("../continuation/lazy.runtime.js");
       const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
+      const loadFreshChainState = () => {
+        const freshEntry =
+          sessionKey && activeSessionStore
+            ? resolveSessionStoreEntry({ store: activeSessionStore, sessionKey }).existing
+            : undefined;
+        return loadContinuationChainState(freshEntry ?? activeSessionEntry, 0);
+      };
       toolDelegateDispatchResult = await dispatchToolDelegates({
         sessionKey,
         chainState: dispatchChainState,
@@ -2888,9 +2568,9 @@ export async function runReplyAgent(params: {
         },
         maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
         // r3163899581: pass a fresh-loader so the hedge timer re-loads the
-        // chain state from the persisted session entry at fire time rather
-        // than re-using the snapshot captured at arm time.
-        loadFreshChainState: () => loadContinuationChainState(activeSessionEntry, 0),
+        // chain state from the updated session entry at fire time rather than
+        // re-using the snapshot captured at arm time.
+        loadFreshChainState,
       });
     }
 
@@ -2906,17 +2586,20 @@ export async function runReplyAgent(params: {
       sessionKey &&
       activeSessionEntry
     ) {
-      const { loadContinuationChainState, persistContinuationChainState } =
+      const { loadContinuationChainState, persistChainStateAfterDispatch } =
         await import("../continuation/lazy.runtime.js");
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
       const nextState =
         toolDelegateDispatchResult?.chainState ??
         loadContinuationChainState(activeSessionEntry, turnTokens);
-      persistContinuationChainState({
-        sessionEntry: activeSessionEntry,
-        count: nextState.currentChainCount,
-        startedAt: nextState.chainStartedAt,
-        tokens: nextState.accumulatedChainTokens,
+      await persistChainStateAfterDispatch({
+        entry: activeSessionEntry,
+        store: activeSessionStore,
+        storePath,
+        sessionKey,
+        currentChainCount: nextState.currentChainCount,
+        chainStartedAt: nextState.chainStartedAt,
+        accumulatedChainTokens: nextState.accumulatedChainTokens,
       });
     }
 

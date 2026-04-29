@@ -115,7 +115,11 @@ export function clearTrackedContinuationTimers(sessionKey: string): void {
 // Chain state persistence
 // ---------------------------------------------------------------------------
 
-import type { SessionEntry } from "../../config/sessions/types.js";
+import {
+  resolveSessionStoreEntry,
+  updateSessionStore,
+  type SessionEntry,
+} from "../../config/sessions.js";
 import type { ChainState } from "./types.js";
 
 /**
@@ -176,6 +180,54 @@ export function persistContinuationChainState(params: {
   params.sessionEntry.continuationChainCount = params.count;
   params.sessionEntry.continuationChainStartedAt = params.startedAt;
   params.sessionEntry.continuationChainTokens = params.tokens;
+}
+
+export async function persistChainStateAfterDispatch(params: {
+  entry?: SessionEntry;
+  store?: Record<string, SessionEntry>;
+  storePath?: string;
+  sessionKey: string;
+  currentChainCount: number;
+  chainStartedAt: number;
+  accumulatedChainTokens: number;
+}): Promise<void> {
+  const applyState = (entry: ContinuationChainSource): void => {
+    entry.continuationChainCount = params.currentChainCount;
+    entry.continuationChainStartedAt = params.chainStartedAt;
+    entry.continuationChainTokens = params.accumulatedChainTokens;
+  };
+
+  if (params.entry) {
+    applyState(params.entry);
+  }
+  if (params.store) {
+    const resolved = resolveSessionStoreEntry({
+      store: params.store,
+      sessionKey: params.sessionKey,
+    });
+    const existingEntry = resolved.existing ?? params.entry;
+    if (existingEntry) {
+      const nextEntry = { ...existingEntry };
+      applyState(nextEntry);
+      params.store[resolved.normalizedKey] = nextEntry;
+      for (const legacyKey of resolved.legacyKeys) {
+        delete params.store[legacyKey];
+      }
+    }
+  }
+  if (params.storePath) {
+    await updateSessionStore(params.storePath, (store) => {
+      const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey });
+      if (resolved.existing) {
+        const nextEntry = { ...resolved.existing };
+        applyState(nextEntry);
+        store[resolved.normalizedKey] = nextEntry;
+        for (const legacyKey of resolved.legacyKeys) {
+          delete store[legacyKey];
+        }
+      }
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

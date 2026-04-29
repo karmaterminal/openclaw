@@ -23,10 +23,23 @@ const isEmbeddedPiRunActiveMock = vi.fn((_sessionId: string) => false);
 const queueEmbeddedPiMessageMock = vi.fn((_sessionId: string, _text: string) => false);
 const waitForEmbeddedPiRunEndMock = vi.fn(async (_sessionId: string, _timeoutMs?: number) => true);
 
-const dispatchToolDelegatesMock = vi.fn(async (_params: unknown) => ({
-  dispatched: 0,
-  rejected: 0,
-}));
+const dispatchToolDelegatesMock = vi.fn(
+  async (params: {
+    chainState?: {
+      currentChainCount?: number;
+      chainStartedAt?: number;
+      accumulatedChainTokens?: number;
+    };
+  }) => ({
+    dispatched: 0,
+    rejected: 0,
+    chainState: {
+      currentChainCount: params.chainState?.currentChainCount ?? 0,
+      chainStartedAt: params.chainState?.chainStartedAt ?? 0,
+      accumulatedChainTokens: params.chainState?.accumulatedChainTokens ?? 0,
+    },
+  }),
+);
 const resolveContinuationRuntimeConfigMock = vi.fn((_cfg?: unknown) => ({
   enabled: true,
   defaultDelayMs: 15_000,
@@ -107,12 +120,53 @@ vi.mock("./subagent-announce-delivery.js", () => ({
 
 vi.mock("./subagent-announce.registry.runtime.js", () => subagentRegistryRuntimeMock);
 
+type DispatchToolDelegatesMockParams = {
+  chainState?: {
+    currentChainCount?: number;
+    chainStartedAt?: number;
+    accumulatedChainTokens?: number;
+  };
+};
+
 vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
-  dispatchToolDelegates: (params: unknown) => dispatchToolDelegatesMock(params),
+  dispatchToolDelegates: (params: DispatchToolDelegatesMockParams) =>
+    dispatchToolDelegatesMock(params),
 }));
 
 vi.mock("../auto-reply/continuation/config.js", () => ({
   resolveContinuationRuntimeConfig: (cfg?: unknown) => resolveContinuationRuntimeConfigMock(cfg),
+}));
+
+vi.mock("../auto-reply/continuation/state.js", () => ({
+  loadContinuationChainState: (
+    source:
+      | {
+          continuationChainCount?: number;
+          continuationChainStartedAt?: number;
+          continuationChainTokens?: number;
+        }
+      | undefined,
+    turnTokens = 0,
+  ) => ({
+    currentChainCount: source?.continuationChainCount ?? 0,
+    chainStartedAt: source?.continuationChainStartedAt ?? Date.now(),
+    accumulatedChainTokens: (source?.continuationChainTokens ?? 0) + turnTokens,
+  }),
+  persistChainStateAfterDispatch: (params: {
+    entry?: {
+      continuationChainCount?: number;
+      continuationChainStartedAt?: number;
+      continuationChainTokens?: number;
+    };
+    currentChainCount: number;
+    chainStartedAt: number;
+    accumulatedChainTokens: number;
+  }) => {
+    if (!params.entry) return;
+    params.entry.continuationChainCount = params.currentChainCount;
+    params.entry.continuationChainStartedAt = params.chainStartedAt;
+    params.entry.continuationChainTokens = params.accumulatedChainTokens;
+  },
 }));
 
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
@@ -121,7 +175,23 @@ describe("subagent-announce continuation drain (F7)", () => {
   beforeEach(() => {
     agentSpy.mockClear();
     callGatewayMock.mockReset().mockImplementation(async () => ({}));
-    dispatchToolDelegatesMock.mockReset().mockResolvedValue({ dispatched: 0, rejected: 0 });
+    dispatchToolDelegatesMock.mockReset().mockImplementation(
+      async (params: {
+        chainState?: {
+          currentChainCount?: number;
+          chainStartedAt?: number;
+          accumulatedChainTokens?: number;
+        };
+      }) => ({
+        dispatched: 0,
+        rejected: 0,
+        chainState: {
+          currentChainCount: params.chainState?.currentChainCount ?? 0,
+          chainStartedAt: params.chainState?.chainStartedAt ?? 0,
+          accumulatedChainTokens: params.chainState?.accumulatedChainTokens ?? 0,
+        },
+      }),
+    );
     loadSessionStoreMock.mockReset().mockImplementation(() => ({}));
     resolveAgentIdFromSessionKeyMock.mockReset().mockImplementation(() => "main");
     resolveStorePathMock.mockReset().mockImplementation(() => "/tmp/sessions.json");
@@ -237,6 +307,54 @@ describe("subagent-announce continuation drain (F7)", () => {
     };
     expect(call?.chainState?.currentChainCount).toBe(0);
     expect(call?.chainState?.accumulatedChainTokens).toBe(0);
+  });
+
+  it("persists the child session's advanced chain state after accepted delegate drains", async () => {
+    const childEntry = {
+      sessionId: "session-child",
+      updatedAt: Date.now(),
+      continuationChainCount: 1,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 5_000,
+    };
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        ({
+          "agent:main:subagent:test": childEntry,
+          "agent:main:main": {
+            sessionId: "session-main",
+            updatedAt: Date.now(),
+          },
+        }) as Record<string, unknown>,
+    );
+    dispatchToolDelegatesMock.mockResolvedValueOnce({
+      dispatched: 1,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 2,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 5_250,
+      },
+    });
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-chain-hop",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "chain hop task",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "done",
+    });
+
+    expect(childEntry.continuationChainCount).toBe(2);
+    expect(childEntry.continuationChainStartedAt).toBe(1_700_000_000_000);
+    expect(childEntry.continuationChainTokens).toBe(5_250);
   });
 
   it("does not dispatch when continuation is disabled", async () => {

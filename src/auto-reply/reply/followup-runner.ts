@@ -447,7 +447,7 @@ export function createFollowupRunner(params: {
         const [
           { dispatchToolDelegates },
           { resolveContinuationRuntimeConfig },
-          { loadContinuationChainState, persistContinuationChainState },
+          { loadContinuationChainState, persistChainStateAfterDispatch },
         ] = await Promise.all([
           import("../continuation/delegate-dispatch.js"),
           import("../continuation/config.js"),
@@ -457,6 +457,10 @@ export function createFollowupRunner(params: {
         const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
         const tailEntry = (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? sessionEntry;
         const chainState = loadContinuationChainState(tailEntry, turnTokens);
+        const loadFreshChainState = () => {
+          const freshEntry = (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? tailEntry;
+          return loadContinuationChainState(freshEntry, 0);
+        };
         const dispatchResult = await dispatchToolDelegates({
           sessionKey,
           chainState,
@@ -469,17 +473,22 @@ export function createFollowupRunner(params: {
           },
           maxChainLength: resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
           // r3163899581: hedge re-arm must see fresh chain state.
-          loadFreshChainState: () => loadContinuationChainState(tailEntry, 0),
+          loadFreshChainState,
         });
-        // r3163899586: persist the advanced chain state back to the session
-        // entry after dispatch. Without this the followup-path counter never
-        // advances and `maxChainLength` enforcement breaks across hops.
-        if (dispatchResult && dispatchResult.dispatched > 0 && tailEntry) {
-          persistContinuationChainState({
-            sessionEntry: tailEntry,
-            count: dispatchResult.chainState.currentChainCount,
-            startedAt: dispatchResult.chainState.chainStartedAt,
-            tokens: dispatchResult.chainState.accumulatedChainTokens,
+        // r3163899586 / r3164418106: persist the returned chain state after
+        // dispatch, even when no delegate spawned, so queued delayed delegates
+        // keep this turn's token accounting and future hedges reload the
+        // latest chain budget. Use the durable session writer (not just the
+        // in-memory state helper) so restart/disk reloads keep the same chain.
+        if (dispatchResult) {
+          await persistChainStateAfterDispatch({
+            entry: tailEntry,
+            store: sessionStore,
+            storePath,
+            sessionKey,
+            currentChainCount: dispatchResult.chainState.currentChainCount,
+            chainStartedAt: dispatchResult.chainState.chainStartedAt,
+            accumulatedChainTokens: dispatchResult.chainState.accumulatedChainTokens,
           });
         }
       }

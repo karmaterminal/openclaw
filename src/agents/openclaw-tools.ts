@@ -248,6 +248,13 @@ export function createOpenClawTools(
   const effectiveCallGateway = embedded
     ? createEmbeddedCallGateway()
     : openClawToolsDeps.callGateway;
+  const continuationEnabled = options?.config?.agents?.defaults?.continuation?.enabled === true;
+  const shouldRegisterContinueWork = continuationEnabled && Boolean(options?.continueWorkOpts);
+  const shouldRegisterContinueDelegate =
+    continuationEnabled && options?.drainsContinuationDelegateQueue !== false;
+  const shouldRegisterRequestCompaction =
+    continuationEnabled && Boolean(options?.requestCompactionOpts);
+
   const tools: AnyAgentTool[] = [
     ...(embedded
       ? []
@@ -335,8 +342,7 @@ export function createOpenClawTools(
       sandboxed: options?.sandboxed,
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
-    options?.continueWorkOpts
+    ...(shouldRegisterContinueWork && options?.continueWorkOpts
       ? [
           createContinueWorkTool({
             agentSessionKey: options?.agentSessionKey,
@@ -344,16 +350,14 @@ export function createOpenClawTools(
           }),
         ]
       : []),
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
-    options?.drainsContinuationDelegateQueue !== false
+    ...(shouldRegisterContinueDelegate
       ? [
           createContinueDelegateTool({
             agentSessionKey: options?.agentSessionKey,
           }),
         ]
       : []),
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
-    options?.requestCompactionOpts
+    ...(shouldRegisterRequestCompaction && options?.requestCompactionOpts
       ? [
           createRequestCompactionTool({
             agentSessionKey: options?.agentSessionKey,

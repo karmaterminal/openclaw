@@ -155,7 +155,7 @@ type ContinuationDispatchModule = {
     chainState: ContinuationChainState;
     ctx: ContinuationDispatchContext;
     maxChainLength: number;
-  }) => Promise<{ dispatched: number; rejected: number }>;
+  }) => Promise<{ dispatched: number; rejected: number; chainState: ContinuationChainState }>;
 };
 
 type ContinuationConfigModule = {
@@ -173,6 +173,13 @@ type ContinuationStateModule = {
     source: ContinuationChainSource | undefined,
     turnTokens?: number,
   ) => ContinuationChainState;
+  persistChainStateAfterDispatch: (params: {
+    entry?: ContinuationChainSource;
+    sessionKey: string;
+    currentChainCount: number;
+    chainStartedAt: number;
+    accumulatedChainTokens: number;
+  }) => Promise<void>;
 };
 
 /**
@@ -224,12 +231,12 @@ async function drainChildContinuationQueue(params: {
     ]);
     const { dispatchToolDelegates } = dispatchModule;
     const { resolveContinuationRuntimeConfig } = configModule;
-    const { loadContinuationChainState } = stateModule;
+    const { loadContinuationChainState, persistChainStateAfterDispatch } = stateModule;
     const childEntry = loadSessionEntryByKey(params.childSessionKey) as
       | ContinuationChainSource
       | undefined;
     const dispatchConfig = resolveContinuationRuntimeConfig(cfg);
-    await dispatchToolDelegates({
+    const dispatchResult = await dispatchToolDelegates({
       sessionKey: params.childSessionKey,
       chainState: loadContinuationChainState(childEntry),
       ctx: {
@@ -241,6 +248,20 @@ async function drainChildContinuationQueue(params: {
       },
       maxChainLength: dispatchConfig.maxChainLength,
     });
+    // r3164380565: persist the child session's advanced chain state after
+    // draining its queued delegates. Otherwise a child that emits delegates
+    // across multiple settle cycles reloads stale hop counters and can
+    // under-enforce maxChainLength. Persist even when the drain only queues
+    // delayed delegates so token accounting is available when hedges fire.
+    if (childEntry) {
+      await persistChainStateAfterDispatch({
+        entry: childEntry,
+        sessionKey: params.childSessionKey,
+        currentChainCount: dispatchResult.chainState.currentChainCount,
+        chainStartedAt: dispatchResult.chainState.chainStartedAt,
+        accumulatedChainTokens: dispatchResult.chainState.accumulatedChainTokens,
+      });
+    }
   } catch (err) {
     defaultRuntime.error?.(
       `Subagent continuation delegate drain failed for ${params.childSessionKey}: ${String(err)}`,

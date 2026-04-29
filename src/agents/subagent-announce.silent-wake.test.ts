@@ -31,10 +31,23 @@ const isEmbeddedPiRunActiveMock = vi.fn((_sessionId: string) => false);
 const queueEmbeddedPiMessageMock = vi.fn((_sessionId: string, _text: string) => false);
 const waitForEmbeddedPiRunEndMock = vi.fn(async (_sessionId: string, _timeoutMs?: number) => true);
 
-const dispatchToolDelegatesMock = vi.fn(async (_params: unknown) => ({
-  dispatched: 0,
-  rejected: 0,
-}));
+const dispatchToolDelegatesMock = vi.fn(
+  async (params: {
+    chainState?: {
+      currentChainCount?: number;
+      chainStartedAt?: number;
+      accumulatedChainTokens?: number;
+    };
+  }) => ({
+    dispatched: 0,
+    rejected: 0,
+    chainState: {
+      currentChainCount: params.chainState?.currentChainCount ?? 0,
+      chainStartedAt: params.chainState?.chainStartedAt ?? 0,
+      accumulatedChainTokens: params.chainState?.accumulatedChainTokens ?? 0,
+    },
+  }),
+);
 const resolveContinuationRuntimeConfigMock = vi.fn((_cfg?: unknown) => ({
   enabled: true,
   defaultDelayMs: 15_000,
@@ -128,8 +141,17 @@ vi.mock("./subagent-announce-delivery.js", () => ({
 
 vi.mock("./subagent-announce.registry.runtime.js", () => subagentRegistryRuntimeMock);
 
+type DispatchToolDelegatesMockParams = {
+  chainState?: {
+    currentChainCount?: number;
+    chainStartedAt?: number;
+    accumulatedChainTokens?: number;
+  };
+};
+
 vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
-  dispatchToolDelegates: (params: unknown) => dispatchToolDelegatesMock(params),
+  dispatchToolDelegates: (params: DispatchToolDelegatesMockParams) =>
+    dispatchToolDelegatesMock(params),
 }));
 
 vi.mock("../auto-reply/continuation/config.js", () => ({
@@ -186,7 +208,23 @@ const baseParams = {
 describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, RFC §2.3)", () => {
   beforeEach(() => {
     callGatewayMock.mockReset().mockImplementation(async () => ({}));
-    dispatchToolDelegatesMock.mockReset().mockResolvedValue({ dispatched: 0, rejected: 0 });
+    dispatchToolDelegatesMock.mockReset().mockImplementation(
+      async (params: {
+        chainState?: {
+          currentChainCount?: number;
+          chainStartedAt?: number;
+          accumulatedChainTokens?: number;
+        };
+      }) => ({
+        dispatched: 0,
+        rejected: 0,
+        chainState: {
+          currentChainCount: params.chainState?.currentChainCount ?? 0,
+          chainStartedAt: params.chainState?.chainStartedAt ?? 0,
+          accumulatedChainTokens: params.chainState?.accumulatedChainTokens ?? 0,
+        },
+      }),
+    );
     loadSessionStoreMock.mockReset();
     resolveAgentIdFromSessionKeyMock.mockReset().mockImplementation(() => "main");
     resolveStorePathMock.mockReset().mockImplementation(() => "/tmp/sessions.json");
