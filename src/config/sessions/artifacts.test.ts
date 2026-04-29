@@ -27,6 +27,11 @@ describe("session artifact helpers", () => {
       false,
     );
     expect(isPrimarySessionTranscriptFileName("sessions.json")).toBe(false);
+    expect(
+      isPrimarySessionTranscriptFileName(
+        "e417ba9b-8043-43db-8d18-d88f1823567d.checkpoint.21901ee7-8f22-4d07-9e39-6eaf7b224630.jsonl",
+      ),
+    ).toBe(false);
   });
 
   it("classifies usage-counted transcript files", () => {
@@ -40,6 +45,11 @@ describe("session artifact helpers", () => {
     expect(isUsageCountedSessionTranscriptFileName("abc.jsonl.bak.2026-01-01T00-00-00.000Z")).toBe(
       false,
     );
+    expect(
+      isUsageCountedSessionTranscriptFileName(
+        "e417ba9b-8043-43db-8d18-d88f1823567d.checkpoint.21901ee7-8f22-4d07-9e39-6eaf7b224630.jsonl",
+      ),
+    ).toBe(true);
   });
 
   it("parses usage-counted session ids from file names", () => {

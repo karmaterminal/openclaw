@@ -38,11 +38,17 @@ export function isPrimarySessionTranscriptFileName(fileName: string): boolean {
   if (!fileName.endsWith(".jsonl")) {
     return false;
   }
+  if (isCheckpointSessionTranscriptFileName(fileName)) {
+    return false;
+  }
   return !isSessionArchiveArtifactName(fileName);
 }
 
 export function isUsageCountedSessionTranscriptFileName(fileName: string): boolean {
   if (isPrimarySessionTranscriptFileName(fileName)) {
+    return true;
+  }
+  if (isCheckpointSessionTranscriptFileName(fileName)) {
     return true;
   }
   return hasArchiveSuffix(fileName, "reset") || hasArchiveSuffix(fileName, "deleted");
