@@ -81,6 +81,28 @@ export const AgentDefaultsSchema = z
           .optional(),
       })
       .strict()
+      .refine(
+        (cfg) => {
+          // karmaterminal/openclaw#215: min ≤ default ≤ max when all set.
+          // Any omitted field skips its side of the comparison.
+          const min = cfg.minDelayMs;
+          const def = cfg.defaultDelayMs;
+          const max = cfg.maxDelayMs;
+          if (min !== undefined && def !== undefined && min > def) {
+            return false;
+          }
+          if (def !== undefined && max !== undefined && def > max) {
+            return false;
+          }
+          if (min !== undefined && max !== undefined && min > max) {
+            return false;
+          }
+          return true;
+        },
+        {
+          message: "continuation delay bounds violate minDelayMs ≤ defaultDelayMs ≤ maxDelayMs",
+        },
+      )
       .optional(),
     skipBootstrap: z.boolean().optional(),
     contextInjection: z
@@ -287,10 +309,12 @@ export const AgentDefaultsSchema = z
     continuation: z
       .object({
         enabled: z.boolean().optional(),
-        taskFlowDelegates: z.boolean().optional(),
-        defaultDelayMs: z.number().int().positive().optional(),
-        minDelayMs: z.number().int().positive().optional(),
-        maxDelayMs: z.number().int().positive().optional(),
+        // karmaterminal/openclaw#215: bounds tightened to match semantic
+        // expectations. Clamp helpers in continuation/config.ts still apply
+        // at read time as a belt-and-braces layer.
+        defaultDelayMs: z.number().int().nonnegative().optional(),
+        minDelayMs: z.number().int().nonnegative().optional(),
+        maxDelayMs: z.number().int().nonnegative().optional(),
         maxChainLength: z.number().int().positive().optional(),
         costCapTokens: z.number().int().nonnegative().optional(),
         maxDelegatesPerTurn: z.number().int().positive().optional(),
