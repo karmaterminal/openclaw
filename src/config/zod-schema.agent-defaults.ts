@@ -81,28 +81,6 @@ export const AgentDefaultsSchema = z
           .optional(),
       })
       .strict()
-      .refine(
-        (cfg) => {
-          // karmaterminal/openclaw#215: min ≤ default ≤ max when all set.
-          // Any omitted field skips its side of the comparison.
-          const min = cfg.minDelayMs;
-          const def = cfg.defaultDelayMs;
-          const max = cfg.maxDelayMs;
-          if (min !== undefined && def !== undefined && min > def) {
-            return false;
-          }
-          if (def !== undefined && max !== undefined && def > max) {
-            return false;
-          }
-          if (min !== undefined && max !== undefined && min > max) {
-            return false;
-          }
-          return true;
-        },
-        {
-          message: "continuation delay bounds violate minDelayMs ≤ defaultDelayMs ≤ maxDelayMs",
-        },
-      )
       .optional(),
     skipBootstrap: z.boolean().optional(),
     contextInjection: z
@@ -325,6 +303,28 @@ export const AgentDefaultsSchema = z
           .optional(),
       })
       .strict()
+      .refine(
+        (cfg) => {
+          // karmaterminal/openclaw#215: min ≤ default ≤ max when all set.
+          // Any omitted field skips its side of the comparison.
+          const min = cfg.minDelayMs;
+          const def = cfg.defaultDelayMs;
+          const max = cfg.maxDelayMs;
+          if (min !== undefined && def !== undefined && min > def) {
+            return false;
+          }
+          if (def !== undefined && max !== undefined && def > max) {
+            return false;
+          }
+          if (min !== undefined && max !== undefined && min > max) {
+            return false;
+          }
+          return true;
+        },
+        {
+          message: "continuation delay bounds violate minDelayMs ≤ defaultDelayMs ≤ maxDelayMs",
+        },
+      )
       .optional(),
   })
   .strict()
