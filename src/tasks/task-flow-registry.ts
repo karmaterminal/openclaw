@@ -61,6 +61,11 @@ type FlowRecordPatch = Omit<
 export type CreateFlowRecordParams = {
   syncMode?: TaskFlowSyncMode;
   ownerKey: string;
+  /**
+   * F-37-015: originating continuation chain id. Optional; default NULL when
+   * undefined (legacy/disabled). Set-once at create-time; ignored on update.
+   */
+  chainId?: string | null;
   requesterOrigin?: TaskFlowRecord["requesterOrigin"];
   controllerId?: string | null;
   revision?: number;
@@ -119,6 +124,7 @@ function normalizeRestoredFlowRecord(record: TaskFlowRecord): TaskFlowRecord {
     ...record,
     syncMode,
     ownerKey: assertFlowOwnerKey(record.ownerKey),
+    ...(record.chainId ? { chainId: record.chainId } : {}),
     ...(record.requesterOrigin
       ? { requesterOrigin: cloneStructuredValue(record.requesterOrigin)! }
       : {}),
@@ -265,10 +271,12 @@ function buildFlowRecord(params: CreateFlowRecordParams): TaskFlowRecord {
   const now = params.createdAt ?? Date.now();
   const syncMode = params.syncMode ?? "managed";
   const controllerId = syncMode === "managed" ? assertControllerId(params.controllerId) : undefined;
+  const chainId = normalizeOptionalString(params.chainId);
   return {
     flowId: crypto.randomUUID(),
     syncMode,
     ownerKey: assertFlowOwnerKey(params.ownerKey),
+    ...(chainId ? { chainId } : {}),
     ...(params.requesterOrigin
       ? { requesterOrigin: cloneStructuredValue(params.requesterOrigin)! }
       : {}),
