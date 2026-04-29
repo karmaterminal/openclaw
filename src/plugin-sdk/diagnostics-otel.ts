@@ -19,6 +19,22 @@ export {
 } from "../infra/diagnostic-trace-context.js";
 export { redactSensitiveText } from "../logging/redact.js";
 export { emptyPluginConfigSchema } from "../plugins/config-schema.js";
+// #334 Slice 3 — continuation-tracer surface so the diagnostics-otel plugin
+// can install a real OTEL adapter against the noop default after sdk.start().
+export {
+  getContinuationTracer,
+  noopTracer,
+  resetContinuationTracer,
+  setContinuationTracer,
+} from "../infra/continuation-tracer.js";
+export type {
+  Span as ContinuationSpan,
+  SpanAttributes as ContinuationSpanAttributes,
+  SpanAttributeValue as ContinuationSpanAttributeValue,
+  SpanStatus as ContinuationSpanStatus,
+  StartSpanOptions as ContinuationStartSpanOptions,
+  Tracer as ContinuationTracer,
+} from "../infra/continuation-tracer.js";
 export type {
   OpenClawPluginApi,
   OpenClawPluginService,

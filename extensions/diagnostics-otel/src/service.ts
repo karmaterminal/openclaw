@@ -24,9 +24,13 @@ import {
   isValidDiagnosticSpanId,
   isValidDiagnosticTraceFlags,
   isValidDiagnosticTraceId,
+  noopTracer,
   onInternalDiagnosticEvent,
   redactSensitiveText,
+  resetContinuationTracer,
+  setContinuationTracer,
 } from "../api.js";
+import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
 
 const DEFAULT_SERVICE_NAME = "openclaw";
 const DROPPED_OTEL_ATTRIBUTE_KEYS = new Set([
@@ -366,6 +370,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
     logProvider = null;
     sdk = null;
 
+    // #334 Slice 3 — always reset the continuation-tracer to noop on
+    // shutdown so a stopped/restarted plugin returns to the additive
+    // Slice-1 contract. Safe to call even if `setContinuationTracer` was
+    // never called this lifetime (e.g. traces disabled): `noopTracer` is
+    // already the default.
+    resetContinuationTracer();
+    void noopTracer;
+
     currentUnsubscribe?.();
     if (currentLogProvider) {
       await currentLogProvider.shutdown().catch(() => undefined);
@@ -460,6 +472,17 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
       } else if (sdkPreloaded && (tracesEnabled || metricsEnabled)) {
         ctx.logger.info("diagnostics-otel: using preloaded OpenTelemetry SDK");
+      }
+
+      // #334 Slice 3 — install the OTEL adapter for the continuation-tracer
+      // surface AFTER `sdk.start()` (or after detecting a preloaded SDK)
+      // so that the existing `emitContinuation*Span` helpers (PRs #378/#382/
+      // #383/#384/#385/#388/#391/#395/#397/#400) emit real spans through the
+      // OTEL SDK instead of into `noopTracer`. Reset on `stopStarted()`.
+      // Only install when traces are enabled — there's no useful target
+      // for continuation spans without the trace exporter.
+      if (tracesEnabled) {
+        setContinuationTracer(createContinuationOtelTracerAdapter());
       }
 
       const logSeverityMap: Record<string, SeverityNumber> = {
