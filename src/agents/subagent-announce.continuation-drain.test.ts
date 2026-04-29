@@ -23,10 +23,22 @@ const isEmbeddedPiRunActiveMock = vi.fn((_sessionId: string) => false);
 const queueEmbeddedPiMessageMock = vi.fn((_sessionId: string, _text: string) => false);
 const waitForEmbeddedPiRunEndMock = vi.fn(async (_sessionId: string, _timeoutMs?: number) => true);
 
-const dispatchToolDelegatesMock = vi.fn(async (_params: unknown) => ({
-  dispatched: 0,
-  rejected: 0,
-}));
+const dispatchToolDelegatesMock = vi.fn(
+  async (
+    _params: unknown,
+  ): Promise<{
+    dispatched: number;
+    rejected: number;
+    chainState?: {
+      currentChainCount: number;
+      chainStartedAt: number;
+      accumulatedChainTokens: number;
+    };
+  }> => ({
+    dispatched: 0,
+    rejected: 0,
+  }),
+);
 const resolveContinuationRuntimeConfigMock = vi.fn((_cfg?: unknown) => ({
   enabled: true,
   defaultDelayMs: 15_000,
