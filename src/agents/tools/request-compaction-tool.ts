@@ -1,31 +1,6 @@
-/**
- * `request_compaction` tool — agent-initiated volitional compaction.
- *
- * Allows the agent to prepare working state (write memory files, stage
- * post-compaction delegates), then request compaction on its own schedule
- * rather than waiting for overflow.
- *
- * Tool-only — no response-token fallback. Async: the tool returns immediately,
- * compaction runs between turns.
- *
- * Guards:
- * - Context floor (70%): prevents wasteful compaction
- * - Rate limit (1 per 5 min): prevents compaction loops
- * - Dedup: rejects if compaction already in-flight
- *
- * NO generation guard — removed 2026-04-15. Compaction should not be
- * blocked by unrelated channel activity.
- *
- * RFC: docs/design/continue-work-signal-v2.md §2.4, §4.3
- */
-
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import {
-  classifyCompactionReason,
-  isCompactionSkipReason,
-} from "../pi-embedded-runner/compact-reasons.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, ToolInputError } from "./common.js";
 
@@ -44,14 +19,28 @@ const RATE_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
 /** Volitional compaction counts are status-only diagnostics, not durable state. */
 const VOLITIONAL_COMPACTION_COUNT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// DELIBERATELY VOLATILE: rate-limit cooldown. A restart resets the 5-min
-// cooldown, which is harmless — the session itself is fresh after restart.
-const sessionGuardState = createExpiringMapCache<string, { lastRequestMs: number }>({
+/**
+ * Per-session state for guards.
+ *
+ * Module-level map — same volatility contract as continuation-delegate-store.
+ * Does not survive gateway restarts. This is intentional: the guards are
+ * rate-limiters, not durable state. A restart resets the cooldown, which is
+ * fine — the session itself is fresh.
+ */
+const sessionGuardState = createExpiringMapCache<
+  string,
+  {
+    lastRequestMs: number;
+  }
+>({
   ttlMs: RATE_LIMIT_MS,
 });
 
-// DELIBERATELY VOLATILE: tracks in-flight async compaction operations.
-// Process-scoped by nature — the async operation doesn't survive restart.
+/**
+ * Tracks sessions that have a compaction request in-flight.
+ * Used to dedup — if the agent calls request_compaction twice before the
+ * first one completes, the second call returns "already pending".
+ */
 const pendingCompactionSessions = new Set<string>();
 
 // ---------------------------------------------------------------------------
@@ -72,16 +61,20 @@ const RequestCompactionToolSchema = Type.Object({
 // ---------------------------------------------------------------------------
 
 export type RequestCompactionToolOpts = {
+  /** Current session key (e.g. "telegram:12345"). */
   agentSessionKey?: string;
+  /** Session id (the Pi session UUID). */
   sessionId?: string;
   /**
-   * Returns context usage as a fraction in [0, 1], or `null` if the caller
-   * has no live token count to report (e.g. queued followup runs that don't
-   * receive `sessionTokenInfo`). When `null`, the tool replies with
-   * `guard: "context_unknown"` so callers learn the truth instead of
-   * tripping the 70% floor with a fake `0`. Refs karmaterminal/openclaw#222.
+   * Returns the current context usage as a fraction (0-1).
+   * Injected so the tool does not reach into session internals.
    */
-  getContextUsage: () => number | null;
+  getContextUsage: () => number;
+  /**
+   * Async function that triggers compaction. Injected so the tool does not
+   * import the heavy compaction module directly. The caller provides a
+   * closure over `compactEmbeddedPiSession` with all required session params.
+   */
   triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
 };
 
@@ -89,22 +82,45 @@ export type RequestCompactionToolOpts = {
 // Tool factory
 // ---------------------------------------------------------------------------
 
+/**
+ * Creates the `request_compaction` tool.
+ *
+ * This tool allows the agent to **request** compaction after it has prepared —
+ * evacuated working state to memory files, staged post-compaction delegates,
+ * or otherwise accepted the context loss.
+ *
+ * The tool is ASYNC: it enqueues compaction and returns immediately. The
+ * compaction runs between turns via the lane queue, not during the tool call.
+ *
+ * Guards (all checked before compaction is enqueued):
+ *   - **Dedup:** a compaction request is not already pending for this session.
+ *   - **Context threshold:** context usage must be >= 70%.
+ *   - **Rate limit:** at most one compaction per 5 minutes per session.
+ *
+ * (The earlier "generation guard" was removed 2026-04-15 by RFC: compaction
+ * is no longer blocked by mid-turn message arrival because the lane queue
+ * already serializes compaction relative to subsequent messages.)
+ */
 export function createRequestCompactionTool(opts: RequestCompactionToolOpts): AnyAgentTool {
   return {
-    label: "Continuation",
+    label: "Compaction",
     name: "request_compaction",
     description:
-      "Request context compaction for this session. Use after you have written memory files " +
-      "and/or staged post-compaction delegates, when you want to proactively compact rather than " +
-      "waiting for overflow. Compaction runs after your current turn completes. " +
-      "Requires at least 70% context usage. Rate-limited to once per 5 minutes.",
+      "Request compaction of the current session to reclaim context window space. " +
+      "Call this AFTER you have evacuated working state (memory files, post-compaction delegates, RESUMPTION.md). " +
+      "Guards: context must be >= 70% full, and rate-limited to once per 5 minutes per session. " +
+      "Compaction is async — it runs after your turn completes. " +
+      "Prefer this over waiting for automatic compaction when you have context-pressure awareness and want " +
+      "to control the timing of state evacuation.",
     parameters: RequestCompactionToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const sessionKey = opts.agentSessionKey;
 
       if (!sessionKey) {
-        throw new ToolInputError("request_compaction requires an active session.");
+        throw new ToolInputError(
+          "request_compaction requires an active session. Not available in sessionless contexts.",
+        );
       }
 
       if (!opts.sessionId) {
@@ -115,7 +131,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       const reason = readStringParam(params, "reason", { required: true }).slice(0, 1024);
 
-      // Guard: Dedup
+      // ----- Guard 0: Dedup — compaction already pending -----
       if (pendingCompactionSessions.has(sessionKey)) {
         log.debug(`[request_compaction:already-pending] session=${sessionKey}`);
         return jsonResult({
@@ -124,21 +140,8 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         });
       }
 
-      // Guard: Context threshold
+      // ----- Guard 1: Context threshold -----
       const contextUsage = opts.getContextUsage();
-      // Honest "unknown" reply: callers without a live token count return
-      // `null`, and we surface that distinctly from the 70% floor rejection
-      // so the agent can route a follow-up turn to a path that has the data.
-      // (Refs karmaterminal/openclaw#222.)
-      if (contextUsage === null) {
-        log.debug(`[request_compaction:context-unknown] session=${sessionKey}`);
-        return jsonResult({
-          status: "rejected",
-          guard: "context_unknown",
-          reason:
-            "Context usage is not measurable on the current run path; request compaction from the main-session path where sessionTokenInfo is available.",
-        });
-      }
       if (contextUsage < MIN_CONTEXT_THRESHOLD) {
         log.debug(
           `[request_compaction:below-threshold] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}%`,
@@ -152,7 +155,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         });
       }
 
-      // Guard: Rate limit
+      // ----- Guard 2: Rate limit -----
       const now = Date.now();
       const guard = sessionGuardState.get(sessionKey);
       if (guard && now - guard.lastRequestMs < RATE_LIMIT_MS) {
@@ -169,14 +172,22 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         });
       }
 
-      // All guards passed — enqueue compaction.
+      // ----- All guards passed — enqueue compaction -----
+      // No generation guard (removed 2026-04-15 RFC): compaction is not blocked
+      // by unrelated channel activity.
       log.info(
         `[request_compaction:enqueuing] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}% reason=${reason}`,
       );
 
-      sessionGuardState.set(sessionKey, { lastRequestMs: now });
+      // Update rate-limit state BEFORE firing so a second call in the same
+      // turn (or a crash during compaction) still respects the cooldown.
+      sessionGuardState.set(sessionKey, {
+        lastRequestMs: now,
+      });
 
-      // Fire-and-forget: compaction runs after the current turn releases the session lane.
+      // Fire-and-forget: compaction runs via the lane queue after the current
+      // agent turn releases the session lane. We do NOT await — the tool
+      // returns immediately so the agent can finish its response.
       pendingCompactionSessions.add(sessionKey);
       void opts
         .triggerCompaction()
@@ -184,35 +195,11 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           (result) => {
             if (result.ok && result.compacted) {
               incrementVolitionalCompactionCount(sessionKey);
-            } else if (isCompactionSkipReason(result.reason)) {
-              // bug karmaterminal/openclaw#639: legitimate no-ops (below threshold, nothing to
-              // compact, etc.) are expected outcomes — log at info to keep
-              // journals readable.
-              log.info(
-                `[request_compaction:resolved-skip] session=${sessionKey} reason=${result.reason ?? "unspecified"}`,
-              );
-            } else {
-              // karmaterminal/openclaw#639 / #205: surface resolve-with-failure
-              // (distinct from the catch-path background-error) so volitional
-              // compactions that silently fail are visible in journals, AND
-              // emit the structured classifier code so journal queries don't
-              // depend on raw-string grep.
-              const code = classifyCompactionReason(result.reason);
-              log.warn(
-                `[request_compaction:resolved-failure] session=${sessionKey} code=${code} ok=${result.ok} compacted=${result.compacted} reason=${result.reason ?? "unspecified"}`,
-              );
             }
           },
           (err: unknown) => {
-            // karmaterminal/openclaw#205: classify here too so transport errors
-            // (AbortError / module-not-found / network) get a structured code
-            // alongside the raw message. Rejection reaches this branch when
-            // triggerCompaction's promise rejects outright (the resolve-shape
-            // `{ok:false, reason}` goes through the resolved-failure branch above).
-            const message = err instanceof Error ? err.message : String(err);
-            const code = classifyCompactionReason(message);
             log.error(
-              `[request_compaction:background-error] session=${sessionKey} code=${code} error=${message}`,
+              `[request_compaction:background-error] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
             );
           },
         )
@@ -226,7 +213,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         reason,
         note:
           "Compaction has been enqueued and will run after your turn completes. " +
-          "Post-compaction context will be injected on the next turn. " +
+          "Post-compaction context (AGENTS.md, SOUL.md) will be injected on the next turn. " +
           "Any staged post-compaction delegates will be dispatched.",
       });
     },
@@ -234,17 +221,19 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 }
 
 // ---------------------------------------------------------------------------
-// Volitional compaction counter
+// Volitional compaction counter (module-level, survives compaction)
 // ---------------------------------------------------------------------------
 
 const volitionalCompactionCounts = createExpiringMapCache<string, number>({
   ttlMs: VOLITIONAL_COMPACTION_COUNT_TTL_MS,
 });
 
+/** Increment the volitional compaction counter for a session. */
 export function incrementVolitionalCompactionCount(sessionKey: string): void {
   volitionalCompactionCounts.set(sessionKey, (volitionalCompactionCounts.get(sessionKey) ?? 0) + 1);
 }
 
+/** Get the volitional compaction count for a session. */
 export function getVolitionalCompactionCount(sessionKey: string): number {
   return volitionalCompactionCounts.get(sessionKey) ?? 0;
 }
@@ -253,6 +242,7 @@ export function getVolitionalCompactionCount(sessionKey: string): number {
 // Test helpers
 // ---------------------------------------------------------------------------
 
+/** Reset per-session guard state. Exported for tests only. */
 export function _resetGuardState(sessionKey?: string): void {
   if (sessionKey) {
     sessionGuardState.delete(sessionKey);
@@ -263,10 +253,12 @@ export function _resetGuardState(sessionKey?: string): void {
   }
 }
 
+/** Mark a session as having a pending compaction. Exported for tests only. */
 export function _setPending(sessionKey: string): void {
   pendingCompactionSessions.add(sessionKey);
 }
 
+/** Reset volitional compaction counters. Exported for tests only. */
 export function _resetVolitionalCounts(sessionKey?: string): void {
   if (sessionKey) {
     volitionalCompactionCounts.delete(sessionKey);
@@ -275,6 +267,7 @@ export function _resetVolitionalCounts(sessionKey?: string): void {
   }
 }
 
+/** Expose constants for test assertions. */
 export const _guards = {
   MIN_CONTEXT_THRESHOLD,
   RATE_LIMIT_MS,

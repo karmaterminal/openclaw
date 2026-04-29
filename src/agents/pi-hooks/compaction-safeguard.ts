@@ -28,7 +28,11 @@ import {
   summarizeInStages,
 } from "../compaction.js";
 import { collectTextContentBlocks } from "../content-blocks.js";
-import { buildCopilotIdeHeaders } from "../copilot-dynamic-headers.js";
+import {
+  buildCopilotDynamicHeaders,
+  buildCopilotIdeHeaders,
+  hasCopilotVisionInput,
+} from "../copilot-dynamic-headers.js";
 import { isTimeoutError } from "../failover-error.js";
 import { repairToolUseResultPairing } from "../session-transcript-repair.js";
 import { extractToolCallsFromAssistant, extractToolResultId } from "../tool-call-id.js";
@@ -67,9 +71,36 @@ const DEFAULT_QUALITY_GUARD_MAX_RETRIES = 1;
 const MAX_RECENT_TURNS_PRESERVE = 12;
 const MAX_QUALITY_GUARD_MAX_RETRIES = 3;
 const MAX_RECENT_TURN_TEXT_CHARS = 600;
+const PREVIOUS_SUMMARY_REDISTILL_PREFIX =
+  "Previous compaction summary to re-distill with the current conversation. " +
+  "Prune stale, duplicate, or superseded details instead of preserving it verbatim.";
 const compactionSafeguardDeps = {
   summarizeInStages,
 };
+
+function buildPreviousSummaryMessage(previousSummary: string): AgentMessage {
+  return {
+    role: "user",
+    content: [
+      {
+        type: "text",
+        text: `<previous-compaction-summary>\n${PREVIOUS_SUMMARY_REDISTILL_PREFIX}\n\n${previousSummary.trim()}\n</previous-compaction-summary>`,
+      },
+    ],
+    timestamp: 0,
+  } as AgentMessage;
+}
+
+function prependPreviousSummaryForRedistill(params: {
+  messages: AgentMessage[];
+  previousSummary?: string;
+}): AgentMessage[] {
+  const previousSummary = params.previousSummary?.trim();
+  if (!previousSummary) {
+    return params.messages;
+  }
+  return [buildPreviousSummaryMessage(previousSummary), ...params.messages];
+}
 
 /**
  * Attempt provider-based summarization. Returns the summary string on success,
@@ -125,8 +156,12 @@ async function summarizeViaLLM(params: {
   summarizationInstructions?: Parameters<typeof summarizeInStages>[0]["summarizationInstructions"];
   previousSummary?: string;
 }): Promise<string> {
-  return compactionSafeguardDeps.summarizeInStages({
+  const messages = prependPreviousSummaryForRedistill({
     messages: params.messages,
+    previousSummary: params.previousSummary,
+  });
+  return compactionSafeguardDeps.summarizeInStages({
+    messages,
     model: params.model,
     apiKey: params.apiKey,
     headers: params.headers,
@@ -136,7 +171,7 @@ async function summarizeViaLLM(params: {
     contextWindow: params.contextWindow,
     customInstructions: params.customInstructions,
     summarizationInstructions: params.summarizationInstructions,
-    previousSummary: params.previousSummary,
+    previousSummary: undefined,
   });
 }
 
@@ -239,6 +274,26 @@ async function resolveModelAuth(
       ? { ...buildCopilotIdeHeaders(), ...requestAuth.headers }
       : requestAuth.headers;
   return { ok: true, apiKey: requestAuth.apiKey, headers };
+}
+
+function buildCompactionSummaryHeaders(params: {
+  model: NonNullable<ExtensionContext["model"]>;
+  messages: AgentMessage[];
+  headers?: Record<string, string>;
+}): Record<string, string> | undefined {
+  if (params.model.provider !== "github-copilot") {
+    return params.headers;
+  }
+  const messages = params.messages as unknown as Parameters<
+    typeof buildCopilotDynamicHeaders
+  >[0]["messages"];
+  return {
+    ...buildCopilotDynamicHeaders({
+      messages,
+      hasImages: hasCopilotVisionInput(messages),
+    }),
+    ...params.headers,
+  };
 }
 
 function clampNonNegativeInt(value: unknown, fallback: number): number {
@@ -885,12 +940,17 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
       return { cancel: true };
     }
     const apiKey = authResult.apiKey ?? "";
-    const headers = authResult.headers;
+    const authHeaders = authResult.headers;
 
     try {
       const modelContextWindow = resolveContextWindowTokens(model);
       const contextWindowTokens = runtime?.contextWindowTokens ?? modelContextWindow;
       let messagesToSummarize = preparation.messagesToSummarize;
+      const headers = buildCompactionSummaryHeaders({
+        model,
+        messages: messagesToSummarize,
+        headers: authHeaders,
+      });
       const qualityGuardEnabled = runtime?.qualityGuardEnabled ?? false;
       const qualityGuardMaxRetries = resolveQualityGuardMaxRetries(runtime?.qualityGuardMaxRetries);
 
@@ -1145,6 +1205,7 @@ export const __testing = {
   formatSplitTurnContextSection,
   buildCompactionStructureInstructions,
   buildStructuredFallbackSummary,
+  prependPreviousSummaryForRedistill,
   appendSummarySection,
   resolveRecentTurnsPreserve,
   resolveQualityGuardMaxRetries,

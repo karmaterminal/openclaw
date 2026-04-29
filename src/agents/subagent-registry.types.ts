@@ -43,7 +43,7 @@ export type SubagentRunRecord = {
   retainAttachmentsOnKeep?: boolean;
   /** Continuation: suppress channel echo for silent delegate returns. */
   silentAnnounce?: boolean;
-  /** Continuation: wake parent session when this delegate completes. */
+  /** When true (with silentAnnounce), trigger a generation cycle after enrichment delivery. */
   wakeOnReturn?: boolean;
   /** Continuation: marks this run as a chain-hop that can consume pending delegates. */
   drainsContinuationDelegateQueue?: boolean;

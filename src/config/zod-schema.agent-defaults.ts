@@ -4,6 +4,7 @@ import { isValidNonNegativeByteSizeString } from "./byte-size.js";
 import {
   HeartbeatSchema,
   AgentSandboxSchema,
+  AgentContextLimitsSchema,
   AgentEmbeddedHarnessSchema,
   AgentModelSchema,
   MemorySearchSchema,
@@ -15,6 +16,24 @@ import {
   HumanDelaySchema,
   TypingModeSchema,
 } from "./zod-schema.core.js";
+
+export const SilentReplyPolicySchema = z.union([z.literal("allow"), z.literal("disallow")]);
+
+export const SilentReplyPolicyConfigSchema = z
+  .object({
+    direct: SilentReplyPolicySchema.optional(),
+    group: SilentReplyPolicySchema.optional(),
+    internal: SilentReplyPolicySchema.optional(),
+  })
+  .strict();
+
+export const SilentReplyRewriteConfigSchema = z
+  .object({
+    direct: z.boolean().optional(),
+    group: z.boolean().optional(),
+    internal: z.boolean().optional(),
+  })
+  .strict();
 
 export const AgentDefaultsSchema = z
   .object({
@@ -46,12 +65,35 @@ export const AgentDefaultsSchema = z
       .optional(),
     workspace: z.string().optional(),
     skills: z.array(z.string()).optional(),
+    silentReply: SilentReplyPolicyConfigSchema.optional(),
+    silentReplyRewrite: SilentReplyRewriteConfigSchema.optional(),
     repoRoot: z.string().optional(),
     systemPromptOverride: z.string().optional(),
+    promptOverlays: z
+      .object({
+        gpt5: z
+          .object({
+            personality: z
+              .union([z.literal("friendly"), z.literal("on"), z.literal("off")])
+              .optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
     skipBootstrap: z.boolean().optional(),
-    contextInjection: z.union([z.literal("always"), z.literal("continuation-skip")]).optional(),
+    contextInjection: z
+      .union([z.literal("always"), z.literal("continuation-skip"), z.literal("never")])
+      .optional(),
     bootstrapMaxChars: z.number().int().positive().optional(),
     bootstrapTotalMaxChars: z.number().int().positive().optional(),
+    experimental: z
+      .object({
+        localModelLean: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     bootstrapPromptTruncationWarning: z
       .union([z.literal("off"), z.literal("once"), z.literal("always")])
       .optional(),
@@ -72,6 +114,7 @@ export const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    contextLimits: AgentContextLimitsSchema,
     timeFormat: z.union([z.literal("auto"), z.literal("12"), z.literal("24")]).optional(),
     envelopeTimezone: z.string().optional(),
     envelopeTimestamp: z.union([z.literal("on"), z.literal("off")]).optional(),
@@ -150,7 +193,6 @@ export const AgentDefaultsSchema = z
         postCompactionSections: z.array(z.string()).optional(),
         model: z.string().optional(),
         timeoutSeconds: z.number().int().positive().optional(),
-        truncateAfterCompaction: z.boolean().optional(),
         memoryFlush: z
           .object({
             enabled: z.boolean().optional(),
@@ -168,6 +210,7 @@ export const AgentDefaultsSchema = z
           })
           .strict()
           .optional(),
+        truncateAfterCompaction: z.boolean().optional(),
         notifyUser: z.boolean().optional(),
       })
       .strict()
@@ -190,6 +233,7 @@ export const AgentDefaultsSchema = z
         z.literal("high"),
         z.literal("xhigh"),
         z.literal("adaptive"),
+        z.literal("max"),
       ])
       .optional(),
     verboseDefault: z.union([z.literal("off"), z.literal("on"), z.literal("full")]).optional(),
@@ -243,42 +287,20 @@ export const AgentDefaultsSchema = z
     continuation: z
       .object({
         enabled: z.boolean().optional(),
-        // karmaterminal/openclaw#215: bounds tightened to match semantic
-        // expectations. Pre-#215 every numeric field was bare z.number(),
-        // weaker than sibling compaction / subagents / memoryFlush blocks.
-        // Clamp helpers in continuation/config.ts still apply at read time
-        // as a belt-and-braces layer.
+        taskFlowDelegates: z.boolean().optional(),
+        defaultDelayMs: z.number().int().positive().optional(),
+        minDelayMs: z.number().int().positive().optional(),
+        maxDelayMs: z.number().int().positive().optional(),
         maxChainLength: z.number().int().positive().optional(),
-        defaultDelayMs: z.number().int().nonnegative().optional(),
-        minDelayMs: z.number().int().nonnegative().optional(),
-        maxDelayMs: z.number().int().nonnegative().optional(),
         costCapTokens: z.number().int().nonnegative().optional(),
         maxDelegatesPerTurn: z.number().int().positive().optional(),
-        contextPressureThreshold: z.number().gt(0).lte(1).optional(),
+        contextPressureThreshold: z
+          .number()
+          .gt(0, "contextPressureThreshold must be > 0 (0 would fire on empty sessions)")
+          .max(1)
+          .optional(),
       })
       .strict()
-      .refine(
-        (cfg) => {
-          // karmaterminal/openclaw#215: min ≤ default ≤ max when all set.
-          // Any omitted field skips its side of the comparison.
-          const min = cfg.minDelayMs;
-          const def = cfg.defaultDelayMs;
-          const max = cfg.maxDelayMs;
-          if (min !== undefined && def !== undefined && min > def) {
-            return false;
-          }
-          if (def !== undefined && max !== undefined && def > max) {
-            return false;
-          }
-          if (min !== undefined && max !== undefined && min > max) {
-            return false;
-          }
-          return true;
-        },
-        {
-          message: "continuation delay bounds violate minDelayMs ≤ defaultDelayMs ≤ maxDelayMs",
-        },
-      )
       .optional(),
   })
   .strict()

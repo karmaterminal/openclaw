@@ -71,7 +71,7 @@ export async function runWebHeartbeatOnce(opts: {
       whatsappHeartbeatLog.info(`[dry-run] heartbeat ok -> ${redactedTo}`);
       return false;
     }
-    const sendResult = await sender(to, heartbeatOkText, { verbose });
+    const sendResult = await sender(to, heartbeatOkText, { verbose, cfg });
     heartbeatLogger.info(
       {
         to: redactedTo,
@@ -151,7 +151,7 @@ export async function runWebHeartbeatOnce(opts: {
         );
         return;
       }
-      const sendResult = await sender(to, overrideBody, { verbose });
+      const sendResult = await sender(to, overrideBody, { verbose, cfg });
       emitHeartbeatEvent({
         status: "sent",
         to,
@@ -298,7 +298,7 @@ export async function runWebHeartbeatOnce(opts: {
       return;
     }
 
-    const sendResult = await sender(to, finalText, { verbose });
+    const sendResult = await sender(to, finalText, { verbose, cfg });
     emitHeartbeatEvent({
       status: "sent",
       to,

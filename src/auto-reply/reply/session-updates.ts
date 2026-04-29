@@ -6,16 +6,18 @@ import { canExecRequestNode } from "../../agents/exec-defaults.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
 import { matchesSkillFilter } from "../../agents/skills/filter.js";
 import {
-  ensureSkillsWatcher,
   getSkillsSnapshotVersion,
   shouldRefreshSnapshotForVersion,
-} from "../../agents/skills/refresh.js";
+} from "../../agents/skills/refresh-state.js";
+import { ensureSkillsWatcher } from "../../agents/skills/refresh.js";
 import {
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
   resolveSessionStoreEntry,
   type SessionEntry,
+  resolveSessionStoreEntry,
   updateSessionStore,
+  updateSessionStoreEntry,
 } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveStableSessionEndTranscript } from "../../gateway/session-transcript-files.fs.js";
@@ -51,7 +53,7 @@ async function persistSessionEntryUpdate(params: {
     return;
   }
   await updateSessionStore(params.storePath, (store) => {
-    const resolved = resolveSessionStoreEntry({ store, sessionKey });
+    const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey! });
     store[resolved.normalizedKey] = { ...resolved.existing, ...params.nextEntry };
     for (const legacyKey of resolved.legacyKeys) {
       delete store[legacyKey];
@@ -256,6 +258,7 @@ export async function incrementCompactionCount(params: {
   // Build update payload with compaction count and optionally updated token counts
   const updates: Partial<SessionEntry> = {
     compactionCount: nextCount,
+    lastContextPressureBand: undefined,
     updatedAt: now,
   };
   if (newSessionId && newSessionId !== entry.sessionId) {
@@ -285,15 +288,10 @@ export async function incrementCompactionCount(params: {
     delete sessionStore[legacyKey];
   }
   if (storePath) {
-    await updateSessionStore(storePath, (store) => {
-      const resolved = resolveSessionStoreEntry({ store, sessionKey });
-      store[resolved.normalizedKey] = {
-        ...(resolved.existing ?? entry),
-        ...updates,
-      };
-      for (const legacyKey of resolved.legacyKeys) {
-        delete store[legacyKey];
-      }
+    await updateSessionStoreEntry({
+      storePath,
+      sessionKey,
+      update: async () => updates,
     });
   }
   if (newSessionId && newSessionId !== entry.sessionId && cfg) {

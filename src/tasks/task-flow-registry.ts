@@ -58,8 +58,7 @@ type FlowRecordPatch = Omit<
   endedAt?: number | null;
 };
 
-export type CreateFlowRecordParams = {
-  syncMode?: TaskFlowSyncMode;
+type FlowRecordCreateFields = {
   ownerKey: string;
   /**
    * F-37-015: originating continuation chain id. Optional; default NULL when
@@ -67,8 +66,6 @@ export type CreateFlowRecordParams = {
    */
   chainId?: string | null;
   requesterOrigin?: TaskFlowRecord["requesterOrigin"];
-  controllerId?: string | null;
-  revision?: number;
   status?: TaskFlowStatus;
   notifyPolicy?: TaskNotifyPolicy;
   goal: string;
@@ -81,6 +78,12 @@ export type CreateFlowRecordParams = {
   createdAt?: number;
   updatedAt?: number;
   endedAt?: number | null;
+};
+
+export type CreateFlowRecordParams = FlowRecordCreateFields & {
+  syncMode?: TaskFlowSyncMode;
+  controllerId?: string | null;
+  revision?: number;
 };
 
 export type TaskFlowUpdateResult =
@@ -357,28 +360,16 @@ export function createFlowRecord(params: CreateFlowRecordParams): TaskFlowRecord
   return writeFlowRecord(record);
 }
 
-export function createManagedTaskFlow(params: {
-  ownerKey: string;
-  controllerId: string;
-  requesterOrigin?: TaskFlowRecord["requesterOrigin"];
-  status?: TaskFlowStatus;
-  notifyPolicy?: TaskNotifyPolicy;
-  goal: string;
-  currentStep?: string | null;
-  blockedTaskId?: string | null;
-  blockedSummary?: string | null;
-  stateJson?: JsonValue | null;
-  waitJson?: JsonValue | null;
-  cancelRequestedAt?: number | null;
-  createdAt?: number;
-  updatedAt?: number;
-  endedAt?: number | null;
-  // F-37-015: chainId must be threaded through the typed managed-flow helper
-  // so flow_runs.chain_id is populated on the common managed-flow create path,
-  // not just when callers bypass via createFlowRecord directly.
-  // (codex P2 r3158438632)
-  chainId?: string | null;
-}): TaskFlowRecord {
+// F-37-015: chainId is threaded through createManagedTaskFlow via
+// FlowRecordCreateFields (which carries chainId?: string | null at line 67),
+// so flow_runs.chain_id is populated on the common managed-flow create path,
+// not just when callers bypass via createFlowRecord directly.
+// (codex P2 r3158438632)
+export function createManagedTaskFlow(
+  params: FlowRecordCreateFields & {
+    controllerId: string;
+  },
+): TaskFlowRecord {
   return createFlowRecord({
     ...params,
     syncMode: "managed",

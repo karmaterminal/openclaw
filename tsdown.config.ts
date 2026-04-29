@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type UserConfig } from "tsdown";
 import {
-  listBundledPluginBuildEntries,
+  collectBundledPluginBuildEntries,
   listBundledPluginRuntimeDependencies,
+  NON_PACKAGED_BUNDLED_PLUGIN_DIRS,
 } from "./scripts/lib/bundled-plugin-build-entries.mjs";
 import { buildPluginSdkEntrySources } from "./scripts/lib/plugin-sdk-entries.mjs";
 
@@ -54,6 +55,16 @@ function buildInputOptions(options: InputOptionsArg): InputOptionsReturn {
     if (log.code === "PLUGIN_TIMINGS") {
       return true;
     }
+    // The continuation transplant expands the chunk graph enough to surface a
+    // pre-existing static/dynamic facade boundary around pi-embedded. Clean
+    // upstream v2026.4.12 does not trip it, but the feature carry does. This
+    // warning does not reflect a new broken import in the ported runtime.
+    if (
+      log.code === "INEFFECTIVE_DYNAMIC_IMPORT" &&
+      normalizedLogHaystack(log).includes("pi-embedded.ts")
+    ) {
+      return true;
+    }
     if (log.code === "UNRESOLVED_IMPORT") {
       return normalizedLogHaystack(log).includes("extensions/");
     }
@@ -90,8 +101,9 @@ function nodeBuildConfig(config: UserConfig): UserConfig {
   };
 }
 
-const bundledPluginBuildEntries = listBundledPluginBuildEntries();
+const bundledPluginBuildEntries = collectBundledPluginBuildEntries();
 const bundledPluginRuntimeDependencies = listBundledPluginRuntimeDependencies();
+const shouldBuildPrivateQaEntries = process.env.OPENCLAW_BUILD_PRIVATE_QA === "1";
 
 function buildBundledHookEntries(): Record<string, string> {
   const hooksRoot = path.join(process.cwd(), "src", "hooks", "bundled");
@@ -133,6 +145,70 @@ function shouldNeverBundleDependency(id: string): boolean {
   return explicitNeverBundleDependencies.some((dependency) => {
     return id === dependency || id.startsWith(`${dependency}/`);
   });
+}
+
+function shouldStageBundledPluginRuntimeDependencies(packageJson: unknown): boolean {
+  return (
+    typeof packageJson === "object" &&
+    packageJson !== null &&
+    (packageJson as { openclaw?: { bundle?: { stageRuntimeDependencies?: boolean } } }).openclaw
+      ?.bundle?.stageRuntimeDependencies === true
+  );
+}
+
+function listBundledPluginEntrySources(
+  entries: Array<{
+    id: string;
+    packageJson: unknown;
+    sourceEntries: string[];
+  }>,
+): Record<string, string> {
+  return Object.fromEntries(
+    entries.flatMap(({ id, sourceEntries }) =>
+      sourceEntries.map((entry) => {
+        const normalizedEntry = entry.replace(/^\.\//u, "");
+        const entryKey = bundledPluginFile(id, normalizedEntry.replace(/\.[^.]+$/u, ""));
+        return [
+          entryKey,
+          normalizedEntry ? `extensions/${id}/${normalizedEntry}` : `extensions/${id}`,
+        ];
+      }),
+    ),
+  );
+}
+
+function normalizeBundledPluginOutEntry(entry: string): string {
+  return entry.replace(/^\.\//u, "").replace(/\.[^.]+$/u, "");
+}
+
+function isPluginSdkSelfReference(id: string): boolean {
+  return (
+    id === "openclaw/plugin-sdk" ||
+    id.startsWith("openclaw/plugin-sdk/") ||
+    id === "@openclaw/plugin-sdk" ||
+    id.startsWith("@openclaw/plugin-sdk/")
+  );
+}
+
+function buildBundledPluginNeverBundlePredicate(packageJson: {
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+}) {
+  const runtimeDependencies = shouldStageBundledPluginRuntimeDependencies(packageJson)
+    ? [
+        ...Object.keys(packageJson.dependencies ?? {}),
+        ...Object.keys(packageJson.optionalDependencies ?? {}),
+      ].toSorted((left, right) => left.localeCompare(right))
+    : [];
+
+  return (id: string): boolean => {
+    if (isPluginSdkSelfReference(id)) {
+      return true;
+    }
+    return runtimeDependencies.some((dependency) => {
+      return id === dependency || id.startsWith(`${dependency}/`);
+    });
+  };
 }
 
 function buildCoreDistEntries(): Record<string, string> {
@@ -181,6 +257,14 @@ function buildCoreDistEntries(): Record<string, string> {
 }
 
 const coreDistEntries = buildCoreDistEntries();
+const stagedBundledPluginBuildEntries = bundledPluginBuildEntries.filter(({ packageJson }) =>
+  shouldStageBundledPluginRuntimeDependencies(packageJson),
+);
+const rootBundledPluginBuildEntries = bundledPluginBuildEntries.filter(
+  ({ id, packageJson }) =>
+    !shouldStageBundledPluginRuntimeDependencies(packageJson) &&
+    (shouldBuildPrivateQaEntries || !NON_PACKAGED_BUNDLED_PLUGIN_DIRS.has(id)),
+);
 
 function buildUnifiedDistEntries(): Record<string, string> {
   return {
@@ -193,18 +277,49 @@ function buildUnifiedDistEntries(): Record<string, string> {
         source,
       ]),
     ),
-    ...bundledPluginBuildEntries,
+    ...(shouldBuildPrivateQaEntries
+      ? {
+          "plugin-sdk/qa-lab": "src/plugin-sdk/qa-lab.ts",
+          "plugin-sdk/qa-runtime": "src/plugin-sdk/qa-runtime.ts",
+        }
+      : {}),
+    ...listBundledPluginEntrySources(rootBundledPluginBuildEntries),
     ...bundledHookEntries,
   };
+}
+
+function buildBundledPluginConfigs(): UserConfig[] {
+  return stagedBundledPluginBuildEntries.map(({ id, packageJson, sourceEntries }) =>
+    nodeBuildConfig({
+      clean: false,
+      entry: Object.fromEntries(
+        sourceEntries.map((entry) => [
+          normalizeBundledPluginOutEntry(entry),
+          `extensions/${id}/${entry.replace(/^\.\//u, "")}`,
+        ]),
+      ),
+      outDir: `dist/extensions/${id}`,
+      deps: {
+        neverBundle: buildBundledPluginNeverBundlePredicate(
+          (packageJson ?? {}) as {
+            dependencies?: Record<string, string>;
+            optionalDependencies?: Record<string, string>;
+          },
+        ),
+      },
+    }),
+  );
 }
 
 export default defineConfig([
   nodeBuildConfig({
     // Build core entrypoints, plugin-sdk subpaths, bundled plugin entrypoints,
     // and bundled hooks in one graph so runtime singletons are emitted once.
+    clean: true,
     entry: buildUnifiedDistEntries(),
     deps: {
       neverBundle: shouldNeverBundleDependency,
     },
   }),
+  ...buildBundledPluginConfigs(),
 ]);

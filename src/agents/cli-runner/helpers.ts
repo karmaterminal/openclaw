@@ -120,6 +120,7 @@ export function buildSystemPrompt(params: {
     contextFiles: params.contextFiles,
     ttsHint,
     memoryCitationsMode: params.config?.memory?.citations,
+    continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
   });
 }
 
@@ -391,6 +392,18 @@ export function buildCliArgs(params: {
       args.push(params.backend.sessionArg, params.sessionId);
     }
   }
+  if (params.promptArg !== undefined) {
+    let replacedPromptPlaceholder = false;
+    for (let i = 0; i < args.length; i += 1) {
+      if (args[i] === "{prompt}") {
+        args[i] = params.promptArg;
+        replacedPromptPlaceholder = true;
+      }
+    }
+    if (!replacedPromptPlaceholder) {
+      args.push(params.promptArg);
+    }
+  }
   if (params.imagePaths && params.imagePaths.length > 0) {
     const mode = params.backend.imageMode ?? "repeat";
     const imageArg = params.backend.imageArg;
@@ -403,19 +416,6 @@ export function buildCliArgs(params: {
         }
       }
     }
-  }
-  if (params.promptArg !== undefined) {
-    let replacedPromptPlaceholder = false;
-    for (let i = 0; i < args.length; i += 1) {
-      if (args[i] === "{prompt}") {
-        args[i] = params.promptArg;
-        replacedPromptPlaceholder = true;
-      }
-    }
-    if (replacedPromptPlaceholder) {
-      return args;
-    }
-    args.push(params.promptArg);
   }
   return args;
 }

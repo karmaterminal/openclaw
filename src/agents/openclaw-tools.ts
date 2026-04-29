@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { callGateway } from "../gateway/call.js";
+import { isEmbeddedMode } from "../infra/embedded-mode.js";
 import { getActiveRuntimeWebToolsMetadata } from "../secrets/runtime.js";
 import { normalizeDeliveryContext } from "../utils/delivery-context.js";
 import type { GatewayMessageChannel } from "../utils/message-channel.js";
@@ -17,8 +18,9 @@ import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { createContinueDelegateTool } from "./tools/continue-delegate-tool.js";
-import { createContinueWorkTool } from "./tools/continue-work-tool.js";
+import { createContinueWorkTool, type ContinueWorkRequest } from "./tools/continue-work-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
+import { createEmbeddedCallGateway } from "./tools/embedded-gateway-stub.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
@@ -26,7 +28,6 @@ import { createMessageTool } from "./tools/message-tool.js";
 import { createMusicGenerateTool } from "./tools/music-generate-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createPdfTool } from "./tools/pdf-tool.js";
-import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 import { createRequestCompactionTool } from "./tools/request-compaction-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
@@ -59,7 +60,7 @@ export function createOpenClawTools(
     agentSessionKey?: string;
     agentChannel?: GatewayMessageChannel;
     agentAccountId?: string;
-    /** Delivery target (e.g. telegram:group:123:topic:456) for topic/thread routing. */
+    /** Delivery target for topic/thread routing. */
     agentTo?: string;
     /** Thread/topic identifier for routing replies to the originating thread. */
     agentThreadId?: string | number;
@@ -71,13 +72,13 @@ export function createOpenClawTools(
     sandboxed?: boolean;
     config?: OpenClawConfig;
     pluginToolAllowlist?: string[];
-    /** Current channel ID for auto-threading (Slack). */
+    /** Current channel ID for auto-threading. */
     currentChannelId?: string;
-    /** Current thread timestamp for auto-threading (Slack). */
+    /** Current thread timestamp for auto-threading. */
     currentThreadTs?: string;
-    /** Current inbound message id for action fallbacks (e.g. Telegram react). */
+    /** Current inbound message id for action fallbacks. */
     currentMessageId?: string | number;
-    /** Reply-to mode for Slack auto-threading. */
+    /** Reply-to mode for auto-threading. */
     replyToMode?: "off" | "first" | "all" | "batched";
     /** Mutable ref to track if a reply was sent (for "first" mode). */
     hasRepliedRef?: { value: boolean };
@@ -114,8 +115,17 @@ export function createOpenClawTools(
     onYield?: (message: string) => Promise<void> | void;
     /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
     allowGatewaySubagentBinding?: boolean;
-    /** Continuation: request_compaction tool opts (injected from execution context). */
-    requestCompactionOpts?: Omit<RequestCompactionToolOpts, "agentSessionKey">;
+    /** Whether the current run consumes the continue_delegate staging queue. */
+    drainsContinuationDelegateQueue?: boolean;
+    /** Callback for continue_work to request a post-turn continuation. */
+    continueWorkOpts?: {
+      requestContinuation: (request: ContinueWorkRequest) => void;
+    };
+    /** Closures for request_compaction tool (Trigger E). Only set when continuation is enabled. */
+    requestCompactionOpts?: {
+      getContextUsage: () => number;
+      triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+    };
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;
@@ -233,22 +243,34 @@ export function createOpenClawTools(
     sandboxRoot: options?.sandboxRoot,
     workspaceDir,
   });
+  const embedded = isEmbeddedMode();
+  const effectiveCallGateway = embedded
+    ? createEmbeddedCallGateway()
+    : openClawToolsDeps.callGateway;
   const tools: AnyAgentTool[] = [
-    createCanvasTool({ config: options?.config }),
-    nodesTool,
-    createCronTool({
-      agentSessionKey: options?.agentSessionKey,
-    }),
-    ...(messageTool ? [messageTool] : []),
+    ...(embedded
+      ? []
+      : [
+          createCanvasTool({ config: options?.config }),
+          nodesTool,
+          createCronTool({
+            agentSessionKey: options?.agentSessionKey,
+          }),
+        ]),
+    ...(!embedded && messageTool ? [messageTool] : []),
     createTtsTool({
       agentChannel: options?.agentChannel,
-      config: options?.config,
+      config: resolvedConfig,
     }),
     ...collectPresentOpenClawTools([imageGenerateTool, musicGenerateTool, videoGenerateTool]),
-    createGatewayTool({
-      agentSessionKey: options?.agentSessionKey,
-      config: options?.config,
-    }),
+    ...(embedded
+      ? []
+      : [
+          createGatewayTool({
+            agentSessionKey: options?.agentSessionKey,
+            config: options?.config,
+          }),
+        ]),
     createAgentsListTool({
       agentSessionKey: options?.agentSessionKey,
       requesterAgentIdOverride: options?.requesterAgentIdOverride,
@@ -266,37 +288,42 @@ export function createOpenClawTools(
       agentSessionKey: options?.agentSessionKey,
       sandboxed: options?.sandboxed,
       config: resolvedConfig,
-      callGateway: openClawToolsDeps.callGateway,
+      callGateway: effectiveCallGateway,
     }),
     createSessionsHistoryTool({
       agentSessionKey: options?.agentSessionKey,
       sandboxed: options?.sandboxed,
       config: resolvedConfig,
-      callGateway: openClawToolsDeps.callGateway,
+      callGateway: effectiveCallGateway,
     }),
-    createSessionsSendTool({
-      agentSessionKey: options?.agentSessionKey,
-      agentChannel: options?.agentChannel,
-      sandboxed: options?.sandboxed,
-      config: resolvedConfig,
-      callGateway: openClawToolsDeps.callGateway,
-    }),
+    ...(embedded
+      ? []
+      : [
+          createSessionsSendTool({
+            agentSessionKey: options?.agentSessionKey,
+            agentChannel: options?.agentChannel,
+            sandboxed: options?.sandboxed,
+            config: resolvedConfig,
+            callGateway: openClawToolsDeps.callGateway,
+          }),
+          createSessionsSpawnTool({
+            agentSessionKey: options?.agentSessionKey,
+            agentChannel: options?.agentChannel,
+            agentAccountId: options?.agentAccountId,
+            agentTo: options?.agentTo,
+            agentThreadId: options?.agentThreadId,
+            agentGroupId: options?.agentGroupId,
+            agentGroupChannel: options?.agentGroupChannel,
+            agentGroupSpace: options?.agentGroupSpace,
+            agentMemberRoleIds: options?.agentMemberRoleIds,
+            sandboxed: options?.sandboxed,
+            requesterAgentIdOverride: options?.requesterAgentIdOverride,
+            workspaceDir: spawnWorkspaceDir,
+          }),
+        ]),
     createSessionsYieldTool({
       sessionId: options?.sessionId,
       onYield: options?.onYield,
-    }),
-    createSessionsSpawnTool({
-      agentSessionKey: options?.agentSessionKey,
-      agentChannel: options?.agentChannel,
-      agentAccountId: options?.agentAccountId,
-      agentTo: options?.agentTo,
-      agentThreadId: options?.agentThreadId,
-      agentGroupId: options?.agentGroupId,
-      agentGroupChannel: options?.agentGroupChannel,
-      agentGroupSpace: options?.agentGroupSpace,
-      sandboxed: options?.sandboxed,
-      requesterAgentIdOverride: options?.requesterAgentIdOverride,
-      workspaceDir: spawnWorkspaceDir,
     }),
     createSubagentsTool({
       agentSessionKey: options?.agentSessionKey,
@@ -307,28 +334,34 @@ export function createOpenClawTools(
       sandboxed: options?.sandboxed,
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
+    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    options?.continueWorkOpts
+      ? [
+          createContinueWorkTool({
+            agentSessionKey: options?.agentSessionKey,
+            ...options.continueWorkOpts,
+          }),
+        ]
+      : []),
+    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    options?.drainsContinuationDelegateQueue !== false
+      ? [
+          createContinueDelegateTool({
+            agentSessionKey: options?.agentSessionKey,
+          }),
+        ]
+      : []),
+    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    options?.requestCompactionOpts
+      ? [
+          createRequestCompactionTool({
+            agentSessionKey: options?.agentSessionKey,
+            sessionId: options?.sessionId,
+            ...options.requestCompactionOpts,
+          }),
+        ]
+      : []),
   ];
-
-  // Continuation tools — registered when continuation.enabled is true (RFC §2.1).
-  if (resolvedConfig?.agents?.defaults?.continuation?.enabled === true) {
-    tools.push(
-      createContinueWorkTool({
-        agentSessionKey: options?.agentSessionKey,
-      }),
-      createContinueDelegateTool({
-        agentSessionKey: options?.agentSessionKey,
-      }),
-    );
-    // request_compaction requires injected opts (context usage + compaction trigger).
-    if (options?.requestCompactionOpts) {
-      tools.push(
-        createRequestCompactionTool({
-          agentSessionKey: options?.agentSessionKey,
-          ...options.requestCompactionOpts,
-        }),
-      );
-    }
-  }
 
   if (options?.disablePluginTools) {
     return tools;

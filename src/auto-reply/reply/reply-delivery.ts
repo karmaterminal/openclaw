@@ -1,7 +1,8 @@
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
 import { logVerbose } from "../../globals.js";
+import { getReplyPayloadMetadata, setReplyPayloadMetadata } from "../reply-payload.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
-import type { BlockReplyContext, ReplyPayload } from "../types.js";
+import type { BlockReplyContext, ReplyPayload, ReplyThreadingPolicy } from "../types.js";
 import type { BlockReplyPipeline } from "./block-reply-pipeline.js";
 import { createBlockReplyContentKey } from "./block-reply-pipeline.js";
 import { hasCotFramePrefix } from "./cot-frame.js";
@@ -26,7 +27,7 @@ export function normalizeReplyPayloadDirectives(params: {
     parseMode === "always" ||
     (parseMode === "auto" &&
       (sourceText.includes("[[") ||
-        sourceText.includes("MEDIA:") ||
+        /media:/i.test(sourceText) ||
         sourceText.includes(silentToken)));
 
   const parsed = shouldParse
@@ -59,9 +60,25 @@ export function normalizeReplyPayloadDirectives(params: {
   };
 }
 
+function carryReplyPayloadMetadata(source: ReplyPayload, target: ReplyPayload): ReplyPayload {
+  const metadata = getReplyPayloadMetadata(source);
+  return metadata ? setReplyPayloadMetadata(target, metadata) : target;
+}
+
+async function sendDirectBlockReply(params: {
+  onBlockReply: (payload: ReplyPayload, context?: BlockReplyContext) => Promise<void> | void;
+  directlySentBlockKeys: Set<string>;
+  trackingPayload: ReplyPayload;
+  payload: ReplyPayload;
+}) {
+  params.directlySentBlockKeys.add(createBlockReplyContentKey(params.trackingPayload));
+  await params.onBlockReply(params.payload);
+}
+
 export function createBlockReplyDeliveryHandler(params: {
   onBlockReply: (payload: ReplyPayload, context?: BlockReplyContext) => Promise<void> | void;
   currentMessageId?: string;
+  replyThreading?: ReplyThreadingPolicy;
   normalizeStreamingText: (payload: ReplyPayload) => { text?: string; skip: boolean };
   applyReplyToMode: (payload: ReplyPayload) => ReplyPayload;
   normalizeMediaPaths?: (payload: ReplyPayload) => Promise<ReplyPayload>;
@@ -76,6 +93,13 @@ export function createBlockReplyDeliveryHandler(params: {
       return;
     }
 
+    const implicitCurrentMessageAllowed =
+      payload.replyToCurrent === true
+        ? true
+        : payload.replyToCurrent === false
+          ? false
+          : params.replyThreading?.implicitCurrentMessage !== "deny";
+
     const taggedPayload = applyReplyTagsToPayload(
       {
         ...payload,
@@ -83,7 +107,7 @@ export function createBlockReplyDeliveryHandler(params: {
         mediaUrl: payload.mediaUrl ?? payload.mediaUrls?.[0],
         replyToId:
           payload.replyToId ??
-          (payload.replyToCurrent === false ? undefined : params.currentMessageId),
+          (implicitCurrentMessageAllowed ? params.currentMessageId : undefined),
       },
       params.currentMessageId,
     );
@@ -104,7 +128,10 @@ export function createBlockReplyDeliveryHandler(params: {
     const mediaNormalizedPayload = params.normalizeMediaPaths
       ? await params.normalizeMediaPaths(normalized.payload)
       : normalized.payload;
-    let blockPayload = params.applyReplyToMode(mediaNormalizedPayload);
+    const blockPayload = carryReplyPayloadMetadata(
+      payload,
+      params.applyReplyToMode(mediaNormalizedPayload),
+    );
     const blockHasMedia = resolveSendableOutboundReplyParts(blockPayload).hasMedia;
 
     // CoT-frame leak suppression for the streaming path.  The model sometimes
@@ -144,14 +171,21 @@ export function createBlockReplyDeliveryHandler(params: {
     } else if (params.blockStreamingEnabled) {
       // Send directly when flushing before tool execution (no pipeline but streaming enabled).
       // Track sent key to avoid duplicate in final payloads.
-      params.directlySentBlockKeys.add(createBlockReplyContentKey(blockPayload));
-      await params.onBlockReply(blockPayload);
-    } else if (blockHasMedia) {
-      // When block streaming is disabled, text-only block replies are accumulated into the
-      // final response. Media cannot be reconstructed later, so send it immediately and let
-      // the assistant's final text arrive through the normal final-reply path.
-      params.directlySentBlockKeys.add(createBlockReplyContentKey(blockPayload));
-      await params.onBlockReply({ ...blockPayload, text: undefined });
+      await sendDirectBlockReply({
+        onBlockReply: params.onBlockReply,
+        directlySentBlockKeys: params.directlySentBlockKeys,
+        trackingPayload: blockPayload,
+        payload: blockPayload,
+      });
+    } else if (blockHasMedia && !blockPayload.text) {
+      // Media-only block replies (for example orphaned tool attachments) are not reconstructible
+      // from the assistant's final text, so they still need a direct fallback when streaming is off.
+      await sendDirectBlockReply({
+        onBlockReply: params.onBlockReply,
+        directlySentBlockKeys: params.directlySentBlockKeys,
+        trackingPayload: blockPayload,
+        payload: blockPayload,
+      });
     }
     // When streaming is disabled entirely, text-only blocks are accumulated in final text.
   };

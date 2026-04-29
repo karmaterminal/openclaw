@@ -3,10 +3,16 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeTestText } from "../../../test/helpers/normalize-text.js";
 import { withTempHome } from "../../../test/helpers/temp-home.js";
+import { clearAgentHarnesses, registerAgentHarness } from "../../agents/harness/registry.js";
+import type { AgentHarness } from "../../agents/harness/types.js";
 import {
   addSubagentRunForTests,
   resetSubagentRegistryForTests,
 } from "../../agents/subagent-registry.js";
+import {
+  _resetVolitionalCounts,
+  incrementVolitionalCompactionCount,
+} from "../../agents/tools/request-compaction-tool.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import {
   completeTaskRunByRunId,
@@ -15,15 +21,20 @@ import {
   failTaskRunByRunId,
 } from "../../tasks/task-executor.js";
 import { resetTaskRegistryForTests } from "../../tasks/task-registry.js";
-import { configureTaskRegistryRuntime } from "../../tasks/task-registry.store.js";
+import {
+  consumePendingDelegates,
+  consumeStagedPostCompactionDelegates,
+  enqueuePendingDelegate,
+  stagePostCompactionDelegate,
+} from "../continuation-delegate-store.js";
 import { buildStatusReply, buildStatusText } from "./commands-status.js";
-import { buildCommandTestParams } from "./commands.test-harness.js";
+import {
+  baseCommandTestConfig,
+  buildCommandTestParams,
+  configureInMemoryTaskRegistryStoreForTests,
+} from "./commands.test-harness.js";
 
-const baseCfg = {
-  commands: { text: true },
-  channels: { whatsapp: { allowFrom: ["*"] } },
-  session: { mainKey: "main", scope: "per-sender" },
-} as OpenClawConfig;
+const baseCfg = baseCommandTestConfig;
 
 async function buildStatusReplyForTest(params: { sessionKey?: string; verbose?: boolean }) {
   const commandParams = buildCommandTestParams("/status", baseCfg);
@@ -51,6 +62,23 @@ async function buildStatusReplyForTest(params: { sessionKey?: string; verbose?: 
     activeModelAuthOverride: "api-key",
   });
 }
+
+function registerStatusCodexHarness(): void {
+  const harness: AgentHarness = {
+    id: "codex",
+    label: "Codex",
+    supports: (ctx) =>
+      ctx.provider === "codex" ? { supported: true, priority: 100 } : { supported: false },
+    runAttempt: async () => {
+      throw new Error("not used in status tests");
+    },
+  };
+  registerAgentHarness(harness, { ownerPluginId: "codex" });
+}
+
+afterEach(() => {
+  clearAgentHarnesses();
+});
 
 function writeTranscriptUsageLog(params: {
   dir: string;
@@ -85,25 +113,6 @@ function writeTranscriptUsageLog(params: {
     }),
     "utf-8",
   );
-}
-
-function configureInMemoryTaskRegistryStoreForTests(): void {
-  configureTaskRegistryRuntime({
-    store: {
-      loadSnapshot: () => ({
-        tasks: new Map(),
-        deliveryStates: new Map(),
-      }),
-      saveSnapshot: () => {},
-      upsertTaskWithDeliveryState: () => {},
-      upsertTask: () => {},
-      deleteTaskWithDeliveryState: () => {},
-      deleteTask: () => {},
-      upsertDeliveryState: () => {},
-      deleteDeliveryState: () => {},
-      close: () => {},
-    },
-  });
 }
 
 describe("buildStatusReply subagent summary", () => {
@@ -465,7 +474,7 @@ describe("buildStatusReply subagent summary", () => {
         sessionKey: "agent:main:main",
         parentSessionKey: "agent:main:main",
         sessionScope: "per-sender",
-        statusChannel: "whatsapp",
+        statusChannel: "mobilechat",
         provider: "anthropic",
         model: "claude-opus-4-5",
         contextTokens: 32_000,
@@ -481,5 +490,205 @@ describe("buildStatusReply subagent summary", () => {
 
       expect(normalizeTestText(text)).toContain("Context: 1.0k/32k");
     });
+  });
+
+  it("shows the effective non-PI embedded harness in /status", async () => {
+    registerStatusCodexHarness();
+
+    const text = await buildStatusText({
+      cfg: {
+        ...baseCfg,
+        agents: {
+          defaults: {
+            embeddedHarness: { runtime: "codex" },
+          },
+        },
+      },
+      sessionEntry: {
+        sessionId: "sess-status-codex",
+        updatedAt: 0,
+        fastMode: true,
+      },
+      sessionKey: "agent:main:main",
+      parentSessionKey: "agent:main:main",
+      sessionScope: "per-sender",
+      statusChannel: "mobilechat",
+      provider: "openai",
+      model: "gpt-5.4",
+      contextTokens: 32_000,
+      resolvedFastMode: true,
+      resolvedVerboseLevel: "off",
+      resolvedReasoningLevel: "off",
+      resolveDefaultThinkingLevel: async () => undefined,
+      isGroup: false,
+      defaultGroupActivation: () => "mention",
+      modelAuthOverride: "api-key",
+      activeModelAuthOverride: "api-key",
+    });
+
+    const normalized = normalizeTestText(text);
+    expect(normalized).toContain("Runtime: OpenAI Codex");
+    expect(normalized).toContain("Fast");
+    expect(normalized).not.toContain("Fast · codex");
+  });
+
+  it("keeps /status on a session-pinned PI harness after config changes", async () => {
+    registerStatusCodexHarness();
+
+    const text = await buildStatusText({
+      cfg: {
+        ...baseCfg,
+        agents: {
+          defaults: {
+            embeddedHarness: { runtime: "codex" },
+          },
+        },
+      },
+      sessionEntry: {
+        sessionId: "sess-status-pinned-pi",
+        updatedAt: 0,
+        fastMode: true,
+        agentHarnessId: "pi",
+      },
+      sessionKey: "agent:main:main",
+      parentSessionKey: "agent:main:main",
+      sessionScope: "per-sender",
+      statusChannel: "mobilechat",
+      provider: "openai",
+      model: "gpt-5.4",
+      contextTokens: 32_000,
+      resolvedFastMode: true,
+      resolvedVerboseLevel: "off",
+      resolvedReasoningLevel: "off",
+      resolveDefaultThinkingLevel: async () => undefined,
+      isGroup: false,
+      defaultGroupActivation: () => "mention",
+      modelAuthOverride: "api-key",
+      activeModelAuthOverride: "api-key",
+    });
+
+    const normalized = normalizeTestText(text);
+    expect(normalized).toContain("Fast");
+    expect(normalized).not.toContain("codex");
+  });
+});
+
+describe("buildStatusText continuation line", () => {
+  const continuationSessionKey = "agent:main:cont-test";
+
+  afterEach(() => {
+    consumePendingDelegates(continuationSessionKey);
+    consumeStagedPostCompactionDelegates(continuationSessionKey);
+    _resetVolitionalCounts(continuationSessionKey);
+  });
+
+  const cfgWithContinuation = {
+    ...baseCfg,
+    agents: {
+      defaults: {
+        continuation: {
+          enabled: true,
+          maxChainLength: 100,
+        },
+      },
+    },
+  } as OpenClawConfig;
+
+  it("shows continuation line when continuation is enabled", async () => {
+    incrementVolitionalCompactionCount(continuationSessionKey);
+
+    const text = await buildStatusText({
+      cfg: cfgWithContinuation,
+      sessionEntry: {
+        sessionId: "cont-test",
+        updatedAt: 0,
+        totalTokens: 0,
+        continuationChainCount: 3,
+        compactionCount: 1,
+      },
+      sessionKey: continuationSessionKey,
+      parentSessionKey: continuationSessionKey,
+      sessionScope: "per-sender",
+      statusChannel: "whatsapp",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      contextTokens: 0,
+      resolvedFastMode: false,
+      resolvedVerboseLevel: "off",
+      resolvedReasoningLevel: "off",
+      resolveDefaultThinkingLevel: async () => undefined,
+      isGroup: false,
+      defaultGroupActivation: () => "mention",
+    });
+
+    expect(text).toContain("🔄 Continuation: chain 3/100");
+    expect(text).toContain("volitional: 1");
+  });
+
+  it("does not show continuation line when continuation is disabled", async () => {
+    const text = await buildStatusText({
+      cfg: baseCfg,
+      sessionEntry: {
+        sessionId: "cont-test",
+        updatedAt: 0,
+        totalTokens: 0,
+      },
+      sessionKey: continuationSessionKey,
+      parentSessionKey: continuationSessionKey,
+      sessionScope: "per-sender",
+      statusChannel: "whatsapp",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      contextTokens: 0,
+      resolvedFastMode: false,
+      resolvedVerboseLevel: "off",
+      resolvedReasoningLevel: "off",
+      resolveDefaultThinkingLevel: async () => undefined,
+      isGroup: false,
+      defaultGroupActivation: () => "mention",
+    });
+
+    expect(text).not.toContain("Continuation:");
+  });
+
+  it("renders delegate and post-compaction counts correctly", async () => {
+    incrementVolitionalCompactionCount(continuationSessionKey);
+    incrementVolitionalCompactionCount(continuationSessionKey);
+    enqueuePendingDelegate(continuationSessionKey, { task: "task-a" });
+    enqueuePendingDelegate(continuationSessionKey, { task: "task-b" });
+    stagePostCompactionDelegate(continuationSessionKey, {
+      task: "compaction-task",
+      createdAt: Date.now(),
+      silent: false,
+    });
+
+    const text = await buildStatusText({
+      cfg: cfgWithContinuation,
+      sessionEntry: {
+        sessionId: "cont-test",
+        updatedAt: 0,
+        totalTokens: 0,
+        continuationChainCount: 5,
+        compactionCount: 2,
+      },
+      sessionKey: continuationSessionKey,
+      parentSessionKey: continuationSessionKey,
+      sessionScope: "per-sender",
+      statusChannel: "whatsapp",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      contextTokens: 0,
+      resolvedFastMode: false,
+      resolvedVerboseLevel: "off",
+      resolvedReasoningLevel: "off",
+      resolveDefaultThinkingLevel: async () => undefined,
+      isGroup: false,
+      defaultGroupActivation: () => "mention",
+    });
+
+    expect(text).toContain("chain 5/100");
+    expect(text).toContain("2 delegates pending");
+    expect(text).toContain("1 post-compaction staged");
+    expect(text).toContain("volitional: 2");
   });
 });

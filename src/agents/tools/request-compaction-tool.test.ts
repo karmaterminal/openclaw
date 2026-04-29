@@ -1,209 +1,386 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ToolInputError } from "./common.js";
 import {
-  _guards,
+  createRequestCompactionTool,
   _resetGuardState,
   _resetVolitionalCounts,
   _setPending,
-  createRequestCompactionTool,
+  _guards,
+  getVolitionalCompactionCount,
+  incrementVolitionalCompactionCount,
   type RequestCompactionToolOpts,
 } from "./request-compaction-tool.js";
 
-const SESSION_KEY = "agent:main:discord:channel:test-session";
-const SESSION_ID = "test-session-id-x5.1";
-const TURN_REASON =
-  "context pressure at 92%, working state evacuated to memory files and 2 post-compaction delegates staged.";
+describe("request_compaction tool", () => {
+  const SESSION_KEY = "test-session";
+  const SESSION_ID = "session-uuid-1234";
 
-type ExecuteResult = Awaited<ReturnType<ReturnType<typeof createRequestCompactionTool>["execute"]>>;
+  let contextUsage: number;
+  let mockTriggerCompaction: ReturnType<
+    typeof vi.fn<RequestCompactionToolOpts["triggerCompaction"]>
+  >;
 
-type JsonPayload = {
-  status: string;
-  guard?: string;
-  contextUsage?: number;
-  threshold?: number;
-  reason?: string;
-  retryAfterSeconds?: number;
-  note?: string;
-};
+  function makeOpts(overrides?: Partial<RequestCompactionToolOpts>): RequestCompactionToolOpts {
+    return {
+      agentSessionKey: SESSION_KEY,
+      sessionId: SESSION_ID,
+      getContextUsage: () => contextUsage,
+      triggerCompaction: mockTriggerCompaction,
+      ...overrides,
+    };
+  }
 
-function readJsonPayload(result: ExecuteResult): JsonPayload {
-  // jsonResult() returns content = [{ type: "text", text: JSON.stringify(...) }]
-  const content = (result as { content: Array<{ type: string; text: string }> }).content;
-  expect(content[0]?.type).toBe("text");
-  return JSON.parse(content[0]?.text ?? "{}") as JsonPayload;
-}
+  function makeTool(overrides?: Partial<RequestCompactionToolOpts>) {
+    return createRequestCompactionTool(makeOpts(overrides));
+  }
 
-function buildOpts(overrides: Partial<RequestCompactionToolOpts> = {}): RequestCompactionToolOpts {
-  return {
-    agentSessionKey: SESSION_KEY,
-    sessionId: SESSION_ID,
-    getContextUsage: () => 0.85,
-    triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })),
-    ...overrides,
-  };
-}
+  async function executeTool(
+    tool: ReturnType<typeof createRequestCompactionTool>,
+    args: Record<string, unknown> = { reason: "test compaction request" },
+  ) {
+    return (await tool.execute("call-1", args))?.details as Record<string, unknown>;
+  }
 
-describe("request_compaction tool (swim-34/X5.1)", () => {
   beforeEach(() => {
+    contextUsage = 0.85; // above threshold by default
     _resetGuardState();
     _resetVolitionalCounts();
+    mockTriggerCompaction = vi.fn().mockResolvedValue({
+      ok: true,
+      compacted: true,
+      result: {
+        summary: "Session compacted successfully with key decisions preserved.",
+        firstKeptEntryId: "entry-42",
+        tokensBefore: 850_000,
+        tokensAfter: 120_000,
+      },
+    });
   });
 
   afterEach(() => {
     _resetGuardState();
     _resetVolitionalCounts();
+  });
+
+  // -------------------------------------------------------------------------
+  // Precondition errors
+  // -------------------------------------------------------------------------
+
+  it("throws when no session key is provided", async () => {
+    const tool = makeTool({ agentSessionKey: undefined });
+    await expect(tool.execute("call-1", {})).rejects.toThrow(/requires an active session/);
+  });
+
+  it("throws when no session id is provided", async () => {
+    const tool = makeTool({ sessionId: undefined });
+    await expect(tool.execute("call-1", {})).rejects.toThrow(/requires a sessionId/);
+  });
+
+  // -------------------------------------------------------------------------
+  // Guard: context threshold
+  // -------------------------------------------------------------------------
+
+  it("rejects when context usage is below threshold", async () => {
+    contextUsage = 0.5;
+    const tool = makeTool();
+    const result = await executeTool(tool);
+
+    expect(result).toMatchObject({
+      status: "rejected",
+      guard: "context_threshold",
+      contextUsage: 50,
+      threshold: _guards.MIN_CONTEXT_THRESHOLD * 100,
+    });
+    expect(mockTriggerCompaction).not.toHaveBeenCalled();
+  });
+
+  it("accepts when context usage is exactly at threshold", async () => {
+    contextUsage = _guards.MIN_CONTEXT_THRESHOLD;
+    const tool = makeTool();
+    const result = await executeTool(tool);
+
+    expect(result).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledOnce();
+  });
+
+  // -------------------------------------------------------------------------
+  // Guard: rate limit
+  // -------------------------------------------------------------------------
+
+  it("rejects a second request within the rate limit window", async () => {
+    const tool = makeTool();
+
+    // First call succeeds
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+
+    // Second call within 5 minutes is rate-limited
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({
+      status: "rejected",
+      guard: "rate_limit",
+    });
+    expect(second.retryAfterSeconds).toBeGreaterThan(0);
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows a request after the rate limit window expires", async () => {
+    const tool = makeTool();
+
+    let fakeNow = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+    // First call
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+
+    // Advance past rate limit
+    fakeNow += _guards.RATE_LIMIT_MS + 1;
+
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
+
     vi.restoreAllMocks();
   });
 
-  // (a) ToolInputError on missing session
-  it("throws ToolInputError when agentSessionKey is absent", async () => {
-    const tool = createRequestCompactionTool(buildOpts({ agentSessionKey: undefined }));
-    await expect(tool.execute("call-1", { reason: TURN_REASON })).rejects.toBeInstanceOf(
-      ToolInputError,
+  // -------------------------------------------------------------------------
+  // No generation guard (RFC 2026-04-15): compaction is not blocked by
+  // unrelated channel activity.
+  // -------------------------------------------------------------------------
+
+  it("proceeds regardless of session generation drift (post-RFC 2026-04-15)", async () => {
+    const tool = makeTool();
+    const result = await executeTool(tool);
+
+    expect(result).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Async fire-and-forget
+  // -------------------------------------------------------------------------
+
+  it("returns compaction_requested immediately without awaiting compaction", async () => {
+    // triggerCompaction returns a promise that never resolves — tool should
+    // still return immediately because it does not await.
+    let resolveCompaction!: () => void;
+    mockTriggerCompaction.mockReturnValue(
+      new Promise<{ ok: boolean; compacted: boolean }>((resolve) => {
+        resolveCompaction = () => resolve({ ok: true, compacted: true });
+      }),
     );
+
+    const tool = makeTool();
+    const result = await executeTool(tool);
+
+    // Tool returned before compaction completed
+    expect(result).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledOnce();
+
+    // Clean up the dangling promise
+    resolveCompaction();
   });
 
-  it("throws ToolInputError when sessionId is absent", async () => {
-    const tool = createRequestCompactionTool(buildOpts({ sessionId: undefined }));
-    await expect(tool.execute("call-2", { reason: TURN_REASON })).rejects.toBeInstanceOf(
-      ToolInputError,
-    );
+  it("logs errors from background compaction without crashing the tool", async () => {
+    mockTriggerCompaction.mockRejectedValue(new Error("Lane contention timeout"));
+
+    const tool = makeTool();
+    const result = await executeTool(tool);
+
+    // Tool still returns success — the error is handled in the background
+    expect(result).toMatchObject({ status: "compaction_requested" });
+
+    // Let the rejection propagate through the microtask queue
+    await vi.waitFor(() => {
+      expect(mockTriggerCompaction).toHaveBeenCalledOnce();
+    });
   });
 
-  // (b) context_threshold guard when usage < 70%
-  it("rejects with context_threshold guard when contextUsage is below MIN_CONTEXT_THRESHOLD (70%)", async () => {
-    const tool = createRequestCompactionTool(buildOpts({ getContextUsage: () => 0.5 }));
-    const result = await tool.execute("call-3", { reason: TURN_REASON });
-    const payload = readJsonPayload(result);
-    expect(payload.status).toBe("rejected");
-    expect(payload.guard).toBe("context_threshold");
-    expect(payload.contextUsage).toBe(50);
-    expect(payload.threshold).toBe(Math.round(_guards.MIN_CONTEXT_THRESHOLD * 100));
-    expect(payload.reason).toMatch(/below the minimum threshold/i);
+  // -------------------------------------------------------------------------
+  // Reason parameter
+  // -------------------------------------------------------------------------
+
+  it("passes through the reason parameter in the result", async () => {
+    const tool = makeTool();
+    const result = await executeTool(tool, { reason: "thermal evacuation complete" });
+
+    expect(result).toMatchObject({
+      status: "compaction_requested",
+      reason: "thermal evacuation complete",
+    });
   });
 
-  it("still rejects at exactly 69% (just below the floor)", async () => {
-    const tool = createRequestCompactionTool(buildOpts({ getContextUsage: () => 0.69 }));
-    const payload = readJsonPayload(await tool.execute("call-3b", { reason: TURN_REASON }));
-    expect(payload.status).toBe("rejected");
-    expect(payload.guard).toBe("context_threshold");
+  it("truncates long reasons to 1024 characters", async () => {
+    const tool = makeTool();
+    const longReason = "x".repeat(2000);
+    const result = await executeTool(tool, { reason: longReason });
+
+    expect((result.reason as string).length).toBe(1024);
   });
 
-  // (b2) context_unknown guard when getContextUsage returns null (Refs karmaterminal/openclaw#222).
-  // The followup-runner path has no live token count; returning null lets the
-  // tool surface that distinctly from the 70% floor instead of lying with `0`.
-  it("rejects with context_unknown guard when getContextUsage returns null", async () => {
-    const tool = createRequestCompactionTool(buildOpts({ getContextUsage: () => null }));
-    const result = await tool.execute("call-3c", { reason: TURN_REASON });
-    const payload = readJsonPayload(result);
-    expect(payload.status).toBe("rejected");
-    expect(payload.guard).toBe("context_unknown");
-    expect(payload.guard).not.toBe("context_threshold");
-    expect(payload.reason).toMatch(/not measurable/i);
-    // Should NOT carry a contextUsage / threshold field — we don't know.
-    expect(payload.contextUsage).toBeUndefined();
-    expect(payload.threshold).toBeUndefined();
+  // -------------------------------------------------------------------------
+  // Collision edge cases (Trigger dedup)
+  // -------------------------------------------------------------------------
+
+  it("two request_compaction calls in same turn — second is rate-limited", async () => {
+    const tool = makeTool();
+
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+
+    // Second call in same turn
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({
+      status: "rejected",
+      guard: "rate_limit",
+    });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
   });
 
-  // (c) enqueue when >=70% no rate limit
-  it("enqueues compaction when contextUsage >= MIN_CONTEXT_THRESHOLD and no rate limit", async () => {
-    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
-    const tool = createRequestCompactionTool(
-      buildOpts({ getContextUsage: () => 0.92, triggerCompaction }),
-    );
-    const payload = readJsonPayload(await tool.execute("call-4", { reason: TURN_REASON }));
-    expect(payload.status).toBe("compaction_requested");
-    expect(payload.contextUsage).toBe(92);
-    expect(payload.reason).toBe(TURN_REASON);
-    expect(payload.note).toMatch(/Compaction has been enqueued/i);
-    // The background call is fire-and-forget; drain microtasks before assertion.
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(triggerCompaction).toHaveBeenCalledTimes(1);
+  it("request_compaction below 70% is rejected", async () => {
+    contextUsage = 0.69;
+    const tool = makeTool();
+    const result = await executeTool(tool);
+
+    expect(result).toMatchObject({
+      status: "rejected",
+      guard: "context_threshold",
+    });
   });
 
-  it("accepts at exactly the 70% threshold (inclusive floor)", async () => {
-    const tool = createRequestCompactionTool(buildOpts({ getContextUsage: () => 0.7 }));
-    const payload = readJsonPayload(await tool.execute("call-4b", { reason: TURN_REASON }));
-    expect(payload.status).toBe("compaction_requested");
+  // -------------------------------------------------------------------------
+  // Guard isolation per session
+  // -------------------------------------------------------------------------
+
+  it("rate limits are per-session, not global", async () => {
+    const toolA = makeTool({ agentSessionKey: "session-a" });
+    const toolB = makeTool({ agentSessionKey: "session-b" });
+
+    // Session A compacts
+    const resultA = await executeTool(toolA);
+    expect(resultA).toMatchObject({ status: "compaction_requested" });
+
+    // Session B can still compact
+    const resultB = await executeTool(toolB);
+    expect(resultB).toMatchObject({ status: "compaction_requested" });
+
+    // Session A is rate-limited
+    const resultA2 = await executeTool(toolA);
+    expect(resultA2).toMatchObject({ status: "rejected", guard: "rate_limit" });
   });
 
-  // (d) rate_limit guard within 5 minutes
-  it("rejects with rate_limit guard when called again within RATE_LIMIT_MS window", async () => {
-    vi.useFakeTimers();
-    const startMs = 1_700_000_000_000;
-    vi.setSystemTime(new Date(startMs));
-    try {
-      const tool = createRequestCompactionTool(buildOpts({ getContextUsage: () => 0.85 }));
-      // First request: accepted.
-      const first = readJsonPayload(await tool.execute("call-5a", { reason: TURN_REASON }));
-      expect(first.status).toBe("compaction_requested");
-      await Promise.resolve();
+  // -------------------------------------------------------------------------
+  // Guard ordering
+  // -------------------------------------------------------------------------
 
-      // Advance less than the rate-limit window — second call should be rejected.
-      vi.setSystemTime(new Date(startMs + _guards.RATE_LIMIT_MS - 1000));
-      const second = readJsonPayload(await tool.execute("call-5b", { reason: TURN_REASON }));
-      expect(second.status).toBe("rejected");
-      expect(second.guard).toBe("rate_limit");
-      expect(second.retryAfterSeconds).toBeGreaterThan(0);
-      expect(second.retryAfterSeconds).toBeLessThanOrEqual(Math.ceil(_guards.RATE_LIMIT_MS / 1000));
-    } finally {
-      vi.useRealTimers();
-    }
+  it("checks context threshold before rate limit", async () => {
+    const tool = makeTool();
+
+    // First: succeed to set rate limit state
+    await executeTool(tool);
+
+    // Now drop context below threshold
+    contextUsage = 0.3;
+
+    // Should get threshold rejection, not rate limit rejection
+    const result = await executeTool(tool);
+    expect(result).toMatchObject({
+      status: "rejected",
+      guard: "context_threshold",
+    });
   });
 
-  it("accepts a new request once the rate-limit window has elapsed", async () => {
-    vi.useFakeTimers();
-    const startMs = 1_700_000_000_000;
-    vi.setSystemTime(new Date(startMs));
-    try {
-      const tool = createRequestCompactionTool(buildOpts({ getContextUsage: () => 0.85 }));
-      readJsonPayload(await tool.execute("call-5c", { reason: TURN_REASON }));
-      await Promise.resolve();
-      await Promise.resolve();
+  // -------------------------------------------------------------------------
+  // _resetGuardState
+  // -------------------------------------------------------------------------
 
-      // The in-flight promise has resolved and `pendingCompactionSessions` cleared.
-      vi.setSystemTime(new Date(startMs + _guards.RATE_LIMIT_MS + 1));
-      const payload = readJsonPayload(await tool.execute("call-5d", { reason: TURN_REASON }));
-      expect(payload.status).toBe("compaction_requested");
-    } finally {
-      vi.useRealTimers();
-    }
+  it("_resetGuardState clears per-session state", async () => {
+    const tool = makeTool();
+
+    await executeTool(tool);
+    _resetGuardState(SESSION_KEY);
+
+    // After reset, should be able to request compaction again
+    const result = await executeTool(tool);
+    expect(result).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
   });
 
-  // (e) [already-pending] short-circuit
-  it("short-circuits with status=already_pending when a compaction is already in-flight", async () => {
-    _setPending(SESSION_KEY);
-    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
-    const tool = createRequestCompactionTool(
-      buildOpts({ getContextUsage: () => 0.95, triggerCompaction }),
-    );
-    const payload = readJsonPayload(await tool.execute("call-6", { reason: TURN_REASON }));
-    expect(payload.status).toBe("already_pending");
-    expect(payload.reason).toMatch(/already in-flight/i);
-    // triggerCompaction must not be re-entered on this call.
-    expect(triggerCompaction).not.toHaveBeenCalled();
-  });
+  it("_resetGuardState with no arg clears all sessions", async () => {
+    const toolA = makeTool({ agentSessionKey: "session-a" });
+    const toolB = makeTool({ agentSessionKey: "session-b" });
 
-  // (f) wire markers: jsonResult payload stays stable for downstream consumers
-  it("emits the documented status markers (compaction_requested / rejected / already_pending)", async () => {
-    // Case: accepted
-    const acceptTool = createRequestCompactionTool(buildOpts({ getContextUsage: () => 0.85 }));
-    const accepted = readJsonPayload(await acceptTool.execute("call-7a", { reason: TURN_REASON }));
-    expect(accepted.status).toBe("compaction_requested");
+    await executeTool(toolA);
+    await executeTool(toolB);
 
-    // Case: below threshold
     _resetGuardState();
-    const belowTool = createRequestCompactionTool(buildOpts({ getContextUsage: () => 0.5 }));
-    const below = readJsonPayload(await belowTool.execute("call-7b", { reason: TURN_REASON }));
-    expect(below.status).toBe("rejected");
-    expect(below.guard).toBe("context_threshold");
 
-    // Case: already pending
-    _resetGuardState();
+    const resultA = await executeTool(toolA);
+    const resultB = await executeTool(toolB);
+    expect(resultA).toMatchObject({ status: "compaction_requested" });
+    expect(resultB).toMatchObject({ status: "compaction_requested" });
+  });
+
+  it("expires volitional compaction counts after the diagnostic TTL", () => {
+    let fakeNow = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+    incrementVolitionalCompactionCount(SESSION_KEY);
+    expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(1);
+
+    fakeNow += _guards.VOLITIONAL_COMPACTION_COUNT_TTL_MS + 1;
+    expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(0);
+
+    vi.restoreAllMocks();
+  });
+
+  // -------------------------------------------------------------------------
+  // Guard: dedup (compaction already pending)
+  // -------------------------------------------------------------------------
+
+  it("returns already_pending when compaction is in-flight", async () => {
     _setPending(SESSION_KEY);
-    const pendingTool = createRequestCompactionTool(buildOpts({ getContextUsage: () => 0.9 }));
-    const pending = readJsonPayload(await pendingTool.execute("call-7c", { reason: TURN_REASON }));
-    expect(pending.status).toBe("already_pending");
+
+    const tool = makeTool();
+    const result = await executeTool(tool);
+
+    expect(result).toMatchObject({ status: "already_pending" });
+    expect(mockTriggerCompaction).not.toHaveBeenCalled();
+  });
+
+  it("dedup is cleared after triggerCompaction resolves", async () => {
+    let resolveCompaction!: () => void;
+    mockTriggerCompaction.mockReturnValue(
+      new Promise<{ ok: boolean; compacted: boolean }>((resolve) => {
+        resolveCompaction = () => resolve({ ok: true, compacted: true });
+      }),
+    );
+
+    const tool = makeTool();
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+
+    // Resolve the background compaction and flush microtasks
+    resolveCompaction();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // After resolution, pending is cleared — a new call (with fresh guard state) works
+    _resetGuardState(SESSION_KEY);
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({ status: "compaction_requested" });
+  });
+
+  // -------------------------------------------------------------------------
+  // Required reason parameter
+  // -------------------------------------------------------------------------
+
+  it("throws ToolInputError when reason is missing", async () => {
+    const tool = makeTool();
+    await expect(tool.execute("call-1", {})).rejects.toThrow(/reason required/);
+  });
+
+  it("throws ToolInputError when reason is empty string", async () => {
+    const tool = makeTool();
+    await expect(tool.execute("call-1", { reason: "  " })).rejects.toThrow(/reason required/);
   });
 });

@@ -66,22 +66,34 @@ struct ExecAllowlistTests {
         #expect(match?.pattern == entry.pattern)
     }
 
-    @Test func `match ignores basename pattern`() {
+    @Test func `match accepts basename pattern for PATH resolved executable`() {
         let entry = ExecAllowlistEntry(pattern: "rg")
         let resolution = Self.homebrewRGResolution()
         let match = ExecAllowlistMatcher.match(entries: [entry], resolution: resolution)
-        #expect(match == nil)
+        #expect(match?.pattern == entry.pattern)
     }
 
-    @Test func `match ignores basename for relative executable`() {
+    @Test func `match accepts basename glob for PATH resolved executable`() {
+        let entry = ExecAllowlistEntry(pattern: "r?")
+        let resolution = Self.homebrewRGResolution()
+        let match = ExecAllowlistMatcher.match(entries: [entry], resolution: resolution)
+        #expect(match?.pattern == entry.pattern)
+    }
+
+    @Test func `match ignores basename for path selected executable`() {
         let entry = ExecAllowlistEntry(pattern: "echo")
-        let resolution = ExecCommandResolution(
+        let relativeResolution = ExecCommandResolution(
             rawExecutable: "./echo",
             resolvedPath: "/tmp/oc-basename/echo",
             executableName: "echo",
             cwd: "/tmp/oc-basename")
-        let match = ExecAllowlistMatcher.match(entries: [entry], resolution: resolution)
-        #expect(match == nil)
+        let absoluteResolution = ExecCommandResolution(
+            rawExecutable: "/tmp/oc-basename/echo",
+            resolvedPath: "/tmp/oc-basename/echo",
+            executableName: "echo",
+            cwd: "/tmp/oc-basename")
+        #expect(ExecAllowlistMatcher.match(entries: [entry], resolution: relativeResolution) == nil)
+        #expect(ExecAllowlistMatcher.match(entries: [entry], resolution: absoluteResolution) == nil)
     }
 
     @Test func `match is case insensitive`() {
@@ -96,6 +108,27 @@ struct ExecAllowlistTests {
         let resolution = Self.homebrewRGResolution()
         let match = ExecAllowlistMatcher.match(entries: [entry], resolution: resolution)
         #expect(match?.pattern == entry.pattern)
+    }
+
+    // Regression: issue #340. Bare "*" must match any command (back-compat with
+    // pre-basename-matching allowlists). The basename-matching branch previously
+    // excluded "*" with no fallback, dropping all matches silently at runtime.
+    @Test func `match treats bare star as match-all`() {
+        let entry = ExecAllowlistEntry(pattern: "*")
+        let pathResolution = Self.homebrewRGResolution()
+        let basenameResolution = ExecCommandResolution(
+            rawExecutable: "rg",
+            resolvedPath: nil,
+            executableName: "rg",
+            cwd: nil)
+        let relativeResolution = ExecCommandResolution(
+            rawExecutable: "./echo",
+            resolvedPath: "/tmp/oc-basename/echo",
+            executableName: "echo",
+            cwd: "/tmp/oc-basename")
+        #expect(ExecAllowlistMatcher.match(entries: [entry], resolution: pathResolution)?.pattern == "*")
+        #expect(ExecAllowlistMatcher.match(entries: [entry], resolution: basenameResolution)?.pattern == "*")
+        #expect(ExecAllowlistMatcher.match(entries: [entry], resolution: relativeResolution)?.pattern == "*")
     }
 
     @Test func `resolve for allowlist splits shell chains`() {

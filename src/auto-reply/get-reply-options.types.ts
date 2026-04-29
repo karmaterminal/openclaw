@@ -3,6 +3,8 @@ import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
 import type { ReplyPayload } from "./reply-payload.js";
 import type { TypingController } from "./reply/typing.js";
 
+export type ContinuationTrigger = "work-wake" | "delegate-return";
+
 export type BlockReplyContext = {
   abortSignal?: AbortSignal;
   timeoutMs?: number;
@@ -45,6 +47,13 @@ export type GetReplyOptions = {
   onTypingCleanup?: () => void;
   onTypingController?: (typing: TypingController) => void;
   isHeartbeat?: boolean;
+  /**
+   * Structured trigger identifying why this turn exists.
+   * Used for wake classification instead of inferring from system-event queue text.
+   * - "work-wake": CONTINUE_WORK timer fired
+   * - "delegate-return": a delegate sub-agent completed and returned results
+   */
+  continuationTrigger?: ContinuationTrigger;
   /** Policy-level typing control for run classes (user/system/internal/heartbeat). */
   typingPolicy?: TypingPolicy;
   /** Force-disable typing indicators for this run (system/internal/cross-channel routes). */
@@ -55,6 +64,11 @@ export type GetReplyOptions = {
   bootstrapContextMode?: "full" | "lightweight";
   /** If true, suppress tool error warning payloads for this run. */
   suppressToolErrorWarnings?: boolean;
+  /**
+   * If true, dispatch skips default tool/progress text messages and expects the
+   * channel to surface progress via its own streaming/edit UX.
+   */
+  suppressDefaultToolProgressMessages?: boolean;
   onPartialReply?: (payload: ReplyPayload) => Promise<void> | void;
   onReasoningStream?: (payload: ReplyPayload) => Promise<void> | void;
   /** Called when a thinking/reasoning block ends. */
@@ -103,6 +117,7 @@ export type GetReplyOptions = {
     command?: string;
     host?: string;
     reason?: string;
+    scope?: "turn" | "session";
     message?: string;
   }) => Promise<void> | void;
   /** Called when command output streams or completes. */

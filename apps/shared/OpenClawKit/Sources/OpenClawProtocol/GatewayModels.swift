@@ -464,6 +464,7 @@ public struct SendParams: Codable, Sendable {
     public let channel: String?
     public let accountid: String?
     public let agentid: String?
+    public let replytoid: String?
     public let threadid: String?
     public let sessionkey: String?
     public let idempotencykey: String
@@ -477,6 +478,7 @@ public struct SendParams: Codable, Sendable {
         channel: String?,
         accountid: String?,
         agentid: String?,
+        replytoid: String?,
         threadid: String?,
         sessionkey: String?,
         idempotencykey: String)
@@ -489,6 +491,7 @@ public struct SendParams: Codable, Sendable {
         self.channel = channel
         self.accountid = accountid
         self.agentid = agentid
+        self.replytoid = replytoid
         self.threadid = threadid
         self.sessionkey = sessionkey
         self.idempotencykey = idempotencykey
@@ -503,6 +506,7 @@ public struct SendParams: Codable, Sendable {
         case channel
         case accountid = "accountId"
         case agentid = "agentId"
+        case replytoid = "replyToId"
         case threadid = "threadId"
         case sessionkey = "sessionKey"
         case idempotencykey = "idempotencyKey"
@@ -590,6 +594,8 @@ public struct AgentParams: Codable, Sendable {
     public let timeout: Int?
     public let besteffortdeliver: Bool?
     public let lane: String?
+    public let cleanupbundlemcponrunend: Bool?
+    public let continuationtrigger: String?
     public let extrasystemprompt: String?
     public let bootstrapcontextmode: AnyCodable?
     public let bootstrapcontextrunkind: AnyCodable?
@@ -597,6 +603,7 @@ public struct AgentParams: Codable, Sendable {
     public let inputprovenance: [String: AnyCodable]?
     public let idempotencykey: String
     public let label: String?
+    public let drainscontinuationdelegatequeue: Bool?
 
     public init(
         message: String,
@@ -621,13 +628,16 @@ public struct AgentParams: Codable, Sendable {
         timeout: Int?,
         besteffortdeliver: Bool?,
         lane: String?,
+        cleanupbundlemcponrunend: Bool?,
+        continuationtrigger: String?,
         extrasystemprompt: String?,
         bootstrapcontextmode: AnyCodable?,
         bootstrapcontextrunkind: AnyCodable?,
         internalevents: [[String: AnyCodable]]?,
         inputprovenance: [String: AnyCodable]?,
         idempotencykey: String,
-        label: String?)
+        label: String?,
+        drainscontinuationdelegatequeue: Bool?)
     {
         self.message = message
         self.agentid = agentid
@@ -651,6 +661,8 @@ public struct AgentParams: Codable, Sendable {
         self.timeout = timeout
         self.besteffortdeliver = besteffortdeliver
         self.lane = lane
+        self.cleanupbundlemcponrunend = cleanupbundlemcponrunend
+        self.continuationtrigger = continuationtrigger
         self.extrasystemprompt = extrasystemprompt
         self.bootstrapcontextmode = bootstrapcontextmode
         self.bootstrapcontextrunkind = bootstrapcontextrunkind
@@ -658,6 +670,7 @@ public struct AgentParams: Codable, Sendable {
         self.inputprovenance = inputprovenance
         self.idempotencykey = idempotencykey
         self.label = label
+        self.drainscontinuationdelegatequeue = drainscontinuationdelegatequeue
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -683,6 +696,8 @@ public struct AgentParams: Codable, Sendable {
         case timeout
         case besteffortdeliver = "bestEffortDeliver"
         case lane
+        case cleanupbundlemcponrunend = "cleanupBundleMcpOnRunEnd"
+        case continuationtrigger = "continuationTrigger"
         case extrasystemprompt = "extraSystemPrompt"
         case bootstrapcontextmode = "bootstrapContextMode"
         case bootstrapcontextrunkind = "bootstrapContextRunKind"
@@ -690,6 +705,7 @@ public struct AgentParams: Codable, Sendable {
         case inputprovenance = "inputProvenance"
         case idempotencykey = "idempotencyKey"
         case label
+        case drainscontinuationdelegatequeue = "drainsContinuationDelegateQueue"
     }
 }
 
@@ -2317,6 +2333,62 @@ public struct TalkConfigResult: Codable, Sendable {
     }
 }
 
+public struct TalkRealtimeSessionParams: Codable, Sendable {
+    public let sessionkey: String?
+    public let provider: String?
+    public let model: String?
+    public let voice: String?
+
+    public init(
+        sessionkey: String?,
+        provider: String?,
+        model: String?,
+        voice: String?)
+    {
+        self.sessionkey = sessionkey
+        self.provider = provider
+        self.model = model
+        self.voice = voice
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionkey = "sessionKey"
+        case provider
+        case model
+        case voice
+    }
+}
+
+public struct TalkRealtimeSessionResult: Codable, Sendable {
+    public let provider: String
+    public let clientsecret: String
+    public let model: String?
+    public let voice: String?
+    public let expiresat: Double?
+
+    public init(
+        provider: String,
+        clientsecret: String,
+        model: String?,
+        voice: String?,
+        expiresat: Double?)
+    {
+        self.provider = provider
+        self.clientsecret = clientsecret
+        self.model = model
+        self.voice = voice
+        self.expiresat = expiresat
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case provider
+        case clientsecret = "clientSecret"
+        case model
+        case voice
+        case expiresat = "expiresAt"
+    }
+}
+
 public struct TalkSpeakParams: Codable, Sendable {
     public let text: String
     public let voiceid: String?
@@ -2481,6 +2553,24 @@ public struct ChannelsStatusResult: Codable, Sendable {
     }
 }
 
+public struct ChannelsStartParams: Codable, Sendable {
+    public let channel: String
+    public let accountid: String?
+
+    public init(
+        channel: String,
+        accountid: String?)
+    {
+        self.channel = channel
+        self.accountid = accountid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case channel
+        case accountid = "accountId"
+    }
+}
+
 public struct ChannelsLogoutParams: Codable, Sendable {
     public let channel: String
     public let accountid: String?
@@ -2528,18 +2618,22 @@ public struct WebLoginStartParams: Codable, Sendable {
 public struct WebLoginWaitParams: Codable, Sendable {
     public let timeoutms: Int?
     public let accountid: String?
+    public let currentqrdataurl: String?
 
     public init(
         timeoutms: Int?,
-        accountid: String?)
+        accountid: String?,
+        currentqrdataurl: String?)
     {
         self.timeoutms = timeoutms
         self.accountid = accountid
+        self.currentqrdataurl = currentqrdataurl
     }
 
     private enum CodingKeys: String, CodingKey {
         case timeoutms = "timeoutMs"
         case accountid = "accountId"
+        case currentqrdataurl = "currentQrDataUrl"
     }
 }
 
