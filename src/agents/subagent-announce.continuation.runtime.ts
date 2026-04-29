@@ -17,4 +17,9 @@
 // in `tsdown.config.ts`.
 export { dispatchToolDelegates } from "../auto-reply/continuation/delegate-dispatch.js";
 export { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
-export { loadContinuationChainState } from "../auto-reply/continuation/state.js";
+export {
+  loadContinuationChainState,
+  persistContinuationChainState,
+} from "../auto-reply/continuation/state.js";
+export { updateSessionStore } from "../config/sessions/store.js";
+export { resolveStorePath, resolveAgentIdFromSessionKey } from "../config/sessions.js";
