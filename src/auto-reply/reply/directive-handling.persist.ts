@@ -7,7 +7,7 @@ import { resolveContextTokensForModel } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { listLegacyRuntimeModelProviderAliases } from "../../agents/model-runtime-aliases.js";
 import { normalizeProviderId, type ModelAliasIndex } from "../../agents/model-selection.js";
-import { resolveSessionStoreEntry, updateSessionStore } from "../../config/sessions/store.js";
+import { updateSessionStore } from "../../config/sessions/store.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";

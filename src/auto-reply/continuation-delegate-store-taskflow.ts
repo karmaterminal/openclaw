@@ -25,7 +25,10 @@ import type { PendingContinuationDelegate } from "./continuation-delegate.types.
 const CONTROLLER_ID = "core/continuation-delegate";
 
 function delegateToStateJson(delegate: PendingContinuationDelegate): JsonValue {
-  const state: Record<string, JsonValue> = { task: delegate.task };
+  const state: Record<string, JsonValue> = {
+    kind: "continuation_delegate",
+    task: delegate.task,
+  };
   if (delegate.delayMs != null) {
     state.delayMs = delegate.delayMs;
   }
