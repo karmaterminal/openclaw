@@ -1,6 +1,10 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import {
+  classifyCompactionReason,
+  isCompactionSkipCode,
+} from "../pi-embedded-runner/compact-reasons.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, ToolInputError } from "./common.js";
 
@@ -144,9 +148,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       // ----- Guard 1: Context threshold -----
       const contextUsage = opts.getContextUsage();
       if (contextUsage === null) {
-        log.debug(
-          `[request_compaction:context-unknown] session=${sessionKey}`,
-        );
+        log.debug(`[request_compaction:context-unknown] session=${sessionKey}`);
         return jsonResult({
           status: "rejected",
           guard: "context_threshold",
@@ -206,11 +208,25 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           (result) => {
             if (result.ok && result.compacted) {
               incrementVolitionalCompactionCount(sessionKey);
+              return;
             }
+            const code = classifyCompactionReason(result.reason);
+            const reason = result.reason ?? "";
+            if (result.ok && isCompactionSkipCode(code)) {
+              log.info(
+                `[request_compaction:resolved-skip] session=${sessionKey} code=${code} reason=${reason}`,
+              );
+              return;
+            }
+            log.warn(
+              `[request_compaction:resolved-failure] session=${sessionKey} code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
+            );
           },
           (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            const code = classifyCompactionReason(message);
             log.error(
-              `[request_compaction:background-error] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+              `[request_compaction:background-error] session=${sessionKey} code=${code} error=${message}`,
             );
           },
         )
