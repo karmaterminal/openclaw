@@ -46,7 +46,6 @@ import {
   cancelPendingDelegates,
   clearDelayedContinuationReservations,
   consumePendingDelegates,
-  consumePendingWorkRequest,
   consumeStagedPostCompactionDelegates,
   highestDelayedContinuationReservationHop,
   pendingDelegateCount,
@@ -1543,6 +1542,7 @@ export async function runReplyAgent(params: {
       fallbackModel,
       fallbackAttempts,
       directlySentBlockKeys,
+      continueWorkRequest,
     } = runOutcome;
     let { didLogHeartbeatStrip, autoCompactionCount } = runOutcome;
 
@@ -1586,7 +1586,6 @@ export async function runReplyAgent(params: {
     }
 
     // --- Continuation signal extraction (RFC §3.1) ---
-    const continueWorkRequest = sessionKey ? consumePendingWorkRequest(sessionKey) : undefined;
     const continuationExtraction = extractContinuationSignal({
       payloads: payloadArray,
       continueWorkRequest: continueWorkRequest
@@ -2900,7 +2899,7 @@ export async function runReplyAgent(params: {
       const { dispatchToolDelegates, loadContinuationChainState } =
         await import("../continuation/lazy.runtime.js");
       const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
-      await dispatchToolDelegates({
+      const dispatchResult = await dispatchToolDelegates({
         sessionKey,
         chainState: dispatchChainState,
         ctx: {
@@ -2912,25 +2911,13 @@ export async function runReplyAgent(params: {
         },
         maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
       });
-    }
-
-    // --- Chain state write-back (RFC §3.3) ---
-    // Persist chain metadata to session entry after scheduling/dispatch.
-    if (
-      (effectiveContinuationSignal || hasQueuedDelegateWork) &&
-      sessionKey &&
-      activeSessionEntry
-    ) {
-      const { loadContinuationChainState, persistContinuationChainState } =
-        await import("../continuation/lazy.runtime.js");
-      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
-      const nextState = loadContinuationChainState(activeSessionEntry, turnTokens);
-      persistContinuationChainState({
-        sessionEntry: activeSessionEntry,
-        count: nextState.currentChainCount,
-        startedAt: nextState.chainStartedAt,
-        tokens: nextState.accumulatedChainTokens,
-      });
+      if (activeSessionEntry && (dispatchResult.dispatched > 0 || dispatchResult.rejected > 0)) {
+        await persistContinuationChainState({
+          count: dispatchResult.chainState.currentChainCount,
+          startedAt: dispatchResult.chainState.chainStartedAt,
+          tokens: dispatchResult.chainState.accumulatedChainTokens,
+        });
+      }
     }
 
     if (finalPayloads.length === 0 && effectiveContinuationSignal) {

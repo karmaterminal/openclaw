@@ -44,7 +44,7 @@ function clearHedgeTimer(sessionKey: string): void {
 function armHedgeTimer(
   sessionKey: string,
   fireAt: number,
-  params: { chainState: ChainState; ctx: DelegateDispatchContext; maxChainLength: number },
+  params: { getChainState: () => ChainState; ctx: DelegateDispatchContext; maxChainLength: number },
 ): void {
   clearHedgeTimer(sessionKey);
   const fireIn = Math.max(0, fireAt - Date.now());
@@ -60,7 +60,12 @@ function armHedgeTimer(
     // alive past its useful lifetime. openclaw#189.
     unregisterContinuationTimerHandle(sessionKey, handle);
     log.info(`[continuation:delegate-hedge-fired] session=${sessionKey}`);
-    void dispatchToolDelegates({ sessionKey, ...params }).catch((err) => {
+    void dispatchToolDelegates({
+      sessionKey,
+      chainState: params.getChainState(),
+      ctx: params.ctx,
+      maxChainLength: params.maxChainLength,
+    }).catch((err) => {
       // Warn (not info): per-delegate errors inside dispatchToolDelegates
       // are logged at info by the dispatcher itself; reaching this outer
       // catch means dispatcher-level failure (TaskFlow store error on
@@ -106,27 +111,23 @@ export async function dispatchToolDelegates(params: {
   chainState: ChainState;
   ctx: DelegateDispatchContext;
   maxChainLength: number;
-}): Promise<{ dispatched: number; rejected: number }> {
+}): Promise<{ dispatched: number; rejected: number; chainState: ChainState }> {
   const { sessionKey, chainState, ctx } = params;
   const config = resolveContinuationRuntimeConfig();
   const toolDelegates = consumePendingDelegates(sessionKey);
 
-  // Arm (or re-arm) a hedge timer for any unmatured queued delegates so they
-  // still fire in fully-quiet channels where no further response-finalize
-  // arrives. The hedge re-invokes this function; idempotent per sessionKey.
-  const soonestUnmaturedDueAt = peekSoonestUnmaturedDelegateDueAt(sessionKey);
-  if (soonestUnmaturedDueAt !== undefined) {
-    armHedgeTimer(sessionKey, soonestUnmaturedDueAt, {
-      chainState: params.chainState,
-      ctx: params.ctx,
-      maxChainLength: params.maxChainLength,
-    });
-  } else {
-    clearHedgeTimer(sessionKey);
-  }
-
   if (toolDelegates.length === 0) {
-    return { dispatched: 0, rejected: 0 };
+    const soonestUnmaturedDueAt = peekSoonestUnmaturedDelegateDueAt(sessionKey);
+    if (soonestUnmaturedDueAt !== undefined) {
+      armHedgeTimer(sessionKey, soonestUnmaturedDueAt, {
+        getChainState: () => chainState,
+        ctx: params.ctx,
+        maxChainLength: params.maxChainLength,
+      });
+    } else {
+      clearHedgeTimer(sessionKey);
+    }
+    return { dispatched: 0, rejected: 0, chainState };
   }
 
   log.info(
@@ -231,7 +232,27 @@ export async function dispatchToolDelegates(params: {
     }
   }
 
-  return { dispatched, rejected };
+  const finalChainState = {
+    currentChainCount,
+    chainStartedAt: chainState.chainStartedAt,
+    accumulatedChainTokens: accumulatedTokens,
+  };
+
+  // Arm (or re-arm) a hedge timer for any still-unmatured queued delegates after
+  // this dispatch pass has advanced local chain state. Capturing the initial
+  // params.chainState here under-enforces maxChainLength on the hedge path.
+  const soonestUnmaturedDueAt = peekSoonestUnmaturedDelegateDueAt(sessionKey);
+  if (soonestUnmaturedDueAt !== undefined) {
+    armHedgeTimer(sessionKey, soonestUnmaturedDueAt, {
+      getChainState: () => finalChainState,
+      ctx: params.ctx,
+      maxChainLength: params.maxChainLength,
+    });
+  } else {
+    clearHedgeTimer(sessionKey);
+  }
+
+  return { dispatched, rejected, chainState: finalChainState };
 }
 
 // ---------------------------------------------------------------------------

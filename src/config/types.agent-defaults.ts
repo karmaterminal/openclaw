@@ -420,6 +420,8 @@ export type AgentDefaultsConfig = {
     costCapTokens?: number;
     /** Maximum number of continue_delegate tool calls per agent turn (default: 5). */
     maxDelegatesPerTurn?: number;
+    /** Deprecated no-op retained temporarily for legacy configs during TaskFlow migration. */
+    taskFlowDelegates?: boolean;
     /**
      * Context-pressure awareness threshold (exclusive (0.0, 1.0]). When the session's token
      * usage exceeds this fraction of the context window, a [system:context-pressure]

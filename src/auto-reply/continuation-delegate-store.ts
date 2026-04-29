@@ -29,7 +29,6 @@ export {
   cancelPendingDelegates,
   clearDelayedContinuationReservations,
   consumePendingDelegates,
-  consumePendingWorkRequest,
   delayedContinuationReservationCount,
   enqueuePendingDelegate,
   highestDelayedContinuationReservationHop,
@@ -37,7 +36,6 @@ export {
   pendingDelegateCount,
   removeDelayedContinuationReservation,
   resetDelegateStoreForTests,
-  setPendingWorkRequest,
   stagedPostCompactionDelegateCount,
   takeDelayedContinuationReservation,
 } from "./continuation/delegate-store.js";

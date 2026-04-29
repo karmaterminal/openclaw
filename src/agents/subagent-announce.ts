@@ -155,7 +155,7 @@ type ContinuationDispatchModule = {
     chainState: ContinuationChainState;
     ctx: ContinuationDispatchContext;
     maxChainLength: number;
-  }) => Promise<{ dispatched: number; rejected: number }>;
+  }) => Promise<{ dispatched: number; rejected: number; chainState: ContinuationChainState }>;
 };
 
 type ContinuationConfigModule = {
@@ -229,7 +229,7 @@ async function drainChildContinuationQueue(params: {
       | ContinuationChainSource
       | undefined;
     const dispatchConfig = resolveContinuationRuntimeConfig(cfg);
-    await dispatchToolDelegates({
+    const dispatchResult = await dispatchToolDelegates({
       sessionKey: params.childSessionKey,
       chainState: loadContinuationChainState(childEntry),
       ctx: {
@@ -241,6 +241,19 @@ async function drainChildContinuationQueue(params: {
       },
       maxChainLength: dispatchConfig.maxChainLength,
     });
+    if (dispatchResult.dispatched > 0 || dispatchResult.rejected > 0) {
+      const childAgentId = resolveAgentIdFromSessionKey(params.childSessionKey);
+      const childStorePath = resolveStorePath(cfg?.session?.store, { agentId: childAgentId });
+      await updateSessionStore(childStorePath, (store) => {
+        const childSessionEntry = store[params.childSessionKey];
+        if (childSessionEntry) {
+          childSessionEntry.continuationChainCount = dispatchResult.chainState.currentChainCount;
+          childSessionEntry.continuationChainStartedAt = dispatchResult.chainState.chainStartedAt;
+          childSessionEntry.continuationChainTokens =
+            dispatchResult.chainState.accumulatedChainTokens;
+        }
+      });
+    }
   } catch (err) {
     defaultRuntime.error?.(
       `Subagent continuation delegate drain failed for ${params.childSessionKey}: ${String(err)}`,

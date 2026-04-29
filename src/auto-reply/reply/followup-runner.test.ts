@@ -377,7 +377,17 @@ beforeEach(() => {
   resolveProviderFollowupFallbackRouteMock.mockReset();
   resolveProviderFollowupFallbackRouteMock.mockReturnValue(undefined);
   dispatchToolDelegatesMock.mockReset();
-  dispatchToolDelegatesMock.mockResolvedValue(undefined);
+  dispatchToolDelegatesMock.mockImplementation((params) =>
+    Promise.resolve({
+      dispatched: 0,
+      rejected: 0,
+      chainState: params?.chainState ?? {
+        currentChainCount: 0,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+      },
+    }),
+  );
   const resolveQueuedReplyExecutionConfig = resolveQueuedReplyExecutionConfigActual;
   if (!resolveQueuedReplyExecutionConfig) {
     throw new Error("resolveQueuedReplyExecutionConfig mock not initialized");

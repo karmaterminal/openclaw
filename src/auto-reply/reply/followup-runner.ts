@@ -14,7 +14,7 @@ import {
   buildAgentRuntimeDeliveryPlan,
   buildAgentRuntimeOutcomePlan,
 } from "../../agents/runtime-plan/build.js";
-import type { SessionEntry } from "../../config/sessions.js";
+import { updateSessionStore, type SessionEntry } from "../../config/sessions.js";
 import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
@@ -447,7 +447,7 @@ export function createFollowupRunner(params: {
         const [
           { dispatchToolDelegates },
           { resolveContinuationRuntimeConfig },
-          { loadContinuationChainState },
+          { loadContinuationChainState, persistContinuationChainState },
         ] = await Promise.all([
           import("../continuation/delegate-dispatch.js"),
           import("../continuation/config.js"),
@@ -457,7 +457,7 @@ export function createFollowupRunner(params: {
         const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
         const tailEntry = (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? sessionEntry;
         const chainState = loadContinuationChainState(tailEntry, turnTokens);
-        await dispatchToolDelegates({
+        const dispatchResult = await dispatchToolDelegates({
           sessionKey,
           chainState,
           ctx: {
@@ -469,6 +469,31 @@ export function createFollowupRunner(params: {
           },
           maxChainLength: resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
         });
+        if (dispatchResult.dispatched > 0 || dispatchResult.rejected > 0) {
+          persistContinuationChainState({
+            sessionEntry: tailEntry,
+            count: dispatchResult.chainState.currentChainCount,
+            startedAt: dispatchResult.chainState.chainStartedAt,
+            tokens: dispatchResult.chainState.accumulatedChainTokens,
+          });
+          if (storePath) {
+            try {
+              await updateSessionStore(storePath, (store) => {
+                const storeEntry = store[sessionKey];
+                if (storeEntry) {
+                  storeEntry.continuationChainCount = dispatchResult.chainState.currentChainCount;
+                  storeEntry.continuationChainStartedAt = dispatchResult.chainState.chainStartedAt;
+                  storeEntry.continuationChainTokens =
+                    dispatchResult.chainState.accumulatedChainTokens;
+                }
+              });
+            } catch (err) {
+              defaultRuntime.log(
+                `Failed to persist followup continuation chain state for ${sessionKey}: ${String(err)}`,
+              );
+            }
+          }
+        }
       }
 
       const usage = runResult.meta?.agentMeta?.usage;

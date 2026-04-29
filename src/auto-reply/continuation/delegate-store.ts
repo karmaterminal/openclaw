@@ -402,32 +402,9 @@ export function removeDelayedContinuationReservation(
 }
 
 // ---------------------------------------------------------------------------
-// Continue-work request store (DELIBERATELY VOLATILE)
-//
-// Same-turn ephemeral: continue_work tool writes during execution, runner
-// consumes in same turn's post-response. Never live across turn boundaries
-// or gateway restarts. TaskFlow is not needed here.
-// ---------------------------------------------------------------------------
-
-const pendingWorkRequests = new Map<string, ContinueWorkRequest>();
-
-export function setPendingWorkRequest(sessionKey: string, request: ContinueWorkRequest): void {
-  pendingWorkRequests.set(sessionKey, request);
-}
-
-export function consumePendingWorkRequest(sessionKey: string): ContinueWorkRequest | undefined {
-  const request = pendingWorkRequests.get(sessionKey);
-  if (request) {
-    pendingWorkRequests.delete(sessionKey);
-  }
-  return request;
-}
-
-// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
 export function resetDelegateStoreForTests(): void {
   delayedReservations.clear();
-  pendingWorkRequests.clear();
 }
