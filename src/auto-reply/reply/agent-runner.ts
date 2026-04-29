@@ -46,7 +46,6 @@ import {
   cancelPendingDelegates,
   clearDelayedContinuationReservations,
   consumePendingDelegates,
-  consumePendingWorkRequest,
   consumeStagedPostCompactionDelegates,
   highestDelayedContinuationReservationHop,
   pendingDelegateCount,
@@ -56,6 +55,7 @@ import {
 } from "../continuation-delegate-store.js";
 import { scheduleWorkContinuation } from "../continuation/scheduler.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
+import type { ChainState } from "../continuation/types.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
@@ -1586,7 +1586,13 @@ export async function runReplyAgent(params: {
     }
 
     // --- Continuation signal extraction (RFC §3.1) ---
-    const continueWorkRequest = sessionKey ? consumePendingWorkRequest(sessionKey) : undefined;
+    // r3162427218: tool-based `continue_work` flows via the closure
+    // `requestContinuation` callback in agent-runner-execution.ts:1166,
+    // captured into `attemptContinueWorkRequest` and surfaced on the
+    // run outcome. Read it directly from `runOutcome.continueWorkRequest`
+    // rather than from the orphaned `pendingWorkRequests` Map (which had
+    // zero `setPendingWorkRequest` writers in the codebase).
+    const continueWorkRequest = runOutcome.continueWorkRequest;
     const continuationExtraction = extractContinuationSignal({
       payloads: payloadArray,
       continueWorkRequest: continueWorkRequest
@@ -2895,12 +2901,15 @@ export async function runReplyAgent(params: {
     }
 
     // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
+    let toolDelegateDispatchResult:
+      | { dispatched: number; rejected: number; chainState: ChainState }
+      | undefined;
     if (continuationFeatureEnabled && sessionKey) {
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
       const { dispatchToolDelegates, loadContinuationChainState } =
         await import("../continuation/lazy.runtime.js");
       const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
-      await dispatchToolDelegates({
+      toolDelegateDispatchResult = await dispatchToolDelegates({
         sessionKey,
         chainState: dispatchChainState,
         ctx: {
@@ -2911,11 +2920,20 @@ export async function runReplyAgent(params: {
           agentThreadId: followupRun.originatingThreadId ?? undefined,
         },
         maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
+        // r3163899581: pass a fresh-loader so the hedge timer re-loads the
+        // chain state from the persisted session entry at fire time rather
+        // than re-using the snapshot captured at arm time.
+        loadFreshChainState: () => loadContinuationChainState(activeSessionEntry, 0),
       });
     }
 
     // --- Chain state write-back (RFC §3.3) ---
     // Persist chain metadata to session entry after scheduling/dispatch.
+    // r3161613184: when delegates were dispatched this turn, persist the
+    // *advanced* chain state returned by `dispatchToolDelegates` rather
+    // than re-loading the unchanged pre-dispatch state. Without this the
+    // counter never advances across hops and `maxChainLength` enforcement
+    // breaks.
     if (
       (effectiveContinuationSignal || hasQueuedDelegateWork) &&
       sessionKey &&
@@ -2924,7 +2942,9 @@ export async function runReplyAgent(params: {
       const { loadContinuationChainState, persistContinuationChainState } =
         await import("../continuation/lazy.runtime.js");
       const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
-      const nextState = loadContinuationChainState(activeSessionEntry, turnTokens);
+      const nextState =
+        toolDelegateDispatchResult?.chainState ??
+        loadContinuationChainState(activeSessionEntry, turnTokens);
       persistContinuationChainState({
         sessionEntry: activeSessionEntry,
         count: nextState.currentChainCount,

@@ -44,7 +44,12 @@ function clearHedgeTimer(sessionKey: string): void {
 function armHedgeTimer(
   sessionKey: string,
   fireAt: number,
-  params: { chainState: ChainState; ctx: DelegateDispatchContext; maxChainLength: number },
+  params: {
+    chainState: ChainState;
+    ctx: DelegateDispatchContext;
+    maxChainLength: number;
+    loadFreshChainState?: () => ChainState;
+  },
 ): void {
   clearHedgeTimer(sessionKey);
   const fireIn = Math.max(0, fireAt - Date.now());
@@ -60,7 +65,22 @@ function armHedgeTimer(
     // alive past its useful lifetime. openclaw#189.
     unregisterContinuationTimerHandle(sessionKey, handle);
     log.info(`[continuation:delegate-hedge-fired] session=${sessionKey}`);
-    void dispatchToolDelegates({ sessionKey, ...params }).catch((err) => {
+    // r3163899581: re-load chain state at fire time when the caller
+    // supplies a fresh-loader. The originally-captured `params.chainState`
+    // is a snapshot from when the hedge was armed and may understate
+    // currentChainCount if other dispatches advanced it in between. The
+    // hedge must enforce the chain-budget against the latest persisted
+    // state, not the snapshot.
+    const refreshedChainState = params.loadFreshChainState
+      ? params.loadFreshChainState()
+      : params.chainState;
+    void dispatchToolDelegates({
+      sessionKey,
+      chainState: refreshedChainState,
+      ctx: params.ctx,
+      maxChainLength: params.maxChainLength,
+      loadFreshChainState: params.loadFreshChainState,
+    }).catch((err) => {
       // Warn (not info): per-delegate errors inside dispatchToolDelegates
       // are logged at info by the dispatcher itself; reaching this outer
       // catch means dispatcher-level failure (TaskFlow store error on
@@ -106,7 +126,15 @@ export async function dispatchToolDelegates(params: {
   chainState: ChainState;
   ctx: DelegateDispatchContext;
   maxChainLength: number;
-}): Promise<{ dispatched: number; rejected: number }> {
+  /**
+   * Optional callback the hedge timer invokes to re-load the chain state
+   * from the persisted session entry at fire time, so the re-dispatch sees
+   * any chain-count advancement that happened while the timer was pending.
+   * Without this the hedge captures a stale `chainState` snapshot and may
+   * dispatch past `maxChainLength`. r3163899581.
+   */
+  loadFreshChainState?: () => ChainState;
+}): Promise<{ dispatched: number; rejected: number; chainState: ChainState }> {
   const { sessionKey, chainState, ctx } = params;
   const config = resolveContinuationRuntimeConfig();
   const toolDelegates = consumePendingDelegates(sessionKey);
@@ -120,13 +148,14 @@ export async function dispatchToolDelegates(params: {
       chainState: params.chainState,
       ctx: params.ctx,
       maxChainLength: params.maxChainLength,
+      loadFreshChainState: params.loadFreshChainState,
     });
   } else {
     clearHedgeTimer(sessionKey);
   }
 
   if (toolDelegates.length === 0) {
-    return { dispatched: 0, rejected: 0 };
+    return { dispatched: 0, rejected: 0, chainState };
   }
 
   log.info(
@@ -231,7 +260,20 @@ export async function dispatchToolDelegates(params: {
     }
   }
 
-  return { dispatched, rejected };
+  return {
+    dispatched,
+    rejected,
+    // r3161613184 / r3163899586: return the advanced chain state so callers
+    // (agent-runner, followup-runner) can persist `currentChainCount`,
+    // `chainStartedAt`, and `accumulatedChainTokens` after dispatch. Without
+    // this the persisted counter never advances across hops and the
+    // maxChainLength budget enforcement breaks.
+    chainState: {
+      currentChainCount,
+      chainStartedAt: chainState.chainStartedAt,
+      accumulatedChainTokens: accumulatedTokens,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

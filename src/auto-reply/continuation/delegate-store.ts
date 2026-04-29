@@ -21,7 +21,6 @@ import {
   listTaskFlowsForOwnerKey,
 } from "../../tasks/task-flow-runtime-internal.js";
 import type {
-  ContinueWorkRequest,
   DelayedContinuationReservation,
   PendingContinuationDelegate,
   StagedPostCompactionDelegate,
@@ -402,26 +401,16 @@ export function removeDelayedContinuationReservation(
 }
 
 // ---------------------------------------------------------------------------
-// Continue-work request store (DELIBERATELY VOLATILE)
+// Continue-work request store — REMOVED
 //
-// Same-turn ephemeral: continue_work tool writes during execution, runner
-// consumes in same turn's post-response. Never live across turn boundaries
-// or gateway restarts. TaskFlow is not needed here.
+// r3162427218: tool-based `continue_work` flows via the closure
+// `requestContinuation` callback in agent-runner-execution.ts:1166,
+// captured into `attemptContinueWorkRequest` and surfaced on the run
+// outcome. The Map-based store had zero `setPendingWorkRequest`
+// writers in the codebase; the runner read was orphaned. Removing
+// the dead surface prevents a future re-wire from creating dual
+// state with the closure path.
 // ---------------------------------------------------------------------------
-
-const pendingWorkRequests = new Map<string, ContinueWorkRequest>();
-
-export function setPendingWorkRequest(sessionKey: string, request: ContinueWorkRequest): void {
-  pendingWorkRequests.set(sessionKey, request);
-}
-
-export function consumePendingWorkRequest(sessionKey: string): ContinueWorkRequest | undefined {
-  const request = pendingWorkRequests.get(sessionKey);
-  if (request) {
-    pendingWorkRequests.delete(sessionKey);
-  }
-  return request;
-}
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -429,5 +418,4 @@ export function consumePendingWorkRequest(sessionKey: string): ContinueWorkReque
 
 export function resetDelegateStoreForTests(): void {
   delayedReservations.clear();
-  pendingWorkRequests.clear();
 }
