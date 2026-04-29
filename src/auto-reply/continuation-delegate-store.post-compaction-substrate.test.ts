@@ -41,6 +41,7 @@ describe("PR #423 gate 2 :: post-compaction substrate :: tool-stage and runner-c
     expect(runnerCount(sessionKey)).toBe(0);
     toolStage(sessionKey, {
       task: "post-compaction probe",
+      createdAt: Date.now(),
       silent: true,
       silentWake: true,
     });
@@ -58,8 +59,8 @@ describe("PR #423 gate 2 :: post-compaction substrate :: tool-stage and runner-c
   });
 
   it("post-compaction delegate is not stranded on an alternate substrate", () => {
-    toolStage(sessionKey, { task: "stranding A", silent: false, silentWake: false });
-    toolStage(sessionKey, { task: "stranding B", silent: true, silentWake: false });
+    toolStage(sessionKey, { task: "stranding A", createdAt: Date.now(), silent: false, silentWake: false });
+    toolStage(sessionKey, { task: "stranding B", createdAt: Date.now(), silent: true, silentWake: false });
 
     const drained = runnerConsume(sessionKey);
     expect(drained.map((d) => d.task)).toEqual(["stranding A", "stranding B"]);

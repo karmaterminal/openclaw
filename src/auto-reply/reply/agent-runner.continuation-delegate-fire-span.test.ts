@@ -397,7 +397,8 @@ describe("runReplyAgent :: continuation.delegate.fire span (Slice 2 chunk 5b)", 
       enqueuePendingDelegate(sessionKey, {
         task: "poll PR #999 status",
         delayMs: 1_000,
-        mode: "normal",
+        silent: false,
+        silentWake: false,
       });
       return {
         payloads: [{ text: "Spawning a delegate to handle this." }],
