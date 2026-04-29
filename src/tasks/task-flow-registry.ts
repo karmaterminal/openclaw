@@ -373,6 +373,11 @@ export function createManagedTaskFlow(params: {
   createdAt?: number;
   updatedAt?: number;
   endedAt?: number | null;
+  // F-37-015: chainId must be threaded through the typed managed-flow helper
+  // so flow_runs.chain_id is populated on the common managed-flow create path,
+  // not just when callers bypass via createFlowRecord directly.
+  // (codex P2 r3158438632)
+  chainId?: string | null;
 }): TaskFlowRecord {
   return createFlowRecord({
     ...params,
