@@ -918,9 +918,15 @@ The runtime-read-at-use-time invariant SHOULD extend to the remaining specificat
 
 ### 6.6 Chain-correlation via diagnostics-otel
 
-**Specification target (future-state design).** Today, `extensions/diagnostics-otel/src/service.ts` and `src/infra/diagnostic-events.ts` emit only generic `openclaw.*` spans; the `continuation.*` span schema below is the **specification target** that closes openclaw#334's doc-debt gap on chain correlation. Runtime instrumentation to emit these spans is follow-up work, not implemented behavior.
+**Implementation status (post-#334 Slice 3, shipped).** The `continuation.*` span schema below is **shipped end-to-end**. Span vocabulary, emission infrastructure, and OTel adapter wiring are all live in canonical2:
 
-When runtime instrumentation lands, `extensions/diagnostics-otel` SHALL annotate continuation lifecycle with OpenTelemetry spans so a delegate chain is reconstructable as a single trace tree across compactions and gateway restarts, by specifying the span schema, propagation rules, and per-tier emission contract that the existing `[continuation:*]` log anchors (§6.1) imply but do not document.
+- **Tracer facade** — `src/infra/continuation-tracer.ts` defines the tracer abstraction and span vocabulary (`continuation.work`, `continuation.work.fire`, `continuation.delegate.dispatch`, `continuation.delegate.fire`, `continuation.queue.enqueue`, `continuation.queue.drain`, `continuation.compaction.released`, `continuation.disabled`).
+- **Emission call sites** — `src/auto-reply/reply/agent-runner.ts` and `src/auto-reply/reply/session-system-events.ts` invoke the tracer at the lifecycle points tagged `// #334 Slice N chunk M` (Slice 2, PRs #378/#382/#383/#384/#385/#388/#391/#395/#397/#400).
+- **OTel adapter wiring** — `extensions/diagnostics-otel/src/service.ts:486` calls `setContinuationTracer(createContinuationOtelTracerAdapter())` when `tracesEnabled`, installing the OTel-backed concrete tracer (Slice 3). The adapter implementation lives at `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts`. Production now emits `continuation.*` spans through the OTel SDK alongside the existing `openclaw.*` spans, and resets to the no-op default on `stopStarted()`.
+
+The `[continuation:*]` log anchors of §6.1 remain available as the always-on substrate; the OTel spans are the structured-trace surface for chain reconstruction.
+
+The schema below documents the **shipped contract** that emitters and downstream consumers must agree on, not a future-state aspiration. New span kinds or attribute additions land via amended emitter call sites + adapter mappings; removals require a deprecation cycle to avoid breaking consumers reading historical traces.
 
 **Span schema.** The continuation lifecycle emits the following spans:
 
