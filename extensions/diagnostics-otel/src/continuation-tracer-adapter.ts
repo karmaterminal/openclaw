@@ -80,7 +80,9 @@ function continuationStatusToOtel(status: ContinuationSpanStatus): SpanStatusCod
 function spanAttributesToOtel(
   attrs: ContinuationSpanAttributes | undefined,
 ): OtelAttributes | undefined {
-  if (!attrs) return undefined;
+  if (!attrs) {
+    return undefined;
+  }
   // The continuation `SpanAttributeValue` superset (string | number |
   // boolean | readonly arrays thereof) is a strict subset of OTEL's
   // `AttributeValue` (which also accepts mutable arrays). Cast through
@@ -98,7 +100,9 @@ function wrapOtelSpan(otelSpan: OtelSpan): ContinuationSpan {
   return {
     setAttributes(attrs: ContinuationSpanAttributes): void {
       const mapped = spanAttributesToOtel(attrs);
-      if (mapped) otelSpan.setAttributes(mapped);
+      if (mapped) {
+        otelSpan.setAttributes(mapped);
+      }
     },
     setStatus(status: ContinuationSpanStatus, message?: string): void {
       otelSpan.setStatus({
@@ -121,7 +125,9 @@ function wrapOtelSpan(otelSpan: OtelSpan): ContinuationSpan {
       //   "End the span. Idempotent: subsequent calls are no-ops."
       // The OTEL SDK's own `Span.end()` is also documented as idempotent
       // in practice but the guard is cheap and contractually-required.
-      if (ended) return;
+      if (ended) {
+        return;
+      }
       ended = true;
       otelSpan.end();
     },
@@ -140,7 +146,9 @@ export function createContinuationOtelTracerAdapter(): ContinuationTracer {
     startSpan(name: string, options?: ContinuationStartSpanOptions): ContinuationSpan {
       const otelOpts: OtelSpanOptions = {};
       const mappedAttrs = spanAttributesToOtel(options?.attributes);
-      if (mappedAttrs) otelOpts.attributes = mappedAttrs;
+      if (mappedAttrs) {
+        otelOpts.attributes = mappedAttrs;
+      }
 
       // Parent-stitch via traceparent when the caller carried one
       // through the continuation hop. This is the load-bearing

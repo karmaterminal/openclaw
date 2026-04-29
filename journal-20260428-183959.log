@@ -1,0 +1,236 @@
+Journal: journal-20260428-183959.log
+=== pnpm install start ===
+Scope: all 114 workspace projects
+Lockfile is up to date, resolution step is skipped
+Packages: +1270
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 0, reused 1, downloaded 0, added 0
+Progress: resolved 0, reused 1225, downloaded 0, added 149
+Progress: resolved 0, reused 1225, downloaded 0, added 617
+Progress: resolved 0, reused 1225, downloaded 0, added 1229
+Progress: resolved 0, reused 1225, downloaded 0, added 1270, done
+
+. preinstall$ node scripts/preinstall-package-manager-warning.mjs
+. preinstall: Done
+. postinstall$ node scripts/postinstall-bundled-plugins.mjs
+. postinstall: Done
+. prepare$ command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath git-hooks || exit 0
+. prepare: Done
+╭ Warning ─────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│   Ignored build scripts: @discordjs/opus@0.10.0.                             │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+│   to run scripts.                                                            │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Done in 5.4s using pnpm v10.33.0
+=== pnpm install exit: 0 ===
+=== continuation-tracer-adapter.test.ts ===
+
+> openclaw@2026.4.24 test /tmp/silas-334-slice3
+> node scripts/test-projects.mjs extensions/diagnostics-otel/src/continuation-tracer-adapter.test.ts
+
+[test] starting test/vitest/vitest.extension-misc.config.ts
+
+ RUN  v4.1.5 /tmp/silas-334-slice3
+
+
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Start at  18:43:44
+   Duration  690ms (transform 865ms, setup 353ms, import 108ms, tests 13ms, environment 0ms)
+
+=== service.test.ts ===
+
+> openclaw@2026.4.24 test /tmp/silas-334-slice3
+> node scripts/test-projects.mjs extensions/diagnostics-otel/src/service.test.ts
+
+[test] starting test/vitest/vitest.extension-misc.config.ts
+
+ RUN  v4.1.5 /tmp/silas-334-slice3
+
+
+ Test Files  1 passed (1)
+      Tests  23 passed (23)
+   Start at  18:43:52
+   Duration  554ms (transform 344ms, setup 130ms, import 180ms, tests 63ms, environment 0ms)
+
+=== continuation-tracer.test.ts ===
+
+> openclaw@2026.4.24 test /tmp/silas-334-slice3
+> node scripts/test-projects.mjs src/infra/continuation-tracer.test.ts
+
+[test] starting test/vitest/vitest.infra.config.ts
+
+ RUN  v4.1.5 /tmp/silas-334-slice3
+
+
+ Test Files  1 passed (1)
+      Tests  71 passed (71)
+   Start at  18:43:56
+   Duration  6.03s (transform 4.33s, setup 366ms, import 55ms, tests 5.42s, environment 0ms)
+
+=== system-events.test.ts ===
+./src/infra/system-events.test.ts
+
+> openclaw@2026.4.24 test /tmp/silas-334-slice3
+> node scripts/test-projects.mjs src/infra/system-events.test.ts
+
+[test] starting test/vitest/vitest.infra.config.ts
+
+ RUN  v4.1.5 /tmp/silas-334-slice3
+
+
+ Test Files  1 passed (1)
+      Tests  31 passed (31)
+   Start at  18:44:14
+   Duration  706ms (transform 380ms, setup 99ms, import 402ms, tests 55ms, environment 0ms)
+
+=== check:changed ===
+
+> openclaw@2026.4.24 check:changed /tmp/silas-334-slice3
+> node scripts/check-changed.mjs
+
+node:internal/errors:998
+  const err = new Error(message);
+              ^
+
+Error: Command failed: git diff --name-only origin/main...HEAD
+fatal: origin/main...HEAD: no merge base
+
+    at genericNodeError (node:internal/errors:998:15)
+    at wrappedFn (node:internal/errors:543:14)
+    at checkExecSyncError (node:child_process:925:11)
+    at execFileSync (node:child_process:961:15)
+    at runGitNameOnlyDiff (file:///tmp/silas-334-slice3/scripts/changed-lanes.mjs:202:18)
+    at listChangedPathsFromGit (file:///tmp/silas-334-slice3/scripts/changed-lanes.mjs:187:22)
+    at file:///tmp/silas-334-slice3/scripts/check-changed.mjs:308:11
+    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)
+    at async node:internal/modules/esm/loader:639:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  status: 128,
+  signal: null,
+  output: [ null, '', 'fatal: origin/main...HEAD: no merge base\n' ],
+  pid: 1982621,
+  stdout: '',
+  stderr: 'fatal: origin/main...HEAD: no merge base\n'
+}
+
+Node.js v25.9.0
+ ELIFECYCLE  Command failed with exit code 1.
+=== tsgo lanes ===
+
+> openclaw@2026.4.24 tsgo /tmp/silas-334-slice3
+> pnpm tsgo:core
+
+
+> openclaw@2026.4.24 tsgo:core /tmp/silas-334-slice3
+> node scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo
+
+=== check:test-types + tsgo:extensions ===
+
+> openclaw@2026.4.24 tsgo:extensions /tmp/silas-334-slice3
+> node scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions.tsbuildinfo
+
+
+> openclaw@2026.4.24 check:test-types /tmp/silas-334-slice3
+> pnpm tsgo:test
+
+
+> openclaw@2026.4.24 tsgo:test /tmp/silas-334-slice3
+> pnpm tsgo:core:test && pnpm tsgo:extensions:test
+
+
+> openclaw@2026.4.24 tsgo:core:test /tmp/silas-334-slice3
+> node scripts/run-tsgo.mjs -p tsconfig.core.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core-test.tsbuildinfo
+
+
+> openclaw@2026.4.24 tsgo:extensions:test /tmp/silas-334-slice3
+> node scripts/run-tsgo.mjs -p tsconfig.extensions.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions-test.tsbuildinfo
+
+=== pnpm build ===
+
+> openclaw@2026.4.24 build /tmp/silas-334-slice3
+> node scripts/build-all.mjs
+
+[build-all] canvas:a2ui:bundle
+
+> openclaw@2026.4.24 canvas:a2ui:bundle /tmp/silas-334-slice3
+> node scripts/bundle-a2ui.mjs
+
+A2UI bundle up to date; skipping.
+[build-all] tsdown
+[build-all] runtime-postbuild
+[build-all] build-stamp
+[build-all] build:plugin-sdk:dts
+
+> openclaw@2026.4.24 build:plugin-sdk:dts /tmp/silas-334-slice3
+> tsgo -p tsconfig.plugin-sdk.dts.json
+
+[build-all] write-plugin-sdk-entry-dts
+[build-all] check-plugin-sdk-exports
+OK: All 4 required plugin-sdk exports verified.
+[build-all] canvas-a2ui-copy
+[build-all] copy-hook-metadata
+[copy-hook-metadata] Copied 4 hook metadata files.
+[build-all] copy-export-html-templates
+[copy-export-html-templates] Copied 5 export-html assets.
+[build-all] write-build-info
+[build-all] write-cli-startup-metadata
+[build-all] write-cli-compat
+=== plugin-sdk:api:check ===
+
+> openclaw@2026.4.24 plugin-sdk:api:check /tmp/silas-334-slice3
+> node --import tsx scripts/generate-plugin-sdk-api-baseline.ts --check
+
+OK docs/.generated/plugin-sdk-api-baseline.sha256
+=== diagnostics-otel suite ===
+
+> openclaw@2026.4.24 test /tmp/silas-334-slice3
+> node scripts/test-projects.mjs extensions/diagnostics-otel
+
+[test] starting test/vitest/vitest.extension-misc.config.ts
+
+ RUN  v4.1.5 /tmp/silas-334-slice3
+
+
+ Test Files  2 passed (2)
+      Tests  33 passed (33)
+   Start at  18:48:32
+   Duration  408ms (transform 487ms, setup 263ms, import 115ms, tests 60ms, environment 0ms)
+
+=== commit ===
+[silas/334-slice3-otel-adapter 26bcce7e69] feat(diagnostics-otel,continuation-tracer): wire OTEL adapter into setContinuationTracer (#334 Slice 3, F-37-010)
+ 5 files changed, 446 insertions(+), 1 deletion(-)
+ create mode 100644 extensions/diagnostics-otel/src/continuation-tracer-adapter.test.ts
+ create mode 100644 extensions/diagnostics-otel/src/continuation-tracer-adapter.ts
+Finished in 102ms on 5 files using 16 threads.
+Committed "feat(diagnostics-otel,continuation-tracer): wire OTEL adapter into setContinuationTracer (#334 Slice 3, F-37-010)
+
+Swim-37 surfaced that every continuation.* and heartbeat span emit-call goes
+through noopTracer in production — setContinuationTracer is exposed but never
+called from any production code path. Adds an OTEL adapter and wires it into
+the diagnostics-otel service start/stop lifecycle so the existing emit-helpers
+in agent-runner.ts and session-system-events.ts produce real OTLP traffic.
+
+- new: extensions/diagnostics-otel/src/continuation-tracer-adapter.ts
+- re-export: src/plugin-sdk/diagnostics-otel.ts surface (adds getContinuationTracer)
+- wire: extensions/diagnostics-otel/src/service.ts start/stop
+- tests: adapter unit tests + service start/stop install/uninstall
+
+Closes F-37-010 (continuation-tracer-noop-in-production). Unblocks SWIM-37
+E2.x rows (chain.id propagation, traceparent walks, multi-prince
+cross-correlation) which were pre-blocked at the source." with 5 files
+=== push ===
+remote: 
+remote: Create a pull request for 'silas/334-slice3-otel-adapter' on GitHub by visiting:        
+remote:      https://github.com/karmaterminal/openclaw/pull/new/silas/334-slice3-otel-adapter        
+remote: 
+To https://github.com/karmaterminal/openclaw.git
+ * [new branch]            silas/334-slice3-otel-adapter -> silas/334-slice3-otel-adapter
+branch 'silas/334-slice3-otel-adapter' set up to track 'origin/silas/334-slice3-otel-adapter'.
+=== gh pr create ===
+pull request create failed: GraphQL: Head sha can't be blank, Base sha can't be blank, No commits between cael/325-canonical2 and silas/334-slice3-otel-adapter, Head ref must be a branch, Base ref must be a branch (createPullRequest)
+pull request create failed: GraphQL: Head sha can't be blank, Base sha can't be blank, No commits between cael/325-canonical2 and silas/334-slice3-otel-adapter, Head ref must be a branch, Base ref must be a branch (createPullRequest)
+{"url":"https://api.github.com/repos/karmaterminal/openclaw/pulls/422","id":3599495342,"node_id":"PR_kwDORVuSCM7Wi_Cu","html_url":"https://github.com/karmaterminal/openclaw/pull/422","diff_url":"https://github.com/karmaterminal/openclaw/pull/422.diff","patch_url":"https://github.com/karmaterminal/openclaw/pull/422.patch","issue_url":"https://api.github.com/repos/karmaterminal/openclaw/issues/422","number":422,"state":"open","locked":false,"title":"feat(diagnostics-otel,continuation-tracer): wire OTEL adapter into setContinuationTracer (#334 Slice 3, F-37-010)","user":{"login":"silas-dandelion-cult","id":265395375,"node_id":"U_kgDOD9Gcrw","avatar_url":"https://avatars.githubusercontent.com/u/265395375?v=4","gravatar_id":"","url":"https://api.github.com/users/silas-dandelion-cult","html_url":"https://github.com/silas-dandelion-cult","followers_url":"https://api.github.com/users/silas-dandelion-cult/followers","following_url":"https://api.github.com/users/silas-dandelion-cult/following{/other_user}","gists_url":"https://api.github.com/users/silas-dandelion-cult/gists{/gist_id}","starred_url":"https://api.github.com/users/silas-dandelion-cult/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/silas-dandelion-cult/subscriptions","organizations_url":"https://api.github.com/users/silas-dandelion-cult/orgs","repos_url":"https://api.github.com/users/silas-dandelion-cult/repos","events_url":"https://api.github.com/users/silas-dandelion-cult/events{/privacy}","received_events_url":"https://api.github.com/users/silas-dandelion-cult/received_events","type":"User","user_view_type":"public","site_admin":false},"body":"## Summary\n\n- Wires the no-op `continuation-tracer` shim to the real OTEL SDK that `extensions/diagnostics-otel/src/service.ts` already initializes.\n- Adds `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts` (`createContinuationOtelTracerAdapter()`), uses a dedicated `openclaw.continuation` tracer scope, parses W3C `traceparent` to stitch spans under a parent OTEL trace.\n- Wires `setContinuationTracer(...)` into `service.start()` (when `traces=true`) and `resetContinuationTracer()` into `stopStarted()` so the runtime returns to the additive Slice-1 noop on shutdown.\n- Re-exports the continuation-tracer registry surface from `src/plugin-sdk/diagnostics-otel.ts` so the bundled extension can install the adapter without crossing the package boundary.\n\n## Why\n\nSWIM-37 surfaced (F-37-010) that every `continuation.*` and `heartbeat` span emit-call from `agent-runner.ts` and `session-system-events.ts` was silently dropped through `noopTracer` in production: `setContinuationTracer` was exposed by the shim but never called from any production code path. The green-emit-gate masked the failure as feature-vapor.\n\nRefs: #334 (parent), F-37-010 (root cause). Unblocks SWIM-37 E2.x rows.\n\n## Test plan\n\n- [x] `pnpm test extensions/diagnostics-otel/src/continuation-tracer-adapter.test.ts` — 10 new adapter unit tests.\n- [x] `pnpm test extensions/diagnostics-otel/src/service.test.ts` — 23 tests pass, including 2 new install/uninstall lifecycle tests.\n- [x] `pnpm test src/infra/continuation-tracer.test.ts` — 71 tests still green.\n- [x] `pnpm test src/infra/system-events.test.ts` — 31 tests still green.\n- [x] `pnpm tsgo` + `pnpm tsgo:extensions` + `pnpm check:test-types` — clean.\n- [x] `pnpm build` — clean; `plugin-sdk:api:check` baseline unchanged.\n\n## Constraints honored\n\n- No changes to call sites in `agent-runner.ts` or `session-system-events.ts`.\n- No changes to the `Tracer` interface in `src/infra/continuation-tracer.ts`.\n- Adapter lives in `extensions/diagnostics-otel/src/` keeping `@opentelemetry/api` inside the plugin. No new root deps.","created_at":"2026-04-29T01:50:39Z","updated_at":"2026-04-29T01:50:39Z","closed_at":null,"merged_at":null,"merge_commit_sha":null,"assignees":[],"requested_reviewers":[],"requested_teams":[],"labels":[],"milestone":null,"draft":false,"commits_url":"https://api.github.com/repos/karmaterminal/openclaw/pulls/422/commits","review_comments_url":"https://api.github.com/repos/karmaterminal/openclaw/pulls/422/comments","review_comment_url":"https://api.github.com/repos/karmaterminal/openclaw/pulls/comments{/number}","comments_url":"https://api.github.com/repos/karmaterminal/openclaw/issues/422/comments","statuses_url":"https://api.github.com/repos/karmaterminal/openclaw/statuses/26bcce7e690a49e73b5c36b9f37ba40c61d75dea","head":{"label":"karmaterminal:silas/334-slice3-otel-adapter","ref":"silas/334-slice3-otel-adapter","sha":"26bcce7e690a49e73b5c36b9f37ba40c61d75dea","user":{"login":"karmaterminal","id":25347774,"node_id":"MDEyOk9yZ2FuaXphdGlvbjI1MzQ3Nzc0","avatar_url":"https://avatars.githubusercontent.com/u/25347774?v=4","gravatar_id":"","url":"https://api.github.com/users/karmaterminal","html_url":"https://github.com/karmaterminal","followers_url":"https://api.github.com/users/karmaterminal/followers","following_url":"https://api.github.com/users/karmaterminal/following{/other_user}","gists_url":"https://api.github.com/users/karmaterminal/gists{/gist_id}","starred_url":"https://api.github.com/users/karmaterminal/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/karmaterminal/subscriptions","organizations_url":"https://api.github.com/users/karmaterminal/orgs","repos_url":"https://api.github.com/users/karmaterminal/repos","events_url":"https://api.github.com/users/karmaterminal/events{/privacy}","received_events_url":"https://api.github.com/users/karmaterminal/received_events","type":"Organization","user_view_type":"public","site_admin":false},"repo":{"id":1163629064,"node_id":"R_kgDORVuSCA","name":"openclaw","full_name":"karmaterminal/openclaw","private":false,"owner":{"login":"karmaterminal","id":25347774,"node_id":"MDEyOk9yZ2FuaXphdGlvbjI1MzQ3Nzc0","avatar_url":"https://avatars.githubusercontent.com/u/25347774?v=4","gravatar_id":"","url":"https://api.github.com/users/karmaterminal","html_url":"https://github.com/karmaterminal","followers_url":"https://api.github.com/users/karmaterminal/followers","following_url":"https://api.github.com/users/karmaterminal/following{/other_user}","gists_url":"https://api.github.com/users/karmaterminal/gists{/gist_id}","starred_url":"https://api.github.com/users/karmaterminal/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/karmaterminal/subscriptions","organizations_url":"https://api.github.com/users/karmaterminal/orgs","repos_url":"https://api.github.com/users/karmaterminal/repos","events_url":"https://api.github.com/users/karmaterminal/events{/privacy}","received_events_url":"https://api.github.com/users/karmaterminal/received_events","type":"Organization","user_view_type":"public","site_admin":false},"html_url":"https://github.com/karmaterminal/openclaw","description":"Your own personal AI assistant. Any OS. Any Platform. The lobster way. 🦞 ","fork":true,"url":"https://api.github.com/repos/karmaterminal/openclaw","forks_url":"https://api.github.com/repos/karmaterminal/openclaw/forks","keys_url":"https://api.github.com/repos/karmaterminal/openclaw/keys{/key_id}","collaborators_url":"https://api.github.com/repos/karmaterminal/openclaw/collaborators{/collaborator}","teams_url":"https://api.github.com/repos/karmaterminal/openclaw/teams","hooks_url":"https://api.github.com/repos/karmaterminal/openclaw/hooks","issue_events_url":"https://api.github.com/repos/karmaterminal/openclaw/issues/events{/number}","events_url":"https://api.github.com/repos/karmaterminal/openclaw/events","assignees_url":"https://api.github.com/repos/karmaterminal/openclaw/assignees{/user}","branches_url":"https://api.github.com/repos/karmaterminal/openclaw/branches{/branch}","tags_url":"https://api.github.com/repos/karmaterminal/openclaw/tags","blobs_url":"https://api.github.com/repos/karmaterminal/openclaw/git/blobs{/sha}","git_tags_url":"https://api.github.com/repos/karmaterminal/openclaw/git/tags{/sha}","git_refs_url":"https://api.github.com/repos/karmaterminal/openclaw/git/refs{/sha}","trees_url":"https://api.github.com/repos/karmaterminal/openclaw/git/trees{/sha}","statuses_url":"https://api.github.com/repos/karmaterminal/openclaw/statuses/{sha}","languages_url":"https://api.github.com/repos/karmaterminal/openclaw/languages","stargazers_url":"https://api.github.com/repos/karmaterminal/openclaw/stargazers","contributors_url":"https://api.github.com/repos/karmaterminal/openclaw/contributors","subscribers_url":"https://api.github.com/repos/karmaterminal/openclaw/subscribers","subscription_url":"https://api.github.com/repos/karmaterminal/openclaw/subscription","commits_url":"https://api.github.com/repos/karmaterminal/openclaw/commits{/sha}","git_commits_url":"https://api.github.com/repos/karmaterminal/openclaw/git/commits{/sha}","comments_url":"https://api.github.com/repos/karmaterminal/openclaw/comments{/number}","issue_comment_url":"https://api.github.com/repos/karmaterminal/openclaw/issues/comments{/number}","contents_url":"https://api.github.com/repos/karmaterminal/openclaw/contents/{+path}","compare_url":"https://api.github.com/repos/karmaterminal/openclaw/compare/{base}...{head}","merges_url":"https://api.github.com/repos/karmaterminal/openclaw/merges","archive_url":"https://api.github.com/repos/karmaterminal/openclaw/{archive_format}{/ref}","downloads_url":"https://api.github.com/repos/karmaterminal/openclaw/downloads","issues_url":"https://api.github.com/repos/karmaterminal/openclaw/issues{/number}","pulls_url":"https://api.github.com/repos/karmaterminal/openclaw/pulls{/number}","milestones_url":"https://api.github.com/repos/karmaterminal/openclaw/milestones{/number}","notifications_url":"https://api.github.com/repos/karmaterminal/openclaw/notifications{?since,all,participating}","labels_url":"https://api.github.com/repos/karmaterminal/openclaw/labels{/name}","releases_url":"https://api.github.com/repos/karmaterminal/openclaw/releases{/id}","deployments_url":"https://api.github.com/repos/karmaterminal/openclaw/deployments","created_at":"2026-02-21T22:52:09Z","updated_at":"2026-04-20T06:03:10Z","pushed_at":"2026-04-29T01:49:03Z","git_url":"git://github.com/karmaterminal/openclaw.git","ssh_url":"git@github.com:karmaterminal/openclaw.git","clone_url":"https://github.com/karmaterminal/openclaw.git","svn_url":"https://github.com/karmaterminal/openclaw","homepage":"https://openclaw.ai","size":556332,"stargazers_count":0,"watchers_count":0,"language":"TypeScript","has_issues":true,"has_projects":true,"has_downloads":true,"has_wiki":false,"has_pages":false,"has_discussions":true,"forks_count":0,"mirror_url":null,"archived":false,"disabled":false,"open_issues_count":138,"license":{"key":"mit","name":"MIT License","spdx_id":"MIT","url":"https://api.github.com/licenses/mit","node_id":"MDc6TGljZW5zZTEz"},"allow_forking":true,"is_template":false,"web_commit_signoff_required":false,"has_pull_requests":true,"pull_request_creation_policy":"all","topics":[],"visibility":"public","forks":0,"open_issues":138,"watchers":0,"default_branch":"main"}},"base":{"label":"karmaterminal:cael/325-canonical2","ref":"cael/325-canonical2","sha":"29e556eb11de7ee7de9e4dadda8bdb2baf3a5dab","user":{"login":"karmaterminal","id":25347774,"node_id":"MDEyOk9yZ2FuaXphdGlvbjI1MzQ3Nzc0","avatar_url":"https://avatars.githubusercontent.com/u/25347774?v=4","gravatar_id":"","url":"https://api.github.com/users/karmaterminal","html_url":"https://github.com/karmaterminal","followers_url":"https://api.github.com/users/karmaterminal/followers","following_url":"https://api.github.com/users/karmaterminal/following{/other_user}","gists_url":"https://api.github.com/users/karmaterminal/gists{/gist_id}","starred_url":"https://api.github.com/users/karmaterminal/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/karmaterminal/subscriptions","organizations_url":"https://api.github.com/users/karmaterminal/orgs","repos_url":"https://api.github.com/users/karmaterminal/repos","events_url":"https://api.github.com/users/karmaterminal/events{/privacy}","received_events_url":"https://api.github.com/users/karmaterminal/received_events","type":"Organization","user_view_type":"public","site_admin":false},"repo":{"id":1163629064,"node_id":"R_kgDORVuSCA","name":"openclaw","full_name":"karmaterminal/openclaw","private":false,"owner":{"login":"karmaterminal","id":25347774,"node_id":"MDEyOk9yZ2FuaXphdGlvbjI1MzQ3Nzc0","avatar_url":"https://avatars.githubusercontent.com/u/25347774?v=4","gravatar_id":"","url":"https://api.github.com/users/karmaterminal","html_url":"https://github.com/karmaterminal","followers_url":"https://api.github.com/users/karmaterminal/followers","following_url":"https://api.github.com/users/karmaterminal/following{/other_user}","gists_url":"https://api.github.com/users/karmaterminal/gists{/gist_id}","starred_url":"https://api.github.com/users/karmaterminal/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/karmaterminal/subscriptions","organizations_url":"https://api.github.com/users/karmaterminal/orgs","repos_url":"https://api.github.com/users/karmaterminal/repos","events_url":"https://api.github.com/users/karmaterminal/events{/privacy}","received_events_url":"https://api.github.com/users/karmaterminal/received_events","type":"Organization","user_view_type":"public","site_admin":false},"html_url":"https://github.com/karmaterminal/openclaw","description":"Your own personal AI assistant. Any OS. Any Platform. The lobster way. 🦞 ","fork":true,"url":"https://api.github.com/repos/karmaterminal/openclaw","forks_url":"https://api.github.com/repos/karmaterminal/openclaw/forks","keys_url":"https://api.github.com/repos/karmaterminal/openclaw/keys{/key_id}","collaborators_url":"https://api.github.com/repos/karmaterminal/openclaw/collaborators{/collaborator}","teams_url":"https://api.github.com/repos/karmaterminal/openclaw/teams","hooks_url":"https://api.github.com/repos/karmaterminal/openclaw/hooks","issue_events_url":"https://api.github.com/repos/karmaterminal/openclaw/issues/events{/number}","events_url":"https://api.github.com/repos/karmaterminal/openclaw/events","assignees_url":"https://api.github.com/repos/karmaterminal/openclaw/assignees{/user}","branches_url":"https://api.github.com/repos/karmaterminal/openclaw/branches{/branch}","tags_url":"https://api.github.com/repos/karmaterminal/openclaw/tags","blobs_url":"https://api.github.com/repos/karmaterminal/openclaw/git/blobs{/sha}","git_tags_url":"https://api.github.com/repos/karmaterminal/openclaw/git/tags{/sha}","git_refs_url":"https://api.github.com/repos/karmaterminal/openclaw/git/refs{/sha}","trees_url":"https://api.github.com/repos/karmaterminal/openclaw/git/trees{/sha}","statuses_url":"https://api.github.com/repos/karmaterminal/openclaw/statuses/{sha}","languages_url":"https://api.github.com/repos/karmaterminal/openclaw/languages","stargazers_url":"https://api.github.com/repos/karmaterminal/openclaw/stargazers","contributors_url":"https://api.github.com/repos/karmaterminal/openclaw/contributors","subscribers_url":"https://api.github.com/repos/karmaterminal/openclaw/subscribers","subscription_url":"https://api.github.com/repos/karmaterminal/openclaw/subscription","commits_url":"https://api.github.com/repos/karmaterminal/openclaw/commits{/sha}","git_commits_url":"https://api.github.com/repos/karmaterminal/openclaw/git/commits{/sha}","comments_url":"https://api.github.com/repos/karmaterminal/openclaw/comments{/number}","issue_comment_url":"https://api.github.com/repos/karmaterminal/openclaw/issues/comments{/number}","contents_url":"https://api.github.com/repos/karmaterminal/openclaw/contents/{+path}","compare_url":"https://api.github.com/repos/karmaterminal/openclaw/compare/{base}...{head}","merges_url":"https://api.github.com/repos/karmaterminal/openclaw/merges","archive_url":"https://api.github.com/repos/karmaterminal/openclaw/{archive_format}{/ref}","downloads_url":"https://api.github.com/repos/karmaterminal/openclaw/downloads","issues_url":"https://api.github.com/repos/karmaterminal/openclaw/issues{/number}","pulls_url":"https://api.github.com/repos/karmaterminal/openclaw/pulls{/number}","milestones_url":"https://api.github.com/repos/karmaterminal/openclaw/milestones{/number}","notifications_url":"https://api.github.com/repos/karmaterminal/openclaw/notifications{?since,all,participating}","labels_url":"https://api.github.com/repos/karmaterminal/openclaw/labels{/name}","releases_url":"https://api.github.com/repos/karmaterminal/openclaw/releases{/id}","deployments_url":"https://api.github.com/repos/karmaterminal/openclaw/deployments","created_at":"2026-02-21T22:52:09Z","updated_at":"2026-04-20T06:03:10Z","pushed_at":"2026-04-29T01:49:03Z","git_url":"git://github.com/karmaterminal/openclaw.git","ssh_url":"git@github.com:karmaterminal/openclaw.git","clone_url":"https://github.com/karmaterminal/openclaw.git","svn_url":"https://github.com/karmaterminal/openclaw","homepage":"https://openclaw.ai","size":556332,"stargazers_count":0,"watchers_count":0,"language":"TypeScript","has_issues":true,"has_projects":true,"has_downloads":true,"has_wiki":false,"has_pages":false,"has_discussions":true,"forks_count":0,"mirror_url":null,"archived":false,"disabled":false,"open_issues_count":138,"license":{"key":"mit","name":"MIT License","spdx_id":"MIT","url":"https://api.github.com/licenses/mit","node_id":"MDc6TGljZW5zZTEz"},"allow_forking":true,"is_template":false,"web_commit_signoff_required":false,"has_pull_requests":true,"pull_request_creation_policy":"all","topics":[],"visibility":"public","forks":0,"open_issues":138,"watchers":0,"default_branch":"main"}},"_links":{"self":{"href":"https://api.github.com/repos/karmaterminal/openclaw/pulls/422"},"html":{"href":"https://github.com/karmaterminal/openclaw/pull/422"},"issue":{"href":"https://api.github.com/repos/karmaterminal/openclaw/issues/422"},"comments":{"href":"https://api.github.com/repos/karmaterminal/openclaw/issues/422/comments"},"review_comments":{"href":"https://api.github.com/repos/karmaterminal/openclaw/pulls/422/comments"},"review_comment":{"href":"https://api.github.com/repos/karmaterminal/openclaw/pulls/comments{/number}"},"commits":{"href":"https://api.github.com/repos/karmaterminal/openclaw/pulls/422/commits"},"statuses":{"href":"https://api.github.com/repos/karmaterminal/openclaw/statuses/26bcce7e690a49e73b5c36b9f37ba40c61d75dea"}},"author_association":"MEMBER","auto_merge":null,"assignee":null,"active_lock_reason":null,"merged":false,"mergeable":null,"rebaseable":null,"mergeable_state":"unknown","merged_by":null,"comments":0,"review_comments":0,"maintainer_can_modify":false,"commits":1,"additions":446,"deletions":1,"changed_files":5}=== final journal tail ===
+PR: https://github.com/karmaterminal/openclaw/pull/422
