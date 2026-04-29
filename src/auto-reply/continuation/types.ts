@@ -87,7 +87,6 @@ export type DelayedContinuationReservation = {
  */
 export type ContinuationRuntimeConfig = {
   enabled: boolean;
-  taskFlowDelegates: boolean;
   defaultDelayMs: number;
   minDelayMs: number;
   maxDelayMs: number;

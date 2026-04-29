@@ -60,7 +60,6 @@ export function resolveContinuationRuntimeConfig(
 
   return {
     enabled: continuation?.enabled === true,
-    taskFlowDelegates: true, // always on — delegates must survive restart, no opt-out
     defaultDelayMs: clampNonNegativeDelayMs(
       continuation?.defaultDelayMs,
       DEFAULT_CONTINUATION_DELAY_MS,

@@ -45,22 +45,16 @@ import {
   addDelayedContinuationReservation,
   cancelPendingDelegates,
   clearDelayedContinuationReservations,
+  consumePendingDelegates,
+  consumePendingWorkRequest,
   consumeStagedPostCompactionDelegates,
   highestDelayedContinuationReservationHop,
-  takeDelayedContinuationReservation,
-  setTaskFlowDelegatesEnabled,
-  stagePostCompactionDelegate,
-  consumePendingDelegates,
   pendingDelegateCount,
+  stagePostCompactionDelegate,
   stagedPostCompactionDelegateCount,
+  takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
 import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
-import {
-  consumePendingWorkRequest,
-  pendingDelegateCount,
-  setTaskFlowDelegatesEnabled,
-  stagedPostCompactionDelegateCount,
-} from "../continuation/delegate-store.js";
 import { scheduleWorkContinuation } from "../continuation/scheduler.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import {
@@ -1096,12 +1090,6 @@ export async function runReplyAgent(params: {
   const isHeartbeat = opts?.isHeartbeat === true;
   const cfg = followupRun.run.config;
   const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
-  const taskFlowDelegatesConfigured =
-    cfg?.agents?.defaults?.continuation?.taskFlowDelegates === true;
-
-  // Route delegate store operations to the Task Flow-backed implementation
-  // before any inbound-message cancellation logic runs.
-  setTaskFlowDelegatesEnabled(continuationFeatureEnabled && taskFlowDelegatesConfigured);
 
   // RFC 2026-04-15: session-entry cleanup of continuation state on non-heartbeat
   // inbound was removed. Delayed continuation work is not cancelled by unrelated
@@ -1511,14 +1499,6 @@ export async function runReplyAgent(params: {
       }
     }
 
-    // Sync the Task Flow delegate gate BEFORE the agent turn starts.
-    // Tools (continue_delegate) call enqueuePendingDelegate() during the turn,
-    // so the routing flag must be set before any tool execution.
-    const taskFlowDelegatesEarly =
-      cfg.agents?.defaults?.continuation?.enabled === true &&
-      cfg.agents?.defaults?.continuation?.taskFlowDelegates === true;
-    setTaskFlowDelegatesEnabled(taskFlowDelegatesEarly);
-
     const runStartedAt = Date.now();
     const runOutcome = await runAgentTurnWithFallback({
       commandBody,
@@ -1599,14 +1579,6 @@ export async function runReplyAgent(params: {
 
     const payloadArray = runResult.payloads ?? [];
 
-    // Detect and strip continuation signal only when the feature is enabled.
-    // This prevents output mutation on disabled deployments where a model might
-    // mention CONTINUE_WORK or [[CONTINUE_DELEGATE:]] in explanatory text.
-    // Sync the Task Flow delegate gate from config so the store routes
-    // enqueue/consume/count through the TaskFlow-backed implementation.
-    setTaskFlowDelegatesEnabled(
-      continuationFeatureEnabled && cfg.agents?.defaults?.continuation?.taskFlowDelegates === true,
-    );
     let continuationSignal: ContinuationSignal | null = null;
     if (continuationFeatureEnabled && payloadArray.length > 0) {
       // Find the last payload with text content — tool-call payloads may follow
@@ -1650,10 +1622,7 @@ export async function runReplyAgent(params: {
     }
 
     // --- Continuation signal extraction (RFC §3.1) ---
-    // Reads from both bracket syntax in payloads and the continue_work tool store.
     const continuationFeatureEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
-    // TaskFlow is always on when continuation is enabled — no opt-out.
-    setTaskFlowDelegatesEnabled(continuationFeatureEnabled);
 
     const continueWorkRequest = sessionKey ? consumePendingWorkRequest(sessionKey) : undefined;
     const continuationExtraction = extractContinuationSignal({
@@ -2667,11 +2636,7 @@ export async function runReplyAgent(params: {
             // tool chain-cap reject. Chain didn't advance; chainId passes
             // through as-is.
             {
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
-                  : "normal";
+              const delegateMode = delegate.mode ?? "normal";
               const delegateDelivery: "immediate" | "timer" =
                 delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
               emitContinuationDisabledSpan({
@@ -2699,11 +2664,7 @@ export async function runReplyAgent(params: {
             // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
             // tool cost-cap reject. Same conditional-delegate-attr pattern.
             {
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
-                  : "normal";
+              const delegateMode = delegate.mode ?? "normal";
               const delegateDelivery: "immediate" | "timer" =
                 delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
               emitContinuationDisabledSpan({
@@ -2827,8 +2788,8 @@ export async function runReplyAgent(params: {
               createdAt: chainStartedAt,
               fireAt: Date.now() + clampedDelay,
               plannedHop: nextChainCount,
-              silent: delegate.silent,
-              silentWake: delegate.silentWake,
+              silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
+              silentWake: delegate.mode === "silent-wake",
             });
             const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
               count: currentChainCount,
@@ -2841,11 +2802,7 @@ export async function runReplyAgent(params: {
             // semantic anchor as the bracket-timer site above.
             {
               // Ladder handles silent-wake / silent / normal only — see tool-immediate comment above; post-compaction path is a sibling, not handled here.
-              const delegateMode = delegate.silentWake
-                ? "silent-wake"
-                : delegate.silent
-                  ? "silent"
-                  : "normal";
+              const delegateMode = delegate.mode ?? "normal";
               emitContinuationDelegateSpan({
                 chainId: persistedChainIdForTimer,
                 chainStepRemaining: maxChainLength - nextChainCount,
@@ -2861,11 +2818,8 @@ export async function runReplyAgent(params: {
             // dispatch-time captures, NOT fire-time recomputes; `armedAt` is
             // captured immediately before `setTimeout` so wall-clock drift
             // measurement starts at arming.
-            const fireDelegateMode: "normal" | "silent" | "silent-wake" = delegate.silentWake
-              ? "silent-wake"
-              : delegate.silent
-                ? "silent"
-                : "normal";
+            const fireDelegateMode: "normal" | "silent" | "silent-wake" =
+              (delegate.mode as "normal" | "silent" | "silent-wake") ?? "normal";
             const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
             retainContinuationTimerRef(sessionKey);
             const armedAt = Date.now();
@@ -2922,8 +2876,8 @@ export async function runReplyAgent(params: {
             timerHandle.unref();
           } else {
             await doToolSpawn(nextChainCount, delegate.task, {
-              silent: delegate.silent,
-              silentWake: delegate.silentWake,
+              silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
+              silentWake: delegate.mode === "silent-wake",
               startedAt: chainStartedAt,
             });
           }

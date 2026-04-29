@@ -388,6 +388,19 @@ export function clearDelayedContinuationReservations(sessionKey: string): void {
   delayedReservations.delete(sessionKey);
 }
 
+export function listDelayedContinuationReservations(
+  sessionKey: string,
+): DelayedContinuationReservation[] {
+  return [...(delayedReservations.get(sessionKey) ?? [])];
+}
+
+export function removeDelayedContinuationReservation(
+  sessionKey: string,
+  reservationId: string,
+): boolean {
+  return takeDelayedContinuationReservation(sessionKey, reservationId) !== null;
+}
+
 // ---------------------------------------------------------------------------
 // Continue-work request store (DELIBERATELY VOLATILE)
 //
@@ -411,27 +424,10 @@ export function consumePendingWorkRequest(sessionKey: string): ContinueWorkReque
 }
 
 // ---------------------------------------------------------------------------
-// TaskFlow readiness gate (kept for runner startup signal only)
-// ---------------------------------------------------------------------------
-
-let taskFlowReady = false;
-
-export function setTaskFlowDelegatesEnabled(enabled: boolean): void {
-  taskFlowReady = enabled;
-}
-
-export function isTaskFlowDelegatesEnabled(): boolean {
-  return taskFlowReady;
-}
-
-// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
 export function resetDelegateStoreForTests(): void {
-  // Clean up TaskFlow records for all test sessions.
-  // In test environments, TaskFlow may or may not be initialized.
   delayedReservations.clear();
   pendingWorkRequests.clear();
-  taskFlowReady = false;
 }
