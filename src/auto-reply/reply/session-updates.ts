@@ -15,7 +15,6 @@ import {
   resolveSessionFilePathOptions,
   resolveSessionStoreEntry,
   type SessionEntry,
-  resolveSessionStoreEntry,
   updateSessionStore,
   updateSessionStoreEntry,
 } from "../../config/sessions.js";

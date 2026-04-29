@@ -15,6 +15,7 @@ const runPreflightCompactionIfNeededMock = vi.fn();
 const resolveCommandSecretRefsViaGatewayMock = vi.fn();
 const resolveQueuedReplyExecutionConfigMock = vi.fn();
 const resolveProviderFollowupFallbackRouteMock = vi.fn();
+const dispatchToolDelegatesMock = vi.fn().mockResolvedValue(undefined);
 let resolveQueuedReplyExecutionConfigActual:
   | (typeof import("./agent-runner-utils.js"))["resolveQueuedReplyExecutionConfig"]
   | undefined;
@@ -338,6 +339,19 @@ async function loadFreshFollowupRunnerModuleForTest() {
         ]),
       };
     },
+  }));
+  vi.doMock("../continuation/delegate-dispatch.js", () => ({
+    dispatchToolDelegates: (...args: unknown[]) => dispatchToolDelegatesMock(...args),
+  }));
+  vi.doMock("../continuation/config.js", () => ({
+    resolveContinuationRuntimeConfig: () => ({ maxChainLength: 10 }),
+  }));
+  vi.doMock("../continuation/state.js", () => ({
+    loadContinuationChainState: () => ({
+      currentChainCount: 0,
+      chainStartedAt: 0,
+      accumulatedChainTokens: 0,
+    }),
   }));
   ({ createFollowupRunner } = await import("./followup-runner.js"));
   ({ clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } =
