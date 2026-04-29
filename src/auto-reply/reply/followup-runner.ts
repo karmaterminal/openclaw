@@ -334,6 +334,68 @@ export function createFollowupRunner(params: {
                   bootstrapPromptWarningSignaturesSeen[
                     bootstrapPromptWarningSignaturesSeen.length - 1
                   ],
+                // Continuation: thread requestCompactionOpts so request_compaction
+                // is callable on queued followup turns, not just the first turn.
+                requestCompactionOpts:
+                  runtimeConfig?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        sessionId: run.sessionId,
+                        getContextUsage: () => {
+                          // Followup path doesn't have a live token count;
+                          // returning null makes request_compaction reply
+                          // with guard "context_unknown" instead of pretending
+                          // usage is 0% and tripping the 70% floor with a
+                          // misleading reason. Main-session callers (see
+                          // agent-runner-execution.ts) supply the real ratio
+                          // from sessionTokenInfo. Refs karmaterminal/openclaw#222.
+                          return null;
+                        },
+                        triggerCompaction: async () => {
+                          try {
+                            const { compactEmbeddedPiSession } =
+                              await import("../../agents/pi-embedded-runner/compact.queued.js");
+                            // bug karmaterminal/openclaw#639: thread the session's active provider/model through so
+                            // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL
+                            // (openai/gpt-5.4) which nobody has auth for.
+                            // Use inner-scope provider/model from the fallback
+                            // dispatcher (line 207) so a fallback-selected model
+                            // gets the compaction request, not the persisted primary
+                            // (which may be in cooldown — would re-fail immediately).
+                            // bug karmaterminal/openclaw#639 (scribe follow-up): thread authProfileId only
+                            // when the inner-scope provider matches the persisted primary
+                            // (the persisted profile is keyed to the primary). On fallback
+                            // to a different provider, leave undefined so resolveEmbedded-
+                            // CompactionTarget picks the default profile for that provider.
+                            const compactionAuthProfileId =
+                              provider === run.provider ? run.authProfileId : undefined;
+                            const result = await compactEmbeddedPiSession({
+                              sessionId: run.sessionId ?? "",
+                              sessionKey: run.sessionKey,
+                              sessionFile: run.sessionFile ?? "",
+                              workspaceDir: run.workspaceDir ?? process.cwd(),
+                              messageProvider: run.messageProvider,
+                              provider,
+                              model,
+                              authProfileId: compactionAuthProfileId,
+                            });
+                            // bug karmaterminal/openclaw#639: honor real result instead of unconditionally claiming
+                            // success — otherwise volitional-compaction telemetry lies and the
+                            // failure is invisible to the caller.
+                            return {
+                              ok: result.ok,
+                              compacted: result.compacted,
+                              reason: result.reason,
+                            };
+                          } catch (err) {
+                            return {
+                              ok: false,
+                              compacted: false,
+                              reason: err instanceof Error ? err.message : String(err),
+                            };
+                          }
+                        },
+                      }
+                    : undefined,
                 onAgentEvent: (evt) => {
                   if (evt.stream.startsWith("codex_app_server.")) {
                     emitAgentEvent({
@@ -374,6 +436,52 @@ export function createFollowupRunner(params: {
         replyOperation.fail("run_failed", err);
         defaultRuntime.error?.(`Followup agent failed before reply: ${message}`);
         return;
+      }
+
+      // Consume and dispatch continue_delegate queue enqueued during this
+      // followup turn. Parallels the main-session dispatch in agent-runner.ts:
+      // without this, delegates queued by continue_work-triggered heartbeats
+      // (or any followup turn) stay in the queue until the NEXT inbound
+      // message arrives to trigger the main-session dispatch. RFC §3.2.
+      if (runtimeConfig?.agents?.defaults?.continuation?.enabled === true && sessionKey) {
+        const [
+          { dispatchToolDelegates },
+          { resolveContinuationRuntimeConfig },
+          { loadContinuationChainState, persistContinuationChainState },
+        ] = await Promise.all([
+          import("../continuation/delegate-dispatch.js"),
+          import("../continuation/config.js"),
+          import("../continuation/state.js"),
+        ]);
+        const tailUsage = runResult.meta?.agentMeta?.usage;
+        const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
+        const tailEntry = (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? sessionEntry;
+        const chainState = loadContinuationChainState(tailEntry, turnTokens);
+        const dispatchResult = await dispatchToolDelegates({
+          sessionKey,
+          chainState,
+          ctx: {
+            sessionKey,
+            agentChannel: queued.originatingChannel ?? undefined,
+            agentAccountId: queued.originatingAccountId ?? undefined,
+            agentTo: queued.originatingTo ?? undefined,
+            agentThreadId: queued.originatingThreadId ?? undefined,
+          },
+          maxChainLength: resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
+          // r3163899581: hedge re-arm must see fresh chain state.
+          loadFreshChainState: () => loadContinuationChainState(tailEntry, 0),
+        });
+        // r3163899586: persist the advanced chain state back to the session
+        // entry after dispatch. Without this the followup-path counter never
+        // advances and `maxChainLength` enforcement breaks across hops.
+        if (dispatchResult && dispatchResult.dispatched > 0 && tailEntry) {
+          persistContinuationChainState({
+            sessionEntry: tailEntry,
+            count: dispatchResult.chainState.currentChainCount,
+            startedAt: dispatchResult.chainState.chainStartedAt,
+            tokens: dispatchResult.chainState.accumulatedChainTokens,
+          });
+        }
       }
 
       const usage = runResult.meta?.agentMeta?.usage;

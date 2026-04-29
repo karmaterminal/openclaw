@@ -41,7 +41,10 @@ export type SubagentRunRecord = {
   attachmentsDir?: string;
   attachmentsRootDir?: string;
   retainAttachmentsOnKeep?: boolean;
+  /** Continuation: suppress channel echo for silent delegate returns. */
   silentAnnounce?: boolean;
   /** When true (with silentAnnounce), trigger a generation cycle after enrichment delivery. */
   wakeOnReturn?: boolean;
+  /** Continuation: marks this run as a chain-hop that can consume pending delegates. */
+  drainsContinuationDelegateQueue?: boolean;
 };

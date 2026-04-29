@@ -1,10 +1,10 @@
 import { Type } from "typebox";
 import {
-  stagePostCompactionDelegate,
   enqueuePendingDelegate,
   pendingDelegateCount,
+  stagePostCompactionDelegate,
   stagedPostCompactionDelegateCount,
-} from "../../auto-reply/continuation-delegate-store.js";
+} from "../../auto-reply/continuation/delegate-store.js";
 import { resolveMaxDelegatesPerTurn } from "../../auto-reply/reply/continuation-runtime.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
@@ -100,9 +100,8 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           `Unknown mode "${modeRaw}". Valid modes: ${DELEGATE_MODES.join(", ")}`,
         );
       }
-      const isPostCompaction = modeRaw === "post-compaction";
-      const silent = modeRaw === "silent" || modeRaw === "silent-wake" || isPostCompaction;
-      const silentWake = modeRaw === "silent-wake" || isPostCompaction;
+      const mode = (modeRaw || "normal") as (typeof DELEGATE_MODES)[number];
+      const isPostCompaction = mode === "post-compaction";
 
       // Check per-turn delegate limit
       const maxPerTurn = resolveMaxDelegatesPerTurn();
@@ -118,13 +117,9 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       }
 
       if (isPostCompaction) {
-        // Stage for the current turn. agent-runner commits successful turns to
-        // SessionEntry so failed runs do not leak stale compaction delegates.
         stagePostCompactionDelegate(sessionKey, {
           task,
-          createdAt: Date.now(),
-          silent: true,
-          silentWake: true,
+          stagedAt: Date.now(),
         });
 
         return jsonResult({
@@ -137,15 +132,13 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         });
       }
 
-      // Enqueue for post-run processing by agent-runner.ts
       log.debug(
-        `[continue_delegate:enqueue] session=${sessionKey} silent=${silent} silentWake=${silentWake} delayMs=${delayMs} task=${task.slice(0, 80)}`,
+        `[continue_delegate:enqueue] session=${sessionKey} mode=${mode} delayMs=${delayMs} task=${task.slice(0, 80)}`,
       );
       enqueuePendingDelegate(sessionKey, {
         task,
         delayMs,
-        silent,
-        silentWake,
+        ...(mode !== "normal" ? { mode } : {}),
       });
 
       const dispatchIndex = currentCount + 1;

@@ -1,4 +1,5 @@
 import { escapeRegExp } from "../utils.js";
+import type { ContinuationSignal } from "./continuation/types.js";
 
 export const HEARTBEAT_TOKEN = "HEARTBEAT_OK";
 export const SILENT_REPLY_TOKEN = "NO_REPLY";
@@ -183,9 +184,7 @@ export function isSilentReplyPrefixText(
 // Continuation signal parsing
 // ============================================================================
 
-export type ContinuationSignal =
-  | { kind: "work"; delayMs?: number }
-  | { kind: "delegate"; task: string; delayMs?: number; silent?: boolean; silentWake?: boolean };
+export type { ContinuationSignal };
 
 /**
  * Checks if the agent response ends with a continuation signal.

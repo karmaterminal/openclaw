@@ -56,6 +56,7 @@ export type RegisterSubagentRunParams = {
   retainAttachmentsOnKeep?: boolean;
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
+  drainsContinuationDelegateQueue?: boolean;
 };
 
 export function createSubagentRunManager(params: {
@@ -362,6 +363,7 @@ export function createSubagentRunManager(params: {
       retainAttachmentsOnKeep: registerParams.retainAttachmentsOnKeep,
       silentAnnounce: registerParams.silentAnnounce,
       wakeOnReturn: registerParams.wakeOnReturn,
+      drainsContinuationDelegateQueue: registerParams.drainsContinuationDelegateQueue,
     };
     params.runs.set(runId, entry);
     try {

@@ -14,7 +14,7 @@ import {
   clearMemoryPluginState,
   registerMemoryFlushPlanResolver,
 } from "../../plugins/memory-state.js";
-import { delayedContinuationReservationCount } from "../continuation-delegate-store.js";
+import { delayedContinuationReservationCount } from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { __testing as replyRunRegistryTesting } from "./reply-run-registry.js";

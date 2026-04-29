@@ -220,9 +220,23 @@ function buildCoreDistEntries(): Record<string, string> {
     // Keep long-lived lazy runtime boundaries on stable filenames so rebuilt
     // dist/ trees do not strand already-running gateways on stale hashed chunks.
     "agents/auth-profiles.runtime": "src/agents/auth-profiles.runtime.ts",
+    // #584: agent-runner.runtime is dynamically imported by get-reply-run.ts:108.
+    // Promoting it to a unified-graph entry forces rolldown to dedupe its singleton-bearing
+    // dependencies (delegate-store, state, context-pressure) with the rest of the build,
+    // eliminating the dual-chunk split that silently dropped continue_work tool calls.
+    "auto-reply/reply/agent-runner.runtime": "src/auto-reply/reply/agent-runner.runtime.ts",
+    // karmaterminal/openclaw#220: single lazy-load boundary for the continuation
+    // subsystem. Every dynamic continuation import (agent-runner, status command,
+    // etc.) routes through this entry so the bundler can dedupe singleton-bearing
+    // modules (config, delegate-store, delegate-dispatch, context-pressure, state)
+    // across the main chunk and the lazy chunk. Replaces the need for individual
+    // coreDistEntries promotion per continuation module.
+    "auto-reply/continuation/lazy.runtime": "src/auto-reply/continuation/lazy.runtime.ts",
     "agents/model-catalog.runtime": "src/agents/model-catalog.runtime.ts",
     "agents/models-config.runtime": "src/agents/models-config.runtime.ts",
     "subagent-registry.runtime": "src/agents/subagent-registry.runtime.ts",
+    "agents/subagent-announce.continuation.runtime":
+      "src/agents/subagent-announce.continuation.runtime.ts",
     "agents/pi-model-discovery-runtime": "src/agents/pi-model-discovery-runtime.ts",
     "commands/status.summary.runtime": "src/commands/status.summary.runtime.ts",
     "infra/boundary-file-read": "src/infra/boundary-file-read.ts",

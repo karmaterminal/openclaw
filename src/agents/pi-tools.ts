@@ -336,11 +336,6 @@ export function createOpenClawCodingTools(options?: {
       request: import("./tools/continue-work-tool.js").ContinueWorkRequest,
     ) => void;
   };
-  /** Closures for request_compaction tool (Trigger E). */
-  requestCompactionOpts?: {
-    getContextUsage: () => number;
-    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
-  };
   /** If true, the model has native vision capability */
   modelHasVision?: boolean;
   /** Require explicit message targets (no implicit last-route sends). */
@@ -353,6 +348,12 @@ export function createOpenClawCodingTools(options?: {
   senderIsOwner?: boolean;
   /** Callback invoked when sessions_yield tool is called. */
   onYield?: (message: string) => Promise<void> | void;
+  /** Continuation: request_compaction tool opts (injected from execution context). */
+  requestCompactionOpts?: {
+    sessionId?: string;
+    getContextUsage: () => number | null;
+    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+  };
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;

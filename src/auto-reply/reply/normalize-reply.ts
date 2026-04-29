@@ -12,6 +12,7 @@ import {
   stripSilentToken,
 } from "../tokens.js";
 import type { ReplyPayload } from "../types.js";
+import { hasCotFramePrefix } from "./cot-frame.js";
 import {
   resolveResponsePrefixTemplate,
   type ResponsePrefixContext,
@@ -76,6 +77,19 @@ export function normalizeReplyPayload(
         return null;
       }
     }
+  }
+  // CoT-frame leak suppression: the model sometimes emits internal narration
+  // as the message body, prefixed with a bracketed speaker frame like
+  // `[cael] ...` or `[the dandelion cult - ronan] ...`.  Treat the whole
+  // payload as silent (matching NO_REPLY semantics) so the frame never reaches
+  // end users.  See karmaterminal/openclaw#269.
+  if (text && hasCotFramePrefix(text)) {
+    if (!hasContent("")) {
+      opts.onSkip?.("silent");
+      return null;
+    }
+    // Media-only fallback: drop the leaked text but let media still send.
+    text = "";
   }
   if (text && !trimmed) {
     // Keep empty text when media exists so media-only replies still send.

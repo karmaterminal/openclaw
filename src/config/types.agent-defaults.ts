@@ -413,8 +413,6 @@ export type AgentDefaultsConfig = {
   /** Agent self-elected turn continuation (CONTINUE_WORK signal). */
   continuation?: {
     enabled?: boolean;
-    /** Use Task Flow-backed delegate store (SQLite persistence, cancel/retry). Default: false. */
-    taskFlowDelegates?: boolean;
     defaultDelayMs?: number;
     minDelayMs?: number;
     maxDelayMs?: number;

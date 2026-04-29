@@ -41,7 +41,7 @@ import {
 import {
   clearDelayedContinuationReservations,
   enqueuePendingDelegate,
-} from "../continuation-delegate-store.js";
+} from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { __testing as replyRunRegistryTesting } from "./reply-run-registry.js";
@@ -381,24 +381,17 @@ describe("runReplyAgent :: continuation.delegate.fire span (Slice 2 chunk 5b)", 
     expect(fireDeferredMs).toBeLessThan(1_000 + 5_000);
   });
 
-  it("tool-delegate timer fire emits exactly one `continuation.delegate.fire` with chain.id matching the dispatch span", async () => {
+  it("tool-delegate immediate dispatch emits exactly one `continuation.delegate.dispatch` with chain.id", async () => {
     vi.useFakeTimers();
     const { tracer, spans } = createRecordingTracer();
     setContinuationTracer(tracer);
 
     const sessionKey = "continuation-delegate-fire-tool";
     const run = createContinuationRun({ sessionKey });
-    // Tool-delegate path: the model mock injects a pending delegate via
-    // `enqueuePendingDelegate` during the run (mirrors the real
-    // `continue_delegate` tool behavior). The agent-runner then consumes
-    // pending delegates via `consumePendingDelegates(sessionKey)` and
-    // arms the tool-side timer callback.
     runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
       enqueuePendingDelegate(sessionKey, {
         task: "poll PR #999 status",
-        delayMs: 1_000,
-        silent: false,
-        silentWake: false,
+        mode: "normal",
       });
       return {
         payloads: [{ text: "Spawning a delegate to handle this." }],
@@ -410,29 +403,19 @@ describe("runReplyAgent :: continuation.delegate.fire span (Slice 2 chunk 5b)", 
 
     const dispatchSpans = spans.filter((s) => s.name === "continuation.delegate.dispatch");
     expect(dispatchSpans).toHaveLength(1);
-    expect(spans.filter((s) => s.name === "continuation.delegate.fire")).toHaveLength(0);
 
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    const fireSpans = spans.filter((s) => s.name === "continuation.delegate.fire");
-    expect(fireSpans).toHaveLength(1);
-
-    const fire = fireSpans[0];
-    if (!fire) {
-      throw new Error("expected a recorded continuation.delegate.fire span");
+    const dispatch = dispatchSpans[0];
+    if (!dispatch) {
+      throw new Error("expected a recorded continuation.delegate.dispatch span");
     }
-    expect(fire.status).toBe("OK");
-    expect(fire.ended).toBe(true);
+    expect(dispatch.ended).toBe(true);
 
-    const dispatchChainId = dispatchSpans[0]?.attributes["chain.id"];
+    const dispatchChainId = dispatch.attributes["chain.id"];
     expect(typeof dispatchChainId).toBe("string");
     expect(dispatchChainId as string).toMatch(UUIDV7_REGEX);
-    expect(fire.attributes["chain.id"]).toBe(dispatchChainId);
-    expect(fire.attributes["delay.ms"]).toBe(1_000);
-    expect(fire.attributes["delegate.delivery"]).toBe("timer");
-    const fireDeferredMs = fire.attributes["fire.deferred_ms"] as number;
-    expect(fireDeferredMs).toBeGreaterThanOrEqual(0);
-    expect(fireDeferredMs).toBeLessThan(1_000 + 5_000);
+    expect(dispatch.attributes["delay.ms"]).toBe(0);
+    expect(dispatch.attributes["delegate.delivery"]).toBe("immediate");
+    expect(dispatch.attributes["delegate.mode"]).toBe("normal");
   });
 
   it("reservation-missing path: timer fire emits `continuation.delegate.fire` AND sibling `continuation.disabled (reason=reservation.missing)` sharing chain.id", async () => {
