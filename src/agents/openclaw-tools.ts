@@ -123,7 +123,8 @@ export function createOpenClawTools(
     };
     /** Closures for request_compaction tool (Trigger E). Only set when continuation is enabled. */
     requestCompactionOpts?: {
-      getContextUsage: () => number;
+      sessionId?: string;
+      getContextUsage: () => number | null;
       triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
     };
   } & SpawnedToolContext,
@@ -260,7 +261,7 @@ export function createOpenClawTools(
     ...(!embedded && messageTool ? [messageTool] : []),
     createTtsTool({
       agentChannel: options?.agentChannel,
-      config: options?.config,
+      config: resolvedConfig,
     }),
     ...collectPresentOpenClawTools([imageGenerateTool, musicGenerateTool, videoGenerateTool]),
     ...(embedded
