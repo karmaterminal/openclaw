@@ -1,0 +1,65 @@
+# broken push forensic
+
+Generated: 2026-04-30T03:40:02Z
+Feature/squashed pre-step9 tip: 90db3699ccf3
+Forensic post-step9-push state: 63d5c8c65e
+
+## git log --oneline 90db3699cc..63d5c8c65e
+
+63d5c8c65e test(continuation): trim durability harness trailing blank
+b1afe5e92c test(continuation): restore followup delegate dispatch mock in squash prep
+a7ce3e0a44 test(continuation): align squash prep with stable continuation substrate
+afaae13901 fix(continuation): restore continuation module substrate for squash prep
+6dfb60a18d fix(continuation): wrap followup-runner persistContinuationChainState in updateSessionStore (#431) (#432)
+64d17e17b7 test(continuation): add swim-37 durability harness
+1337e41f7f fix(continuation): persist child chain state after delegate drain (r3164380565)
+62ff1668b3 fix(continuation): persist followup chain tokens when dispatched===0 (r3164418106)
+4043c40e68 fix(continuation): durable write-back for tool-delegate chain state (r3164418100)
+
+## git diff --stat 90db3699cc 63d5c8c65e
+
+ INTEGRATION-TEST-GAP-MAP.md                        |  93 +++++
+ .../subagent-announce.continuation-drain.test.ts   | 310 +++++++++++++++
+ .../subagent-announce.continuation.runtime.ts      |  20 +
+ src/agents/subagent-announce.ts                    | 170 ++++++++-
+ src/auto-reply/continuation/config.test.ts         | 120 ++++++
+ src/auto-reply/continuation/config.ts              | 104 +++++
+ .../continuation/context-pressure.test.ts          | 118 ++++++
+ src/auto-reply/continuation/context-pressure.ts    | 166 ++++++++
+ .../delegate-dispatch-post-compaction.test.ts      | 181 +++++++++
+ .../continuation/delegate-dispatch.test.ts         | 123 ++++++
+ src/auto-reply/continuation/delegate-dispatch.ts   | 350 +++++++++++++++++
+ src/auto-reply/continuation/delegate-store.test.ts | 228 +++++++++++
+ src/auto-reply/continuation/delegate-store.ts      | 421 +++++++++++++++++++++
+ src/auto-reply/continuation/lazy.runtime.ts        |  31 ++
+ .../continuation/post-compaction-release.test.ts   | 273 +++++++++++++
+ .../continuation/post-compaction-release.ts        | 107 ++++++
+ src/auto-reply/continuation/scheduler.test.ts      | 238 ++++++++++++
+ src/auto-reply/continuation/scheduler.ts           | 256 +++++++++++++
+ src/auto-reply/continuation/signal.test.ts         |  83 ++++
+ src/auto-reply/continuation/signal.ts              | 139 +++++++
+ src/auto-reply/continuation/state.test.ts          |  76 ++++
+ src/auto-reply/continuation/state.ts               | 189 +++++++++
+ src/auto-reply/continuation/types.ts               | 146 +++++++
+ src/auto-reply/reply/agent-runner.ts               |  62 +++
+ src/auto-reply/reply/followup-runner.test.ts       | 128 +++++++
+ src/auto-reply/reply/followup-runner.ts            |  93 +++++
+ studies/swim-37/harness/durability/README.md       |  83 ++++
+ .../harness/durability/durability-fixture.ts       | 116 ++++++
+ .../harness/durability/s1-two-hop-chain.test.ts    | 262 +++++++++++++
+ .../durability/s2-followup-token-chain.test.ts     | 277 ++++++++++++++
+ .../durability/s3-restart-roundtrip.test.ts        | 279 ++++++++++++++
+ test/vitest/vitest.config.ts                       |   2 +
+ .../vitest.continuation-durability.config.ts       |  25 ++
+ 33 files changed, 5267 insertions(+), 2 deletions(-)
+
+## Commentary
+
+The broken push was not a complete canonical substrate fold. It carried runner and announce code that expected the canonical continuation delegate shape while leaving legacy delegate-store/type files in the old boolean shape.
+
+Known missing pieces from #433:
+- PendingContinuationDelegate.mode shape: canonical code reads mode, while the broken push left legacy silent/silentWake boolean types in the legacy import path.
+- ChainState import: agent-runner used ChainState without the canonical type import from continuation/types.
+- Delegate-store shim conversion: canonical2 converts continuation-delegate-store.ts and continuation-delegate.types.ts into compatibility shims over the canonical TaskFlow-backed continuation store/types; the broken push left mixed legacy/canonical surfaces.
+
+Guard-test implication: byte-identical substrate files are insufficient proof. The guard needs to cover downstream legacy import paths, public/compat shims, and representative caller type-shape use so a partial fold fails before presentation-branch push.

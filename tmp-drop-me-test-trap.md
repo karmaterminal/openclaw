@@ -47,3 +47,12 @@ started: 2026-04-30T03:36Z
   - volatile Maps/Sets/WeakMaps that carry continuation/queue state should be eliminated or explicitly justified.
 - Key risk frame from #433: broken step-9 push mixed canonical mode/ChainState callers with legacy boolean delegate-store/types; the guard-test walk must catch incomplete substrate folds and adjacent partial-refold shapes.
 - Next checkpoint: generate fresh delta receipts under `docs/test-trap-walk/`, then code-walk the canonical2 continuation surface.
+
+## Checkpoint: delta-files-generated
+
+- Generated fresh §3 receipt files under `docs/test-trap-walk/` using exact workorder refs:
+  - `canonical2-vs-v2026.4.24.txt` (362 lines)
+  - `canonical2-vs-feature-squashed.txt` (1400 lines)
+  - `broken-push-forensic.txt` (65 lines)
+- The broken-push forensic file includes the required commentary on the missing `PendingContinuationDelegate.mode` shape, missing `ChainState` import, and missing delegate-store/type shim conversion.
+- Next checkpoint: code-walk the canonical2 continuation surface at `cf7830ffb3`, map existing guards, and draft issue findings.

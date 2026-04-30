@@ -1,0 +1,1400 @@
+# canonical2 vs feature-squashed
+
+Generated: 2026-04-30T03:40:02Z
+Feature/squashed tip: 90db3699ccf3
+Canonical2 tip: cf7830ffb3702bf7d826d70838893e2e41709f12
+
+## git log --oneline --no-merges 90db3699ccf3..cf7830ffb3
+
+cf7830ffb3 fix(continuation): wrap followup-runner persistContinuationChainState in updateSessionStore (#431) (#432)
+15e045fe46 test(continuation): add swim-37 durability harness
+dc572c0106 fix(continuation): persist child chain state after delegate drain (r3164380565)
+e73fd0f088 fix(continuation): persist followup chain tokens when dispatched===0 (r3164418106)
+d0f31f65cc fix(continuation): durable write-back for tool-delegate chain state (r3164418100)
+c8f85f5254 fix: stabilize continuation chain persistence
+42f1bb9c14 feat(diagnostics-otel,continuation-tracer): wire OTEL adapter into setContinuationTracer (#334 Slice 3, F-37-010) (#422)
+29e556eb11 docs(release-highlights): reparent 16 release-highlights commits onto canonical2 (per figs 14:05 PDT) (#421)
+179f6c5799 test/docs(swim-37): heartbeat harness-shape nits (🌫 + 🩸 #417 review) (#419)
+148792a0b7 fix(swim-37): captureClassify validation + signal.kind rename (🌫 #416 review) (#418)
+30b06a984e feat(swim-37): wire captureSwim("heartbeat", …) against emitContinuationHeartbeatSpan helper (#412) (#417)
+526540de15 feat(swim-37): wire `captureClassify(...)` for rebase.classify span (#413) (#416)
+bcccac2e91 test(swim-37): pin chain.id absence on lich span (🌊 #414 review) (#415)
+fff243c781 docs(swim-37): `rebase.classify` span-emission wiring memo (memo-before-wire) (#413)
+e4d49fc02b feat(swim-37): wire `captureSwim("lich", …)` against compaction-released helper (#414)
+1b84e71c95 docs(swim-37): heartbeat continuation primitive wiring memo (#412)
+3d90f68b14 docs(swim-37): `lich` primitive wiring memo (memo-before-wire) (#411)
+f37e4b8242 feat(swim-37): #324 §1 trap-class conflict-content rubric (#409) (#410)
+8bb2fbad30 test(swim-37): wire captureSwim() for continue_work primitive (#324) (#405)
+9187d06e90 test(swim-37): helper-tier fire + release/drain contract pin (#324) (#407)
+cb73bc8648 feat(swim-37): #324 §1 trap-class CHANGELOG-byte-grep discovery channel (#408)
+94fc8d1186 test(swim-37): #324 emit-helper contract pin (19 tests, all live) (#406)
+652c8a888e docs(rfc): scrub `operator` → `the human user` per language-as-semantic-trap canon (#364)
+c2400b2a66 [6c-followup] #334 Slice 2 chunk 6c follow-up — producer-coupling test pin + cast cleanup (#401)
+5e90c859b9 feat(continuation): #334 Slice 2 chunk 6c — signal.kind SSOT + compaction.id cross-cutting attr (release-side wire) (#400)
+02e2922241 docs(continuation): #334 Slice 2 chunk 6c memo follow-up — strike stale Math.floor test + bank 🩸 minority preference (#399)
+ecb434977c docs(continuation): #334 Slice 2 chunk 6c — signal.kind SSOT pin + compaction.id cross-cutting design memo (#398)
+cd8b623be2 feat(continuation): #334 Slice 2 chunk 6b — wire continuation.compaction.released span (#397)
+f767fe2161 docs(continuation): #334 Slice 2 chunk 6b — continuation.compaction.released design memo (#396)
+934a59bd30 feat(swim-37): #324 InMemorySpanRecorder shim + contract tests (#394)
+560948a70a feat(continuation): #334 Slice 2 chunk 6a — wire continuation.queue.drain span (#395)
+739063507f docs(swim-37): bump harness README canonical2 base to 47016eb417 (post-chunk-5 stack) (#392)
+47016eb417 feat(continuation): #334 Slice 2 chunk 5c — wire continuation.work.fire span (#391)
+a13b3baca7 docs(continuation): #334 Slice 2 chunk 5c — continuation.work.fire design memo (#390)
+01abb3defc test(continuation-tracer): pin continuation.delegate.fire in canonical-name array (post-#388) (#389)
+e959d2c177 feat(continuation): #334 chunk 5b — continuation.delegate.fire wire (#388)
+287d0a5586 docs(continuation): #334 chunk 5b — continuation.delegate.fire design memo (#386)
+6656138126 feat(continuation): #334 chunk 5a — per-turn cap reject reland (#385)
+4719e86345 feat(continuation): #334 Slice 2 chunk 4 — continuation.disabled spans for cap-rejected dispatches (#384)
+3655b0667a feat(continuation): #334 Slice 2 chunk 3 — continuation.delegate.dispatch span at runner enqueue seam (#383)
+19797e7fa6 feat(continuation): #334 Slice 2 — chain.id substrate (UUIDv7) + continuation.work span at runner accept seam (#382)
+be76c3dc2b docs(continuation-integration): mark targetSessionKey §4 as proposed-pending #332 (#379)
+ad6ac310c8 docs+descriptor: Surfaces 1+2 substrate-naming + continuation-integration design doc (canonical2 successor of #338) (#362)
+d533d5c720 feat(continuation): #334 Slice 2 chunk 1 — Tracer surface + noopTracer (path-B, no OTEL deps) (#378)
+2d10c1c218 feat(continuation): #334 Slice 1 — traceparent payload + chain-budget cap helper (#366)
+953030d88f swim 37: integration test harness scaffold (continuation/heartbeat/lich) [WIP - typecheck pending] (#370)
+092f502032 docs(design): #332 Item B audit — post-compaction release seam (DRAFT) (#343)
+bd3033d740 feat(infra): add requireSessionKeyOrSkip helper for key-gated side-effects (#292) (#353)
+1870a84f32 [PARALLEL] feat(continuation): substrate-native chain-budget extraction (path-b) (#354)
+ce49d93113 docs(rfc): fixup pass — ToC regen, dev-state strip, narrative flow, current capability incorporation (#358)
+b04484465a ci(workflow-sanity): run generated-doc-baselines on PRs (#297) (#351)
+25ff4f0138 fix(macos/exec-allowlist): restore wildcard "*" match-all branch (#340) (#350)
+96d1304d47 feat(infra): substrate-adoption-rule lint mechanization (capability-registry + PR-time lint) (#347)
+0b9ee9f01b docs(rfc): oxfmt format pass on continue-work-signal-v2.md (#349)
+b0bc4b4ee2 feat(session-delivery-queue): failed TTL prune + queueDir soft-cap (#332) (#348)
+57d0e61d76 docs(tools-template): substrate-adoption convention for new tool descriptors (#336) (#339)
+cc08bbc9fe docs(#335): RFC inserts §3.6 persistence + §4.6 lifecycle broker + §6.6 chain-correlation + §6.5/§6.1 addenda (#342)
+8338d37bda fix(session-delivery-queue): canonicalize trailing whitespace in idempotency taskHash (#345)
+c96e2d7955 fix: clear pre-existing canonical2 base-noise blocking PR #345 (#346)
+56cb6f712a fix(test): pin empty config snapshot in maxDelegatesPerTurn default test
+6cdb079981 refactor(tools): use ToolInputError for targetSessionKey loud-failure
+eb0361d8dc fix(continuation-descriptor): rephrase runtime binding note
+5b24433955 feat(session-delivery-queue): extend payload union metadata
+14b3418e1f feat(continuation-descriptor): add targetSessionKey to continue_delegate
+0985182e87 fix(rebase): remove stale status type imports
+f4d3de09ed fix(rebase): repair gateway ingress merge
+760f5a3306 chore(rebase): regen plugin-sdk-api hash on v2026.4.24 base
+f279e0e6cf chore(rebase): regen config-docs hash on v2026.4.24 base
+14f792ad3a fix(types): tighten continuationTriggerOverride to ContinuationTrigger union
+69b4079aef test(continuation): pin drainsContinuationDelegateQueue truth-table
+8f267807c0 fix(continuation): default-allow continue_delegate; only block explicit non-drainers
+c99aa116f8 fix(continuation): gate continue_delegate on drain + sync display detailKeys
+a654a8798e docs(continuation): fix broken Swim 7 evidence links in RFC
+79006952ed docs(continuation): annotate RFC §6.1 equivalent-idiom for band-dedup sentinel
+c4d779605c fix(continuation): plumb provider+model into volitional compaction call
+51cd381fc0 fix(continuation): pre-merge minors from 2026-04-23 review fleet
+7bdab62f91 docs(continuation): absorb Trigger F into RFC §4.1 taxonomy
+d65d0139e1 fix(continuation): purge generation-guard per RFC 2026-04-15 (#299)
+6b1ba3bf4c chore(continuation): generated baselines, i18n, build config, swift protocol, gitignore
+4ba4997752 test(continuation): coverage for context-pressure, post-compaction, taskflow durability
+0c00d42c3c docs(continuation): RFC continue-work-signal-v2
+8ecf0c0b83 feat(continuation): core implementation — context-pressure, request-compaction, post-compaction relay
+cbcfdf62c7 chore(release): prepare 2026.4.24
+0168ca667d fix(agents): keep heartbeat prompt out of non-heartbeat runs
+d45d5ff7f9 chore(release): prepare 2026.4.24 beta 6
+75349813c4 test: isolate gateway live model sessions
+1c927a553c chore(release): prepare 2026.4.24 beta 5
+99de2cfcc5 fix(plugins): alias wildcard runtime dependency exports
+f2b5e5bc69 chore(release): prepare 2026.4.24 beta 4
+9d612c1b5d fix(plugins): alias runtime dependency export subpaths
+da6530be0f chore(release): prepare 2026.4.24 beta 3
+9119ee6d75 fix(plugins): load mirrored runtime deps through ESM-safe aliases
+6dbce80a43 docs(changelog): finalize 2026.4.24 notes
+85839e5a13 chore(release): prepare 2026.4.24 beta 2
+1c98de9e66 fix(plugins): preserve package deps for runtime mirrors
+3ee268cb4d fix(test): cap native worker pools for serial Vitest
+9f6cda120d fix(heartbeat): clamp scheduler delay to Node setTimeout cap (#71414) (#71478)
+bd13188f79 chore(release): prepare 2026.4.24 beta 1
+c2f6ad3876 fix: keep control ui bundle browser-safe
+bca479cefb fix: align browser profile facade exports
+6d082070a2 fix(plugins): preserve bundled cli metadata skip
+86f65ef1e3 docs(release): require changelog rewrite from commits
+cdd91edd5e fix(plugins): load packaged runtime mirrors from canonical sources
+9577de2da7 docs: reference fixed MCP lifecycle reports
+3e3bba4f30 feat(diagnostics): emit exec process telemetry (#71451)
+188bce424b perf: speed up google meet tests
+845040214e fix: recover subagent waits after transport drops
+5376a4a5d6 fix(browser): default act timeout budget
+712f7b218c test: cover bundled MCP runtime cleanup gates
+9895ecead3 fix(memory): keep llama runtime optional (#71425)
+4005a4f731 feat(google-meet): default artifacts to latest record
+459d277076 feat(google-meet): add latest conference command
+dfa52aaab0 docs(changelog): clean up top Unreleased section formatting and dedupe
+d8a70a7e49 docs(changelog): add missing entries for 3 external-contributor PRs
+8e40bdba90 fix(cli): scope dev reset to active profile
+56eb1ffabf fix(diagnostics-otel): support preloaded sdk mode (#71450)
+417b1c5507 feat(google-meet): export artifacts reports
+bb5e278f63 fix(feishu): stabilize topic group session keys
+d068cb960d fix: stabilize qa lab memory and thinking scenarios
+b34ece705f fix: retire idle bundled MCP runtimes
+66e66f19c6 feat(memory-core): expose hybrid search component scores
+a983ea61ac feat(google-meet): include transcript entries in artifacts
+356530598a docs(changelog): note restart continuation recovery (#70780) (thanks @fuller-stack-dev)
+a903df02f5 fix(gateway): bound restart continuation recovery
+03addfe9ba fix(gateway): tighten session delivery recovery
+2261550633 fix(gateway): address restart continuation review comments
+0ac81d41b6 fix(gateway): durably hand off restart continuations
+4df0e10623 fix(feishu): back off failed streaming card starts
+d37f165bee feat(google-meet): add oauth doctor
+2ff7eb36cf fix(models): expose codex runtime context caps
+3d554aefdf fix(logging): keep log transport internals private (#71322)
+6b38714cb9 fix(agents): guard malformed tool result text blocks
+1752b15a21 feat(google-meet): add artifacts and attendance commands
+209d50b52c feat(browser): add coordinate click action
+982230f460 Refine tool access controls (#71405)
+d7fae7a5e7 docs(changelog): note Feishu streaming dedupe fix (#71431)
+b59ba1dc8e docs: cover new contextInjection 'never' mode and Nix daemon PATH support
+2aa313cd90 fix(feishu): prevent duplicate message after streaming card close (#67791) (#68491)
+36eae5a2c7 fix: tighten silent cron exec notifications
+bd60df3e53 fix: silence cron exec completion noise
+017252e4f8 test(daemon): remove duplicate launchd read mock
+b8b270d5b8 fix(daemon): add Nix Home Manager PATH support
+33d5ebbff7 test(daemon): read launchd fixture files
+2a96ea4d72 test(agents): cover committed delivery fallback
+07cf1dd65c test: remove duplicate launchd read mock
+85cab8b516 test: fix launchd restart mock state
+22aa402b64 test(daemon): mock launchd plist reads
+d957401c7e test(daemon): type launchd kickstart code fake
+a7c8a1ba0d fix(browser): finish existing-session attach port (#57245)
+998e09ee00 docs(changelog): note browser existing-session fixes (#57245)
+ad8737af2c fix(browser): tighten WS3 status probes
+3c31facfa2 Fix sticky Chrome MCP status probes
+8e18b3cc20 fix(browser): report attach-only profile transport truthfully
+0ff7aa5c3d fix(browser): retry stale cached playwright attach once
+d6a9165b9e test: stabilize gateway and TTS tests
+996ec2dd76 fix(agents): key fallback on committed delivery
+4a68fa3962 fix(ui): keep tmp-dir resolver browser-import safe
+f5868ad1f8 fix(daemon): refresh launchd plist before restart bootstrap (#71421)
+cc0992564b fix: add contextInjection never mode (#65006) (thanks @xDarkicex)
+18ffa81564 fix(agents): suppress delivered messaging fallback
+47a4124dc3 fix(daemon): tolerate loaded launchctl bootstrap (#71413)
+cfb551c709 test(openrouter): cover DeepSeek live cache hits
+2cd2732ab6 docs: document trusted CIDR node auto-approval
+537a8e25ed fix(signal): classify filename-only voice notes
+f44759073b feat(gateway): auto-approve trusted CIDR node pairing (#61004) (thanks @sahilsatralkar)
+6c1d4414d9 fix(browser): dedupe concurrent lazy start (#61772) (#61772)
+d79b9e0af4 fix(openrouter): allow DeepSeek cache-ttl eligibility
+29f7a2f441 docs(cron): clarify isolated session context
+f2745aa03a refactor(cron): clarify ambient session context rollover
+eaf6d3c146 fix(dashboard): keep bearer token out of runtime logs
+c2a2a481b2 fix(whatsapp): preserve audio-as-voice payload intent
+80b6da72f5 test(ui): cover nested qualified chat model refs (#65340)
+0970fc5da7 ci: relax bundled channel fast smoke timeout
+d4ed19dafc chore(changelog): move #66884 entry to 2026.4.24 (#71410)
+5b59079fd4 fix(tts): preserve audio-only hook transcript
+88ea3d839b docs: sentence-case Title Case table headers in Codex/runtime docs
+57f5b3b201 fix(daemon): harden launchd restart handoff (#71409)
+44ad970e48 docs: replace generic 'this page covers' intros with direct openings
+93346b00fb docs: drop redundant body H1s that duplicated frontmatter title
+f9c268cf56 ci: keep fast fixture edits on narrow path
+576c6c240f fix(discord): collapse cron announce text
+ee3c32c103 docs(plugins): clarify inspector package boundary
+a35333abe1 fix(browser): recover stale Chromium profile locks (#62935) (#62935)
+f00d65a304 test: align status scan compatibility fixture
+2f097c47f8 ci: route narrow ci changes through fast path
+c948c63bbd docs: unify casing and replace path-as-text links across recent doc surfaces
+88ca1859ed fix(discord): use undici multipart form data (#71383)
+439f353cf6 fix(discord): bridge undici multipart types
+52ebdabcfd fix(discord): use undici form data for multipart uploads
+1afbfdf451 fix(control-ui): preserve optimistic chat tail
+86dc820560 feat(plugins): add compatibility registry
+f0ceb4b68f fix(cron): isolate fresh cron session state
+7a9584f0f9 fix(ci): harden release checks workflow inputs (#66884)
+8acc92c881 feat(google): support Gemini TTS style profile
+3f63ba8fd8 fix(webchat): hide heartbeat history artifacts
+a2a49b430c test(plugins): route tts contract helper changes narrowly
+b79272baad CI: increase CodeQL JavaScript runner size (#71402)
+104a8f3f52 test(browser): handle oom wrapper in chrome launch assertion
+fa22ca8883 test(qa): cover stale subagent child links
+7f6452897e fix(agents): repair strict provider tool replay
+e31aef7e19 fix(tts): migrate legacy edge config in doctor
+b0e834b2d9 fix(browser): support per-profile executable paths
+759fe0bf95 docs: cover reply media and voice-call fixes
+938b53698e test(voice-call): cover tunnel startup
+2b87d9f3ec fix(voice-call): reject local webhook fallback
+2f39e6df59 fix(tts): prefer active speech provider lookup
+2033075570 fix(sessions): hide stale subagent child links
+c11730fd09 fix(tts): keep speech fallback discovery scoped
+b8239be46b fix(voice-call): settle cleared tts queue
+52267a6b75 fix(auto-reply): run message_sending before inbound delivery
+04c5bbf33d fix(reply): dedupe block-streamed media
+98a99765af fix(gateway): invoke plugin-backed catalog tools
+6602092a40 fix(browser): require admin scope for browser request
+b84e57fca3 fix(tts): use resolved config for tool synthesis
+c2139635ff fix: format acpx doctor details safely
+757aee4cdd fix(subagents): retire stale unended runs
+97fd45a8c1 fix: honor acp allowed agents for acpx probe
+14eab13ab4 fix(agents): keep voice media with no-reply sentinel
+85db7af8d9 test: cover opencode-go image default pairing
+fa976e5b93 feat: update opencode-go default model
+8cc38c1b86 fix: stop session lock failover (#68700) (thanks @MonkeyLeeT)
+c03e5b3c3a docs(tts): clarify legacy provider migration
+2c716f5677 fix: enforce memory search session visibility (#70761) (thanks @nefainl)
+978a50a3c5 fix(minimax): normalize tts pitch for api
+5d724863bb test: show live Docker profile mount
+b9da7cbf01 test: strip live gateway reasoning wrappers
+0f0c855a8b fix(google-meet): surface browser create manual actions
+70fd1c91aa fix(channels): harden tool progress previews
+da89108b82 docs(minimax): document tts env vars
+225ff9a866 fix(minimax): transcode voice-note tts to opus
+f3cc74ec5d fix: include exec completion payloads (#71213) (thanks @GodsBoy)
+a8f9e29e1a fix(heartbeat): classify untrusted exec completions
+724692bb8c chore(ci): refresh raw fetch allowlist
+349749f73d fix(heartbeat): include exec completion payloads
+7e52223d32 fix: register opencode image understanding
+398496c45b test(config): cover agent context token validation
+ed03d91ae0 fix(config): allow per-agent contextTokens override in agents.list
+391289564c fix(media): validate managed reply media aliases
+a31374f097 fix: allow managed media from sandbox replies
+7875092f4d feat(openrouter): add tts provider
+c7f18a6b9d test(agents): cover Gemini incomplete-turn guard
+6f72b74cec fix: strip opencode image reasoning none
+96515891a2 fix: keep agent json stdout clean
+b0709a894d test(deepseek): cover V4 replay live
+6cfe810402 Refresh the Codex runtime docs
+05fbdd4b28 fix: handle missing tailscale binary
+678ed5d512 fix(deepseek): normalize V4 tool-call replay
+c81b3ab6b9 fix(minimax): mark tts output voice-compatible
+de07739e40 docs: update changelog for gateway status perf
+2bf2fd6c3d fix(cli): preserve gateway status rpc probe semantics
+43beceaee7 perf(cli): trim gateway status startup work
+cc0f3e0e40 docs: add changelog for Gemini incomplete-turn recovery (#71362)
+0ec3b79c07 refactor: reuse model-id prefix helper for Gemini guard
+0ce93c9f1a fix: enable incomplete-turn recovery for Gemini
+73a6a2a6ab fix(tts): merge allowlisted speech providers
+cf07f01d0d docs(plugin-sdk): document browser tab cleanup config type
+5699209d00 fix: match bare exec allowlist commands
+cb9c927ca6 docs: document config recovery policy
+0764f86e18 test(memory): keep embedding provider selection isolated
+8b31ba93b5 fix(plugin-sdk): align browser profile facade exports
+f1154fc5ed docs: note codex elicitation approval sanitization (#71343) (thanks @Lucenx9)
+e098a439c4 fix(codex): sanitize elicitation approval text
+972d8fc1cf fix(agents): keep reply tool snapshots aligned
+b13545355d fix(tts): parse bare tags and ignore code examples
+a126a9013d feat(plugins): expose nodes runtime to cli commands
+3731a7c8f2 fix(macos): retry talk tts via gateway
+9a0b26cafc test: cover config recovery policy edges
+f369939fed fix: avoid plugin-local config recovery rollback (#71289)
+306c0f73bf feat: add manifest model catalog planner (#71368) (thanks @shakkernerd)
+b6c24e5322 fix: report model catalog manifest conflicts
+9e190f1f6a test: cover manifest model catalog planner
+dabdc779be feat: add manifest model catalog planner
+7920f8d4fd fix(compaction): honor manual keepRecentTokens
+92b17af817 fix(tts): honor legacy edge voice config
+5569d6d9d3 fix: accept singular tool_call finish reason
+8a14328c69 fix: normalize manifest catalog provider ids
+455e84f776 fix(voice-call): start listening after telnyx greetings
+344ee3782d fix(google-meet): guide timeout recovery
+37c2450124 fix: support draft 2020 mcp tool schemas
+9fbfedf12a fix: skip invalid completions stream chunks
+5381625f45 fix(voice-call): terminate expired restored calls
+fe930b987e fix(plugin-sdk): align browser tab cleanup type exports
+250acdd2a2 test(voice-call): cover cloudflare twilio signatures
+355c92d69b fix(sessions): honor load-time maintenance config
+26f06afb90 fix: forward completions prompt cache keys
+24fdfdba6e test: disable Docker CLI image probe by default
+a669ba7df1 fix(voice-call): reap stale pre-answer calls
+a98a0b94d1 fix: isolate browser proxy routing
+9e5d09c962 fix(config): reject legacy secretref env markers
+7dc005fab6 fix(voice-call): honor telephony tts timeout
+e5babbb5e7 test: cover openai-compatible usage chunks
+413e407fb8 fix(whatsapp): deliver tool replies that include media (#60968)
+8f11e5ad18 fix(voice-call): scope sandbox session to agent
+460720d0a1 perf(feishu): avoid unconditional lifecycle waits
+a6d16a2153 perf(plugins): skip registry expansion for explicit document extractor allowlists
+28de3e1e5c perf(test): isolate core test hotspots
+c150110e02 test(voice-call): cover inbound transcript response handoff
+893c1d61ee fix: honor sandbox browser SSRF policy
+1906dc01bf fix(elevenlabs): omit mp3 accept for pcm tts
+7d5a7c4343 test(openai): preserve zero realtime transcription vad config
+55d3e7bc47 refactor: centralize model catalog normalization (#71360) (thanks @shakkernerd)
+c0bda91641 refactor: use shared model catalog normalization in manifests
+31f4991205 test: cover model catalog normalization
+b9da940813 feat: add model catalog normalizer
+efcd96a8eb feat: add model catalog shared types
+9a3dece879 fix(voice-call): allow dedicated response agent
+e442065970 feat(google-meet): add browser recovery diagnostics
+996e9226e5 fix(skills): restore legacy skill metadata fallback (#71346)
+bb5f523068 fix(skills): honor legacy clawdbot metadata
+49f72b332f fix: harden openai-compatible completions payloads
+4302f6ea20 docs: credit codex bound-turn fix (#71317)
+cc87c9b120 fix(codex): reject unscoped bound turn events
+f7caf83da4 fix(voice-call): coalesce webhook server starts
+53618cca0d docs: clarify plugin discovery loading
+1bdf5307d9 refactor(discord): split outbound payload helpers
+30aa7e0d4d fix: harden Windows browser open
+31d8fdb525 fix(voice-call): answer telnyx inbound calls
+282c32db7c fix(cli): sanitize plugin command descriptors
+4da25d0125 fix: keep session store live during rotation
+f29e15c05d fix(telegram): bound tool progress preview formatting
+e54a37a91e fix(telegram): harden progress preview rendering
+c4a8b80dfa fix(telegram): hide tool progress by default
+95a2c9bcdc fix: expand browser executable home paths
+4a7ddd7ff5 test(agents): slim embedded runner hotspot coverage
+f9ac92d1cc fix(deps): keep plugin ownership records live (#71331)
+f550aa7622 refactor(outbound): plan text and media sends
+a3862ffdf1 feat(voice-call): add setup smoke checks
+f9f7d6ffb5 fix(google-meet): reuse meet tabs across retries
+ba4cd90dbc fix(voice-call): share webhook runtime across contexts
+250d13de53 fix(agents): trust-gate tts transcript suppression
+628f0e8055 fix: gate tts output suppression on deliverable media
+db8f7478b4 fix: suppress tts transcript tool output
+6abab7555e test(plugins): align loader channel entry fixture
+713807b55d fix: harden openai auth and reasoning replay
+ae5c657367 fix: clean up idle browser tabs
+d99d9eda37 fix: honor media SSRF policy for PDF inputs (#71321)
+f9cb942aa9 fix(music): bound reference image fetches
+1bb5a96577 fix(media): cover generation reference media ssrf policy
+86556fcd47 fix(media): apply web fetch ssrf policy to media
+a5db42862d fix(plugins): expose channel CLI metadata in discovery (#71309)
+7ef4ecf499 refactor(outbound): share reply fanout policy
+2f23511ffa test: accept staged bundled runtime deps proof
+a5ab488691 fix(voice-call): pin response model sessions
+5d4931cc3f CI: trim CodeQL JavaScript scope (#71347)
+5e640b93da fix(discord): preserve outbound reply threading
+6d271762ab feat: add modelCatalog manifest contract (#71342) (thanks @shakkernerd)
+1f4dab2c37 fix: tighten model catalog manifest normalization
+a5d46c4567 fix: require complete model catalog pricing tiers
+8fa1052838 fix: tighten model catalog manifest validation
+d39e89e6b0 docs: document model catalog manifest metadata
+5e715de6c5 test: preserve model catalog manifest metadata
+61fcbe7dce feat: add model catalog manifest contract
+fd65caf4b0 chore: tighten changelog unreleased detection
+2a0a76f876 fix(browser): extend existing-session manage timeouts
+2ec70e6770 fix(browser): recover stale chrome mcp sessions
+325e5e921f fix: preserve thread-bound subagent completion fallback
+5865197ec1 test: relax bundled channel Docker readiness
+1eef6df5f5 test(auto-reply): reset inbound dedupe for acp abort
+69c258f9dc test(auto-reply): keep hook runner mock aligned
+f70e439699 fix(amazon-bedrock): skip auto memory embeddings without credentials (#71245)
+42ec7a868f Document agent runtimes and the Codex v1 contract (#71270)
+0970507078 test(auto-reply): allow ACP abort dispatch in regression test
+56de930628 fix: honor codex approval decisions (#71338) (thanks @Lucenx9)
+453789914b fix(codex): respect command approval decisions
+d4a9b28d0c test: add agents delete Docker smoke
+32dd1ffc5a refactor(approvals): unify structured path display
+52ea8eadcb fix(codex): normalize compacted Windows permission paths
+e68b2269b9 test(telegram): avoid current marker in model display regression (#71016) (thanks @iskim77)
+a9c46d5b1a test(telegram): cover model picker display names (#71016) (thanks @iskim77)
+d1386ada5a fix(telegram): pass modelNames to buildModelsKeyboard in button-click callback
+ead8be96fd Add tweakcn custom theme import
+835c4e053c test: stabilize Docker live service lanes
+3a7ee209c9 fix: harden browser screenshot timeouts
+41f9768cd8 fix: preserve context engine safeguard compaction
+a9a308becd fix: recover restart-aborted main sessions
+
+## git diff --stat 90db3699cc cf7830ffb3
+
+ .../skills/openclaw-release-maintainer/SKILL.md    |    5 +
+ .github/codeql/codeql-javascript-typescript.yml    |    3 +
+ .github/workflows/ci.yml                           |   90 +-
+ .github/workflows/codeql.yml                       |    2 +-
+ .github/workflows/install-smoke.yml                |   15 +-
+ .../openclaw-cross-os-release-checks-reusable.yml  |   33 +-
+ .github/workflows/workflow-sanity.yml              |    2 +-
+ CHANGELOG.md                                       | 2802 ++++++++++----------
+ INTEGRATION-TEST-GAP-MAP.md                        |   93 +
+ RELEASE-HIGHLIGHTS-2026-04-28.md                   |  436 +++
+ .../Sources/OpenClaw/ExecAllowlistMatcher.swift    |   27 +-
+ apps/macos/Sources/OpenClaw/ExecApprovals.swift    |   21 +-
+ .../macos/Sources/OpenClaw/GatewayConnection.swift |    1 +
+ .../Sources/OpenClaw/SystemRunSettingsView.swift   |   10 +-
+ apps/macos/Sources/OpenClaw/TalkModeRuntime.swift  |   96 +-
+ .../OpenClawIPCTests/ExecAllowlistTests.swift      |   45 +-
+ .../ExecApprovalHelpersTests.swift                 |    7 +-
+ .../ExecApprovalsStoreRefactorTests.swift          |    8 +-
+ .../TalkModeRuntimeSpeechTests.swift               |   49 +-
+ docs/.generated/config-baseline.sha256             |    8 +-
+ docs/.generated/plugin-sdk-api-baseline.sha256     |    4 +-
+ docs/.i18n/glossary.zh-CN.json                     |   36 +
+ docs/automation/cron-jobs.md                       |   18 +-
+ docs/channels/discord.md                           |    3 +
+ docs/channels/feishu.md                            |    6 +
+ docs/channels/pairing.md                           |   22 +
+ docs/channels/signal.md                            |    1 +
+ docs/channels/telegram.md                          |   21 +-
+ docs/channels/whatsapp.md                          |    1 +
+ docs/ci.md                                         |    5 +-
+ docs/cli/agent.md                                  |    1 +
+ docs/cli/browser.md                                |    3 +
+ docs/cli/config.md                                 |   14 +-
+ docs/cli/cron.md                                   |   15 +-
+ docs/cli/devices.md                                |    8 +
+ docs/cli/mcp.md                                    |    3 +
+ docs/cli/models.md                                 |    4 +
+ docs/cli/node.md                                   |   19 +
+ docs/cli/nodes.md                                  |    3 +
+ docs/cli/status.md                                 |    2 +-
+ docs/cli/voicecall.md                              |   23 +-
+ docs/concepts/agent-runtimes.md                    |  135 +
+ docs/concepts/compaction.md                        |    5 +
+ docs/concepts/context-engine.md                    |    5 +-
+ docs/concepts/memory-builtin.md                    |    7 +-
+ docs/concepts/memory-qmd.md                        |    3 +-
+ docs/concepts/memory-search.md                     |    4 +-
+ docs/concepts/model-providers.md                   |   46 +-
+ docs/concepts/models.md                            |    6 +
+ docs/concepts/oauth.md                             |    4 +-
+ docs/concepts/streaming.md                         |   36 +-
+ .../332-item-b-post-compaction-release-audit.md    |   94 +
+ .../334-slice2-chunk5b-delegate-fire-memo.md       |  243 ++
+ docs/design/334-slice2-chunk5c-work-fire-memo.md   |  217 ++
+ .../334-slice2-chunk6b-compaction-released-memo.md |  179 ++
+ docs/design/334-slice2-chunk6c-followup-memo.md    |  156 ++
+ ...unk6c-signalkind-ssot-and-compaction-id-memo.md |  317 +++
+ docs/design/continuation-integration.md            |  221 ++
+ docs/design/continue-work-signal-v2.md             |  297 ++-
+ .../swim-evidence/swim-07/SWIM7-RESULTS.md         |   68 +
+ docs/design/swim-37-classifier-span-memo.md        |  166 ++
+ .../swim-37-continue-delegate-wiring-memo.md       |  113 +
+ docs/design/swim-37-heartbeat-wiring-memo.md       |  161 ++
+ docs/design/swim-37-lich-wiring-memo.md            |  158 ++
+ docs/docs.json                                     |    2 +
+ docs/gateway/cli-backends.md                       |    6 +
+ docs/gateway/config-agents.md                      |   67 +-
+ docs/gateway/config-tools.md                       |    2 +-
+ docs/gateway/configuration-examples.md             |   22 +
+ docs/gateway/configuration-reference.md            |   72 +-
+ docs/gateway/configuration.md                      |    8 +
+ docs/gateway/doctor.md                             |    2 +
+ docs/gateway/heartbeat.md                          |    3 +
+ docs/gateway/pairing.md                            |   28 +
+ docs/gateway/security/index.md                     |   13 +
+ docs/gateway/troubleshooting.md                    |   81 +-
+ docs/help/testing-live.md                          |   34 +-
+ docs/help/testing.md                               |    3 +-
+ docs/install/nix.md                                |   22 +-
+ docs/logging.md                                    |   21 +
+ docs/plan/surfaces-1-2-substrate-notes.md          |  252 ++
+ docs/platforms/android.md                          |   19 +
+ docs/platforms/ios.md                              |   19 +
+ docs/platforms/macos.md                            |    2 +-
+ docs/plugins/architecture.md                       |    5 +-
+ docs/plugins/codex-harness.md                      |  197 +-
+ docs/plugins/compatibility.md                      |   98 +
+ docs/plugins/google-meet.md                        |  269 +-
+ docs/plugins/hooks.md                              |    5 +
+ docs/plugins/manifest.md                           |  100 +
+ docs/plugins/sdk-agent-harness.md                  |   29 +-
+ docs/plugins/sdk-channel-plugins.md                |   16 +
+ docs/plugins/sdk-entrypoints.md                    |   43 +-
+ docs/plugins/sdk-migration.md                      |    4 +-
+ docs/plugins/sdk-runtime.md                        |   14 +-
+ docs/plugins/sdk-setup.md                          |    6 +-
+ docs/plugins/sdk-subpaths.md                       |    7 +-
+ docs/plugins/voice-call.md                         |   40 +-
+ docs/pr-bodies/pr-38780-body.md                    |   72 +
+ docs/providers/deepseek.md                         |    6 +
+ docs/providers/google.md                           |   12 +-
+ docs/providers/minimax.md                          |   23 +
+ docs/providers/openai.md                           |   10 +-
+ docs/providers/opencode-go.md                      |    4 +-
+ docs/providers/opencode.md                         |    4 +-
+ docs/providers/openrouter.md                       |   26 +
+ docs/reference/prompt-caching.md                   |   21 +-
+ docs/reference/rich-output-protocol.md             |    7 +-
+ docs/reference/secretref-credential-surface.md     |    1 +
+ docs/reference/session-management-compaction.md    |   32 +-
+ docs/reference/templates/TOOLS.md                  |   42 +
+ docs/reference/transcript-hygiene.md               |    8 +-
+ ...026-04-22-tweakcn-custom-theme-import-design.md |  317 +++
+ docs/tools/acp-agents-setup.md                     |    9 +-
+ docs/tools/acp-agents.md                           |    4 +-
+ docs/tools/browser-control.md                      |    3 +-
+ docs/tools/browser-linux-troubleshooting.md        |   10 +
+ docs/tools/browser.md                              |   33 +-
+ docs/tools/exec-approvals-advanced.md              |   14 +-
+ docs/tools/exec-approvals.md                       |    8 +-
+ docs/tools/exec.md                                 |   12 +-
+ docs/tools/plugin.md                               |   37 +-
+ docs/tools/skills.md                               |    5 +
+ docs/tools/subagents.md                            |   19 +-
+ docs/tools/tts.md                                  |   49 +-
+ docs/web/control-ui.md                             |    6 +-
+ extensions/acpx/openclaw.plugin.json               |    2 +-
+ extensions/acpx/src/service.test.ts                |   81 +
+ extensions/acpx/src/service.ts                     |   54 +-
+ extensions/active-memory/index.test.ts             |    4 +
+ extensions/active-memory/index.ts                  |    2 +
+ .../amazon-bedrock/embedding-provider.test.ts      |   65 +
+ extensions/amazon-bedrock/embedding-provider.ts    |   21 +-
+ .../memory-embedding-adapter.test.ts               |  100 +
+ .../amazon-bedrock/memory-embedding-adapter.ts     |   10 +
+ extensions/anthropic-vertex/api.test.ts            |   70 +-
+ extensions/anthropic-vertex/api.ts                 |    7 +-
+ extensions/anthropic-vertex/stream-runtime.test.ts |  121 +-
+ extensions/anthropic-vertex/stream-runtime.ts      |   28 +-
+ extensions/browser/browser-config.ts               |    1 +
+ extensions/browser/browser-profiles.ts             |    2 +
+ extensions/browser/index.test.ts                   |   11 +
+ extensions/browser/plugin-registration.ts          |    2 +-
+ extensions/browser/src/browser-tool.actions.ts     |  119 +-
+ extensions/browser/src/browser-tool.runtime.ts     |    1 +
+ extensions/browser/src/browser-tool.schema.ts      |    5 +
+ extensions/browser/src/browser-tool.test.ts        |  261 +-
+ extensions/browser/src/browser-tool.ts             |  186 +-
+ .../browser/src/browser/browser-proxy-mode.test.ts |   53 +
+ .../browser/src/browser/browser-proxy-mode.ts      |   55 +
+ .../src/browser/cdp.helpers.internal.test.ts       |   25 +
+ extensions/browser/src/browser/cdp.helpers.ts      |   43 +-
+ .../browser/src/browser/cdp.internal.test.ts       |    3 +-
+ .../src/browser/cdp.screenshot-params.test.ts      |   93 +-
+ extensions/browser/src/browser/cdp.ts              |  194 +-
+ extensions/browser/src/browser/chrome-mcp.test.ts  |  176 ++
+ extensions/browser/src/browser/chrome-mcp.ts       |  452 +++-
+ .../browser/src/browser/chrome.internal.test.ts    |  123 +
+ extensions/browser/src/browser/chrome.test.ts      |   57 +
+ extensions/browser/src/browser/chrome.ts           |  250 +-
+ .../browser/src/browser/client-actions-core.ts     |   43 +-
+ .../browser/src/browser/client-actions.types.ts    |   10 +
+ extensions/browser/src/browser/client.test.ts      |   55 +-
+ extensions/browser/src/browser/client.ts           |   67 +-
+ extensions/browser/src/browser/config.test.ts      |  112 +
+ extensions/browser/src/browser/config.ts           |   70 +-
+ extensions/browser/src/browser/constants.ts        |    5 +
+ .../browser/src/browser/navigation-guard.test.ts   |   19 +-
+ extensions/browser/src/browser/navigation-guard.ts |   27 +-
+ .../src/browser/pw-session.connections.test.ts     |   57 +-
+ ...et-page-for-targetid.extension-fallback.test.ts |  130 +-
+ extensions/browser/src/browser/pw-session.ts       |   98 +-
+ .../src/browser/pw-tools-core.interactions.ts      |   51 +-
+ ...tools-core.screenshots-element-selector.test.ts |    6 +-
+ .../browser/src/browser/pw-tools-core.snapshot.ts  |   13 +-
+ .../browser/src/browser/resolved-config-refresh.ts |    7 +
+ .../src/browser/routes/agent.act.normalize.ts      |   30 +
+ .../browser/src/browser/routes/agent.act.shared.ts |    1 +
+ extensions/browser/src/browser/routes/agent.act.ts |   20 +
+ .../browser/routes/agent.existing-session.test.ts  |   33 +-
+ .../browser/src/browser/routes/agent.snapshot.ts   |   33 +-
+ .../browser/routes/basic.existing-session.test.ts  |   53 +-
+ extensions/browser/src/browser/routes/basic.ts     |   14 +-
+ extensions/browser/src/browser/routes/tabs.ts      |   16 +-
+ .../browser/src/browser/runtime-lifecycle.ts       |    5 +
+ .../src/browser/server-context.availability.ts     |   30 +-
+ ...e-browser-available.waits-for-cdp-ready.test.ts |   36 +
+ .../server-context.existing-session.test.ts        |   95 +-
+ .../server-context.hot-reload-profiles.test.ts     |   50 +
+ .../server-context.remote-tab-ops.harness.ts       |    7 +
+ .../browser/src/browser/server-context.tab-ops.ts  |   12 +-
+ .../src/browser/server-context.test-harness.ts     |   51 +-
+ extensions/browser/src/browser/server-context.ts   |   30 +-
+ .../browser/src/browser/server-context.types.ts    |    2 +
+ .../src/browser/server.agent-contract-core.test.ts |   42 +
+ ...agent-contract-form-layout-act-commands.test.ts |    8 +
+ .../browser/server.control-server.test-harness.ts  |    7 +
+ .../src/browser/session-tab-cleanup.test.ts        |   52 +
+ .../browser/src/browser/session-tab-cleanup.ts     |   92 +
+ .../src/browser/session-tab-registry.test.ts       |   82 +
+ .../browser/src/browser/session-tab-registry.ts    |  146 +-
+ .../browser-cli-actions-input/register.element.ts  |   31 +
+ extensions/browser/src/cli/browser-cli-examples.ts |    1 +
+ .../codex/src/app-server/approval-bridge.test.ts   |   57 +-
+ extensions/codex/src/app-server/approval-bridge.ts |   37 +-
+ .../src/app-server/elicitation-bridge.test.ts      |  178 ++
+ .../codex/src/app-server/elicitation-bridge.ts     |  141 +-
+ .../codex/src/conversation-turn-collector.test.ts  |   51 +
+ .../codex/src/conversation-turn-collector.ts       |    2 +-
+ extensions/deepseek/deepseek.live.test.ts          |  121 +-
+ extensions/deepseek/index.test.ts                  |   90 +
+ extensions/deepseek/stream.ts                      |   19 +
+ .../src/continuation-tracer-adapter.test.ts        |  198 ++
+ .../src/continuation-tracer-adapter.ts             |  174 ++
+ extensions/diagnostics-otel/src/service.test.ts    |  195 +-
+ extensions/diagnostics-otel/src/service.ts         |  133 +-
+ extensions/discord/src/channel.test.ts             |    4 +
+ extensions/discord/src/channel.ts                  |  111 +-
+ extensions/discord/src/client.proxy.test.ts        |   55 +
+ extensions/discord/src/delivery-retry.ts           |   52 +
+ extensions/discord/src/draft-stream.test.ts        |   34 +-
+ extensions/discord/src/draft-stream.ts             |    4 +-
+ .../discord/src/monitor/reply-delivery.test.ts     |  908 +------
+ extensions/discord/src/monitor/reply-delivery.ts   |  622 +----
+ .../discord/src/outbound-adapter.test-harness.ts   |   16 +
+ extensions/discord/src/outbound-adapter.test.ts    |  331 ++-
+ extensions/discord/src/outbound-adapter.ts         |  327 +--
+ extensions/discord/src/outbound-approval.ts        |   29 +
+ extensions/discord/src/outbound-components.ts      |   81 +
+ .../discord/src/outbound-payload.contract.test.ts  |    2 +-
+ extensions/discord/src/outbound-payload.ts         |  134 +
+ extensions/discord/src/outbound-send-context.ts    |   93 +
+ extensions/discord/src/proxy-request-client.ts     |    5 +-
+ extensions/discord/src/send.components.ts          |   15 +-
+ extensions/discord/src/send.outbound.ts            |   42 +-
+ extensions/discord/src/send.shared.ts              |    9 +-
+ extensions/elevenlabs/tts.test.ts                  |   26 +
+ extensions/elevenlabs/tts.ts                       |   11 +-
+ extensions/feishu/openclaw.plugin.json             |   99 +-
+ extensions/feishu/src/bot-content.ts               |   13 +-
+ extensions/feishu/src/bot.test.ts                  |   59 +
+ extensions/feishu/src/bot.ts                       |    9 +-
+ extensions/feishu/src/channel.test.ts              |   27 +
+ extensions/feishu/src/channel.ts                   |   14 +
+ extensions/feishu/src/config-schema.ts             |    5 +-
+ extensions/feishu/src/event-types.ts               |    2 +-
+ extensions/feishu/src/mention.ts                   |    3 +-
+ extensions/feishu/src/monitor.account.ts           |    4 +-
+ extensions/feishu/src/monitor.message-handler.ts   |    4 +-
+ extensions/feishu/src/reply-dispatcher.test.ts     |   47 +-
+ extensions/feishu/src/reply-dispatcher.ts          |   47 +-
+ extensions/feishu/src/send.ts                      |    5 +-
+ .../src/test-support/lifecycle-test-support.ts     |   24 +-
+ extensions/feishu/src/types.ts                     |    8 +-
+ extensions/google-meet/index.create.test.ts        |  139 +
+ extensions/google-meet/index.test.ts               |  659 ++++-
+ extensions/google-meet/index.ts                    |  233 +-
+ extensions/google-meet/src/cli.test.ts             |  555 ++++
+ extensions/google-meet/src/cli.ts                  |  706 +++++
+ extensions/google-meet/src/meet.ts                 |  564 +++-
+ extensions/google-meet/src/oauth.test.ts           |   69 +
+ extensions/google-meet/src/realtime-node.ts        |    2 +
+ extensions/google-meet/src/realtime.ts             |    2 +
+ extensions/google-meet/src/runtime.ts              |   18 +-
+ .../src/transports/chrome-browser-proxy.ts         |   25 +
+ .../google-meet/src/transports/chrome-create.ts    |   52 +-
+ extensions/google-meet/src/transports/chrome.ts    |   94 +-
+ extensions/google-meet/src/transports/types.ts     |    2 +
+ extensions/google/speech-provider.test.ts          |   37 +
+ extensions/google/speech-provider.ts               |   40 +-
+ extensions/matrix/index.test.ts                    |   31 +
+ extensions/memory-core/index.ts                    |    1 +
+ .../memory-core/src/memory/embeddings.test.ts      |  129 +
+ extensions/memory-core/src/memory/hybrid.test.ts   |    6 +
+ extensions/memory-core/src/memory/hybrid.ts        |    6 +
+ .../memory-core/src/memory/manager-sync-ops.ts     |    7 +-
+ extensions/memory-core/src/memory/manager.ts       |   35 +-
+ .../memory-core/src/memory/provider-adapters.ts    |   10 +-
+ .../memory-core/src/memory/qmd-manager.test.ts     |   76 +
+ extensions/memory-core/src/memory/qmd-manager.ts   |   27 +-
+ .../memory-core/src/memory/search-manager.ts       |    3 +
+ .../src/session-search-visibility.test.ts          |  151 ++
+ .../memory-core/src/session-search-visibility.ts   |   63 +
+ extensions/memory-core/src/tools.shared.ts         |   18 +-
+ extensions/memory-core/src/tools.ts                |   24 +-
+ extensions/microsoft/speech-provider.ts            |    4 +-
+ extensions/microsoft/tts.test.ts                   |   54 +-
+ extensions/microsoft/tts.ts                        |   47 +-
+ extensions/minimax/speech-provider.test.ts         |   56 +-
+ extensions/minimax/speech-provider.ts              |   48 +
+ extensions/minimax/tts.ts                          |    6 +-
+ extensions/openai/auth-choice-copy.ts              |   10 +-
+ extensions/openai/openai-codex-provider.test.ts    |   15 +-
+ extensions/openai/openai-codex-provider.ts         |   41 +-
+ extensions/openai/openai-provider.test.ts          |    4 +-
+ extensions/openai/openai-provider.ts               |    4 +-
+ extensions/openai/openclaw.plugin.json             |   14 +-
+ extensions/openai/openclaw.plugin.test.ts          |   13 +-
+ extensions/openai/provider-contract-api.ts         |    9 +-
+ .../openai/realtime-transcription-provider.test.ts |   20 +
+ extensions/opencode-go/index.test.ts               |   21 +
+ extensions/opencode-go/index.ts                    |    2 +
+ .../media-understanding-provider.test.ts           |   16 +
+ .../opencode-go/media-understanding-provider.ts    |   15 +
+ extensions/opencode-go/onboard.test.ts             |    2 +-
+ extensions/opencode-go/onboard.ts                  |    2 +-
+ extensions/opencode-go/openclaw.plugin.json        |   11 +
+ .../plugin-registration.contract.test.ts           |    8 +
+ extensions/opencode/index.test.ts                  |   23 +-
+ extensions/opencode/index.ts                       |    2 +
+ .../opencode/media-understanding-provider.test.ts  |   48 +
+ .../opencode/media-understanding-provider.ts       |   42 +
+ extensions/opencode/openclaw.plugin.json           |   11 +
+ .../opencode/plugin-registration.contract.test.ts  |    8 +
+ extensions/openrouter/api.ts                       |    1 +
+ extensions/openrouter/index.test.ts                |   15 +
+ extensions/openrouter/index.ts                     |    3 +
+ extensions/openrouter/openclaw.plugin.json         |    3 +-
+ extensions/openrouter/openrouter.live.test.ts      |   61 +
+ extensions/openrouter/register.runtime.ts          |    2 +
+ extensions/openrouter/speech-provider.test.ts      |  155 ++
+ extensions/openrouter/speech-provider.ts           |  303 +++
+ extensions/openrouter/test-api.ts                  |    1 +
+ .../qa-lab/src/agentic-parity-report.test.ts       |    1 +
+ extensions/qa-lab/src/agentic-parity.ts            |    5 +
+ extensions/qa-lab/src/cli.runtime.test.ts          |    2 +
+ extensions/qa-lab/src/suite-runtime-types.ts       |    8 +
+ extensions/qa-lab/src/web-runtime.test.ts          |    1 +
+ extensions/qa-lab/src/web-runtime.ts               |   40 +-
+ extensions/signal/src/monitor.ts                   |   13 +-
+ .../monitor/event-handler.inbound-context.test.ts  |   31 +
+ .../dispatch.preview-fallback.test.ts              |   25 +-
+ .../slack/src/monitor/message-handler/dispatch.ts  |    6 +-
+ extensions/telegram/src/bot-handlers.runtime.ts    |   13 +-
+ .../telegram/src/bot-message-dispatch.test.ts      |  123 +
+ extensions/telegram/src/bot-message-dispatch.ts    |   25 +-
+ .../src/bot-native-commands.session-meta.test.ts   |    3 +
+ extensions/telegram/src/bot-native-commands.ts     |    1 +
+ extensions/telegram/src/bot.test.ts                |   76 +
+ extensions/telegram/src/config-ui-hints.ts         |    2 +-
+ extensions/voice-call/README.md                    |    3 +
+ extensions/voice-call/index.test.ts                |  232 +-
+ extensions/voice-call/index.ts                     |  117 +-
+ extensions/voice-call/src/cli.ts                   |  161 +-
+ extensions/voice-call/src/config.test.ts           |   18 +
+ extensions/voice-call/src/config.ts                |   10 +-
+ extensions/voice-call/src/manager.notify.test.ts   |   21 +
+ extensions/voice-call/src/manager.restore.test.ts  |   46 +-
+ extensions/voice-call/src/manager.test-harness.ts  |    4 +-
+ extensions/voice-call/src/manager.ts               |   29 +-
+ extensions/voice-call/src/manager/events.test.ts   |   40 +-
+ extensions/voice-call/src/manager/events.ts        |   14 +
+ extensions/voice-call/src/manager/outbound.test.ts |   30 +
+ extensions/voice-call/src/manager/outbound.ts      |   26 +-
+ extensions/voice-call/src/manager/timers.ts        |    7 +-
+ extensions/voice-call/src/media-stream.test.ts     |   29 +-
+ extensions/voice-call/src/media-stream.ts          |   12 +-
+ extensions/voice-call/src/providers/base.ts        |    7 +
+ extensions/voice-call/src/providers/telnyx.test.ts |   84 +-
+ extensions/voice-call/src/providers/telnyx.ts      |   10 +
+ extensions/voice-call/src/providers/twilio.test.ts |   40 +-
+ extensions/voice-call/src/providers/twilio.ts      |   14 +-
+ .../voice-call/src/response-generator.test.ts      |  164 +-
+ extensions/voice-call/src/response-generator.ts    |   35 +-
+ extensions/voice-call/src/runtime.test.ts          |   57 +
+ extensions/voice-call/src/runtime.ts               |   46 +
+ extensions/voice-call/src/telephony-tts.test.ts    |   30 +
+ extensions/voice-call/src/telephony-tts.ts         |    6 +
+ extensions/voice-call/src/tunnel.test.ts           |  166 ++
+ extensions/voice-call/src/types.ts                 |    5 +
+ extensions/voice-call/src/webhook-security.test.ts |   31 +
+ extensions/voice-call/src/webhook.test.ts          |   50 +-
+ extensions/voice-call/src/webhook.ts               |   18 +-
+ .../voice-call/src/webhook/stale-call-reaper.ts    |    5 +
+ .../voice-call/src/webhook/tailscale.test.ts       |   19 +
+ extensions/voice-call/src/webhook/tailscale.ts     |   22 +-
+ .../src/auto-reply/heartbeat-runner.runtime.ts     |    1 +
+ .../whatsapp/src/auto-reply/heartbeat-runner.ts    |   17 +-
+ .../auto-reply/monitor/inbound-dispatch.test.ts    |  110 +-
+ .../src/auto-reply/monitor/inbound-dispatch.ts     |   33 +-
+ .../src/outbound-adapter.sendpayload.test.ts       |   22 +
+ extensions/whatsapp/src/outbound-base.test.ts      |   34 +
+ extensions/whatsapp/src/outbound-base.ts           |    3 +
+ extensions/whatsapp/src/send.ts                    |    1 +
+ package.json                                       |   27 +-
+ packages/memory-host-sdk/src/host/types.ts         |    9 +-
+ pnpm-lock.yaml                                     |  714 -----
+ qa/scenarios/agents/subagent-stale-child-links.md  |  175 ++
+ qa/scenarios/index.md                              |    2 +-
+ .../memory/active-memory-preprompt-recall.md       |    2 +-
+ qa/scenarios/memory/session-memory-ranking.md      |    2 +-
+ qa/scenarios/models/thinking-slash-model-remap.md  |   87 +-
+ .../ui/control-ui-qa-channel-image-roundtrip.md    |   45 +-
+ scripts/check-no-raw-channel-fetch.mjs             |    2 +-
+ scripts/check-substrate-adoption.mjs               |  531 ++++
+ scripts/ci-changed-scope.mjs                       |   55 +-
+ .../e2e/agents-delete-shared-workspace-docker.sh   |  127 +
+ scripts/e2e/bundled-channel-runtime-deps-docker.sh |   23 +-
+ scripts/e2e/openwebui-docker.sh                    |    2 +-
+ scripts/e2e/parallels-npm-update-smoke.sh          |   16 +-
+ scripts/lib/dependency-ownership.json              |    5 -
+ scripts/lib/plugin-sdk-entrypoints.json            |    2 +
+ scripts/openclaw-npm-release-check.ts              |   25 +-
+ scripts/pr-lib/changelog.sh                        |   38 +-
+ ...repare-extension-package-boundary-artifacts.mjs |    1 +
+ scripts/release-check.ts                           |   48 +-
+ scripts/run-additional-boundary-checks.mjs         |    1 +
+ scripts/run-node.mjs                               |   14 +-
+ scripts/run-vitest.mjs                             |   32 +-
+ scripts/sbom-risk-report.mjs                       |    8 +-
+ scripts/test-docker-all.mjs                        |    4 +
+ scripts/test-live-acp-bind-docker.sh               |    3 +
+ scripts/test-live-cli-backend-docker.sh            |    6 +
+ scripts/test-live-codex-harness-docker.sh          |    3 +
+ scripts/test-live-gateway-models-docker.sh         |    3 +
+ scripts/test-live-models-docker.sh                 |    3 +
+ scripts/test-projects.test-support.mjs             |   49 +-
+ src/agents/auth-profiles/session-override.ts       |   34 +-
+ src/agents/bash-process-registry.ts                |    6 +
+ src/agents/bash-tools.exec-host-node.test.ts       |   31 +
+ src/agents/bash-tools.exec-host-node.ts            |    4 +-
+ .../bash-tools.exec-runtime.pty-fallback.test.ts   |   56 +
+ src/agents/bash-tools.exec-runtime.test.ts         |   97 +
+ src/agents/bash-tools.exec-runtime.ts              |   80 +-
+ src/agents/bash-tools.exec.ts                      |    1 +
+ src/agents/command/session-store.test.ts           |   21 +
+ src/agents/command/session-store.ts                |   17 +-
+ src/agents/context.test.ts                         |    4 +-
+ src/agents/execution-contract.ts                   |    2 +-
+ src/agents/failover-error.test.ts                  |   82 +
+ src/agents/failover-error.ts                       |   46 +-
+ src/agents/live-model-switch.test.ts               |   17 +
+ src/agents/live-model-switch.ts                    |   13 +-
+ src/agents/main-session-restart-recovery.test.ts   |  169 ++
+ src/agents/main-session-restart-recovery.ts        |  307 +++
+ src/agents/model-fallback.probe.test.ts            |   27 +-
+ src/agents/model-fallback.test.ts                  |    2 +-
+ src/agents/model-selection.test.ts                 |   16 +-
+ src/agents/openai-reasoning-compat.live.test.ts    |  141 +
+ src/agents/openai-transport-stream.test.ts         |  282 +-
+ src/agents/openai-transport-stream.ts              |   13 +-
+ src/agents/openclaw-plugin-tools.ts                |    7 +-
+ ...enclaw-tools.browser-plugin.integration.test.ts |   55 +
+ ...penclaw-tools.continuation-registration.test.ts |  161 ++
+ src/agents/openclaw-tools.ts                       |    5 +-
+ src/agents/openclaw-tools.tts-config.test.ts       |  165 ++
+ src/agents/pi-bundle-mcp-materialize.ts            |   16 +-
+ src/agents/pi-bundle-mcp-runtime.test.ts           |  162 +-
+ src/agents/pi-bundle-mcp-runtime.ts                |  183 +-
+ src/agents/pi-bundle-mcp-types.ts                  |    3 +
+ ...embedded-helpers.sanitizeuserfacingtext.test.ts |   20 +
+ src/agents/pi-embedded-helpers/errors.ts           |    2 +-
+ src/agents/pi-embedded-helpers/openai.ts           |   17 +-
+ src/agents/pi-embedded-runner-extraparams.test.ts  |  105 +
+ ...dded-pi-agent.auth-profile-rotation.e2e.test.ts |   52 +-
+ ...-runner.sanitize-session-history.policy.test.ts |    9 +-
+ ...runner.sanitize-session-history.test-harness.ts |   21 +-
+ ...mbedded-runner.sanitize-session-history.test.ts |  210 +-
+ src/agents/pi-embedded-runner/cache-ttl.test.ts    |    3 +-
+ .../pi-embedded-runner/compact-reasons.test.ts     |   75 +-
+ src/agents/pi-embedded-runner/compact-reasons.ts   |   62 +-
+ .../pi-embedded-runner/compact.hooks.harness.ts    |    1 +
+ src/agents/pi-embedded-runner/compact.ts           |   43 +-
+ src/agents/pi-embedded-runner/extensions.test.ts   |   20 +-
+ src/agents/pi-embedded-runner/extensions.ts        |    2 +-
+ src/agents/pi-embedded-runner/extra-params.ts      |   83 +
+ .../manual-compaction-boundary.test.ts             |   33 +
+ .../manual-compaction-boundary.ts                  |   14 +
+ .../model.provider-runtime.test-support.ts         |   49 +-
+ .../pi-embedded-runner/model.test-harness.ts       |    5 +-
+ src/agents/pi-embedded-runner/model.test.ts        |    2 +-
+ .../proxy-stream-wrappers.test.ts                  |    8 +
+ src/agents/pi-embedded-runner/replay-history.ts    |   37 +-
+ .../pi-embedded-runner/run.incomplete-turn.test.ts |  239 +-
+ .../run.overflow-compaction.fixture.ts             |    8 +-
+ .../run.overflow-compaction.loop.test.ts           |   10 +-
+ .../run.timeout-triggered-compaction.test.ts       |   10 +-
+ src/agents/pi-embedded-runner/run.ts               |   26 +-
+ .../run/attempt.context-engine-helpers.ts          |   26 +-
+ .../run/attempt.empty-prompt.test.ts               |   64 -
+ .../run/attempt.prompt-helpers.test.ts             |   44 +-
+ .../run/attempt.prompt-helpers.ts                  |    8 +
+ ...tempt.spawn-workspace.context-injection.test.ts |   18 +-
+ .../run/attempt.spawn-workspace.test-support.ts    |    5 +-
+ .../run/attempt.subscription-cleanup.ts            |    6 +
+ src/agents/pi-embedded-runner/run/attempt.test.ts  |   29 +
+ .../run/attempt.tool-call-normalization.test.ts    |   59 +
+ src/agents/pi-embedded-runner/run/attempt.ts       |   79 +-
+ .../pi-embedded-runner/run/incomplete-turn.ts      |   75 +-
+ src/agents/pi-embedded-runner/run/params.ts        |   16 +-
+ src/agents/pi-embedded-runner/run/payloads.test.ts |   14 +
+ src/agents/pi-embedded-runner/run/payloads.ts      |   31 +-
+ .../run/preemptive-compaction.test.ts              |   15 +
+ .../run/preemptive-compaction.ts                   |   21 +-
+ .../pi-embedded-runner/run/trigger-policy.test.ts  |   22 +
+ .../pi-embedded-runner/run/trigger-policy.ts       |    6 +-
+ src/agents/pi-embedded-runner/system-prompt.ts     |    1 +
+ .../tool-result-char-estimator.test.ts             |   69 +
+ .../tool-result-char-estimator.ts                  |    7 +-
+ ...embedded-subscribe.handlers.tools.media.test.ts |   71 +-
+ src/agents/pi-embedded-subscribe.handlers.tools.ts |   41 +-
+ .../pi-hooks/compaction-safeguard-quality.ts       |    1 +
+ src/agents/pi-hooks/compaction-safeguard.test.ts   |   80 +
+ src/agents/pi-hooks/compaction-safeguard.ts        |   48 +-
+ src/agents/pi-hooks/context-pruning/pruner.test.ts |  135 +
+ src/agents/pi-hooks/context-pruning/pruner.ts      |   46 +-
+ src/agents/pi-tools.policy.ts                      |    4 +
+ src/agents/pi-tools.ts                             |   11 +-
+ src/agents/run-wait.test.ts                        |   13 +
+ src/agents/run-wait.ts                             |   22 +
+ src/agents/runtime-auth-refresh.ts                 |    4 +-
+ src/agents/runtime-plan/build.test.ts              |   16 +-
+ src/agents/sandbox-paths.test.ts                   |  103 +-
+ src/agents/sandbox-paths.ts                        |   47 +
+ src/agents/sandbox.resolveSandboxContext.test.ts   |   74 +
+ src/agents/sandbox/browser.create.test.ts          |   82 +
+ src/agents/sandbox/browser.ts                      |   21 +-
+ src/agents/sandbox/context.ts                      |   11 +-
+ src/agents/session-tool-result-guard-wrapper.ts    |    2 +
+ src/agents/session-tool-result-guard.test.ts       |   12 +
+ src/agents/session-tool-result-guard.ts            |    8 +-
+ src/agents/session-transcript-repair.test.ts       |   67 +-
+ src/agents/session-transcript-repair.ts            |   18 +-
+ src/agents/session-write-lock-error.ts             |   29 +
+ src/agents/session-write-lock.ts                   |    3 +-
+ .../skills.buildworkspaceskillstatus.test.ts       |   36 +
+ src/agents/subagent-announce-delivery.runtime.ts   |    1 +
+ src/agents/subagent-announce-delivery.test.ts      |  233 +-
+ src/agents/subagent-announce-delivery.ts           |  260 +-
+ src/agents/subagent-announce-dispatch.ts           |    7 +-
+ .../subagent-announce.continuation-drain.test.ts   |  425 +++
+ .../subagent-announce.continuation.runtime.test.ts |   82 +
+ .../subagent-announce.continuation.runtime.ts      |   25 +
+ src/agents/subagent-announce.silent-wake.test.ts   |  336 +++
+ src/agents/subagent-announce.ts                    |  240 +-
+ src/agents/subagent-list.test.ts                   |  116 +
+ src/agents/subagent-list.ts                        |   28 +-
+ src/agents/subagent-orphan-recovery.test.ts        |   95 +-
+ src/agents/subagent-orphan-recovery.ts             |  182 +-
+ src/agents/subagent-registry-helpers.ts            |   43 +-
+ src/agents/subagent-registry-queries.test.ts       |  139 +
+ src/agents/subagent-registry-queries.ts            |   14 +-
+ src/agents/subagent-registry-read.ts               |   10 +
+ src/agents/subagent-registry-run-manager.ts        |   26 +-
+ src/agents/subagent-registry-steer-runtime.ts      |   18 +
+ .../subagent-registry.persistence.resume.test.ts   |    2 +
+ .../subagent-registry.persistence.test-support.ts  |    4 +
+ src/agents/subagent-registry.persistence.test.ts   |   80 +-
+ src/agents/subagent-registry.test.ts               |  258 ++
+ src/agents/subagent-registry.ts                    |  303 ++-
+ src/agents/subagent-registry.types.ts              |    3 +
+ src/agents/subagent-run-liveness.test.ts           |  116 +
+ src/agents/subagent-run-liveness.ts                |   84 +
+ src/agents/subagent-spawn.ts                       |   16 +-
+ src/agents/system-prompt.continuation.test.ts      |  209 ++
+ src/agents/system-prompt.test.ts                   |    9 +-
+ src/agents/system-prompt.ts                        |   37 +-
+ .../pi-embedded-runner-e2e-fixtures.ts             |    8 +-
+ src/agents/tool-replay-repair.live.test.ts         |  386 +++
+ src/agents/tools-effective-inventory.test.ts       |   32 +
+ src/agents/tools-effective-inventory.ts            |   15 +
+ .../tools/continuation-tools-registration.test.ts  |   34 +
+ src/agents/tools/continue-delegate-tool.test.ts    |    4 +-
+ src/agents/tools/continue-delegate-tool.ts         |   28 +-
+ src/agents/tools/image-generate-tool.test.ts       |   48 +
+ src/agents/tools/image-generate-tool.ts            |    6 +
+ src/agents/tools/image-tool.test.ts                |   59 +
+ src/agents/tools/image-tool.ts                     |    3 +
+ src/agents/tools/media-tool-shared.ts              |    7 +
+ src/agents/tools/music-generate-tool.test.ts       |   73 +-
+ src/agents/tools/music-generate-tool.ts            |   26 +-
+ src/agents/tools/pdf-tool.test.ts                  |   33 +
+ src/agents/tools/pdf-tool.ts                       |    3 +
+ ...uest-compaction-tool.callsite-threading.test.ts |  458 ++++
+ ...est-compaction-tool.classifier-emission.test.ts |  172 ++
+ src/agents/tools/request-compaction-tool.ts        |   33 +-
+ ...st-compaction-tool.volitional-threading.test.ts |  534 ++++
+ src/agents/tools/sessions-access.ts                |  244 +-
+ src/agents/tools/sessions-resolution.ts            |   33 +-
+ src/agents/tools/video-generate-tool.test.ts       |   38 +
+ src/agents/tools/video-generate-tool.ts            |    8 +
+ src/agents/transport-message-transform.test.ts     |  170 +-
+ src/agents/transport-message-transform.ts          |   92 +-
+ .../continuation-delegate-store-taskflow.test.ts   |  431 ---
+ .../continuation-delegate-store-taskflow.ts        |  144 -
+ ...elegate-store.post-compaction-substrate.test.ts |   76 +
+ src/auto-reply/continuation-delegate-store.test.ts |   34 +-
+ src/auto-reply/continuation-delegate-store.ts      |  232 +-
+ src/auto-reply/continuation-delegate.types.ts      |   32 +-
+ src/auto-reply/continuation/config.test.ts         |  120 +
+ src/auto-reply/continuation/config.ts              |  104 +
+ .../continuation/context-pressure.test.ts          |  118 +
+ src/auto-reply/continuation/context-pressure.ts    |  166 ++
+ .../delegate-dispatch-post-compaction.test.ts      |  181 ++
+ .../continuation/delegate-dispatch.test.ts         |  123 +
+ src/auto-reply/continuation/delegate-dispatch.ts   |  350 +++
+ src/auto-reply/continuation/delegate-store.test.ts |  228 ++
+ src/auto-reply/continuation/delegate-store.ts      |  421 +++
+ src/auto-reply/continuation/lazy.runtime.ts        |   31 +
+ .../continuation/post-compaction-release.test.ts   |  273 ++
+ .../continuation/post-compaction-release.ts        |  107 +
+ src/auto-reply/continuation/scheduler.test.ts      |  238 ++
+ src/auto-reply/continuation/scheduler.ts           |  256 ++
+ src/auto-reply/continuation/signal.test.ts         |   83 +
+ src/auto-reply/continuation/signal.ts              |  139 +
+ src/auto-reply/continuation/state.test.ts          |   76 +
+ src/auto-reply/continuation/state.ts               |  189 ++
+ src/auto-reply/continuation/types.ts               |  146 +
+ src/auto-reply/dispatch.test.ts                    |  117 +-
+ src/auto-reply/dispatch.ts                         |   81 +-
+ src/auto-reply/reply-payload.ts                    |    5 +
+ src/auto-reply/reply/abort-cutoff.runtime.ts       |   18 +-
+ .../reply/agent-runner-execution.test.ts           |    1 +
+ src/auto-reply/reply/agent-runner-execution.ts     |  127 +-
+ src/auto-reply/reply/agent-runner-payloads.test.ts |   73 +
+ src/auto-reply/reply/agent-runner-payloads.ts      |   22 +-
+ src/auto-reply/reply/agent-runner-session-reset.ts |    1 +
+ .../agent-runner-utils.secret-resolution.test.ts   |   45 +-
+ src/auto-reply/reply/agent-runner-utils.ts         |   17 +-
+ ...-runner.continuation-delegate-fire-span.test.ts |  475 ++++
+ .../agent-runner.continuation-work-span.test.ts    |  468 ++++
+ .../reply/agent-runner.misc.runreplyagent.test.ts  |    3 +-
+ src/auto-reply/reply/agent-runner.ts               |  939 ++++---
+ src/auto-reply/reply/before-deliver.test.ts        |   68 +
+ src/auto-reply/reply/block-reply-pipeline.test.ts  |   32 +
+ src/auto-reply/reply/block-reply-pipeline.ts       |    6 +
+ src/auto-reply/reply/body.ts                       |   23 +-
+ src/auto-reply/reply/commands-compact.ts           |   12 +-
+ .../reply/commands-system-prompt.test.ts           |   28 +
+ src/auto-reply/reply/commands-system-prompt.ts     |   19 +
+ src/auto-reply/reply/commands-tts.ts               |    1 +
+ src/auto-reply/reply/continuation-runtime.test.ts  |    1 -
+ src/auto-reply/reply/continuation-runtime.ts       |    2 -
+ src/auto-reply/reply/cot-frame.test.ts             |   88 +
+ src/auto-reply/reply/cot-frame.ts                  |   21 +
+ src/auto-reply/reply/directive-handling.impl.ts    |   16 +-
+ .../reply/directive-handling.mixed-inline.test.ts  |    8 +
+ .../reply/directive-handling.model.test.ts         |   21 +
+ src/auto-reply/reply/directive-handling.persist.ts |   14 +-
+ src/auto-reply/reply/dispatch-acp.ts               |    1 +
+ .../reply/dispatch-from-config.acp-abort.test.ts   |    6 +
+ .../dispatch-from-config.shared.test-harness.ts    |    3 +-
+ src/auto-reply/reply/dispatch-from-config.test.ts  |   12 +-
+ src/auto-reply/reply/dispatch-from-config.ts       |    4 +-
+ src/auto-reply/reply/followup-runner.test.ts       |  164 +-
+ src/auto-reply/reply/followup-runner.ts            |  155 ++
+ src/auto-reply/reply/get-reply.imports.test.ts     |   76 +-
+ src/auto-reply/reply/model-selection.ts            |   17 +-
+ .../reply/normalize-reply.cot-frame.test.ts        |  119 +
+ src/auto-reply/reply/normalize-reply.ts            |   14 +
+ .../reply/post-compaction-context-failure.test.ts  |  133 +
+ .../post-compaction-delegate-dispatch.test.ts      |  724 +++++
+ .../reply/post-compaction-delegate-dispatch.ts     |  673 +++++
+ .../reply/reply-delivery.cot-frame-leak.test.ts    |  118 +
+ src/auto-reply/reply/reply-delivery.ts             |   10 +-
+ src/auto-reply/reply/reply-dispatcher.ts           |   24 +-
+ src/auto-reply/reply/reply-dispatcher.types.ts     |    1 +
+ src/auto-reply/reply/reply-media-paths.test.ts     |   60 +
+ src/auto-reply/reply/reply-media-paths.ts          |   23 +-
+ src/auto-reply/reply/session-reset-model.ts        |    6 +-
+ src/auto-reply/reply/session-system-events.ts      |   14 +
+ src/auto-reply/reply/session-updates.ts            |   29 +-
+ src/auto-reply/reply/session.ts                    |    2 +-
+ src/auto-reply/status.test.ts                      |  213 ++
+ src/auto-reply/tokens.continuation.test.ts         |  154 ++
+ src/auto-reply/tokens.ts                           |    5 +-
+ src/channels/plugins/module-loader.test.ts         |    4 +-
+ src/channels/plugins/outbound.types.ts             |   17 +-
+ src/channels/plugins/types.adapters.ts             |    1 +
+ src/channels/plugins/types.ts                      |    1 +
+ src/cli/command-catalog.ts                         |    5 +-
+ src/cli/daemon-cli/probe.ts                        |   42 +-
+ src/cli/daemon-cli/status.gather.test.ts           |    8 +-
+ src/cli/daemon-cli/status.gather.ts                |    9 +-
+ src/cli/program/command-descriptor-utils.test.ts   |   22 +
+ src/cli/program/command-descriptor-utils.ts        |   27 +-
+ src/commands/agent-via-gateway.test.ts             |   60 +-
+ src/commands/agent-via-gateway.ts                  |    9 +
+ src/commands/auth-choice.test.ts                   |    2 +-
+ src/commands/dashboard.links.test.ts               |   69 +-
+ src/commands/dashboard.ts                          |   11 +-
+ .../doctor-legacy-config.migrations.test.ts        |  109 +
+ .../doctor/shared/legacy-config-core-migrate.ts    |    6 +
+ .../legacy-config-migrate.provider-shapes.test.ts  |   76 +
+ .../shared/legacy-config-migrations.runtime.tts.ts |   43 +-
+ .../list.list-command.forward-compat.test.ts       |   69 +
+ src/commands/models/list.model-row.test.ts         |   17 +
+ src/commands/models/list.model-row.ts              |    2 +
+ src/commands/models/list.probe.ts                  |    2 +
+ src/commands/models/list.row-sources.ts            |    2 +
+ src/commands/models/list.rows.ts                   |   23 +-
+ src/commands/models/list.table.test.ts             |   26 +
+ src/commands/models/list.table.ts                  |   16 +-
+ src/commands/models/list.types.ts                  |    1 +
+ src/commands/onboard-helpers.test.ts               |   72 +-
+ src/commands/onboard-helpers.ts                    |    8 +-
+ src/commands/status-overview-rows.ts               |    5 +
+ src/commands/status.command-report-data.ts         |   76 +
+ src/commands/status.continuation-banner.test.ts    |   64 +
+ src/commands/status.scan-result.test.ts            |    1 +
+ src/compat/legacy-names.test.ts                    |   10 +
+ src/compat/legacy-names.ts                         |    2 +-
+ .../bundled-channel-config-metadata.generated.ts   |  162 +-
+ ...onfig.gateway-node-pairing-auto-approve.test.ts |   76 +
+ src/config/config.ts                               |    2 +
+ src/config/io.observe-recovery.test.ts             |  115 +
+ src/config/io.observe-recovery.ts                  |   12 +
+ src/config/io.ts                                   |   16 +-
+ src/config/recovery-policy.test.ts                 |   68 +
+ src/config/recovery-policy.ts                      |   35 +
+ src/config/runtime-snapshot.test.ts                |   49 +
+ src/config/runtime-snapshot.ts                     |   51 +
+ src/config/schema.base.generated.ts                |  108 +-
+ src/config/schema.help.ts                          |   22 +-
+ src/config/schema.labels.ts                        |    9 +
+ src/config/schema.tags.ts                          |    1 +
+ src/config/sessions.ts                             |    1 +
+ src/config/sessions/artifacts.test.ts              |   38 +
+ src/config/sessions/artifacts.ts                   |   37 +
+ src/config/sessions/combined-store-gateway.ts      |   98 +
+ src/config/sessions/session-file.ts                |   23 +-
+ src/config/sessions/store-load.ts                  |    4 +-
+ src/config/sessions/store-maintenance.ts           |   15 +-
+ .../sessions/store.pruning.integration.test.ts     |   49 +
+ src/config/sessions/store.pruning.test.ts          |   48 +-
+ src/config/sessions/types.ts                       |   10 +
+ src/config/types.agent-defaults.ts                 |    4 +-
+ src/config/types.agents.ts                         |    1 +
+ src/config/types.browser.ts                        |   16 +
+ src/config/types.gateway.ts                        |   11 +
+ src/config/types.mcp.ts                            |    6 +
+ src/config/types.secrets.resolution.test.ts        |   28 +-
+ src/config/types.secrets.ts                        |   23 +
+ src/config/validation.policy.test.ts               |   45 +
+ src/config/validation.ts                           |   57 +-
+ src/config/zod-schema.agent-defaults.test.ts       |   37 +-
+ src/config/zod-schema.agent-defaults.ts            |   43 +-
+ src/config/zod-schema.agent-runtime.ts             |    1 +
+ src/config/zod-schema.continuation.test.ts         |   23 +-
+ src/config/zod-schema.ts                           |    9 +
+ ...ted-agent.direct-delivery-core-channels.test.ts |   34 +-
+ src/cron/isolated-agent/run-executor.ts            |    9 +
+ src/cron/isolated-agent/run-session-state.test.ts  |   92 +
+ src/cron/isolated-agent/run-session-state.ts       |    9 +-
+ .../isolated-agent/run.message-tool-policy.test.ts |   76 +
+ src/cron/isolated-agent/run.ts                     |    3 +
+ src/cron/isolated-agent/session.test.ts            |  200 ++
+ src/cron/isolated-agent/session.ts                 |  112 +-
+ src/daemon/launchd-restart-handoff.test.ts         |    5 +
+ src/daemon/launchd-restart-handoff.ts              |   33 +-
+ src/daemon/launchd.test.ts                         |   56 +-
+ src/daemon/launchd.ts                              |   35 +
+ src/daemon/service-env.test.ts                     |   96 +
+ src/daemon/service-env.ts                          |   23 +
+ src/gateway/call.ts                                |    3 +-
+ src/gateway/client.ts                              |    5 +-
+ src/gateway/config-reload.test.ts                  |   56 +
+ src/gateway/config-reload.ts                       |    7 +
+ src/gateway/gateway-cli-backend.live.test.ts       |    1 +
+ src/gateway/gateway-codex-harness.live-helpers.ts  |    2 +
+ src/gateway/gateway-models.profiles.live.test.ts   |   28 +-
+ src/gateway/method-scopes.test.ts                  |   21 +-
+ src/gateway/node-pairing-auto-approve.test.ts      |  158 ++
+ src/gateway/node-pairing-auto-approve.ts           |   75 +
+ src/gateway/probe.ts                               |    5 +-
+ src/gateway/server-chat.ts                         |    6 +-
+ src/gateway/server-methods/agent-job.ts            |  116 +-
+ src/gateway/server-methods/agent-wait-dedupe.ts    |    4 +-
+ src/gateway/server-methods/agent.test.ts           |    2 +
+ src/gateway/server-methods/server-methods.test.ts  |  135 +-
+ src/gateway/server-restart-sentinel.test.ts        |  386 ++-
+ src/gateway/server-restart-sentinel.ts             |  297 ++-
+ src/gateway/server-runtime-services.test.ts        |   19 +
+ src/gateway/server-runtime-services.ts             |   32 +-
+ src/gateway/server-session-events.ts               |    2 +
+ src/gateway/server-startup-config.recovery.test.ts |   66 +
+ src/gateway/server-startup-config.ts               |   17 +-
+ src/gateway/server-startup-post-attach.ts          |   16 +-
+ src/gateway/server.impl.ts                         |    4 +-
+ .../server.node-pairing-auto-approve.test.ts       |  164 ++
+ .../server/ws-connection/message-handler.ts        |   28 +-
+ src/gateway/session-history-state.test.ts          |  119 +
+ src/gateway/session-history-state.ts               |  106 +-
+ src/gateway/session-utils.search.test.ts           |    8 +
+ src/gateway/session-utils.subagent.test.ts         |  240 +-
+ src/gateway/session-utils.ts                       |  205 +-
+ src/gateway/session-utils.types.ts                 |    4 +
+ src/gateway/tools-invoke-http.test.ts              |   20 +-
+ src/gateway/tools-invoke-http.ts                   |   32 +-
+ src/hooks/llm-slug-generator.test.ts               |    1 +
+ src/hooks/llm-slug-generator.ts                    |    1 +
+ .../provider-registry.allowlist.test.ts            |    1 +
+ src/infra/approval-display-paths.test.ts           |   27 +
+ src/infra/approval-display-paths.ts                |   30 +
+ src/infra/browser-open.ts                          |   35 +-
+ src/infra/chain-budget.test.ts                     |   30 +
+ src/infra/chain-budget.ts                          |   68 +
+ src/infra/continuation-tracer.test.ts              | 1526 +++++++++++
+ src/infra/continuation-tracer.ts                   |  900 +++++++
+ src/infra/diagnostic-events.ts                     |   23 +
+ src/infra/exec-allowlist-matching.test.ts          |   30 +
+ src/infra/exec-approval-reply.test.ts              |   13 +
+ src/infra/exec-approval-reply.ts                   |    3 +-
+ src/infra/exec-command-resolution.ts               |   33 +-
+ src/infra/heartbeat-events-filter.test.ts          |   37 +-
+ src/infra/heartbeat-events-filter.ts               |   26 +-
+ src/infra/heartbeat-runner.ghost-reminder.test.ts  |   19 +-
+ src/infra/heartbeat-runner.scheduler.test.ts       |   18 +
+ src/infra/heartbeat-runner.timeout-warning.test.ts |   70 +
+ src/infra/heartbeat-runner.ts                      |   56 +-
+ src/infra/net/ssrf.test.ts                         |   29 +
+ src/infra/net/ssrf.ts                              |   29 +
+ src/infra/outbound/deliver.test.ts                 |  359 +++
+ src/infra/outbound/deliver.ts                      |  317 ++-
+ src/infra/outbound/delivery-queue-recovery.ts      |    2 +
+ src/infra/outbound/delivery-queue-storage.ts       |    6 +
+ src/infra/outbound/delivery-queue.recovery.test.ts |   16 +
+ src/infra/outbound/formatting.ts                   |    9 +
+ src/infra/outbound/message-plan.test.ts            |   88 +
+ src/infra/outbound/message-plan.ts                 |  122 +
+ src/infra/outbound/payloads.test.ts                |   36 +
+ src/infra/outbound/payloads.ts                     |    4 +
+ src/infra/outbound/reply-policy.test.ts            |   34 +
+ src/infra/outbound/reply-policy.ts                 |   81 +
+ src/infra/restart.test.ts                          |   57 +
+ src/infra/restart.ts                               |   10 +-
+ src/infra/run-node.test.ts                         |   34 +
+ src/infra/secure-random-chain-id.test.ts           |   40 +
+ src/infra/secure-random.ts                         |   17 +
+ .../session-cost-usage.discoverAllSessions.test.ts |  153 ++
+ src/infra/session-cost-usage.ts                    |   44 +
+ src/infra/session-delivery-queue-recovery.ts       |  339 +++
+ src/infra/session-delivery-queue-storage.ts        |  453 ++++
+ src/infra/session-delivery-queue.recovery.test.ts  |  272 ++
+ src/infra/session-delivery-queue.storage.test.ts   |  466 ++++
+ src/infra/session-delivery-queue.ts                |   36 +
+ src/infra/session-keys.test.ts                     |   82 +
+ src/infra/session-keys.ts                          |   50 +
+ src/infra/substrate-capability-registry.test.ts    |   57 +
+ src/infra/substrate-capability-registry.ts         |  134 +
+ src/infra/system-events.test.ts                    |   98 +
+ src/infra/system-events.ts                         |   32 +
+ src/infra/tmp-openclaw-dir.browser-import.test.ts  |   67 +
+ src/infra/tmp-openclaw-dir.ts                      |    3 +-
+ src/logging/diagnostic-stability.ts                |   15 +
+ src/logging/logger-transport.test.ts               |   60 +
+ src/logging/logger.ts                              |   39 +-
+ src/logging/test-helpers/diagnostic-log-capture.ts |   25 +
+ src/logging/test-helpers/warn-log-capture.ts       |   22 +-
+ src/media-understanding/apply.ts                   |    1 +
+ src/media-understanding/attachments.cache.ts       |   11 +-
+ .../audio-transcription-runner.ts                  |    8 +-
+ src/media-understanding/defaults.test.ts           |    6 +
+ src/media-understanding/image-runtime.ts           |    6 +
+ src/media-understanding/image.ts                   |   84 +-
+ .../media-understanding-misc.test.ts               |   23 +
+ .../provider-registry.allowlist.test.ts            |    1 +
+ src/media-understanding/runtime.ts                 |    1 +
+ src/media/mime.test.ts                             |    5 +
+ src/memory-host-sdk/host/types.ts                  |    3 +
+ src/model-catalog/index.ts                         |   32 +
+ src/model-catalog/manifest-planner.test.ts         |  139 +
+ src/model-catalog/manifest-planner.ts              |  120 +
+ src/model-catalog/normalize.test.ts                |  210 ++
+ src/model-catalog/normalize.ts                     |  485 ++++
+ src/model-catalog/refs.ts                          |   13 +
+ src/model-catalog/types.ts                         |   97 +
+ src/plugin-sdk/agent-harness-runtime.ts            |    1 +
+ src/plugin-sdk/approval-runtime.ts                 |    1 +
+ src/plugin-sdk/browser-config.ts                   |    2 +
+ src/plugin-sdk/browser-profiles.ts                 |   10 +
+ src/plugin-sdk/channel-entry-contract.test.ts      |  148 +-
+ src/plugin-sdk/channel-entry-contract.ts           |    6 +-
+ src/plugin-sdk/core.test.ts                        |   85 +
+ src/plugin-sdk/core.ts                             |    6 +-
+ src/plugin-sdk/diagnostics-otel.ts                 |   17 +-
+ src/plugin-sdk/facade-loader.test.ts               |    4 +-
+ src/plugin-sdk/infra-runtime.ts                    |    1 +
+ src/plugin-sdk/media-understanding.ts              |    2 +
+ src/plugin-sdk/opencode.test.ts                    |    2 +-
+ src/plugin-sdk/outbound-runtime.ts                 |   11 +
+ src/plugin-sdk/reply-payload.test.ts               |   99 +
+ src/plugin-sdk/reply-payload.ts                    |   16 +-
+ src/plugin-sdk/session-transcript-hit.test.ts      |   43 +
+ src/plugin-sdk/session-transcript-hit.ts           |   58 +
+ src/plugin-sdk/session-visibility.ts               |  270 ++
+ src/plugins/bundled-runtime-deps.ts                |   40 +
+ src/plugins/bundled-runtime-root.ts                |   16 +
+ src/plugins/capability-provider-runtime.test.ts    |  242 +-
+ src/plugins/capability-provider-runtime.ts         |  154 +-
+ src/plugins/cli-gateway-nodes-runtime.ts           |   45 +
+ src/plugins/cli-registry-loader.ts                 |    4 +
+ src/plugins/cli.test.ts                            |   15 +
+ src/plugins/compat/registry.test.ts                |   40 +
+ src/plugins/compat/registry.ts                     |  242 ++
+ src/plugins/compat/types.ts                        |   27 +
+ .../inventory/bundled-capability-metadata.ts       |   30 +-
+ src/plugins/contracts/plugin-sdk-subpaths.test.ts  |    2 +
+ src/plugins/contracts/registry.ts                  |   13 +
+ src/plugins/doctor-contract-registry.test.ts       |    4 +-
+ src/plugins/document-extractors.runtime.test.ts    |   47 +-
+ src/plugins/document-extractors.runtime.ts         |   43 +-
+ src/plugins/loader.cli-metadata.test.ts            |  161 ++
+ src/plugins/loader.test-fixtures.ts                |    6 +-
+ src/plugins/loader.test.ts                         |  206 ++
+ src/plugins/loader.ts                              |  307 ++-
+ src/plugins/manifest-registry.test.ts              |  156 ++
+ src/plugins/manifest-registry.ts                   |    3 +
+ src/plugins/manifest.ts                            |   33 +
+ src/plugins/provider-model-defaults.ts             |    2 +-
+ src/plugins/public-surface-loader.test.ts          |    4 +-
+ src/plugins/registry.ts                            |   40 +-
+ src/plugins/runtime/index.test.ts                  |   30 +
+ src/plugins/runtime/index.ts                       |    2 +-
+ src/plugins/runtime/types.ts                       |    1 +
+ src/plugins/sdk-alias.test.ts                      |   12 +-
+ src/plugins/sdk-alias.ts                           |    2 +-
+ src/plugins/setup-registry.test.ts                 |    4 +-
+ src/plugins/status.test-helpers.ts                 |    2 +
+ src/plugins/status.ts                              |    4 +
+ src/realtime-voice/agent-consult-runtime.test.ts   |   29 +
+ src/realtime-voice/agent-consult-runtime.ts        |   10 +
+ src/rebase/tracer.ts                               |  161 ++
+ src/scripts/ci-changed-scope.test.ts               |   68 +-
+ src/secrets/legacy-secretref-env-marker.ts         |   73 +
+ src/shared/frontmatter.test.ts                     |   21 +
+ src/status/status-message.ts                       |   57 +-
+ src/status/status-text.ts                          |    7 +-
+ ...ask-flow-registry.store.sqlite.chain-id.test.ts |  218 ++
+ src/tasks/task-flow-registry.store.sqlite.ts       |   21 +-
+ src/tasks/task-flow-registry.test.ts               |   36 +
+ src/tasks/task-flow-registry.ts                    |   13 +
+ src/tasks/task-flow-registry.types.ts              |    8 +
+ src/terminal/ansi.test.ts                          |    1 +
+ src/terminal/ansi.ts                               |    5 +-
+ src/tts/directives.test.ts                         |   51 +
+ src/tts/directives.ts                              |   77 +-
+ src/tts/provider-registry.test.ts                  |    1 +
+ src/tts/provider-registry.ts                       |   13 +-
+ src/utils/timer-delay.test.ts                      |   34 +
+ src/utils/timer-delay.ts                           |   19 +
+ src/web/provider-runtime-shared.test.ts            |   31 +
+ src/web/provider-runtime-shared.ts                 |    3 +-
+ src/wizard/setup.test.ts                           |    1 +
+ studies/swim-37/harness/README.md                  |   72 +
+ studies/swim-37/harness/changelog-grep.test.ts     |  245 ++
+ studies/swim-37/harness/changelog-grep.ts          |  137 +
+ .../swim-37/harness/cherry-pick-provenance.test.ts |  177 ++
+ studies/swim-37/harness/cherry-pick-provenance.ts  |  108 +
+ .../harness/conflict-content-rubric.test.ts        |  318 +++
+ studies/swim-37/harness/conflict-content-rubric.ts |  309 +++
+ studies/swim-37/harness/durability/README.md       |   83 +
+ .../harness/durability/durability-fixture.ts       |  116 +
+ .../harness/durability/s1-two-hop-chain.test.ts    |  263 ++
+ .../durability/s2-followup-token-chain.test.ts     |  277 ++
+ .../durability/s3-restart-roundtrip.test.ts        |  279 ++
+ .../swim-37/harness/emit-helper-contract.test.ts   |  372 +++
+ .../helper-fire-and-release-contract.test.ts       |  250 ++
+ .../harness/in-memory-span-recorder.test.ts        |  194 ++
+ studies/swim-37/harness/in-memory-span-recorder.ts |  189 ++
+ studies/swim-37/harness/rebase-classifier.test.ts  |  225 ++
+ studies/swim-37/harness/rebase-classifier.ts       |  218 ++
+ studies/swim-37/harness/swim-runner.test.ts        |  824 ++++++
+ studies/swim-37/harness/swim-runner.ts             |  377 +++
+ test/extension-package-tsc-boundary.test.ts        |    5 +-
+ test/helpers/browser-bundled-plugin-fixture.ts     |    2 +-
+ test/helpers/plugins/provider-runtime-contract.ts  |    5 +-
+ test/helpers/plugins/tts-contract-suites.ts        |  274 +-
+ test/openclaw-npm-release-check.test.ts            |   38 +-
+ test/release-check.test.ts                         |   36 +-
+ test/scripts/check-substrate-adoption.test.ts      |  124 +
+ test/scripts/parallels-npm-update-smoke.test.ts    |    6 +-
+ test/scripts/run-vitest.test.ts                    |   34 +
+ test/scripts/sbom-risk-report.test.ts              |   58 +
+ test/scripts/test-projects.test.ts                 |   48 +
+ test/vitest/vitest.config.ts                       |    2 +
+ .../vitest.continuation-durability.config.ts       |   25 +
+ test/vitest/vitest.swim-37.config.ts               |   21 +
+ tsconfig.json                                      |    2 +-
+ tsdown.config.ts                                   |   14 +
+ ui/src/styles/base.css                             |    8 +-
+ ui/src/styles/chat/grouped.css                     |   33 +
+ ui/src/styles/chat/tool-cards.css                  |   79 +-
+ ui/src/styles/components.css                       |  543 +++-
+ ui/src/styles/config.css                           |  182 +-
+ ui/src/styles/layout.css                           |    2 +
+ ui/src/ui/app-render.helpers.browser.test.ts       |   69 +
+ ui/src/ui/app-render.helpers.ts                    |   37 +-
+ ui/src/ui/app-render.ts                            |   35 +-
+ ui/src/ui/app-settings.test.ts                     |   90 +
+ ui/src/ui/app-settings.ts                          |   13 +-
+ ui/src/ui/app-view-state.ts                        |    9 +
+ ui/src/ui/app.ts                                   |   63 +-
+ ui/src/ui/chat-model-ref.test.ts                   |   14 +
+ ui/src/ui/chat/grouped-render.test.ts              |    1 +
+ ui/src/ui/chat/grouped-render.ts                   |    9 +-
+ ui/src/ui/chat/message-extract.test.ts             |   21 +
+ ui/src/ui/chat/message-extract.ts                  |    8 +-
+ ui/src/ui/controllers/chat.test.ts                 |   95 +
+ ui/src/ui/controllers/chat.ts                      |  232 +-
+ ui/src/ui/custom-theme.test.ts                     |  267 ++
+ ui/src/ui/custom-theme.ts                          |  593 +++++
+ ui/src/ui/storage.node.test.ts                     |  142 +
+ ui/src/ui/storage.ts                               |    7 +-
+ ui/src/ui/theme.ts                                 |   13 +-
+ ui/src/ui/types.ts                                 |    3 +
+ .../agents-panels-tools-skills.browser.test.ts     |  217 +-
+ ui/src/ui/views/agents-panels-tools-skills.ts      |  545 +++-
+ ui/src/ui/views/config-quick.test.ts               |   66 +
+ ui/src/ui/views/config-quick.ts                    |   12 +-
+ ui/src/ui/views/config.browser.test.ts             |   98 +
+ ui/src/ui/views/config.ts                          |  199 +-
+ ui/src/ui/views/exec-approval.ts                   |   15 +-
+ 1013 files changed, 65462 insertions(+), 8970 deletions(-)

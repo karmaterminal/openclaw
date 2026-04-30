@@ -1,0 +1,362 @@
+# canonical2 vs v2026.4.24
+
+Generated: 2026-04-30T03:40:02Z
+Base tag: v2026.4.24 = 6507387f433d
+Canonical2 tip: cf7830ffb3702bf7d826d70838893e2e41709f12
+
+## git log --oneline --no-merges v2026.4.24..cf7830ffb3
+
+cf7830ffb3 fix(continuation): wrap followup-runner persistContinuationChainState in updateSessionStore (#431) (#432)
+15e045fe46 test(continuation): add swim-37 durability harness
+dc572c0106 fix(continuation): persist child chain state after delegate drain (r3164380565)
+e73fd0f088 fix(continuation): persist followup chain tokens when dispatched===0 (r3164418106)
+d0f31f65cc fix(continuation): durable write-back for tool-delegate chain state (r3164418100)
+c8f85f5254 fix: stabilize continuation chain persistence
+42f1bb9c14 feat(diagnostics-otel,continuation-tracer): wire OTEL adapter into setContinuationTracer (#334 Slice 3, F-37-010) (#422)
+29e556eb11 docs(release-highlights): reparent 16 release-highlights commits onto canonical2 (per figs 14:05 PDT) (#421)
+179f6c5799 test/docs(swim-37): heartbeat harness-shape nits (🌫 + 🩸 #417 review) (#419)
+148792a0b7 fix(swim-37): captureClassify validation + signal.kind rename (🌫 #416 review) (#418)
+30b06a984e feat(swim-37): wire captureSwim("heartbeat", …) against emitContinuationHeartbeatSpan helper (#412) (#417)
+526540de15 feat(swim-37): wire `captureClassify(...)` for rebase.classify span (#413) (#416)
+bcccac2e91 test(swim-37): pin chain.id absence on lich span (🌊 #414 review) (#415)
+fff243c781 docs(swim-37): `rebase.classify` span-emission wiring memo (memo-before-wire) (#413)
+e4d49fc02b feat(swim-37): wire `captureSwim("lich", …)` against compaction-released helper (#414)
+1b84e71c95 docs(swim-37): heartbeat continuation primitive wiring memo (#412)
+3d90f68b14 docs(swim-37): `lich` primitive wiring memo (memo-before-wire) (#411)
+f37e4b8242 feat(swim-37): #324 §1 trap-class conflict-content rubric (#409) (#410)
+8bb2fbad30 test(swim-37): wire captureSwim() for continue_work primitive (#324) (#405)
+9187d06e90 test(swim-37): helper-tier fire + release/drain contract pin (#324) (#407)
+cb73bc8648 feat(swim-37): #324 §1 trap-class CHANGELOG-byte-grep discovery channel (#408)
+94fc8d1186 test(swim-37): #324 emit-helper contract pin (19 tests, all live) (#406)
+652c8a888e docs(rfc): scrub `operator` → `the human user` per language-as-semantic-trap canon (#364)
+c2400b2a66 [6c-followup] #334 Slice 2 chunk 6c follow-up — producer-coupling test pin + cast cleanup (#401)
+5e90c859b9 feat(continuation): #334 Slice 2 chunk 6c — signal.kind SSOT + compaction.id cross-cutting attr (release-side wire) (#400)
+02e2922241 docs(continuation): #334 Slice 2 chunk 6c memo follow-up — strike stale Math.floor test + bank 🩸 minority preference (#399)
+ecb434977c docs(continuation): #334 Slice 2 chunk 6c — signal.kind SSOT pin + compaction.id cross-cutting design memo (#398)
+cd8b623be2 feat(continuation): #334 Slice 2 chunk 6b — wire continuation.compaction.released span (#397)
+f767fe2161 docs(continuation): #334 Slice 2 chunk 6b — continuation.compaction.released design memo (#396)
+934a59bd30 feat(swim-37): #324 InMemorySpanRecorder shim + contract tests (#394)
+560948a70a feat(continuation): #334 Slice 2 chunk 6a — wire continuation.queue.drain span (#395)
+739063507f docs(swim-37): bump harness README canonical2 base to 47016eb417 (post-chunk-5 stack) (#392)
+47016eb417 feat(continuation): #334 Slice 2 chunk 5c — wire continuation.work.fire span (#391)
+a13b3baca7 docs(continuation): #334 Slice 2 chunk 5c — continuation.work.fire design memo (#390)
+01abb3defc test(continuation-tracer): pin continuation.delegate.fire in canonical-name array (post-#388) (#389)
+e959d2c177 feat(continuation): #334 chunk 5b — continuation.delegate.fire wire (#388)
+287d0a5586 docs(continuation): #334 chunk 5b — continuation.delegate.fire design memo (#386)
+6656138126 feat(continuation): #334 chunk 5a — per-turn cap reject reland (#385)
+4719e86345 feat(continuation): #334 Slice 2 chunk 4 — continuation.disabled spans for cap-rejected dispatches (#384)
+3655b0667a feat(continuation): #334 Slice 2 chunk 3 — continuation.delegate.dispatch span at runner enqueue seam (#383)
+19797e7fa6 feat(continuation): #334 Slice 2 — chain.id substrate (UUIDv7) + continuation.work span at runner accept seam (#382)
+be76c3dc2b docs(continuation-integration): mark targetSessionKey §4 as proposed-pending #332 (#379)
+ad6ac310c8 docs+descriptor: Surfaces 1+2 substrate-naming + continuation-integration design doc (canonical2 successor of #338) (#362)
+d533d5c720 feat(continuation): #334 Slice 2 chunk 1 — Tracer surface + noopTracer (path-B, no OTEL deps) (#378)
+2d10c1c218 feat(continuation): #334 Slice 1 — traceparent payload + chain-budget cap helper (#366)
+953030d88f swim 37: integration test harness scaffold (continuation/heartbeat/lich) [WIP - typecheck pending] (#370)
+092f502032 docs(design): #332 Item B audit — post-compaction release seam (DRAFT) (#343)
+bd3033d740 feat(infra): add requireSessionKeyOrSkip helper for key-gated side-effects (#292) (#353)
+1870a84f32 [PARALLEL] feat(continuation): substrate-native chain-budget extraction (path-b) (#354)
+ce49d93113 docs(rfc): fixup pass — ToC regen, dev-state strip, narrative flow, current capability incorporation (#358)
+b04484465a ci(workflow-sanity): run generated-doc-baselines on PRs (#297) (#351)
+25ff4f0138 fix(macos/exec-allowlist): restore wildcard "*" match-all branch (#340) (#350)
+96d1304d47 feat(infra): substrate-adoption-rule lint mechanization (capability-registry + PR-time lint) (#347)
+0b9ee9f01b docs(rfc): oxfmt format pass on continue-work-signal-v2.md (#349)
+b0bc4b4ee2 feat(session-delivery-queue): failed TTL prune + queueDir soft-cap (#332) (#348)
+57d0e61d76 docs(tools-template): substrate-adoption convention for new tool descriptors (#336) (#339)
+cc08bbc9fe docs(#335): RFC inserts §3.6 persistence + §4.6 lifecycle broker + §6.6 chain-correlation + §6.5/§6.1 addenda (#342)
+8338d37bda fix(session-delivery-queue): canonicalize trailing whitespace in idempotency taskHash (#345)
+c96e2d7955 fix: clear pre-existing canonical2 base-noise blocking PR #345 (#346)
+56cb6f712a fix(test): pin empty config snapshot in maxDelegatesPerTurn default test
+6cdb079981 refactor(tools): use ToolInputError for targetSessionKey loud-failure
+eb0361d8dc fix(continuation-descriptor): rephrase runtime binding note
+5b24433955 feat(session-delivery-queue): extend payload union metadata
+14b3418e1f feat(continuation-descriptor): add targetSessionKey to continue_delegate
+0985182e87 fix(rebase): remove stale status type imports
+f4d3de09ed fix(rebase): repair gateway ingress merge
+760f5a3306 chore(rebase): regen plugin-sdk-api hash on v2026.4.24 base
+f279e0e6cf chore(rebase): regen config-docs hash on v2026.4.24 base
+14f792ad3a fix(types): tighten continuationTriggerOverride to ContinuationTrigger union
+69b4079aef test(continuation): pin drainsContinuationDelegateQueue truth-table
+8f267807c0 fix(continuation): default-allow continue_delegate; only block explicit non-drainers
+c99aa116f8 fix(continuation): gate continue_delegate on drain + sync display detailKeys
+a654a8798e docs(continuation): fix broken Swim 7 evidence links in RFC
+79006952ed docs(continuation): annotate RFC §6.1 equivalent-idiom for band-dedup sentinel
+c4d779605c fix(continuation): plumb provider+model into volitional compaction call
+51cd381fc0 fix(continuation): pre-merge minors from 2026-04-23 review fleet
+7bdab62f91 docs(continuation): absorb Trigger F into RFC §4.1 taxonomy
+d65d0139e1 fix(continuation): purge generation-guard per RFC 2026-04-15 (#299)
+6b1ba3bf4c chore(continuation): generated baselines, i18n, build config, swift protocol, gitignore
+4ba4997752 test(continuation): coverage for context-pressure, post-compaction, taskflow durability
+0c00d42c3c docs(continuation): RFC continue-work-signal-v2
+8ecf0c0b83 feat(continuation): core implementation — context-pressure, request-compaction, post-compaction relay
+
+## git diff --stat v2026.4.24 cf7830ffb3
+
+ .github/workflows/workflow-sanity.yml              |    2 +-
+ .gitignore                                         |    9 +
+ INTEGRATION-TEST-GAP-MAP.md                        |   93 ++
+ RELEASE-HIGHLIGHTS-2026-04-28.md                   |  436 ++++++
+ .../Sources/OpenClaw/ExecAllowlistMatcher.swift    |    9 +-
+ .../Sources/OpenClawProtocol/GatewayModels.swift   |   10 +-
+ .../OpenClawIPCTests/ExecAllowlistTests.swift      |   21 +
+ .../OpenClawKit/Resources/tool-display.json        |   24 +
+ .../Sources/OpenClawProtocol/GatewayModels.swift   |   10 +-
+ docs/.generated/config-baseline.sha256             |    4 +-
+ docs/.generated/plugin-sdk-api-baseline.sha256     |    4 +-
+ docs/.i18n/glossary.zh-CN.json                     |    4 +
+ .../332-item-b-post-compaction-release-audit.md    |   94 ++
+ .../334-slice2-chunk5b-delegate-fire-memo.md       |  243 +++
+ docs/design/334-slice2-chunk5c-work-fire-memo.md   |  217 +++
+ .../334-slice2-chunk6b-compaction-released-memo.md |  179 +++
+ docs/design/334-slice2-chunk6c-followup-memo.md    |  156 ++
+ ...unk6c-signalkind-ssot-and-compaction-id-memo.md |  317 ++++
+ docs/design/continuation-integration.md            |  221 +++
+ docs/design/continue-work-signal-v2.md             | 1400 ++++++++++++++++++
+ .../swim-evidence/swim-07/SWIM7-RESULTS.md         |   68 +
+ docs/design/swim-37-classifier-span-memo.md        |  166 +++
+ .../swim-37-continue-delegate-wiring-memo.md       |  113 ++
+ docs/design/swim-37-heartbeat-wiring-memo.md       |  161 ++
+ docs/design/swim-37-lich-wiring-memo.md            |  158 ++
+ docs/plan/surfaces-1-2-substrate-notes.md          |  252 ++++
+ docs/pr-bodies/pr-38780-body.md                    |   72 +
+ docs/reference/templates/TOOLS.md                  |   42 +
+ .../src/continuation-tracer-adapter.test.ts        |  198 +++
+ .../src/continuation-tracer-adapter.ts             |  174 +++
+ extensions/diagnostics-otel/src/service.test.ts    |   44 +-
+ extensions/diagnostics-otel/src/service.ts         |   24 +
+ extensions/telegram/src/bot-handlers.runtime.ts    |   10 +-
+ .../src/auto-reply/heartbeat-runner.runtime.ts     |    1 +
+ .../whatsapp/src/auto-reply/heartbeat-runner.ts    |   17 +-
+ package.json                                       |    2 +
+ scripts/check-substrate-adoption.mjs               |  531 +++++++
+ scripts/run-additional-boundary-checks.mjs         |    1 +
+ src/agents/agent-command.test.ts                   |   12 +
+ src/agents/agent-command.ts                        |    2 +
+ src/agents/auth-profiles/session-override.ts       |   34 +-
+ src/agents/cli-runner/helpers.ts                   |    1 +
+ src/agents/command/attempt-execution.helpers.ts    |    4 +-
+ src/agents/command/attempt-execution.ts            |    1 +
+ src/agents/command/session-store.test.ts           |   21 +
+ src/agents/command/session-store.ts                |   17 +-
+ src/agents/command/types.ts                        |    5 +
+ src/agents/live-model-switch.test.ts               |   17 +
+ src/agents/live-model-switch.ts                    |   13 +-
+ ...penclaw-tools.continuation-registration.test.ts |  161 ++
+ src/agents/openclaw-tools.ts                       |   42 +
+ ...mbedded-runner.sanitize-session-history.test.ts |    2 +-
+ .../pi-embedded-runner/compact-reasons.test.ts     |   75 +-
+ src/agents/pi-embedded-runner/compact-reasons.ts   |   62 +-
+ src/agents/pi-embedded-runner/compact.ts           |    3 +-
+ src/agents/pi-embedded-runner/compact.types.ts     |    2 +-
+ .../run.overflow-compaction.loop.test.ts           |   29 +
+ .../run.timeout-triggered-compaction.test.ts       |  158 +-
+ src/agents/pi-embedded-runner/run.ts               |   58 +-
+ src/agents/pi-embedded-runner/run/attempt.ts       |    3 +
+ .../pi-embedded-runner/run/failover-policy.test.ts |   38 +
+ .../pi-embedded-runner/run/failover-policy.ts      |   34 +-
+ src/agents/pi-embedded-runner/run/params.ts        |   14 +
+ src/agents/pi-embedded-runner/system-prompt.ts     |    3 +
+ ...pi-embedded-subscribe.handlers.messages.test.ts |   15 +
+ .../pi-embedded-subscribe.handlers.messages.ts     |   55 +-
+ src/agents/pi-embedded-subscribe.handlers.types.ts |    1 +
+ src/agents/pi-embedded-subscribe.ts                |    2 +
+ src/agents/pi-hooks/compaction-safeguard.ts        |   12 +-
+ src/agents/pi-tools.policy.ts                      |    4 +
+ src/agents/pi-tools.ts                             |   14 +
+ src/agents/subagent-announce-delivery.ts           |   11 +
+ src/agents/subagent-announce-queue.ts              |    2 +
+ src/agents/subagent-announce.chain-guard.test.ts   |  338 +++++
+ .../subagent-announce.continuation-drain.test.ts   |  425 ++++++
+ .../subagent-announce.continuation.runtime.test.ts |   82 ++
+ .../subagent-announce.continuation.runtime.ts      |   25 +
+ src/agents/subagent-announce.continuation.test.ts  |  361 +++++
+ src/agents/subagent-announce.format.e2e.test.ts    |   36 +-
+ src/agents/subagent-announce.silent-wake.test.ts   |  336 +++++
+ src/agents/subagent-announce.ts                    |  747 +++++++++-
+ src/agents/subagent-registry-helpers.ts            |   25 +-
+ src/agents/subagent-registry-lifecycle.ts          |    2 +
+ src/agents/subagent-registry-run-manager.ts        |    6 +
+ src/agents/subagent-registry-spawn-runtime.ts      |   63 +
+ src/agents/subagent-registry.persistence.test.ts   |  107 ++
+ src/agents/subagent-registry.test.ts               |   10 +
+ src/agents/subagent-registry.ts                    |    6 +
+ src/agents/subagent-registry.types.ts              |    6 +
+ src/agents/subagent-spawn.test-helpers.ts          |    3 +-
+ src/agents/subagent-spawn.ts                       |   48 +-
+ src/agents/subagent-system-prompt.ts               |   40 +
+ src/agents/system-prompt.continuation.test.ts      |  209 +++
+ src/agents/system-prompt.test.ts                   |   68 +-
+ src/agents/system-prompt.ts                        |  172 ++-
+ src/agents/tool-display-config.ts                  |   15 +
+ src/agents/tools-effective-inventory.test.ts       |   32 +
+ src/agents/tools-effective-inventory.ts            |   15 +
+ .../tools/continuation-tools-registration.test.ts  |  124 ++
+ src/agents/tools/continue-delegate-tool.test.ts    |  117 ++
+ src/agents/tools/continue-delegate-tool.ts         |  158 ++
+ src/agents/tools/continue-work-tool.test.ts        |   70 +
+ src/agents/tools/continue-work-tool.ts             |   73 +
+ ...uest-compaction-tool.callsite-threading.test.ts |  458 ++++++
+ ...est-compaction-tool.classifier-emission.test.ts |  172 +++
+ src/agents/tools/request-compaction-tool.test.ts   |  386 +++++
+ src/agents/tools/request-compaction-tool.ts        |  302 ++++
+ ...st-compaction-tool.volitional-threading.test.ts |  534 +++++++
+ ...elegate-store.post-compaction-substrate.test.ts |   76 +
+ src/auto-reply/continuation-delegate-store.test.ts |  339 +++++
+ src/auto-reply/continuation-delegate-store.ts      |   71 +
+ src/auto-reply/continuation-delegate.types.ts      |   17 +
+ src/auto-reply/continuation/config.test.ts         |  120 ++
+ src/auto-reply/continuation/config.ts              |  104 ++
+ .../continuation/context-pressure.test.ts          |  118 ++
+ src/auto-reply/continuation/context-pressure.ts    |  166 +++
+ .../delegate-dispatch-post-compaction.test.ts      |  181 +++
+ .../continuation/delegate-dispatch.test.ts         |  123 ++
+ src/auto-reply/continuation/delegate-dispatch.ts   |  350 +++++
+ src/auto-reply/continuation/delegate-store.test.ts |  228 +++
+ src/auto-reply/continuation/delegate-store.ts      |  421 ++++++
+ src/auto-reply/continuation/lazy.runtime.ts        |   31 +
+ .../continuation/post-compaction-release.test.ts   |  273 ++++
+ .../continuation/post-compaction-release.ts        |  107 ++
+ src/auto-reply/continuation/scheduler.test.ts      |  238 +++
+ src/auto-reply/continuation/scheduler.ts           |  256 ++++
+ src/auto-reply/continuation/signal.test.ts         |   83 ++
+ src/auto-reply/continuation/signal.ts              |  139 ++
+ src/auto-reply/continuation/state.test.ts          |   76 +
+ src/auto-reply/continuation/state.ts               |  189 +++
+ src/auto-reply/continuation/types.ts               |  146 ++
+ src/auto-reply/get-reply-options.types.ts          |    9 +
+ src/auto-reply/reply.test-harness.ts               |    1 +
+ src/auto-reply/reply/abort-cutoff.runtime.ts       |   18 +-
+ src/auto-reply/reply/agent-runner-execution.ts     |  169 ++-
+ src/auto-reply/reply/agent-runner-session-reset.ts |    4 +
+ src/auto-reply/reply/agent-runner-utils.ts         |    2 +
+ ...-runner.continuation-delegate-fire-span.test.ts |  475 ++++++
+ .../agent-runner.continuation-work-span.test.ts    |  468 ++++++
+ .../reply/agent-runner.misc.runreplyagent.test.ts  |  300 +++-
+ src/auto-reply/reply/agent-runner.runtime.ts       |   10 +-
+ src/auto-reply/reply/agent-runner.ts               | 1541 +++++++++++++++++---
+ src/auto-reply/reply/body.ts                       |   23 +-
+ src/auto-reply/reply/commands-compact.ts           |   12 +-
+ src/auto-reply/reply/commands-status.test.ts       |  131 ++
+ .../reply/commands-system-prompt.test.ts           |   28 +
+ src/auto-reply/reply/commands-system-prompt.ts     |   20 +
+ .../reply/context-pressure.integration.test.ts     |  161 ++
+ src/auto-reply/reply/context-pressure.test.ts      |  600 ++++++++
+ src/auto-reply/reply/context-pressure.ts           |   91 ++
+ src/auto-reply/reply/continuation-runtime.test.ts  |  120 ++
+ src/auto-reply/reply/continuation-runtime.ts       |   87 ++
+ src/auto-reply/reply/continuation-state.runtime.ts |   10 +
+ src/auto-reply/reply/continuation-state.ts         |  108 ++
+ src/auto-reply/reply/cot-frame.test.ts             |   88 ++
+ src/auto-reply/reply/cot-frame.ts                  |   21 +
+ src/auto-reply/reply/directive-handling.impl.ts    |   16 +-
+ .../reply/directive-handling.mixed-inline.test.ts  |    8 +
+ .../reply/directive-handling.model.test.ts         |   10 +
+ src/auto-reply/reply/directive-handling.persist.ts |   14 +-
+ src/auto-reply/reply/followup-runner.test.ts       |  164 ++-
+ src/auto-reply/reply/followup-runner.ts            |  155 ++
+ .../reply/get-reply-run.media-only.test.ts         |   45 +-
+ src/auto-reply/reply/get-reply-run.ts              |    9 +-
+ src/auto-reply/reply/get-reply.ts                  |   15 +
+ src/auto-reply/reply/model-selection.ts            |   17 +-
+ .../reply/normalize-reply.cot-frame.test.ts        |  119 ++
+ src/auto-reply/reply/normalize-reply.ts            |   14 +
+ .../reply/post-compaction-context-failure.test.ts  |  133 ++
+ .../post-compaction-delegate-dispatch.test.ts      |  724 +++++++++
+ .../reply/post-compaction-delegate-dispatch.ts     |  673 +++++++++
+ src/auto-reply/reply/queue/types.ts                |    1 +
+ .../reply/reply-delivery.cot-frame-leak.test.ts    |  118 ++
+ src/auto-reply/reply/reply-delivery.ts             |   10 +-
+ src/auto-reply/reply/reply-state.test.ts           |    8 +-
+ src/auto-reply/reply/session-reset-model.ts        |   25 +-
+ src/auto-reply/reply/session-system-events.ts      |   14 +
+ src/auto-reply/reply/session-updates.ts            |   45 +-
+ src/auto-reply/reply/session.test.ts               |   11 +-
+ src/auto-reply/reply/session.ts                    |   22 +-
+ src/auto-reply/status.test.ts                      |  213 +++
+ src/auto-reply/tokens.continuation.test.ts         |  154 ++
+ src/auto-reply/tokens.test.ts                      |  481 +++++-
+ src/auto-reply/tokens.ts                           |  114 ++
+ src/auto-reply/types.ts                            |    1 +
+ src/commands/status-overview-rows.ts               |    5 +
+ src/commands/status.command-report-data.ts         |   76 +
+ src/commands/status.continuation-banner.test.ts    |   64 +
+ src/config/cache-utils.ts                          |    2 +-
+ src/config/schema.base.generated.ts                |   45 +
+ src/config/sessions.cache.test.ts                  |   17 +
+ src/config/sessions/artifacts.test.ts              |   38 +
+ src/config/sessions/artifacts.ts                   |   37 +
+ src/config/sessions/session-file.ts                |   23 +-
+ src/config/sessions/store-cache.ts                 |   11 +-
+ src/config/sessions/store-load.ts                  |    1 -
+ src/config/sessions/store.runtime.ts               |    2 +-
+ src/config/sessions/store.ts                       |    1 -
+ src/config/sessions/types.ts                       |   33 +
+ src/config/types.agent-defaults.ts                 |   18 +
+ src/config/zod-schema.agent-defaults.ts            |   49 +
+ src/config/zod-schema.continuation.test.ts         |  158 ++
+ src/cron/isolated-agent/run.ts                     |    8 +-
+ src/gateway/protocol/schema/agent.schema.test.ts   |   61 +
+ src/gateway/protocol/schema/agent.ts               |    4 +
+ src/gateway/server-methods/agent.test.ts           |  196 +++
+ src/gateway/server-methods/agent.ts                |    6 +
+ src/gateway/server-restart-sentinel.test.ts        |   61 +-
+ src/gateway/server-restart-sentinel.ts             |   11 +
+ src/gateway/session-compaction-checkpoints.ts      |    4 +-
+ src/hooks/llm-slug-generator.ts                    |    2 +
+ src/infra/chain-budget.test.ts                     |   30 +
+ src/infra/chain-budget.ts                          |   68 +
+ src/infra/continuation-tracer.test.ts              | 1526 +++++++++++++++++++
+ src/infra/continuation-tracer.ts                   |  900 ++++++++++++
+ src/infra/heartbeat-reason.ts                      |    6 +
+ src/infra/heartbeat-runner.ts                      |   37 +-
+ src/infra/secure-random-chain-id.test.ts           |   40 +
+ src/infra/secure-random.ts                         |   17 +
+ .../session-cost-usage.discoverAllSessions.test.ts |  153 ++
+ src/infra/session-cost-usage.ts                    |   44 +
+ src/infra/session-delivery-queue-recovery.ts       |   68 +
+ src/infra/session-delivery-queue-storage.ts        |  204 ++-
+ src/infra/session-delivery-queue.recovery.test.ts  |  123 +-
+ src/infra/session-delivery-queue.storage.test.ts   |  373 ++++-
+ src/infra/session-delivery-queue.ts                |    7 +
+ src/infra/session-keys.test.ts                     |   82 ++
+ src/infra/session-keys.ts                          |   50 +
+ src/infra/substrate-capability-registry.test.ts    |   57 +
+ src/infra/substrate-capability-registry.ts         |  134 ++
+ src/infra/system-events.test.ts                    |   98 ++
+ src/infra/system-events.ts                         |   65 +
+ src/plugin-sdk/channel-entry-contract.test.ts      |   12 +-
+ src/plugin-sdk/diagnostics-otel.ts                 |   16 +
+ src/rebase/tracer.ts                               |  161 ++
+ src/status/status-message.ts                       |   57 +
+ src/status/status-text.ts                          |   25 +
+ ...ask-flow-registry.store.sqlite.chain-id.test.ts |  218 +++
+ src/tasks/task-flow-registry.store.sqlite.ts       |   21 +-
+ src/tasks/task-flow-registry.test.ts               |   36 +
+ src/tasks/task-flow-registry.ts                    |   13 +
+ src/tasks/task-flow-registry.types.ts              |    8 +
+ studies/swim-37/harness/README.md                  |   72 +
+ studies/swim-37/harness/changelog-grep.test.ts     |  245 ++++
+ studies/swim-37/harness/changelog-grep.ts          |  137 ++
+ .../swim-37/harness/cherry-pick-provenance.test.ts |  177 +++
+ studies/swim-37/harness/cherry-pick-provenance.ts  |  108 ++
+ .../harness/conflict-content-rubric.test.ts        |  318 ++++
+ studies/swim-37/harness/conflict-content-rubric.ts |  309 ++++
+ studies/swim-37/harness/durability/README.md       |   83 ++
+ .../harness/durability/durability-fixture.ts       |  116 ++
+ .../harness/durability/s1-two-hop-chain.test.ts    |  263 ++++
+ .../durability/s2-followup-token-chain.test.ts     |  277 ++++
+ .../durability/s3-restart-roundtrip.test.ts        |  279 ++++
+ .../swim-37/harness/emit-helper-contract.test.ts   |  372 +++++
+ .../helper-fire-and-release-contract.test.ts       |  250 ++++
+ .../harness/in-memory-span-recorder.test.ts        |  194 +++
+ studies/swim-37/harness/in-memory-span-recorder.ts |  189 +++
+ studies/swim-37/harness/rebase-classifier.test.ts  |  225 +++
+ studies/swim-37/harness/rebase-classifier.ts       |  218 +++
+ studies/swim-37/harness/swim-runner.test.ts        |  824 +++++++++++
+ studies/swim-37/harness/swim-runner.ts             |  377 +++++
+ test/scripts/check-substrate-adoption.test.ts      |  124 ++
+ test/vitest/vitest.config.ts                       |    2 +
+ .../vitest.continuation-durability.config.ts       |   25 +
+ test/vitest/vitest.swim-37.config.ts               |   21 +
+ tsconfig.json                                      |    2 +-
+ tsdown.config.ts                                   |   24 +
+ 268 files changed, 33904 insertions(+), 576 deletions(-)
