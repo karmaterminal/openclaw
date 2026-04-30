@@ -260,4 +260,3 @@ describe("S1 — two-hop chain across subagent boundary (r3164380565)", () => {
     expect(entry?.continuationChainTokens).toBe(9_999);
   });
 });
-
