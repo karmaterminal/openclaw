@@ -248,9 +248,8 @@ describe("sanitizeToolUseResultPairing", () => {
     });
 
     expect(result.droppedOrphanCount).toBe(0);
-    expect(result.messages).toHaveLength(2);
-    expect(result.messages[0]?.role).toBe("assistant");
-    expect(result.messages[1]?.role).toBe("user");
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.role).toBe("user");
     expect(result.added).toHaveLength(0);
   });
 });
