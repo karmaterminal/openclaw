@@ -2870,6 +2870,68 @@ export async function runReplyAgent(params: {
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
+    // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
+    let toolDelegateDispatchResult:
+      | { dispatched: number; rejected: number; chainState: ChainState }
+      | undefined;
+    if (continuationFeatureEnabled && sessionKey) {
+      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const { dispatchToolDelegates, loadContinuationChainState } =
+        await import("../continuation/lazy.runtime.js");
+      const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
+      toolDelegateDispatchResult = await dispatchToolDelegates({
+        sessionKey,
+        chainState: dispatchChainState,
+        ctx: {
+          sessionKey,
+          agentChannel: followupRun.originatingChannel ?? undefined,
+          agentAccountId: followupRun.originatingAccountId ?? undefined,
+          agentTo: followupRun.originatingTo ?? undefined,
+          agentThreadId: followupRun.originatingThreadId ?? undefined,
+        },
+        maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
+        // r3163899581: pass a fresh-loader so the hedge timer re-loads the
+        // chain state from the persisted session entry at fire time rather
+        // than re-using the snapshot captured at arm time.
+        loadFreshChainState: () => loadContinuationChainState(activeSessionEntry, 0),
+      });
+    }
+
+    // --- Chain state write-back (RFC §3.3) ---
+    // Persist chain metadata to session entry after scheduling/dispatch.
+    // r3161613184: when delegates were dispatched this turn, persist the
+    // *advanced* chain state returned by `dispatchToolDelegates` rather
+    // than re-loading the unchanged pre-dispatch state. Without this the
+    // counter never advances across hops and `maxChainLength` enforcement
+    // breaks.
+    if (
+      (effectiveContinuationSignal || hasQueuedDelegateWork) &&
+      sessionKey &&
+      activeSessionEntry
+    ) {
+      // r3164418100 (P1): use the local async `persistContinuationChainState`
+      // (defined ~line 1269) which does the durable triple-write — sessionEntry
+      // + sessionStore + disk via `updateSessionStore`. The lazy.runtime helper
+      // of the same name only mutates the in-memory `sessionEntry`, so a
+      // restart or disk-based reload would revert chain depth/tokens/chain-id
+      // for tool-delegate hops, weakening max-chain and cost-cap enforcement
+      // and making continuation telemetry inconsistent.
+      const { loadContinuationChainState } = await import("../continuation/lazy.runtime.js");
+      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const nextState =
+        toolDelegateDispatchResult?.chainState ??
+        loadContinuationChainState(activeSessionEntry, turnTokens);
+      await persistContinuationChainState({
+        count: nextState.currentChainCount,
+        startedAt: nextState.chainStartedAt,
+        tokens: nextState.accumulatedChainTokens,
+      });
+    }
+
+    if (finalPayloads.length === 0 && effectiveContinuationSignal) {
+      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+    }
+
     return finalizeWithFollowup(
       finalPayloads.length === 1 ? finalPayloads[0] : finalPayloads,
       queueKey,
