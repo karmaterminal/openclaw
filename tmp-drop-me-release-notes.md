@@ -50,3 +50,65 @@ started: 2026-04-29T19:10:25.570-07:00
   `package.json` at `2026.4.24`, no fork-line/frond/shadow version string; PR
   `openclaw/openclaw#38780` comment `4321404750` = historical stopping rule,
   reference only and do not re-engage.
+
+## §2 GitHub walk — GH-walk-noted checkpoint
+
+- GitHub access used read-only commands only: `gh project item-list`, `gh pr
+view`, `gh issue view`, and `gh api` GETs for review comments / the requested
+  historical comment.
+- Project 56 status snapshot:
+  - #325 root issue: `in_coding_agent`.
+  - #326 savegame convention: `Done`.
+  - five-surface tracker: #335 chain accounting = `prince_review`; #334
+    TaskFlow/OTel routing = `Todo`; #337 delegate-drain = `Done`; #336
+    trigger-propagation = `Done`; #332 context-pressure isolation /
+    session-delivery-queue integration = `Todo`.
+  - #365 TaskFlow-only purge tracker: `Todo`.
+- Audit-lane PRs on `cael/325-canonical2` all read:
+  - #423 merged 2026-04-29T22:57:46Z at
+    `c8f85f525466dbadc70791759c4c7db32318978a`; review thread included the
+    `taskFlowDelegates` compatibility shim concern, resolved by `ac717c021a`
+    landing an accept-and-ignore one-release shim.
+  - #427 merged 2026-04-29T23:38:21Z at
+    `d0f31f65cc1250e5300d1c45ac4feeda71100b18`; no comments/review comments.
+  - #428 merged 2026-04-29T23:38:25Z at
+    `e73fd0f088813ca125bab60a2cc54c08ac97ff07`; no comments/review comments.
+  - #429 merged 2026-04-29T23:42:56Z at
+    `dc572c01062a8da9a337039c87c1eb09288af640`; no comments/review comments.
+  - #430 merged 2026-04-30T00:41:56Z at
+    `15e045fe460f0fa00f14fdf29f95627d7200b789`; comment thread recorded the
+    S2 finding that followup-runner persistence was orphaned for disk durability
+    and filed #431.
+  - #432 merged 2026-04-30T01:59:53Z at
+    `cf7830ffb3702bf7d826d70838893e2e41709f12`; closes #431.
+- Open PRs on canonical2:
+  - #361 open, base `cael/325-canonical2`, head `ronan/otel-rfc-wiring`; RFC-only
+    observability wiring for #335 with Codex review comments still visible.
+  - #363 open, base `cael/325-canonical2`, head `cael/355-multi-recipient`;
+    descriptor stage-1 with review comments around `targetSessionKey` /
+    `targetSessionKeys` fail-open and post-compaction propagation hazards.
+  - #368 open, base `cael/325-canonical2`, head
+    `ronan/365-purge-taskflowdelegates-gate`; load-bearing TaskFlow-only purge
+    lane. Review comment asks to keep `taskFlowDelegates` as a tolerated legacy
+    config key so strict Zod validation does not hard-fail upgrades.
+- Closed context entries:
+  - #325 remains open with canonical2 re-attempt comments and 80-commit delta
+    lineage notes.
+  - #326 closed as adopted savegame convention.
+  - #341 is a closed PR (`draft: revive canonical v2026.4.24 uptake lane`) and
+    was superseded by canonical2 child-PR review topology.
+  - #431 closed by #432; comment says the #432 fix wraps the
+    `followup-runner.ts:485`-area persistence call in `updateSessionStore` and
+    promotes S2 to live bug detector.
+- Historical closed entries:
+  - #338 closed by #362 because the original base was too old
+    (`flesh_beast_figs/20260424-claude`); canonical2 successor merged as
+    `ad6ac310c8`.
+  - #339, #342, #343 were merged into canonical2; #344 resolves as an issue
+    fallback (not a PR via `gh pr view`) for substrate-adoption-rule lint
+    mechanization.
+- Upstream historical stopping-rule comment read:
+  `openclaw/openclaw#38780` comment `4321404750`, by
+  `silas-dandelion-cult` at 2026-04-26T06:13:05Z, starts with
+  `Implemented at HEAD (90db3699cc)` and is retained only as context per
+  workorder. No re-engagement.
