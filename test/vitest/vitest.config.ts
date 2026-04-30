@@ -77,6 +77,7 @@ export const rootVitestProjects = [
   "test/vitest/vitest.extension-zalo.config.ts",
   "test/vitest/vitest.extensions.config.ts",
   "test/vitest/vitest.swim-37.config.ts",
+  "test/vitest/vitest.continuation-durability.config.ts",
 ] as const;
 
 export default defineConfig({
