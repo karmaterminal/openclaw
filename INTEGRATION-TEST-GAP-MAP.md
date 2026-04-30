@@ -35,11 +35,13 @@ The audit-lane PRs (#427/#428/#429) plus the persist-trio (`f26a86535f`) cover f
 **Shape:** agent-runner produces a single turn that emits `continue_work` (no delegates) consuming N tokens; followup-runner triggers; `dispatchToolDelegates` returns `dispatched=0, chainState={accumulatedChainTokens: N}`; next followup turn must see the accumulated tokens.
 
 **Asserts:**
-- After `dispatched==0` followup, on-disk `continuationChainTokens` reflects N.
+- After `dispatched==0` followup, on-disk `continuationChainTokens` reflects N (when persisted via the audit-fix callsite shape).
 - Subsequent turn's `costCapTokens` enforcement uses the accumulated value, not 0.
-- No spurious `updatedAt` churn when tokens unchanged (negative case).
+- ~~No spurious `updatedAt` churn when tokens unchanged (negative case).~~ — **Out of scope for the audit-lane fix.** `persistContinuationChainState` does not touch `updatedAt`; that field is owned by the `mergeSessionEntry` / `updateSessionStoreEntry` layer. Move to a separate session-store-merge integration scenario if needed.
 
 **Why this matters:** #428 unit test covers the persist call; the integration question is whether the cost-cap reader actually sees the tokens after a delayed/deferred-only chain.
+
+**Open finding (🩸 catch on bef8963d79):** the production followup-runner callsite at `src/auto-reply/reply/followup-runner.ts:485` only mutates `tailEntry` in memory. The followup-path code itself contains zero `updateSessionStore`/`saveSessionStore` calls; the only durable writer it invokes is `persistRunSessionUsage` → `updateSessionStoreEntry` (`session-usage.ts:110`), which patches only usage fields and does not include `continuationChain*`. Whether r3164418106's in-memory mutation reaches disk via the followup path alone depends on a downstream writer that flushes the `tailEntry`-shaped store snapshot — which this code-walk did not surface. **S2 is therefore positioned as a contract harness for the persist primitive**, not a full integration test of the production callsite. The followup-path disk-durability question stays open as a follow-up after #430 lands.
 
 ### S3 — Durable persist across simulated gateway restart (`r3164418100` + persist-trio)
 
