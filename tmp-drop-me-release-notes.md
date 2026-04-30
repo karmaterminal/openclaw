@@ -321,6 +321,33 @@ Generated release-note inventory files under `docs/release-notes/`:
     - `git diff --shortstat origin/feature/context-pressure-squashed cf7830ffb3702bf7d826d70838893e2e41709f12`
   - Shortstat: `1013 files changed, 65462 insertions(+), 8970 deletions(-)`.
 
+## §5 deliverables — draft-files checkpoint
+
+Created required release-note artifacts:
+
+- `docs/release-notes/RELEASE-NOTES-DRAFT.md`
+  - 608 lines, within workorder's 600-1500 line target.
+  - Includes header/scope, significance, architecture/surfaces, verified
+    contracts, test surfaces, verification punchlist summary, candidate squash
+    topology, provenance ledger, source evidence appendix, copy bank, non-goals,
+    and maintainer-ready recommendation.
+  - Substantive implementation claims cite PR number plus merge SHA. Open PR
+    items cite open PR number and explicitly state no merge SHA yet.
+
+- `docs/release-notes/PR-DESCRIBE.md`
+  - 95 words, under the 200-word workorder cap.
+  - One paragraph leading with TaskFlow substrate adoption and durability proof,
+    then the #427/#428/#429/#432 fixes, #430 durability harness, and open
+    #368/#361/#363 decisions.
+
+- `docs/release-notes/VERIFICATION-PUNCHLIST.md`
+  - 57 lines.
+  - Covers open PR #368/#361/#363, generated baseline integrity, durability
+    fixes to preserve, lineage hygiene, final-candidate test discipline,
+    four-commit squash topology proposal, and phantom CI hygiene.
+
+No tests, installs, or CI were run while drafting these files, per workorder.
+
 ---
 
 ## §9 ADDENDUM noted by frond-scribe at 2026-04-30 ~02:22Z
