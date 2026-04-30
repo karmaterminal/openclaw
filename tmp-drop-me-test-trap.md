@@ -194,3 +194,55 @@ Issue slate distilled from this ledger: 19 findings across regression-known, arc
   - #444 `coverage` - actual request_compaction provider/auth callsite threading.
   - #445 `coverage` - request_compaction registration truth table.
   - #446 `trap-test` - continue_delegate descriptor mode enum and no boolean runtime shape.
+
+## Checkpoint: all-issues-filed
+
+- Created remaining 9 new issues only; added each to karmaterminal project 56 and set Status=Todo.
+- Project verification readback showed all #437-#455 entries present with Status=`Todo`.
+- Added index doc: `docs/test-trap-walk/INDEX.md`.
+- Remaining issues:
+  - #447 `coverage` - request_compaction pending Set cleanup on failure.
+  - #448 `coverage` - delegate consumer race against same TaskFlow rows.
+  - #449 `architectural-decision` - retry semantics after delegate spawn failure.
+  - #450 `volatile-audit` - substrate decision for subagent announce queue.
+  - #451 `coverage` - agent-runner boundary test for post-compaction lifecycle gates.
+  - #452 `coverage` - delay config guard when `minDelayMs > maxDelayMs`.
+  - #453 `coverage` - corrupt TaskFlow delegate payload breadcrumbs.
+  - #454 `coverage` - subagent announce runtime export contracts.
+  - #455 `architectural-decision` - post-compaction delegate release failure retry semantics.
+
+## §7 final declaration
+
+- Final pushed branch checkpoint before this final journal/index commit: `8f3db084b4`.
+- Issue count: 19 total.
+- Breakdown:
+  - `coverage`: 10
+  - `architectural-decision`: 3
+  - `volatile-audit`: 3
+  - `regression-known`: 1
+  - `guard-test`: 1
+  - `trap-test`: 1
+- Issues:
+  - #437 https://github.com/karmaterminal/openclaw/issues/437
+  - #438 https://github.com/karmaterminal/openclaw/issues/438
+  - #439 https://github.com/karmaterminal/openclaw/issues/439
+  - #440 https://github.com/karmaterminal/openclaw/issues/440
+  - #441 https://github.com/karmaterminal/openclaw/issues/441
+  - #442 https://github.com/karmaterminal/openclaw/issues/442
+  - #443 https://github.com/karmaterminal/openclaw/issues/443
+  - #444 https://github.com/karmaterminal/openclaw/issues/444
+  - #445 https://github.com/karmaterminal/openclaw/issues/445
+  - #446 https://github.com/karmaterminal/openclaw/issues/446
+  - #447 https://github.com/karmaterminal/openclaw/issues/447
+  - #448 https://github.com/karmaterminal/openclaw/issues/448
+  - #449 https://github.com/karmaterminal/openclaw/issues/449
+  - #450 https://github.com/karmaterminal/openclaw/issues/450
+  - #451 https://github.com/karmaterminal/openclaw/issues/451
+  - #452 https://github.com/karmaterminal/openclaw/issues/452
+  - #453 https://github.com/karmaterminal/openclaw/issues/453
+  - #454 https://github.com/karmaterminal/openclaw/issues/454
+  - #455 https://github.com/karmaterminal/openclaw/issues/455
+- Index doc path: `docs/test-trap-walk/INDEX.md`.
+- Open questions for figs:
+  - Direct Discord directive message bodies were not accessible from the repo/session stores in this environment; the walk used the workorder-relayed directive summaries as controlling context.
+  - No source-code changes, dependency installs, tests, or CI runs were performed, per §8.
