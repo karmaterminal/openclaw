@@ -372,3 +372,49 @@ The workorder file at `/home/figs/flesh_beast_best_beast/WORKORDER-release-notes
    audit-lane-narrow (variant B). Let figs choose; surface line-counts inline.
 6. The release-notes still cover the FULL canonical2 surface — the audit-lane fold
    is just one sub-frame within it.
+
+## §9 addendum execution — narrow-fold checkpoint
+
+Re-read updated workorder §9 after frond-scribe addendum commit
+`1d9cf6f135`.
+
+Observed ref drift from the addendum text:
+
+- Workorder §9 says `feature/context-pressure-squashed` was still at
+  `90db3699ccf3`.
+- At generation time, local `origin/feature/context-pressure-squashed` resolves
+  to `63d5c8c65ea3`, matching the addendum's in-flight narrow-fold detached
+  head. I did not push, rewrite, or otherwise touch that branch.
+
+Generated third delta artifact:
+
+- `docs/release-notes/audit-lane-narrow-fold.txt`
+  - 897 lines.
+  - Captures old feature base `90db3699ccf3` -> current feature ref
+    `63d5c8c65ea3`: `33 files changed, 5267 insertions(+), 2 deletions(-)`.
+  - Captures the addendum path-filtered old-base -> current-feature shape:
+    `30 files changed, 5147 insertions(+), 2 deletions(-)`.
+  - Captures current feature ref -> canonical2 path-filtered remainder:
+    `255 files changed, 18720 insertions(+), 2273 deletions(-)`.
+  - Captures old feature base -> canonical2 path-filtered surface:
+    `278 files changed, 23858 insertions(+), 2266 deletions(-)`.
+  - Includes the addendum-specified log/diff commands, with a note that after the
+    feature ref moved they describe the remaining canonical2 surface rather than
+    the narrow fold itself.
+
+Updated required deliverables for §9:
+
+- `docs/release-notes/RELEASE-NOTES-DRAFT.md`
+  - Added `Step-9 squash scope (in flight)` section.
+  - Keeps the full canonical2 narrative and treats the narrow fold as a sub-frame.
+  - Names open/non-folded work: #368/#365, #361, #363, broader RFC churn, docs
+    updates, baseline work, and non-audit-lane telemetry work.
+- `docs/release-notes/PR-DESCRIBE.md`
+  - Replaced the single paragraph with two one-paragraph variants:
+    - Variant A full-canonical2, line-count inline:
+      `1013 files, +65462/-8970`.
+    - Variant B audit-lane-narrow, line-count inline:
+      `33 files, +5267/-2`; path-filter `30 files, +5147/-2`.
+- `docs/release-notes/VERIFICATION-PUNCHLIST.md`
+  - Added `Squash-scope verification` section covering the 5267 vs full
+    canonical2 65k+ vs upstream PR #38780 15k+ size math and Variant A/B choice.

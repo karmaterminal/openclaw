@@ -380,6 +380,7 @@ OpenClaw's continuation machinery now stores delegate work through TaskFlow, per
 
 ## Open decisions before squash
 
+- Decide whether the current `origin/feature/context-pressure-squashed` movement to `63d5c8c65ea3` is the intended publication of the previously reported in-flight narrow fold. [workorder §9]
 - Decide whether #368 lands before squash or remains deferred with strict legacy key tolerance retained. [open PR #368]
 - Decide whether #361 lands before squash or remains an RFC-only follow-up. [open PR #361]
 - Decide whether #363 lands before squash or waits for descriptor fail-open review resolution. [open PR #363]
@@ -387,6 +388,24 @@ OpenClaw's continuation machinery now stores delegate work through TaskFlow, per
 - Decide whether `INTEGRATION-TEST-GAP-MAP.md` should be refreshed to mark #431 as closed by #432. [PR #430 `15e045fe460f0fa00f14fdf29f95627d7200b789`; PR #432 `cf7830ffb3702bf7d826d70838893e2e41709f12`]
 - Decide whether the final upstream PR body should include the full audit-lane provenance table or a compressed form. [PR #423 `c8f85f525466dbadc70791759c4c7db32318978a`; PR #432 `cf7830ffb3702bf7d826d70838893e2e41709f12`]
 - Decide whether the final candidate should group commits as substrate, observability, durability, and release docs. [PR #423 `c8f85f525466dbadc70791759c4c7db32318978a`; PR #422 `42f1bb9c14bcc5b462206809302b289cbe696f5b`; PR #430 `15e045fe460f0fa00f14fdf29f95627d7200b789`]
+
+## Step-9 squash scope (in flight)
+
+- Workorder §9 said the narrow audit-lane fold was prepared but not pushed at detached head `63d5c8c65ea3`. [workorder §9]
+- At addendum-delta generation time, `origin/feature/context-pressure-squashed` resolved to `63d5c8c65ea3`. [workorder §9; `docs/release-notes/audit-lane-narrow-fold.txt`]
+- The old feature base `90db3699ccf3` to current feature ref `63d5c8c65ea3` measures exactly 33 files changed, 5267 insertions, and 2 deletions. [workorder §9; `docs/release-notes/audit-lane-narrow-fold.txt`]
+- The addendum path filter for old feature base `90db3699ccf3` to current feature ref `63d5c8c65ea3` measures 30 files changed, 5147 insertions, and 2 deletions. [`docs/release-notes/audit-lane-narrow-fold.txt`]
+- The narrow fold commit list contains the audit-lane durability stack plus substrate-alignment prep: #427, #428, #429, #430, #432, and local squash-prep alignment commits. [PR #427 `d0f31f65cc1250e5300d1c45ac4feeda71100b18`; PR #428 `e73fd0f088813ca125bab60a2cc54c08ac97ff07`; PR #429 `dc572c01062a8da9a337039c87c1eb09288af640`; PR #430 `15e045fe460f0fa00f14fdf29f95627d7200b789`; PR #432 `cf7830ffb3702bf7d826d70838893e2e41709f12`]
+- The current feature ref to canonical2 path-filtered remainder is 255 files changed, 18720 insertions, and 2273 deletions. [`docs/release-notes/audit-lane-narrow-fold.txt`]
+- The old feature base to canonical2 path-filtered surface is 278 files changed, 23858 insertions, and 2266 deletions. [`docs/release-notes/audit-lane-narrow-fold.txt`]
+- The previously captured broad full-canonical2 delta from old feature base to canonical2 is 1013 files changed, 65462 insertions, and 8970 deletions. [`docs/release-notes/canonical2-vs-feature-squashed.txt`]
+- Variant A in `PR-DESCRIBE.md` describes the broad full-canonical2 upstream PR story. [`docs/release-notes/PR-DESCRIBE.md`]
+- Variant B in `PR-DESCRIBE.md` describes the narrow audit-lane durability-hardening story. [`docs/release-notes/PR-DESCRIBE.md`]
+- Canonical2 work not included in the narrow audit-lane frame includes open PR #361 RFC/OTEL follow-up. [open PR #361]
+- Canonical2 work not included in the narrow audit-lane frame includes open PR #363 multi-recipient descriptor stage-1. [open PR #363]
+- Canonical2 work not included in the narrow audit-lane frame includes open PR #368 / #365 TaskFlow-only purge. [open PR #368]
+- Canonical2 work not included in the narrow audit-lane frame includes broader RFC churn, docs updates, baseline updates, and non-audit-lane continuation telemetry work. [workorder §9; PR #422 `42f1bb9c14bcc5b462206809302b289cbe696f5b`; PR #421 `29e556eb11de7ee7de9e4dadda8bdb2baf3a5dab`]
+- This release-note draft keeps the full canonical2 story and treats the narrow fold as a sub-frame, per workorder §9. [workorder §9]
 
 ## Candidate four-commit squash topology
 

@@ -12,6 +12,17 @@ This file is a checklist only; this release-notes lane did not run tests, instal
 - [ ] Resolve open PR #361 before squash, or explicitly defer the RFC-only OTEL follow-up while preserving current OTEL adapter evidence from PR #422 `42f1bb9c14bcc5b462206809302b289cbe696f5b`.
 - [ ] Resolve open PR #363 before squash, or explicitly defer multi-recipient descriptor stage-1 until `targetSessionKey` / `targetSessionKeys` fail-open review is settled.
 
+## Squash-scope verification
+
+- [ ] Confirm whether `origin/feature/context-pressure-squashed` moving to `63d5c8c65ea3` is the intended publication of the workorder §9 narrow fold.
+- [ ] Confirm the old-base-to-current-feature delta remains the reported narrow shape: 33 files changed, 5267 insertions, 2 deletions.
+- [ ] Confirm the addendum path-filter delta remains 30 files changed, 5147 insertions, 2 deletions for `src/auto-reply`, `src/agents`, `src/config/sessions`, `src/config/zod-schema`, and `studies/swim-37`.
+- [ ] Compare the narrow fold against the broad full-canonical2 delta captured earlier: 1013 files changed, 65462 insertions, 8970 deletions.
+- [ ] Compare the narrow fold against the upstream PR #38780 reference size from the addendum: 144 files changed, 15357 insertions, 408 deletions.
+- [ ] Confirm current-feature-to-canonical2 remaining path-filter scope is understood before figs chooses Variant A or Variant B: 255 files changed, 18720 insertions, 2273 deletions.
+- [ ] If Variant B is chosen, explicitly scope out #368, #361, #363, broader RFC churn, docs updates, and non-audit-lane canonical2 telemetry work.
+- [ ] If Variant A is chosen, validate the broad full-canonical2 candidate rather than only the narrow audit-lane fold.
+
 ## Generated baseline integrity
 
 - [ ] Keep `src/config/schema.base.generated.ts` and `src/config/zod-schema.continuation.test.ts` aligned with the one-cycle `taskFlowDelegates` compatibility shim from PR #423 `c8f85f525466dbadc70791759c4c7db32318978a`.
