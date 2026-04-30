@@ -50,6 +50,7 @@ import {
   pendingDelegateCount,
   stagedPostCompactionDelegateCount,
 } from "../continuation-delegate-store.js";
+import type { ChainState } from "../continuation/types.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,

@@ -29,7 +29,6 @@ import {
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
 import { compactEmbeddedPiSession } from "../../agents/pi-embedded-runner/compact.queued.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
@@ -144,8 +143,6 @@ export type AgentRunLoopResult =
       directlySentBlockKeys?: Set<string>;
     }
   | { kind: "final"; payload: ReplyPayload };
-
-type EmbeddedAgentRunResult = Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
 
 type FallbackSelectionState = Pick<
   SessionEntry,
