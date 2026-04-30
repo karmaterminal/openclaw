@@ -448,10 +448,12 @@ export function createFollowupRunner(params: {
           { dispatchToolDelegates },
           { resolveContinuationRuntimeConfig },
           { loadContinuationChainState, persistContinuationChainState },
+          { updateSessionStore, resolveSessionStoreEntry },
         ] = await Promise.all([
           import("../continuation/delegate-dispatch.js"),
           import("../continuation/config.js"),
           import("../continuation/state.js"),
+          import("../../config/sessions/store.js"),
         ]);
         const tailUsage = runResult.meta?.agentMeta?.usage;
         const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
@@ -504,9 +506,6 @@ export function createFollowupRunner(params: {
           // disk-canonical entry.
           if (storePath && sessionKey) {
             try {
-              const { updateSessionStore, resolveSessionStoreEntry } = await import(
-                "../../config/sessions/store.js"
-              );
               await updateSessionStore(storePath, (store) => {
                 const resolved = resolveSessionStoreEntry({ store, sessionKey });
                 if (resolved.existing) {
