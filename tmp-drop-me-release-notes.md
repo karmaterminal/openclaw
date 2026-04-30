@@ -112,3 +112,182 @@ view`, `gh issue view`, and `gh api` GETs for review comments / the requested
   `silas-dandelion-cult` at 2026-04-26T06:13:05Z, starts with
   `Implemented at HEAD (90db3699cc)` and is retained only as context per
   workorder. No re-engagement.
+
+## §3 code walk — code-walk-noted checkpoint
+
+Scoped guides read before source walk:
+
+- `src/agents/AGENTS.md`: agent tests are import-bound; avoid broad runtime
+  loads in tests and preserve exact production composition in named helpers.
+- `src/gateway/AGENTS.md`: gateway startup/server paths should not materialize
+  bundled plugin runtime unless needed.
+
+Continuation delegate store / TaskFlow substrate:
+
+- `src/auto-reply/continuation-delegate-store-taskflow.{ts,test.ts}`:
+  expected by workorder, but not present at current tip. Actual canonical store
+  is `src/auto-reply/continuation/delegate-store.ts`; compatibility path is
+  `src/auto-reply/continuation-delegate-store.ts`.
+- `src/auto-reply/continuation/delegate-store.ts`: canonical TaskFlow-backed
+  delegate store; uses `createManagedTaskFlow`, controller IDs
+  `core/continuation-delegate` and `core/continuation-post-compaction`, Zod
+  validation for queued payloads, `finishFlow` with `releasedAt`, `failFlow`
+  on corrupt records, FIFO filtering, and volatile delayed-reservation maps only
+  for process-scoped timer handles.
+- `src/auto-reply/continuation/delegate-store.test.ts`: mocks TaskFlow registry
+  and pins enqueue/consume FIFO, session isolation, mode roundtrip,
+  post-compaction controller separation, delay gating, and
+  `peekSoonestUnmaturedDelegateDueAt`.
+- `src/auto-reply/continuation-delegate-store.ts`: import-path shim to the
+  canonical store. It explicitly says the volatile in-memory Map and
+  `taskFlowDelegatesEnabled` gate are removed; post-compaction wrappers adapt
+  `SessionPostCompactionDelegate` to canonical staged TaskFlow delegates.
+- `src/auto-reply/continuation-delegate-store.test.ts`: legacy import-path smoke
+  tests for pending delegates, delayed reservations, counts, and post-compaction
+  staging through the shim.
+- `src/auto-reply/continuation-delegate-store.post-compaction-substrate.test.ts`:
+  #423 gate ensuring tool-side staging and runner-side consume resolve to the
+  same module instance and do not strand post-compaction delegates on alternate
+  substrates.
+- `src/auto-reply/continuation-delegate.types.ts`: compatibility re-export for
+  canonical types in `src/auto-reply/continuation/types.ts`.
+- `src/auto-reply/continuation/types.ts`: canonical typed contracts for
+  `ContinuationSignal`, mode-only `PendingContinuationDelegate`,
+  `DelayedContinuationReservation`, runtime config, staged post-compaction
+  delegates, `ContinueWorkRequest`, and `ChainState`.
+
+Continuation runtime/state/scheduling:
+
+- `src/auto-reply/reply/context-pressure.ts`: `checkContextPressure` computes
+  threshold/90/95 bands, guards on usable fresh token data, emits
+  `[context-pressure:fire]`, enqueues `[system:context-pressure]`, and mutates
+  `lastContextPressureBand`.
+- `src/auto-reply/reply/context-pressure.test.ts`: unit coverage for disabled /
+  below-threshold cases, band escalation, dedup, stale token guards, custom
+  thresholds, reset/refire, overflow ratios, and warn-level fire logging.
+- `src/auto-reply/reply/context-pressure.integration.test.ts`: real
+  system-event queue ordering proof: context-pressure event is visible before
+  drain and consumed after prompt drain.
+- `src/auto-reply/reply/continuation-runtime.ts`: reply-local runtime resolver
+  for continuation defaults and clamping; mirrors the canonical continuation
+  config shape.
+- `src/auto-reply/continuation/config.ts`: canonical continuation runtime
+  config resolver used by dispatch; hot-reload-at-enforcement, default delay /
+  cap values, and `clampDelayMs`.
+- `src/auto-reply/reply/continuation-runtime.test.ts`: pins clamping, fractional
+  truncation, optional context threshold, zero delay overrides, and
+  `resolveMaxDelegatesPerTurn`.
+- `src/auto-reply/reply/continuation-state.ts`: reply-local timer/generation
+  state and delegate-pending flags; workorder lists it, but canonical dispatch
+  path now also uses `src/auto-reply/continuation/state.ts`.
+- `src/auto-reply/reply/continuation-state.runtime.ts`: small runtime barrel for
+  selected reply-local timer/generation helpers.
+- `src/auto-reply/continuation/state.ts`: canonical chain state adapter; derives
+  pending-delegate truth from TaskFlow, tracks timer handles/refs, centralizes
+  `loadContinuationChainState` and `persistContinuationChainState`, and removes
+  the old delegate-pending Map.
+- `src/auto-reply/continuation/scheduler.ts`: chain/cost budget checks,
+  `continue_work` timer scheduling, delayed bracket delegate reservations, and
+  explicit no-generation-guard behavior.
+- `src/auto-reply/continuation/delegate-dispatch.ts`: consumes TaskFlow
+  delegates, arms hedge timers for unmatured entries, enforces
+  `maxDelegatesPerTurn`, `maxChainLength`, and token cost caps, spawns with
+  `[continuation:chain-hop:N]`, returns advanced chain state to callers, and
+  dispatches post-compaction delegates as `silentAnnounce + wakeOnReturn`.
+
+Compaction and tool surfaces:
+
+- `src/auto-reply/reply/post-compaction-context.test.ts`: tests AGENTS.md
+  section extraction, limits/truncation, symlink/hardlink escape rejection,
+  `YYYY-MM-DD` date substitution, current-time injection, and custom
+  `postCompactionSections` behavior.
+- `src/agents/tools/request-compaction-tool.ts`: `request_compaction` tool with
+  active-session/session-id preconditions, required reason, >=70% context guard,
+  per-session 5-minute rate limit, in-flight dedup, async fire-and-forget
+  compaction, background failure logging, and diagnostic volitional counters.
+- `src/agents/tools/request-compaction-tool.test.ts`: pins precondition errors,
+  threshold/rate-limit/dedup ordering, async return, background errors, reason
+  truncation, per-session guard isolation, counter TTL, and required reason.
+- `src/agents/tools/continuation-tools-registration.test.ts`: tool registration
+  surface; `continue_delegate` appears only when continuation is enabled and
+  drain is not explicitly false, `continue_work` appears when runner wires it,
+  `targetSessionKey` is intentionally absent, and description points to
+  `binary-canticle#11`; file documents the known 240s hot-test timeout concern.
+
+Runner/announce persistence callsites:
+
+- `src/agents/subagent-announce.ts`: `drainChildContinuationQueue` dynamically
+  imports continuation runtime modules to avoid cycles, dispatches child
+  `continue_delegate` queues after subagent settlement, persists returned child
+  chain state in memory and via `updateSessionStore`, and logs drain/config
+  failures. Silent delegate returns inject a system event and optionally
+  `requestHeartbeatNow`.
+- `src/agents/subagent-announce.continuation.test.ts`: validates bracket-origin
+  hop seeding, canonical hop propagation, sticky silent-wake, max-chain and
+  cost-cap rejection, grandparent reroute before cost guard, and no
+  generation-drift cancellation for delayed hops.
+- `src/auto-reply/reply/agent-runner.ts`: durable chain-state writer is local
+  async `persistContinuationChainState` at ~1269; it updates active entry,
+  active store, and disk with `updateSessionStore` plus legacy-key cleanup.
+  Dispatch callsite ~2870 consumes tool delegates and ~2921 persists the
+  returned advanced state. `git blame` confirms #427 merge
+  `d0f31f65cc1250e5300d1c45ac4feeda71100b18` owns the r3164418100 durable
+  write-back selection/comment and async call.
+- `src/auto-reply/reply/followup-runner.ts`: followup turns drain
+  `continue_delegate` queues, build chain state with this turn's tokens, and
+  persist even when `dispatched === 0` per #428
+  `e73fd0f088813ca125bab60a2cc54c08ac97ff07`. #432
+  `cf7830ffb3702bf7d826d70838893e2e41709f12` wraps the prior bare mutation in
+  `updateSessionStore`, fixing the #431 disk-durability orphan.
+
+Config/schema and restart cross-walks:
+
+- `src/config/zod-schema.continuation.test.ts`: schema boundary tests for
+  continuation config values and the #423 one-cycle legacy
+  `taskFlowDelegates` compat shim.
+- `src/config/schema.base.generated.ts`: generated schema includes
+  `continuation.taskFlowDelegates: {}` under strict `additionalProperties:
+false`; this is the shim noted by #423, not manual behavior code.
+- `src/gateway/server-restart-sentinel.ts`: imports session-delivery queue
+  recovery/drain/enqueue and post-compaction delegate delivery; builds restart
+  continuation payloads as `systemEvent` or `agentTurn` with idempotency keys,
+  enqueues continuation work on startup, wakes the session, and drains/recover
+  pending deliveries.
+- `src/config/sessions/store.ts`: `updateSessionStoreEntry` locks the store,
+  performs `loadSessionStore(storePath, { skipCache: true })`, resolves legacy
+  keys, applies a `Partial<SessionEntry>` patch via `mergeSessionEntry`, and
+  persists the resolved entry.
+- `src/config/sessions/session-usage.ts`: expected by workorder, but absent at
+  current tip. Actual path is `src/auto-reply/reply/session-usage.ts`.
+- `src/auto-reply/reply/session-usage.ts`: `persistSessionUsageUpdate` uses
+  `updateSessionStoreEntry` to patch model/provider/context and usage fields
+  (`inputTokens`, `outputTokens`, cache counters, estimated cost, `totalTokens`,
+  `totalTokensFresh`, `updatedAt`); no `continuationChain*` fields are in this
+  patch shape.
+
+Swim-37 durability harness:
+
+- `studies/swim-37/harness/durability/README.md`: explains the audit-lane
+  integration contract, real `dispatchToolDelegates`, tmpdir disk store,
+  TaskFlow mocks, and S1/S2/S3 scope. It still contains historical "open
+  finding" prose from before #432; #432's followup-runner wrap closes that
+  specific #431 orphan.
+- `studies/swim-37/harness/durability/durability-fixture.ts`: tmpdir-backed
+  real session store helpers, `loadSessionStore(skipCache:true)` reads, and
+  fake deterministic `spawnSubagentDirect` call recorder.
+- `studies/swim-37/harness/durability/s1-two-hop-chain.test.ts`: proves
+  hop-1 persisted state is reloaded from disk before hop-2, with regression
+  sentinel showing skipped persist produces a second `chain-hop:1`.
+- `studies/swim-37/harness/durability/s2-followup-token-chain.test.ts`: proves
+  `dispatchToolDelegates` with an empty queue returns `dispatched:0` plus
+  advanced token state and that `updateSessionStore + persistContinuationChainState`
+  carries it to disk; includes #431 sentinel for bare mutation orphaning.
+- `studies/swim-37/harness/durability/s3-restart-roundtrip.test.ts`: simulates
+  gateway restart by clearing continuation in-memory state and reloading disk
+  with `skipCache:true`; verifies chain count/tokens survive and hop-2 resumes.
+- `test/vitest/vitest.continuation-durability.config.ts`: scoped Vitest project
+  named `continuation-durability`, matching
+  `studies/swim-37/harness/durability/**/*.test.ts`.
+- `INTEGRATION-TEST-GAP-MAP.md`: draft map that motivated #430; contains
+  historical "open finding" language about followup-runner disk durability that
+  #432 now addresses.
