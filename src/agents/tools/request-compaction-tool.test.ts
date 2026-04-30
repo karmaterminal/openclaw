@@ -370,6 +370,102 @@ describe("request_compaction tool", () => {
     expect(second).toMatchObject({ status: "compaction_requested" });
   });
 
+  // [#447] In-flight dedup cleanup on background rejection.
+  //
+  // Bug-shape / risk:
+  //   `pendingCompactionSessions` is the volatile in-flight dedup Set guarded
+  //   by a `.finally(() => pendingCompactionSessions.delete(sessionKey))`
+  //   in the fire-and-forget chain. If a future refactor moves cleanup from
+  //   `.finally` into the `.then` happy-path only, a rejection would orphan
+  //   the sessionKey in the Set forever — every subsequent
+  //   `request_compaction` call would return `already_pending` until process
+  //   restart. The existing "dedup is cleared after triggerCompaction
+  //   resolves" test only covers the happy path.
+  //
+  // Pins request-compaction-tool.ts:233-235 (the .finally cleanup).
+  it("clears pending compaction session after background rejection", async () => {
+    let rejectCompaction!: (err: Error) => void;
+    mockTriggerCompaction.mockReturnValue(
+      new Promise<{ ok: boolean; compacted: boolean }>((_resolve, reject) => {
+        rejectCompaction = reject;
+      }),
+    );
+
+    const tool = makeTool();
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+
+    // Reject the background compaction and flush microtasks (multiple ticks
+    // because .then().finally() chains across two microtask boundaries).
+    rejectCompaction(new Error("simulated background failure"));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    // After rejection, pending MUST be cleared — a new call must NOT return
+    // `already_pending` (it WILL hit rate-limit since lastRequestMs was set
+    // by the first call; that's expected. The trap is specifically that the
+    // dedup Set, which is Guard 0 BEFORE rate-limit, must not still hold the
+    // sessionKey).
+    //
+    // Note: we deliberately do NOT call `_resetGuardState(SESSION_KEY)` here
+    // — that helper clears `pendingCompactionSessions` itself and would mask
+    // the bug. We test the .finally-cleanup path directly through behavior.
+    const second = await executeTool(tool);
+    expect(
+      second,
+      "pendingCompactionSessions must clear in .finally after background rejection; " +
+        "a refactor that moves cleanup into .then-only would orphan the sessionKey " +
+        "and the second call would return `already_pending` (Guard 0) instead of " +
+        "`rejected/rate_limit` (Guard 2)",
+    ).not.toMatchObject({ status: "already_pending" });
+  });
+
+  // [#447] _resetGuardState restart/test-isolation contract.
+  //
+  // Bug-shape / risk:
+  //   `_resetGuardState()` is the test-only helper that simulates process
+  //   restart for in-flight dedup. It MUST clear `pendingCompactionSessions`
+  //   alongside `sessionGuardState`. A refactor that splits the guard caches
+  //   without updating `_resetGuardState` would leave the dedup Set polluted
+  //   across test boundaries — symptom would be flaky `already_pending`
+  //   results bleeding between tests.
+  //
+  // Pins request-compaction-tool.ts:273-280 (both branches: keyed and
+  // unkeyed).
+  it("_resetGuardState clears pending compaction sessions for restart/test isolation", async () => {
+    // Keyed reset path.
+    _setPending(SESSION_KEY);
+    _resetGuardState(SESSION_KEY);
+    const tool = makeTool();
+    const afterKeyedReset = await executeTool(tool);
+    expect(
+      afterKeyedReset,
+      "_resetGuardState(sessionKey) must clear pendingCompactionSessions for that session",
+    ).toMatchObject({ status: "compaction_requested" });
+
+    // Unkeyed reset path (full restart simulation).
+    const OTHER_KEY = "other-session-447";
+    _setPending(SESSION_KEY);
+    _setPending(OTHER_KEY);
+    _resetGuardState();
+
+    const toolAfterFullReset = makeTool();
+    const afterFullReset = await executeTool(toolAfterFullReset);
+    expect(
+      afterFullReset,
+      "_resetGuardState() (no key) must clear ALL pendingCompactionSessions for restart simulation",
+    ).toMatchObject({ status: "compaction_requested" });
+
+    // Verify the OTHER_KEY entry was also cleared (would surface if .clear()
+    // was replaced with a sessionKey-scoped delete by a refactor).
+    const otherTool = makeTool({ agentSessionKey: OTHER_KEY });
+    const otherResult = await executeTool(otherTool);
+    expect(
+      otherResult,
+      "_resetGuardState() must clear pendingCompactionSessions across all sessions, not just the active one",
+    ).toMatchObject({ status: "compaction_requested" });
+  });
+
   // -------------------------------------------------------------------------
   // Required reason parameter
   // -------------------------------------------------------------------------
