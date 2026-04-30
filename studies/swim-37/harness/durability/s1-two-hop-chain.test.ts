@@ -1,34 +1,27 @@
 /**
  * S1 — Two-hop chain across the subagent boundary (`r3164380565` cross-surface).
  *
- * **Shape:**
- *   1. Parent session has `currentChainCount = 0`. Parent emits a
- *      `continue_delegate(silent-wake)` via `enqueuePendingDelegate`.
- *   2. Real `dispatchToolDelegates` runs against the parent session, advancing
- *      `currentChainCount` to 1 and (via fake `spawnSubagentDirect`) creating
- *      a child session entry on disk.
- *   3. Parent's drain calls `dispatchToolDelegates` a second time after the
- *      child settles; that second call must observe the persisted advanced
- *      chain state, not the snapshot from before the first dispatch.
+ * **Boundary under test:** the audit-lane bug-shape was *caller discards
+ * returned chainState → next reader loads stale 0/1 from sessionStore*.
+ * The honest test must therefore:
  *
- * **Why this matters:**
- *   The unit test in `subagent-announce.continuation-drain.test.ts` only
- *   asserts that `persistContinuationChainState` is called and that
- *   `updateSessionStore` is invoked. It does NOT prove that the *next reader*
- *   of that entry observes the new value. r3164380565 was specifically about
- *   the drain discarding the returned `chainState`; if the persist write went
- *   to the wrong key or wrong shape, the next dispatch could still see 0.
+ *   1. Call real `dispatchToolDelegates`; capture returned `chainState`.
+ *   2. Persist via the **same callsite under test** —
+ *      `updateSessionStore(... persistContinuationChainState(entry, returned))`.
+ *      This is what `subagent-announce`'s child-drain (r3164380565),
+ *      `agent-runner` durable write-back (r3164418100), and
+ *      `followup-runner` token persist (r3164418106) all do.
+ *   3. **Drop** the returned `chainState`. Reload from disk via
+ *      `loadSessionStore(skipCache:true)` + `loadContinuationChainState`.
+ *   4. Dispatch hop 2 with the **disk-derived** chainState. Assert hop label
+ *      `[continuation:chain-hop:2]`.
  *
- *   This test exercises the real on-disk round-trip: write via real
- *   `updateSessionStore` → read via real `loadSessionStore` → assert the
- *   second-hop dispatch enforces the advanced count.
+ * If anyone reverts the persist call (the actual bug), step 4's
+ * `loadContinuationChainState` returns `currentChainCount = 0`, and the
+ * spawn label asserts `chain-hop:1`, failing the test.
  *
- * **Substrate:**
- *   - Real `dispatchToolDelegates` (boundary under test).
- *   - Real `enqueuePendingDelegate` / `consumePendingDelegates` (TaskFlow store
- *     mocked at the registry level — same pattern as `delegate-dispatch.test.ts`).
- *   - Faked `spawnSubagentDirect` returning deterministic accepted results.
- *   - Tmpdir session-store file via `createDurabilityFixture()`.
+ * **No in-memory hand-off between hops.** That's the contract: persist→read
+ * round-trip via the same write-site the audit family covers.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -92,7 +85,15 @@ import {
   resetDelegateDispatchHedgesForTests,
 } from "../../../../src/auto-reply/continuation/delegate-dispatch.js";
 import { enqueuePendingDelegate } from "../../../../src/auto-reply/continuation/delegate-store.js";
-import { resetContinuationStateForTests } from "../../../../src/auto-reply/continuation/state.js";
+import {
+  loadContinuationChainState,
+  persistContinuationChainState,
+  resetContinuationStateForTests,
+} from "../../../../src/auto-reply/continuation/state.js";
+import {
+  loadSessionStore,
+  updateSessionStore,
+} from "../../../../src/config/sessions/store.js";
 import {
   createDurabilityFixture,
   createFakeSpawn,
@@ -120,31 +121,30 @@ describe("S1 — two-hop chain across subagent boundary (r3164380565)", () => {
     await fixture.cleanup();
   });
 
-  it("second-hop dispatch reads the advanced chain count after first hop persists", async () => {
-    const parentSessionKey = "agent:main:main";
+  it("hop-2 reads chain count from disk after hop-1 persists via the same write-site", async () => {
+    const sessionKey = "agent:main:main";
+    const startedAt = 1_700_000_000_000;
 
-    await seedSessionEntry(fixture.storePath, parentSessionKey, {
+    // Seed parent entry with chain count 0 on disk.
+    await seedSessionEntry(fixture.storePath, sessionKey, {
       sessionId: "session-parent",
       continuationChainCount: 0,
-      continuationChainStartedAt: Date.now(),
+      continuationChainStartedAt: startedAt,
       continuationChainTokens: 0,
     });
 
-    // First hop: enqueue + dispatch.
-    enqueuePendingDelegate(parentSessionKey, {
-      task: "first hop",
-      mode: "silent-wake",
-    });
+    // Hop 1 — enqueue + dispatch. Build initial chainState by reading from disk
+    // (matches what production agent-runner / subagent-announce do).
+    enqueuePendingDelegate(sessionKey, { task: "first hop", mode: "silent-wake" });
 
-    const startedAt = Date.now();
+    const initialEntry = readSessionEntry(fixture.storePath, sessionKey);
+    const initialChainState = loadContinuationChainState(initialEntry);
+    expect(initialChainState.currentChainCount).toBe(0);
+
     const firstResult = await dispatchToolDelegates({
-      sessionKey: parentSessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: startedAt,
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey: parentSessionKey },
+      sessionKey,
+      chainState: initialChainState,
+      ctx: { sessionKey },
       maxChainLength: 10,
     });
 
@@ -153,30 +153,101 @@ describe("S1 — two-hop chain across subagent boundary (r3164380565)", () => {
     expect(spawn.calls).toHaveLength(1);
     expect(spawn.calls[0]?.task).toContain("[continuation:chain-hop:1]");
 
-    // Second hop: enqueue + dispatch with the FIRST hop's returned chainState
-    // (simulating what subagent-announce / agent-runner persist + reload).
-    enqueuePendingDelegate(parentSessionKey, {
-      task: "second hop",
-      mode: "silent-wake",
+    // SAME WRITE-SITE the audit-lane fixes use: updateSessionStore wrapping
+    // persistContinuationChainState. If a future regression discards
+    // firstResult.chainState (the original bug shape), this write does not
+    // happen and hop-2 reads stale 0/1 below.
+    await updateSessionStore(fixture.storePath, (store) => {
+      const entry = store[sessionKey];
+      if (!entry) {
+        throw new Error(`missing entry for ${sessionKey} after hop 1`);
+      }
+      persistContinuationChainState({
+        sessionEntry: entry,
+        count: firstResult.chainState.currentChainCount,
+        startedAt: firstResult.chainState.chainStartedAt,
+        tokens: firstResult.chainState.accumulatedChainTokens,
+      });
     });
 
+    // ── BOUNDARY ──
+    // Drop firstResult entirely. Reload from disk. Build hop-2 chainState
+    // from what the next reader observes, not from in-memory hand-off.
+    const persistedEntry = readSessionEntry(fixture.storePath, sessionKey);
+    expect(persistedEntry?.continuationChainCount).toBe(1);
+    expect(persistedEntry?.continuationChainStartedAt).toBe(startedAt);
+
+    const reloadedChainState = loadContinuationChainState(persistedEntry);
+    expect(reloadedChainState.currentChainCount).toBe(1);
+
+    // Hop 2 — fresh dispatch using the disk-reloaded chainState.
+    enqueuePendingDelegate(sessionKey, { task: "second hop", mode: "silent-wake" });
+
     const secondResult = await dispatchToolDelegates({
-      sessionKey: parentSessionKey,
-      chainState: firstResult.chainState,
-      ctx: { sessionKey: parentSessionKey },
+      sessionKey,
+      chainState: reloadedChainState,
+      ctx: { sessionKey },
       maxChainLength: 10,
     });
 
-    // Boundary assertion: second hop's spawn task is labeled chain-hop:2,
-    // proving currentChainCount carried across the persist boundary.
+    // Boundary assertion: hop-2 spawn label proves the disk-reloaded count
+    // drove chain-budget enforcement. If persist had been skipped, this would
+    // assert chain-hop:1 instead and the test would fail.
     expect(secondResult.dispatched).toBe(1);
     expect(secondResult.chainState.currentChainCount).toBe(2);
     expect(spawn.calls).toHaveLength(2);
     expect(spawn.calls[1]?.task).toContain("[continuation:chain-hop:2]");
   });
 
+  it("regression sentinel: if persist is skipped, hop-2 dispatches as chain-hop:1", async () => {
+    // Negative case — proves the boundary assertion above is load-bearing.
+    // We deliberately do NOT call persistContinuationChainState between hops;
+    // hop-2 must reload count=0 from disk and produce chain-hop:1.
+    const sessionKey = "agent:main:regression";
+
+    await seedSessionEntry(fixture.storePath, sessionKey, {
+      sessionId: "session-regression",
+      continuationChainCount: 0,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 0,
+    });
+
+    enqueuePendingDelegate(sessionKey, { task: "first hop", mode: "silent-wake" });
+
+    const initialChainState = loadContinuationChainState(
+      readSessionEntry(fixture.storePath, sessionKey),
+    );
+    const firstResult = await dispatchToolDelegates({
+      sessionKey,
+      chainState: initialChainState,
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+    expect(firstResult.chainState.currentChainCount).toBe(1);
+
+    // ── DELIBERATE BUG SIMULATION ── do not persist firstResult.chainState.
+
+    enqueuePendingDelegate(sessionKey, { task: "second hop", mode: "silent-wake" });
+
+    const reloadedChainState = loadContinuationChainState(
+      readSessionEntry(fixture.storePath, sessionKey),
+    );
+    expect(reloadedChainState.currentChainCount).toBe(0); // bug visible: stale
+
+    const secondResult = await dispatchToolDelegates({
+      sessionKey,
+      chainState: reloadedChainState,
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    // With persist skipped, hop-2 spawns as chain-hop:1 — proving the positive
+    // test above actually depends on the persist call to reach chain-hop:2.
+    expect(spawn.calls[1]?.task).toContain("[continuation:chain-hop:1]");
+    expect(secondResult.chainState.currentChainCount).toBe(1);
+  });
+
   it("seeded entry survives round-trip through real updateSessionStore", async () => {
-    // Sanity check the fixture itself: write → read sees the same fields.
     const key = "agent:main:subagent:test";
     await seedSessionEntry(fixture.storePath, key, {
       sessionId: "session-rt",
@@ -192,3 +263,5 @@ describe("S1 — two-hop chain across subagent boundary (r3164380565)", () => {
     expect(entry?.continuationChainTokens).toBe(9_999);
   });
 });
+
+void loadSessionStore; // silence unused-import linter (re-exported for future scenarios)
