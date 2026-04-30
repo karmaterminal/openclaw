@@ -1019,6 +1019,8 @@ describe("resolvePlanningOnlyRetryInstruction single-action loophole", () => {
       replayMetadata: buildAttemptReplayMetadata({
         toolMetas,
         didSendViaMessagingTool: false,
+        messagingToolSentTexts: [],
+        messagingToolSentMediaUrls: [],
       }),
       clientToolCall: null,
       yieldDetected: false,

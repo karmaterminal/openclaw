@@ -524,7 +524,7 @@ describe("timeout-triggered compaction", () => {
     expect(result.payloads?.[0]?.text).toContain("timed out");
   });
 
-  it("emits [context-pressure:event-skipped] when sessionKey is missing on timeout path", async () => {
+  it("emits [session-key:missing] when sessionKey is missing on timeout path", async () => {
     // Same setup as the first test but with empty sessionKey — the
     // enqueueSystemEvent gate should skip and leave a breadcrumb.
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(
@@ -553,7 +553,7 @@ describe("timeout-triggered compaction", () => {
     );
     // But the system-event enqueue was skipped → breadcrumb emitted.
     expect(mockedLog.warn).toHaveBeenCalledWith(
-      expect.stringContaining("[context-pressure:event-skipped]"),
+      expect.stringContaining("[session-key:missing] site=pi-runner.timeout-compaction"),
     );
     expect(mockedLog.warn).toHaveBeenCalledWith(expect.stringContaining("trigger=timeout"));
   });

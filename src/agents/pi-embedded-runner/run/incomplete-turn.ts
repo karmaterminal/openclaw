@@ -169,9 +169,13 @@ function hasStringEntry(values: readonly unknown[] | undefined): boolean {
 }
 
 export function hasCommittedUserVisibleToolDelivery(
-  attempt: Pick<EmbeddedRunAttemptResult, "messagingToolSentTexts" | "messagingToolSentMediaUrls">,
+  attempt: Pick<
+    EmbeddedRunAttemptResult,
+    "didSendViaMessagingTool" | "messagingToolSentTexts" | "messagingToolSentMediaUrls"
+  >,
 ): boolean {
   return (
+    attempt.didSendViaMessagingTool ||
     hasStringEntry(attempt.messagingToolSentTexts) ||
     hasStringEntry(attempt.messagingToolSentMediaUrls)
   );
@@ -214,15 +218,18 @@ export function resolveIncompleteTurnPayloadText(params: {
     return null;
   }
 
-  if (hasCommittedUserVisibleToolDelivery(params.attempt)) {
-    return null;
-  }
-
   const stopReason = params.attempt.lastAssistant?.stopReason;
   const incompleteTerminalAssistant = isIncompleteTerminalAssistantTurn({
     hasAssistantVisibleText: params.payloadCount > 0,
     lastAssistant: params.attempt.lastAssistant,
   });
+  if (
+    hasCommittedUserVisibleToolDelivery(params.attempt) &&
+    stopReason !== "error" &&
+    !incompleteTerminalAssistant
+  ) {
+    return null;
+  }
   const reasoningOnlyAssistant = isReasoningOnlyAssistantTurn(
     params.attempt.currentAttemptAssistant ?? params.attempt.lastAssistant,
   );
