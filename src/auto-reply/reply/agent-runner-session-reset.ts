@@ -78,6 +78,7 @@ export async function resetReplyRunSession(params: {
     continuationChainCount: undefined,
     continuationChainStartedAt: undefined,
     continuationChainTokens: undefined,
+    continuationChainId: undefined,
   };
   const agentId = resolveAgentIdFromSessionKey(params.sessionKey);
   const nextSessionFile = resolveSessionTranscriptPath(

@@ -14,7 +14,7 @@ import {
   clearMemoryPluginState,
   registerMemoryFlushPlanResolver,
 } from "../../plugins/memory-state.js";
-import { delayedContinuationReservationCount } from "../continuation-delegate-store.js";
+import { delayedContinuationReservationCount } from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { __testing as replyRunRegistryTesting } from "./reply-run-registry.js";
@@ -83,6 +83,7 @@ vi.mock("../../agents/cli-runner.js", () => ({
 vi.mock("../../agents/subagent-spawn.js", () => ({
   SUBAGENT_SPAWN_MODES: ["run", "session"],
   SUBAGENT_SPAWN_SANDBOX_MODES: ["inherit", "require"],
+  SUBAGENT_SPAWN_CONTEXT_MODES: ["isolated", "fork"],
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
 

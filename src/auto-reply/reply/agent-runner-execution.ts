@@ -27,12 +27,12 @@ import {
   isTransientHttpError,
 } from "../../agents/pi-embedded-helpers.js";
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
-import { compactEmbeddedPiSession } from "../../agents/pi-embedded-runner/compact.queued.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
 import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
   resolveGroupSessionKey,
+  resolveSessionStoreEntry,
   resolveSessionTranscriptPath,
   type SessionEntry,
   updateSessionStore,
@@ -936,8 +936,9 @@ export async function runAgentTurnWithFallback(params: {
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
         classifyResult: async ({ result, provider, model }) => {
+          const effectiveResult = isContinuationWrappedRunResult(result) ? result.result : result;
           const classification = outcomePlan.classifyRunResult({
-            result,
+            result: effectiveResult,
             provider,
             model,
             hasDirectlySentBlockReply: directlySentBlockKeys.size > 0,
@@ -1167,45 +1168,6 @@ export async function runAgentTurnWithFallback(params: {
                         },
                       }
                     : undefined,
-                requestCompactionOpts:
-                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
-                    ? {
-                        getContextUsage: () => {
-                          const entry = params.sessionKey
-                            ? params.activeSessionStore?.[params.sessionKey]
-                            : undefined;
-                          if (!entry?.totalTokens || entry.totalTokensFresh === false) {
-                            return 0;
-                          }
-                          const contextWindow = entry.contextTokens ?? 200_000;
-                          return entry.totalTokens / contextWindow;
-                        },
-                        triggerCompaction: async () => {
-                          try {
-                            const result = await compactEmbeddedPiSession({
-                              sessionId:
-                                params.followupRun.run.sessionId ??
-                                params.getActiveSessionEntry()?.sessionId ??
-                                "",
-                              sessionKey: params.sessionKey ?? "",
-                              sessionFile: params.followupRun.run.sessionFile,
-                              workspaceDir: params.followupRun.run.workspaceDir,
-                              provider: params.followupRun.run.provider,
-                              model: params.followupRun.run.model,
-                              config: params.followupRun.run.config,
-                              trigger: "volitional",
-                            });
-                            return {
-                              ok: result?.ok ?? false,
-                              compacted: result?.compacted ?? false,
-                              reason: result?.reason,
-                            };
-                          } catch (err) {
-                            return { ok: false, compacted: false, reason: String(err) };
-                          }
-                        },
-                      }
-                    : undefined,
                 toolResultFormat: (() => {
                   const channel = resolveMessageChannel(
                     params.sessionCtx.Surface,
@@ -1223,6 +1185,69 @@ export async function runAgentTurnWithFallback(params: {
                 imageOrder: params.opts?.imageOrder,
                 abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
                 replyOperation: params.replyOperation,
+                // Continuation: request_compaction opts wired from session state.
+                requestCompactionOpts:
+                  runtimeConfig?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        sessionId: params.followupRun.run.sessionId,
+                        getContextUsage: () => {
+                          const entry = params.getActiveSessionEntry();
+                          const totalTokens =
+                            (entry as { totalTokens?: number } | undefined)?.totalTokens ?? 0;
+                          const contextWindow =
+                            (entry as { contextTokens?: number } | undefined)?.contextTokens ??
+                            200_000;
+                          return contextWindow > 0 ? totalTokens / contextWindow : 0;
+                        },
+                        triggerCompaction: async () => {
+                          try {
+                            const { compactEmbeddedPiSession } =
+                              await import("../../agents/pi-embedded-runner/compact.queued.js");
+                            // bug karmaterminal/openclaw#639: thread the session's active provider/model through so
+                            // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL
+                            // (openai/gpt-5.4) which nobody has auth for.
+                            // Use inner-scope provider/model from the fallback
+                            // dispatcher (line 805) so a fallback-selected model
+                            // gets the compaction request, not the persisted primary
+                            // (which may be in cooldown — would re-fail immediately).
+                            // bug karmaterminal/openclaw#639 (scribe follow-up): thread authProfileId only
+                            // when the inner-scope provider matches the persisted primary
+                            // (the persisted profile is keyed to the primary). On fallback
+                            // to a different provider, leave undefined so resolveEmbedded-
+                            // CompactionTarget picks the default profile for that provider.
+                            // Mirrors the pattern at line ~841 (runCliAgent dispatch).
+                            const compactionAuthProfileId =
+                              provider === params.followupRun.run.provider
+                                ? params.followupRun.run.authProfileId
+                                : undefined;
+                            const result = await compactEmbeddedPiSession({
+                              sessionId: params.followupRun.run.sessionId ?? "",
+                              sessionKey: params.sessionKey,
+                              sessionFile: params.followupRun.run.sessionFile ?? "",
+                              workspaceDir: params.followupRun.run.workspaceDir ?? process.cwd(),
+                              messageProvider: params.followupRun.run.messageProvider,
+                              provider,
+                              model,
+                              authProfileId: compactionAuthProfileId,
+                            });
+                            // bug karmaterminal/openclaw#639: honor real result instead of unconditionally claiming
+                            // success — otherwise volitional-compaction telemetry lies and the
+                            // failure is invisible to the caller.
+                            return {
+                              ok: result.ok,
+                              compacted: result.compacted,
+                              reason: result.reason,
+                            };
+                          } catch (err) {
+                            return {
+                              ok: false,
+                              compacted: false,
+                              reason: err instanceof Error ? err.message : String(err),
+                            };
+                          }
+                        },
+                      }
+                    : undefined,
                 blockReplyBreak: params.resolvedBlockStreamingBreak,
                 blockReplyChunking: params.blockReplyChunking,
                 onPartialReply: async (payload) => {
@@ -1666,11 +1691,24 @@ export async function runAgentTurnWithFallback(params: {
           }
 
           // Keep the in-memory snapshot consistent with the on-disk store reset.
-          delete params.activeSessionStore[sessionKey];
+          {
+            const memResolved = resolveSessionStoreEntry({
+              store: params.activeSessionStore,
+              sessionKey,
+            });
+            delete params.activeSessionStore[memResolved.normalizedKey];
+            for (const legacyKey of memResolved.legacyKeys) {
+              delete params.activeSessionStore[legacyKey];
+            }
+          }
 
           // Remove session entry from store using a fresh, locked snapshot.
           await updateSessionStore(params.storePath, (store) => {
-            delete store[sessionKey];
+            const resolved = resolveSessionStoreEntry({ store, sessionKey });
+            delete store[resolved.normalizedKey];
+            for (const legacyKey of resolved.legacyKeys) {
+              delete store[legacyKey];
+            }
           });
         } catch (cleanupErr) {
           defaultRuntime.error(
