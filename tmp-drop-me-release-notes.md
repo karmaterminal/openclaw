@@ -335,13 +335,13 @@ Created required release-note artifacts:
     items cite open PR number and explicitly state no merge SHA yet.
 
 - `docs/release-notes/PR-DESCRIBE.md`
-  - 95 words, under the 200-word workorder cap.
-  - One paragraph leading with TaskFlow substrate adoption and durability proof,
-    then the #427/#428/#429/#432 fixes, #430 durability harness, and open
-    #368/#361/#363 decisions.
+  - Updated by §9 to contain two one-paragraph variants.
+  - Variant A full-canonical2: 87 words.
+  - Variant B audit-lane-narrow: 72 words.
+  - Both variants include inline delta sizing and PR number + merge SHA citations.
 
 - `docs/release-notes/VERIFICATION-PUNCHLIST.md`
-  - 57 lines.
+  - 67 lines after §9 squash-scope additions.
   - Covers open PR #368/#361/#363, generated baseline integrity, durability
     fixes to preserve, lineage hygiene, final-candidate test discipline,
     four-commit squash topology proposal, and phantom CI hygiene.
@@ -418,3 +418,41 @@ Updated required deliverables for §9:
 - `docs/release-notes/VERIFICATION-PUNCHLIST.md`
   - Added `Squash-scope verification` section covering the 5267 vs full
     canonical2 65k+ vs upstream PR #38780 15k+ size math and Variant A/B choice.
+
+## §7 final declaration — final checkpoint
+
+- Branch HEAD entering final declaration:
+  `af980ca1c41b5ae5dda9af116961e12889507e3b`.
+  This §7 block is committed as the final journal checkpoint after that SHA.
+- Deliverables:
+  - `docs/release-notes/RELEASE-NOTES-DRAFT.md`: 627 lines.
+  - `docs/release-notes/PR-DESCRIBE.md`: 5 lines; Variant A 87 words, Variant
+    B 72 words.
+  - `docs/release-notes/VERIFICATION-PUNCHLIST.md`: 67 lines.
+  - `docs/release-notes/canonical2-vs-v2026.4.24.txt`: 365 lines.
+  - `docs/release-notes/canonical2-vs-feature-squashed.txt`: 1405 lines.
+  - `docs/release-notes/audit-lane-narrow-fold.txt`: 897 lines.
+- Citation confirmation:
+  - §5.1 `RELEASE-NOTES-DRAFT.md` cites substantive implementation claims by PR
+    number + merge commit SHA; open PR and workorder/addendum claims are labeled
+    as such.
+  - §5.2 `PR-DESCRIBE.md` now contains two one-paragraph variants, and each
+    implementation claim cites PR number + merge commit SHA.
+  - §5.3 `VERIFICATION-PUNCHLIST.md` cites PR number + merge commit SHA for
+    merged implementation surfaces and explicitly marks open PRs / workorder
+    scope questions.
+- Recommendation: `ready-for-figs-review`.
+- Open questions for figs:
+  - Pick `PR-DESCRIBE.md` Variant A full-canonical2 or Variant B
+    audit-lane-narrow.
+  - Confirm `origin/feature/context-pressure-squashed` moving to
+    `63d5c8c65ea3` is expected and should be treated as the current narrow-fold
+    reference.
+  - Decide whether open PR #368, #361, and #363 land before squash or are
+    explicitly scoped out.
+  - Decide whether stale pre-#432 wording in
+    `studies/swim-37/harness/durability/README.md` and
+    `INTEGRATION-TEST-GAP-MAP.md` should be refreshed before final squash.
+- Guardrails maintained: no installs, no tests, no CI, no GitHub writes, no
+  branch rewrites, no landing/merging, and no interaction with forbidden sibling
+  runtime trees.

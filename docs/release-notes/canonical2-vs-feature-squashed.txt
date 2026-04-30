@@ -2,6 +2,7 @@
 
 Generated for release-notes workorder. Canonical implementation tip: `cf7830ffb3702bf7d826d70838893e2e41709f12`.
 Feature comparison ref resolved as `origin/feature/context-pressure-squashed` -> `90db3699ccf3`.
+Workorder §9 later observed the feature ref at `63d5c8c65ea3`; this file remains the old-base full-canonical2 snapshot, while `audit-lane-narrow-fold.txt` captures the narrow fold and current-ref remainder.
 The working release-notes branch has journal/doc-only checkpoint commits on top, so this inventory compares the implementation tip rather than self-including release-note artifacts.
 
 ## Command: git log --oneline --no-merges origin/feature/context-pressure-squashed..cf7830ffb3702bf7d826d70838893e2e41709f12
