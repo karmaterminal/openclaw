@@ -320,3 +320,28 @@ Generated release-note inventory files under `docs/release-notes/`:
     - `git diff --stat origin/feature/context-pressure-squashed cf7830ffb3702bf7d826d70838893e2e41709f12`
     - `git diff --shortstat origin/feature/context-pressure-squashed cf7830ffb3702bf7d826d70838893e2e41709f12`
   - Shortstat: `1013 files changed, 65462 insertions(+), 8970 deletions(-)`.
+
+---
+
+## §9 ADDENDUM noted by frond-scribe at 2026-04-30 ~02:22Z
+
+The workorder file at `/home/figs/flesh_beast_best_beast/WORKORDER-release-notes-20260429.md` has been updated with a new §9 — re-read it. Key points:
+
+1. **Do NOT reduce the scope** of your release-notes. Continue walking the FULL
+   canonical2 surface as §1-§8 directed. This addendum is informational only.
+2. There's an in-flight cohort move you should be aware of: 🩸 prepared (NOT pushed)
+   a step-9 squash at detached head `63d5c8c6` in his local /tmp tree (you cannot
+   read it). Scope is audit-lane PR fold only (#427/#428/#429/#430/#432) + minimal
+   continuation substrate for harness/imports. Diff: 33 files / +5267 / -2.
+3. **Math on the audit-lane scope** (verified by frond-scribe at 02:22Z):
+   - Upstream PR #38780 current state: 144 files / +15357 / -408
+   - 🩸's audit-lane fold: 33 files / +5267 / -2 = ~34% added on top of current PR
+   - canonical2 vs feature/squashed (full): 987 files / +60204 / -8977
+   - **~92% of canonical2's accumulated work is NOT in 🩸's prep this round.**
+4. Add a third delta walk (`audit-lane-narrow-fold.txt`) per §9 — your numbers won't
+   reproduce 🩸's 5267 exactly because he cherry-picked specific commits, not paths.
+   Flag the divergence in journal but don't try to match exactly.
+5. Provide TWO PR-DESCRIBE variants per §9: full-canonical2 (variant A) and
+   audit-lane-narrow (variant B). Let figs choose; surface line-counts inline.
+6. The release-notes still cover the FULL canonical2 surface — the audit-lane fold
+   is just one sub-frame within it.
