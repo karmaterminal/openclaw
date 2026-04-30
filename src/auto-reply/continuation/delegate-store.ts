@@ -1,0 +1,421 @@
+/**
+ * Continuation delegate store — pure TaskFlow-backed.
+ *
+ * Every delegate operation goes through TaskFlow (SQLite persistence).
+ * Zero volatile Maps. Delegates survive gateway restarts by design.
+ *
+ * Adds Zod validation on state payloads, a `releasedAt` audit trail, and
+ * `failFlow` for corrupt records on top of the base TaskFlow store.
+ *
+ * RFC: docs/design/continue-work-signal-v2.md §5.4
+ */
+
+import { z } from "zod";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+import {
+  createManagedTaskFlow,
+  deleteTaskFlowRecordById,
+  failFlow,
+  finishFlow,
+  listTaskFlowsForOwnerKey,
+} from "../../tasks/task-flow-runtime-internal.js";
+import type {
+  DelayedContinuationReservation,
+  PendingContinuationDelegate,
+  StagedPostCompactionDelegate,
+} from "./types.js";
+
+const log = createSubsystemLogger("continuation/delegate-store");
+
+// ---------------------------------------------------------------------------
+// Controller IDs (exported for test assertions)
+// ---------------------------------------------------------------------------
+
+export const CONTINUATION_DELEGATE_CONTROLLER_ID = "core/continuation-delegate";
+export const CONTINUATION_POST_COMPACTION_CONTROLLER_ID = "core/continuation-post-compaction";
+
+// ---------------------------------------------------------------------------
+// Zod validation for TaskFlow state payloads
+// ---------------------------------------------------------------------------
+
+const PendingDelegateStateSchema = z.object({
+  kind: z.literal("continuation_delegate"),
+  task: z.string().min(1),
+  delayMs: z.number().int().nonnegative().optional(),
+  silent: z.boolean().optional(),
+  silentWake: z.boolean().optional(),
+  postCompaction: z.boolean().optional(),
+});
+
+type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildDelegateGoal(delegate: PendingContinuationDelegate): string {
+  const task = delegate.task.trim();
+  const isPostCompaction = delegate.mode === "post-compaction";
+  if (!task) {
+    return isPostCompaction ? "Post-compaction continuation delegate" : "Continuation delegate";
+  }
+  const excerpt = task.length > 80 ? `${task.slice(0, 77)}...` : task;
+  return isPostCompaction
+    ? `Post-compaction delegate: ${excerpt}`
+    : `Continuation delegate: ${excerpt}`;
+}
+
+function buildDelegateState(delegate: PendingContinuationDelegate): PendingDelegateState {
+  // karmaterminal/openclaw#227: `mode` is the sole runtime-surface encoding.
+  // Project it into the on-disk boolean flags so existing persisted records
+  // (which predate the mode-only runtime shape) keep their familiar schema
+  // and `decodeDelegateState` / `flowToDelegate` keep working unchanged for
+  // historical TaskFlow rows.
+  return {
+    kind: "continuation_delegate",
+    task: delegate.task,
+    ...(delegate.delayMs !== undefined ? { delayMs: delegate.delayMs } : {}),
+    ...(delegate.mode === "silent" ? { silent: true } : {}),
+    ...(delegate.mode === "silent-wake" ? { silentWake: true } : {}),
+    ...(delegate.mode === "post-compaction" ? { postCompaction: true } : {}),
+  };
+}
+
+function isPendingDelegateFlow(flow: TaskFlowRecord): boolean {
+  return flow.syncMode === "managed" && flow.controllerId === CONTINUATION_DELEGATE_CONTROLLER_ID;
+}
+
+function isPostCompactionDelegateFlow(flow: TaskFlowRecord): boolean {
+  return (
+    flow.syncMode === "managed" && flow.controllerId === CONTINUATION_POST_COMPACTION_CONTROLLER_ID
+  );
+}
+
+function listQueuedPendingFlows(sessionKey: string): TaskFlowRecord[] {
+  return listTaskFlowsForOwnerKey(sessionKey)
+    .filter((flow) => isPendingDelegateFlow(flow) && flow.status === "queued")
+    .toSorted((a, b) => a.createdAt - b.createdAt);
+}
+
+function listQueuedPostCompactionFlows(sessionKey: string): TaskFlowRecord[] {
+  return listTaskFlowsForOwnerKey(sessionKey)
+    .filter((flow) => isPostCompactionDelegateFlow(flow) && flow.status === "queued")
+    .toSorted((a, b) => a.createdAt - b.createdAt);
+}
+
+function decodeDelegateState(flow: TaskFlowRecord): PendingDelegateState | undefined {
+  const parsed = PendingDelegateStateSchema.safeParse(flow.stateJson);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function flowToDelegate(
+  flow: TaskFlowRecord,
+  state: PendingDelegateState,
+): PendingContinuationDelegate {
+  // karmaterminal/openclaw#227: rehydrate runtime shape (mode-only) from
+  // the on-disk boolean flags. silentWake takes precedence over silent
+  // because on-disk rows may have both set (mode === "silent-wake" also
+  // wrote silent in earlier encoders), and silent-wake is the more
+  // specific mode.
+  let mode: PendingContinuationDelegate["mode"];
+  if (state.postCompaction === true) {
+    mode = "post-compaction";
+  } else if (state.silentWake === true) {
+    mode = "silent-wake";
+  } else if (state.silent === true) {
+    mode = "silent";
+  }
+  return {
+    task: state.task,
+    ...(state.delayMs !== undefined ? { delayMs: state.delayMs } : {}),
+    ...(mode !== undefined ? { mode } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Pending delegates — enqueue/consume/count/cancel
+// ---------------------------------------------------------------------------
+
+/**
+ * Enqueue a delegate from the `continue_delegate` tool.
+ */
+export function enqueuePendingDelegate(
+  sessionKey: string,
+  delegate: PendingContinuationDelegate,
+): void {
+  const isPostCompaction = delegate.mode === "post-compaction";
+  createManagedTaskFlow({
+    ownerKey: sessionKey,
+    controllerId: isPostCompaction
+      ? CONTINUATION_POST_COMPACTION_CONTROLLER_ID
+      : CONTINUATION_DELEGATE_CONTROLLER_ID,
+    notifyPolicy: "silent",
+    goal: buildDelegateGoal(delegate),
+    currentStep: isPostCompaction
+      ? "Staged for release after compaction"
+      : "Queued for continuation dispatch",
+    stateJson: buildDelegateState(delegate),
+  });
+}
+
+/**
+ * Consume pending delegates for a session whose `delayMs` horizon has matured.
+ *
+ * Filters by `Date.now() >= flow.createdAt + (state.delayMs ?? 0)`. Matured
+ * entries are finished with the `releasedAt` audit trail and returned in FIFO
+ * order. Unmatured entries are left in `queued` state to be re-checked on the
+ * next consume cycle (filter-at-consume; preserves `mode=silent` no-wake
+ * semantics so a quiet-channel session is not woken solely to drain a delegate
+ * whose horizon has not yet matured).
+ *
+ * Skips corrupt payloads via `failFlow`. Only pushes delegates where
+ * `finishFlow` was applied (concurrency-safe).
+ *
+ * Callers that need to know when to retry the consume cycle in a quiet channel
+ * should call `peekSoonestUnmaturedDelegateDueAt(sessionKey)` immediately after
+ * this returns. Pairing avoids a separate query path.
+ */
+export function consumePendingDelegates(sessionKey: string): PendingContinuationDelegate[] {
+  const delegates: PendingContinuationDelegate[] = [];
+  const now = Date.now();
+
+  for (const flow of listQueuedPendingFlows(sessionKey)) {
+    const state = decodeDelegateState(flow);
+    if (!state) {
+      // karmaterminal/openclaw#206: schema-drift / corrupt payload needs a
+      // live breadcrumb. failFlow alone leaves the record in SQLite where
+      // nobody looks until `openclaw status --deep`.
+      log.warn(
+        `[continuation:delegate-decode-failed] flowId=${flow.flowId} session=${sessionKey} raw=${JSON.stringify(flow.stateJson).slice(0, 200)}`,
+      );
+      failFlow({
+        flowId: flow.flowId,
+        expectedRevision: flow.revision,
+        currentStep: "Rejected invalid continuation payload",
+        blockedSummary: "Pending continuation delegate payload could not be decoded.",
+      });
+      continue;
+    }
+
+    // Filter-at-consume: leave unmatured entries in `queued` so the next
+    // response-finalize (or the hedge timer armed by the dispatch caller)
+    // re-checks them. Honors `delayMs` on the tool path without threading a
+    // wake-pathway timer (which would change `mode=silent` semantics).
+    const dueAt = flow.createdAt + (state.delayMs ?? 0);
+    if (now < dueAt) {
+      continue;
+    }
+
+    const finished = finishFlow({
+      flowId: flow.flowId,
+      expectedRevision: flow.revision,
+      currentStep: "Released to continuation scheduler",
+      stateJson: { ...state, releasedAt: Date.now() },
+    });
+    if (!finished.applied) {
+      continue;
+    }
+
+    delegates.push(flowToDelegate(flow, state));
+  }
+
+  return delegates;
+}
+
+/**
+ * Peek the soonest `dueAt` (createdAt + delayMs) across queued, unmatured
+ * pending delegates for a session.
+ *
+ * Returns `undefined` if there are no unmatured entries. Used by
+ * `dispatchToolDelegates` to arm a hedge `setTimeout` so unmatured entries
+ * still fire in fully-quiet channels where no further response-finalize
+ * arrives.
+ */
+export function peekSoonestUnmaturedDelegateDueAt(sessionKey: string): number | undefined {
+  const now = Date.now();
+  let soonest: number | undefined;
+  for (const flow of listQueuedPendingFlows(sessionKey)) {
+    const state = decodeDelegateState(flow);
+    if (!state) {
+      continue;
+    }
+    const dueAt = flow.createdAt + (state.delayMs ?? 0);
+    if (dueAt <= now) {
+      continue;
+    }
+    if (soonest === undefined || dueAt < soonest) {
+      soonest = dueAt;
+    }
+  }
+  return soonest;
+}
+
+/**
+ * Count pending delegates without consuming them.
+ */
+export function pendingDelegateCount(sessionKey: string): number {
+  return listQueuedPendingFlows(sessionKey).length;
+}
+
+/**
+ * Cancel all pending delegates for a session (both regular and post-compaction).
+ */
+export function cancelPendingDelegates(sessionKey: string): void {
+  for (const flow of listTaskFlowsForOwnerKey(sessionKey).filter(
+    (f) => isPendingDelegateFlow(f) || isPostCompactionDelegateFlow(f),
+  )) {
+    deleteTaskFlowRecordById(flow.flowId);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Post-compaction delegate staging
+// ---------------------------------------------------------------------------
+
+/**
+ * Stage a delegate for release after compaction.
+ */
+export function stagePostCompactionDelegate(
+  sessionKey: string,
+  delegate: StagedPostCompactionDelegate,
+): void {
+  enqueuePendingDelegate(sessionKey, {
+    task: delegate.task,
+    mode: "post-compaction",
+  });
+}
+
+/**
+ * Consume staged post-compaction delegates. Same lifecycle as consumePendingDelegates.
+ */
+export function consumeStagedPostCompactionDelegates(
+  sessionKey: string,
+): PendingContinuationDelegate[] {
+  const delegates: PendingContinuationDelegate[] = [];
+
+  for (const flow of listQueuedPostCompactionFlows(sessionKey)) {
+    const state = decodeDelegateState(flow);
+    if (!state) {
+      // karmaterminal/openclaw#206: mirror the pending-path breadcrumb on
+      // the post-compaction consume lane. Same schema-drift risk, same
+      // dropped-work consequence.
+      log.warn(
+        `[continuation:post-compaction-decode-failed] flowId=${flow.flowId} session=${sessionKey} raw=${JSON.stringify(flow.stateJson).slice(0, 200)}`,
+      );
+      failFlow({
+        flowId: flow.flowId,
+        expectedRevision: flow.revision,
+        currentStep: "Rejected invalid post-compaction payload",
+        blockedSummary: "Staged post-compaction delegate payload could not be decoded.",
+      });
+      continue;
+    }
+
+    const finished = finishFlow({
+      flowId: flow.flowId,
+      expectedRevision: flow.revision,
+      currentStep: "Released after compaction",
+      stateJson: { ...state, releasedAt: Date.now() },
+    });
+    if (!finished.applied) {
+      continue;
+    }
+
+    delegates.push(flowToDelegate(flow, state));
+  }
+
+  return delegates;
+}
+
+export function stagedPostCompactionDelegateCount(sessionKey: string): number {
+  return listQueuedPostCompactionFlows(sessionKey).length;
+}
+
+// ---------------------------------------------------------------------------
+// Delayed continuation reservations (volatile, justified)
+// Timer handles are process-scoped — timers themselves don't survive restart,
+// so the reservation tracking doesn't need to either.
+// ---------------------------------------------------------------------------
+
+const delayedReservations = new Map<string, DelayedContinuationReservation[]>();
+
+export function addDelayedContinuationReservation(
+  sessionKey: string,
+  reservation: DelayedContinuationReservation,
+): void {
+  const existing = delayedReservations.get(sessionKey);
+  if (existing) {
+    existing.push(reservation);
+  } else {
+    delayedReservations.set(sessionKey, [reservation]);
+  }
+}
+
+export function takeDelayedContinuationReservation(
+  sessionKey: string,
+  reservationId: string,
+): DelayedContinuationReservation | null {
+  const list = delayedReservations.get(sessionKey);
+  if (!list) {
+    return null;
+  }
+  const idx = list.findIndex((r) => r.id === reservationId);
+  if (idx === -1) {
+    return null;
+  }
+  const [reservation] = list.splice(idx, 1);
+  if (list.length === 0) {
+    delayedReservations.delete(sessionKey);
+  }
+  return reservation;
+}
+
+export function delayedContinuationReservationCount(sessionKey: string): number {
+  return delayedReservations.get(sessionKey)?.length ?? 0;
+}
+
+export function highestDelayedContinuationReservationHop(sessionKey: string): number {
+  const list = delayedReservations.get(sessionKey);
+  if (!list || list.length === 0) {
+    return 0;
+  }
+  return Math.max(...list.map((r) => r.plannedHop));
+}
+
+export function clearDelayedContinuationReservations(sessionKey: string): void {
+  delayedReservations.delete(sessionKey);
+}
+
+export function listDelayedContinuationReservations(
+  sessionKey: string,
+): DelayedContinuationReservation[] {
+  return [...(delayedReservations.get(sessionKey) ?? [])];
+}
+
+export function removeDelayedContinuationReservation(
+  sessionKey: string,
+  reservationId: string,
+): boolean {
+  return takeDelayedContinuationReservation(sessionKey, reservationId) !== null;
+}
+
+// ---------------------------------------------------------------------------
+// Continue-work request store — REMOVED
+//
+// r3162427218: tool-based `continue_work` flows via the closure
+// `requestContinuation` callback in agent-runner-execution.ts:1166,
+// captured into `attemptContinueWorkRequest` and surfaced on the run
+// outcome. The Map-based store had zero `setPendingWorkRequest`
+// writers in the codebase; the runner read was orphaned. Removing
+// the dead surface prevents a future re-wire from creating dual
+// state with the closure path.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+export function resetDelegateStoreForTests(): void {
+  delayedReservations.clear();
+}
