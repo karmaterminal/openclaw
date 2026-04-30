@@ -202,6 +202,8 @@ const makeAttempt = (overrides: Partial<EmbeddedRunAttemptResult>): EmbeddedRunA
       buildAttemptReplayMetadata({
         toolMetas,
         didSendViaMessagingTool,
+        messagingToolSentTexts: [],
+        messagingToolSentMediaUrls: [],
         successfulCronAdds,
       }),
     didSendViaMessagingTool,
