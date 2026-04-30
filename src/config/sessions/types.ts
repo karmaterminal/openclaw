@@ -287,6 +287,16 @@ export type SessionEntry = {
   continuationChainStartedAt?: number;
   /** Accumulated token usage across the current continuation chain. Reset on external message. */
   continuationChainTokens?: number;
+  /**
+   * Stable identifier for the current continuation chain (UUIDv7,
+   * RFC 9562). Minted at the 0→1 transition of
+   * `continuationChainCount`, cleared when chain state resets. Used as
+   * the `chain.id` OTEL span attribute (#334 Slice 2) so all spans
+   * emitted across chain steps share a single correlation key. Stable
+   * for the lifetime of the chain by definition; survives compaction
+   * via session-store persistence alongside the other chain fields.
+   */
+  continuationChainId?: string;
   /** Post-compaction delegates staged for execution after context compaction. */
   pendingPostCompactionDelegates?: SessionPostCompactionDelegate[];
 };
