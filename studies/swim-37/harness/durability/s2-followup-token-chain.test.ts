@@ -219,4 +219,59 @@ describe("S2 — followup-only token chain persist (r3164418106)", () => {
     expect(reloaded?.continuationChainTokens).toBe(seedTokens);
     expect(reloaded?.continuationChainTokens).not.toBe(seedTokens + turnTokens);
   });
+
+  it("#431 sentinel: bare persistContinuationChainState mutation (no updateSessionStore wrap) is orphaned for disk", async () => {
+    // Simulates the #431 bug shape: r3164418106 closed the in-memory
+    // shape but the bare `persistContinuationChainState({ sessionEntry:
+    // tailEntry, ... })` mutation never reached disk via the followup
+    // path. The followup-runner's only durable writer
+    // (`persistRunSessionUsage` → `updateSessionStoreEntry`) does
+    // `loadSessionStore(skipCache:true)` and patches usage fields only.
+    //
+    // Without the `updateSessionStore` wrap (added in the #431 fix at
+    // `followup-runner.ts:485`-area), tokens stay stale on disk even
+    // though the in-memory entry shows the advanced value.
+    const sessionKey = "agent:main:followup-orphan";
+    const seedTokens = 100;
+    const turnTokens = 150;
+
+    await seedSessionEntry(fixture.storePath, sessionKey, {
+      sessionId: "session-followup-orphan",
+      continuationChainCount: 2,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: seedTokens,
+    });
+
+    // Load entry from disk into an in-memory "tailEntry"-shaped object.
+    const tailEntry = readSessionEntry(fixture.storePath, sessionKey);
+    expect(tailEntry).toBeDefined();
+
+    const advancedChainState = loadContinuationChainState(tailEntry, turnTokens);
+
+    const dispatchResult = await dispatchToolDelegates({
+      sessionKey,
+      chainState: advancedChainState,
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    // ── DELIBERATE BUG SIMULATION (#431 orphan shape) ──
+    // Bare mutation only — NO `updateSessionStore` wrap. This is what
+    // r3164418106 originally shipped at `followup-runner.ts:485`.
+    persistContinuationChainState({
+      sessionEntry: tailEntry!,
+      count: dispatchResult.chainState.currentChainCount,
+      startedAt: dispatchResult.chainState.chainStartedAt,
+      tokens: dispatchResult.chainState.accumulatedChainTokens,
+    });
+
+    // In-memory tailEntry shows the advanced value (the in-memory shape
+    // r3164418106 fixed correctly).
+    expect(tailEntry!.continuationChainTokens).toBe(seedTokens + turnTokens);
+
+    // But disk still has the stale value — the orphan #431 surfaced.
+    const reloaded = readSessionEntry(fixture.storePath, sessionKey);
+    expect(reloaded?.continuationChainTokens).toBe(seedTokens);
+    expect(reloaded?.continuationChainTokens).not.toBe(seedTokens + turnTokens);
+  });
 });

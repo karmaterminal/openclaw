@@ -448,10 +448,12 @@ export function createFollowupRunner(params: {
           { dispatchToolDelegates },
           { resolveContinuationRuntimeConfig },
           { loadContinuationChainState, persistContinuationChainState },
+          { updateSessionStore, resolveSessionStoreEntry },
         ] = await Promise.all([
           import("../continuation/delegate-dispatch.js"),
           import("../continuation/config.js"),
           import("../continuation/state.js"),
+          import("../../config/sessions/store.js"),
         ]);
         const tailUsage = runResult.meta?.agentMeta?.usage;
         const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
@@ -489,6 +491,43 @@ export function createFollowupRunner(params: {
             startedAt: dispatchResult.chainState.chainStartedAt,
             tokens: dispatchResult.chainState.accumulatedChainTokens,
           });
+          // #431: the in-memory mutation above is orphaned for disk. The
+          // followup path's only durable writer is `persistRunSessionUsage`
+          // → `updateSessionStoreEntry`, which `loadSessionStore(...,
+          // skipCache: true)` and patches usage fields only —
+          // `continuationChain*` is not in that patch shape. Without an
+          // explicit `updateSessionStore` call the followup-only token chain
+          // never reaches disk; cost-cap and `maxChainLength` enforcement
+          // see stale values across cache eviction or gateway restart.
+          //
+          // Mirrors `agent-runner.ts`'s post-r3164418100 shape (~line 1310):
+          // explicit `updateSessionStore` with `resolveSessionStoreEntry`
+          // legacy-key cleanup so the chain fields land alongside the
+          // disk-canonical entry.
+          if (storePath && sessionKey) {
+            try {
+              await updateSessionStore(storePath, (store) => {
+                const resolved = resolveSessionStoreEntry({ store, sessionKey });
+                if (resolved.existing) {
+                  store[resolved.normalizedKey] = {
+                    ...resolved.existing,
+                    continuationChainCount: dispatchResult.chainState.currentChainCount,
+                    continuationChainStartedAt: dispatchResult.chainState.chainStartedAt,
+                    continuationChainTokens: dispatchResult.chainState.accumulatedChainTokens,
+                  };
+                  for (const legacyKey of resolved.legacyKeys) {
+                    delete store[legacyKey];
+                  }
+                }
+              });
+            } catch (err) {
+              // Mirror agent-runner.ts's defensive log: persistence failure
+              // must not break the followup reply itself.
+              defaultRuntime.error?.(
+                `[followup-runner] failed to persist continuation chain state for ${sessionKey}: ${String(err)}`,
+              );
+            }
+          }
         }
       }
 
