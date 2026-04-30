@@ -179,3 +179,18 @@ started: 2026-04-30T03:36Z
 - `studies/swim-37/harness/durability/s3-restart-roundtrip.test.ts` - simulated restart durability harness; Map safe mock TaskFlow; guards disk reload after restart; Gap no.
 
 Issue slate distilled from this ledger: 19 findings across regression-known, architectural-decision, volatile-audit, guard-test, trap-test, and coverage. No source-code changes or test/install/CI commands were run.
+
+## Checkpoint: first-10-issues-filed
+
+- Created first batch of 10 new issues only; added each to karmaterminal project 56 and set Status=Todo.
+- Issues:
+  - #437 `regression-known` - partial TaskFlow delegate fold from #433 broken push.
+  - #438 `architectural-decision` - mode-only `PendingContinuationDelegate` at compatibility boundary.
+  - #439 `volatile-audit` - reply `continuation-state` `delegatePendingFlags` Map.
+  - #440 `volatile-audit` - context-pressure `lastFiredBand` restart/dedup contract.
+  - #441 `guard-test` - static allowlist for session-keyed volatile Maps.
+  - #442 `coverage` - followup-runner chain state disk durability through actual callsite.
+  - #443 `coverage` - negative store-merge guard for `updatedAt` churn.
+  - #444 `coverage` - actual request_compaction provider/auth callsite threading.
+  - #445 `coverage` - request_compaction registration truth table.
+  - #446 `trap-test` - continue_delegate descriptor mode enum and no boolean runtime shape.
