@@ -90,10 +90,7 @@ import {
   persistContinuationChainState,
   resetContinuationStateForTests,
 } from "../../../../src/auto-reply/continuation/state.js";
-import {
-  loadSessionStore,
-  updateSessionStore,
-} from "../../../../src/config/sessions/store.js";
+import { updateSessionStore } from "../../../../src/config/sessions/store.js";
 import {
   createDurabilityFixture,
   createFakeSpawn,
@@ -264,4 +261,3 @@ describe("S1 — two-hop chain across subagent boundary (r3164380565)", () => {
   });
 });
 
-void loadSessionStore; // silence unused-import linter (re-exported for future scenarios)
