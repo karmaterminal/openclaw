@@ -291,3 +291,32 @@ Swim-37 durability harness:
 - `INTEGRATION-TEST-GAP-MAP.md`: draft map that motivated #430; contains
   historical "open finding" language about followup-runner disk durability that
   #432 now addresses.
+
+## §4 delta inventory — delta-files checkpoint
+
+Generated release-note inventory files under `docs/release-notes/`:
+
+- `docs/release-notes/canonical2-vs-v2026.4.24.txt`
+  - 365 lines.
+  - Uses canonical implementation tip
+    `cf7830ffb3702bf7d826d70838893e2e41709f12`, not current release-notes
+    branch `HEAD`, because this branch has journal/doc checkpoint commits on
+    top that would otherwise self-pollute the inventory.
+  - Contains:
+    - `git log --oneline --no-merges v2026.4.24..cf7830ffb3702bf7d826d70838893e2e41709f12`
+    - `git diff --stat v2026.4.24 cf7830ffb3702bf7d826d70838893e2e41709f12`
+    - `git diff --shortstat v2026.4.24 cf7830ffb3702bf7d826d70838893e2e41709f12`
+  - Shortstat: `268 files changed, 33904 insertions(+), 576 deletions(-)`.
+
+- `docs/release-notes/canonical2-vs-feature-squashed.txt`
+  - 1404 lines.
+  - Resolves feature comparison ref as
+    `origin/feature/context-pressure-squashed` -> `90db3699ccf3`.
+  - Uses canonical implementation tip
+    `cf7830ffb3702bf7d826d70838893e2e41709f12` for same
+    no-self-pollution reason above.
+  - Contains:
+    - `git log --oneline --no-merges origin/feature/context-pressure-squashed..cf7830ffb3702bf7d826d70838893e2e41709f12`
+    - `git diff --stat origin/feature/context-pressure-squashed cf7830ffb3702bf7d826d70838893e2e41709f12`
+    - `git diff --shortstat origin/feature/context-pressure-squashed cf7830ffb3702bf7d826d70838893e2e41709f12`
+  - Shortstat: `1013 files changed, 65462 insertions(+), 8970 deletions(-)`.
