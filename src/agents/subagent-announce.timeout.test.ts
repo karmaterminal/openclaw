@@ -171,6 +171,7 @@ vi.mock("./subagent-announce-delivery.js", () => ({
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: createGatewayCallModuleMock().callGateway,
   getRuntimeConfig: () => configOverride,
+  loadConfig: () => configOverride,
   loadSessionStore: vi.fn(() => sessionStore),
   resolveAgentIdFromSessionKey: () => "main",
   resolveStorePath: () => "/tmp/sessions-main.json",

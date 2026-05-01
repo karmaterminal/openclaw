@@ -42,6 +42,7 @@ vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
   isEmbeddedPiRunActive: (sessionId: string) => isEmbeddedPiRunActiveMock(sessionId),
   getRuntimeConfig: () => mockConfig,
+  loadConfig: () => mockConfig,
   loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
   queueEmbeddedPiMessage: (sessionId: string, text: string, options?: unknown) =>
     queueEmbeddedPiMessageMock(sessionId, text, options),

@@ -5,6 +5,7 @@ type SessionStoreCacheEntry = {
   store: Record<string, SessionEntry>;
   mtimeMs?: number;
   sizeBytes?: number;
+  serialized?: string;
 };
 
 const DEFAULT_SESSION_STORE_TTL_MS = 45_000; // 45 seconds (between 30-60s)
@@ -82,10 +83,12 @@ export function writeSessionStoreCache(params: {
   store: Record<string, SessionEntry>;
   mtimeMs?: number;
   sizeBytes?: number;
+  serialized?: string;
 }): void {
   SESSION_STORE_CACHE.set(params.storePath, {
     store: params.serialized === undefined ? cloneSessionStoreRecord(params.store) : params.store,
     mtimeMs: params.mtimeMs,
     sizeBytes: params.sizeBytes,
+    serialized: params.serialized,
   });
 }

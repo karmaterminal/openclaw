@@ -49,6 +49,7 @@ import {
   callGateway,
   isEmbeddedPiRunActive,
   getRuntimeConfig,
+  loadConfig,
   waitForEmbeddedPiRunEnd,
 } from "./subagent-announce.runtime.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
@@ -58,12 +59,14 @@ import { isAnnounceSkip } from "./tools/sessions-send-tokens.js";
 type SubagentAnnounceDeps = {
   callGateway: typeof callGateway;
   getRuntimeConfig: typeof getRuntimeConfig;
+  loadConfig: typeof loadConfig;
   loadSubagentRegistryRuntime: typeof loadSubagentRegistryRuntime;
 };
 
 const defaultSubagentAnnounceDeps: SubagentAnnounceDeps = {
   callGateway,
   getRuntimeConfig,
+  loadConfig,
   loadSubagentRegistryRuntime,
 };
 
