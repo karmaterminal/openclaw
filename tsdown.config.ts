@@ -238,7 +238,7 @@ function buildCoreDistEntries(): Record<string, string> {
     "plugins/memory-state": "src/plugins/memory-state.ts",
     "subagent-registry.runtime": "src/agents/subagent-registry.runtime.ts",
     "task-registry-control.runtime": "src/tasks/task-registry-control.runtime.ts",
-    "agents/subagent-announce.continuation.runtime":
+    "subagent-announce.continuation.runtime":
       "src/agents/subagent-announce.continuation.runtime.ts",
     "agents/pi-model-discovery-runtime": "src/agents/pi-model-discovery-runtime.ts",
     "link-understanding/apply.runtime": "src/link-understanding/apply.runtime.ts",
