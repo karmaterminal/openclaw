@@ -338,8 +338,8 @@ export function scheduleSubagentOrphanRecovery(params?: { delayMs?: number; maxR
         maxRetries: params?.maxRetries,
       });
     },
-    () => {
-      // Ignore import failures — orphan recovery is best-effort.
+    (err: unknown) => {
+      log.error("orphan-recovery import failed (best-effort; subagent leak possible)", { err });
     },
   );
 }
