@@ -1,5 +1,4 @@
 import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
-import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
@@ -850,6 +849,8 @@ export async function runSubagentAnnounceFlow(params: {
     let bracketDelegateConsumed = false;
 
     if (continuationEnabled && (findings !== "(no output)" || toolDelegates.length > 0)) {
+      const { resolveContinuationRuntimeConfig } =
+        await import("./subagent-announce.continuation.runtime.js");
       const continuationResult = stripContinuationSignal(findings);
       if (continuationResult.signal?.kind === "work") {
         defaultRuntime.log(
