@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
   createCompactionDiagId,
@@ -89,7 +90,34 @@ export type RequestCompactionToolOpts = {
   triggerCompaction: (
     request: RequestCompactionInvocation,
   ) => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+  enqueueSystemEvent?: typeof enqueueSystemEvent;
 };
+
+function formatErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function notifyCompactionFailure(params: {
+  enqueue: typeof enqueueSystemEvent;
+  sessionKey: string;
+  runId?: string;
+  sessionId?: string;
+  diagId: string;
+  code: string;
+  reason: string;
+}): void {
+  try {
+    params.enqueue(
+      `[system:compaction-failed] Volitional compaction request ${params.diagId} failed (code=${params.code}, reason=${params.reason}). Your evacuated state was NOT compacted. Staged post-compaction delegates remain pending. Either re-call request_compaction (rate limit allowing) or yield with the evacuation as-is.`,
+      { sessionKey: params.sessionKey },
+    );
+  } catch (err) {
+    log.error(
+      `[request_compaction:failure-event-error] session=${params.sessionKey} runId=${params.runId ?? params.sessionId} ` +
+        `diagId=${params.diagId} code=${params.code} error=${formatErrorMessage(err)}`,
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Tool factory
@@ -216,6 +244,16 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         contextUsage,
         requestedAtMs: now,
       };
+      const notifyFailure = (code: string, reason: string) =>
+        notifyCompactionFailure({
+          enqueue: opts.enqueueSystemEvent ?? enqueueSystemEvent,
+          sessionKey,
+          runId: opts.runId,
+          sessionId: opts.sessionId,
+          diagId,
+          code,
+          reason,
+        });
       void opts
         .triggerCompaction(request)
         .then(
@@ -244,14 +282,16 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
               `[request_compaction:resolved-failure] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
                 `diagId=${diagId} trigger=volitional outcome=failed code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
             );
+            notifyFailure(code, reason);
           },
           (err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
+            const message = formatErrorMessage(err);
             const code = classifyCompactionReason(message);
             log.error(
               `[request_compaction:background-error] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
                 `diagId=${diagId} trigger=volitional outcome=failed code=${code} error=${message}`,
             );
+            notifyFailure(code, message);
           },
         )
         .finally(() => {

@@ -128,6 +128,25 @@ const defaultPostCompactionDelegateDispatchDeps: PostCompactionDelegateDispatchD
 
 export const POST_COMPACTION_DELEGATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+function formatErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function enqueueSystemEventOrLog(params: {
+  deps: Pick<PostCompactionDelegateDispatchDeps, "enqueueSystemEvent" | "log">;
+  label: string;
+  sessionKey: string;
+  text: string;
+}): void {
+  try {
+    params.deps.enqueueSystemEvent(params.text, { sessionKey: params.sessionKey });
+  } catch (err) {
+    params.deps.log(
+      `Failed to enqueue ${params.label} for ${params.sessionKey}: ${formatErrorMessage(err)}`,
+    );
+  }
+}
+
 function syncPendingPostCompactionDelegates(params: {
   sessionEntry?: SessionEntry;
   sessionStore?: Record<string, SessionEntry>;
@@ -545,7 +564,16 @@ export async function dispatchPostCompactionDelegates(
       storePath: params.storePath,
     });
   } catch (err) {
-    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${String(err)}`);
+    const message = formatErrorMessage(err);
+    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${message}`);
+    enqueueSystemEventOrLog({
+      deps,
+      label: "persisted post-compaction delegate warning",
+      sessionKey: params.sessionKey,
+      text:
+        `[system:continuation-warning] Failed to load persisted post-compaction delegates for this session: ${message}. ` +
+        "Earlier turns may have staged delegates that will not fire. Re-stage critical post-compaction work.",
+    });
   }
   const allCompactionDelegates = [
     ...persistedCompactionDelegates,
@@ -602,8 +630,19 @@ export async function dispatchPostCompactionDelegates(
         deps.enqueueSystemEvent(contextContent, { sessionKey: params.sessionKey });
       }
     })
-    .catch(() => {
-      // Silent failure: post-compaction context is best-effort.
+    .catch((err) => {
+      const message = formatErrorMessage(err);
+      deps.log(
+        `[continuation:post-compaction-context-read-failed] sessionKey=${params.sessionKey} error=${message}`,
+      );
+      enqueueSystemEventOrLog({
+        deps,
+        label: "post-compaction context read failure",
+        sessionKey: params.sessionKey,
+        text:
+          `[system:post-compaction] Context evacuation read failed: ${message}. ` +
+          "The post-compaction session may be missing AGENTS.md/RESUMPTION.md content. Check workspace permissions and re-run if needed.",
+      });
     });
 
   const deliveryContext = resolvePostCompactionDeliveryContext(params.followupRun);

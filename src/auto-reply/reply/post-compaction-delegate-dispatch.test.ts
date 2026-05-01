@@ -77,13 +77,19 @@ function createFollowupRun(overrides?: {
 function createDispatchDeps(options?: {
   staged?: SessionPostCompactionDelegate[];
   context?: string | null;
+  contextError?: Error;
   rejectEnqueueAt?: number;
   runtimeConfig?: ContinuationRuntimeConfig;
   now?: number;
 }) {
   const enqueueSystemEvent = vi.fn();
   const log = vi.fn();
-  const readPostCompactionContext = vi.fn(async () => options?.context ?? null);
+  const readPostCompactionContext = vi.fn(async () => {
+    if (options?.contextError) {
+      throw options.contextError;
+    }
+    return options?.context ?? null;
+  });
   const resolveAgentWorkspaceDir = vi.fn(() => "/fallback-workspace");
   const resolveContinuationRuntimeConfig = vi.fn(
     () => options?.runtimeConfig ?? defaultRuntimeConfig,
@@ -367,6 +373,71 @@ describe("post-compaction delegate dispatch extraction", () => {
       { sessionKey: "main" },
     );
     expect(preserve).toEqual([]);
+  });
+
+  it("surfaces post-compaction context read failures to the fresh session", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const { deps, enqueueSystemEvent, log } = createDispatchDeps({
+      contextError: new Error("workspace locked"),
+    });
+
+    await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: [],
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+    await flushMicrotasks();
+
+    expect(log).toHaveBeenCalledWith(
+      "[continuation:post-compaction-context-read-failed] sessionKey=main error=workspace locked",
+    );
+    expect(enqueueSystemEvent).toHaveBeenCalledWith(
+      expect.stringContaining("Context evacuation read failed: workspace locked"),
+      { sessionKey: "main" },
+    );
+  });
+
+  it("surfaces persisted post-compaction delegate load failures without clearing local pending delegates", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-dispatch-fail-" }, async (tempDir) => {
+      const storePath = tempDir;
+      const sessionEntry: SessionEntry = {
+        sessionId: "session",
+        updatedAt: 1,
+        pendingPostCompactionDelegates: [delegate("persisted")],
+      };
+      const { deps, enqueueSystemEvent, log } = createDispatchDeps();
+
+      const result = await dispatchPostCompactionDelegates(
+        {
+          cfg,
+          compactionCount: 1,
+          followupRun: createFollowupRun(),
+          postCompactionDelegatesToPreserve: [],
+          sessionEntry,
+          sessionKey: "main",
+          storePath,
+        },
+        deps,
+      );
+
+      expect(result).toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
+      expect(sessionEntry.pendingPostCompactionDelegates).toEqual([delegate("persisted")]);
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to load post-compaction delegates for main:"),
+      );
+      expect(enqueueSystemEvent).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Failed to load persisted post-compaction delegates for this session:",
+        ),
+        { sessionKey: "main" },
+      );
+    });
   });
 
   it("caps queued delegates at maxDelegatesPerTurn and drops the overflow", async () => {

@@ -26,6 +26,7 @@ import {
 } from "./state.js";
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
+const HEDGE_DISPATCH_FAILURE_RETRY_MS = 30_000;
 
 // Per-session hedge timer for re-checking unmatured pending delegates in fully
 // quiet channels (no further response-finalize event). Idempotent per
@@ -38,6 +39,23 @@ function clearHedgeTimer(sessionKey: string): void {
     clearTimeout(existing);
     hedgeTimers.delete(sessionKey);
     unregisterContinuationTimerHandle(sessionKey, existing);
+  }
+}
+
+function formatErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function surfaceHedgeDispatchFailure(sessionKey: string, errorMessage: string): void {
+  try {
+    enqueueSystemEvent(
+      `[system:continuation-warning] Hedge-timer dispatch failed; queued delegates may be orphaned. Error: ${errorMessage}. Re-issue continue_delegate if the work is still needed.`,
+      { sessionKey },
+    );
+  } catch (err) {
+    log.error(
+      `[continuation:delegate-hedge-event-error] error=${formatErrorMessage(err)} session=${sessionKey}`,
+    );
   }
 }
 
@@ -81,14 +99,16 @@ function armHedgeTimer(
       maxChainLength: params.maxChainLength,
       loadFreshChainState: params.loadFreshChainState,
     }).catch((err) => {
-      // Warn (not info): per-delegate errors inside dispatchToolDelegates
-      // are logged at info by the dispatcher itself; reaching this outer
-      // catch means dispatcher-level failure (TaskFlow store error on
-      // consume / peek / readiness gate). A queued delegate may now be
-      // orphaned — that deserves a louder band.
-      log.warn(
-        `[continuation:delegate-hedge-error] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey}`,
-      );
+      const errorMessage = formatErrorMessage(err);
+      log.error(`[continuation:delegate-hedge-error] error=${errorMessage} session=${sessionKey}`);
+      surfaceHedgeDispatchFailure(sessionKey, errorMessage);
+      try {
+        armHedgeTimer(sessionKey, Date.now() + HEDGE_DISPATCH_FAILURE_RETRY_MS, params);
+      } catch (rearmErr) {
+        log.error(
+          `[continuation:delegate-hedge-rearm-error] error=${formatErrorMessage(rearmErr)} session=${sessionKey}`,
+        );
+      }
     });
   }, fireIn);
   registerContinuationTimerHandle(sessionKey, handle);
