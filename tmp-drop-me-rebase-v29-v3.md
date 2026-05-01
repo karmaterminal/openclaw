@@ -68,5 +68,16 @@ started: 2026-05-01T17:58Z
 - Ran `pnpm build`.
 - Result: `===exit=0`.
 - Build note: A2UI bundle was up to date; no tracked build artifacts changed.
-- Heartbeat: pending.
-- Checkpoint push: pending.
+- Heartbeat: sent.
+- Checkpoint push: `66810a724279`.
+
+## §6 final journal + handoff — 2026-05-01T18:21Z
+
+- **candidate gates green; ready for canonical-lineage handoff**
+- Updated `RECOMMENDED-PATH.md` with the v3 green gate-status table.
+- Local gate receipts:
+  - `pnpm tsgo`: green.
+  - `pnpm check`: green after config-boundary repair.
+  - `pnpm test src/auto-reply src/agents src/messages src/gateway`: green.
+  - `pnpm build`: green.
+- Final heartbeat: sent after final push with the final SHA.

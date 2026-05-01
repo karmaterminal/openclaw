@@ -1,8 +1,8 @@
 # Recommended path — v2026.4.29 exploratory rebase candidate
 
-Branch: `frond-scribe/20260429/rebase-copilot-v2`  
-Base: `a448042c2edd94a4e8ee86d5ed90a5ed9fe8e4cd` (`v2026.4.29`)  
-Candidate checkpoint: `f799818de2` (pushed; `pnpm tsgo` failed)
+Branch: `frond-scribe/20260429/rebase-copilot-v3`
+Base: `a448042c2edd94a4e8ee86d5ed90a5ed9fe8e4cd` (`v2026.4.29`)
+Gate-complete checkpoint before final handoff docs: `66810a724279` (pushed; all four local gates green)
 
 ## Recommendation
 
@@ -42,17 +42,17 @@ The only remaining items are semantic review questions, not blocked merge hunks:
 
 ## Diff shape
 
-`git diff --shortstat a448042c2edd94a4e8ee86d5ed90a5ed9fe8e4cd..HEAD`: 297 files changed, 36189 insertions(+), 662 deletions(-).
+`git diff --shortstat a448042c2edd94a4e8ee86d5ed90a5ed9fe8e4cd..HEAD`: 305 files changed, 36387 insertions(+), 660 deletions(-).
 
-Top areas by changed file count: `src/agents` 89, `src/auto-reply` 78, `studies` 21, `src/infra` 21, `src/config` 14, `docs/design` 13, `src/gateway` 7, `extensions/diagnostics-otel` 5, `src/tasks` 5.
+Top areas by changed file count: `src/agents` 92, `src/auto-reply` 78, `studies` 21, `src/infra` 21, `docs` 19, `src/config` 14, `extensions` 10, `src/gateway` 7, `src/tasks` 5.
 
 ## Gate status
 
-Stopped at the first real gate failure per workorder.
+All requested v3 local gates are green. `pnpm check` initially failed the deprecated internal config API guard on continuation/subagent ambient `loadConfig()` usage; v3 repaired that by using the runtime-config accessor / injected `getRuntimeConfig()` seam and reran the gate successfully.
 
-| gate                                                           | result  | shape                                                                                                                                                                                                           |
-| -------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm tsgo`                                                    | fail    | After `pnpm install` resolved missing `node_modules`, retry failed with 6 TypeScript errors across `src/agents/subagent-announce.ts`, `src/agents/subagent-spawn.ts`, and `src/config/sessions/store-cache.ts`. |
-| `pnpm check`                                                   | not run | Blocked by `pnpm tsgo` failure.                                                                                                                                                                                 |
-| `pnpm test src/auto-reply src/agents src/messages src/gateway` | not run | Blocked by `pnpm tsgo` failure.                                                                                                                                                                                 |
-| `pnpm build`                                                   | not run | Blocked by `pnpm tsgo` failure.                                                                                                                                                                                 |
+| gate                                                           | result | shape                                                                                                                                    |
+| -------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install && pnpm tsgo`                                    | green  | Lockfile already up to date; `pnpm tsgo` exited 0 at checkpoint `fbb91bc87654`.                                                          |
+| `pnpm check`                                                   | green  | Initial guard failure repaired; targeted deprecated-config guard exited 0, then full `pnpm check` exited 0 at checkpoint `d03149bbcdf6`. |
+| `pnpm test src/auto-reply src/agents src/messages src/gateway` | green  | Scoped Vitest wrapper exited 0 with `[test] passed 1 Vitest shard in 1.92s` at checkpoint `224840abd6cd`.                                |
+| `pnpm build`                                                   | green  | Build exited 0 at checkpoint `66810a724279`; A2UI bundle was already up to date and no tracked build artifacts changed.                  |
