@@ -37,7 +37,7 @@ vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEvent: mockState.enqueueSystemEvent,
 }));
 
-import { dispatchPostCompactionDelegates } from "./delegate-dispatch.js";
+import { dispatchStagedPostCompactionDelegates } from "./delegate-dispatch.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -47,7 +47,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("dispatchPostCompactionDelegates error handling", () => {
+describe("dispatchStagedPostCompactionDelegates error handling", () => {
   it("logs warn + enqueues system event when spawnSubagentDirect throws", async () => {
     const sessionKey = "session-post-compact-fail";
     const testError = new Error("registry rejection: chain depth exceeded");
@@ -57,7 +57,7 @@ describe("dispatchPostCompactionDelegates error handling", () => {
     const delegates = [{ task: "rehydrate workspace state after compaction" }];
     const spawnCtx = { agentSessionKey: sessionKey };
 
-    const result = await dispatchPostCompactionDelegates(delegates, sessionKey, spawnCtx);
+    const result = await dispatchStagedPostCompactionDelegates(delegates, sessionKey, spawnCtx);
 
     // Verify the failure was tracked
     expect(result.failed).toBe(1);
@@ -86,7 +86,9 @@ describe("dispatchPostCompactionDelegates error handling", () => {
     mockState.spawnSubagentDirect.mockRejectedValueOnce(new Error("test error"));
 
     const delegates = [{ task: "test delegate" }];
-    await dispatchPostCompactionDelegates(delegates, sessionKey, { agentSessionKey: sessionKey });
+    await dispatchStagedPostCompactionDelegates(delegates, sessionKey, {
+      agentSessionKey: sessionKey,
+    });
 
     // Verify info log was called with delegate count
     expect(mockState.infoLog).toHaveBeenCalledOnce();
@@ -103,7 +105,7 @@ describe("dispatchPostCompactionDelegates error handling", () => {
     mockState.spawnSubagentDirect.mockRejectedValueOnce("lane queue full");
 
     const delegates = [{ task: "test task" }];
-    const result = await dispatchPostCompactionDelegates(delegates, sessionKey, {
+    const result = await dispatchStagedPostCompactionDelegates(delegates, sessionKey, {
       agentSessionKey: sessionKey,
     });
 
@@ -126,7 +128,7 @@ describe("dispatchPostCompactionDelegates error handling", () => {
       .mockResolvedValueOnce({ status: "accepted" });
 
     const delegates = [{ task: "delegate-1" }, { task: "delegate-2" }];
-    const result = await dispatchPostCompactionDelegates(delegates, sessionKey, {
+    const result = await dispatchStagedPostCompactionDelegates(delegates, sessionKey, {
       agentSessionKey: sessionKey,
     });
 
@@ -141,7 +143,7 @@ describe("dispatchPostCompactionDelegates error handling", () => {
     mockState.spawnSubagentDirect.mockResolvedValueOnce({ status: "forbidden" });
 
     const delegates = [{ task: "delegate rejected by policy" }];
-    const result = await dispatchPostCompactionDelegates(delegates, sessionKey, {
+    const result = await dispatchStagedPostCompactionDelegates(delegates, sessionKey, {
       agentSessionKey: sessionKey,
     });
 
@@ -165,7 +167,7 @@ describe("dispatchPostCompactionDelegates error handling", () => {
 
     mockState.spawnSubagentDirect.mockRejectedValueOnce(new Error("spawn failed"));
 
-    await dispatchPostCompactionDelegates([{ task: longTask }], sessionKey, {
+    await dispatchStagedPostCompactionDelegates([{ task: longTask }], sessionKey, {
       agentSessionKey: sessionKey,
     });
 

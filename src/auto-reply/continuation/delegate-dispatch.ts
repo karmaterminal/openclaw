@@ -296,7 +296,7 @@ export interface PostCompactionSpawnContext {
  * staged delegates. Errors are logged and surfaced as system events rather
  * than silently swallowed.
  */
-export async function dispatchPostCompactionDelegates(
+export async function dispatchStagedPostCompactionDelegates(
   delegates: Array<{ task: string }>,
   sessionKey: string,
   spawnCtx: PostCompactionSpawnContext,

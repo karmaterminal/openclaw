@@ -12,7 +12,7 @@
  *      each returned delegate is dispatched with the canonical flag set
  *      (`silentAnnounce: true, wakeOnReturn: true,
  *       drainsContinuationDelegateQueue: true`) via
- *      `dispatchPostCompactionDelegates` → `spawnSubagentDirect`.
+ *      `dispatchStagedPostCompactionDelegates` → `spawnSubagentDirect`.
  *
  * Negative paths covered by the agent-runner caller are pinned at the
  * helper boundary: when no delegates are staged, no spawn fires; when

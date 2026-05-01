@@ -920,7 +920,6 @@ export async function runAgentTurnWithFallback(params: {
   isHeartbeat: boolean;
   sessionKey?: string;
   runtimePolicySessionKey?: string;
-  getCurrentContinuationGeneration?: (sessionKey: string) => number;
   getActiveSessionEntry: () => SessionEntry | undefined;
   activeSessionStore?: Record<string, SessionEntry>;
   storePath?: string;

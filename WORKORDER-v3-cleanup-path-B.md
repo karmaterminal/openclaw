@@ -200,3 +200,15 @@ This is **copilot cleaning up its own v3 candidate** for upstream-presentation r
 - Removed reject-on-sight rebase artifacts and the swim harness/configs listed in §2.A, including the orphaned substrate-adoption check and obsolete vitest project entries.
 - Replaced the hardcoded cohort CoT-frame detector with generic internal-frame labels plus configurable labels, then scrubbed process/cohort breadcrumbs from continuation, diagnostics OTEL, task-flow, and related tests without changing RFC semantics.
 - Local targeted proof: `pnpm test` over the touched CoT, continuation tracer/state/scheduler/delegate, TaskFlow chain-id, diagnostics OTEL, subagent announce, and post-compaction suites passed. No design break.
+
+### 2026-05-01T22:50Z — Wave B decision note
+
+- Canonical runtime config is `src/auto-reply/continuation/config.ts`; reply-side callers should import it directly rather than maintaining a second resolver/default set.
+- Canonical continuation state is `src/auto-reply/continuation/state.ts`; reply-side state should be compatibility-only, with pending state derived from TaskFlow/delayed reservations and no generation-guard cancellation semantics.
+- The queue-based post-compaction dispatcher in `src/auto-reply/reply/post-compaction-delegate-dispatch.ts` owns durable post-compaction delivery. The smaller direct-spawn helper in `continuation/delegate-dispatch.ts` remains only for the legacy release helper and should get an unambiguous name.
+
+### 2026-05-01T22:55Z — Wave B checkpoint
+
+- Removed the reply-side duplicate continuation runtime/config/state/context-pressure implementations and pointed reply, status, agent, and tool surfaces at the canonical continuation-side modules.
+- Kept durable post-compaction delivery on the reply queue dispatcher while renaming the legacy direct-spawn release helper to `dispatchStagedPostCompactionDelegates` so the two helpers no longer share a misleading name.
+- Local proof: targeted continuation/reply/agent tests passed, `git diff --check` passed, targeted `oxfmt --check` passed, and `pnpm check:changed` passed after Testbox auth was unavailable. No design break.

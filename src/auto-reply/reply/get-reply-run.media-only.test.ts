@@ -68,14 +68,13 @@ vi.mock("../command-detection.js", () => ({
 vi.mock("./agent-runner.runtime.js", () => ({
   runReplyAgent: vi.fn().mockResolvedValue({ text: "ok" }),
   cancelContinuationTimer: vi.fn(),
-  clearDelegatePending: vi.fn(),
 }));
 
 vi.mock("./body.js", () => ({
   applySessionHints: vi.fn().mockImplementation(async ({ baseBody }) => baseBody),
 }));
 
-vi.mock("./context-pressure.js", () => ({
+vi.mock("../continuation/context-pressure.js", () => ({
   checkContextPressure: vi.fn().mockReturnValue({ fired: false, band: 0 }),
 }));
 
@@ -132,7 +131,6 @@ vi.mock("./typing-mode.js", () => ({
 }));
 
 let runPreparedReply: typeof import("./get-reply-run.js").runPreparedReply;
-let clearDelegatePending: typeof import("./agent-runner.runtime.js").clearDelegatePending;
 let runReplyAgent: typeof import("./agent-runner.runtime.js").runReplyAgent;
 let routeReply: typeof import("./route-reply.runtime.js").routeReply;
 let drainFormattedSystemEvents: typeof import("./session-system-events.js").drainFormattedSystemEvents;
@@ -245,7 +243,7 @@ function ownerParams(): Parameters<typeof runPreparedReply>[0] {
 describe("runPreparedReply media-only handling", () => {
   beforeAll(async () => {
     ({ runPreparedReply } = await import("./get-reply-run.js"));
-    ({ clearDelegatePending, runReplyAgent } = await import("./agent-runner.runtime.js"));
+    ({ runReplyAgent } = await import("./agent-runner.runtime.js"));
     ({ routeReply } = await import("./route-reply.runtime.js"));
     ({ drainFormattedSystemEvents } = await import("./session-system-events.js"));
     ({ resolveTypingMode } = await import("./typing-mode.js"));
@@ -1358,7 +1356,6 @@ describe("runPreparedReply media-only handling", () => {
 
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call?.isContinuationWake).toBe(true);
-    expect(vi.mocked(clearDelegatePending)).toHaveBeenCalledWith("session-key");
   });
 
   it("marks work-wake turns as continuation wakes without clearing delegate-pending state", async () => {
@@ -1372,7 +1369,6 @@ describe("runPreparedReply media-only handling", () => {
 
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call?.isContinuationWake).toBe(true);
-    expect(vi.mocked(clearDelegatePending)).not.toHaveBeenCalled();
   });
 
   it("leaves ordinary turns unmarked as continuation wakes", async () => {
@@ -1380,7 +1376,6 @@ describe("runPreparedReply media-only handling", () => {
 
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call?.isContinuationWake).toBe(false);
-    expect(vi.mocked(clearDelegatePending)).not.toHaveBeenCalled();
   });
 
   it("routes queued system events into user prompt text, not system prompt context", async () => {

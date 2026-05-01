@@ -24,11 +24,9 @@ import {
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { consumeStagedPostCompactionDelegates } from "../continuation-delegate-store.js";
+import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import type { ContinuationRuntimeConfig } from "../continuation/types.js";
 import type { ContinuationSignal } from "../tokens.js";
-import {
-  resolveContinuationRuntimeConfig,
-  type ContinuationRuntimeConfig,
-} from "./continuation-runtime.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
 import type { FollowupRun } from "./queue/types.js";
 

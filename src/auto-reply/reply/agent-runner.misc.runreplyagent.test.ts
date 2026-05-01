@@ -148,11 +148,7 @@ vi.mock("../../agents/subagent-registry.js", () => ({
   markSubagentRunTerminated: () => 0,
 }));
 
-import {
-  cancelContinuationTimer,
-  currentContinuationGeneration,
-  runReplyAgent,
-} from "./agent-runner.js";
+import { cancelContinuationTimer, runReplyAgent } from "./agent-runner.js";
 
 type RunWithModelFallbackParams = {
   provider: string;
@@ -309,7 +305,6 @@ describe("runReplyAgent continuation volatile state", () => {
     });
 
     expect(result).toMatchObject({ text: "Normal reply" });
-    expect(currentContinuationGeneration(run.sessionKey)).toBe(0);
   });
 
   it("fires a delayed WORK timer after CONTINUE_WORK is parsed", async () => {

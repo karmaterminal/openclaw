@@ -90,8 +90,8 @@ export async function releasePostCompactionLifecycle(
   const stagedDelegates = consumeStagedPostCompactionDelegates(sessionKey);
   let delegatesDispatched = 0;
   if (stagedDelegates.length > 0) {
-    const { dispatchPostCompactionDelegates } = await import("./delegate-dispatch.js");
-    const result = await dispatchPostCompactionDelegates(stagedDelegates, sessionKey, {
+    const { dispatchStagedPostCompactionDelegates } = await import("./delegate-dispatch.js");
+    const result = await dispatchStagedPostCompactionDelegates(stagedDelegates, sessionKey, {
       agentSessionKey: sessionKey,
       agentChannel: originating.originatingChannel ?? undefined,
       agentAccountId: originating.originatingAccountId ?? undefined,

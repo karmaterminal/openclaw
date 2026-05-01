@@ -1,9 +1,12 @@
 import { Type } from "typebox";
+import type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
 
 const log = createSubsystemLogger("continuation/continue-work");
+
+export type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
 
 const ContinueWorkToolSchema = Type.Object({
   reason: Type.String({
@@ -20,11 +23,6 @@ const ContinueWorkToolSchema = Type.Object({
     }),
   ),
 });
-
-export type ContinueWorkRequest = {
-  reason: string;
-  delaySeconds: number;
-};
 
 export type ContinueWorkToolOpts = {
   agentSessionKey?: string;

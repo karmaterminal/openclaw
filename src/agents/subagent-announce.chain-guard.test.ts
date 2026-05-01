@@ -44,13 +44,11 @@ vi.mock("./subagent-announce.registry.runtime.js", () => ({
   shouldIgnorePostCompletionAnnounceForSession: () => false,
 }));
 
-vi.mock("../auto-reply/reply/continuation-state.runtime.js", () => ({
-  bumpContinuationGeneration: vi.fn(() => 1),
-  currentContinuationGeneration: vi.fn(() => 0),
+vi.mock("../auto-reply/continuation/state.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auto-reply/continuation/state.js")>()),
   registerContinuationTimerHandle: vi.fn(),
   retainContinuationTimerRef: vi.fn(),
   releaseContinuationTimerRef: vi.fn(),
-  setDelegatePending: vi.fn(),
   unregisterContinuationTimerHandle: vi.fn(),
 }));
 

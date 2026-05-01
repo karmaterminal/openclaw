@@ -1015,10 +1015,7 @@ export async function runPreparedReply(
         }
       : undefined;
 
-  const { clearDelegatePending, runReplyAgent } = await loadAgentRunnerRuntime();
-  if (isDelegateWake && sessionKey) {
-    clearDelegatePending(sessionKey);
-  }
+  const { runReplyAgent } = await loadAgentRunnerRuntime();
   return runReplyAgent({
     commandBody: prefixedCommandBody,
     transcriptCommandBody,
