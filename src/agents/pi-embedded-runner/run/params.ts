@@ -15,6 +15,7 @@ import type {
   ToolResultFormat,
 } from "../../pi-embedded-subscribe.shared-types.js";
 import type { SkillSnapshot } from "../../skills.js";
+import type { RequestCompactionToolOpts } from "../../tools/request-compaction-tool.js";
 export type { ClientToolDefinition } from "../../command/shared-types.js";
 
 export type EmbeddedRunTrigger = "cron" | "heartbeat" | "manual" | "memory" | "overflow" | "user";
@@ -165,6 +166,6 @@ export type RunEmbeddedPiAgentParams = {
   requestCompactionOpts?: {
     sessionId?: string;
     getContextUsage: () => number | null;
-    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+    triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
   };
 };
