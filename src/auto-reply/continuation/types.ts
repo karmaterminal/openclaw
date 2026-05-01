@@ -56,6 +56,7 @@ export type PendingContinuationDelegate = {
   task: string;
   delayMs?: number;
   mode?: "normal" | "silent" | "silent-wake" | "post-compaction";
+  firstArmedAt?: number;
 };
 
 /**
@@ -110,6 +111,7 @@ export type ContinuationRuntimeConfig = {
 export type StagedPostCompactionDelegate = {
   task: string;
   stagedAt: number;
+  firstArmedAt?: number;
 };
 
 // ---------------------------------------------------------------------------

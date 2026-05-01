@@ -46,6 +46,7 @@ const PendingDelegateStateSchema = z.object({
   silent: z.boolean().optional(),
   silentWake: z.boolean().optional(),
   postCompaction: z.boolean().optional(),
+  firstArmedAt: z.number().int().nonnegative().optional(),
 });
 
 type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
@@ -87,6 +88,7 @@ function buildDelegateState(delegate: PendingContinuationDelegate): PendingDeleg
     ...(delegate.mode === "silent" ? { silent: true } : {}),
     ...(delegate.mode === "silent-wake" ? { silentWake: true } : {}),
     ...(delegate.mode === "post-compaction" ? { postCompaction: true } : {}),
+    ...(delegate.firstArmedAt !== undefined ? { firstArmedAt: delegate.firstArmedAt } : {}),
   };
 }
 
@@ -142,6 +144,7 @@ function flowToDelegate(
     task: state.task,
     ...(state.delayMs !== undefined ? { delayMs: state.delayMs } : {}),
     ...(mode !== undefined ? { mode } : {}),
+    ...(state.firstArmedAt !== undefined ? { firstArmedAt: state.firstArmedAt } : {}),
   };
 }
 
@@ -317,6 +320,7 @@ export function stagePostCompactionDelegate(
   enqueuePendingDelegate(sessionKey, {
     task: delegate.task,
     mode: "post-compaction",
+    firstArmedAt: delegate.firstArmedAt ?? delegate.stagedAt,
   });
 }
 

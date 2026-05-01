@@ -148,6 +148,8 @@ export type SubagentRecoveryState = {
 export type SessionPostCompactionDelegate = {
   task: string;
   createdAt: number;
+  /** Stable original arm time, preserved across re-stage/restart cycles. */
+  firstArmedAt?: number;
   /**
    * Post-compaction delegates are silent by contract. Persist the explicit
    * flags so the intent survives session-store round trips.

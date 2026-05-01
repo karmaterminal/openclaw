@@ -36,10 +36,11 @@ describe("PR #423 gate 2 :: post-compaction substrate :: tool-stage and runner-c
   });
 
   it("delegate staged via tool path is visible to runner-side count + consume", () => {
+    const firstArmedAt = 1_700_000_000_000;
     expect(runnerCount(sessionKey)).toBe(0);
     toolStage(sessionKey, {
       task: "post-compaction probe",
-      createdAt: Date.now(),
+      createdAt: firstArmedAt,
       silent: true,
       silentWake: true,
     });
@@ -50,6 +51,8 @@ describe("PR #423 gate 2 :: post-compaction substrate :: tool-stage and runner-c
     expect(consumed).toHaveLength(1);
     expect(consumed[0]).toMatchObject({
       task: "post-compaction probe",
+      createdAt: firstArmedAt,
+      firstArmedAt,
       silent: true,
       silentWake: true,
     });

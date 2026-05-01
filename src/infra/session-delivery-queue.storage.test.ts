@@ -128,6 +128,7 @@ describe("session-delivery queue storage", () => {
         sessionKey: "agent:main:main",
         task: "carry state forward",
         createdAt: 123,
+        firstArmedAt: 123,
         silent: true,
         silentWake: true,
         deliveryContext: {
