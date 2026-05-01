@@ -168,3 +168,9 @@ DO NOT open a PR autonomously. The branch on origin (`frond-scribe/325-canonical
 - Applied `8bedd3f326` onto canonical2. The cherry-pick covered request-compaction background failure events, post-compaction context read failure events, persisted delegate load failure surfacing, and hedge-dispatch re-arm/warning behavior.
 - Extended Wave D for canonical2 H10: `reconcileSessionStoreCompactionCountAfterSuccess` failures now emit a structured compaction warning event instead of only logging after the in-memory count increments.
 - Added UI handling so warning-phase compaction events do not disturb active/retry/complete compaction status. Focused Wave D and H10 tests passed. No design break.
+
+### 2026-05-01T16:55-07:00 — Wave E checkpoint
+
+- Applied `0831ce3b8c` onto canonical2. Resolved only the recurring v3 workorder artifact conflict by deleting it again.
+- Added/expanded coverage for continuation state timer refs/handles, delegate dispatch caps and mode/spawn paths, direct post-compaction dispatch, `ReplyRunAlreadyActiveError` shielding, and compaction trigger attribution.
+- Focused Wave E coverage tests passed. No design break.
