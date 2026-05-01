@@ -40,6 +40,10 @@ describe("request_compaction tool", () => {
     return (await tool.execute("call-1", args))?.details as Record<string, unknown>;
   }
 
+  async function flushBackgroundCompaction(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
   beforeEach(() => {
     contextUsage = 0.85; // above threshold by default
     _resetGuardState();
@@ -56,9 +60,11 @@ describe("request_compaction tool", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await flushBackgroundCompaction();
     _resetGuardState();
     _resetVolitionalCounts();
+    vi.restoreAllMocks();
   });
 
   // -------------------------------------------------------------------------
@@ -112,6 +118,7 @@ describe("request_compaction tool", () => {
     // First call succeeds
     const first = await executeTool(tool);
     expect(first).toMatchObject({ status: "compaction_requested" });
+    await flushBackgroundCompaction();
 
     // Second call within 5 minutes is rate-limited
     const second = await executeTool(tool);
@@ -132,6 +139,7 @@ describe("request_compaction tool", () => {
     // First call
     const first = await executeTool(tool);
     expect(first).toMatchObject({ status: "compaction_requested" });
+    await flushBackgroundCompaction();
 
     // Advance past rate limit
     fakeNow += _guards.RATE_LIMIT_MS + 1;
@@ -141,6 +149,62 @@ describe("request_compaction tool", () => {
     expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
 
     vi.restoreAllMocks();
+  });
+
+  it("keeps same-turn duplicate requests pending until successful compaction arms cooldown", async () => {
+    let resolveCompaction!: () => void;
+    mockTriggerCompaction.mockReturnValue(
+      new Promise<{ ok: boolean; compacted: boolean }>((resolve) => {
+        resolveCompaction = () => resolve({ ok: true, compacted: true });
+      }),
+    );
+
+    const tool = makeTool();
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({ status: "already_pending" });
+
+    resolveCompaction();
+    await flushBackgroundCompaction();
+
+    const third = await executeTool(tool);
+    expect(third).toMatchObject({
+      status: "rejected",
+      guard: "rate_limit",
+    });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not arm cooldown when background compaction resolves as a failure", async () => {
+    mockTriggerCompaction
+      .mockResolvedValueOnce({ ok: false, compacted: false, reason: "lane_contention" })
+      .mockResolvedValueOnce({ ok: true, compacted: true });
+
+    const tool = makeTool();
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+    await flushBackgroundCompaction();
+
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not arm cooldown when background compaction rejects", async () => {
+    mockTriggerCompaction
+      .mockRejectedValueOnce(new Error("Lane contention timeout"))
+      .mockResolvedValueOnce({ ok: true, compacted: true });
+
+    const tool = makeTool();
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+    await flushBackgroundCompaction();
+
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
   });
 
   // -------------------------------------------------------------------------
@@ -222,7 +286,13 @@ describe("request_compaction tool", () => {
   // Collision edge cases (Trigger dedup)
   // -------------------------------------------------------------------------
 
-  it("two request_compaction calls in same turn — second is rate-limited", async () => {
+  it("two request_compaction calls in same turn — second is already pending", async () => {
+    let resolveCompaction!: () => void;
+    mockTriggerCompaction.mockReturnValue(
+      new Promise<{ ok: boolean; compacted: boolean }>((resolve) => {
+        resolveCompaction = () => resolve({ ok: true, compacted: true });
+      }),
+    );
     const tool = makeTool();
 
     const first = await executeTool(tool);
@@ -231,10 +301,11 @@ describe("request_compaction tool", () => {
     // Second call in same turn
     const second = await executeTool(tool);
     expect(second).toMatchObject({
-      status: "rejected",
-      guard: "rate_limit",
+      status: "already_pending",
     });
     expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
+
+    resolveCompaction();
   });
 
   it("request_compaction below 70% is rejected", async () => {
@@ -263,6 +334,7 @@ describe("request_compaction tool", () => {
     // Session B can still compact
     const resultB = await executeTool(toolB);
     expect(resultB).toMatchObject({ status: "compaction_requested" });
+    await flushBackgroundCompaction();
 
     // Session A is rate-limited
     const resultA2 = await executeTool(toolA);
@@ -278,6 +350,7 @@ describe("request_compaction tool", () => {
 
     // First: succeed to set rate limit state
     await executeTool(tool);
+    await flushBackgroundCompaction();
 
     // Now drop context below threshold
     contextUsage = 0.3;
@@ -298,6 +371,7 @@ describe("request_compaction tool", () => {
     const tool = makeTool();
 
     await executeTool(tool);
+    await flushBackgroundCompaction();
     _resetGuardState(SESSION_KEY);
 
     // After reset, should be able to request compaction again
@@ -312,6 +386,7 @@ describe("request_compaction tool", () => {
 
     await executeTool(toolA);
     await executeTool(toolB);
+    await flushBackgroundCompaction();
 
     _resetGuardState();
 
@@ -362,7 +437,7 @@ describe("request_compaction tool", () => {
 
     // Resolve the background compaction and flush microtasks
     resolveCompaction();
-    await new Promise((r) => setTimeout(r, 0));
+    await flushBackgroundCompaction();
 
     // After resolution, pending is cleared — a new call (with fresh guard state) works
     _resetGuardState(SESSION_KEY);
