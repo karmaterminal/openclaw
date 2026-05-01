@@ -78,11 +78,8 @@ export function normalizeReplyPayload(
       }
     }
   }
-  // CoT-frame leak suppression: the model sometimes emits internal narration
-  // as the message body, prefixed with a bracketed speaker frame like
-  // `[cael] ...` or `[the dandelion cult - ronan] ...`.  Treat the whole
-  // payload as silent (matching NO_REPLY semantics) so the frame never reaches
-  // end users.  See karmaterminal/openclaw#269.
+  // Treat bracketed internal narration frames as silent so they never reach
+  // end users. This mirrors NO_REPLY semantics for fully silent payloads.
   if (text && hasCotFramePrefix(text)) {
     if (!hasContent("")) {
       opts.onSkip?.("silent");

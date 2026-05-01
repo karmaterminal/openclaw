@@ -26,8 +26,8 @@ afterEach(() => {
   resetContinuationTracer();
 });
 
-describe("continuation-tracer :: noop default contract (Slice 2)", () => {
-  it("default tracer is the no-op tracer (additive Slice-1 contract preserved)", () => {
+describe("continuation-tracer :: noop default contract", () => {
+  it("default tracer is the no-op tracer", () => {
     expect(getContinuationTracer()).toBe(noopTracer);
   });
 
@@ -125,11 +125,9 @@ describe("continuation-tracer :: registry (set/get/reset)", () => {
   });
 });
 
-describe("continuation-tracer :: harness contract pin (#370)", () => {
-  // These tests pin the canonical span names + attribute names the swim-37
-  // harness (`studies/swim-37/harness/swim-runner.test.ts`) asserts against.
-  // If a span name or attribute name renames, this file fails first — before
-  // the harness — giving a clearer signal at the source.
+describe("continuation-tracer :: contract pin", () => {
+  // These tests pin the canonical span names and attribute names so a rename
+  // fails near the source.
 
   it("canonical continuation span names are accepted by the surface", () => {
     const recorded: string[] = [];
@@ -189,10 +187,9 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
   });
 
   // Type-level pin: ContinuationSpanAttrs is the load-bearing canonical
-  // attribute-name shape. If the OTEL adapter (Slice 3) ever drifts to
+  // attribute-name shape. If the OTEL adapter ever drifts to
   // chain_id / chainId / camelCase / etc., the assignment below fails
-  // compile, BEFORE the runtime harness assertions could catch it.
-  // (🌻's nuance, sprites-of-thornfield 2026-04-27.)
+  // compile before runtime trace assertions could catch it.
   it("ContinuationSpanAttrs is structurally compatible with SpanAttributes", () => {
     const canonical: ContinuationSpanAttrs = {
       "chain.id": "abc",
@@ -255,7 +252,7 @@ describe("continuation-tracer :: harness contract pin (#370)", () => {
   });
 });
 
-describe("continuation-tracer :: emitContinuationWorkSpan helper (Slice 2 chunk 2)", () => {
+describe("continuation-tracer :: emitContinuationWorkSpan helper", () => {
   type RecordedSpan = {
     name: string;
     options?: StartSpanOptions;
@@ -395,7 +392,7 @@ describe("continuation-tracer :: emitContinuationWorkSpan helper (Slice 2 chunk 
   });
 });
 
-describe("continuation-tracer :: emitContinuationDelegateSpan helper (Slice 2 chunk 3)", () => {
+describe("continuation-tracer :: emitContinuationDelegateSpan helper", () => {
   type RecordedSpan = {
     name: string;
     options?: StartSpanOptions;
@@ -562,7 +559,7 @@ describe("continuation-tracer :: emitContinuationDelegateSpan helper (Slice 2 ch
   });
 });
 
-describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 chunk 4)", () => {
+describe("continuation-tracer :: emitContinuationDisabledSpan helper", () => {
   type RecordedSpan = {
     name: string;
     options: StartSpanOptions | undefined;
@@ -675,7 +672,7 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 ch
     });
   });
 
-  it("per-turn cap reject for tool-delegate carries delegate axes and live headroom (chunk 5a)", () => {
+  it("per-turn cap reject for tool-delegate carries delegate axes and live headroom", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
     emitContinuationDisabledSpan({
@@ -758,7 +755,7 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 ch
     ).not.toThrow();
   });
 
-  it("accepts disabledReason='reservation.missing' (chunk 5b enum extension)", () => {
+  it("accepts disabledReason='reservation.missing'", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
     emitContinuationDisabledSpan({
@@ -780,7 +777,7 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper (Slice 2 ch
   });
 });
 
-describe("continuation-tracer :: emitContinuationDelegateFireSpan helper (Slice 2 chunk 5b)", () => {
+describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () => {
   type RecordedSpan = {
     name: string;
     options: StartSpanOptions | undefined;
@@ -992,7 +989,7 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper (Slice 
   });
 });
 
-describe("continuation-tracer :: emitContinuationQueueDrainSpan helper (Slice 2 chunk 6a)", () => {
+describe("continuation-tracer :: emitContinuationQueueDrainSpan helper", () => {
   type RecordedSpan = {
     name: string;
     options?: StartSpanOptions;
@@ -1096,9 +1093,9 @@ describe("continuation-tracer :: emitContinuationQueueDrainSpan helper (Slice 2 
   });
 
   it("caps drainedContinuationCount by drainedCount (\u2264 invariant defense-in-depth)", () => {
-    // Per \ud83e\ude78's PR #395 byte-walk nit (msg `1498427153543335967`):
-    // wire site already guarantees continuation ≤ total (filter over same array),
-    // but a less-disciplined caller could violate. Helper enforces the invariant.
+    // The wire site already guarantees continuation <= total (filter over same
+    // array), but a less-disciplined caller could violate. Helper enforces the
+    // invariant.
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
     emitContinuationQueueDrainSpan({
@@ -1153,7 +1150,7 @@ describe("continuation-tracer :: emitContinuationQueueDrainSpan helper (Slice 2 
   });
 });
 
-describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper (Slice 2 chunk 6b)", () => {
+describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper", () => {
   type RecordedSpan = {
     name: string;
     options?: StartSpanOptions;
@@ -1262,7 +1259,7 @@ describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper (
   });
 });
 
-describe("continuation-tracer :: CONTINUATION_SIGNAL_KINDS SSOT pin (Slice 2 chunk 6c §A)", () => {
+describe("continuation-tracer :: CONTINUATION_SIGNAL_KINDS SSOT pin", () => {
   it("SSOT array has exactly 6 members with the canonical values", () => {
     expect(CONTINUATION_SIGNAL_KINDS).toHaveLength(6);
     expect([...CONTINUATION_SIGNAL_KINDS]).toEqual([
@@ -1306,7 +1303,7 @@ describe("continuation-tracer :: CONTINUATION_SIGNAL_KINDS SSOT pin (Slice 2 chu
   });
 });
 
-describe("continuation-tracer :: compaction.id cross-cutting attr (Slice 2 chunk 6c §B)", () => {
+describe("continuation-tracer :: compaction.id cross-cutting attr", () => {
   type RecordedSpan = {
     name: string;
     options?: StartSpanOptions;

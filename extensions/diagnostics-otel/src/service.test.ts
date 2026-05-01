@@ -2579,15 +2579,9 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  // #334 Slice 3 — F-37-010 production-wiring assertion. The bug we are
-  // fixing is that `setContinuationTracer` was exposed but never called
-  // from any production code path: every `emitContinuation*Span` /
-  // heartbeat span emit-call therefore went through `noopTracer` and
-  // produced zero OTLP traffic. These two tests pin the lifecycle —
-  // `start` installs the OTEL adapter, `stop` resets to the noop default
-  // — so a future regression that drops the wire-call is caught here
-  // instead of at swim-row tempo time.
-  describe("continuation-tracer install/uninstall (#334 Slice 3)", () => {
+  // Production wiring assertion: `start` installs the OTEL adapter and `stop`
+  // resets to the noop default so span emission reaches the configured exporter.
+  describe("continuation-tracer install/uninstall", () => {
     afterEach(() => {
       // Defense-in-depth: ensure no test in this describe block leaks a
       // non-noop tracer into the rest of the suite (or into other test

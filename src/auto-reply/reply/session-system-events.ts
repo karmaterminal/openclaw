@@ -86,10 +86,10 @@ export async function drainFormattedSystemEvents(params: {
 
   const systemLines: string[] = [];
   const queued = drainSystemEventEntries(params.sessionKey);
-  // #334 Slice 2 chunk 6a — emit `continuation.queue.drain` span on every
-  // drain (including empty drains; absence-of-work is still a drain tick).
-  // Best-effort continuation-prefix detection per memo PR #393; structural
-  // traceparent reconstruction belongs to Slice 3's adapter.
+  // Emit `continuation.queue.drain` on every drain, including empty drains;
+  // absence of work is still a drain tick. Continuation-prefix detection is
+  // best-effort, while structural traceparent reconstruction belongs to the
+  // concrete tracing adapter.
   const drainedContinuationCount = queued.filter((event) =>
     event.text.startsWith("[continuation:"),
   ).length;

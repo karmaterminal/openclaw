@@ -291,8 +291,8 @@ export function buildPostCompactionLifecycleEvent(params: {
    * fresh session — individual queued entries may still fail to spawn
    * (their failure is recorded as a queue retry, not reflected here).
    *
-   * Renamed from `releasedDelegates` (codex r3144344310) to make the
-   * semantic accurate; pre-extraction agent-runner counted accepted
+   * Named `queuedDelegates` to make the semantic accurate; the previous
+   * agent-runner path counted accepted
    * spawns, but the queue-extraction architecture cannot count spawns
    * synchronously without awaiting the drain. The honest name is
    * `queuedDelegates`.
@@ -323,8 +323,8 @@ async function persistPostCompactionDelegateChainState(params: {
   storePath?: string;
   tokens: number;
 }): Promise<void> {
-  // #334 Slice 2 — mint or reuse `continuationChainId` (UUIDv7) so the
-  // post-compaction handoff carries the same correlation key that
+  // Mint or reuse `continuationChainId` (UUIDv7) so the post-compaction
+  // handoff carries the same correlation key that
   // `agent-runner.ts:persistContinuationChainState` would have used
   // before compaction. If the pre-compaction sessionEntry already had
   // a chain id, reuse it (chain survives the compaction boundary);
@@ -389,7 +389,7 @@ async function persistPostCompactionDelegateChainState(params: {
       // unfiltered drain re-considers it once backoff has elapsed. Without
       // this, the queue ack-removes the entry while the on-disk chain count
       // is stale, allowing the next compaction-delegate to overrun
-      // `maxChainLength` (codex r3144344309).
+      // `maxChainLength`.
       throw err;
     }
   }
@@ -675,7 +675,7 @@ export async function dispatchPostCompactionDelegates(
     // and only startup recovery would rescue them. With `entryIds`
     // omitted, `selectEntry` falls back to the sessionKey filter and
     // backoff-eligible failed retries are reconsidered alongside the
-    // entries we just enqueued (codex r3144331033).
+    // entries we just enqueued.
     void deps
       .drainPostCompactionDelegateDeliveries({
         log: defaultRecoveryLog,

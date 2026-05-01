@@ -108,8 +108,8 @@ export async function resolveCommandsSystemPromptBundle(
           ? {
               sessionId: targetSessionEntry?.sessionId,
               // Inventory-only closure (no-op surface for /status & docs).
-              // Returning null is consistent with the new contract — never
-              // actually invoked. Refs karmaterminal/openclaw#222.
+              // Returning null is consistent with the contract; this is never
+              // actually invoked.
               getContextUsage: () => null,
               triggerCompaction: async () => ({
                 ok: false,

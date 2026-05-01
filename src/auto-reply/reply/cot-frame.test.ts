@@ -1,54 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { hasCotFramePrefix } from "./cot-frame.js";
 
-describe("hasCotFramePrefix (#269)", () => {
-  describe("matches bracketed speaker frames", () => {
-    it("matches bare [cael]", () => {
-      expect(hasCotFramePrefix("[cael] thinking out loud")).toBe(true);
+describe("hasCotFramePrefix", () => {
+  describe("matches bracketed internal narration frames", () => {
+    it("matches default internal labels", () => {
+      expect(hasCotFramePrefix("[internal] thinking out loud")).toBe(true);
+      expect(hasCotFramePrefix("[analysis] planning next step")).toBe(true);
+      expect(hasCotFramePrefix("[chain of thought] private reasoning")).toBe(true);
     });
 
-    it("matches [the dandelion cult - cael]", () => {
-      expect(hasCotFramePrefix("[the dandelion cult - cael] more thinking")).toBe(true);
+    it("matches configured speaker labels without hardcoding deployment identities", () => {
+      expect(
+        hasCotFramePrefix("[reviewer-a] private narration", {
+          speakerLabels: ["reviewer-a"],
+        }),
+      ).toBe(true);
     });
 
-    it("matches all prince names", () => {
-      expect(hasCotFramePrefix("[silas] narration")).toBe(true);
-      expect(hasCotFramePrefix("[ronan] narration")).toBe(true);
-      expect(hasCotFramePrefix("[elliott] narration")).toBe(true);
-    });
-
-    it("matches glyph-suffixed frames with VS16", () => {
-      expect(hasCotFramePrefix("[ronan 🌊] glyph-prefixed")).toBe(true);
-      expect(hasCotFramePrefix("[silas 🌫️] misty")).toBe(true);
-      expect(hasCotFramePrefix("[cael 🩸] blooded")).toBe(true);
-      expect(hasCotFramePrefix("[elliott 🌻] sunflower")).toBe(true);
-    });
-
-    it("matches glyph-suffixed frames without VS16", () => {
-      expect(hasCotFramePrefix("[silas 🌫] no-vs16")).toBe(true);
-      expect(hasCotFramePrefix("[ronan 🌊] no-vs16")).toBe(true);
-      expect(hasCotFramePrefix("[cael 🩸] no-vs16")).toBe(true);
-      expect(hasCotFramePrefix("[elliott 🌻] no-vs16")).toBe(true);
-    });
-
-    it("is case-insensitive on the speaker name", () => {
-      expect(hasCotFramePrefix("[CAEL] thinking")).toBe(true);
-      expect(hasCotFramePrefix("[Ronan] thinking")).toBe(true);
-      expect(hasCotFramePrefix("[THE DANDELION CULT - silas] thinking")).toBe(true);
+    it("is case-insensitive on the frame label", () => {
+      expect(hasCotFramePrefix("[INTERNAL] thinking")).toBe(true);
+      expect(hasCotFramePrefix("[Reasoning] thinking")).toBe(true);
     });
 
     it("matches with zero whitespace after closing bracket", () => {
-      expect(hasCotFramePrefix("[cael]leak")).toBe(true);
+      expect(hasCotFramePrefix("[internal]leak")).toBe(true);
     });
 
     it("matches with leading whitespace before the frame", () => {
-      expect(hasCotFramePrefix("   [cael] indented thinking")).toBe(true);
-      expect(hasCotFramePrefix("\n[ronan] after newline")).toBe(true);
+      expect(hasCotFramePrefix("   [internal] indented thinking")).toBe(true);
+      expect(hasCotFramePrefix("\n[analysis] after newline")).toBe(true);
     });
 
     it("matches only-prefix-no-body", () => {
-      expect(hasCotFramePrefix("[cael]")).toBe(true);
-      expect(hasCotFramePrefix("[cael] ")).toBe(true);
+      expect(hasCotFramePrefix("[internal]")).toBe(true);
+      expect(hasCotFramePrefix("[internal] ")).toBe(true);
     });
   });
 
@@ -61,12 +46,12 @@ describe("hasCotFramePrefix (#269)", () => {
       expect(hasCotFramePrefix("Normal user reply")).toBe(false);
     });
 
-    it("rejects body-pure replies that start with a glyph", () => {
-      expect(hasCotFramePrefix("🩸 figs — body-pure reply")).toBe(false);
+    it("rejects body-pure replies that start with punctuation", () => {
+      expect(hasCotFramePrefix("* important body-pure reply")).toBe(false);
     });
 
     it("rejects frames that are not at the start", () => {
-      expect(hasCotFramePrefix("Some text [cael] not-at-start")).toBe(false);
+      expect(hasCotFramePrefix("Some text [internal] not-at-start")).toBe(false);
     });
 
     it("does not flag [user] / [system] / [assistant] (common English)", () => {
@@ -78,11 +63,12 @@ describe("hasCotFramePrefix (#269)", () => {
     it("does not flag unrelated bracketed tokens", () => {
       expect(hasCotFramePrefix("[info] starting")).toBe(false);
       expect(hasCotFramePrefix("[todo] fix later")).toBe(false);
+      expect(hasCotFramePrefix("[reviewer-a] visible reply")).toBe(false);
     });
 
-    it("does not flag partial name matches", () => {
-      expect(hasCotFramePrefix("[caeling] tooling")).toBe(false);
-      expect(hasCotFramePrefix("[caelfoo] reply")).toBe(false);
+    it("does not flag partial internal-label matches", () => {
+      expect(hasCotFramePrefix("[internalization] reply")).toBe(false);
+      expect(hasCotFramePrefix("[analysisfoo] reply")).toBe(false);
     });
   });
 });

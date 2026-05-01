@@ -47,7 +47,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("dispatchPostCompactionDelegates error handling (openclaw#203)", () => {
+describe("dispatchPostCompactionDelegates error handling", () => {
   it("logs warn + enqueues system event when spawnSubagentDirect throws", async () => {
     const sessionKey = "session-post-compact-fail";
     const testError = new Error("registry rejection: chain depth exceeded");

@@ -3,7 +3,7 @@ import { generateChainId } from "./secure-random.js";
 
 const UUID_V7_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-describe("generateChainId — #334 Slice 2 substrate", () => {
+describe("generateChainId continuation chain ids", () => {
   it("returns a UUIDv7-shaped string", () => {
     const id = generateChainId();
     expect(id).toMatch(UUID_V7_RE);

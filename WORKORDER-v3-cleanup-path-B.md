@@ -194,3 +194,9 @@ This is **copilot cleaning up its own v3 candidate** for upstream-presentation r
 - Read the workorder guardrails and confirmed the hard rail: work only on `frond-scribe/20260429/rebase-copilot-v3`; never push to `feature/context-pressure-squashed`; do not delete this workorder.
 - Began read-first pass over `/tmp/v3-review-aggro/`, the continuation RFC, and the two RFC alignment audit records before wave edits.
 - Next checkpoint: push this journal stub, heartbeat, then start Wave A reject-on-sight cleanup.
+
+### 2026-05-01T22:47Z — Wave A checkpoint
+
+- Removed reject-on-sight rebase artifacts and the swim harness/configs listed in §2.A, including the orphaned substrate-adoption check and obsolete vitest project entries.
+- Replaced the hardcoded cohort CoT-frame detector with generic internal-frame labels plus configurable labels, then scrubbed process/cohort breadcrumbs from continuation, diagnostics OTEL, task-flow, and related tests without changing RFC semantics.
+- Local targeted proof: `pnpm test` over the touched CoT, continuation tracer/state/scheduler/delegate, TaskFlow chain-id, diagnostics OTEL, subagent announce, and post-compaction suites passed. No design break.

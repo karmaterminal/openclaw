@@ -51,15 +51,15 @@ export interface AttachmentRef {
 
 type QueuedSessionDeliveryPayloadMetadata = {
   /**
-   * W3C trace-context traceparent for chain-correlation runtime in karmaterminal/openclaw#334.
-   * This is the (a)-shape (RPC-style address-recipient); v3 surfaces broadcast-mode
-   * via karmaterminal/binary-canticle#11. Same substrate; different verb-set.
+   * W3C trace-context traceparent for chain-correlation runtime. This is the
+   * address-recipient shape; broadcast-mode surfaces use the same substrate
+   * with a different verb set.
    */
   traceparent?: string;
   /**
-   * Descriptor-stub attachment references for sibling enrichment runtime in karmaterminal/openclaw#332.
-   * This is the (a)-shape (RPC-style address-recipient); v3 surfaces broadcast-mode
-   * via karmaterminal/binary-canticle#11. Same substrate; different verb-set.
+   * Descriptor-stub attachment references for sibling enrichment runtime.
+   * This is the address-recipient shape; broadcast mode uses the same substrate
+   * with a different verb set.
    */
   attachments?: AttachmentRef[];
 };

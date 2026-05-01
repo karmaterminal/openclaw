@@ -691,9 +691,9 @@ describe("post-compaction delegate dispatch extraction", () => {
     });
   });
 
-  // ---- Regression tests for codex queue-model correctness repairs ----
+  // ---- Regression tests for queue-model correctness repairs ----
 
-  it("drains unfiltered for sessionKey so prior failed entries are reconsidered (r3144331033)", async () => {
+  it("drains unfiltered for sessionKey so prior failed entries are reconsidered", async () => {
     const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
     const preserve: SessionPostCompactionDelegate[] = [];
     const { deps, drainPostCompactionDelegateDeliveries } = createDispatchDeps({
@@ -725,7 +725,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(callArg).toMatchObject({ sessionKey: "main" });
   });
 
-  it("propagates chain-state persist failures so the queue entry retries (r3144344309)", async () => {
+  it("propagates chain-state persist failures so the queue entry retries", async () => {
     await withTempDir({ prefix: "openclaw-post-compaction-persist-fail-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await fs.writeFile(
@@ -755,7 +755,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     });
   });
 
-  it("reports queuedDelegates count (not delivered count) in the lifecycle event (r3144344310)", async () => {
+  it("reports queuedDelegates count (not delivered count) in the lifecycle event", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-26T22:30:00.000Z"));
 

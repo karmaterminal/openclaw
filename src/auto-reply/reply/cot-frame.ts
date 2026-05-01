@@ -1,21 +1,56 @@
-// Detects a CoT-frame "speaker" prefix at the start of a message body, e.g.
-// `[cael] ...`, `[the dandelion cult - ronan] ...`, `[ronan 🌊] ...`.
-//
-// When the frame is present the entire payload is treated as leaked internal
-// narration and suppressed silently by `normalize-reply` (mirrors the
-// trailing-NO_REPLY silent-class semantics introduced in 7c3c986dd7).
-// See issue karmaterminal/openclaw#269.
-//
-// The speaker set is intentionally limited to the prince names observed in
-// the #269 receipts (`cael|silas|ronan|elliott`) to avoid false positives on
-// legitimate text like `[user] reported a bug`.  Glyphs accept optional
-// VS16 (U+FE0F) so emitters that drop the variation selector still match.
-const COT_FRAME_PREFIX_RE =
-  /^\s*\[(?:the dandelion cult - )?(?:cael|silas|ronan|elliott)(?:\s*(?:🌻|🌫|🩸|🌊)\uFE0F?)?\]/iu;
+export type CotFramePrefixOptions = {
+  speakerLabels?: readonly string[];
+};
 
-export function hasCotFramePrefix(text: string): boolean {
+const COT_FRAME_PREFIX_RE = /^\s*\[([^\]\r\n]{1,80})\]/u;
+
+const DEFAULT_INTERNAL_FRAME_PREFIXES = [
+  "analysis",
+  "chain of thought",
+  "cot",
+  "internal",
+  "private",
+  "reasoning",
+  "scratchpad",
+  "thinking",
+  "thought",
+] as const;
+
+const COMMON_VISIBLE_LABELS = new Set(["assistant", "info", "system", "todo", "tool", "user"]);
+
+function normalizeFrameLabel(label: string): string {
+  return label
+    .trim()
+    .replace(/[\s_-]+/g, " ")
+    .toLowerCase();
+}
+
+function labelMatchesPrefix(label: string, prefix: string): boolean {
+  return (
+    label === prefix ||
+    label.startsWith(`${prefix} `) ||
+    label.startsWith(`${prefix}:`) ||
+    label.startsWith(`${prefix} -`)
+  );
+}
+
+export function hasCotFramePrefix(text: string, options: CotFramePrefixOptions = {}): boolean {
   if (!text) {
     return false;
   }
-  return COT_FRAME_PREFIX_RE.test(text);
+  const match = COT_FRAME_PREFIX_RE.exec(text);
+  if (!match) {
+    return false;
+  }
+
+  const label = normalizeFrameLabel(match[1] ?? "");
+  if (!label || COMMON_VISIBLE_LABELS.has(label)) {
+    return false;
+  }
+
+  if (options.speakerLabels?.some((speakerLabel) => normalizeFrameLabel(speakerLabel) === label)) {
+    return true;
+  }
+
+  return DEFAULT_INTERNAL_FRAME_PREFIXES.some((prefix) => labelMatchesPrefix(label, prefix));
 }

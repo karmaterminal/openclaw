@@ -33,7 +33,6 @@ export const BOUNDARY_CHECKS = [
     "pnpm",
     ["run", "lint:plugins:plugin-sdk-subpaths-exported"],
   ],
-  ["lint:substrate-adoption", "pnpm", ["run", "lint:substrate-adoption"]],
   ["deps:root-ownership:check", "pnpm", ["deps:root-ownership:check"]],
   ["web-search-provider-boundary", "pnpm", ["run", "lint:web-search-provider-boundaries"]],
   ["web-fetch-provider-boundary", "pnpm", ["run", "lint:web-fetch-provider-boundaries"]],

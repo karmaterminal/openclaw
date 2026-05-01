@@ -23,7 +23,6 @@
  * checks (verified by code reading) — the helper itself runs only when
  * both are satisfied. See `agent-runner.ts:1621`.
  *
- * See: openclaw#211.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
@@ -64,7 +63,7 @@ vi.mock("./config.js", () => ({
   resolveContinuationRuntimeConfig: () => ({ contextPressureThreshold: 0.8 }),
 }));
 
-const SESSION_KEY = "channel:cael-211";
+const SESSION_KEY = "channel:session-211";
 
 const ORIGINATING = {
   originatingChannel: "discord",
@@ -75,10 +74,10 @@ const ORIGINATING = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockState.spawnSubagentDirect.mockResolvedValue(undefined);
+  mockState.spawnSubagentDirect.mockResolvedValue({ status: "accepted" });
 });
 
-describe("releasePostCompactionLifecycle (openclaw#211)", () => {
+describe("releasePostCompactionLifecycle", () => {
   it("happy path: clears pressure state, fires post-compaction pressure event, and dispatches each staged delegate with the canonical flag set", async () => {
     mockState.checkContextPressure.mockReturnValue("[continuation] post-compaction band fired");
     mockState.consumeStagedPostCompactionDelegates.mockReturnValue([

@@ -144,10 +144,8 @@ export async function buildStatusCommandReportData(
     updateValue: params.updateValue,
     continuationValue: await (async () => {
       try {
-        // karmaterminal/openclaw#220: route through the lazy-runtime boundary
-        // so continuation singletons (config, delegate-store) dedupe with the
-        // static graph and don't split across chunks. Also closes #221's ESM
-        // require() → await import migration at these two sites.
+        // Route through the lazy-runtime boundary so continuation singletons
+        // dedupe with the static graph and don't split across chunks.
         const lazy = await import("../auto-reply/continuation/lazy.runtime.js");
         const cfg = lazy.resolveContinuationRuntimeConfig();
 

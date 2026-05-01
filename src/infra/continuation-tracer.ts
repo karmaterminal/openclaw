@@ -1,21 +1,8 @@
-// Continuation-tracer shim — Slice 2 surface for #334 OTEL chain-correlation.
+// Continuation-tracer shim for chain-correlation spans.
 //
-// Per Slice-2 design checkpoint (sprites-of-thornfield, 2026-04-27, path B):
-// the substrate adds the **span-emission surface** here, not the wire. A
-// thin `Tracer` interface with a no-op default keeps the additive contract
-// from Slice 1 — callers that don't opt in see no behavior change, and the
-// real OTEL adapter lands in Slice 3 once the bauble policy conversation
-// resolves which deps may live in the gateway hot-path.
-//
-// The harness in `studies/swim-37/harness/swim-runner.test.ts` (#370) pins
-// against THIS module's surface — `tracer.startSpan(name, attrs)` — not
-// against `@opentelemetry/api`. That keeps the harness durable across
-// upstream-OTEL renames and across any future exporter swap.
-//
-// Naming pinned by Slice 1 substrate (`SystemEvent.traceparent`,
-// `ChainBudget.declineToCarry`, `chain.id`, `chain.step.remaining`). When
-// Slice 3 wires the real provider, no test in the harness or in this
-// module's tests should need to change.
+// The thin tracer interface keeps span emission additive: callers that do not
+// install an adapter see no behavior change, and diagnostics plugins can wire a
+// concrete exporter without changing continuation call sites.
 
 import { randomUUID } from "node:crypto";
 
@@ -57,7 +44,8 @@ export type ContinuationSignalKind = (typeof CONTINUATION_SIGNAL_KINDS)[number];
 
 /**
  * Subset of {@link ContinuationSignalKind} that may appear on `continuation.disabled` spans.
- * Excludes `"work"` and `"compaction-release"` per memo §A asymmetry-only-in-disabled-reason rule.
+ * Excludes `"work"` and `"compaction-release"` because those signal families
+ * are never rejected by the disabled-span helper.
  */
 export type ContinuationDisabledSignalKind = Extract<
   ContinuationSignalKind,
@@ -67,19 +55,17 @@ export type ContinuationDisabledSignalKind = Extract<
 /**
  * Normative attribute-key set for continuation spans.
  *
- * **Pinning these names at the shim type — NOT at the adapter — is the
- * load-bearing decision** (🌻's nuance, sprites-of-thornfield 2026-04-27):
- * if the OTEL adapter (Slice 3) ever drifts to `chain_id` / `chainId` /
- * etc., this type catches the drift at compile-time, before the #370
- * harness contract assertions could detect it at runtime.
+ * Pinning these names at the shim type, not at an adapter, catches drift at
+ * compile-time. Without this pin, an adapter-side rename to `chain_id` or
+ * `chainId` would surface only as a runtime trace mismatch.
  *
  * All keys are optional because not every span carries every attribute
  * (e.g. `heartbeat` carries `continuation.disabled` but no `delay.ms`).
  * The `Readonly<Record<string, SpanAttributeValue>>` superset on
  * `setAttributes` / `StartSpanOptions.attributes` permits diagnostic /
  * adapter-internal attributes that aren't part of the canonical contract;
- * `ContinuationSpanAttrs` is what the canonical-attribute-name pin tests
- * (and #370 harness) assert against.
+ * `ContinuationSpanAttrs` is what the canonical-attribute-name tests assert
+ * against.
  *
  * Mirror in tests at `continuation-tracer.test.ts ::
  * "canonical attribute names round-trip through the surface"`.
@@ -100,7 +86,7 @@ export type ContinuationSpanAttrs = {
    * delay was requested (or delay was 0), `"timer"` when `setTimeout`
    * armed for a non-zero clamped delay. Distinct from `delegate.mode`
    * (which captures *intent*: normal/silent/silent-wake/post-compaction).
-   * Threaded so chunk 4's `continuation.disabled` reject-spans can
+   * Threaded so `continuation.disabled` reject spans can
    * distinguish cap-rejected-immediate (no timer ever armed) from
    * cap-rejected-timer (timer armed then reaped).
    */
@@ -115,18 +101,15 @@ export type ContinuationSpanAttrs = {
    * Gate-axis that produced a `continuation.disabled` reject. Pinned set:
    *   - `"cap.chain"` — `continuationChainCount` reached `maxChainLength`
    *   - `"cap.cost"` — accumulated input+output tokens exceeded `costCapTokens`
-   *   - `"cap.delegates_per_turn"` — per-turn delegate-budget cap (chunk 5a)
+   *   - `"cap.delegates_per_turn"` — per-turn delegate-budget cap
    *   - `"reservation.missing"` — fire-time: reservation already cleared
    *     (compaction, explicit cancel, session teardown) between
-   *     `setTimeout` arming and callback fire (chunk 5b)
+   *     `setTimeout` arming and callback fire
    *
-   * **Family semantics** (🌻's framing, sprites-of-thornfield 2026-04-27):
-   * the enum captures **anything that prevented follow-through**, not only
-   * cap axes. Cap is one shape of gate; reservation-loss is another. Future
-   * siblings (`reservation.evicted`, `session.gone`, `compaction.cleared`)
-   * slot under the same span name — the family is grammar-defined
-   * (verb-on-gate), not enum-cardinality-defined. Observers can
-   * `WHERE name = "continuation.disabled" GROUP BY disabled.reason`.
+   * The enum captures anything that prevented follow-through, not only cap
+   * axes. Cap is one shape of gate; reservation loss is another. Future
+   * siblings such as `reservation.evicted`, `session.gone`, or
+   * `compaction.cleared` slot under the same span name.
    */
   readonly "disabled.reason"?: string;
   /**
@@ -139,14 +122,13 @@ export type ContinuationSpanAttrs = {
    */
   readonly "signal.kind"?: ContinuationSignalKind;
   /**
-   * #334 chunk 5b — only set on `continuation.delegate.fire` spans.
+   * Only set on `continuation.delegate.fire` spans.
    * Wall-clock ms between `setTimeout` arming (immediately before the
    * timer is scheduled at the dispatch site) and the callback actually
    * executing. Diverges from `delay.ms` (the requested delay) under
    * runtime pressure — event-loop blockage, GC pauses, etc.
    *
-   * **Canonical drift formula** (🌊, sprites-of-thornfield 2026-04-27):
-   * `drift = fire.deferred_ms − delay.ms`. Positive values indicate the
+   * Drift formula: `fire.deferred_ms - delay.ms`. Positive values indicate the
    * timer fired late under load; near-zero is on-schedule. Pinned in JSDoc
    * so every consumer doesn't rediscover the formula.
    *
@@ -155,28 +137,28 @@ export type ContinuationSpanAttrs = {
    */
   readonly "fire.deferred_ms"?: number;
   /**
-   * #334 chunk 6a — only set on `continuation.queue.drain` spans. Total
+   * Only set on `continuation.queue.drain` spans. Total
    * count of system-event entries pulled from the substrate queue at this
    * drain tick (`drainSystemEventEntries(...).length`). Integer ≥ 0.
    *
    * Aggregate, not per-event: one `continuation.queue.drain` span per
    * `drainFormattedSystemEvents` call regardless of how many entries the
-   * pull returned. Per-event surfacing is deferred to OTEL `addEvent` on
-   * the single drain span (Slice 3), not to additional spans.
+   * pull returned. Per-event surfacing belongs on OTEL events attached to
+   * this single drain span, not to additional spans.
    */
   readonly "queue.drained_count"?: number;
   /**
-   * #334 chunk 6a — only set on `continuation.queue.drain` spans. Subset
+   * Only set on `continuation.queue.drain` spans. Subset
    * of `queue.drained_count` whose entry text begins with the
    * continuation-prefix marker (`[continuation:`). Best-effort prefix
-   * match at emit-time; structural `traceparent` reconstruction belongs
-   * to Slice 3's adapter, not Slice 2 instrumentation.
+   * match at emit-time; structural `traceparent` reconstruction belongs to
+   * the concrete tracing adapter, not this shim.
    *
    * Always `≤ queue.drained_count`. Integer ≥ 0.
    */
   readonly "queue.drained_continuation_count"?: number;
   /**
-   * #334 chunk 6b — only set on `continuation.compaction.released` spans.
+   * Only set on `continuation.compaction.released` spans.
    * Aggregate count of staged post-compaction delegates released for
    * dispatch by a single auto-compaction event. Snapshotted from
    * `sessionEntry.pendingPostCompactionDelegates.length` at the moment
@@ -190,14 +172,14 @@ export type ContinuationSpanAttrs = {
   /**
    * Session-local monotone compaction counter. Join key is `(session.id, compaction.id)`.
    *
-   * Currently emitted on `continuation.compaction.released` spans. Future post-compaction-mode
-   * `continuation.delegate.fire` spans will join via this attr (chunk 6c memo §B).
+   * Currently emitted on `continuation.compaction.released` spans. Future
+   * post-compaction-mode `continuation.delegate.fire` spans can join via this attr.
    *
    * Invariant: integer ≥ 0, monotone-by-construction at producer (incrementRunCompactionCount).
    */
   readonly "compaction.id"?: number;
   /**
-   * #412 — only set on `heartbeat` spans. Opaque per-fire id, unique
+   * Only set on `heartbeat` spans. Opaque per-fire id, unique
    * within a process lifetime so heartbeat-cadence traces can be
    * correlated even when no continuation context is present. Caller-
    * injected from the harness for deterministic test pins; production
@@ -207,10 +189,8 @@ export type ContinuationSpanAttrs = {
 };
 
 /**
- * Canonical span name set. Pinned at the type so a typo in a chunk-2+
- * call site fails compile, not runtime. The harness assertion in
- * `continuation-tracer.test.ts :: "canonical continuation span names are
- * accepted by the surface"` mirrors this list.
+ * Canonical span name set. Pinned at the type so a typo in a call site fails
+ * compile, not runtime. Tests mirror this list.
  */
 export type ContinuationSpanName =
   | "continuation.work"
@@ -233,12 +213,12 @@ export type SpanStatus = "UNSET" | "OK" | "ERROR";
 
 /**
  * Active span returned by `Tracer.startSpan`. Callers MUST `end()` every
- * span exactly once — the no-op tracer doesn't enforce this, but the real
- * Slice-3 adapter will.
+ * span exactly once. The no-op tracer doesn't enforce this, but concrete
+ * tracing adapters should.
  *
  * The shape intentionally mirrors `@opentelemetry/api`'s `Span` interface
- * surface (the subset we care about) so the Slice-3 adapter is a thin
- * pass-through, not a re-implementation.
+ * surface (the subset we care about) so concrete adapters can be thin
+ * pass-throughs, not re-implementations.
  */
 export type Span = {
   /**
@@ -271,12 +251,12 @@ export type StartSpanOptions = {
    *
    * The shim accepts `SpanAttributes` (the broader `Record<string,...>`)
    * to permit diagnostic / adapter-internal attributes; canonical-contract
-   * keys are pinned by `ContinuationSpanAttrs` and the harness tests.
+   * keys are pinned by `ContinuationSpanAttrs` and tests.
    */
   attributes?: SpanAttributes;
   /**
    * W3C `traceparent` to anchor the span to an existing trace. When
-   * omitted the span starts a new trace. Slice 1 lifts this onto
+   * omitted the span starts a new trace. The continuation substrate lifts this onto
    * `SystemEvent.traceparent` so producer-side reconstruction at drain
    * time has the field to read from.
    */
@@ -287,15 +267,15 @@ export type StartSpanOptions = {
  * Tracer surface used by continuation primitives (`continue_work`,
  * `continue_delegate`, heartbeat) to emit chain-correlated spans.
  *
- * Slice 2 ships this interface + `noopTracer`. Slice 3 ships an OTEL
- * adapter that conforms to this same surface — the call sites don't change.
+ * The default `noopTracer` and concrete OTEL adapter conform to this same
+ * surface, so continuation call sites do not depend on a specific exporter.
  */
 export type Tracer = {
   /**
    * Start a span. Callers MUST `end()` the returned span exactly once.
    *
    * `name` SHOULD be one of the canonical continuation span names so the
-   * harness contract assertions hold:
+   * tests and exporters can rely on the same canonical set:
    *   - `continuation.work`
    *   - `continuation.delegate.dispatch`
    *   - `continuation.queue.enqueue`
@@ -306,7 +286,7 @@ export type Tracer = {
    *
    * The `name` parameter is not type-narrowed to that union because some
    * call sites (diagnostic / debug spans, future adapters) need
-   * arbitrary names; the harness pins the canonical set.
+   * arbitrary names; tests pin the canonical set.
    */
   startSpan(name: string, options?: StartSpanOptions): Span;
 };
@@ -328,9 +308,8 @@ const noopSpan: Span = Object.freeze({
 
 /**
  * Default tracer: every method is a no-op. Returned from
- * `getContinuationTracer()` until a Slice-3 adapter is registered, which
- * preserves the additive Slice-1 contract: callers that don't opt in see
- * no behavior change.
+ * `getContinuationTracer()` until an adapter is registered. Callers that don't
+ * opt in see no behavior change.
  */
 export const noopTracer: Tracer = Object.freeze({
   startSpan(_name: string, _options?: StartSpanOptions): Span {
@@ -342,12 +321,11 @@ let activeTracer: Tracer = noopTracer;
 
 /**
  * Get the active continuation-tracer. Defaults to the no-op tracer until
- * `setContinuationTracer` is called by the bootstrap step (Slice 3).
+ * `setContinuationTracer` is called by the diagnostics bootstrap step.
  *
  * Hot-path callers SHOULD cache this once at module load — the indirection
- * exists so test harnesses can swap in `InMemorySpanExporter`-backed
- * tracers and so Slice 3's adapter can be installed without rewriting the
- * primitives.
+ * exists so tests can swap in in-memory tracers and the diagnostics plugin can
+ * install its adapter without rewriting the primitives.
  */
 export function getContinuationTracer(): Tracer {
   return activeTracer;
@@ -355,8 +333,8 @@ export function getContinuationTracer(): Tracer {
 
 /**
  * Install a tracer. Used by:
- *   - the Slice-3 OTEL bootstrap (real OTLP wire)
- *   - the #370 swim-37 harness (in-memory exporter shim)
+ *   - the OTEL bootstrap (real OTLP wire)
+ *   - tests that install an in-memory tracer
  *   - per-test setup that wants to capture span emissions
  *
  * Calling with `noopTracer` (or `null`/`undefined`) resets to the no-op
@@ -376,9 +354,8 @@ export function resetContinuationTracer(): void {
 
 /**
  * Emit a `continuation.work` span at the runner-side accept seam
- * (#334 Slice 2 chunk 2). Centralized helper so the runner stays
- * narrow at the call site and the span shape is testable in
- * isolation. Sites that don't have a chainId yet (chain not
+ * Centralized helper so the runner stays narrow at the call site and the span
+ * shape is testable in isolation. Sites that don't have a chainId yet (chain not
  * persisted, or substrate-disabled deploys) MAY pass `chainId:
  * undefined` — the attribute is omitted, downstream collectors
  * see a span without a correlation key.
@@ -416,7 +393,7 @@ export function emitContinuationWorkSpan(args: {
 
 /**
  * Emit a `continuation.delegate.dispatch` span at the runner-side
- * delegate accept seam (#334 Slice 2 chunk 3). Mirrors
+ * delegate accept seam. Mirrors
  * `emitContinuationWorkSpan` shape — same try/catch wrap, same
  * `chain.id` / `chain.step.remaining` / `delay.ms` / `reason.preview`
  * plumbing — plus two delegate-specific axes:
@@ -431,13 +408,12 @@ export function emitContinuationWorkSpan(args: {
  *    replaying a partial dispatch record) can emit without a mode
  *    annotation; current runner wiring always supplies one.
  *
- * Per cohort design (sprites-of-thornfield, 2026-04-27): emit at the
- * **enqueue/accept seam**, NOT at the timer-fire callback. The chain-step
+ * Emit at the enqueue/accept seam, not at the timer-fire callback. The chain-step
  * is committed when the runner accepts the dispatch into the chain;
  * the `setTimeout` is a delivery mechanism, not a chain semantic.
  * Cancelled-but-accepted dispatches (compaction, reset, gateway shutdown)
  * still happened, and a fire-time span would underreport them.
- * `continuation.delegate.fire` remains a future name, not preempted.
+ * `continuation.delegate.fire` records the later timer-callback event.
  *
  * Wraps tracer interactions in a try/catch and logs via the caller's
  * `log` callback if provided — the accept path must never block on
@@ -478,19 +454,15 @@ export function emitContinuationDelegateSpan(args: {
 
 /**
  * Emit a `continuation.disabled` span at a runner-side cap-gate reject
- * (#334 Slice 2 chunk 4). Mirrors `emitContinuationWorkSpan` /
+ * Mirrors `emitContinuationWorkSpan` /
  * `emitContinuationDelegateSpan` shape — same try/catch wrap, same
  * `chain.id` / `chain.step.remaining` / `reason.preview` plumbing. Adds
  * three reject-specific axes:
  *
  *  - `disabled.reason` (`"cap.chain" | "cap.cost" |
  *    "cap.delegates_per_turn" | "reservation.missing"`): which gate
- *    prevented follow-through. Per-chain (chain/cost) gates landed in
- *    chunk 4; per-turn delegate-budget cap landed in chunk 5a;
- *    `reservation.missing` (fire-time reservation already cleared) lands
- *    in chunk 5b. Family semantics (🌻, 2026-04-27): "anything that
- *    prevented follow-through," not "cap axes only" — the family is
- *    grammar-defined (verb-on-gate), not enum-cardinality-defined.
+ *    prevented follow-through. The family covers cap axes and non-cap gates
+ *    such as fire-time reservation loss.
  *  - `signal.kind` ({@link ContinuationDisabledSignalKind}): the kind of
  *    signal that was rejected. Values derived from {@link CONTINUATION_SIGNAL_KINDS} SSOT.
  *  - `delegate.delivery` / `delegate.mode`: only set when the rejected
@@ -498,8 +470,7 @@ export function emitContinuationDelegateSpan(args: {
  *    signals omit both — they're self-elected single-session and don't
  *    share that taxonomy.
  *
- * IMPORTANT (per cohort design 2026-04-27, 🌊): a reject means the chain
- * never advanced for this signal. Helper does NOT mint or persist a
+ * A reject means the chain never advanced for this signal. Helper does NOT mint or persist a
  * `chain.id` for reject spans — callers pass `chainId` through as-is
  * from the live session entry (which may be `undefined` when the
  * rejected signal would have been the first chain step). `chain.step.remaining`
@@ -550,13 +521,13 @@ export function emitContinuationDisabledSpan(args: {
 
 /**
  * Emit a `continuation.delegate.fire` span at the runner-side delegate
- * timer-callback start (#334 Slice 2 chunk 5b). The verb-on-timer
+ * timer-callback start. The verb-on-timer
  * counterpart to `emitContinuationDelegateSpan`'s verb-on-decision: this
  * span fires at the moment a deferred delegate's `setTimeout` callback
  * actually runs, so consumers can pair `dispatch`/`fire` events on the
  * same `chain.id` and observe scheduling drift / fire-time divergences.
  *
- * **Callsite invariants** (cohort design, sprites-of-thornfield 2026-04-27):
+ * Callsite invariants:
  *
  *  - Emit BEFORE `takeDelayedContinuationReservation` runs — the fire
  *    event is wall-clock truth ("the timer fired"); whatever happens next
@@ -568,10 +539,9 @@ export function emitContinuationDisabledSpan(args: {
  *    in the `setTimeout` closure. The helper never re-reads
  *    `activeSessionEntry?.continuationChainId` at fire-time. This matches
  *    the no-mint-on-fire invariant and prevents races with compaction or
- *    session mutation between arm and fire (mirrors chunks 3/4's
- *    enclosure discipline).
+ *    session mutation between arm and fire.
  *  - `chainId` is **always defined** at delegate-fire time — chain
- *    reservation mints pre-`setTimeout` (chunk 3 invariant). Sig encodes
+ *    reservation mints before `setTimeout`. The signature encodes
  *    this with the non-optional `string` type. **Defense-in-depth:**
  *    helper no-ops gracefully (logs + returns) if `undefined` slips
  *    through anyway, so a future invariant break never crashes
@@ -580,14 +550,12 @@ export function emitContinuationDisabledSpan(args: {
  *    the timer-deferred path (immediate-delivery dispatches don't
  *    arm a timer, so there's no fire event for them). The helper sets
  *    the attr internally rather than taking it as an arg.
- *  - 5b is **instrumentation-of-status-quo only**: the helper does NOT
+ *  - This is instrumentation-only: the helper does NOT
  *    re-evaluate any cap (`cap.chain | cap.cost | cap.delegates_per_turn`)
- *    at fire-time. Fire-time gating is a future-policy seam, deferred to
- *    a future memo.
+ *    at fire-time. Fire-time gating is a future-policy seam.
  *
- * **`chainStepRemainingAtDispatch` provenance** (🌻 dedicated-paragraph
- * note, sprites-of-thornfield 2026-04-27): this value reflects
- * **dispatch-time headroom** (reservation snapshot), NOT callback-time
+ * `chainStepRemainingAtDispatch` reflects dispatch-time headroom
+ * (reservation snapshot), not callback-time
  * live state. Rationale: trace continuity with the dispatch span (same
  * `chain.id`, same step counter) so consumers can pair `dispatch` /
  * `fire` events without reasoning about between-tick mutations. If a
@@ -609,7 +577,7 @@ export function emitContinuationDelegateFireSpan(args: {
   log?: (message: string) => void;
 }): void {
   // Defense-in-depth: invariant says chainId is always defined at
-  // delegate-fire time (chunk 3 mints pre-setTimeout). Sig encodes the
+  // delegate-fire time because dispatch mints before setTimeout. The signature encodes the
   // invariant via non-optional `string`, but a future change that lets
   // `undefined` slip through must NOT crash fire-emit. No-op + log so
   // the divergence is visible without taking down the timer callback.
@@ -646,36 +614,30 @@ export function emitContinuationDelegateFireSpan(args: {
 
 /**
  * Emit a `continuation.work.fire` span at the bracket-work timer-callback
- * seam (#334 Slice 2 chunk 5c). Symmetric to `emitContinuationDelegateFireSpan`
+ * seam. Symmetric to `emitContinuationDelegateFireSpan`
  * but scope-narrower: WORK-fire has NO fire-time divergence in current bytes
  * (no reservation system at the bracket-work seam — `enqueueSystemEvent` and
  * `requestHeartbeatNow` are synchronous and non-divergent), so 5c emits a
  * single span with no `continuation.disabled` sibling — unlike 5b which paired
  * fire+disabled(`reservation.missing`).
  *
- * **Cohort 3/3 verdicts (PR #390, sprites-of-thornfield 2026-04-27):**
- *  - **Naming:** `continuation.work.fire` (parallel grammar). Family rule
- *    `<noun>.<action>` two-segment dotted-only; `.fire` already means
- *    timer-callback in the family-grammar.
- *  - **Helper shape:** separate from `emitContinuationDelegateFireSpan`.
- *    Unified-parameterized devolves into `if (kind === "work")` branches and
- *    couples sibling-disabled-emit divergence across helper boundary.
- *  - **`reason.preview` carry-through:** yes. `continuationWorkReason` is in
- *    closure scope at dispatch, free to forward; snapshot-by-architecture
- *    (no recompute path exists), pays off in operator-mode triage.
+ * `continuation.work.fire` uses a separate helper because work-fire has no
+ * reservation-missing sibling path, unlike delegate-fire. `reason.preview` is
+ * captured from dispatch-time closure state so operator triage can pair
+ * `continuation.work` and `continuation.work.fire` spans.
  *
- * **Provenance pins (mirror 5b discipline):**
+ * Provenance pins:
  *  - `chainId` is closed-over from dispatch-time `persistContinuationChainState`
  *    return value. Never recomputed at fire-time.
  *  - `chainStepRemainingAtDispatch` is a dispatch-time snapshot, NOT a
  *    fire-time recompute. Trace continuity with the dispatch span (same
  *    `chain.id`, same step counter) so consumers can pair `work` / `work.fire`
  *    events without reasoning about between-tick mutations.
- *  - 5c is **instrumentation-of-status-quo only**: helper does NOT re-evaluate
+ *  - This is instrumentation-only: helper does NOT re-evaluate
  *    any cap (`cap.chain | cap.cost | cap.delegates_per_turn`) at fire-time.
- *    Fire-time gating is a future-policy seam, deferred to a future memo.
+ *    Fire-time gating is a future-policy seam.
  *  - `fire.deferred_ms` = wall-clock from `setTimeout`-arm to callback fire,
- *    `Math.floor` integer ms. Drift formula: `drift = fire.deferred_ms − delay.ms`.
+ *    `Math.floor` integer ms. Drift formula: `fire.deferred_ms - delay.ms`.
  *
  * Wraps tracer interactions in a try/catch and logs via the caller's `log`
  * callback if provided — the fire path must never block on span emission.
@@ -689,7 +651,7 @@ export function emitContinuationWorkFireSpan(args: {
   log?: (message: string) => void;
 }): void {
   // Defense-in-depth: invariant says chainId is always defined at
-  // work-fire time (chunk 1 mints pre-setTimeout via persistContinuationChainState).
+  // work-fire time because persistContinuationChainState mints before setTimeout.
   // Sig encodes the invariant via non-optional `string`, but a future change
   // that lets `undefined` slip through must NOT crash fire-emit. No-op + log
   // so the divergence is visible without taking down the timer callback.
@@ -724,27 +686,15 @@ export function emitContinuationWorkFireSpan(args: {
 
 /**
  * Emit a `continuation.queue.drain` span at the substrate system-events
- * queue consumer seam (#334 Slice 2 chunk 6a). Fired once per
+ * queue consumer seam. Fired once per
  * `drainFormattedSystemEvents` call, regardless of how many entries the
  * synchronous bulk-pull returned (including empty drains).
  *
- * **Cohort 4/4 contract (PR #393 memo, sprites-of-thornfield 2026-04-27):**
- *  - **Naming:** `continuation.queue.drain` (parallel grammar with
- *    `continuation.queue.enqueue` — producer-verb / consumer-verb on the
- *    substrate queue mechanical pair).
- *  - **Attrs:** `queue.drained_count` (total) and
- *    `queue.drained_continuation_count` (best-effort continuation-prefix
- *    subset). NO `chain.id` — the substrate queue is session-scoped and
- *    multi-chain at drain time; attaching a single `chain.id` would lie.
- *  - **Live counts (no snapshot):** drain is a single-tick synchronous
- *    bulk-pull. There is no temporal gap to bridge.
- *  - **No `disabled` sibling on empty drain:** a 0-count drain is the
- *    absence of work, not the rejection of work. The
- *    `continuation.disabled` family is reserved for gates that prevented
- *    follow-through (cap.*, reservation.missing).
- *  - **Aggregate emit:** one span per drain call. Per-event recordation,
- *    if cohort wants it later, slots under OTEL `addEvent` on this single
- *    span \u2014 NOT additional spans. Deferred to Slice 3.
+ * `continuation.queue.drain` is the consumer-side pair to
+ * `continuation.queue.enqueue`. It records aggregate counts only; no
+ * `chain.id` is attached because the substrate queue is session-scoped and may
+ * be multi-chain at drain time. A zero-count drain is absence of work, not a
+ * `continuation.disabled` gate.
  *
  * Wraps tracer interactions in a try/catch and forwards exceptions to the
  * caller's `log` callback if provided \u2014 the drain path must never block
@@ -762,7 +712,6 @@ export function emitContinuationQueueDrainSpan(args: {
     // The wire site at session-system-events.ts already guarantees this
     // (continuation count is a filter over the same array we measured),
     // but a less-disciplined caller could violate the `≤` invariant.
-    // Per 🩸's byte-walk on PR #395 (msg `1498427153543335967`).
     const drainedContinuationCount = Math.min(
       drainedCount,
       Math.max(0, Math.floor(args.drainedContinuationCount)),
@@ -783,14 +732,13 @@ export function emitContinuationQueueDrainSpan(args: {
 
 /**
  * Emit a `continuation.compaction.released` span at the agent-runner
- * post-compaction-delegate dispatch seam (#334 Slice 2 chunk 6b). Fired
+ * post-compaction-delegate dispatch seam. Fired
  * once per `autoCompactionCount > 0` branch, after
  * `dispatchPostCompactionDelegates` returns, with the released-count
  * snapshotted before the dispatch call.
  *
- * Mirrors `emitContinuationQueueDrainSpan` shape — separate-helper rule
- * (chunk 6a precedent). Integer hygiene (`Math.max(0, Math.floor(...))`)
- * per chunk-6a defense-in-depth: helper enforces invariant even though
+ * Mirrors `emitContinuationQueueDrainSpan` shape. Integer hygiene
+ * (`Math.max(0, Math.floor(...))`) keeps the invariant local even though
  * the caller snapshots from a `.length` (structurally non-negative).
  *
  * Wraps tracer interactions in a try/catch and forwards exceptions to the
@@ -838,12 +786,9 @@ export function emitContinuationCompactionReleasedSpan(args: {
 }
 
 /**
- * Emit a `heartbeat` span at the runtime heartbeat-poll cadence (#412
- * heartbeat wiring memo). Heartbeats fire on poll cadence regardless of
+ * Emit a `heartbeat` span at the runtime heartbeat-poll cadence. Heartbeats fire on poll cadence regardless of
  * whether continuation context is present, but the span only emits in
- * production when continuation context IS present (memo §Q1: production
- * is continuation-gated; harness shim is always-emit; divergence
- * documented in the harness README primitive-coverage matrix).
+ * production when continuation context is present.
  *
  * Span shape:
  *  - `signal.kind` = `"heartbeat"` (always)
@@ -858,7 +803,7 @@ export function emitContinuationCompactionReleasedSpan(args: {
  *  - `disabled.reason` (omitted iff `disabledReason` is `undefined`;
  *    otherwise the supplied gate-axis string)
  *
- * Negative-asserts (per memo §2 and 🩸's #407 negative-pin pattern):
+ * Negative assertions:
  *  - `delay.ms` MUST NOT appear — heartbeats fire on cadence, not
  *    caller-elected delay
  *  - `chain.step.remaining_at_dispatch` is NOT a heartbeat axis —

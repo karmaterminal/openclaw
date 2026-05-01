@@ -1697,7 +1697,7 @@ describe("createFollowupRunner continuation delegate dispatch", () => {
     expect(dispatchToolDelegatesMock).not.toHaveBeenCalled();
   });
 
-  it("persists chain tokens even when dispatchResult.dispatched === 0 (r3164418106)", async () => {
+  it("persists chain tokens even when dispatchResult.dispatched === 0", async () => {
     // Repro: prior guard `dispatched > 0 && tailEntry` dropped chain-token
     // persistence on followup-only chains (delayed-only delegates, all
     // deferred, or pure continue_work turns). The chainState carries fresh
@@ -1705,7 +1705,7 @@ describe("createFollowupRunner continuation delegate dispatch", () => {
     // turnTokens) regardless of dispatched count, so we must persist it
     // unconditionally to keep the token-budget counter advancing across hops.
     const storePath = path.join(
-      await fs.mkdtemp(path.join(tmpdir(), "openclaw-followup-r3164418106-")),
+      await fs.mkdtemp(path.join(tmpdir(), "openclaw-followup-chain-tokens-")),
       "sessions.json",
     );
     const sessionEntry: SessionEntry = {

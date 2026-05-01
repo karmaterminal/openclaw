@@ -62,11 +62,11 @@ function armHedgeTimer(
     // Release ref + handle registration on natural fire (matches
     // clearHedgeTimer on cancel). Without this, every hedge that fires
     // naturally leaks a timer-ref and handle, keeping continuation state
-    // alive past its useful lifetime. openclaw#189.
+    // alive past its useful lifetime.
     unregisterContinuationTimerHandle(sessionKey, handle);
     log.info(`[continuation:delegate-hedge-fired] session=${sessionKey}`);
-    // r3163899581: re-load chain state at fire time when the caller
-    // supplies a fresh-loader. The originally-captured `params.chainState`
+    // Re-load chain state at fire time when the caller supplies a
+    // fresh-loader. The originally-captured `params.chainState`
     // is a snapshot from when the hedge was armed and may understate
     // currentChainCount if other dispatches advanced it in between. The
     // hedge must enforce the chain-budget against the latest persisted
@@ -85,7 +85,7 @@ function armHedgeTimer(
       // are logged at info by the dispatcher itself; reaching this outer
       // catch means dispatcher-level failure (TaskFlow store error on
       // consume / peek / readiness gate). A queued delegate may now be
-      // orphaned — that deserves a louder band. karmaterminal/openclaw#224.
+      // orphaned — that deserves a louder band.
       log.warn(
         `[continuation:delegate-hedge-error] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey}`,
       );
@@ -131,7 +131,7 @@ export async function dispatchToolDelegates(params: {
    * from the persisted session entry at fire time, so the re-dispatch sees
    * any chain-count advancement that happened while the timer was pending.
    * Without this the hedge captures a stale `chainState` snapshot and may
-   * dispatch past `maxChainLength`. r3163899581.
+   * dispatch past `maxChainLength`.
    */
   loadFreshChainState?: () => ChainState;
 }): Promise<{ dispatched: number; rejected: number; chainState: ChainState }> {
@@ -263,8 +263,7 @@ export async function dispatchToolDelegates(params: {
   return {
     dispatched,
     rejected,
-    // r3161613184 / r3163899586: return the advanced chain state so callers
-    // (agent-runner, followup-runner) can persist `currentChainCount`,
+    // Return the advanced chain state so callers can persist `currentChainCount`,
     // `chainStartedAt`, and `accumulatedChainTokens` after dispatch. Without
     // this the persisted counter never advances across hops and the
     // maxChainLength budget enforcement breaks.
@@ -296,8 +295,6 @@ export interface PostCompactionSpawnContext {
  * This mirrors dispatchToolDelegates but is specifically for post-compaction
  * staged delegates. Errors are logged and surfaced as system events rather
  * than silently swallowed.
- *
- * See: issue #203, #639 for bug-class precedent.
  */
 export async function dispatchPostCompactionDelegates(
   delegates: Array<{ task: string }>,

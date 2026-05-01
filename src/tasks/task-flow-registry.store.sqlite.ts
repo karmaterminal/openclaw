@@ -207,7 +207,7 @@ function createStatements(db: DatabaseSync): FlowRegistryStatements {
       ON CONFLICT(flow_id) DO UPDATE SET
         sync_mode = excluded.sync_mode,
         owner_key = excluded.owner_key,
-        -- chain_id is intentionally NOT updated on conflict (F-37-015 design (b)):
+        -- chain_id is intentionally NOT updated on conflict:
         -- chain_id is set-once at create-time and represents the originating
         -- continuation chain; UPDATE-on-hop is deferred-by-design so that the
         -- column remains a stable audit-correlation key.
@@ -324,10 +324,9 @@ function ensureSchema(db: DatabaseSync) {
   if (!hasFlowRunsColumn(db, "cancel_requested_at")) {
     db.exec(`ALTER TABLE flow_runs ADD COLUMN cancel_requested_at INTEGER;`);
   }
-  // F-37-015: continuation chain-of-origin column. Idempotent-by-PRAGMA-guard
-  // mirroring the state_json model above (design invariant (a)). Set-once at
-  // create-time, originating-chain semantic; UPDATE-on-hop deferred (invariant
-  // (b)). Audit walks index off chain_id (invariant (c)).
+  // Continuation chain-of-origin column. Idempotent-by-PRAGMA-guard
+  // mirroring the state_json model above. Set-once at create-time; updates on
+  // later hops intentionally leave the origin id stable for audit queries.
   if (!hasFlowRunsColumn(db, "chain_id")) {
     db.exec(`ALTER TABLE flow_runs ADD COLUMN chain_id TEXT;`);
   }
