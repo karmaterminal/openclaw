@@ -609,8 +609,15 @@ export async function dispatchPostCompactionDelegates(
         deps.enqueueSystemEvent(contextContent, { sessionKey: params.sessionKey });
       }
     })
-    .catch(() => {
-      // Silent failure: post-compaction context is best-effort.
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      deps.log(
+        `[post-compaction:context-evacuation-failed] session=${params.sessionKey} error=${message}`,
+      );
+      deps.enqueueSystemEvent(
+        `[system:post-compaction-context-failed] Context evacuation read failed: ${message}. Post-compaction session may lack workspace context. Check workspace permissions.`,
+        { sessionKey: params.sessionKey },
+      );
     });
 
   const deliveryContext = resolvePostCompactionDeliveryContext(params.followupRun);
