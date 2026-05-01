@@ -98,7 +98,7 @@ describe("continuation-tracer :: registry (set/get/reset)", () => {
   });
 
   it("setContinuationTracer(null) resets to the no-op default", () => {
-    const customTracer: Tracer = { startSpan: () => noopTracer.startSpan("x") };
+    const customTracer: Tracer = { startSpan: () => noopTracer.startSpan("continuation.work") };
     setContinuationTracer(customTracer);
     expect(getContinuationTracer()).toBe(customTracer);
 
@@ -107,7 +107,7 @@ describe("continuation-tracer :: registry (set/get/reset)", () => {
   });
 
   it("setContinuationTracer(undefined) resets to the no-op default", () => {
-    const customTracer: Tracer = { startSpan: () => noopTracer.startSpan("x") };
+    const customTracer: Tracer = { startSpan: () => noopTracer.startSpan("continuation.work") };
     setContinuationTracer(customTracer);
     expect(getContinuationTracer()).toBe(customTracer);
 
@@ -116,7 +116,7 @@ describe("continuation-tracer :: registry (set/get/reset)", () => {
   });
 
   it("resetContinuationTracer() resets to the no-op default", () => {
-    const customTracer: Tracer = { startSpan: () => noopTracer.startSpan("x") };
+    const customTracer: Tracer = { startSpan: () => noopTracer.startSpan("continuation.work") };
     setContinuationTracer(customTracer);
     expect(getContinuationTracer()).toBe(customTracer);
 

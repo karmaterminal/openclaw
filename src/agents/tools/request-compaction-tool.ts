@@ -1,4 +1,4 @@
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -11,7 +11,7 @@ import {
   isCompactionSkipCode,
 } from "../pi-embedded-runner/compact-reasons.js";
 import type { AnyAgentTool } from "./common.js";
-import { jsonResult, readStringParam, ToolInputError } from "./common.js";
+import { asToolParamsRecord, jsonResult, parseToolParams, ToolInputError } from "./common.js";
 
 const log = createSubsystemLogger("continuation/request-compaction");
 
@@ -64,6 +64,8 @@ const RequestCompactionToolSchema = Type.Object({
     maxLength: 1024,
   }),
 });
+
+type RequestCompactionToolParams = Static<typeof RequestCompactionToolSchema>;
 
 // ---------------------------------------------------------------------------
 // Options
@@ -155,7 +157,6 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       "to control the timing of state evacuation.",
     parameters: RequestCompactionToolSchema,
     execute: async (_toolCallId, args) => {
-      const params = args as Record<string, unknown>;
       const sessionKey = opts.agentSessionKey;
 
       if (!sessionKey) {
@@ -170,7 +171,17 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         );
       }
 
-      const reason = readStringParam(params, "reason", { required: true }).slice(0, 1024);
+      const rawParams = asToolParamsRecord(args);
+      const params: RequestCompactionToolParams = parseToolParams(RequestCompactionToolSchema, {
+        ...rawParams,
+        ...(typeof rawParams.reason === "string"
+          ? { reason: rawParams.reason.slice(0, 1024) }
+          : {}),
+      });
+      const reason = params.reason.trim().slice(0, 1024);
+      if (!reason) {
+        throw new ToolInputError("reason required");
+      }
 
       // ----- Guard 0: Dedup — compaction already pending -----
       if (pendingCompactionSessions.has(sessionKey)) {

@@ -1,8 +1,8 @@
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { AnyAgentTool } from "./common.js";
-import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
+import { asToolParamsRecord, jsonResult, parseToolParams, ToolInputError } from "./common.js";
 
 const log = createSubsystemLogger("continuation/continue-work");
 
@@ -24,6 +24,8 @@ const ContinueWorkToolSchema = Type.Object({
   ),
 });
 
+type ContinueWorkToolParams = Static<typeof ContinueWorkToolSchema>;
+
 export type ContinueWorkToolOpts = {
   agentSessionKey?: string;
   requestContinuation: (request: ContinueWorkRequest) => void;
@@ -38,7 +40,6 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       "Equivalent to CONTINUE_WORK bracket syntax but as a structured tool call.",
     parameters: ContinueWorkToolSchema,
     execute: async (_toolCallId, args) => {
-      const params = args as Record<string, unknown>;
       const sessionKey = opts.agentSessionKey;
 
       if (!sessionKey) {
@@ -47,12 +48,21 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
         );
       }
 
-      const reason = readStringParam(params, "reason", { required: true }).slice(0, 1024);
-      const parsedDelaySeconds = readNumberParam(params, "delaySeconds", { strict: true });
-      if (parsedDelaySeconds !== undefined && parsedDelaySeconds < 0) {
+      const rawParams = asToolParamsRecord(args);
+      const params: ContinueWorkToolParams = parseToolParams(ContinueWorkToolSchema, {
+        ...rawParams,
+        ...(typeof rawParams.reason === "string"
+          ? { reason: rawParams.reason.slice(0, 1024) }
+          : {}),
+      });
+      const reason = params.reason.trim().slice(0, 1024);
+      if (!reason) {
+        throw new ToolInputError("reason required");
+      }
+      if (params.delaySeconds !== undefined && params.delaySeconds < 0) {
         throw new ToolInputError("delaySeconds must be a non-negative number.");
       }
-      const delaySeconds = parsedDelaySeconds ?? 0;
+      const delaySeconds = params.delaySeconds ?? 0;
 
       log.debug(
         `[continue_work:request] session=${sessionKey} delaySeconds=${delaySeconds} reason=${reason.slice(0, 80)}`,

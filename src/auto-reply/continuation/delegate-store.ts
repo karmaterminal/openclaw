@@ -39,17 +39,81 @@ export const CONTINUATION_POST_COMPACTION_CONTROLLER_ID = "core/continuation-pos
 // Zod validation for TaskFlow state payloads
 // ---------------------------------------------------------------------------
 
-const PendingDelegateStateSchema = z.object({
+const PendingDelegateModeSchema = z.enum(["normal", "silent", "silent-wake", "post-compaction"]);
+type PendingDelegateMode = z.infer<typeof PendingDelegateModeSchema>;
+
+const PendingDelegateStateBaseSchema = z
+  .object({
+    kind: z.literal("continuation_delegate"),
+    task: z.string().min(1),
+    delayMs: z.number().int().nonnegative().optional(),
+    firstArmedAt: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const PendingDelegateStateSchema = z.discriminatedUnion("mode", [
+  PendingDelegateStateBaseSchema.extend({ mode: z.literal("normal") }),
+  PendingDelegateStateBaseSchema.extend({ mode: z.literal("silent") }),
+  PendingDelegateStateBaseSchema.extend({ mode: z.literal("silent-wake") }),
+  PendingDelegateStateBaseSchema.extend({ mode: z.literal("post-compaction") }),
+]);
+
+const LegacyPendingDelegateStateSchema = z
+  .object({
+    kind: z.literal("continuation_delegate"),
+    task: z.string().min(1),
+    delayMs: z.number().int().nonnegative().optional(),
+    silent: z.boolean().optional(),
+    silentWake: z.boolean().optional(),
+    postCompaction: z.boolean().optional(),
+    firstArmedAt: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((state, ctx) => {
+    const enabledModes = [state.silent, state.silentWake, state.postCompaction].filter(
+      Boolean,
+    ).length;
+    if (enabledModes > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "legacy continuation delegate state must set at most one mode flag",
+      });
+    }
+  })
+  .transform((state) => {
+    let mode: PendingDelegateMode = "normal";
+    if (state.postCompaction === true) {
+      mode = "post-compaction";
+    } else if (state.silentWake === true) {
+      mode = "silent-wake";
+    } else if (state.silent === true) {
+      mode = "silent";
+    }
+    return {
+      kind: state.kind,
+      task: state.task,
+      ...(state.delayMs !== undefined ? { delayMs: state.delayMs } : {}),
+      mode,
+      ...(state.firstArmedAt !== undefined ? { firstArmedAt: state.firstArmedAt } : {}),
+    };
+  });
+
+const PendingDelegateStateWireSchema = z.union([
+  PendingDelegateStateSchema,
+  LegacyPendingDelegateStateSchema,
+]);
+
+type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
+
+const PersistedDelegateStateSchema = z.object({
   kind: z.literal("continuation_delegate"),
   task: z.string().min(1),
   delayMs: z.number().int().nonnegative().optional(),
-  silent: z.boolean().optional(),
-  silentWake: z.boolean().optional(),
-  postCompaction: z.boolean().optional(),
+  mode: PendingDelegateModeSchema,
   firstArmedAt: z.number().int().nonnegative().optional(),
 });
 
-type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
+type PersistedDelegateState = z.infer<typeof PersistedDelegateStateSchema>;
 
 export type ContinuationDelegateQueueDepths = {
   pendingQueued: number;
@@ -75,19 +139,12 @@ function buildDelegateGoal(delegate: PendingContinuationDelegate): string {
     : `Continuation delegate: ${excerpt}`;
 }
 
-function buildDelegateState(delegate: PendingContinuationDelegate): PendingDelegateState {
-  // `mode` is the sole runtime-surface encoding. Project it into the on-disk
-  // boolean flags so existing persisted records
-  // (which predate the mode-only runtime shape) keep their familiar schema
-  // and `decodeDelegateState` / `flowToDelegate` keep working unchanged for
-  // historical TaskFlow rows.
+function buildDelegateState(delegate: PendingContinuationDelegate): PersistedDelegateState {
   return {
     kind: "continuation_delegate",
     task: delegate.task,
     ...(delegate.delayMs !== undefined ? { delayMs: delegate.delayMs } : {}),
-    ...(delegate.mode === "silent" ? { silent: true } : {}),
-    ...(delegate.mode === "silent-wake" ? { silentWake: true } : {}),
-    ...(delegate.mode === "post-compaction" ? { postCompaction: true } : {}),
+    mode: delegate.mode ?? "normal",
     ...(delegate.firstArmedAt !== undefined ? { firstArmedAt: delegate.firstArmedAt } : {}),
   };
 }
@@ -115,7 +172,7 @@ function listQueuedPostCompactionFlows(sessionKey: string): TaskFlowRecord[] {
 }
 
 function decodeDelegateState(flow: TaskFlowRecord): PendingDelegateState | undefined {
-  const parsed = PendingDelegateStateSchema.safeParse(flow.stateJson);
+  const parsed = PendingDelegateStateWireSchema.safeParse(flow.stateJson);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -127,19 +184,8 @@ function flowToDelegate(
   flow: TaskFlowRecord,
   state: PendingDelegateState,
 ): PendingContinuationDelegate {
-  // Rehydrate runtime shape (mode-only) from the on-disk boolean flags.
-  // silentWake takes precedence over silent
-  // because on-disk rows may have both set (mode === "silent-wake" also
-  // wrote silent in earlier encoders), and silent-wake is the more
-  // specific mode.
-  let mode: PendingContinuationDelegate["mode"];
-  if (state.postCompaction === true) {
-    mode = "post-compaction";
-  } else if (state.silentWake === true) {
-    mode = "silent-wake";
-  } else if (state.silent === true) {
-    mode = "silent";
-  }
+  const mode: PendingContinuationDelegate["mode"] =
+    state.mode === "normal" ? undefined : state.mode;
   return {
     task: state.task,
     ...(state.delayMs !== undefined ? { delayMs: state.delayMs } : {}),

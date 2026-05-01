@@ -4,7 +4,8 @@ import type {
   AgentToolResult,
   AgentToolUpdateCallback,
 } from "@mariozechner/pi-agent-core";
-import type { TSchema } from "typebox";
+import type { Static, TSchema } from "typebox";
+import { Parse, ParseError } from "typebox/value";
 import { detectMime } from "../../media/mime.js";
 import { readSnakeCaseParamRaw } from "../../param-key.js";
 import type { ImageSanitizationLimits } from "../image-sanitization.js";
@@ -38,6 +39,35 @@ export function asToolParamsRecord(params: unknown): Record<string, unknown> {
   return params && typeof params === "object" && !Array.isArray(params)
     ? (params as Record<string, unknown>)
     : {};
+}
+
+export function parseToolParams<T extends TSchema>(schema: T, params: unknown): Static<T> {
+  try {
+    return Parse(schema, params);
+  } catch (err) {
+    if (err instanceof ParseError) {
+      const firstError =
+        err.cause && typeof err.cause === "object" && "errors" in err.cause
+          ? (
+              err.cause.errors as Array<{
+                keyword?: string;
+                params?: { requiredProperties?: string[] };
+                instancePath?: string;
+                message?: string;
+              }>
+            )[0]
+          : undefined;
+      if (firstError?.keyword === "required") {
+        const required = firstError.params?.requiredProperties?.[0];
+        if (required) {
+          throw new ToolInputError(`${required} required`);
+        }
+      }
+      const label = firstError?.instancePath?.replace(/^\//, "") || "tool arguments";
+      throw new ToolInputError(`${label} invalid`);
+    }
+    throw err;
+  }
 }
 
 export type StringParamOptions = {

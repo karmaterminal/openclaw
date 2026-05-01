@@ -233,11 +233,10 @@ export type Span = {
    */
   setStatus(status: SpanStatus, message?: string): void;
   /**
-   * Record an exception against the span. Pure-string variants are
-   * accepted for sites that don't carry an Error instance (matches OTEL's
-   * `recordException` permissive shape).
+   * Record an exception against the span. Pure-string variants are accepted
+   * for sites that don't carry an Error instance.
    */
-  recordException(err: unknown): void;
+  recordException(err: Error | string): void;
   /**
    * End the span. Idempotent: subsequent calls are no-ops. Matches OTEL.
    */
@@ -272,23 +271,22 @@ export type StartSpanOptions = {
  */
 export type Tracer = {
   /**
-   * Start a span. Callers MUST `end()` the returned span exactly once.
+   * Start a canonical continuation span. Callers MUST `end()` the returned
+   * span exactly once.
    *
-   * `name` SHOULD be one of the canonical continuation span names so the
-   * tests and exporters can rely on the same canonical set:
+   * `name` is narrowed to the canonical continuation span names so typos fail
+   * at compile time:
    *   - `continuation.work`
+   *   - `continuation.work.fire`
    *   - `continuation.delegate.dispatch`
+   *   - `continuation.delegate.fire`
    *   - `continuation.queue.enqueue`
    *   - `continuation.queue.drain`
    *   - `continuation.compaction.released`
    *   - `continuation.disabled`
    *   - `heartbeat`
-   *
-   * The `name` parameter is not type-narrowed to that union because some
-   * call sites (diagnostic / debug spans, future adapters) need
-   * arbitrary names; tests pin the canonical set.
    */
-  startSpan(name: string, options?: StartSpanOptions): Span;
+  startSpan(name: ContinuationSpanName, options?: StartSpanOptions): Span;
 };
 
 const noopSpan: Span = Object.freeze({
@@ -298,7 +296,7 @@ const noopSpan: Span = Object.freeze({
   setStatus(_status: SpanStatus, _message?: string): void {
     /* no-op */
   },
-  recordException(_err: unknown): void {
+  recordException(_err: Error | string): void {
     /* no-op */
   },
   end(): void {
@@ -312,7 +310,7 @@ const noopSpan: Span = Object.freeze({
  * opt in see no behavior change.
  */
 export const noopTracer: Tracer = Object.freeze({
-  startSpan(_name: string, _options?: StartSpanOptions): Span {
+  startSpan(_name: ContinuationSpanName, _options?: StartSpanOptions): Span {
     return noopSpan;
   },
 });

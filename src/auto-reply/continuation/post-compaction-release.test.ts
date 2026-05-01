@@ -189,7 +189,7 @@ describe("releasePostCompactionLifecycle", () => {
       sessionKey: SESSION_KEY,
       cfg: undefined,
       agentCfgContextTokens: 200_000,
-      activeSessionEntry: { totalTokens: null, contextTokens: 200_000 },
+      activeSessionEntry: { contextTokens: 200_000 },
       originating: ORIGINATING,
     });
 

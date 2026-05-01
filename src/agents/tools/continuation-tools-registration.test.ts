@@ -29,11 +29,6 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   });
 
   it("omits targetSessionKey from the continue_delegate schema descriptor", () => {
-    // Per #362 / #338-successor: cross-session addressing was deferred from this
-    // surface to the #332 session-delivery-queue substrate. The schema MUST NOT
-    // advertise `targetSessionKey` on `continue_delegate` — callers reaching for
-    // sibling-session enrichment use the (b)-shape evolution tracked in
-    // karmaterminal/binary-canticle#11, not this verb.
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -48,7 +43,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(params.properties).not.toHaveProperty("targetSessionKey");
   });
 
-  it("description points at the (b)-shape lane for cross-session enrichment", () => {
+  it("description points at explicit recipient addressing through the delivery queue", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -58,7 +53,8 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
       throw new Error("continue_delegate tool not registered");
     }
 
-    expect(tool.description).toContain("binary-canticle#11");
+    expect(tool.description).toContain("explicit recipient addressing");
+    expect(tool.description).toContain("session-delivery-queue substrate");
   });
 
   it("hides continue_delegate when continuation is disabled", () => {
