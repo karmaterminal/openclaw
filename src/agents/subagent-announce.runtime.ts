@@ -1,4 +1,4 @@
-export { getRuntimeConfig } from "../config/config.js";
+export { getRuntimeConfig, loadConfig } from "../config/config.js";
 export {
   loadSessionStore,
   resolveAgentIdFromSessionKey,
