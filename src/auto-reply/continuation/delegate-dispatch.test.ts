@@ -46,9 +46,12 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
   }),
 }));
 
+import {
+  hasLiveContinuationTimerRefs,
+  resetContinuationStateForTests,
+} from "../reply/continuation-state.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { cancelPendingDelegates, enqueuePendingDelegate } from "./delegate-store.js";
-import { hasLiveContinuationTimerRefs, resetContinuationStateForTests } from "./state.js";
 
 beforeEach(() => {
   mockFlows.clear();

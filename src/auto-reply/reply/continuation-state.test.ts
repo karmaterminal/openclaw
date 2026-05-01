@@ -82,14 +82,10 @@ describe("continuation volatile-map guard", () => {
   const allowedSessionKeyedMaps = new Map<string, Set<string>>([
     ["src/auto-reply/continuation/delegate-dispatch.ts", new Set(["hedgeTimers"])],
     ["src/auto-reply/continuation/delegate-store.ts", new Set(["delayedReservations"])],
-    [
-      "src/auto-reply/continuation/state.ts",
-      new Set(["continuationTimerHandles", "continuationTimerRefs"]),
-    ],
     ["src/auto-reply/continuation/context-pressure.ts", new Set(["lastFiredBand"])],
     [
       "src/auto-reply/reply/continuation-state.ts",
-      new Set(["continuationGenerations", "continuationTimerRefs", "continuationTimerHandles"]),
+      new Set(["continuationTimerRefs", "continuationTimerHandles"]),
     ],
   ]);
 

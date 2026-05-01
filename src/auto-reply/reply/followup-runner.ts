@@ -455,7 +455,7 @@ export function createFollowupRunner(params: {
         ] = await Promise.all([
           import("../continuation/delegate-dispatch.js"),
           import("../continuation/config.js"),
-          import("../continuation/state.js"),
+          import("./continuation-state.js"),
           import("../../config/sessions/store.js"),
         ]);
         const tailUsage = runResult.meta?.agentMeta?.usage;

@@ -12,16 +12,16 @@
  */
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import {
+  registerContinuationTimerHandle,
+  retainContinuationTimerRef,
+  unregisterContinuationTimerHandle,
+} from "../reply/continuation-state.js";
 import { clampDelayMs } from "./config.js";
 import {
   addDelayedContinuationReservation,
   highestDelayedContinuationReservationHop,
 } from "./delegate-store.js";
-import {
-  registerContinuationTimerHandle,
-  retainContinuationTimerRef,
-  unregisterContinuationTimerHandle,
-} from "./state.js";
 import type { ChainState, ContinuationRuntimeConfig, ContinuationSignal } from "./types.js";
 
 const log = createSubsystemLogger("continuation/scheduler");

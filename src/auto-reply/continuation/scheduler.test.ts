@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetContinuationStateForTests } from "../reply/continuation-state.js";
 import { resetDelegateStoreForTests } from "./delegate-store.js";
 import {
   checkContinuationBudget,
   scheduleDelegateContinuation,
   scheduleWorkContinuation,
 } from "./scheduler.js";
-import { resetContinuationStateForTests } from "./state.js";
 import type { ContinuationRuntimeConfig, ContinuationSignal } from "./types.js";
 
 const baseConfig: ContinuationRuntimeConfig = {

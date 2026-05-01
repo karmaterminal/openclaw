@@ -20,6 +20,6 @@ export { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/con
 export {
   loadContinuationChainState,
   persistContinuationChainState,
-} from "../auto-reply/continuation/state.js";
+} from "../auto-reply/reply/continuation-state.js";
 export { updateSessionStore } from "../config/sessions/store.js";
 export { resolveStorePath, resolveAgentIdFromSessionKey } from "../config/sessions.js";

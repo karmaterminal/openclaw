@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadContinuationChainState } from "./state.js";
+import { loadContinuationChainState } from "../reply/continuation-state.js";
 
 describe("loadContinuationChainState (openclaw#216)", () => {
   beforeEach(() => {

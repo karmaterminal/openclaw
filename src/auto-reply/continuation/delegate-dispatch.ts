@@ -16,14 +16,14 @@ import { spawnSubagentDirect } from "../../agents/subagent-spawn.js";
 import type { SpawnSubagentContext } from "../../agents/subagent-spawn.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { resolveContinuationRuntimeConfig } from "./config.js";
-import { consumePendingDelegates, peekSoonestUnmaturedDelegateDueAt } from "./delegate-store.js";
-import { checkContinuationBudget, type ChainState } from "./scheduler.js";
 import {
   registerContinuationTimerHandle,
   retainContinuationTimerRef,
   unregisterContinuationTimerHandle,
-} from "./state.js";
+} from "../reply/continuation-state.js";
+import { resolveContinuationRuntimeConfig } from "./config.js";
+import { consumePendingDelegates, peekSoonestUnmaturedDelegateDueAt } from "./delegate-store.js";
+import { checkContinuationBudget, type ChainState } from "./scheduler.js";
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
 
