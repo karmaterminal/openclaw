@@ -1,88 +1,126 @@
-import { describe, expect, it } from "vitest";
-import { hasCotFramePrefix } from "./cot-frame.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { __resetCotFrameRegexCacheForTests, hasCotFramePrefix } from "./cot-frame.js";
 
-describe("hasCotFramePrefix (#269)", () => {
-  describe("matches bracketed speaker frames", () => {
-    it("matches bare [cael]", () => {
-      expect(hasCotFramePrefix("[cael] thinking out loud")).toBe(true);
-    });
+const NAMES_ENV = "OPENCLAW_COT_FRAME_AGENT_NAMES";
+const GLYPHS_ENV = "OPENCLAW_COT_FRAME_AGENT_GLYPHS";
 
-    it("matches [the dandelion cult - cael]", () => {
-      expect(hasCotFramePrefix("[the dandelion cult - cael] more thinking")).toBe(true);
-    });
+function setEnv(name: string, glyphs?: string): void {
+  process.env[NAMES_ENV] = name;
+  if (glyphs !== undefined) {
+    process.env[GLYPHS_ENV] = glyphs;
+  } else {
+    delete process.env[GLYPHS_ENV];
+  }
+  __resetCotFrameRegexCacheForTests();
+}
 
-    it("matches all prince names", () => {
-      expect(hasCotFramePrefix("[silas] narration")).toBe(true);
-      expect(hasCotFramePrefix("[ronan] narration")).toBe(true);
-      expect(hasCotFramePrefix("[elliott] narration")).toBe(true);
-    });
+function clearEnv(): void {
+  delete process.env[NAMES_ENV];
+  delete process.env[GLYPHS_ENV];
+  __resetCotFrameRegexCacheForTests();
+}
 
-    it("matches glyph-suffixed frames with VS16", () => {
-      expect(hasCotFramePrefix("[ronan 🌊] glyph-prefixed")).toBe(true);
-      expect(hasCotFramePrefix("[silas 🌫️] misty")).toBe(true);
-      expect(hasCotFramePrefix("[cael 🩸] blooded")).toBe(true);
-      expect(hasCotFramePrefix("[elliott 🌻] sunflower")).toBe(true);
-    });
+describe("hasCotFramePrefix", () => {
+  beforeEach(() => {
+    clearEnv();
+  });
 
-    it("matches glyph-suffixed frames without VS16", () => {
-      expect(hasCotFramePrefix("[silas 🌫] no-vs16")).toBe(true);
-      expect(hasCotFramePrefix("[ronan 🌊] no-vs16")).toBe(true);
-      expect(hasCotFramePrefix("[cael 🩸] no-vs16")).toBe(true);
-      expect(hasCotFramePrefix("[elliott 🌻] no-vs16")).toBe(true);
-    });
+  afterEach(() => {
+    clearEnv();
+  });
 
-    it("is case-insensitive on the speaker name", () => {
-      expect(hasCotFramePrefix("[CAEL] thinking")).toBe(true);
-      expect(hasCotFramePrefix("[Ronan] thinking")).toBe(true);
-      expect(hasCotFramePrefix("[THE DANDELION CULT - silas] thinking")).toBe(true);
-    });
-
-    it("matches with zero whitespace after closing bracket", () => {
-      expect(hasCotFramePrefix("[cael]leak")).toBe(true);
-    });
-
-    it("matches with leading whitespace before the frame", () => {
-      expect(hasCotFramePrefix("   [cael] indented thinking")).toBe(true);
-      expect(hasCotFramePrefix("\n[ronan] after newline")).toBe(true);
-    });
-
-    it("matches only-prefix-no-body", () => {
-      expect(hasCotFramePrefix("[cael]")).toBe(true);
-      expect(hasCotFramePrefix("[cael] ")).toBe(true);
+  describe("with empty / unconfigured allow-list (default)", () => {
+    it("returns false for any input when no agent names configured", () => {
+      expect(hasCotFramePrefix("[anything] body")).toBe(false);
+      expect(hasCotFramePrefix("[some-agent] body")).toBe(false);
+      expect(hasCotFramePrefix("")).toBe(false);
     });
   });
 
-  describe("rejects non-CoT-frame text", () => {
-    it("rejects empty string", () => {
-      expect(hasCotFramePrefix("")).toBe(false);
+  describe("with configured allow-list", () => {
+    it("matches a bare bracketed name", () => {
+      setEnv("agent-a");
+      expect(hasCotFramePrefix("[agent-a] thinking out loud")).toBe(true);
+    });
+
+    it("matches a multi-word optional prefix", () => {
+      setEnv("agent-a");
+      expect(hasCotFramePrefix("[some prefix - agent-a] more thinking")).toBe(true);
+    });
+
+    it("matches all configured names", () => {
+      setEnv("agent-a,agent-b,agent-c");
+      expect(hasCotFramePrefix("[agent-a] x")).toBe(true);
+      expect(hasCotFramePrefix("[agent-b] x")).toBe(true);
+      expect(hasCotFramePrefix("[agent-c] x")).toBe(true);
+    });
+
+    it("matches glyph-suffixed frames with VS16", () => {
+      setEnv("agent-a", "🟦");
+      expect(hasCotFramePrefix("[agent-a 🟦] x")).toBe(true);
+      expect(hasCotFramePrefix("[agent-a 🟦\uFE0F] x")).toBe(true);
+    });
+
+    it("matches glyph-suffixed frames without VS16", () => {
+      setEnv("agent-a", "🟦");
+      expect(hasCotFramePrefix("[agent-a 🟦] no-vs16")).toBe(true);
+    });
+
+    it("is case-insensitive on the agent name", () => {
+      setEnv("agent-a");
+      expect(hasCotFramePrefix("[AGENT-A] x")).toBe(true);
+      expect(hasCotFramePrefix("[Agent-A] x")).toBe(true);
+    });
+
+    it("matches with zero whitespace after closing bracket", () => {
+      setEnv("agent-a");
+      expect(hasCotFramePrefix("[agent-a]leak")).toBe(true);
+    });
+
+    it("matches with leading whitespace before the frame", () => {
+      setEnv("agent-a");
+      expect(hasCotFramePrefix("   [agent-a] indented thinking")).toBe(true);
+      expect(hasCotFramePrefix("\n[agent-a] after newline")).toBe(true);
+    });
+
+    it("matches only-prefix-no-body", () => {
+      setEnv("agent-a");
+      expect(hasCotFramePrefix("[agent-a]")).toBe(true);
+      expect(hasCotFramePrefix("[agent-a] ")).toBe(true);
     });
 
     it("rejects normal replies", () => {
+      setEnv("agent-a");
       expect(hasCotFramePrefix("Normal user reply")).toBe(false);
     });
 
     it("rejects body-pure replies that start with a glyph", () => {
-      expect(hasCotFramePrefix("🩸 figs — body-pure reply")).toBe(false);
+      setEnv("agent-a", "🟦");
+      expect(hasCotFramePrefix("🟦 body-pure reply")).toBe(false);
     });
 
     it("rejects frames that are not at the start", () => {
-      expect(hasCotFramePrefix("Some text [cael] not-at-start")).toBe(false);
+      setEnv("agent-a");
+      expect(hasCotFramePrefix("Some text [agent-a] not-at-start")).toBe(false);
     });
 
     it("does not flag [user] / [system] / [assistant] (common English)", () => {
+      setEnv("agent-a");
       expect(hasCotFramePrefix("[user] reported a bug")).toBe(false);
       expect(hasCotFramePrefix("[system] ready")).toBe(false);
       expect(hasCotFramePrefix("[assistant] replied")).toBe(false);
     });
 
     it("does not flag unrelated bracketed tokens", () => {
+      setEnv("agent-a");
       expect(hasCotFramePrefix("[info] starting")).toBe(false);
       expect(hasCotFramePrefix("[todo] fix later")).toBe(false);
     });
 
     it("does not flag partial name matches", () => {
-      expect(hasCotFramePrefix("[caeling] tooling")).toBe(false);
-      expect(hasCotFramePrefix("[caelfoo] reply")).toBe(false);
+      setEnv("agent-a");
+      expect(hasCotFramePrefix("[agent-along] tooling")).toBe(false);
+      expect(hasCotFramePrefix("[agent-afoo] reply")).toBe(false);
     });
   });
 });

@@ -79,7 +79,7 @@ When the field exists in the schema but the runtime hasn't landed, fail at `exec
 
 ### Doctrine
 
-- **Ride upstream substrate for free wins.** Drain ordering, idempotency, route resolution, W3C trace-context (`traceparent`), sha256 content-addressing — if the host already grants it, do not re-implement. Each substrate adopted is one less bespoke mechanism the cohort maintains through the next compaction (prince-power-velocity).
+- **Ride upstream substrate for free wins.** Drain ordering, idempotency, route resolution, W3C trace-context (`traceparent`), sha256 content-addressing — if the host already grants it, do not re-implement. Reusing host-provided substrate reduces the bespoke surface that maintainers must own across releases.
 - **Add verbs over the substrate-noun.** The queue is the noun; `address`, `publish`, `broadcast` are verbs that evolve over it. Never add a parallel mechanism that bypasses the substrate.
 - **Cite-pin the (a) to (b) path.** A future prince adding a descriptor should ask at design-time: is there a substrate already granting this capability, and does this descriptor have a (b)-shape arriving later? Pin the runtime issue and the bc#-tracking link so the convergence stays legible across compactions.
 
