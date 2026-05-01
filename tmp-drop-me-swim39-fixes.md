@@ -131,6 +131,17 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - Contract change: additive optional `SandboxFsBridge.appendFile`; first-party bridges implement it, and unsupported third-party bridges fail explicitly instead of unsafe fallback.
 - PR verification: base=`cael/325-canonical2`, changedFiles=13.
 
+### #826 — continue_delegate current-turn cap semantics
+
+- Branch: `frond-scribe/swim39-826-cap-semantics-clarify`
+- PR: https://github.com/karmaterminal/openclaw/pull/490
+- Commit: `ac176bd7a9192290a67288dd646f6d04bde524aa`
+- Files touched: `continue_delegate` tool, TaskFlow delegate-store queue-depth telemetry helper, focused tool tests.
+- Bug-shape prevented: far-future sqlite queued delegates saturating `maxDelegatesPerTurn` for an entire delay window and blocking fresh-turn immediate delegation.
+- Test shape: same-turn delayed fanout still caps at the configured limit, while a fresh tool turn can schedule an immediate delegate despite those far-future queued rows; cap errors include split queued-depth telemetry.
+- Contract change: behavior fix for cap admission semantics plus additive cap-error telemetry; delayed queue persistence unchanged.
+- PR verification: base=`cael/325-canonical2`, changedFiles=3.
+
 ## §4 — gate results
 
 - #477: `pnpm config:schema:check` pass; `git grep -nF "taskFlowDelegates" -- src/ docs/` no matches; scoped tests pass (31 tests across config/runtime schema files); `pnpm tsgo` pass; `pnpm check` pass. Initial `pnpm check` failed on a lint-only test-key construction, heartbeat posted, fixed, reran green.
@@ -140,6 +151,7 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - #475: focused agent-runner execution test pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
 - #823: focused delegate-store/dispatch/session-delivery queue tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. Initial focused run failed because old test fixtures used `createdAt=1` while the new TTL harness default made every fixture stale; heartbeat posted, fixed test harness default, reran green. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
 - #476: focused memory-flush/sandbox/OpenShell tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, `pnpm lint`, and `pnpm plugin-sdk:api:check` pass. Initial `pnpm tsgo:core:test` caught a local test-stub literal type issue; heartbeat posted and fixed. `pnpm lint` then caught an unbound optional method reference; heartbeat posted and fixed. First `pnpm check:changed` also caught the related OpenShell `SandboxFsBridge` implementation gap; heartbeat posted, OpenShell append implemented/tested, reran. Final `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails only in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
+- #826: focused continue-delegate/delegate-store tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
 
 ## §5 — push log
 
@@ -151,6 +163,7 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - #475: branch pushed before byte-work, fix commit pushed, PR #487 opened, issue #475 linked, gate-failure heartbeat and PR-open heartbeat sent, fork CI dispatch requested for head `807f7c5338ea95bb35b2d1a286f94421787ccd45`.
 - #823: branch pushed before byte-work, fix commit pushed, PR #488 opened, bootstrap issue #823 linked, gate-failure heartbeats and PR-open heartbeat sent, fork CI dispatch requested for head `63c2fca43930f344325f8034f52e7dd19caa61e7`.
 - #476: branch pushed before byte-work, fix commit pushed, PR #489 opened, issue #476 linked, gate-failure heartbeats and PR-open heartbeat sent, fork CI dispatch requested for head `556c4c32f178feebb548da4e115d79650a8a55e5`.
+- #826: branch pushed before byte-work, fix commit pushed, PR #490 opened, bootstrap issue #826 linked, gate-failure heartbeat and PR-open heartbeat sent, fork CI dispatch requested for head `ac176bd7a9192290a67288dd646f6d04bde524aa`.
 
 ## §7 — declare done
 
