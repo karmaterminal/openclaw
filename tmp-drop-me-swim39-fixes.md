@@ -65,14 +65,27 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - Contract change: yes — stale configs must remove the retired key; runtime behavior unchanged because no alternate substrate exists.
 - PR verification: base=`cael/325-canonical2`, changedFiles=6.
 
+### #822 — subagent-announce continuation runtime dist artifact
+
+- Branch: `frond-scribe/swim39-822-subagent-announce-runtime-dist`
+- PR: https://github.com/karmaterminal/openclaw/pull/484
+- Commit: `f2de12921f9946d6b3a0f5d85f51fa706bf8987f`
+- Files touched: `tsdown.config.ts`, `src/agents/subagent-announce.continuation.runtime.ts`, `src/agents/subagent-announce.continuation.runtime.test.ts`
+- Bug-shape prevented: bundled `subagent-announce` imports `./subagent-announce.continuation.runtime.js` beside the dist chunk, but the tsdown entry emitted only `dist/agents/subagent-announce.continuation.runtime.js`.
+- Test shape: existing runtime-entry regression now asserts the flat entry key matching the lazy import path.
+- Contract change: build artifact location only; continuation drain behavior and exports unchanged.
+- PR verification: base=`cael/325-canonical2`, changedFiles=3.
+
 ## §4 — gate results
 
 - #477: `pnpm config:schema:check` pass; `git grep -nF "taskFlowDelegates" -- src/ docs/` no matches; scoped tests pass (31 tests across config/runtime schema files); `pnpm tsgo` pass; `pnpm check` pass. Initial `pnpm check` failed on a lint-only test-key construction, heartbeat posted, fixed, reran green.
+- #822: pre-fix `pnpm build` proved the mismatch (`dist/agents/subagent-announce.continuation.runtime.js` existed while the bundled chunk imported `./subagent-announce.continuation.runtime.js`); scoped runtime test pass; `pnpm tsgo` pass; `pnpm check` pass; `pnpm build` pass; post-build checks verified `dist/subagent-announce.continuation.runtime.js` exists/imports and stale nested artifact does not exist. `pnpm check:changed` expanded to all lanes from canonical-branch baseline `.agents` surfaces and failed on unrelated agents/gateway timeout failures; heartbeat posted, then the reported agents files passed in isolation.
 
 ## §5 — push log
 
 - Read checkpoint: required reads + issue/PR evidence hydrated; journal updated before first fix branch.
 - #477: branch pushed before byte-work, fix commit pushed, PR #483 opened, issue #477 linked, heartbeat sent, fork CI dispatch requested for head `fe67816ec18d6e71b484c748a17e8dab3a566f78`.
+- #822: branch pushed before byte-work, fix commit pushed, PR #484 opened, bootstrap issue #822 linked, gate-failure heartbeat and PR-open heartbeat sent, fork CI dispatch requested for head `f2de12921f9946d6b3a0f5d85f51fa706bf8987f`.
 
 ## §7 — declare done
 
