@@ -156,3 +156,9 @@ DO NOT open a PR autonomously. The branch on origin (`frond-scribe/325-canonical
 - Applied `2946145c1c` onto canonical2. Resolved the v3-only workorder artifact by deleting it again and removed the modified reply-side `continuation-runtime.ts` duplicate in favor of `src/auto-reply/continuation/config.ts`.
 - Verified reply-side `continuation-runtime`, `continuation-state`, and `context-pressure` duplicates are deleted; continuation config still imports canonical2 `loadConfig`; and the direct post-compaction helper is named `dispatchStagedPostCompactionDelegates` while the durable queue dispatcher keeps `dispatchPostCompactionDelegates`.
 - Focused continuation/reply/status/subagent tests covering the moved seams passed after installing missing dependencies. No design break.
+
+### 2026-05-01T16:36-07:00 — Wave C checkpoint
+
+- Applied `b160d0c911` onto canonical2. Resolved the v3-only workorder artifact by deleting it again and mapped v3 `getRuntimeConfig` conflict hunks back to canonical2 `loadConfig`.
+- Kept `resolveContinuationRuntimeConfig` behind `subagent-announce.runtime.ts` so subagent announce code no longer mixes static and dynamic imports for that continuation config seam.
+- Verified `tsdown.config.ts` no longer suppresses `INEFFECTIVE_DYNAMIC_IMPORT`; focused subagent announce tests and `pnpm build` passed with no ineffective-dynamic-import warning. No design break.
