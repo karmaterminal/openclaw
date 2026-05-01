@@ -54,6 +54,7 @@ function buildOpts(overrides: Partial<RequestCompactionToolOpts> = {}): RequestC
     sessionId: SESSION_ID,
     getContextUsage: () => 0.85,
     triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })),
+    enqueueSystemEvent: vi.fn(),
     ...overrides,
   };
 }

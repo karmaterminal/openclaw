@@ -218,3 +218,10 @@ This is **copilot cleaning up its own v3 candidate** for upstream-presentation r
 - Removed the `INEFFECTIVE_DYNAMIC_IMPORT` suppression from `tsdown.config.ts` and kept the build clean without warning filtering.
 - Routed subagent continuation config through the static announce runtime dependency, and kept the continuation drain lazy runtime limited to the modules that must stay off the static graph.
 - Local proof: affected subagent announce tests passed, `pnpm build` passed with no `[INEFFECTIVE_DYNAMIC_IMPORT]` warning, `git diff --check` passed, and `pnpm check:changed` passed. No design break.
+
+### 2026-05-01T23:05Z — Wave D checkpoint
+
+- Added agent-visible system events for volitional `request_compaction` failures so background compaction errors no longer only land in logs.
+- Surfaced post-compaction context read failures and persisted delegate load failures into the affected session, preserving local pending delegate state when the persisted load path fails.
+- Re-armed hedge timers after dispatcher-level failures and emitted continuation warnings so queued delegates are not silently orphaned after a single log-only failure.
+- Local proof: focused request-compaction, post-compaction delegate dispatch, and hedge dispatch tests passed; `git diff --check` passed; `pnpm check:changed` passed. No design break.
