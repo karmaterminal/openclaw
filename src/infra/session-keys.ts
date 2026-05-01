@@ -11,8 +11,6 @@
 // stack invariants where the missing key is a programmer error, keep the
 // throwing `requireSessionKey` in `system-events.ts` instead.
 //
-// See issue #292 (cluster C1) for context.
-
 export type SessionKeyParams = {
   sessionKey?: string | null;
   sessionId?: string | null;
@@ -43,8 +41,6 @@ export function requireSessionKeyOrSkip(
   if (sk) {
     return sk;
   }
-  log.warn(
-    `[session-key:missing] site=${site} sessionId=${params.sessionId ?? "?"}`,
-  );
+  log.warn(`[session-key:missing] site=${site} sessionId=${params.sessionId ?? "?"}`);
   return null;
 }
