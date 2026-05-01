@@ -86,6 +86,7 @@ export type QueuedSessionDeliveryPayload = (
       sessionKey: string;
       task: string;
       createdAt: number;
+      firstArmedAt?: number;
       silent?: boolean;
       silentWake?: boolean;
       deliveryContext?: SessionDeliveryContext;
@@ -133,7 +134,7 @@ function buildPostCompactionDelegateIdempotencyKey(params: {
     "post-compaction-delegate",
     params.sessionKey,
     String(params.compactionCount ?? "unknown"),
-    String(params.delegate.createdAt),
+    String(params.delegate.firstArmedAt ?? params.delegate.createdAt),
     String(params.sequence),
     taskHash,
   ].join(":");
@@ -152,6 +153,7 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
     sessionKey: params.sessionKey,
     task: params.delegate.task,
     createdAt: params.delegate.createdAt,
+    firstArmedAt: params.delegate.firstArmedAt ?? params.delegate.createdAt,
     ...(params.delegate.silent != null ? { silent: params.delegate.silent } : {}),
     ...(params.delegate.silentWake != null ? { silentWake: params.delegate.silentWake } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),

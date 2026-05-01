@@ -150,6 +150,21 @@ describe("post-compaction delegate staging", () => {
     expect(stagedPostCompactionDelegateCount("session-1")).toBe(0);
   });
 
+  it("preserves firstArmedAt across post-compaction TaskFlow storage", () => {
+    stagePostCompactionDelegate("session-1", {
+      task: "old shard",
+      stagedAt: 20_000,
+      firstArmedAt: 10_000,
+    });
+
+    const delegates = consumeStagedPostCompactionDelegates("session-1");
+    expect(delegates[0]).toMatchObject({
+      task: "old shard",
+      mode: "post-compaction",
+      firstArmedAt: 10_000,
+    });
+  });
+
   it("does not mix regular and post-compaction delegates", () => {
     enqueuePendingDelegate("session-1", { task: "regular" });
     stagePostCompactionDelegate("session-1", { task: "post-compact", stagedAt: 1000 });

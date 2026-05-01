@@ -44,28 +44,35 @@ export {
 // Post-compaction wrappers — adapt SessionPostCompactionDelegate ↔ TaskFlow
 //
 // Downstream callers (agent-runner persist path, delivery queue) speak
-// SessionPostCompactionDelegate { task, createdAt, silent?, silentWake? }.
-// The canonical store speaks StagedPostCompactionDelegate { task, stagedAt }
-// and returns PendingContinuationDelegate { task, mode? }.
+// SessionPostCompactionDelegate { task, createdAt, firstArmedAt?, silent?, silentWake? }.
+// The canonical store speaks StagedPostCompactionDelegate { task, stagedAt, firstArmedAt? }
+// and returns PendingContinuationDelegate { task, mode?, firstArmedAt? }.
 // ---------------------------------------------------------------------------
 
 export function stagePostCompactionDelegate(
   sessionKey: string,
   delegate: SessionPostCompactionDelegate,
 ): void {
+  const stagedAt = delegate.createdAt ?? Date.now();
   canonicalStage(sessionKey, {
     task: delegate.task,
-    stagedAt: delegate.createdAt ?? Date.now(),
+    stagedAt,
+    firstArmedAt: delegate.firstArmedAt ?? stagedAt,
   });
 }
 
 export function consumeStagedPostCompactionDelegates(
   sessionKey: string,
 ): SessionPostCompactionDelegate[] {
-  return canonicalConsumeStaged(sessionKey).map((d) => ({
-    task: d.task,
-    createdAt: Date.now(),
-    silent: true,
-    silentWake: true,
-  }));
+  const now = Date.now();
+  return canonicalConsumeStaged(sessionKey).map((d) => {
+    const firstArmedAt = d.firstArmedAt ?? now;
+    return {
+      task: d.task,
+      createdAt: firstArmedAt,
+      firstArmedAt,
+      silent: true,
+      silentWake: true,
+    };
+  });
 }
