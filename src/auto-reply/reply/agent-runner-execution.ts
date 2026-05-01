@@ -118,6 +118,8 @@ const GPT_CHAT_BREVITY_ACK_MAX_CHARS = 420;
 const GPT_CHAT_BREVITY_ACK_MAX_SENTENCES = 3;
 const GPT_CHAT_BREVITY_SOFT_MAX_CHARS = 900;
 const GPT_CHAT_BREVITY_SOFT_MAX_SENTENCES = 6;
+const BLOCKED_LIVENESS_NOTICE_TEXT =
+  "⚠️ Agent liveness: blocked. The run cannot make progress; try again or start a fresh conversation if this repeats.";
 
 function readApprovalScopeValue(value: unknown): "turn" | "session" | undefined {
   return value === "turn" || value === "session" ? value : undefined;
@@ -967,6 +969,24 @@ export async function runAgentTurnWithFallback(params: {
   const currentMessageId = params.sessionCtx.MessageSidFull ?? params.sessionCtx.MessageSid;
   const shouldNotifyUserAboutCompaction =
     runtimeConfig?.agents?.defaults?.compaction?.notifyUser === true;
+  let didSurfaceBlockedLivenessState = false;
+  const surfaceBlockedLivenessState = async () => {
+    if (didSurfaceBlockedLivenessState || !params.opts?.onBlockReply) {
+      return;
+    }
+    const noticePayload = params.applyReplyToMode({
+      text: BLOCKED_LIVENESS_NOTICE_TEXT,
+      replyToId: currentMessageId,
+      replyToCurrent: true,
+      isError: true,
+    });
+    try {
+      await params.opts.onBlockReply(noticePayload);
+      didSurfaceBlockedLivenessState = true;
+    } catch (err) {
+      logVerbose(`blocked liveness notice delivery failed (non-fatal): ${String(err)}`);
+    }
+  };
   const sendCompactionNotice = async (phase: "start" | "end" | "incomplete") => {
     if (!params.opts?.onBlockReply) {
       return;
@@ -1603,6 +1623,12 @@ export async function runAgentTurnWithFallback(params: {
                   if (evt.stream !== "lifecycle" || hasLifecyclePhase) {
                     notifyAgentRunStart();
                   }
+                  if (
+                    evt.stream === "lifecycle" &&
+                    readStringValue(evt.data.livenessState) === "blocked"
+                  ) {
+                    await surfaceBlockedLivenessState();
+                  }
                   // Trigger typing when tools start executing.
                   // Must await to ensure typing indicator starts before tool summaries are emitted.
                   if (evt.stream === "tool") {
@@ -2139,6 +2165,16 @@ export async function runAgentTurnWithFallback(params: {
   // overflow errors were returned as embedded error payloads.
   const finalEmbeddedError = runResult?.meta?.error;
   const hasPayloadText = runResult?.payloads?.some((p) => normalizeOptionalString(p.text));
+  if (runResult?.meta?.livenessState === "blocked" && !didSurfaceBlockedLivenessState) {
+    runResult.payloads = [
+      {
+        text: BLOCKED_LIVENESS_NOTICE_TEXT,
+        isError: true,
+      },
+      ...(runResult.payloads ?? []),
+    ];
+    didSurfaceBlockedLivenessState = true;
+  }
   if (finalEmbeddedError && !hasPayloadText) {
     const errorMsg = finalEmbeddedError.message ?? "";
     if (isContextOverflowError(errorMsg)) {
