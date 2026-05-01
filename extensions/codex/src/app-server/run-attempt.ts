@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { SessionManager, type SessionContext } from "@mariozechner/pi-coding-agent";
 import {
   assembleHarnessContextEngine,
   bootstrapHarnessContextEngine,
@@ -79,6 +78,8 @@ import {
 import { mirrorCodexAppServerTranscript } from "./transcript-mirror.js";
 import { createCodexUserInputBridge } from "./user-input-bridge.js";
 import { filterToolsForVisionInputs } from "./vision-tools.js";
+
+type AgentMessage = SessionContext["messages"][number];
 
 type OpenClawCodingToolsOptions = NonNullable<
   Parameters<(typeof import("openclaw/plugin-sdk/agent-harness"))["createOpenClawCodingTools"]>[0]
