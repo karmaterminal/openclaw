@@ -144,3 +144,9 @@ DO NOT open a PR autonomously. The branch on origin (`frond-scribe/325-canonical
 ## Journal section (append as you go)
 
 <!-- start journal -->
+
+### 2026-05-01T16:20-07:00 — Wave A checkpoint
+
+- Applied `7054aa1a73` and `053b6df551` onto canonical2. Resolved the v3-only workorder artifact by dropping it from this branch and kept canonical2's existing lint-script shape while removing the rejected substrate-adoption check.
+- Verified the four root artifacts are deleted and the `cot-frame.ts` runtime detector no longer enumerates private speaker names or glyphs.
+- Added the canonical2-specific public-template wording scrub in `docs/reference/templates/TOOLS.md` because the cherry-picked Wave A commit did not touch that file. No design break.
