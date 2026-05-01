@@ -76,16 +76,29 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - Contract change: build artifact location only; continuation drain behavior and exports unchanged.
 - PR verification: base=`cael/325-canonical2`, changedFiles=3.
 
+### #825 — compaction event joint attribution
+
+- Branch: `frond-scribe/swim39-825-compaction-event-joint-attribution`
+- PR: https://github.com/karmaterminal/openclaw/pull/485
+- Commit: `9f25f9116ff657c41ab8981a61f5d79e7c260b33`
+- Files touched: compaction request tool/wiring, embedded compaction event handlers, compaction counter reconcile runtime, and focused tests.
+- Bug-shape prevented: enqueue/runtime diag/session-store counter signals could not be joined by run/trigger/outcome/count delta evidence.
+- Test shape: volitional request attribution reaches triggerCompaction/log/result; embedded compaction end emits trigger/count before-after-delta attribution.
+- Contract change: additive diagnostic fields/logs only; compaction scheduling, provider selection, and count semantics unchanged.
+- PR verification: base=`cael/325-canonical2`, changedFiles=13.
+
 ## §4 — gate results
 
 - #477: `pnpm config:schema:check` pass; `git grep -nF "taskFlowDelegates" -- src/ docs/` no matches; scoped tests pass (31 tests across config/runtime schema files); `pnpm tsgo` pass; `pnpm check` pass. Initial `pnpm check` failed on a lint-only test-key construction, heartbeat posted, fixed, reran green.
 - #822: pre-fix `pnpm build` proved the mismatch (`dist/agents/subagent-announce.continuation.runtime.js` existed while the bundled chunk imported `./subagent-announce.continuation.runtime.js`); scoped runtime test pass; `pnpm tsgo` pass; `pnpm check` pass; `pnpm build` pass; post-build checks verified `dist/subagent-announce.continuation.runtime.js` exists/imports and stale nested artifact does not exist. `pnpm check:changed` expanded to all lanes from canonical-branch baseline `.agents` surfaces and failed on unrelated agents/gateway timeout failures; heartbeat posted, then the reported agents files passed in isolation.
+- #825: focused tests pass (`request-compaction-tool.volitional-threading`, `request-compaction-tool`, `pi-embedded-subscribe.handlers.compaction`); tool wiring tests pass (`openclaw-tools.continuation-registration`, `tools-effective-inventory`, `commands-system-prompt`); `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. `pnpm check`, `pnpm check:test-types`, and `pnpm check:changed` fail only after expanding into untouched extension type baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); `pnpm format:check` reports broad pre-existing drift outside this PR. Heartbeats posted for each failed gate class.
 
 ## §5 — push log
 
 - Read checkpoint: required reads + issue/PR evidence hydrated; journal updated before first fix branch.
 - #477: branch pushed before byte-work, fix commit pushed, PR #483 opened, issue #477 linked, heartbeat sent, fork CI dispatch requested for head `fe67816ec18d6e71b484c748a17e8dab3a566f78`.
 - #822: branch pushed before byte-work, fix commit pushed, PR #484 opened, bootstrap issue #822 linked, gate-failure heartbeat and PR-open heartbeat sent, fork CI dispatch requested for head `f2de12921f9946d6b3a0f5d85f51fa706bf8987f`.
+- #825: branch pushed before byte-work, fix commit pushed, PR #485 opened, bootstrap issue #825 linked, gate-failure heartbeats and PR-open heartbeat sent, fork CI dispatch requested for head `9f25f9116ff657c41ab8981a61f5d79e7c260b33`.
 
 ## §7 — declare done
 
