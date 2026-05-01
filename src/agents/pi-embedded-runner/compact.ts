@@ -20,7 +20,6 @@ import {
 import { formatErrorMessage } from "../../infra/errors.js";
 import { resolveHeartbeatSummaryForAgent } from "../../infra/heartbeat-summary.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
-import { generateSecureToken } from "../../infra/secure-random.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { extractModelCompat } from "../../plugins/provider-model-compat.js";
 import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
@@ -48,6 +47,7 @@ import {
   resolveChannelMessageToolHints,
   resolveChannelReactionGuidance,
 } from "../channel-tools.js";
+import { createCompactionDiagId } from "../compaction-attribution.js";
 import {
   hasMeaningfulConversationContent,
   isRealConversationMessage,
@@ -155,10 +155,6 @@ function hasRealConversationContent(
   index: number,
 ): boolean {
   return isRealConversationMessage(msg, messages, index);
-}
-
-function createCompactionDiagId(): string {
-  return `cmp-${Date.now().toString(36)}-${generateSecureToken(4)}`;
 }
 
 function prepareCompactionSessionAgent(params: {
@@ -477,18 +473,19 @@ export async function compactEmbeddedPiSessionDirect(
     const sessionLabel = params.sessionKey ?? params.sessionId;
     const resolvedMessageProvider = params.messageChannel ?? params.messageProvider;
     const contextInjectionMode = resolveContextInjectionMode(params.config);
-    const { contextFiles } = contextInjectionMode === "never"
-      ? { contextFiles: [] }
-      : await resolveBootstrapContextForRun({
-          workspaceDir: effectiveWorkspace,
-          config: params.config,
-          sessionKey: params.sessionKey,
-          sessionId: params.sessionId,
-          warn: makeBootstrapWarn({
-            sessionLabel,
-            warn: (message) => log.warn(message),
-          }),
-        });
+    const { contextFiles } =
+      contextInjectionMode === "never"
+        ? { contextFiles: [] }
+        : await resolveBootstrapContextForRun({
+            workspaceDir: effectiveWorkspace,
+            config: params.config,
+            sessionKey: params.sessionKey,
+            sessionId: params.sessionId,
+            warn: makeBootstrapWarn({
+              sessionLabel,
+              warn: (message) => log.warn(message),
+            }),
+          });
     // Apply contextTokens cap to model so pi-coding-agent's auto-compaction
     // threshold uses the effective limit, not the native context window.
     const runtimeModelWithContext = runtimeModel as ProviderRuntimeModel;

@@ -70,6 +70,7 @@ import {
   mergeAlsoAllowPolicy,
   resolveToolProfilePolicy,
 } from "./tool-policy.js";
+import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 function isOpenAIProvider(provider?: string) {
@@ -354,7 +355,7 @@ export function createOpenClawCodingTools(options?: {
   requestCompactionOpts?: {
     sessionId?: string;
     getContextUsage: () => number | null;
-    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+    triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
   };
 }): AnyAgentTool[] {
   const execToolName = "exec";
@@ -659,6 +660,7 @@ export function createOpenClawCodingTools(options?: {
       requesterSenderId: options?.senderId,
       senderIsOwner: options?.senderIsOwner,
       sessionId: options?.sessionId,
+      runId: options?.runId,
       onYield: options?.onYield,
       allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
       continueWorkOpts: options?.continueWorkOpts,

@@ -103,7 +103,10 @@ describe("volitional compaction counter truthfulness (#639)", () => {
   });
 
   it("increments counter on {ok:true, compacted:true}", async () => {
-    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
+    const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
+      ok: true,
+      compacted: true,
+    }));
     const countBefore = getVolitionalCompactionCount(SESSION_KEY);
 
     await executeTool(buildOpts({ triggerCompaction }));
@@ -112,6 +115,51 @@ describe("volitional compaction counter truthfulness (#639)", () => {
     const countAfter = getVolitionalCompactionCount(SESSION_KEY);
     expect(countAfter).toBe(countBefore + 1);
     expect(triggerCompaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("threads run and diag attribution from enqueue to background compaction", async () => {
+    const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
+      ok: true,
+      compacted: true,
+    }));
+
+    const result = await executeTool(
+      buildOpts({
+        runId: "run-volitional-1",
+        triggerCompaction,
+      }),
+    );
+    await drainMicrotasks();
+
+    const request = triggerCompaction.mock.calls[0]?.[0];
+    expect(request).toBeDefined();
+    if (!request) {
+      throw new Error("expected request_compaction attribution payload");
+    }
+    expect(request).toMatchObject({
+      sessionKey: SESSION_KEY,
+      sessionId: SESSION_ID,
+      runId: "run-volitional-1",
+      trigger: "volitional",
+      reason: TURN_REASON,
+      contextUsage: 0.85,
+    });
+    expect(request.diagId).toMatch(/^cmp-/u);
+    expect(result).toMatchObject({
+      status: "compaction_requested",
+      compactionRequestId: request.diagId,
+      trigger: "volitional",
+    });
+    expect(logMocks.info).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `[request_compaction:enqueuing] session=${SESSION_KEY} runId=run-volitional-1 diagId=${request.diagId} trigger=volitional`,
+      ),
+    );
+    expect(logMocks.info).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `[request_compaction:resolved-success] session=${SESSION_KEY} runId=run-volitional-1 diagId=${request.diagId} trigger=volitional outcome=compacted`,
+      ),
+    );
   });
 
   it("does NOT increment counter on {ok:true, compacted:false, reason:'nothing to compact'}", async () => {

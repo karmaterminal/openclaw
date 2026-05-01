@@ -2,6 +2,10 @@ import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
+  createCompactionDiagId,
+  type RequestCompactionInvocation,
+} from "../compaction-attribution.js";
+import {
   classifyCompactionReason,
   isCompactionSkipCode,
 } from "../pi-embedded-runner/compact-reasons.js";
@@ -69,6 +73,8 @@ export type RequestCompactionToolOpts = {
   agentSessionKey?: string;
   /** Session id (the Pi session UUID). */
   sessionId?: string;
+  /** Stable run identifier for this agent invocation. */
+  runId?: string;
   /**
    * Returns the current context usage as a fraction (0-1), or null when unknown
    * (e.g. inventory-only path used by /status surface reflection).
@@ -80,7 +86,9 @@ export type RequestCompactionToolOpts = {
    * import the heavy compaction module directly. The caller provides a
    * closure over `compactEmbeddedPiSession` with all required session params.
    */
-  triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+  triggerCompaction: (
+    request: RequestCompactionInvocation,
+  ) => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
 };
 
 // ---------------------------------------------------------------------------
@@ -170,6 +178,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       // ----- Guard 2: Rate limit -----
       const now = Date.now();
+      const diagId = createCompactionDiagId(now);
       const guard = sessionGuardState.get(sessionKey);
       if (guard && now - guard.lastRequestMs < RATE_LIMIT_MS) {
         const remainingMs = RATE_LIMIT_MS - (now - guard.lastRequestMs);
@@ -189,21 +198,36 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       // No generation guard (removed 2026-04-15 RFC): compaction is not blocked
       // by unrelated channel activity.
       log.info(
-        `[request_compaction:enqueuing] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}% reason=${reason}`,
+        `[request_compaction:enqueuing] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+          `diagId=${diagId} trigger=volitional usage=${(contextUsage * 100).toFixed(1)}% reason=${reason}`,
       );
 
       // Fire-and-forget: compaction runs via the lane queue after the current
       // agent turn releases the session lane. We do NOT await — the tool
       // returns immediately so the agent can finish its response.
       pendingCompactionSessions.add(sessionKey);
+      const request: RequestCompactionInvocation = {
+        sessionKey,
+        sessionId: opts.sessionId,
+        ...(opts.runId ? { runId: opts.runId } : {}),
+        diagId,
+        trigger: "volitional",
+        reason,
+        contextUsage,
+        requestedAtMs: now,
+      };
       void opts
-        .triggerCompaction()
+        .triggerCompaction(request)
         .then(
           (result) => {
             if (result.ok && result.compacted) {
               sessionGuardState.set(sessionKey, {
                 lastRequestMs: Date.now(),
               });
+              log.info(
+                `[request_compaction:resolved-success] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                  `diagId=${diagId} trigger=volitional outcome=compacted`,
+              );
               incrementVolitionalCompactionCount(sessionKey);
               return;
             }
@@ -211,19 +235,22 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
             const reason = result.reason ?? "";
             if (result.ok && isCompactionSkipCode(code)) {
               log.info(
-                `[request_compaction:resolved-skip] session=${sessionKey} code=${code} reason=${reason}`,
+                `[request_compaction:resolved-skip] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                  `diagId=${diagId} trigger=volitional outcome=skipped code=${code} reason=${reason}`,
               );
               return;
             }
             log.warn(
-              `[request_compaction:resolved-failure] session=${sessionKey} code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
+              `[request_compaction:resolved-failure] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                `diagId=${diagId} trigger=volitional outcome=failed code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
             );
           },
           (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err);
             const code = classifyCompactionReason(message);
             log.error(
-              `[request_compaction:background-error] session=${sessionKey} code=${code} error=${message}`,
+              `[request_compaction:background-error] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                `diagId=${diagId} trigger=volitional outcome=failed code=${code} error=${message}`,
             );
           },
         )
@@ -233,6 +260,8 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       return jsonResult({
         status: "compaction_requested",
+        compactionRequestId: diagId,
+        trigger: "volitional",
         contextUsage: Math.round(contextUsage * 100),
         reason,
         note:
