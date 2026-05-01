@@ -162,3 +162,9 @@ DO NOT open a PR autonomously. The branch on origin (`frond-scribe/325-canonical
 - Applied `b160d0c911` onto canonical2. Resolved the v3-only workorder artifact by deleting it again and mapped v3 `getRuntimeConfig` conflict hunks back to canonical2 `loadConfig`.
 - Kept `resolveContinuationRuntimeConfig` behind `subagent-announce.runtime.ts` so subagent announce code no longer mixes static and dynamic imports for that continuation config seam.
 - Verified `tsdown.config.ts` no longer suppresses `INEFFECTIVE_DYNAMIC_IMPORT`; focused subagent announce tests and `pnpm build` passed with no ineffective-dynamic-import warning. No design break.
+
+### 2026-05-01T16:45-07:00 — Wave D checkpoint
+
+- Applied `8bedd3f326` onto canonical2. The cherry-pick covered request-compaction background failure events, post-compaction context read failure events, persisted delegate load failure surfacing, and hedge-dispatch re-arm/warning behavior.
+- Extended Wave D for canonical2 H10: `reconcileSessionStoreCompactionCountAfterSuccess` failures now emit a structured compaction warning event instead of only logging after the in-memory count increments.
+- Added UI handling so warning-phase compaction events do not disturb active/retry/complete compaction status. Focused Wave D and H10 tests passed. No design break.

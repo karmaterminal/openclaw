@@ -8,6 +8,49 @@ import {
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 import { makeZeroUsageSnapshot } from "./usage.js";
 
+function formatCompactionError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function emitCompactionCountReconcileFailure(params: {
+  ctx: EmbeddedPiSubscribeContext;
+  error: unknown;
+  trigger: ReturnType<typeof normalizeCompactionTrigger>;
+  compactionCountBefore: number;
+  compactionCountAfter: number;
+}): void {
+  const { ctx, error, trigger, compactionCountBefore, compactionCountAfter } = params;
+  const message = formatCompactionError(error);
+  const data = {
+    phase: "warning",
+    warning: "compaction_count_reconcile_failed",
+    sessionKey: ctx.params.sessionKey,
+    trigger,
+    outcome: "compacted",
+    error: message,
+    compactionCountBefore,
+    compactionCountAfter,
+    compactionCountDelta: compactionCountAfter - compactionCountBefore,
+  };
+  ctx.log.warn(
+    `[compaction-counter:reconcile-failed] runId=${ctx.params.runId} sessionKey=${ctx.params.sessionKey ?? ctx.params.sessionId} ` +
+      `trigger=${trigger} observed=${compactionCountAfter} error=${message}`,
+  );
+  emitAgentEvent({
+    runId: ctx.params.runId,
+    stream: "compaction",
+    sessionKey: ctx.params.sessionKey,
+    data,
+  });
+  void Promise.resolve(ctx.params.onAgentEvent?.({ stream: "compaction", data })).catch(
+    (eventErr) => {
+      ctx.log.warn(
+        `compaction count reconcile failure event delivery failed: ${formatCompactionError(eventErr)}`,
+      );
+    },
+  );
+}
+
 export function handleCompactionStart(
   ctx: EmbeddedPiSubscribeContext,
   evt?: AgentEvent & { reason?: unknown },
@@ -82,7 +125,13 @@ export function handleCompactionEnd(
         outcome: "compacted",
       },
     }).catch((err) => {
-      ctx.log.warn(`late compaction count reconcile failed: ${String(err)}`);
+      emitCompactionCountReconcileFailure({
+        ctx,
+        error: err,
+        trigger,
+        compactionCountBefore,
+        compactionCountAfter,
+      });
     });
   }
   const completed = hasResult && !wasAborted;
