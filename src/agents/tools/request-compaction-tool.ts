@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
   createCompactionDiagId,
@@ -244,6 +245,10 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
               `[request_compaction:resolved-failure] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
                 `diagId=${diagId} trigger=volitional outcome=failed code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
             );
+            enqueueSystemEvent(
+              `[system:compaction-failed] Background compaction failed (code=${code}): ${reason}. Post-compaction delegates will not fire; staged working state may be stale.`,
+              { sessionKey },
+            );
           },
           (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err);
@@ -251,6 +256,10 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
             log.error(
               `[request_compaction:background-error] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
                 `diagId=${diagId} trigger=volitional outcome=failed code=${code} error=${message}`,
+            );
+            enqueueSystemEvent(
+              `[system:compaction-failed] Background compaction error (code=${code}): ${message}. Post-compaction delegates will not fire; staged working state may be stale.`,
+              { sessionKey },
             );
           },
         )
