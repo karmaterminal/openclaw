@@ -4,8 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mockFlows = new Map<string, Record<string, unknown>>();
 const enqueueSystemEventMock = vi.fn();
 const loggerRecords: Array<{ level: string; message: string }> = [];
+const spawnSubagentDirectMock = vi.fn();
 let flowIdCounter = 0;
 let listTaskFlowsShouldThrow = false;
+
+vi.mock("../../agents/subagent-spawn.js", () => ({
+  spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
+}));
 
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEvent: (text: string, options: unknown) => enqueueSystemEventMock(text, options),
@@ -87,6 +92,7 @@ beforeEach(() => {
   mockFlows.clear();
   enqueueSystemEventMock.mockClear();
   loggerRecords.length = 0;
+  spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
   flowIdCounter = 0;
   listTaskFlowsShouldThrow = false;
   vi.useFakeTimers();
@@ -184,5 +190,130 @@ describe("hedge timer ref/handle cleanup", () => {
       { sessionKey },
     );
     expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
+  });
+});
+
+describe("tool delegate dispatch contract", () => {
+  it("caps dispatch at maxDelegatesPerTurn and surfaces over-limit delegates", async () => {
+    const sessionKey = "session-delegate-cap";
+    for (let index = 0; index < 6; index++) {
+      enqueuePendingDelegate(sessionKey, { task: `delegate-${index}` });
+    }
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.dispatched).toBe(5);
+    expect(result.rejected).toBe(1);
+    expect(result.chainState.currentChainCount).toBe(5);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(5);
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining("maxDelegatesPerTurn exceeded (5). Task: delegate-5"),
+      { sessionKey },
+    );
+  });
+
+  it("maps delegate modes into spawn flags without changing normal delegates", async () => {
+    const sessionKey = "session-delegate-modes";
+    enqueuePendingDelegate(sessionKey, { task: "normal" });
+    enqueuePendingDelegate(sessionKey, { task: "silent", mode: "silent" });
+    enqueuePendingDelegate(sessionKey, { task: "wake", mode: "silent-wake" });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    const spawnParams = spawnSubagentDirectMock.mock.calls.map(
+      (call) => call[0] as Record<string, unknown>,
+    );
+    expect(spawnParams[0]).toMatchObject({
+      task: expect.stringContaining("normal"),
+      drainsContinuationDelegateQueue: true,
+    });
+    expect(spawnParams[0]).not.toHaveProperty("silentAnnounce");
+    expect(spawnParams[0]).not.toHaveProperty("wakeOnReturn");
+    expect(spawnParams[1]).toMatchObject({
+      task: expect.stringContaining("silent"),
+      silentAnnounce: true,
+      drainsContinuationDelegateQueue: true,
+    });
+    expect(spawnParams[1]).not.toHaveProperty("wakeOnReturn");
+    expect(spawnParams[2]).toMatchObject({
+      task: expect.stringContaining("wake"),
+      silentAnnounce: true,
+      wakeOnReturn: true,
+      drainsContinuationDelegateQueue: true,
+    });
+  });
+
+  it("advances chain state and prefixes spawned tasks with the next hop", async () => {
+    const sessionKey = "session-delegate-chain";
+    enqueuePendingDelegate(sessionKey, { task: "inspect logs" });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: {
+        currentChainCount: 2,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 123,
+      },
+      ctx: { sessionKey, agentChannel: "discord", agentTo: "channel" },
+      maxChainLength: 10,
+    });
+
+    expect(result.chainState).toEqual({
+      currentChainCount: 3,
+      chainStartedAt: 1_700_000_000_000,
+      accumulatedChainTokens: 123,
+    });
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: "[continuation:chain-hop:3] Delegated task (turn 3/10): inspect logs",
+      }),
+      {
+        agentSessionKey: sessionKey,
+        agentChannel: "discord",
+        agentAccountId: undefined,
+        agentTo: "channel",
+        agentThreadId: undefined,
+      },
+    );
+  });
+
+  it("counts spawn rejections and thrown spawn errors without aborting later delegates", async () => {
+    const sessionKey = "session-delegate-spawn-failure";
+    enqueuePendingDelegate(sessionKey, { task: "rejected" });
+    enqueuePendingDelegate(sessionKey, { task: "throws" });
+    enqueuePendingDelegate(sessionKey, { task: "accepted" });
+    spawnSubagentDirectMock
+      .mockResolvedValueOnce({ status: "forbidden" })
+      .mockRejectedValueOnce(new Error("spawn unavailable"))
+      .mockResolvedValueOnce({ status: "accepted" });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.dispatched).toBe(1);
+    expect(result.rejected).toBe(2);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(3);
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining("DELEGATE spawn forbidden"),
+      { sessionKey },
+    );
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining("DELEGATE spawn failed: Error: spawn unavailable"),
+      { sessionKey },
+    );
   });
 });
