@@ -1,33 +1,23 @@
-// #334 Slice 3 — OTEL adapter for the continuation-tracer surface.
-//
-// Per the Slice-2 design memo at the top of
-// `src/infra/continuation-tracer.ts`:
-//
-//   "Slice 2 ships this interface + `noopTracer`. Slice 3 ships an OTEL
-//    adapter that conforms to this same surface — the call sites don't
-//    change."
-//
-// This module IS that adapter. It is consumed only by `service.ts`:
+// OTEL adapter for the continuation-tracer surface. It is consumed only by
+// `service.ts`:
 //   - `service.ts::start()` — after `sdk.start()` succeeds, install the
 //     adapter via `setContinuationTracer(createContinuationOtelTracerAdapter())`
-//     so that the existing `emitContinuation*Span` helpers spread across
-//     the runtime (PRs #378/#382/#383/#384/#385/#388/#391/#395/#397/#400)
-//     emit real spans through the OTEL SDK instead of into `noopTracer`.
+//     so the existing `emitContinuation*Span` helpers emit real spans through
+//     the OTEL SDK instead of into `noopTracer`.
 //   - `service.ts::stopStarted()` — call `resetContinuationTracer()` so
-//     the runtime returns to the additive Slice-1 contract (no-op) when
-//     the plugin shuts down.
+//     the runtime returns to the additive no-op contract when the plugin shuts
+//     down.
 //
 // Span parenting:
 //   The continuation-tracer surface carries a W3C `traceparent` on
-//   `StartSpanOptions`. Slice 1 substrate already lifts this onto
+//   `StartSpanOptions`. The continuation substrate already lifts this onto
 //   `SystemEvent.traceparent` and `QueuedSessionDeliveryPayloadMetadata`
 //   so the producer→consumer hop has it available. This adapter parses
 //   it via the same `parseDiagnosticTraceparent` helper that powers the
 //   auto-instrumented spans (`service.ts::contextForTraceContext`), then
 //   uses `trace.setSpanContext` so the new span is correctly stitched
-//   into the parent OTEL trace. That stitching is the whole observable
-//   payoff of Slice 3 — every continuation chain becomes one tempo trace
-//   instead of N disconnected per-session spans.
+//   into the parent OTEL trace. That stitching turns continuation chains into
+//   one trace instead of disconnected per-session spans.
 
 import {
   context as otelContextApi,
@@ -121,7 +111,7 @@ function wrapOtelSpan(otelSpan: OtelSpan): ContinuationSpan {
       });
     },
     end(): void {
-      // Idempotent end matches the Slice-2 `Span` contract:
+      // Idempotent end matches the continuation `Span` contract:
       //   "End the span. Idempotent: subsequent calls are no-ops."
       // The OTEL SDK's own `Span.end()` is also documented as idempotent
       // in practice but the guard is cheap and contractually-required.
@@ -135,7 +125,7 @@ function wrapOtelSpan(otelSpan: OtelSpan): ContinuationSpan {
 }
 
 /**
- * Build the Slice-3 OTEL adapter. The returned tracer conforms to the
+ * Build the OTEL adapter. The returned tracer conforms to the
  * `ContinuationTracer` shape exported from
  * `openclaw/plugin-sdk/continuation-tracer` and is suitable for
  * registering via `setContinuationTracer(...)`.
@@ -150,9 +140,8 @@ export function createContinuationOtelTracerAdapter(): ContinuationTracer {
         otelOpts.attributes = mappedAttrs;
       }
 
-      // Parent-stitch via traceparent when the caller carried one
-      // through the continuation hop. This is the load-bearing
-      // observable payoff of Slice 3.
+      // Parent-stitch via traceparent when the caller carried one through the
+      // continuation hop.
       if (options?.traceparent) {
         const parsed: DiagnosticTraceContext | undefined = parseDiagnosticTraceparent(
           options.traceparent,

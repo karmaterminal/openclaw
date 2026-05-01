@@ -26,7 +26,7 @@ export type TaskFlowRecord = {
   syncMode: TaskFlowSyncMode;
   ownerKey: string;
   /**
-   * Originating continuation chain id (F-37-015).
+   * Originating continuation chain id.
    *
    * Set-once at create-time; subsequent hops within the same chain do NOT
    * update this column (UPDATE-on-hop deferred-by-design). Audit walks key

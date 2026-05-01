@@ -145,8 +145,6 @@ export type ContinuationChainSource = {
  *
  * Accepts any shape compatible with `ContinuationChainSource`, including
  * `SessionEntry` (structural compatibility).
- *
- * Ref: karmaterminal/openclaw#216.
  */
 export function loadContinuationChainState(
   source: ContinuationChainSource | undefined,

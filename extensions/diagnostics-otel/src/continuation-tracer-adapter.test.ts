@@ -1,8 +1,6 @@
-// #334 Slice 3 — adapter unit tests.
-//
 // These tests pin the adapter behavior at the shim contract level so that
 // any future change to the OTEL `@opentelemetry/api` surface that breaks
-// the mapping is caught at unit-test time, not at swim-row tempo time.
+// the mapping is caught at unit-test time.
 //
 // Mocks `@opentelemetry/api` minimally: a recording tracer that captures
 // every `startSpan` call (name, options, parent context) and returns a

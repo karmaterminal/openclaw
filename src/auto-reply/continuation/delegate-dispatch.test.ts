@@ -63,7 +63,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("hedge timer ref/handle cleanup (openclaw#189)", () => {
+describe("hedge timer ref/handle cleanup", () => {
   it("releases the timer ref + handle after a natural hedge fire", async () => {
     const sessionKey = "session-hedge-natural";
 

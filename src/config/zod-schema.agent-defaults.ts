@@ -287,9 +287,8 @@ export const AgentDefaultsSchema = z
     continuation: z
       .object({
         enabled: z.boolean().optional(),
-        // karmaterminal/openclaw#215: bounds tightened to match semantic
-        // expectations. Clamp helpers in continuation/config.ts still apply
-        // at read time as a belt-and-braces layer.
+        // Bounds are tightened to match semantic expectations. Clamp helpers
+        // in continuation/config.ts still apply at read time as a belt-and-braces layer.
         defaultDelayMs: z.number().int().nonnegative().optional(),
         minDelayMs: z.number().int().nonnegative().optional(),
         maxDelayMs: z.number().int().nonnegative().optional(),
@@ -305,8 +304,8 @@ export const AgentDefaultsSchema = z
       .strict()
       .refine(
         (cfg) => {
-          // karmaterminal/openclaw#215: min ≤ default ≤ max when all set.
-          // Any omitted field skips its side of the comparison.
+          // min <= default <= max when all are set. Any omitted field skips
+          // its side of the comparison.
           const min = cfg.minDelayMs;
           const def = cfg.defaultDelayMs;
           const max = cfg.maxDelayMs;

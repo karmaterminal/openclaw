@@ -1,22 +1,5 @@
-// #334 Slice 2 chunk 5b — integration test pinning the runner-side
-// `continuation.delegate.fire` span emission contract at the timer-callback
-// seam (BEFORE `takeDelayedContinuationReservation`).
-//
-// Per memo `docs/design/334-slice2-chunk5b-delegate-fire-memo.md`:
-//   - bracket-delegate timer fire → exactly one `continuation.delegate.fire`
-//   - tool-delegate timer fire → exactly one `continuation.delegate.fire`
-//   - `fire.deferred_ms` non-negative, roughly matches `delay.ms`
-//   - `chain.id` matches the dispatch span's `chain.id` (trace stitches)
-//   - reservation-missing path: timer-fire emits AND sibling
-//     `continuation.disabled (reason=reservation.missing)` emits, both
-//     sharing chain.id
-//
-// The harness mirrors the chunk-2/4/5a integration tests: install a
-// recording tracer via `setContinuationTracer`, drive the runner with
-// either a `[[CONTINUE_DELEGATE:...]]` payload (bracket path) or a
-// `enqueuePendingDelegate(...)` injection inside the model mock (tool
-// path), then `vi.advanceTimersByTimeAsync` past the clamped delay to
-// fire the timer.
+// Integration test pinning the runner-side `continuation.delegate.fire` span
+// emission contract at the timer-callback seam before reservation lookup.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -333,7 +316,7 @@ async function runDelegateTurn(
   });
 }
 
-describe("runReplyAgent :: continuation.delegate.fire span (Slice 2 chunk 5b)", () => {
+describe("runReplyAgent :: continuation.delegate.fire span", () => {
   it("bracket-delegate timer fire emits exactly one `continuation.delegate.fire` with chain.id matching the dispatch span", async () => {
     vi.useFakeTimers();
     const { tracer, spans } = createRecordingTracer();

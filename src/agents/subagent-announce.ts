@@ -210,9 +210,8 @@ async function drainChildContinuationQueue(params: {
   try {
     cfg = subagentAnnounceDeps.loadConfig();
   } catch (err) {
-    // karmaterminal/openclaw#208: config-load failure here silently drops
-    // the child's delegate drain — that's an F7-class stall at a different
-    // entry point. Surface it via the file's existing defaultRuntime.error
+    // Config-load failure here silently drops the child's delegate drain.
+    // Surface it via the file's existing defaultRuntime.error
     // pattern so operators can see why a chain stopped after a subagent
     // settled.
     defaultRuntime.error?.(
@@ -269,11 +268,11 @@ async function drainChildContinuationQueue(params: {
       maxChainLength: dispatchConfig.maxChainLength,
     });
 
-    // r3164380565: persist the advanced child chain state after delegate
-    // drain. Without this, child `continuationChainCount/StartedAt/Tokens`
+    // Persist the advanced child chain state after delegate drain. Without
+    // this, child `continuationChainCount/StartedAt/Tokens`
     // never advances after accepted spawns; later drains reload stale
     // counters and under-enforce `maxChainLength`. Mirror the agent-runner
-    // and followup-runner persist patterns from `f26a86535f`.
+    // and followup-runner persist patterns.
     if (dispatchResult && dispatchResult.dispatched > 0) {
       const advanced = dispatchResult.chainState;
       const childEntryForWrite = childEntry as

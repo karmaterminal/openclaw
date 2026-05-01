@@ -347,22 +347,21 @@ export function createFollowupRunner(params: {
                           // usage is 0% and tripping the 70% floor with a
                           // misleading reason. Main-session callers (see
                           // agent-runner-execution.ts) supply the real ratio
-                          // from sessionTokenInfo. Refs karmaterminal/openclaw#222.
+                          // from sessionTokenInfo.
                           return null;
                         },
                         triggerCompaction: async (request) => {
                           try {
                             const { compactEmbeddedPiSession } =
                               await import("../../agents/pi-embedded-runner/compact.queued.js");
-                            // bug karmaterminal/openclaw#639: thread the session's active provider/model through so
-                            // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL
-                            // (openai/gpt-5.4) which nobody has auth for.
+                            // Thread the session's active provider/model through so
+                            // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL.
                             // Use inner-scope provider/model from the fallback
                             // dispatcher (line 207) so a fallback-selected model
                             // gets the compaction request, not the persisted primary
                             // (which may be in cooldown — would re-fail immediately).
-                            // bug karmaterminal/openclaw#639 (scribe follow-up): thread authProfileId only
-                            // when the inner-scope provider matches the persisted primary
+                            // Thread authProfileId only when the inner-scope
+                            // provider matches the persisted primary
                             // (the persisted profile is keyed to the primary). On fallback
                             // to a different provider, leave undefined so resolveEmbedded-
                             // CompactionTarget picks the default profile for that provider.
@@ -381,9 +380,9 @@ export function createFollowupRunner(params: {
                               trigger: request.trigger,
                               diagId: request.diagId,
                             });
-                            // bug karmaterminal/openclaw#639: honor real result instead of unconditionally claiming
-                            // success — otherwise volitional-compaction telemetry lies and the
-                            // failure is invisible to the caller.
+                            // Honor the real result instead of unconditionally
+                            // claiming success; otherwise compaction telemetry lies
+                            // and the failure is invisible to the caller.
                             return {
                               ok: result.ok,
                               compacted: result.compacted,
@@ -473,14 +472,14 @@ export function createFollowupRunner(params: {
             agentThreadId: queued.originatingThreadId ?? undefined,
           },
           maxChainLength: resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
-          // r3163899581: hedge re-arm must see fresh chain state.
+          // Hedge re-arm must see fresh chain state.
           loadFreshChainState: () => loadContinuationChainState(tailEntry, 0),
         });
-        // r3163899586: persist the advanced chain state back to the session
+        // Persist the advanced chain state back to the session
         // entry after dispatch. Without this the followup-path counter never
         // advances and `maxChainLength` enforcement breaks across hops.
         //
-        // r3164418106: persist even when `dispatched === 0`. The chainState
+        // Persist even when `dispatched === 0`. The chainState
         // returned from `dispatchToolDelegates` carries the fresh
         // `accumulatedChainTokens` from `loadContinuationChainState(tailEntry,
         // turnTokens)` regardless of whether any delegate spawned. Guarding on
@@ -494,8 +493,8 @@ export function createFollowupRunner(params: {
             startedAt: dispatchResult.chainState.chainStartedAt,
             tokens: dispatchResult.chainState.accumulatedChainTokens,
           });
-          // #431: the in-memory mutation above is orphaned for disk. The
-          // followup path's only durable writer is `persistRunSessionUsage`
+          // The in-memory mutation above is orphaned for disk. The followup
+          // path's only durable writer is `persistRunSessionUsage`
           // → `updateSessionStoreEntry`, which `loadSessionStore(...,
           // skipCache: true)` and patches usage fields only —
           // `continuationChain*` is not in that patch shape. Without an
@@ -503,8 +502,8 @@ export function createFollowupRunner(params: {
           // never reaches disk; cost-cap and `maxChainLength` enforcement
           // see stale values across cache eviction or gateway restart.
           //
-          // Mirrors `agent-runner.ts`'s post-r3164418100 shape (~line 1310):
-          // explicit `updateSessionStore` with `resolveSessionStoreEntry`
+          // Mirror agent-runner's explicit `updateSessionStore` with
+          // `resolveSessionStoreEntry`
           // legacy-key cleanup so the chain fields land alongside the
           // disk-canonical entry.
           if (storePath && sessionKey) {

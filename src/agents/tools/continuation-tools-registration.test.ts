@@ -1,4 +1,3 @@
-// Surface 1 descriptor coverage for WORKORDER-rebase-20260424-v2.md, tracked in karmaterminal/openclaw#336.
 import { describe, expect, it, vi } from "vitest";
 import { createOpenClawTools } from "../openclaw-tools.js";
 import "../test-helpers/fast-core-tools.js";

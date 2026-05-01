@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadContinuationChainState } from "./state.js";
 
-describe("loadContinuationChainState (openclaw#216)", () => {
+describe("loadContinuationChainState", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-19T12:00:00Z"));

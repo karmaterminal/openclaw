@@ -52,7 +52,11 @@ describe("classifyCompactionReason", () => {
     ).toBe("guard_blocked");
   });
 
-  it("classifies 'Unknown model: ...' as unknown_model (bug karmaterminal/openclaw#639)", () => {
+  it("keeps unclassified provider errors in the stable unknown bucket", () => {
+    expect(classifyCompactionReason("No API provider registered for api: ollama")).toBe("unknown");
+  });
+
+  it("classifies 'Unknown model: ...' as unknown_model", () => {
     // surfaces when DEFAULT_PROVIDER/DEFAULT_MODEL fallback hits an unsupported model
     // — e.g. volitional compaction without provider/model passed routes to openai/gpt-5.4
     expect(classifyCompactionReason("Unknown model: openai/gpt-5.4")).toBe("unknown_model");

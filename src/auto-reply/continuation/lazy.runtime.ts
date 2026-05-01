@@ -5,10 +5,7 @@
 // directly importing `./config.js`, `./delegate-store.js`, etc. That
 // routes every dynamic continuation load through a single module boundary
 // which the bundler can dedupe with the static graph — eliminating the
-// static+dynamic import mix that has bitten this tree multiple times
-// (karmaterminal/openclaw-bootstrap#584 silently-dropped continue_work
-// tool calls; `tsdown.config.ts` `coreDistEntries` promotion was the
-// first mitigation).
+// static+dynamic import mix that has bitten this tree multiple times.
 //
 // Rule: never statically import from this file. A static `import`
 // defeats the boundary's purpose by re-entering the underlying modules
@@ -17,8 +14,6 @@
 //
 // Registered as a tsdown bundler entry:
 // `auto-reply/continuation/lazy.runtime` in `tsdown.config.ts`.
-//
-// Ref: karmaterminal/openclaw#220.
 
 export { resolveContinuationRuntimeConfig } from "./config.js";
 export { checkContextPressure, clearContextPressureState } from "./context-pressure.js";

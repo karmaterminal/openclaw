@@ -1,13 +1,5 @@
-// #334 Slice 2 chunk 3 — integration test pinning the runner-side
-// `continuation.work` span emission contract.
-//
-// 🩸's required shape (PR #382 review msg 1498335310457606275):
-//   - one integration test proving accepted WORK emits exactly one
-//     `continuation.work`
-//   - asserts stable `chain.id`
-//   - asserts `chain.step.remaining`
-//   - asserts no emission on the cap-reject path in this chunk's
-//     test surface
+// Integration test pinning the runner-side `continuation.work` span emission
+// contract.
 //
 // We install a recording tracer via `setContinuationTracer`, drive the
 // runner with CONTINUE_WORK over multiple chain steps, and assert:
@@ -336,7 +328,7 @@ async function runWorkTurn(
   });
 }
 
-describe("runReplyAgent :: continuation.work span (Slice 2 chunk 2)", () => {
+describe("runReplyAgent :: continuation.work span", () => {
   it("emits exactly one `continuation.work` span on accepted WORK with UUIDv7 chain.id and clamped chain.step.remaining", async () => {
     vi.useFakeTimers();
     const { tracer, spans } = createRecordingTracer();
@@ -450,9 +442,8 @@ describe("runReplyAgent :: continuation.work span (Slice 2 chunk 2)", () => {
     const workSpans = spans.filter((s) => s.name === "continuation.work");
     expect(workSpans).toHaveLength(0);
 
-    // #334 Slice 2 chunk 4: the chain-cap reject branch now emits exactly
-    // one `continuation.disabled` span (replaces the chunk-2 placeholder
-    // "spans.length === 0" expectation). Span carries `disabled.reason =
+    // The chain-cap reject branch emits exactly one `continuation.disabled`
+    // span. Span carries `disabled.reason =
     // cap.chain` and `signal.kind = bracket-work` (CONTINUE_WORK signal).
     expect(spans).toHaveLength(1);
     expect(spans[0]).toMatchObject({

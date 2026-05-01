@@ -6,9 +6,6 @@ import { normalizeLowercaseStringOrEmpty } from "../../shared/string-coerce.js";
  * which forced consumers to substring-match on free-form messages.
  *
  * Add new variants here when the classifier learns a new shape.
- *
- * Ref: karmaterminal/openclaw#214 (closed-union refactor) and CLAUDE.md
- *      *"Prefer closed error-code unions for recoverable runtime decisions."*
  */
 export type CompactionReasonCode =
   | "unknown"
@@ -79,8 +76,8 @@ export function classifyCompactionReason(reason?: string): CompactionReasonCode 
     return "no_real_conversation_messages";
   }
   if (text.includes("unknown model")) {
-    // bug karmaterminal/openclaw#639: surfaced when DEFAULT_PROVIDER/DEFAULT_MODEL fallback hits
-    // a model nobody has auth for (e.g. volitional compaction without provider/model passed).
+    // Surfaced when DEFAULT_PROVIDER/DEFAULT_MODEL fallback hits an unsupported
+    // model, e.g. volitional compaction without provider/model passed.
     return "unknown_model";
   }
   if (text.includes("below threshold")) {

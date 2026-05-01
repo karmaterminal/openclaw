@@ -1,13 +1,11 @@
 /**
  * Classifier-code emission on volitional-compaction warn / error paths.
  *
- * Pins the karmaterminal/openclaw#205 behavior: every journal line written
- * on the resolved-failure and background-error branches carries the
+ * Pins that every journal line written on the resolved-failure and
+ * background-error branches carries the
  * structured `code=<classifyCompactionReason(...)>` field alongside the
  * raw reason. Journal queries and /status drill-downs shouldn't depend
  * on raw-string grep for the failure taxonomy.
- *
- * Ref: karmaterminal/openclaw#205.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -66,7 +64,7 @@ async function flushMicrotasks(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-describe("request_compaction tool — classifier emission (openclaw#205)", () => {
+describe("request_compaction tool — classifier emission", () => {
   beforeEach(() => {
     _resetGuardState();
     _resetVolitionalCounts();

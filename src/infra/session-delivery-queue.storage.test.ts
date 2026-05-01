@@ -1,4 +1,3 @@
-// Surface 2 descriptor coverage for WORKORDER-rebase-20260424-v2.md, tracked in karmaterminal/openclaw#336.
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

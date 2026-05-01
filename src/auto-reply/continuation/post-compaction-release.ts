@@ -15,8 +15,6 @@
  * lazy.runtime owns per-process singleton state and must not be statically
  * imported anywhere in src/ (boundary rule); delegate-dispatch is heavy and
  * is loaded only when delegates are actually staged.
- *
- * See: openclaw#211 (test post-compaction lifecycle release path).
  */
 
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";

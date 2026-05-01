@@ -259,7 +259,7 @@ describe("system events (session routing)", () => {
   });
 });
 
-describe("drainFormattedSystemEvents :: continuation.queue.drain span emission (#334 chunk 6a)", () => {
+describe("drainFormattedSystemEvents :: continuation.queue.drain span emission", () => {
   beforeEach(() => {
     resetSystemEventsForTest();
   });
