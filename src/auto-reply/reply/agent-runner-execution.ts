@@ -1823,10 +1823,16 @@ export async function runAgentTurnWithFallback(params: {
   ) {
     const blockedMarker = "⛔ Session blocked: ";
     runResult.payloads = runResult.payloads.map((payload) => {
-      if (!payload.isError) return payload;
+      if (!payload.isError) {
+        return payload;
+      }
       const text = normalizeOptionalString(payload.text);
-      if (!text) return payload;
-      if (text.startsWith(blockedMarker)) return payload;
+      if (!text) {
+        return payload;
+      }
+      if (text.startsWith(blockedMarker)) {
+        return payload;
+      }
       return { ...payload, text: `${blockedMarker}${text}` };
     });
   }
