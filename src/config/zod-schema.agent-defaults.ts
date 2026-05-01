@@ -282,13 +282,6 @@ export const AgentDefaultsSchema = z
     continuation: z
       .object({
         enabled: z.boolean().optional(),
-        // karmaterminal/openclaw#423 (codex review r3164044097): one-cycle
-        // upgrade-compat shim. The `taskFlowDelegates` gate was removed when
-        // TaskFlow became the sole substrate; existing configs in the wild
-        // may still set this key. Accept-and-ignore for one release rather
-        // than rejecting valid old configs at .strict() validate. Remove in
-        // the next release after a fleet `strip-deprecated-keys.py` sweep.
-        taskFlowDelegates: z.unknown().optional(),
         // karmaterminal/openclaw#215: bounds tightened to match semantic
         // expectations. Clamp helpers in continuation/config.ts still apply
         // at read time as a belt-and-braces layer.
