@@ -1,14 +1,22 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
+import {
+  normalizeCompactionTrigger,
+  type CompactionCounterAttribution,
+} from "./compaction-attribution.js";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 import { makeZeroUsageSnapshot } from "./usage.js";
 
-export function handleCompactionStart(ctx: EmbeddedPiSubscribeContext) {
+export function handleCompactionStart(
+  ctx: EmbeddedPiSubscribeContext,
+  evt?: AgentEvent & { reason?: unknown },
+) {
+  const trigger = normalizeCompactionTrigger(evt?.reason);
   ctx.state.compactionInFlight = true;
   ctx.state.livenessState = "paused";
   ctx.ensureCompactionPromise();
-  ctx.log.debug(`embedded run compaction start: runId=${ctx.params.runId}`);
+  ctx.log.debug(`embedded run compaction start: runId=${ctx.params.runId} trigger=${trigger}`);
   emitAgentEvent({
     runId: ctx.params.runId,
     stream: "compaction",
@@ -41,9 +49,16 @@ export function handleCompactionStart(ctx: EmbeddedPiSubscribeContext) {
 
 export function handleCompactionEnd(
   ctx: EmbeddedPiSubscribeContext,
-  evt: AgentEvent & { willRetry?: unknown; result?: unknown; aborted?: unknown },
+  evt: AgentEvent & {
+    reason?: unknown;
+    willRetry?: unknown;
+    result?: unknown;
+    aborted?: unknown;
+    errorMessage?: unknown;
+  },
 ) {
   ctx.state.compactionInFlight = false;
+  const trigger = normalizeCompactionTrigger(evt.reason);
   const willRetry = Boolean(evt.willRetry);
   // Increment counter whenever compaction actually produced a result,
   // regardless of willRetry.  Overflow-triggered compaction sets willRetry=true
@@ -51,18 +66,34 @@ export function handleCompactionEnd(
   // and context was trimmed — the counter must reflect that.  (#38905)
   const hasResult = evt.result != null;
   const wasAborted = Boolean(evt.aborted);
+  const compactionCountBefore = ctx.getCompactionCount();
+  let compactionCountAfter = compactionCountBefore;
   if (hasResult && !wasAborted) {
     ctx.incrementCompactionCount();
-    const observedCompactionCount = ctx.getCompactionCount();
+    compactionCountAfter = ctx.getCompactionCount();
     void reconcileSessionStoreCompactionCountAfterSuccess({
       sessionKey: ctx.params.sessionKey,
       agentId: ctx.params.agentId,
       configStore: ctx.params.config?.session?.store,
-      observedCompactionCount,
+      observedCompactionCount: compactionCountAfter,
+      attribution: {
+        runId: ctx.params.runId,
+        trigger,
+        outcome: "compacted",
+      },
     }).catch((err) => {
       ctx.log.warn(`late compaction count reconcile failed: ${String(err)}`);
     });
   }
+  const completed = hasResult && !wasAborted;
+  const outcome = completed ? "compacted" : wasAborted ? "aborted" : "skipped";
+  const compactionCountDelta = compactionCountAfter - compactionCountBefore;
+  ctx.log.debug(
+    `[compaction-attribution] end runId=${ctx.params.runId} sessionKey=${ctx.params.sessionKey ?? ctx.params.sessionId} ` +
+      `trigger=${trigger} outcome=${outcome} willRetry=${willRetry} ` +
+      `compactionCount.before=${compactionCountBefore} compactionCount.after=${compactionCountAfter} ` +
+      `compactionCount.delta=${compactionCountDelta}`,
+  );
   if (willRetry) {
     ctx.noteCompactionRetry();
     ctx.resetForCompactionRetry();
@@ -77,11 +108,11 @@ export function handleCompactionEnd(
   emitAgentEvent({
     runId: ctx.params.runId,
     stream: "compaction",
-    data: { phase: "end", willRetry, completed: hasResult && !wasAborted },
+    data: { phase: "end", willRetry, completed },
   });
   void ctx.params.onAgentEvent?.({
     stream: "compaction",
-    data: { phase: "end", willRetry, completed: hasResult && !wasAborted },
+    data: { phase: "end", willRetry, completed },
   });
 
   // Run after_compaction plugin hook (fire-and-forget)
@@ -110,6 +141,7 @@ export async function reconcileSessionStoreCompactionCountAfterSuccess(params: {
   configStore?: string;
   observedCompactionCount: number;
   now?: number;
+  attribution?: CompactionCounterAttribution;
 }): Promise<number | undefined> {
   const { reconcileSessionStoreCompactionCountAfterSuccess: reconcile } =
     await import("./pi-embedded-subscribe.handlers.compaction.runtime.js");
