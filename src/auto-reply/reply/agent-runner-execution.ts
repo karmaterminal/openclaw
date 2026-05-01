@@ -2152,6 +2152,39 @@ export async function runAgentTurnWithFallback(params: {
     }
   }
 
+  // #475: surface terminal blocked livenessState as a channel-visible marker.
+  // The embedded runner sets `meta.livenessState = "blocked"` on terminal
+  // give-up paths (compaction-failure cap, strict-agentic blocked, role-ordering
+  // give-up, etc.) but channel consumers never read this metadata. Operators
+  // could not distinguish a normal error reply from a session that gave up
+  // after exhausting compaction retries. Inject a one-line marker prefix on the
+  // outbound error payload(s) when liveness is blocked AND the payload hasn't
+  // already been auto-recovered or replaced by a more specific marker.
+  // (B-shape cascade-phase observability is tracked separately as a follow-up
+  // PR — it requires a new typing/status protocol surface.)
+  const finalLivenessState = runResult?.meta?.livenessState;
+  if (
+    runResult &&
+    finalLivenessState === "blocked" &&
+    Array.isArray(runResult.payloads) &&
+    runResult.payloads.length > 0
+  ) {
+    const blockedMarker = "⛔ Session blocked: ";
+    runResult.payloads = runResult.payloads.map((payload) => {
+      if (!payload.isError) {
+        return payload;
+      }
+      const text = normalizeOptionalString(payload.text);
+      if (!text) {
+        return payload;
+      }
+      if (text.startsWith(blockedMarker)) {
+        return payload;
+      }
+      return { ...payload, text: `${blockedMarker}${text}` };
+    });
+  }
+
   // Surface rate limit and overload errors that occur mid-turn (after tool
   // calls) instead of silently returning an empty response. See #36142.
   // Only applies when the assistant produced no valid (non-error) reply text,
