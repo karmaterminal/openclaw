@@ -818,6 +818,62 @@ describe("runAgentTurnWithFallback", () => {
     expect(result.kind).toBe("success");
   });
 
+  it("surfaces blocked lifecycle liveness through the channel block surface", async () => {
+    const onBlockReply = vi.fn(async () => {});
+    state.runEmbeddedPiAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+      await params.onAgentEvent?.({
+        stream: "lifecycle",
+        data: {
+          phase: "error",
+          livenessState: "blocked",
+          error: "compaction failed",
+        },
+      });
+      return {
+        payloads: [{ text: "terminal compaction failure" }],
+        meta: { livenessState: "blocked" },
+      };
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback(
+      createMinimalRunAgentTurnParams({
+        opts: { onBlockReply } satisfies GetReplyOptions,
+      }),
+    );
+
+    expect(result.kind).toBe("success");
+    expect(onBlockReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Agent liveness: blocked"),
+        isError: true,
+        replyToCurrent: true,
+      }),
+    );
+    if (result.kind === "success") {
+      expect(result.runResult.payloads?.[0]?.text).toBe("terminal compaction failure");
+    }
+  });
+
+  it("injects blocked liveness into final payloads when no block surface is available", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "terminal compaction failure" }],
+      meta: { livenessState: "blocked" },
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback(createMinimalRunAgentTurnParams());
+
+    expect(result.kind).toBe("success");
+    if (result.kind === "success") {
+      expect(result.runResult.payloads?.[0]).toMatchObject({
+        text: expect.stringContaining("Agent liveness: blocked"),
+        isError: true,
+      });
+      expect(result.runResult.payloads?.[1]?.text).toBe("terminal compaction failure");
+    }
+  });
+
   it("classifies final GPT-5 terminal-empty results instead of silently succeeding", async () => {
     state.runWithModelFallbackMock.mockImplementationOnce(async (params: FallbackRunnerParams) => {
       const result = { payloads: [], meta: {} };
