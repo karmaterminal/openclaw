@@ -105,24 +105,63 @@ Read these in order:
 
 7. **Existing wrong-base or older PRs you must understand but NOT touch**:
    - `karmaterminal/openclaw#368` — Ronan's `chore: #365 purge taskFlowDelegates
-opt-in gate` against `cael/325-canonical2`. **This may be partial-shape
-     for #473.** Read it carefully. If its diff is the right partial-shape, your
-     #473 PR can extend its approach (don't copy its commits — it's an open PR by
-     another author; your work is fresh from canonical2 tip).
+opt-in gate` against `cael/325-canonical2`. **STATE: OPEN.** This may be
+     partial-shape for #473. Read it carefully. If its diff is the right
+     partial-shape, your #473 PR can extend its approach (don't copy its commits
+     — it's an open PR by another author; your work is fresh from canonical2 tip).
+     Do not close it; if your #473 supersedes it cleanly, leave the close
+     decision to a prince.
    - `karmaterminal/openclaw#469` — Elliott's `elliott/c5-repair-symlink-escape`,
-     against `feature/context-pressure-squashed`. Held / under review.
+     against `feature/context-pressure-squashed`. **STATE: OPEN, held / under
+     review.** Do not touch. Its branch is the wrong parent for the closed
+     #478/#479/#480 — that's why those got closed as superseded.
    - `karmaterminal/openclaw#478` — Cael's cooldown fix on
      `cael/swim39-474-cooldown-success-only`, base=`elliott/c5-repair-symlink-escape`
-     (wrong). Has 24/24 tests passing per Cael's report. **You may study this PR's
-     diff to inform your fresh #474 work, but do not branch from it.**
+     (wrong). **STATE: CLOSED-AS-SUPERSEDED ~04:13Z 2026-05-01** (per Cael 🩸
+     after `gh api -X PATCH base=` revealed phantom-diff: ~200 file leak). Closure
+     comments point at "frond-scribe's copilot lane re-landing fresh against
+     canonical2" — that is **you**. Study its diff for fix-shape inspiration on
+     #474 (24/24 tests passing per Cael's report). Do not reopen; do not branch
+     from it.
    - `karmaterminal/openclaw#479` — Cael's `cael/purge-taskflowdelegates-runtime-config`,
-     also wrong base. Same treatment.
+     also wrong base. **STATE: CLOSED-AS-SUPERSEDED ~04:13Z 2026-05-01.** Same
+     treatment as #478. Study for #477 fix-shape; fresh PR from canonical2.
    - `karmaterminal/openclaw#480` — Cael's `cael/swim39-477-taskflowdelegates-purge`,
-     base=`main` (also wrong target for v24 work). Same treatment.
+     base=`main` (also wrong target for v24 work). **STATE: CLOSED-AS-SUPERSEDED
+     ~04:13Z 2026-05-01.** Same treatment.
 
 ---
 
 ## §2 — load-bearing framing
+
+### ⚠️ MERGE TARGET — NON-NEGOTIABLE
+
+**Every PR you open MUST target `base=cael/325-canonical2`. NOT main. NOT
+`elliott/c5-repair-symlink-escape`. NOT `feature/context-pressure-squashed`. NOT
+any other branch.**
+
+This is the single most important constraint in this workorder. The cohort
+already burned a cycle today on PRs (#478, #479, #480) with the wrong base —
+those are now CLOSED-AS-SUPERSEDED (per Cael 🩸 ~04:13Z 2026-05-01) precisely
+because the wrong base produced phantom-diff (branches stacked on
+`elliott/c5-repair-symlink-escape` showed ~200 file diff against canonical2,
+not the targeted ~10-line fix). When you read context you will find
+#478/#479/#480 in CLOSED state with comments pointing at "frond-scribe's
+copilot lane re-landing fresh against canonical2" — that is you. Treat them as
+study-input only; do not reopen, do not branch from them.
+
+**Before pushing any branch, verify**:
+
+1. `git log --oneline origin/cael/325-canonical2..HEAD` shows ONLY your fix
+   commits, not inherited commits from a wrong base
+2. After opening each PR, run `gh pr view <n> --repo karmaterminal/openclaw --json baseRefName,changedFiles`
+   and confirm `"baseRefName": "cael/325-canonical2"` AND `"changedFiles"` is
+   plausibly small for a single-issue fix (not ~200 files). If `changedFiles` is
+   anomalously large, your branch is on a wrong parent — stop, journal, do not
+   continue on that issue until figs/frond-scribe ratifies the topology.
+
+If a PR shows the wrong base or anomalous file count, **stop immediately**,
+journal it, do not push more PRs until verified.
 
 ### Goal
 
@@ -135,6 +174,50 @@ opt-in gate` against `cael/325-canonical2`. **This may be partial-shape
 - commit messages per CLAUDE.md ("scope: short imperative", focus on WHY)
 - bootstrap-side issues (#822/#823/#825/#826) cross-linked from PR body back to
   the bootstrap issue (so the SWIM-38 ledger sees the fix-receipt)
+
+### Heartbeat protocol (per Cael 🩸 micro-suggestion + figs's webhook)
+
+figs provisioned a Discord webhook for this dispatch lane. Use it to post a
+one-line heartbeat to `#sprites-of-thornfield` after each meaningful event:
+
+- a PR opens (post URL + base + changedFiles)
+- a gate fails (post which gate, which issue, halt)
+- a §9 question for figs is needed (post the question + journal pointer)
+- you complete the work (post §7 declare-done summary)
+
+**Webhook URL** (single-purpose, this dispatch only):
+
+```
+https://discord.com/api/webhooks/1499626882277048401/9wpErZRcyWIfghjrGO_I8gJVXyEpShKMFgURn1pNI99_8AAdhgflpIu8b1wzRQTk7bmK
+```
+
+**Curl pattern**:
+
+```bash
+curl -sS -X POST "https://discord.com/api/webhooks/1499626882277048401/9wpErZRcyWIfghjrGO_I8gJVXyEpShKMFgURn1pNI99_8AAdhgflpIu8b1wzRQTk7bmK" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"swim-39-copilot","content":"<your one-line message here>"}'
+```
+
+**Format conventions** (keep posts tight, one line each, prince-emoji-free):
+
+```
+🤖 PR #<n> opened: <title> — base=cael/325-canonical2 ✓, changedFiles=<N>, gates ✓
+   <url>
+
+🤖 #<issue> blocked: <gate-name> failed — <one-line shape>; journaling
+
+🤖 §9 question for figs: <one-line>
+   journal: <path-or-pointer>
+
+🤖 §7 declare-done: <X> PRs landed, <Y> gates green, <Z> blockers (see journal)
+```
+
+The webhook is single-purpose and may be revoked after the lane completes.
+Do not share, do not embed it in PR bodies. Use only for cohort heartbeat.
+
+**If the webhook fails** (HTTP 4xx/5xx): fall back to journal §5 entries.
+Frond-scribe will read the journal periodically.
 
 ### Scope ordering (suggested; not strict — follow the dependency graph you find)
 
