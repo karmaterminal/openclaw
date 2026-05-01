@@ -136,4 +136,9 @@ describe("continuation config schema validation", () => {
     const result = parseContinuation({ unknownKey: 42 });
     expect(result.success).toBe(false);
   });
+
+  it("rejects the legacy TaskFlow delegate gate config", () => {
+    const result = parseContinuation({ ["task" + "Flow" + "Delegates"]: true });
+    expect(result.success).toBe(false);
+  });
 });

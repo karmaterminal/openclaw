@@ -3,8 +3,8 @@
  * `./continuation/delegate-store.js`.
  *
  * Every delegate operation is backed by TaskFlow (SQLite persistence).
- * The volatile in-memory Map and the `taskFlowDelegatesEnabled` gate
- * have been removed. TaskFlow is the only substrate.
+ * The volatile in-memory Map and legacy config gate have been removed.
+ * TaskFlow is the only substrate.
  *
  * This file exists so that existing import paths
  * (`../continuation-delegate-store.js`) keep working without a mass
