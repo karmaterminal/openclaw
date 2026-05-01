@@ -137,22 +137,3 @@ describe("continuation config schema validation", () => {
     expect(result.success).toBe(false);
   });
 });
-
-// karmaterminal/openclaw#423 (codex review r3164044097): one-cycle compat shim
-// for legacy `taskFlowDelegates` continuation key. Remove this block in the
-// next release once the schema field is removed.
-describe("continuation legacy compat (#423 r3164044097)", () => {
-  it("accepts legacy taskFlowDelegates=true without error", () => {
-    const result = parseContinuation({ taskFlowDelegates: true });
-    expect(result.success).toBe(true);
-  });
-
-  it("accepts legacy taskFlowDelegates alongside live keys", () => {
-    const result = parseContinuation({
-      taskFlowDelegates: { foo: "bar" },
-      enabled: true,
-      defaultDelayMs: 1000,
-    });
-    expect(result.success).toBe(true);
-  });
-});
