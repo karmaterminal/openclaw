@@ -752,6 +752,55 @@ describe("runAgentTurnWithFallback", () => {
     }
   });
 
+  it("surfaces a standalone blocked-liveness notice when livenessState is blocked and no error payload is present (#475+#487)", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [],
+      meta: {
+        livenessState: "blocked",
+      },
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback(createMinimalRunAgentTurnParams());
+
+    expect(result.kind).toBe("success");
+    if (result.kind === "success") {
+      expect(result.runResult.payloads).toEqual([
+        {
+          text: "⚠️ Agent liveness: blocked. The run cannot make progress; try again or start a fresh conversation if this repeats.",
+          isError: true,
+        },
+      ]);
+    }
+  });
+
+  it("does not prepend the standalone blocked-liveness notice when an error payload is already present (#475+#487)", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [
+        {
+          text: "some upstream error",
+          isError: true,
+        },
+      ],
+      meta: {
+        livenessState: "blocked",
+      },
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback(createMinimalRunAgentTurnParams());
+
+    expect(result.kind).toBe("success");
+    if (result.kind === "success") {
+      expect(result.runResult.payloads).toEqual([
+        {
+          text: "⛔ Session blocked: some upstream error",
+          isError: true,
+        },
+      ]);
+    }
+  });
+
   it("surfaces model capacity errors from pre-reply CLI failures", async () => {
     state.runWithModelFallbackMock.mockRejectedValueOnce(
       new Error("Selected model is at capacity. Please try a different model."),

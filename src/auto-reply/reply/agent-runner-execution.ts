@@ -2165,7 +2165,21 @@ export async function runAgentTurnWithFallback(params: {
   // overflow errors were returned as embedded error payloads.
   const finalEmbeddedError = runResult?.meta?.error;
   const hasPayloadText = runResult?.payloads?.some((p) => normalizeOptionalString(p.text));
-  if (runResult?.meta?.livenessState === "blocked" && !didSurfaceBlockedLivenessState) {
+  // #475+#487 reconcile (option c): #487 prepends a standalone blocked-liveness
+  // notice payload; #475 (#481) prefixes existing error payloads with a blocked
+  // marker. Both fire on `livenessState === "blocked"`, producing double-emit
+  // (notice + prefixed-error) when both an error payload and blocked liveness
+  // are present. Tests written against #475's contract expect single-payload
+  // outcomes. Gate #487's prepend on the absence of an error payload so the
+  // notice surfaces only as the silent-blocked fallback (no error to prefix);
+  // when an error payload is present, #475's prefix carries the blocked-state
+  // signal alone.
+  const hasErrorPayload = runResult?.payloads?.some((p) => p.isError) ?? false;
+  if (
+    runResult?.meta?.livenessState === "blocked" &&
+    !didSurfaceBlockedLivenessState &&
+    !hasErrorPayload
+  ) {
     runResult.payloads = [
       {
         text: BLOCKED_LIVENESS_NOTICE_TEXT,
@@ -2215,6 +2229,13 @@ export async function runAgentTurnWithFallback(params: {
         return payload;
       }
       if (text.startsWith(blockedMarker)) {
+        return payload;
+      }
+      // #475+#487 reconcile: skip the standalone blocked-liveness notice
+      // sentinel so it surfaces unprefixed. The notice is itself a blocked-
+      // state marker; prefixing it produces a "⛔ Session blocked: ⚠️ Agent
+      // liveness: blocked..." chimera that fails the single-marker contract.
+      if (text.startsWith(BLOCKED_LIVENESS_NOTICE_TEXT)) {
         return payload;
       }
       return { ...payload, text: `${blockedMarker}${text}` };
