@@ -52,5 +52,13 @@ started: 2026-05-01T17:58Z
 - Targeted guard result: `===exit=0`.
 - Reran `pnpm check`.
 - Result: `===exit=0`.
+- Heartbeat: sent.
+- Checkpoint push: `d03149bbcdf6`.
+
+## §4 scoped test — 2026-05-01T18:15Z
+
+- Ran `pnpm test src/auto-reply src/agents src/messages src/gateway`.
+- Result: `===exit=0`.
+- Test wrapper summary: `[test] passed 1 Vitest shard in 1.92s`.
 - Heartbeat: pending.
 - Checkpoint push: pending.
