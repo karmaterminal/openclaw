@@ -152,11 +152,11 @@ describe("compaction hook wiring", () => {
     expect(hookMocks.emitAgentEvent).toHaveBeenCalledWith({
       runId: "r1",
       stream: "compaction",
-      data: { phase: "start" },
+      data: { phase: "start", trigger: "unknown", sessionKey: "agent:main:web-abc123" },
     });
     expect(ctx.params.onAgentEvent).toHaveBeenCalledWith({
       stream: "compaction",
-      data: { phase: "start" },
+      data: { phase: "start", trigger: "unknown", sessionKey: "agent:main:web-abc123" },
     });
   });
 
@@ -188,7 +188,16 @@ describe("compaction hook wiring", () => {
     expect(hookMocks.emitAgentEvent).toHaveBeenCalledWith({
       runId: "r2",
       stream: "compaction",
-      data: { phase: "end", willRetry: false, completed: true },
+      data: {
+        phase: "end",
+        willRetry: false,
+        completed: true,
+        trigger: "unknown",
+        sessionKey: "agent:main:web-xyz",
+        compactionCountBefore: 1,
+        compactionCountAfter: 1,
+        compactionCountDelta: 0,
+      },
     });
   });
 
@@ -212,7 +221,16 @@ describe("compaction hook wiring", () => {
     expect(hookMocks.emitAgentEvent).toHaveBeenCalledWith({
       runId: "r3",
       stream: "compaction",
-      data: { phase: "end", willRetry: true, completed: true },
+      data: {
+        phase: "end",
+        willRetry: true,
+        completed: true,
+        trigger: "unknown",
+        sessionKey: undefined,
+        compactionCountBefore: 1,
+        compactionCountAfter: 1,
+        compactionCountDelta: 0,
+      },
     });
   });
 

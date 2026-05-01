@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 // Mock loadConfig + resolveGatewayPort the same way other openclaw-tools.* tests do,
 // so calls inside createOpenClawTools that read shared config don't reach the real
@@ -52,6 +52,21 @@ function continuationToolNames(tools: Array<{ name: string }>): string[] {
 }
 
 describe("createOpenClawTools — continuation-tool registration visibility (#151)", () => {
+  // First call to createOpenClawTools pays the full import-graph + factory
+  // initialisation cost (~60–120s on cold CI workers — `openclaw-tools.ts`
+  // pulls ~30 tool factories + secrets/plugins runtime).  Amortise that cost
+  // in `beforeAll` so the first test case isn't the one that times out.
+  // Unrelated to PR #485 (reproduces on `cael/325-canonical2` base); see
+  // CI run 25203123808 / job 73898048609.
+  beforeAll(() => {
+    createOpenClawTools({
+      agentSessionKey: "main",
+      disablePluginTools: true,
+      disableMessageTool: true,
+      config: { session: { mainKey: "main", scope: "per-sender" } } as never,
+    });
+  }, 180_000);
+
   it("registers no continuation tools when continuation.enabled is unset", () => {
     const tools = createOpenClawTools({
       agentSessionKey: "main",
