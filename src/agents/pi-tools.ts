@@ -34,6 +34,7 @@ import {
 } from "./pi-tools.policy.js";
 import {
   assertRequiredParams,
+  createHostWorkspaceAppendTool,
   createHostWorkspaceEditTool,
   createHostWorkspaceWriteTool,
   createOpenClawReadTool,
@@ -41,6 +42,7 @@ import {
   createSandboxedReadTool,
   createSandboxedWriteTool,
   getToolParamsRecord,
+  wrapToolMemoryDayFileWriteGuard,
   wrapToolMemoryFlushAppendOnlyWrite,
   wrapToolWorkspaceRootGuard,
   wrapToolWorkspaceRootGuardWithOptions,
@@ -76,7 +78,7 @@ function isOpenAIProvider(provider?: string) {
   return normalized === "openai" || normalized === "openai-codex";
 }
 
-const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
+const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write", "append"]);
 
 type BashToolsModule = typeof import("./bash-tools.js");
 
@@ -511,7 +513,10 @@ export function createOpenClawCodingTools(options?: {
         return [];
       }
       const wrapped = createHostWorkspaceWriteTool(workspaceRoot, { workspaceOnly });
-      return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
+      const withRootGuard = workspaceOnly
+        ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot)
+        : wrapped;
+      return [wrapToolMemoryDayFileWriteGuard(withRootGuard)];
     }
     if (tool.name === "edit") {
       if (sandboxRoot) {
@@ -591,18 +596,30 @@ export function createOpenClawCodingTools(options?: {
                   },
                 )
               : createSandboxedEditTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
-            workspaceOnly
-              ? wrapToolWorkspaceRootGuardWithOptions(
-                  createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
-                  sandboxRoot,
-                  {
-                    containerWorkdir: sandbox.containerWorkdir,
-                  },
-                )
-              : createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+            wrapToolMemoryDayFileWriteGuard(
+              workspaceOnly
+                ? wrapToolWorkspaceRootGuardWithOptions(
+                    createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+                    sandboxRoot,
+                    {
+                      containerWorkdir: sandbox.containerWorkdir,
+                    },
+                  )
+                : createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+            ),
           ]
         : []
       : []),
+    ...(sandboxRoot
+      ? []
+      : [
+          workspaceOnly
+            ? wrapToolWorkspaceRootGuard(
+                createHostWorkspaceAppendTool(workspaceRoot, { workspaceOnly }),
+                workspaceRoot,
+              )
+            : createHostWorkspaceAppendTool(workspaceRoot, { workspaceOnly }),
+        ]),
     ...(applyPatchTool ? [applyPatchTool as unknown as AnyAgentTool] : []),
     execTool as unknown as AnyAgentTool,
     processTool as unknown as AnyAgentTool,
