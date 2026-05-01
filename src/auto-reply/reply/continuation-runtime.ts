@@ -1,5 +1,4 @@
-import type { OpenClawConfig } from "../../config/config.js";
-import { loadConfig } from "../../config/config.js";
+import { getRuntimeConfig, type OpenClawConfig } from "../../config/config.js";
 
 export type ContinuationRuntimeConfig = {
   enabled: boolean;
@@ -48,7 +47,7 @@ function clampOptionalUnitInterval(value: unknown): number | undefined {
 }
 
 export function resolveContinuationRuntimeConfig(
-  cfg: OpenClawConfig = loadConfig(),
+  cfg: OpenClawConfig = getRuntimeConfig(),
 ): ContinuationRuntimeConfig {
   const continuation = cfg.agents?.defaults?.continuation;
 
@@ -82,6 +81,6 @@ export function resolveContinuationRuntimeConfig(
   };
 }
 
-export function resolveMaxDelegatesPerTurn(cfg: OpenClawConfig = loadConfig()): number {
+export function resolveMaxDelegatesPerTurn(cfg: OpenClawConfig = getRuntimeConfig()): number {
   return resolveContinuationRuntimeConfig(cfg).maxDelegatesPerTurn;
 }

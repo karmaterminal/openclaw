@@ -150,7 +150,7 @@ function createDeliveryDeps(params: {
   });
   const deps: PostCompactionDelegateDeliveryDeps = {
     enqueueSystemEvent,
-    loadConfig: vi.fn(() => cfg),
+    getRuntimeConfig: vi.fn(() => cfg),
     loadSessionStore: vi.fn(
       (storePath) =>
         JSON.parse(fsSync.readFileSync(storePath, "utf-8")) as Record<string, SessionEntry>,

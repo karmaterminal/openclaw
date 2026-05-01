@@ -5,7 +5,7 @@ import {
   type SpawnSubagentParams,
   type SpawnSubagentResult,
 } from "../../agents/subagent-spawn.js";
-import { loadConfig } from "../../config/config.js";
+import { getRuntimeConfig } from "../../config/config.js";
 import { resolveStorePath } from "../../config/sessions/paths.js";
 import { loadSessionStore } from "../../config/sessions/store-load.js";
 import { resolveSessionStoreEntry, updateSessionStore } from "../../config/sessions/store.js";
@@ -44,7 +44,7 @@ export type PostCompactionDelegateSpawn = (
 
 export type PostCompactionDelegateDeliveryDeps = {
   enqueueSystemEvent(text: string, options: { sessionKey: string }): void;
-  loadConfig(): OpenClawConfig;
+  getRuntimeConfig(): OpenClawConfig;
   loadSessionStore(storePath: string): Record<string, SessionEntry>;
   log(message: string): void;
   now(): number;
@@ -105,7 +105,7 @@ const defaultRecoveryLog: SessionDeliveryRecoveryLogger = {
 
 const defaultPostCompactionDelegateDeliveryDeps: PostCompactionDelegateDeliveryDeps = {
   enqueueSystemEvent,
-  loadConfig,
+  getRuntimeConfig,
   loadSessionStore,
   log: (message) => defaultRuntime.log(message),
   now: () => Date.now(),
@@ -421,7 +421,7 @@ export async function deliverQueuedPostCompactionDelegate(
   },
   deps: PostCompactionDelegateDeliveryDeps = defaultPostCompactionDelegateDeliveryDeps,
 ): Promise<void> {
-  const cfg = deps.loadConfig();
+  const cfg = deps.getRuntimeConfig();
   const agentId = deps.resolveSessionAgentId({
     sessionKey: params.entry.sessionKey,
     config: cfg,

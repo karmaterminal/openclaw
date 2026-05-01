@@ -49,7 +49,6 @@ import {
   callGateway,
   isEmbeddedPiRunActive,
   getRuntimeConfig,
-  loadConfig,
   waitForEmbeddedPiRunEnd,
 } from "./subagent-announce.runtime.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
@@ -59,14 +58,12 @@ import { isAnnounceSkip } from "./tools/sessions-send-tokens.js";
 type SubagentAnnounceDeps = {
   callGateway: typeof callGateway;
   getRuntimeConfig: typeof getRuntimeConfig;
-  loadConfig: typeof loadConfig;
   loadSubagentRegistryRuntime: typeof loadSubagentRegistryRuntime;
 };
 
 const defaultSubagentAnnounceDeps: SubagentAnnounceDeps = {
   callGateway,
   getRuntimeConfig,
-  loadConfig,
   loadSubagentRegistryRuntime,
 };
 
@@ -210,9 +207,9 @@ async function drainChildContinuationQueue(params: {
   childSessionKey: string;
   requesterOrigin?: DeliveryContext;
 }): Promise<void> {
-  let cfg: Awaited<ReturnType<typeof subagentAnnounceDeps.loadConfig>>;
+  let cfg: ReturnType<typeof subagentAnnounceDeps.getRuntimeConfig>;
   try {
-    cfg = subagentAnnounceDeps.loadConfig();
+    cfg = subagentAnnounceDeps.getRuntimeConfig();
   } catch (err) {
     // karmaterminal/openclaw#208: config-load failure here silently drops
     // the child's delegate drain — that's an F7-class stall at a different
@@ -772,7 +769,7 @@ export async function runSubagentAnnounceFlow(params: {
     }
 
     // --- Sub-agent continuation chain: accumulate child token cost + parse [[CONTINUE_DELEGATE:]] ---
-    const cfg = loadConfig();
+    const cfg = subagentAnnounceDeps.getRuntimeConfig();
     const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
 
     // Accumulate the completing shard's token cost unconditionally on delegate-return,

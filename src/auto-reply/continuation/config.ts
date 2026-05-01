@@ -8,7 +8,7 @@
  * RFC: docs/design/continue-work-signal-v2.md §5
  */
 
-import { loadConfig } from "../../config/config.js";
+import { getRuntimeConfig } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
 
@@ -54,7 +54,7 @@ function clampOptionalUnitInterval(value: unknown): number | undefined {
  * so hot-reloaded config values take effect at the next decision.
  */
 export function resolveContinuationRuntimeConfig(
-  cfg: OpenClawConfig = loadConfig(),
+  cfg: OpenClawConfig = getRuntimeConfig(),
 ): ContinuationRuntimeConfig {
   const continuation = cfg.agents?.defaults?.continuation;
 
@@ -91,7 +91,7 @@ export function resolveContinuationRuntimeConfig(
 /**
  * Convenience: resolve just the max delegates per turn.
  */
-export function resolveMaxDelegatesPerTurn(cfg: OpenClawConfig = loadConfig()): number {
+export function resolveMaxDelegatesPerTurn(cfg: OpenClawConfig = getRuntimeConfig()): number {
   return resolveContinuationRuntimeConfig(cfg).maxDelegatesPerTurn;
 }
 

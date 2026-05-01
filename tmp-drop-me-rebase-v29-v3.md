@@ -42,5 +42,15 @@ started: 2026-05-01T17:58Z
   - `src/auto-reply/reply/continuation-runtime.ts:51,85`
   - `src/auto-reply/reply/post-compaction-delegate-dispatch.ts:47,424`
 - Next: investigate guard-compliant config threading; no guess-fix.
+- Heartbeat: sent for red checkpoint.
+- Checkpoint push: `b727fad24681`.
+
+## §3 check rerun — 2026-05-01T18:13Z
+
+- Fix: replaced continuation/subagent/post-compaction ambient `loadConfig()` usage with the runtime-config accessor / renamed injected seam to `getRuntimeConfig()`, preserving passed-config call paths.
+- Ran targeted guard `node scripts/check-deprecated-internal-config-api.mjs`.
+- Targeted guard result: `===exit=0`.
+- Reran `pnpm check`.
+- Result: `===exit=0`.
 - Heartbeat: pending.
 - Checkpoint push: pending.
