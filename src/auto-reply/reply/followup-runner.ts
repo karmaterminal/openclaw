@@ -345,7 +345,7 @@ export function createFollowupRunner(params: {
                           // from sessionTokenInfo. Refs karmaterminal/openclaw#222.
                           return null;
                         },
-                        triggerCompaction: async () => {
+                        triggerCompaction: async (request) => {
                           try {
                             const { compactEmbeddedPiSession } =
                               await import("../../agents/pi-embedded-runner/compact.queued.js");
@@ -365,6 +365,7 @@ export function createFollowupRunner(params: {
                               provider === run.provider ? run.authProfileId : undefined;
                             const result = await compactEmbeddedPiSession({
                               sessionId: run.sessionId ?? "",
+                              runId: request.runId ?? runId,
                               sessionKey: run.sessionKey,
                               sessionFile: run.sessionFile ?? "",
                               workspaceDir: run.workspaceDir ?? process.cwd(),
@@ -372,6 +373,8 @@ export function createFollowupRunner(params: {
                               provider,
                               model,
                               authProfileId: compactionAuthProfileId,
+                              trigger: request.trigger,
+                              diagId: request.diagId,
                             });
                             // bug karmaterminal/openclaw#639: honor real result instead of unconditionally claiming
                             // success — otherwise volitional-compaction telemetry lies and the

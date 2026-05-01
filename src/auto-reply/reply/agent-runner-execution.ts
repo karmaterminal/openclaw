@@ -1528,7 +1528,7 @@ export async function runAgentTurnWithFallback(params: {
                             200_000;
                           return contextWindow > 0 ? totalTokens / contextWindow : 0;
                         },
-                        triggerCompaction: async () => {
+                        triggerCompaction: async (request) => {
                           try {
                             const { compactEmbeddedPiSession } =
                               await import("../../agents/pi-embedded-runner/compact.queued.js");
@@ -1551,6 +1551,7 @@ export async function runAgentTurnWithFallback(params: {
                                 : undefined;
                             const result = await compactEmbeddedPiSession({
                               sessionId: params.followupRun.run.sessionId ?? "",
+                              runId: request.runId ?? runId,
                               sessionKey: params.sessionKey,
                               sessionFile: params.followupRun.run.sessionFile ?? "",
                               workspaceDir: params.followupRun.run.workspaceDir ?? process.cwd(),
@@ -1558,6 +1559,8 @@ export async function runAgentTurnWithFallback(params: {
                               provider,
                               model,
                               authProfileId: compactionAuthProfileId,
+                              trigger: request.trigger,
+                              diagId: request.diagId,
                             });
                             // bug karmaterminal/openclaw#639: honor real result instead of unconditionally claiming
                             // success — otherwise volitional-compaction telemetry lies and the

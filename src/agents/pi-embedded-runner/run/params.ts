@@ -19,6 +19,7 @@ import type { SkillSnapshot } from "../../skills.js";
 import type { SilentReplyPromptMode } from "../../system-prompt.types.js";
 import type { PromptMode } from "../../system-prompt.types.js";
 import type { AuthProfileFailurePolicy } from "./auth-profile-failure-policy.types.js";
+import type { RequestCompactionToolOpts } from "../../tools/request-compaction-tool.js";
 export type { ClientToolDefinition } from "../../command/shared-types.js";
 
 export type EmbeddedRunTrigger = "cron" | "heartbeat" | "manual" | "memory" | "overflow" | "user";
@@ -194,6 +195,6 @@ export type RunEmbeddedPiAgentParams = {
   requestCompactionOpts?: {
     sessionId?: string;
     getContextUsage: () => number | null;
-    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+    triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
   };
 };
