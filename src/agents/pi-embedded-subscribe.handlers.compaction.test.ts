@@ -7,6 +7,7 @@ import {
   resetSessionStoreLockRuntimeForTests,
   setSessionWriteLockAcquirerForTests,
 } from "../config/sessions.js";
+import { emitAgentEvent } from "../infra/agent-events.js";
 import {
   readCompactionCount,
   seedSessionStore,
@@ -17,6 +18,10 @@ import {
   reconcileSessionStoreCompactionCountAfterSuccess,
 } from "./pi-embedded-subscribe.handlers.compaction.js";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
+
+vi.mock("../infra/agent-events.js", () => ({
+  emitAgentEvent: vi.fn(),
+}));
 
 function createCompactionContext(params: {
   storePath: string;
@@ -250,4 +255,112 @@ describe("handleCompactionEnd", () => {
     expect(ctx.getCompactionCount()).toBe(2);
     expect(await readCompactionCount(storePath, "main")).toBe(1);
   });
+
+  it("emits reconcile-failure observability on all three surfaces (H10 throw-shape trap)", async () => {
+    vi.mocked(emitAgentEvent).mockClear();
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-h10-observability-"));
+    const storePath = path.join(tmp, "sessions.json");
+    await seedSessionStore({ storePath, sessionKey: "main", compactionCount: 2 });
+    setSessionWriteLockAcquirerForTests(async () => {
+      throw new Error("lock contention");
+    });
+    const events: Array<{ stream: string; data: Record<string, unknown> }> = [];
+    const ctx = createCompactionContext({
+      storePath,
+      sessionKey: "main",
+      initialCount: 2,
+      onAgentEvent: (event) => {
+        events.push(event as { stream: string; data: Record<string, unknown> });
+      },
+    });
+
+    handleCompactionEnd(ctx, {
+      type: "compaction_end",
+      reason: "threshold",
+      result: { kept: 10 },
+      willRetry: false,
+      aborted: false,
+    } as never);
+
+    const expectedWarningData = {
+      phase: "warning",
+      warning: "compaction_count_reconcile_failed",
+      sessionKey: "main",
+      trigger: "budget",
+      outcome: "compacted",
+      error: "lock contention",
+      compactionCountBefore: 2,
+      compactionCountAfter: 3,
+      compactionCountDelta: 1,
+    };
+
+    await vi.waitFor(() => {
+      expect(ctx.log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("[compaction-counter:reconcile-failed]"),
+      );
+    });
+
+    expect(vi.mocked(emitAgentEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-test",
+        stream: "compaction",
+        data: expectedWarningData,
+      }),
+    );
+
+    expect(events).toContainEqual({
+      stream: "compaction",
+      data: expectedWarningData,
+    });
+  });
+
+  it("returns completed=true in end event even when reconcile rejects (H10 behavior contract)", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-h10-behavior-"));
+    const storePath = path.join(tmp, "sessions.json");
+    await seedSessionStore({ storePath, sessionKey: "main", compactionCount: 0 });
+    setSessionWriteLockAcquirerForTests(async () => {
+      throw new Error("store unavailable");
+    });
+    const events: Array<{ stream: string; data: Record<string, unknown> }> = [];
+    const ctx = createCompactionContext({
+      storePath,
+      sessionKey: "main",
+      initialCount: 0,
+      onAgentEvent: (event) => {
+        events.push(event as { stream: string; data: Record<string, unknown> });
+      },
+    });
+
+    handleCompactionEnd(ctx, {
+      type: "compaction_end",
+      reason: "threshold",
+      result: { kept: 8 },
+      willRetry: false,
+      aborted: false,
+    } as never);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        stream: "compaction",
+        data: expect.objectContaining({
+          phase: "end",
+          completed: true,
+        }),
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(ctx.log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("[compaction-counter:reconcile-failed]"),
+      );
+    });
+
+    const endEvents = events.filter((e) => e.data?.phase === "end");
+    expect(endEvents).toHaveLength(1);
+    expect(endEvents[0]!.data.completed).toBe(true);
+  });
+
+  it.todo(
+    "propagates reconcile failure to caller — currently swallowed in .catch fire-and-forget; see audit gap #1 / wave-D bbcf2f3ad8",
+  );
 });
