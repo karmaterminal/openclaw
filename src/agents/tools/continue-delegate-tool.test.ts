@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  cancelPendingDelegates,
   consumePendingDelegates,
   consumeStagedPostCompactionDelegates,
 } from "../../auto-reply/continuation-delegate-store.js";
@@ -12,12 +13,14 @@ import { createContinueDelegateTool } from "./continue-delegate-tool.js";
 
 describe("continue_delegate tool", () => {
   beforeEach(() => {
+    cancelPendingDelegates("test-session");
     consumePendingDelegates("test-session");
     consumeStagedPostCompactionDelegates("test-session");
     clearRuntimeConfigSnapshot();
   });
 
   afterEach(() => {
+    cancelPendingDelegates("test-session");
     clearRuntimeConfigSnapshot();
   });
 
@@ -92,6 +95,48 @@ describe("continue_delegate tool", () => {
       status: "error",
       limit: 5,
     });
+  });
+
+  it("does not let far-future queued delegates consume a fresh turn budget", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { maxDelegatesPerTurn: 2 } } },
+    });
+    const firstTurnTool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    await expect(
+      executeTool(firstTurnTool, 0, {
+        task: "delayed delegate 1",
+        delaySeconds: 86_400,
+      }),
+    ).resolves.toMatchObject({ status: "scheduled", delegatesThisTurn: 1 });
+    await expect(
+      executeTool(firstTurnTool, 1, {
+        task: "delayed delegate 2",
+        delaySeconds: 86_400,
+      }),
+    ).resolves.toMatchObject({ status: "scheduled", delegatesThisTurn: 2 });
+    await expect(
+      executeTool(firstTurnTool, 2, { task: "same-turn overflow" }),
+    ).resolves.toMatchObject({
+      status: "error",
+      delegatesThisTurn: 2,
+      limit: 2,
+      pendingQueuedDelegates: 2,
+      scheduledPendingDelegates: 2,
+      stagedPostCompactionDelegates: 0,
+    });
+
+    const nextTurnTool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+    await expect(
+      executeTool(nextTurnTool, 0, { task: "fresh turn immediate" }),
+    ).resolves.toMatchObject({
+      status: "scheduled",
+      delegateIndex: 1,
+      delegatesThisTurn: 1,
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({ task: "fresh turn immediate" }),
+    ]);
   });
 
   it("stages post-compaction delegates as silent-wake delegates", async () => {
