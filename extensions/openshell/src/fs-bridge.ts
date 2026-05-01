@@ -2,7 +2,7 @@ import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
-import { writeFileWithinRoot } from "openclaw/plugin-sdk/infra-runtime";
+import { appendFileWithinRoot, writeFileWithinRoot } from "openclaw/plugin-sdk/infra-runtime";
 import type {
   SandboxFsBridge,
   SandboxFsStat,
@@ -89,6 +89,37 @@ class OpenShellFsBridge implements SandboxFsBridge {
       relativePath: path.relative(target.mountHostRoot, hostPath),
       data: buffer,
       mkdir: params.mkdir,
+    });
+    await this.backend.syncLocalPathToRemote(hostPath, target.containerPath);
+  }
+
+  async appendFile(params: {
+    filePath: string;
+    cwd?: string;
+    data: Buffer | string;
+    encoding?: BufferEncoding;
+    mkdir?: boolean;
+    prependNewlineIfNeeded?: boolean;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    const target = this.resolveTarget(params);
+    const hostPath = this.requireHostPath(target);
+    this.ensureWritable(target, "append files");
+    await assertLocalPathSafety({
+      target,
+      root: target.mountHostRoot,
+      allowMissingLeaf: true,
+      allowFinalSymlinkForUnlink: false,
+    });
+    const buffer = Buffer.isBuffer(params.data)
+      ? params.data
+      : Buffer.from(params.data, params.encoding ?? "utf8");
+    await appendFileWithinRoot({
+      rootDir: target.mountHostRoot,
+      relativePath: path.relative(target.mountHostRoot, hostPath),
+      data: buffer,
+      mkdir: params.mkdir,
+      prependNewlineIfNeeded: params.prependNewlineIfNeeded,
     });
     await this.backend.syncLocalPathToRemote(hostPath, target.containerPath);
   }
