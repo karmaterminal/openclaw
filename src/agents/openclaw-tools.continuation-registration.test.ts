@@ -52,15 +52,25 @@ function continuationToolNames(tools: Array<{ name: string }>): string[] {
 }
 
 describe("createOpenClawTools — continuation-tool registration visibility (#151)", () => {
-  it("registers no continuation tools when continuation.enabled is unset", () => {
-    const tools = createOpenClawTools({
-      agentSessionKey: "main",
-      disablePluginTools: true,
-      disableMessageTool: true,
-      config: { session: { mainKey: "main", scope: "per-sender" } } as never,
-    });
-    expect(continuationToolNames(tools)).toEqual([]);
-  });
+  it(
+    "registers no continuation tools when continuation.enabled is unset",
+    () => {
+      const tools = createOpenClawTools({
+        agentSessionKey: "main",
+        disablePluginTools: true,
+        disableMessageTool: true,
+        config: { session: { mainKey: "main", scope: "per-sender" } } as never,
+      });
+      expect(continuationToolNames(tools)).toEqual([]);
+    },
+    // First test in this file pays the cold module-load cost for
+    // createOpenClawTools + transitive imports (compaction-attribution,
+    // pi-embedded-*, plugins/tools, config/config). Quiet-box cost ≈ 95s;
+    // CI noise pushes it past vitest's 120s default and produces a flaky
+    // timeout shared across PRs that don't touch this file (#485, #488,
+    // #468 all observed). Tests 2–7 reuse the warm cache (~360ms each).
+    240_000,
+  );
 
   it("registers no continuation tools when continuation.enabled is explicitly false", () => {
     const tools = createOpenClawTools({
