@@ -53,6 +53,7 @@ import {
   stagedPostCompactionDelegateCount,
   takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
+import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import type { ChainState } from "../continuation/types.js";
 import {
@@ -85,7 +86,6 @@ import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
 import { checkContextPressure } from "./context-pressure.js";
-import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
 import {
   bumpContinuationGeneration,
   clearDelegatePending,

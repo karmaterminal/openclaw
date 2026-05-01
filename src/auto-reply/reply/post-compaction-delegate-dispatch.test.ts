@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { withTempDir } from "../../test-helpers/temp-dir.js";
-import type { ContinuationRuntimeConfig } from "./continuation-runtime.js";
+import type { ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
   buildPostCompactionLifecycleEvent,
   deliverQueuedPostCompactionDelegate,

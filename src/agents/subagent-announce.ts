@@ -1,5 +1,5 @@
 import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
-import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
+import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
