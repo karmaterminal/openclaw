@@ -547,7 +547,12 @@ export async function dispatchPostCompactionDelegates(
       storePath: params.storePath,
     });
   } catch (err) {
-    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${String(err)}`);
+    const message = err instanceof Error ? err.message : String(err);
+    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${message}`);
+    deps.enqueueSystemEvent(
+      `[system:continuation-warning] Failed to load persisted post-compaction delegates: ${message}. Delegates from prior gateway sessions may have been dropped.`,
+      { sessionKey: params.sessionKey },
+    );
   }
   const allCompactionDelegates = [
     ...persistedCompactionDelegates,
