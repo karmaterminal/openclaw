@@ -42,6 +42,7 @@ function createCompactionContext(params: {
     } as never,
     log: {
       debug: vi.fn(),
+      error: vi.fn(),
       warn: vi.fn(),
     },
     ensureCompactionPromise: vi.fn(),

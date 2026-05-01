@@ -1,5 +1,6 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { enqueueSystemEvent } from "../infra/system-events.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import {
   normalizeCompactionTrigger,
@@ -82,7 +83,13 @@ export function handleCompactionEnd(
         outcome: "compacted",
       },
     }).catch((err) => {
-      ctx.log.warn(`late compaction count reconcile failed: ${String(err)}`);
+      ctx.log.error(`late compaction count reconcile failed: ${String(err)}`);
+      if (ctx.params.sessionKey) {
+        enqueueSystemEvent(
+          `[system:compaction-count-drift] Durable compaction count reconcile failed: ${String(err)}. On-disk count may diverge from in-memory after gateway restart.`,
+          { sessionKey: ctx.params.sessionKey },
+        );
+      }
     });
   }
   const completed = hasResult && !wasAborted;
