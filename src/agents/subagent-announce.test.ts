@@ -14,7 +14,9 @@ const resolveStorePathMock = vi.fn((_store: unknown, _options: unknown) => "/tmp
 const resolveMainSessionKeyMock = vi.fn((_cfg: unknown) => "agent:main:main");
 const readLatestAssistantReplyMock = vi.fn(async (_params?: unknown) => "raw subagent reply");
 const isEmbeddedPiRunActiveMock = vi.fn((_sessionId: string) => false);
-const queueEmbeddedPiMessageMock = vi.fn((_sessionId: string, _text: string) => false);
+const queueEmbeddedPiMessageMock = vi.fn(
+  (_sessionId: string, _text: string, _options?: unknown) => false,
+);
 const waitForEmbeddedPiRunEndMock = vi.fn(async (_sessionId: string, _timeoutMs?: number) => true);
 let mockConfig: ReturnType<(typeof import("../config/config.js"))["loadConfig"]> = {
   session: {
@@ -41,8 +43,14 @@ vi.mock("./subagent-announce.runtime.js", () => ({
   isEmbeddedPiRunActive: (sessionId: string) => isEmbeddedPiRunActiveMock(sessionId),
   loadConfig: () => mockConfig,
   loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
-  queueEmbeddedPiMessage: (sessionId: string, text: string) =>
-    queueEmbeddedPiMessageMock(sessionId, text),
+  resolveContinuationRuntimeConfig: () => ({
+    maxChainLength: 10,
+    costCapTokens: 500_000,
+    minDelayMs: 5_000,
+    maxDelayMs: 300_000,
+  }),
+  queueEmbeddedPiMessage: (sessionId: string, text: string, options?: unknown) =>
+    queueEmbeddedPiMessageMock(sessionId, text, options),
   resolveAgentIdFromSessionKey: (sessionKey: string) =>
     resolveAgentIdFromSessionKeyMock(sessionKey),
   resolveMainSessionKey: (cfg: unknown) => resolveMainSessionKeyMock(cfg),
