@@ -2,7 +2,7 @@
 
 Branch: `frond-scribe/20260429/rebase-copilot-v2`  
 Base: `a448042c2edd94a4e8ee86d5ed90a5ed9fe8e4cd` (`v2026.4.29`)  
-Candidate checkpoint: `1732252559` (pushed; gates pending)
+Candidate checkpoint: `f799818de2` (pushed; `pnpm tsgo` failed)
 
 ## Recommendation
 
@@ -48,4 +48,11 @@ Top areas by changed file count: `src/agents` 89, `src/auto-reply` 78, `studies`
 
 ## Gate status
 
-Pending at artifact creation. Update this section after §6 local gates.
+Stopped at the first real gate failure per workorder.
+
+| gate                                                           | result  | shape                                                                                                                                                                                                           |
+| -------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm tsgo`                                                    | fail    | After `pnpm install` resolved missing `node_modules`, retry failed with 6 TypeScript errors across `src/agents/subagent-announce.ts`, `src/agents/subagent-spawn.ts`, and `src/config/sessions/store-cache.ts`. |
+| `pnpm check`                                                   | not run | Blocked by `pnpm tsgo` failure.                                                                                                                                                                                 |
+| `pnpm test src/auto-reply src/agents src/messages src/gateway` | not run | Blocked by `pnpm tsgo` failure.                                                                                                                                                                                 |
+| `pnpm build`                                                   | not run | Blocked by `pnpm tsgo` failure.                                                                                                                                                                                 |

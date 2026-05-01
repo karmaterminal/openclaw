@@ -62,3 +62,15 @@ started: 2026-05-01T16:06:04+00:00
   - `QUESTIONS-FOR-FIGS.md`
 - Diff vs target: 297 files changed, 36189 insertions(+), 662 deletions(-).
 - Gates pending: `pnpm tsgo`, `pnpm check`, `pnpm test src/auto-reply src/agents src/messages src/gateway`, `pnpm build`.
+
+## §6 gate failure — 2026-05-01T17:45Z
+
+- First `pnpm tsgo` attempt failed because this worktree had no `node_modules` / `node_modules/.bin/tsgo`.
+- Ran `pnpm install` as the repo missing-deps retry path; install completed with lockfile unchanged.
+- Retried `pnpm tsgo`; it failed with actual TypeScript errors:
+  - `src/agents/subagent-announce.ts:210` and `:212`: `SubagentAnnounceDeps` has no `loadConfig`.
+  - `src/agents/subagent-announce.ts:772`: `loadConfig` name is missing.
+  - `src/agents/subagent-spawn.ts:1203`: `agentDir` is not a known `RegisterSubagentRunParams` property.
+  - `src/config/sessions/store-cache.ts:77` and `:87`: `serialized` property is missing on session store cache entry/params types.
+- Per workorder §6, stopped gate sequence here and did not guess-fix.
+- Not run because `pnpm tsgo` failed: `pnpm check`, `pnpm test src/auto-reply src/agents src/messages src/gateway`, `pnpm build`.
