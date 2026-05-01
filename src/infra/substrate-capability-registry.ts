@@ -100,7 +100,6 @@ const substrateCapabilityRegistry: readonly SubstrateCapabilityEntry[] = [
     "symbol-aliases": [
       "consumePendingDelegates",
       "enqueuePendingDelegate",
-      "setTaskFlowDelegatesEnabled",
       "stagePostCompactionDelegate",
       "taskFlowConsumePendingDelegates",
     ],

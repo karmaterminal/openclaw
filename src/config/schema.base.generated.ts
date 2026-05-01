@@ -5829,7 +5829,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                   enabled: {
                     type: "boolean",
                   },
-                  taskFlowDelegates: {},
                   defaultDelayMs: {
                     type: "integer",
                     minimum: 0,
