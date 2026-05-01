@@ -28,7 +28,10 @@ import { createMessageTool } from "./tools/message-tool.js";
 import { createMusicGenerateTool } from "./tools/music-generate-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createPdfTool } from "./tools/pdf-tool.js";
-import { createRequestCompactionTool } from "./tools/request-compaction-tool.js";
+import {
+  createRequestCompactionTool,
+  type RequestCompactionToolOpts,
+} from "./tools/request-compaction-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
@@ -104,6 +107,8 @@ export function createOpenClawTools(
     senderIsOwner?: boolean;
     /** Ephemeral session UUID — regenerated on /new and /reset. */
     sessionId?: string;
+    /** Stable run identifier for this agent invocation. */
+    runId?: string;
     /**
      * Workspace directory to pass to spawned subagents for inheritance.
      * Defaults to workspaceDir. Use this to pass the actual agent workspace when the
@@ -125,7 +130,7 @@ export function createOpenClawTools(
     requestCompactionOpts?: {
       sessionId?: string;
       getContextUsage: () => number | null;
-      triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+      triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
     };
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
@@ -358,6 +363,7 @@ export function createOpenClawTools(
           createRequestCompactionTool({
             agentSessionKey: options?.agentSessionKey,
             sessionId: options?.sessionId,
+            runId: options?.runId,
             ...options.requestCompactionOpts,
           }),
         ]
