@@ -38,6 +38,7 @@ function delegate(
   return {
     task,
     createdAt: overrides?.createdAt ?? 1,
+    ...(overrides?.firstArmedAt != null ? { firstArmedAt: overrides.firstArmedAt } : {}),
     ...(overrides?.silent != null ? { silent: overrides.silent } : {}),
     ...(overrides?.silentWake != null ? { silentWake: overrides.silentWake } : {}),
   };
@@ -78,6 +79,7 @@ function createDispatchDeps(options?: {
   context?: string | null;
   rejectEnqueueAt?: number;
   runtimeConfig?: ContinuationRuntimeConfig;
+  now?: number;
 }) {
   const enqueueSystemEvent = vi.fn();
   const log = vi.fn();
@@ -99,6 +101,7 @@ function createDispatchDeps(options?: {
     enqueuePostCompactionDelegateDelivery,
     enqueueSystemEvent,
     log,
+    now: vi.fn(() => options?.now ?? 1),
     readPostCompactionContext,
     resolveAgentWorkspaceDir,
     resolveContinuationRuntimeConfig,
@@ -179,6 +182,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(normalizePostCompactionDelegate(delegate("legacy"))).toEqual({
       task: "legacy",
       createdAt: 1,
+      firstArmedAt: 1,
       silent: true,
       silentWake: true,
     });
@@ -188,6 +192,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(normalizePostCompactionDelegate(delegate("visible", { silent: false }))).toEqual({
       task: "visible",
       createdAt: 1,
+      firstArmedAt: 1,
       silent: false,
     });
   });
@@ -196,6 +201,21 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(normalizePostCompactionDelegate(delegate("wake", { silentWake: true }))).toEqual({
       task: "wake",
       createdAt: 1,
+      firstArmedAt: 1,
+      silentWake: true,
+    });
+  });
+
+  it("preserves explicit firstArmedAt while leaving createdAt unchanged", () => {
+    expect(
+      normalizePostCompactionDelegate(
+        delegate("requeued", { createdAt: 20_000, firstArmedAt: 10_000 }),
+      ),
+    ).toEqual({
+      task: "requeued",
+      createdAt: 20_000,
+      firstArmedAt: 10_000,
+      silent: true,
       silentWake: true,
     });
   });
@@ -386,6 +406,49 @@ describe("post-compaction delegate dispatch extraction", () => {
       expect.stringContaining("2 over maxDelegatesPerTurn budget (5, bracketOffset=0)"),
     );
     expect(preserve).toEqual([]);
+  });
+
+  it("drops stale delegates using stable firstArmedAt age", async () => {
+    const now = 1_700_000_000_000;
+    const staleFirstArmedAt = now - 8 * 24 * 60 * 60 * 1000;
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const preserve: SessionPostCompactionDelegate[] = [];
+    const { deps, enqueuePostCompactionDelegateDelivery, log } = createDispatchDeps({
+      staged: [
+        delegate("stale", {
+          createdAt: now,
+          firstArmedAt: staleFirstArmedAt,
+        }),
+        delegate("fresh", {
+          createdAt: now,
+          firstArmedAt: now - 60_000,
+        }),
+      ],
+      now,
+    });
+
+    const result = await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: preserve,
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+
+    expect(result).toEqual({ queuedDelegates: 1, droppedDelegates: 1 });
+    expect(enqueuePostCompactionDelegateDelivery).toHaveBeenCalledTimes(1);
+    expect(enqueuePostCompactionDelegateDelivery.mock.calls[0]?.[0].delegate).toMatchObject({
+      task: "fresh",
+      firstArmedAt: now - 60_000,
+    });
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("Post-compaction delegate dropped as stale for main"),
+    );
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(`firstArmedAt=${staleFirstArmedAt}`));
   });
 
   it("reduces compaction budget by one when a bracket delegate was already spawned this turn", async () => {

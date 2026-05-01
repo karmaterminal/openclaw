@@ -70,6 +70,7 @@ export type PostCompactionDelegateDispatchDeps = {
   }): Promise<string>;
   enqueueSystemEvent(text: string, options: { sessionKey: string }): void;
   log(message: string): void;
+  now(): number;
   readPostCompactionContext(
     workspaceDir: string,
     options: { cfg: OpenClawConfig; agentId: string },
@@ -120,11 +121,14 @@ const defaultPostCompactionDelegateDispatchDeps: PostCompactionDelegateDispatchD
   enqueuePostCompactionDelegateDelivery,
   enqueueSystemEvent,
   log: (message) => defaultRuntime.log(message),
+  now: () => Date.now(),
   readPostCompactionContext,
   resolveAgentWorkspaceDir,
   resolveContinuationRuntimeConfig,
   resolveSessionAgentId,
 };
+
+export const POST_COMPACTION_DELEGATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function syncPendingPostCompactionDelegates(params: {
   sessionEntry?: SessionEntry;
@@ -149,13 +153,19 @@ export function normalizePostCompactionDelegate(
   const legacySilentWake = delegate.silent == null && delegate.silentWake == null;
   const silentWake = legacySilentWake ? true : delegate.silentWake === true;
   const silent = legacySilentWake ? true : delegate.silent === true || silentWake;
+  const firstArmedAt = delegate.firstArmedAt ?? delegate.createdAt;
 
   return {
     task: delegate.task,
     createdAt: delegate.createdAt,
+    firstArmedAt,
     ...(delegate.silent != null || legacySilentWake ? { silent } : {}),
     ...(delegate.silentWake != null || legacySilentWake ? { silentWake } : {}),
   };
+}
+
+function formatTaskPreview(task: string): string {
+  return JSON.stringify(task.length > 120 ? `${task.slice(0, 117)}...` : task);
 }
 
 export async function persistPendingPostCompactionDelegates(params: {
@@ -543,6 +553,20 @@ export async function dispatchPostCompactionDelegates(
     ...persistedCompactionDelegates,
     ...stagedCompactionDelegates,
   ].map(normalizePostCompactionDelegate);
+  const now = deps.now();
+  const freshCompactionDelegates: SessionPostCompactionDelegate[] = [];
+  let staleDroppedDelegates = 0;
+  for (const delegate of allCompactionDelegates) {
+    const ageMs = now - (delegate.firstArmedAt ?? delegate.createdAt);
+    if (ageMs > POST_COMPACTION_DELEGATE_TTL_MS) {
+      staleDroppedDelegates += 1;
+      deps.log(
+        `Post-compaction delegate dropped as stale for ${params.sessionKey}: ageMs=${ageMs} ttlMs=${POST_COMPACTION_DELEGATE_TTL_MS} firstArmedAt=${delegate.firstArmedAt ?? delegate.createdAt} task=${formatTaskPreview(delegate.task)}`,
+      );
+      continue;
+    }
+    freshCompactionDelegates.push(delegate);
+  }
 
   // Enforce maxDelegatesPerTurn budget. Account for any bracket-style delegate
   // already spawned this turn so the combined per-turn count cannot exceed
@@ -553,10 +577,10 @@ export async function dispatchPostCompactionDelegates(
   );
   const bracketDelegateOffset = params.continuationSignalKind === "delegate" ? 1 : 0;
   const compactionBudget = Math.max(0, maxCompactionDelegates - bracketDelegateOffset);
-  const releasedCompactionDelegates = allCompactionDelegates.slice(0, compactionBudget);
+  const releasedCompactionDelegates = freshCompactionDelegates.slice(0, compactionBudget);
   const overflowDroppedDelegates = Math.max(
     0,
-    allCompactionDelegates.length - releasedCompactionDelegates.length,
+    freshCompactionDelegates.length - releasedCompactionDelegates.length,
   );
   if (overflowDroppedDelegates > 0) {
     deps.log(
@@ -598,7 +622,7 @@ export async function dispatchPostCompactionDelegates(
   );
 
   const queuedEntryIds: string[] = [];
-  let droppedCompactionDelegates = overflowDroppedDelegates;
+  let droppedCompactionDelegates = staleDroppedDelegates + overflowDroppedDelegates;
   for (const [index, result] of enqueueResults.entries()) {
     if (result.status === "fulfilled") {
       queuedEntryIds.push(result.value);
