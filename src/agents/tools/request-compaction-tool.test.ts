@@ -106,12 +106,15 @@ describe("request_compaction tool", () => {
   // Guard: rate limit
   // -------------------------------------------------------------------------
 
-  it("rejects a second request within the rate limit window", async () => {
+  it("rejects a second request within the rate limit window after successful compaction", async () => {
     const tool = makeTool();
 
-    // First call succeeds
+    // First call succeeds and the background compaction arms the cooldown.
     const first = await executeTool(tool);
     expect(first).toMatchObject({ status: "compaction_requested" });
+    await vi.waitFor(() => {
+      expect(getVolitionalCompactionCount(SESSION_KEY)).toBe(1);
+    });
 
     // Second call within 5 minutes is rate-limited
     const second = await executeTool(tool);
@@ -196,6 +199,43 @@ describe("request_compaction tool", () => {
     });
   });
 
+  it("does not arm rate limit when background compaction fails", async () => {
+    mockTriggerCompaction.mockResolvedValue({
+      ok: false,
+      compacted: false,
+      reason: "Compaction safeguard could not summarize the session: provider 500",
+    });
+
+    const tool = makeTool();
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+
+    await vi.waitFor(() => {
+      expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
+    });
+
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not arm rate limit when background compaction rejects", async () => {
+    mockTriggerCompaction.mockRejectedValueOnce(new Error("summary provider unavailable"));
+
+    const tool = makeTool();
+    const first = await executeTool(tool);
+    expect(first).toMatchObject({ status: "compaction_requested" });
+
+    await vi.waitFor(() => {
+      expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
+    });
+
+    mockTriggerCompaction.mockResolvedValueOnce({ ok: true, compacted: true });
+    const second = await executeTool(tool);
+    expect(second).toMatchObject({ status: "compaction_requested" });
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
+  });
+
   // -------------------------------------------------------------------------
   // Reason parameter
   // -------------------------------------------------------------------------
@@ -222,19 +262,24 @@ describe("request_compaction tool", () => {
   // Collision edge cases (Trigger dedup)
   // -------------------------------------------------------------------------
 
-  it("two request_compaction calls in same turn — second is rate-limited", async () => {
+  it("two request_compaction calls in same turn — second is pending while the first runs", async () => {
+    let resolveCompaction!: () => void;
+    mockTriggerCompaction.mockReturnValue(
+      new Promise<{ ok: boolean; compacted: boolean }>((resolve) => {
+        resolveCompaction = () => resolve({ ok: true, compacted: true });
+      }),
+    );
     const tool = makeTool();
 
     const first = await executeTool(tool);
     expect(first).toMatchObject({ status: "compaction_requested" });
 
-    // Second call in same turn
+    // Second call in same turn while the first compaction is still queued/running.
     const second = await executeTool(tool);
-    expect(second).toMatchObject({
-      status: "rejected",
-      guard: "rate_limit",
-    });
+    expect(second).toMatchObject({ status: "already_pending" });
     expect(mockTriggerCompaction).toHaveBeenCalledTimes(1);
+
+    resolveCompaction();
   });
 
   it("request_compaction below 70% is rejected", async () => {
