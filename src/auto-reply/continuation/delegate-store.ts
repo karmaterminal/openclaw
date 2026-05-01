@@ -50,6 +50,14 @@ const PendingDelegateStateSchema = z.object({
 
 type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
 
+export type ContinuationDelegateQueueDepths = {
+  pendingQueued: number;
+  pendingRunnable: number;
+  pendingScheduled: number;
+  stagedPostCompaction: number;
+  totalQueued: number;
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -107,6 +115,10 @@ function listQueuedPostCompactionFlows(sessionKey: string): TaskFlowRecord[] {
 function decodeDelegateState(flow: TaskFlowRecord): PendingDelegateState | undefined {
   const parsed = PendingDelegateStateSchema.safeParse(flow.stateJson);
   return parsed.success ? parsed.data : undefined;
+}
+
+function delegateDueAt(flow: TaskFlowRecord, state: PendingDelegateState): number {
+  return flow.createdAt + (state.delayMs ?? 0);
 }
 
 function flowToDelegate(
@@ -202,7 +214,7 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
     // response-finalize (or the hedge timer armed by the dispatch caller)
     // re-checks them. Honors `delayMs` on the tool path without threading a
     // wake-pathway timer (which would change `mode=silent` semantics).
-    const dueAt = flow.createdAt + (state.delayMs ?? 0);
+    const dueAt = delegateDueAt(flow, state);
     if (now < dueAt) {
       continue;
     }
@@ -240,7 +252,7 @@ export function peekSoonestUnmaturedDelegateDueAt(sessionKey: string): number | 
     if (!state) {
       continue;
     }
-    const dueAt = flow.createdAt + (state.delayMs ?? 0);
+    const dueAt = delegateDueAt(flow, state);
     if (dueAt <= now) {
       continue;
     }
@@ -256,6 +268,28 @@ export function peekSoonestUnmaturedDelegateDueAt(sessionKey: string): number | 
  */
 export function pendingDelegateCount(sessionKey: string): number {
   return listQueuedPendingFlows(sessionKey).length;
+}
+
+export function getContinuationDelegateQueueDepths(
+  sessionKey: string,
+  now = Date.now(),
+): ContinuationDelegateQueueDepths {
+  const pendingFlows = listQueuedPendingFlows(sessionKey);
+  let pendingRunnable = 0;
+  for (const flow of pendingFlows) {
+    const state = decodeDelegateState(flow);
+    if (state && delegateDueAt(flow, state) <= now) {
+      pendingRunnable += 1;
+    }
+  }
+  const stagedPostCompaction = listQueuedPostCompactionFlows(sessionKey).length;
+  return {
+    pendingQueued: pendingFlows.length,
+    pendingRunnable,
+    pendingScheduled: pendingFlows.length - pendingRunnable,
+    stagedPostCompaction,
+    totalQueued: pendingFlows.length + stagedPostCompaction,
+  };
 }
 
 /**

@@ -1,9 +1,8 @@
 import { Type } from "typebox";
 import {
   enqueuePendingDelegate,
-  pendingDelegateCount,
+  getContinuationDelegateQueueDepths,
   stagePostCompactionDelegate,
-  stagedPostCompactionDelegateCount,
 } from "../../auto-reply/continuation/delegate-store.js";
 import { resolveMaxDelegatesPerTurn } from "../../auto-reply/reply/continuation-runtime.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -60,6 +59,8 @@ const ContinueDelegateToolSchema = Type.Object({
  * 2026-04-15: unrelated inbound traffic does not cancel scheduled work).
  */
 export function createContinueDelegateTool(opts: { agentSessionKey?: string }): AnyAgentTool {
+  let delegatesThisTurn = 0;
+
   return {
     label: "Continuation",
     name: "continue_delegate",
@@ -103,16 +104,21 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       const mode = (modeRaw || "normal") as (typeof DELEGATE_MODES)[number];
       const isPostCompaction = mode === "post-compaction";
 
-      // Check per-turn delegate limit
+      // Check per-turn delegate limit. Durable queued depth is reported for
+      // visibility but does not consume this turn's admission budget.
       const maxPerTurn = resolveMaxDelegatesPerTurn();
-      const currentCount =
-        pendingDelegateCount(sessionKey) + stagedPostCompactionDelegateCount(sessionKey);
-      if (currentCount >= maxPerTurn) {
+      if (delegatesThisTurn >= maxPerTurn) {
+        const queueDepths = getContinuationDelegateQueueDepths(sessionKey);
         return jsonResult({
           status: "error",
-          reason: `maxDelegatesPerTurn exceeded (${maxPerTurn}). Cannot dispatch more delegates this turn.`,
-          dispatched: currentCount,
+          reason: `maxDelegatesPerTurn exceeded (${maxPerTurn}). Cannot schedule more delegates in this turn.`,
+          delegatesThisTurn,
           limit: maxPerTurn,
+          queuedDelegateDepth: queueDepths.totalQueued,
+          pendingQueuedDelegates: queueDepths.pendingQueued,
+          runnablePendingDelegates: queueDepths.pendingRunnable,
+          scheduledPendingDelegates: queueDepths.pendingScheduled,
+          stagedPostCompactionDelegates: queueDepths.stagedPostCompaction,
         });
       }
 
@@ -121,10 +127,13 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           task,
           stagedAt: Date.now(),
         });
+        delegatesThisTurn += 1;
 
         return jsonResult({
           status: "queued-for-compaction",
           mode: "post-compaction",
+          delegateIndex: delegatesThisTurn,
+          delegatesThisTurn,
           note:
             "Delegate will fire when compaction occurs, not on a timer. " +
             "The shard starts at the moment of compaction and returns to the post-compaction session. " +
@@ -141,7 +150,8 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         ...(mode !== "normal" ? { mode } : {}),
       });
 
-      const dispatchIndex = currentCount + 1;
+      delegatesThisTurn += 1;
+      const dispatchIndex = delegatesThisTurn;
 
       return jsonResult({
         status: "scheduled",
