@@ -192,12 +192,6 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         `[request_compaction:enqueuing] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}% reason=${reason}`,
       );
 
-      // Update rate-limit state BEFORE firing so a second call in the same
-      // turn (or a crash during compaction) still respects the cooldown.
-      sessionGuardState.set(sessionKey, {
-        lastRequestMs: now,
-      });
-
       // Fire-and-forget: compaction runs via the lane queue after the current
       // agent turn releases the session lane. We do NOT await — the tool
       // returns immediately so the agent can finish its response.
@@ -207,6 +201,9 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         .then(
           (result) => {
             if (result.ok && result.compacted) {
+              sessionGuardState.set(sessionKey, {
+                lastRequestMs: Date.now(),
+              });
               incrementVolitionalCompactionCount(sessionKey);
               return;
             }
