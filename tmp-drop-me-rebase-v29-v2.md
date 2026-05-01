@@ -15,3 +15,19 @@ started: 2026-05-01T16:06:04+00:00
 ## §0 guardrails — acked
 
 ## §0.0 force-push policy — clarified for v2: --force-with-lease ALLOWED during §4 rebase work; savegame canon at §7 declare-done
+
+## §1 / §3 v1 artifact reread checkpoint — 2026-05-01T16:09Z
+
+- Read `origin/frond-scribe/20260429/rebase-copilot:RECOMMENDED-PATH.md`.
+- Read `origin/frond-scribe/20260429/rebase-copilot:QUESTIONS-FOR-FIGS.md`.
+- v1 conclusion: proceed with §4 rebase now that v2 force-push policy explicitly permits `--force-with-lease` during construction.
+- Carry-forward decisions:
+  - active-run steering default: compose
+  - session abort wait semantics: merge-required
+  - spawned subagent `spawnedBy` metadata: compose
+  - visible replies plus blocked-liveness marker: merge-required
+  - inferred follow-up commitments: compose
+  - subagent orphan recovery: merge-required
+  - blank visible prompt skip: supersede-up
+  - tool-result guard budget: compose
+- Heartbeat sent: `§1/v1 artifact reread done; starting §4 rebase setup`.
