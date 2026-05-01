@@ -309,7 +309,7 @@ The gateway then:
 4. Creates a delayed reservation with task, planned hop, and fire time.
 5. Arms a timer for the configured delay.
 
-By default that delayed scheduling is process-scoped. A gateway restart clears the in-memory timer and reservation. When `taskFlowDelegates: true`, delegate queue state is backed by Task Flow in SQLite, so queued work survives restart even though a specific in-memory timer does not.
+Delayed scheduling is backed by Task Flow in SQLite. A gateway restart clears any specific in-memory timer, but delegate queue state survives and can be rehydrated.
 
 #### Gap window
 
@@ -599,7 +599,7 @@ agents:
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
       # generationGuardTolerance removed — delayed work should not be cancelled by channel noise
-      # taskFlowDelegates is always on — delegates must survive restart, no config option
+      # delegate durability is unconditional; there is no delegate-store switch
 ```
 
 Operational notes:
@@ -608,6 +608,7 @@ Operational notes:
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
 - `generationGuardTolerance` has been removed from the configuration surface. Delayed work should not be cancelled by unrelated channel noise. See the design decision note in §3.2.
+- delegate durability is unconditional; the former delegate-store switch has been removed from the configuration surface.
 - all runtime values are hot-reloadable; changes take effect at the next enforcement point.
 
 ### 5.2 Operator profiles
@@ -627,7 +628,6 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
-      taskFlowDelegates: true
 ```
 
 This defaults to opt-out behavior with strict interruption semantics, and a conservative per-chain budget.
@@ -647,7 +647,6 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
-      taskFlowDelegates: true
 ```
 
 This profile is suitable for multiple persistent agents in shared channels. In that environment:
