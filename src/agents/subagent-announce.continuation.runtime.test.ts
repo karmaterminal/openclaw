@@ -52,8 +52,8 @@ function entriesOfMainGraph(): Record<string, string> {
 describe("subagent-announce continuation runtime entry (issue karmaterminal/openclaw#473)", () => {
   it("registers the continuation runtime as a tsdown bundler entry", () => {
     const entries = entriesOfMainGraph();
-    expect(entries).toHaveProperty("agents/subagent-announce.continuation.runtime");
-    expect(entries["agents/subagent-announce.continuation.runtime"]).toBe(
+    expect(entries).toHaveProperty("subagent-announce.continuation.runtime");
+    expect(entries["subagent-announce.continuation.runtime"]).toBe(
       "src/agents/subagent-announce.continuation.runtime.ts",
     );
   });
@@ -67,7 +67,7 @@ describe("subagent-announce continuation runtime entry (issue karmaterminal/open
   });
 
   it("subagent-announce lazy-imports the runtime entry by its co-located path, not the source-tree path", () => {
-    // Post-bundle, the dist emits `agents/subagent-announce.continuation.runtime.js`
+    // Post-bundle, the dist emits `subagent-announce.continuation.runtime.js`
     // adjacent to the bundled subagent-announce code. The pre-fix path
     // (`../auto-reply/continuation/delegate-dispatch.js`) does not exist
     // post-bundle and would resolve to a non-existent nested path.
