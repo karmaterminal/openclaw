@@ -265,6 +265,41 @@ describe("openshell fs bridges", () => {
     );
   });
 
+  it("appends locally and syncs the file to the remote workspace", async () => {
+    const workspaceDir = await makeTempDir("openclaw-openshell-fs-");
+    await fs.mkdir(path.join(workspaceDir, "nested"), { recursive: true });
+    await fs.writeFile(path.join(workspaceDir, "nested", "file.txt"), "seed", "utf8");
+    const backend = createMirrorBackendMock();
+    const sandbox = createSandboxTestContext({
+      overrides: {
+        backendId: "openshell",
+        workspaceDir,
+        agentWorkspaceDir: workspaceDir,
+        containerWorkdir: "/sandbox",
+      },
+    });
+
+    const { createOpenShellFsBridge } = await import("./fs-bridge.js");
+    const bridge = createOpenShellFsBridge({ sandbox, backend });
+    if (!bridge.appendFile) {
+      throw new Error("OpenShell fs bridge must support appendFile");
+    }
+    await bridge.appendFile({
+      filePath: "nested/file.txt",
+      data: "next",
+      mkdir: true,
+      prependNewlineIfNeeded: true,
+    });
+
+    expect(await fs.readFile(path.join(workspaceDir, "nested", "file.txt"), "utf8")).toBe(
+      "seed\nnext",
+    );
+    expect(backend.syncLocalPathToRemote).toHaveBeenCalledWith(
+      path.join(workspaceDir, "nested", "file.txt"),
+      "/sandbox/nested/file.txt",
+    );
+  });
+
   it("rejects symlink-parent writes instead of escaping the local mount root", async () => {
     const workspaceDir = await makeTempDir("openclaw-openshell-fs-");
     const outsideDir = await makeTempDir("openclaw-openshell-outside-");

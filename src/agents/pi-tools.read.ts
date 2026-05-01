@@ -450,38 +450,6 @@ type MemoryFlushAppendOnlyWriteOptions = {
   };
 };
 
-async function readOptionalUtf8File(params: {
-  absolutePath: string;
-  relativePath: string;
-  sandbox?: MemoryFlushAppendOnlyWriteOptions["sandbox"];
-  signal?: AbortSignal;
-}): Promise<string> {
-  try {
-    if (params.sandbox) {
-      const stat = await params.sandbox.bridge.stat({
-        filePath: params.relativePath,
-        cwd: params.sandbox.root,
-        signal: params.signal,
-      });
-      if (!stat) {
-        return "";
-      }
-      const buffer = await params.sandbox.bridge.readFile({
-        filePath: params.relativePath,
-        cwd: params.sandbox.root,
-        signal: params.signal,
-      });
-      return buffer.toString("utf-8");
-    }
-    return await fs.readFile(params.absolutePath, "utf-8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
-      return "";
-    }
-    throw error;
-  }
-}
-
 async function appendMemoryFlushContent(params: {
   absolutePath: string;
   root: string;
@@ -501,35 +469,19 @@ async function appendMemoryFlushContent(params: {
     return;
   }
 
-  const existing = await readOptionalUtf8File({
-    absolutePath: params.absolutePath,
-    relativePath: params.relativePath,
-    sandbox: params.sandbox,
+  if (!params.sandbox.bridge.appendFile) {
+    throw new Error(
+      `Sandbox file bridge does not support safe append for memory flush: ${params.relativePath}`,
+    );
+  }
+  await params.sandbox.bridge.appendFile({
+    filePath: params.relativePath,
+    cwd: params.sandbox.root,
+    data: params.content,
+    mkdir: true,
+    prependNewlineIfNeeded: true,
     signal: params.signal,
   });
-  const separator =
-    existing.length > 0 && !existing.endsWith("\n") && !params.content.startsWith("\n") ? "\n" : "";
-  const next = `${existing}${separator}${params.content}`;
-  if (params.sandbox) {
-    const parent = path.posix.dirname(params.relativePath);
-    if (parent && parent !== ".") {
-      await params.sandbox.bridge.mkdirp({
-        filePath: parent,
-        cwd: params.sandbox.root,
-        signal: params.signal,
-      });
-    }
-    await params.sandbox.bridge.writeFile({
-      filePath: params.relativePath,
-      cwd: params.sandbox.root,
-      data: next,
-      mkdir: true,
-      signal: params.signal,
-    });
-    return;
-  }
-  await fs.mkdir(path.dirname(params.absolutePath), { recursive: true });
-  await fs.writeFile(params.absolutePath, next, "utf-8");
 }
 
 export function wrapToolMemoryFlushAppendOnlyWrite(
