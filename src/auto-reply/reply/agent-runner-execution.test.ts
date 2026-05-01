@@ -511,6 +511,101 @@ describe("runAgentTurnWithFallback", () => {
     }
   });
 
+  it("prefixes outbound error payloads with a blocked-session marker when livenessState is blocked (#475)", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [
+        {
+          text: "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+          isError: true,
+        },
+      ],
+      meta: {
+        livenessState: "blocked",
+        error: {
+          kind: "compaction_failure",
+          message: "compaction failed: too many attempts",
+        },
+      },
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback(createMinimalRunAgentTurnParams());
+
+    expect(result.kind).toBe("success");
+    if (result.kind === "success") {
+      expect(result.runResult.payloads).toEqual([
+        {
+          text: "⛔ Session blocked: Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+          isError: true,
+        },
+      ]);
+    }
+  });
+
+  it("does not double-prefix the blocked-session marker on subsequent passes (#475)", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [
+        {
+          text: "⛔ Session blocked: already-prefixed payload",
+          isError: true,
+        },
+      ],
+      meta: {
+        livenessState: "blocked",
+      },
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback(createMinimalRunAgentTurnParams());
+
+    expect(result.kind).toBe("success");
+    if (result.kind === "success") {
+      expect(result.runResult.payloads).toEqual([
+        {
+          text: "⛔ Session blocked: already-prefixed payload",
+          isError: true,
+        },
+      ]);
+    }
+  });
+
+  it("leaves non-error payloads unchanged when livenessState is blocked (#475)", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "normal assistant text" }, { text: "some error", isError: true }],
+      meta: {
+        livenessState: "blocked",
+      },
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback(createMinimalRunAgentTurnParams());
+
+    expect(result.kind).toBe("success");
+    if (result.kind === "success") {
+      expect(result.runResult.payloads).toEqual([
+        { text: "normal assistant text" },
+        { text: "⛔ Session blocked: some error", isError: true },
+      ]);
+    }
+  });
+
+  it("does not prefix payloads when livenessState is working (#475)", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "a normal error", isError: true }],
+      meta: {
+        livenessState: "working",
+      },
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback(createMinimalRunAgentTurnParams());
+
+    expect(result.kind).toBe("success");
+    if (result.kind === "success") {
+      expect(result.runResult.payloads).toEqual([{ text: "a normal error", isError: true }]);
+    }
+  });
+
   it("surfaces model capacity errors from pre-reply CLI failures", async () => {
     state.runWithModelFallbackMock.mockRejectedValueOnce(
       new Error("Selected model is at capacity. Please try a different model."),
