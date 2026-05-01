@@ -232,3 +232,9 @@ This is **copilot cleaning up its own v3 candidate** for upstream-presentation r
 - Expanded delegate dispatch tests for per-turn caps, mode-to-spawn flags, hop-prefix/chain advancement, spawn rejection/throw handling, and direct post-compaction dispatch.
 - Added direct coverage for `ReplyRunAlreadyActiveError` shielding in `runReplyAgent` and `normalizeCompactionTrigger("threshold") -> "budget"` attribution.
 - Local proof: focused Wave E coverage tests passed, `git diff --check` passed, and `pnpm check:changed` passed. No design break.
+
+### 2026-05-01T23:20Z — final declare-done checkpoint
+
+- Cleared the full-suite follow-up failures found after Wave E: auto-reply continuation tests are included in the shard inventory, split `<final>` stream tags no longer leak through OpenAI-compatible streaming, checkpoint transcript snapshots are excluded from memory-host/session-cost counting while discovery dedup remains intact, gateway test contexts use the runtime config accessor, and the non-isolated channel-setup status test owns its mocked import graph.
+- Final local proof: `pnpm tsgo && pnpm check && pnpm test && pnpm build` passed; `pnpm build` emitted no `[INEFFECTIVE_DYNAMIC_IMPORT]` warning.
+- Stop-condition audit: all Waves A-E are committed, pushed, and green; block-landing buckets from `/tmp/v3-review-aggro/SUMMARY.md` have been addressed; B1-B8 RFC drift spot-check found no new cleanup-introduced RFC contract drift and no design break.

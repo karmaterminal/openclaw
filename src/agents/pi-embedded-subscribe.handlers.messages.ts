@@ -540,38 +540,18 @@ export function handleMessageUpdate(
     // Handle partial <think> tags: stream whatever reasoning is visible so far.
     ctx.emitReasoningStream(extractThinkingFromTaggedStream(ctx.state.deltaBuffer));
   }
-  const hasVisibleAssistantText = Boolean(
-    phaseAwareVisibleText ||
-      (deliveryPhase === "final_answer"
-      ? ""
-      : ctx
-          .stripBlockTags(
-            ctx.state.deltaBuffer,
-            {
-              thinking: false,
-              final: false,
-              inlineCode: createInlineCodeState(),
-            },
-            { final: evtType === "text_end" },
-          )
-          .trim()),
-  );
-  let visibleDelta = "";
-  if (hasVisibleAssistantText) {
-    const wasThinking = ctx.state.partialBlockState.thinking;
-    visibleDelta =
-      chunk || evtType === "text_end"
-        ? ctx.stripBlockTags(chunk, ctx.state.partialBlockState, { final: evtType === "text_end" })
-        : "";
-    if (!wasThinking && ctx.state.partialBlockState.thinking) {
-      openReasoningStream(ctx);
-    }
-    // Detect when thinking block ends (</think> tag processed)
-    if (wasThinking && !ctx.state.partialBlockState.thinking) {
-      emitReasoningEnd(ctx);
-    }
+  const wasThinking = ctx.state.partialBlockState.thinking;
+  let visibleDelta =
+    chunk || evtType === "text_end"
+      ? ctx.stripBlockTags(chunk, ctx.state.partialBlockState, { final: evtType === "text_end" })
+      : "";
+  if (!wasThinking && ctx.state.partialBlockState.thinking) {
+    openReasoningStream(ctx);
   }
-
+  // Detect when thinking block ends (</think> tag processed)
+  if (wasThinking && !ctx.state.partialBlockState.thinking) {
+    emitReasoningEnd(ctx);
+  }
   if (shouldRebuildVisibleBuffer) {
     const rebuiltBlockState = {
       thinking: false,

@@ -1024,6 +1024,7 @@ describe("gateway agent handler", () => {
           logGateway: { info: vi.fn(), error: vi.fn() },
           broadcastToConnIds,
           getSessionEventSubscriberConnIds: () => new Set(["conn-1"]),
+          getRuntimeConfig: () => mocks.loadConfigReturn,
         } as unknown as GatewayRequestContext,
       },
     );
@@ -1105,6 +1106,7 @@ describe("gateway agent handler", () => {
           logGateway: { info: vi.fn(), error: vi.fn() },
           broadcastToConnIds,
           getSessionEventSubscriberConnIds: () => new Set(["conn-1"]),
+          getRuntimeConfig: () => mocks.loadConfigReturn,
         } as unknown as GatewayRequestContext,
       },
     );

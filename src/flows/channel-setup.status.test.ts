@@ -16,7 +16,10 @@ type NoteChannelPrimerChannels = Parameters<
   typeof import("./channel-setup.status.js").noteChannelPrimer
 >[1];
 
-const listChatChannels = vi.hoisted(() => vi.fn<ListChatChannels>(() => []));
+const listChatChannels = vi.hoisted(() => {
+  vi.resetModules();
+  return vi.fn<ListChatChannels>(() => []);
+});
 const resolveChannelSetupEntries = vi.hoisted(() =>
   vi.fn<ResolveChannelSetupEntries>(() => ({
     entries: [],

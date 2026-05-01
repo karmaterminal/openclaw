@@ -428,7 +428,12 @@ export async function loadCostUsageSummary(params?: {
   const files = (
     await Promise.all(
       entries
-        .filter((entry) => entry.isFile() && isUsageCountedSessionTranscriptFileName(entry.name))
+        .filter(
+          (entry) =>
+            entry.isFile() &&
+            isUsageCountedSessionTranscriptFileName(entry.name) &&
+            !isCheckpointSessionTranscriptFileName(entry.name),
+        )
         .map(async (entry) => {
           const filePath = path.join(sessionsDir, entry.name);
           const stats = await fs.promises.stat(filePath).catch(() => null);
