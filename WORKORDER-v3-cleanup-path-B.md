@@ -225,3 +225,10 @@ This is **copilot cleaning up its own v3 candidate** for upstream-presentation r
 - Surfaced post-compaction context read failures and persisted delegate load failures into the affected session, preserving local pending delegate state when the persisted load path fails.
 - Re-armed hedge timers after dispatcher-level failures and emitted continuation warnings so queued delegates are not silently orphaned after a single log-only failure.
 - Local proof: focused request-compaction, post-compaction delegate dispatch, and hedge dispatch tests passed; `git diff --check` passed; `pnpm check:changed` passed. No design break.
+
+### 2026-05-01T23:12Z — Wave E checkpoint
+
+- Added coverage for continuation state timer refs/handles, pending derivation, and chain-state persistence helpers.
+- Expanded delegate dispatch tests for per-turn caps, mode-to-spawn flags, hop-prefix/chain advancement, spawn rejection/throw handling, and direct post-compaction dispatch.
+- Added direct coverage for `ReplyRunAlreadyActiveError` shielding in `runReplyAgent` and `normalizeCompactionTrigger("threshold") -> "budget"` attribution.
+- Local proof: focused Wave E coverage tests passed, `git diff --check` passed, and `pnpm check:changed` passed. No design break.

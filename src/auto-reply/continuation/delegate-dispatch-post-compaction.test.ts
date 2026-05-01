@@ -48,6 +48,30 @@ afterEach(() => {
 });
 
 describe("dispatchStagedPostCompactionDelegates error handling", () => {
+  it("directly dispatches accepted delegates with post-compaction wake flags", async () => {
+    const sessionKey = "session-post-compact-accepted";
+    const spawnCtx = { agentSessionKey: sessionKey, agentChannel: "discord" };
+    mockState.spawnSubagentDirect.mockResolvedValueOnce({ status: "accepted" });
+
+    const result = await dispatchStagedPostCompactionDelegates(
+      [{ task: "rehydrate workspace state after compaction" }],
+      sessionKey,
+      spawnCtx,
+    );
+
+    expect(result).toEqual({ dispatched: 1, failed: 0 });
+    expect(mockState.spawnSubagentDirect).toHaveBeenCalledWith(
+      {
+        task: "rehydrate workspace state after compaction",
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        drainsContinuationDelegateQueue: true,
+      },
+      spawnCtx,
+    );
+    expect(mockState.enqueueSystemEvent).not.toHaveBeenCalled();
+  });
+
   it("logs warn + enqueues system event when spawnSubagentDirect throws", async () => {
     const sessionKey = "session-post-compact-fail";
     const testError = new Error("registry rejection: chain depth exceeded");
