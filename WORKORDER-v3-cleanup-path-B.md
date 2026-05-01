@@ -188,3 +188,9 @@ This is **copilot cleaning up its own v3 candidate** for upstream-presentation r
 ## Journal section (append as you go)
 
 <!-- start journal -->
+
+### 2026-05-01T21:24Z — initial journal stub
+
+- Read the workorder guardrails and confirmed the hard rail: work only on `frond-scribe/20260429/rebase-copilot-v3`; never push to `feature/context-pressure-squashed`; do not delete this workorder.
+- Began read-first pass over `/tmp/v3-review-aggro/`, the continuation RFC, and the two RFC alignment audit records before wave edits.
+- Next checkpoint: push this journal stub, heartbeat, then start Wave A reject-on-sight cleanup.
