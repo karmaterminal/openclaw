@@ -1,7 +1,7 @@
 // Continuation-tracer shim — Slice 2 surface for #334 OTEL chain-correlation.
 //
-// Per Slice-2 design checkpoint (sprites-of-thornfield, 2026-04-27, path B):
-// the substrate adds the **span-emission surface** here, not the wire. A
+// Per the Slice-2 design checkpoint, the substrate adds the
+// **span-emission surface** here, not the wire. A
 // thin `Tracer` interface with a no-op default keeps the additive contract
 // from Slice 1 — callers that don't opt in see no behavior change, and the
 // real OTEL adapter lands in Slice 3 once the bauble policy conversation
@@ -68,10 +68,10 @@ export type ContinuationDisabledSignalKind = Extract<
  * Normative attribute-key set for continuation spans.
  *
  * **Pinning these names at the shim type — NOT at the adapter — is the
- * load-bearing decision** (🌻's nuance, sprites-of-thornfield 2026-04-27):
- * if the OTEL adapter (Slice 3) ever drifts to `chain_id` / `chainId` /
- * etc., this type catches the drift at compile-time, before the #370
- * harness contract assertions could detect it at runtime.
+ * load-bearing decision**: if the OTEL adapter (Slice 3) ever drifts to
+ * `chain_id` / `chainId` / etc., this type catches the drift at
+ * compile-time, before the harness contract assertions could detect
+ * it at runtime.
  *
  * All keys are optional because not every span carries every attribute
  * (e.g. `heartbeat` carries `continuation.disabled` but no `delay.ms`).
@@ -79,7 +79,7 @@ export type ContinuationDisabledSignalKind = Extract<
  * `setAttributes` / `StartSpanOptions.attributes` permits diagnostic /
  * adapter-internal attributes that aren't part of the canonical contract;
  * `ContinuationSpanAttrs` is what the canonical-attribute-name pin tests
- * (and #370 harness) assert against.
+ * assert against.
  *
  * Mirror in tests at `continuation-tracer.test.ts ::
  * "canonical attribute names round-trip through the surface"`.
@@ -120,8 +120,7 @@ export type ContinuationSpanAttrs = {
    *     (compaction, explicit cancel, session teardown) between
    *     `setTimeout` arming and callback fire (chunk 5b)
    *
-   * **Family semantics** (🌻's framing, sprites-of-thornfield 2026-04-27):
-   * the enum captures **anything that prevented follow-through**, not only
+   * **Family semantics:** the enum captures **anything that prevented follow-through**, not only
    * cap axes. Cap is one shape of gate; reservation-loss is another. Future
    * siblings (`reservation.evicted`, `session.gone`, `compaction.cleared`)
    * slot under the same span name — the family is grammar-defined
@@ -145,8 +144,8 @@ export type ContinuationSpanAttrs = {
    * executing. Diverges from `delay.ms` (the requested delay) under
    * runtime pressure — event-loop blockage, GC pauses, etc.
    *
-   * **Canonical drift formula** (🌊, sprites-of-thornfield 2026-04-27):
-   * `drift = fire.deferred_ms − delay.ms`. Positive values indicate the
+   * **Canonical drift formula:** `drift = fire.deferred_ms − delay.ms`.
+   * Positive values indicate the
    * timer fired late under load; near-zero is on-schedule. Pinned in JSDoc
    * so every consumer doesn't rediscover the formula.
    *
@@ -431,8 +430,7 @@ export function emitContinuationWorkSpan(args: {
  *    replaying a partial dispatch record) can emit without a mode
  *    annotation; current runner wiring always supplies one.
  *
- * Per cohort design (sprites-of-thornfield, 2026-04-27): emit at the
- * **enqueue/accept seam**, NOT at the timer-fire callback. The chain-step
+ * Emit at the **enqueue/accept seam**, NOT at the timer-fire callback. The chain-step
  * is committed when the runner accepts the dispatch into the chain;
  * the `setTimeout` is a delivery mechanism, not a chain semantic.
  * Cancelled-but-accepted dispatches (compaction, reset, gateway shutdown)
@@ -488,8 +486,8 @@ export function emitContinuationDelegateSpan(args: {
  *    prevented follow-through. Per-chain (chain/cost) gates landed in
  *    chunk 4; per-turn delegate-budget cap landed in chunk 5a;
  *    `reservation.missing` (fire-time reservation already cleared) lands
- *    in chunk 5b. Family semantics (🌻, 2026-04-27): "anything that
- *    prevented follow-through," not "cap axes only" — the family is
+ *    in chunk 5b. Family semantics: "anything that prevented
+ *    follow-through," not "cap axes only" — the family is
  *    grammar-defined (verb-on-gate), not enum-cardinality-defined.
  *  - `signal.kind` ({@link ContinuationDisabledSignalKind}): the kind of
  *    signal that was rejected. Values derived from {@link CONTINUATION_SIGNAL_KINDS} SSOT.
@@ -498,8 +496,7 @@ export function emitContinuationDelegateSpan(args: {
  *    signals omit both — they're self-elected single-session and don't
  *    share that taxonomy.
  *
- * IMPORTANT (per cohort design 2026-04-27, 🌊): a reject means the chain
- * never advanced for this signal. Helper does NOT mint or persist a
+ * IMPORTANT: a reject means the chain never advanced for this signal. Helper does NOT mint or persist a
  * `chain.id` for reject spans — callers pass `chainId` through as-is
  * from the live session entry (which may be `undefined` when the
  * rejected signal would have been the first chain step). `chain.step.remaining`
@@ -556,7 +553,7 @@ export function emitContinuationDisabledSpan(args: {
  * actually runs, so consumers can pair `dispatch`/`fire` events on the
  * same `chain.id` and observe scheduling drift / fire-time divergences.
  *
- * **Callsite invariants** (cohort design, sprites-of-thornfield 2026-04-27):
+ * **Callsite invariants:**
  *
  *  - Emit BEFORE `takeDelayedContinuationReservation` runs — the fire
  *    event is wall-clock truth ("the timer fired"); whatever happens next
@@ -585,8 +582,7 @@ export function emitContinuationDisabledSpan(args: {
  *    at fire-time. Fire-time gating is a future-policy seam, deferred to
  *    a future memo.
  *
- * **`chainStepRemainingAtDispatch` provenance** (🌻 dedicated-paragraph
- * note, sprites-of-thornfield 2026-04-27): this value reflects
+ * **`chainStepRemainingAtDispatch` provenance:** this value reflects
  * **dispatch-time headroom** (reservation snapshot), NOT callback-time
  * live state. Rationale: trace continuity with the dispatch span (same
  * `chain.id`, same step counter) so consumers can pair `dispatch` /
@@ -653,7 +649,7 @@ export function emitContinuationDelegateFireSpan(args: {
  * single span with no `continuation.disabled` sibling — unlike 5b which paired
  * fire+disabled(`reservation.missing`).
  *
- * **Cohort 3/3 verdicts (PR #390, sprites-of-thornfield 2026-04-27):**
+ * **Verdict pins (PR #390 review):**
  *  - **Naming:** `continuation.work.fire` (parallel grammar). Family rule
  *    `<noun>.<action>` two-segment dotted-only; `.fire` already means
  *    timer-callback in the family-grammar.
@@ -728,7 +724,7 @@ export function emitContinuationWorkFireSpan(args: {
  * `drainFormattedSystemEvents` call, regardless of how many entries the
  * synchronous bulk-pull returned (including empty drains).
  *
- * **Cohort 4/4 contract (PR #393 memo, sprites-of-thornfield 2026-04-27):**
+ * **Contract pins (PR #393 memo):**
  *  - **Naming:** `continuation.queue.drain` (parallel grammar with
  *    `continuation.queue.enqueue` — producer-verb / consumer-verb on the
  *    substrate queue mechanical pair).
@@ -762,7 +758,6 @@ export function emitContinuationQueueDrainSpan(args: {
     // The wire site at session-system-events.ts already guarantees this
     // (continuation count is a filter over the same array we measured),
     // but a less-disciplined caller could violate the `≤` invariant.
-    // Per 🩸's byte-walk on PR #395 (msg `1498427153543335967`).
     const drainedContinuationCount = Math.min(
       drainedCount,
       Math.max(0, Math.floor(args.drainedContinuationCount)),
@@ -858,7 +853,7 @@ export function emitContinuationCompactionReleasedSpan(args: {
  *  - `disabled.reason` (omitted iff `disabledReason` is `undefined`;
  *    otherwise the supplied gate-axis string)
  *
- * Negative-asserts (per memo §2 and 🩸's #407 negative-pin pattern):
+ * Negative-asserts:
  *  - `delay.ms` MUST NOT appear — heartbeats fire on cadence, not
  *    caller-elected delay
  *  - `chain.step.remaining_at_dispatch` is NOT a heartbeat axis —
