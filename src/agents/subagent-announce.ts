@@ -1,5 +1,4 @@
 import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
-import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
@@ -49,6 +48,7 @@ import {
   callGateway,
   isEmbeddedPiRunActive,
   getRuntimeConfig,
+  resolveContinuationRuntimeConfig,
   waitForEmbeddedPiRunEnd,
 } from "./subagent-announce.runtime.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
@@ -59,12 +59,14 @@ type SubagentAnnounceDeps = {
   callGateway: typeof callGateway;
   getRuntimeConfig: typeof getRuntimeConfig;
   loadSubagentRegistryRuntime: typeof loadSubagentRegistryRuntime;
+  resolveContinuationRuntimeConfig: typeof resolveContinuationRuntimeConfig;
 };
 
 const defaultSubagentAnnounceDeps: SubagentAnnounceDeps = {
   callGateway,
   getRuntimeConfig,
   loadSubagentRegistryRuntime,
+  resolveContinuationRuntimeConfig,
 };
 
 let subagentAnnounceDeps: SubagentAnnounceDeps = defaultSubagentAnnounceDeps;
@@ -163,10 +165,6 @@ type ContinuationDispatchModule = {
   }>;
 };
 
-type ContinuationConfigModule = {
-  resolveContinuationRuntimeConfig: (cfg?: unknown) => { maxChainLength: number };
-};
-
 type ContinuationChainSource = {
   continuationChainCount?: number;
   continuationChainStartedAt?: number;
@@ -229,12 +227,8 @@ async function drainChildContinuationQueue(params: {
     // with a literal path would pull `subagent-spawn.js` into a cycle via
     // `delegate-dispatch.js → subagent-spawn.js → subagent-registry.js →
     // subagent-announce.ts`.
-    const [dispatchModule, configModule, stateModule, sessionStoreModule] = await Promise.all([
+    const [dispatchModule, stateModule, sessionStoreModule] = await Promise.all([
       importRuntimeModule<ContinuationDispatchModule>(import.meta.url, [
-        "./subagent-announce.continuation.runtime",
-        ".js",
-      ]),
-      importRuntimeModule<ContinuationConfigModule>(import.meta.url, [
         "./subagent-announce.continuation.runtime",
         ".js",
       ]),
@@ -248,14 +242,13 @@ async function drainChildContinuationQueue(params: {
       ]),
     ]);
     const { dispatchToolDelegates } = dispatchModule;
-    const { resolveContinuationRuntimeConfig } = configModule;
     const { loadContinuationChainState, persistContinuationChainState } = stateModule;
     const { updateSessionStore, resolveStorePath, resolveAgentIdFromSessionKey } =
       sessionStoreModule;
     const childEntry = loadSessionEntryByKey(params.childSessionKey) as
       | ContinuationChainSource
       | undefined;
-    const dispatchConfig = resolveContinuationRuntimeConfig(cfg);
+    const dispatchConfig = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
     const dispatchResult = await dispatchToolDelegates({
       sessionKey: params.childSessionKey,
       chainState: loadContinuationChainState(childEntry),
@@ -870,7 +863,7 @@ export async function runSubagentAnnounceFlow(params: {
           continuationResult.signal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
 
         const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs } =
-          resolveContinuationRuntimeConfig(cfg);
+          subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
 
         const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
         const childChainHop = hopMatch ? Number.parseInt(hopMatch[1], 10) : 0;
@@ -998,7 +991,7 @@ export async function runSubagentAnnounceFlow(params: {
           costCapTokens: toolCostCapTokens,
           minDelayMs: toolMinDelayMs,
           maxDelayMs: toolMaxDelayMs,
-        } = resolveContinuationRuntimeConfig(cfg);
+        } = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
         const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
         const childChainHop = hopMatch ? Number.parseInt(hopMatch[1], 10) : 0;
         // Use the flag captured before findings was mutated (not re-parsing stripped text).

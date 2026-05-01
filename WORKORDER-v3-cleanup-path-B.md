@@ -212,3 +212,9 @@ This is **copilot cleaning up its own v3 candidate** for upstream-presentation r
 - Removed the reply-side duplicate continuation runtime/config/state/context-pressure implementations and pointed reply, status, agent, and tool surfaces at the canonical continuation-side modules.
 - Kept durable post-compaction delivery on the reply queue dispatcher while renaming the legacy direct-spawn release helper to `dispatchStagedPostCompactionDelegates` so the two helpers no longer share a misleading name.
 - Local proof: targeted continuation/reply/agent tests passed, `git diff --check` passed, targeted `oxfmt --check` passed, and `pnpm check:changed` passed after Testbox auth was unavailable. No design break.
+
+### 2026-05-01T22:58Z — Wave C checkpoint
+
+- Removed the `INEFFECTIVE_DYNAMIC_IMPORT` suppression from `tsdown.config.ts` and kept the build clean without warning filtering.
+- Routed subagent continuation config through the static announce runtime dependency, and kept the continuation drain lazy runtime limited to the modules that must stay off the static graph.
+- Local proof: affected subagent announce tests passed, `pnpm build` passed with no `[INEFFECTIVE_DYNAMIC_IMPORT]` warning, `git diff --check` passed, and `pnpm check:changed` passed. No design break.
