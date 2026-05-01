@@ -142,6 +142,17 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - Contract change: behavior fix for cap admission semantics plus additive cap-error telemetry; delayed queue persistence unchanged.
 - PR verification: base=`cael/325-canonical2`, changedFiles=3.
 
+### #473 — reply-side volatile delegate-pending Map purge
+
+- Branch: `frond-scribe/swim39-473-volatile-map-purge`
+- PR: https://github.com/karmaterminal/openclaw/pull/491
+- Commit: `9af1aab7e578c6eb23781e787b2dfa5bb8ed9b37`
+- Files touched: reply continuation state and a focused guard/behavior test.
+- Bug-shape prevented: reply-side `delegatePendingFlags` volatile Map duplicating TaskFlow/reservation state and letting future session-keyed volatile Maps enter continuation code without review.
+- Test shape: `hasDelegatePending` derives from TaskFlow pending/staged rows plus delayed timer reservations; static guard dynamically scans production continuation files for session-keyed volatile Maps and requires an explicit allowlist entry.
+- Contract change: `setDelegatePending` is retained as a compatibility no-op; pending state source of truth is TaskFlow/reservation-derived.
+- PR verification: base=`cael/325-canonical2`, changedFiles=2.
+
 ## §4 — gate results
 
 - #477: `pnpm config:schema:check` pass; `git grep -nF "taskFlowDelegates" -- src/ docs/` no matches; scoped tests pass (31 tests across config/runtime schema files); `pnpm tsgo` pass; `pnpm check` pass. Initial `pnpm check` failed on a lint-only test-key construction, heartbeat posted, fixed, reran green.
@@ -152,6 +163,7 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - #823: focused delegate-store/dispatch/session-delivery queue tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. Initial focused run failed because old test fixtures used `createdAt=1` while the new TTL harness default made every fixture stale; heartbeat posted, fixed test harness default, reran green. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
 - #476: focused memory-flush/sandbox/OpenShell tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, `pnpm lint`, and `pnpm plugin-sdk:api:check` pass. Initial `pnpm tsgo:core:test` caught a local test-stub literal type issue; heartbeat posted and fixed. `pnpm lint` then caught an unbound optional method reference; heartbeat posted and fixed. First `pnpm check:changed` also caught the related OpenShell `SandboxFsBridge` implementation gap; heartbeat posted, OpenShell append implemented/tested, reran. Final `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails only in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
 - #826: focused continue-delegate/delegate-store tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
+- #473: focused continuation-state/agent-runner/delegate-store tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
 
 ## §5 — push log
 
@@ -164,10 +176,15 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - #823: branch pushed before byte-work, fix commit pushed, PR #488 opened, bootstrap issue #823 linked, gate-failure heartbeats and PR-open heartbeat sent, fork CI dispatch requested for head `63c2fca43930f344325f8034f52e7dd19caa61e7`.
 - #476: branch pushed before byte-work, fix commit pushed, PR #489 opened, issue #476 linked, gate-failure heartbeats and PR-open heartbeat sent, fork CI dispatch requested for head `556c4c32f178feebb548da4e115d79650a8a55e5`.
 - #826: branch pushed before byte-work, fix commit pushed, PR #490 opened, bootstrap issue #826 linked, gate-failure heartbeat and PR-open heartbeat sent, fork CI dispatch requested for head `ac176bd7a9192290a67288dd646f6d04bde524aa`.
+- #473: branch pushed before byte-work, fix commit pushed, PR #491 opened, issue #473 linked, gate-failure heartbeat and PR-open heartbeat sent, fork CI dispatch requested for head `9af1aab7e578c6eb23781e787b2dfa5bb8ed9b37`.
 
 ## §7 — declare done
 
-_(to be filled in at completion)_
+- Opened 9 PRs against `cael/325-canonical2`: #483, #484, #485, #486, #487, #488, #489, #490, #491.
+- All PRs passed required base/file-count verification; changedFiles were 6, 3, 13, 2, 2, 10, 13, 3, and 2 respectively.
+- Scoped gates are green for every PR. `pnpm check:changed` remains blocked by canonical baseline all-lane expansion into unrelated extension type baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities; `extensions/qqbot` zod v3/v4 schema mismatch). Heartbeats posted for each failed changed-gate instance.
+- All PRs are linked from their source issue/bootstrap issue and bootstrap CI dispatch was requested for each exact head SHA.
+- No §9 question was needed.
 
 ## §9 — questions for figs (raise if blocked, do not block other fixes)
 
