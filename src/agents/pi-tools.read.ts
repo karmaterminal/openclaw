@@ -688,7 +688,10 @@ export function createHostWorkspaceAppendTool(
           details: { path: rawPath },
         };
       }
-      const resolved = path.resolve(expandTildeToOsHome(rawPath));
+      const expanded = expandTildeToOsHome(rawPath);
+      const resolved = path.isAbsolute(expanded)
+        ? path.resolve(expanded)
+        : path.resolve(root, expanded);
       await fs.mkdir(path.dirname(resolved), { recursive: true });
       await fs.appendFile(resolved, content, "utf-8");
       return {
