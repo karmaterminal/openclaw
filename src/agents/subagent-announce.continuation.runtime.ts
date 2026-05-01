@@ -13,7 +13,7 @@
 // (delegate-dispatch never enters the static graph of subagent-announce)
 // while giving the bundler a stable on-disk target.
 //
-// Registered as a tsdown bundler entry: `agents/subagent-announce.continuation.runtime`
+// Registered as a tsdown bundler entry: `subagent-announce.continuation.runtime`
 // in `tsdown.config.ts`.
 export { dispatchToolDelegates } from "../auto-reply/continuation/delegate-dispatch.js";
 export { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
