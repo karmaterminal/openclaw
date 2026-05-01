@@ -54,15 +54,25 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 
 ## §3 — per-issue execution
 
-_(to be filled in)_
+### #477 — vestigial taskFlowDelegates config echo
+
+- Branch: `frond-scribe/swim39-477-vestigial-purge`
+- PR: https://github.com/karmaterminal/openclaw/pull/483
+- Commit: `fe67816ec18d6e71b484c748a17e8dab3a566f78`
+- Files touched: `docs/design/continue-work-signal-v2.md`, `src/auto-reply/continuation-delegate-store.ts`, `src/config/schema.base.generated.ts`, `src/config/zod-schema.agent-defaults.ts`, `src/config/zod-schema.continuation.test.ts`, `src/infra/substrate-capability-registry.ts`
+- Bug-shape prevented: retired config key being accepted/echoed after TaskFlow became unconditional.
+- Test shape: strict schema test now rejects the retired key; generated base schema no longer contains it.
+- Contract change: yes — stale configs must remove the retired key; runtime behavior unchanged because no alternate substrate exists.
+- PR verification: base=`cael/325-canonical2`, changedFiles=6.
 
 ## §4 — gate results
 
-_(to be filled in)_
+- #477: `pnpm config:schema:check` pass; `git grep -nF "taskFlowDelegates" -- src/ docs/` no matches; scoped tests pass (31 tests across config/runtime schema files); `pnpm tsgo` pass; `pnpm check` pass. Initial `pnpm check` failed on a lint-only test-key construction, heartbeat posted, fixed, reran green.
 
 ## §5 — push log
 
 - Read checkpoint: required reads + issue/PR evidence hydrated; journal updated before first fix branch.
+- #477: branch pushed before byte-work, fix commit pushed, PR #483 opened, issue #477 linked, heartbeat sent, fork CI dispatch requested for head `fe67816ec18d6e71b484c748a17e8dab3a566f78`.
 
 ## §7 — declare done
 
