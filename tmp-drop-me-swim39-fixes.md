@@ -109,6 +109,17 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - Contract change: additive channel-visible error/status text for blocked terminal liveness; no new protocol surface.
 - PR verification: base=`cael/325-canonical2`, changedFiles=2.
 
+### #823 — post-compaction delegate firstArmedAt + TTL
+
+- Branch: `frond-scribe/swim39-823-post-compaction-ttl-restart-load`
+- PR: https://github.com/karmaterminal/openclaw/pull/488
+- Commit: `63c2fca43930f344325f8034f52e7dd19caa61e7`
+- Files touched: post-compaction delegate store/dispatch/session-delivery queue types and focused tests.
+- Bug-shape prevented: stale post-compaction shards getting rehydrated with `createdAt=Date.now()` and surviving restarts/requeues as fresh work.
+- Test shape: TaskFlow and wrapper consume preserve `firstArmedAt`; dispatch drops >7d stale delegates by stable arm age; queue payload/idempotency carries stable age.
+- Contract change: additive `firstArmedAt` persisted on post-compaction delegates; >7d stale post-compaction delegates are dropped with a log instead of dispatched.
+- PR verification: base=`cael/325-canonical2`, changedFiles=10.
+
 ## §4 — gate results
 
 - #477: `pnpm config:schema:check` pass; `git grep -nF "taskFlowDelegates" -- src/ docs/` no matches; scoped tests pass (31 tests across config/runtime schema files); `pnpm tsgo` pass; `pnpm check` pass. Initial `pnpm check` failed on a lint-only test-key construction, heartbeat posted, fixed, reran green.
@@ -116,6 +127,7 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - #825: focused tests pass (`request-compaction-tool.volitional-threading`, `request-compaction-tool`, `pi-embedded-subscribe.handlers.compaction`); tool wiring tests pass (`openclaw-tools.continuation-registration`, `tools-effective-inventory`, `commands-system-prompt`); `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. `pnpm check`, `pnpm check:test-types`, and `pnpm check:changed` fail only after expanding into untouched extension type baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); `pnpm format:check` reports broad pre-existing drift outside this PR. Heartbeats posted for each failed gate class.
 - #474: focused request-compaction tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. Initial focused test run failed because the same-turn regression used an already-resolved mock; heartbeat posted, test tightened with a pending promise, reran green. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
 - #475: focused agent-runner execution test pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
+- #823: focused delegate-store/dispatch/session-delivery queue tests pass; `pnpm tsgo:core`, `pnpm tsgo:core:test`, and `pnpm lint` pass. Initial focused run failed because old test fixtures used `createdAt=1` while the new TTL harness default made every fixture stale; heartbeat posted, fixed test harness default, reran green. `pnpm check:changed` expands to all lanes from canonical baseline unknown `.agents` surfaces and fails in existing extension typecheck baselines (`extensions/codex` duplicate `@mariozechner/pi-agent-core` identities and `extensions/qqbot` zod v3/v4 mismatch); heartbeat posted.
 
 ## §5 — push log
 
@@ -125,6 +137,7 @@ Topology note: the parent branch contains WORKORDER/journal savegame commits ove
 - #825: branch pushed before byte-work, fix commit pushed, PR #485 opened, bootstrap issue #825 linked, gate-failure heartbeats and PR-open heartbeat sent, fork CI dispatch requested for head `9f25f9116ff657c41ab8981a61f5d79e7c260b33`.
 - #474: branch pushed before byte-work, fix commit pushed, PR #486 opened, issue #474 linked, gate-failure heartbeats and PR-open heartbeat sent, fork CI dispatch requested for head `a37434a0f7659d687cfc0937e4ff9274c9e54817`.
 - #475: branch pushed before byte-work, fix commit pushed, PR #487 opened, issue #475 linked, gate-failure heartbeat and PR-open heartbeat sent, fork CI dispatch requested for head `807f7c5338ea95bb35b2d1a286f94421787ccd45`.
+- #823: branch pushed before byte-work, fix commit pushed, PR #488 opened, bootstrap issue #823 linked, gate-failure heartbeats and PR-open heartbeat sent, fork CI dispatch requested for head `63c2fca43930f344325f8034f52e7dd19caa61e7`.
 
 ## §7 — declare done
 
