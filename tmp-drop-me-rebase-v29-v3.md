@@ -28,5 +28,19 @@ started: 2026-05-01T17:58Z
 - Ran `pnpm install`; lockfile already up to date.
 - Ran `pnpm tsgo`.
 - Result: `===exit=0`.
+- Heartbeat: sent.
+- Checkpoint push: `fbb91bc87654`.
+
+## §3 check — 2026-05-01T18:05Z
+
+- Ran `pnpm check`.
+- Result: `===exit=1`.
+- Passed before failure: preflight guards, prod typecheck, oxlint, webhook body guard, runtime-action config guard, temp-path guard, pairing guards, import cycle check.
+- Failure shape: `check:deprecated-internal-config-api` rejected ambient `loadConfig()` calls in:
+  - `src/agents/subagent-announce.ts:215,775`
+  - `src/auto-reply/continuation/config.ts:57,94`
+  - `src/auto-reply/reply/continuation-runtime.ts:51,85`
+  - `src/auto-reply/reply/post-compaction-delegate-dispatch.ts:47,424`
+- Next: investigate guard-compliant config threading; no guess-fix.
 - Heartbeat: pending.
 - Checkpoint push: pending.
