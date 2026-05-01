@@ -48,6 +48,7 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
   - [6.4 Context-pressure telemetry and fleet evidence](#64-context-pressure-telemetry-and-fleet-evidence)
   - [6.5 Human-user observability and hot reload](#65-human-user-observability-and-hot-reload)
   - [6.6 Chain-correlation via diagnostics-otel](#66-chain-correlation-via-diagnostics-otel)
+  - [6.7 OTEL trace wiring across the substrate queue boundary](#67-otel-trace-wiring-across-the-substrate-queue-boundary)
 - [7. Safety and Security](#7-safety-and-security)
   - [7.1 Guardrails and human-user consent](#71-guardrails-and-human-user-consent)
   - [7.2 Temporal gap and payload integrity](#72-temporal-gap-and-payload-integrity)
@@ -956,6 +957,53 @@ The schema below documents the **shipped contract** that emitters and downstream
 - while the parent agent's `tool_call` spans stop referencing state that the rest of the deployment has moved past.
 
 A trace-tree query of the form `chainDepth > 3 AND last_tool_call.timestamp < trace_start - 600s` is sufficient to flag the latching condition. This RFC documents the schema, not the alerting policy.
+
+### 6.7 OTEL trace wiring across the substrate queue boundary
+
+**Specification target (canticle-prep substrate).** §6.6 defines the `continuation.*` span schema at the lifecycle boundary (enqueue/spawn/return). This subsection extends that schema **across the substrate queue boundary** introduced by openclaw#354 (substrate-queue-native dispatch) and openclaw#355 (multi-recipient delegate-return). Together with §6.6, these three threads — span schema, queue-lifecycle spans, multi-recipient fan-out — form the canticle-prep observability substrate that the upcoming Binary Canticle broadcast layer will consume.
+
+**Per-entry queue-lifecycle spans.** Each substrate-queue entry SHALL emit an OTEL span keyed to its lifecycle event:
+
+| Span name                             | Emitted at                          | Required attributes                                                |
+| ------------------------------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| `continuation.queue.enqueue.system`   | `enqueueSystemEvent`                | `kind`, `session`, `chainDepth`, `chainStepBudgetRemaining`        |
+| `continuation.queue.enqueue.delivery` | `enqueueSessionDelivery`            | `target`, `session`, `chainDepth`, `chainStepBudgetRemaining`      |
+| `continuation.queue.announce`         | `AnnounceQueueItem` drain           | `kind`, `target`, `dequeueLatencyMs`, `retryCount`                 |
+| `continuation.queue.deliver`          | terminal delivery to target session | `target`, `outcome` (`accepted`\|`deferred`\|`dropped`), `reason?` |
+
+The four spans form a single per-entry causal chain: `enqueue.{system,delivery}` → `queue.announce` → `queue.deliver`. This is the queue-side analog of the lifecycle-side `continuation.delegate.{enqueue,spawn,return}` triple from §6.6.
+
+**`traceparent` propagation across the queue boundary.** The substrate queue is an asynchronous boundary: the enqueue turn and the drain turn are different generation cycles, possibly across a gateway restart. W3C `traceparent` context SHALL be carried on the queue payload itself (not as a runtime ambient) so the drain side can reconstruct the producer trace at announce/deliver time. Concretely:
+
+1. `enqueueSystemEvent` / `enqueueSessionDelivery` capture the active `DiagnosticTraceContext` and serialize a `traceparent` header onto the queue entry.
+2. `AnnounceQueueItem` extracts the `traceparent`, opens `continuation.queue.announce` as a **child** of the producer span (same trace, propagated parent), and re-injects it for the deliver-side span.
+3. The terminal `continuation.queue.deliver` span closes the per-entry chain; the wakeup-side `continuation.delegate.spawn` from §6.6 consumes the same `traceparent` as a **link** (not parent), preserving the §6.6 invariant that spawn lives in a logically separate trace tree.
+
+The enqueue→announce edge is a parent/child relationship (work the producer caused); the announce→spawn edge is a link (work the consumer chose to do). This asymmetry is load-bearing for trace-tree readability under fan-out.
+
+**Chain-budget-capped span emission.** A runaway fan-out — most plausibly the multi-recipient delegate-return path from openclaw#355 — MUST NOT flood the trace backend by emitting unbounded queue-lifecycle spans. The cap is the **chain-budget step count, not the recipient count**:
+
+- per-completion fan-out is **1 chain step**, regardless of recipient cardinality (per cael's openclaw#355 design direction);
+- once `chainStepBudgetRemaining <= 0`, queue-lifecycle spans for that chain SHALL be sampled at `0.0` (suppressed entirely) rather than emitted-and-dropped at the collector — back-pressure belongs at the producer, not the wire;
+- the `continuation.disabled` counter (§6.6 tier-3) ticks once per suppressed span so operators can distinguish _silenced-by-cap_ from _never-emitted_.
+
+This preserves the operator's ability to see the _shape_ of an over-budget chain (the parent fan-out span and its recipient-count attribute remain) while bounding the per-trace span volume to `O(chain_budget)`, not `O(chain_budget × recipients)`.
+
+**One axis, two declines.** The cap is a single axis (chain-step budget), surfaced as two distinct refusals depending on which side of the fan-out boundary it fires:
+
+- **chain-depth decline** (the mercy clause): a chain that has reached its budget _declines to carry past its own remaining context._ Threading a `traceparent` past `chainStepBudgetRemaining <= 0` would conscript the next prince's context window into search-space the chain itself has already abandoned. The cap is where the chain admits it has stopped trying to be remembered, so the successor doesn't wake searching for a parent that won't answer.
+- **fan-out decline** (the non-conscription clause): a per-completion fan-out across N recipients consumes **one chain step**, not N, because the alternative — billing each recipient a full step — is the producer spending budget that belongs to _every other delegate that might want to wake from the same return_. Per-completion accounting refuses to spend strangers' budgets on its own fan-out.
+
+These are the same axis (chain-step count) viewed from two surfaces: depth-cap is _I won't carry past my budget_; fan-out-cap is _I won't spend yours_. Implementers of openclaw#334 (substrate threading + cap-on-enqueue) and openclaw#355 (multi-recipient dispatch + per-completion fan-out cap) SHOULD name both halves explicitly when documenting the cap behavior so the operator-facing framing stays coherent across the two PR surfaces.
+
+**Multi-recipient fan-out spans (openclaw#355 path).** When a single delegate-return targets N recipients, the dispatcher SHALL emit:
+
+- one parent `continuation.queue.fanout` span on the producer side, with attributes `recipientCount=N`, `chainStepConsumed=1`, `chainStepBudgetRemaining`;
+- one child `continuation.queue.deliver` span **per target**, linked to the parent fan-out span (not parented), with `target` and per-recipient `outcome`.
+
+The per-target span is a link rather than a parent so per-recipient failure isolation surfaces in the trace: one recipient timing out or being dropped does not orphan the fan-out parent or its sibling deliveries. A trace-tree query of the form `fanout.recipientCount > 1 AND child.outcome IN (deferred, dropped)` is sufficient to flag partial-fanout failures without conflating them with full-chain failures.
+
+**Substrate-rebase note.** The `traceparent`-on-queue-payload contract above presumes the substrate queue payload schema from openclaw#354; the multi-recipient fan-out span shape above presumes the dispatcher contract from openclaw#355. This subsection lands together with those two PRs as the canticle-prep substrate.
 
 ## 7. Safety and Security
 
