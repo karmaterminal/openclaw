@@ -1,22 +1,29 @@
-import { delayedContinuationReservationCount } from "../continuation-delegate-store.js";
+import {
+  delayedContinuationReservationCount,
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
+} from "../continuation-delegate-store.js";
 
 type ContinuationTimerHandle = ReturnType<typeof setTimeout>;
 
 const continuationGenerations = new Map<string, number>();
 const continuationTimerRefs = new Map<string, number>();
 const continuationTimerHandles = new Map<string, Set<ContinuationTimerHandle>>();
-const delegatePendingFlags = new Map<string, boolean>();
 
 export function setDelegatePending(sessionKey: string): void {
-  delegatePendingFlags.set(sessionKey, true);
+  // Compatibility no-op: pending state is derived from TaskFlow and timer reservations.
+  void sessionKey;
 }
 
 export function hasDelegatePending(sessionKey: string): boolean {
-  return delegatePendingFlags.get(sessionKey) === true;
+  return (
+    pendingDelegateCount(sessionKey) > 0 ||
+    stagedPostCompactionDelegateCount(sessionKey) > 0 ||
+    delayedContinuationReservationCount(sessionKey) > 0
+  );
 }
 
 export function clearDelegatePending(sessionKey: string): void {
-  delegatePendingFlags.delete(sessionKey);
   bumpContinuationGeneration(sessionKey);
   maybeDropContinuationGeneration(sessionKey);
 }
