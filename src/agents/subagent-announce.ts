@@ -1,5 +1,5 @@
 import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
-import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
+import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
@@ -72,7 +72,7 @@ let subagentRegistryRuntimePromise: Promise<
   typeof import("./subagent-announce.registry.runtime.js")
 > | null = null;
 let continuationStateRuntimePromise: Promise<
-  typeof import("../auto-reply/reply/continuation-state.runtime.js")
+  typeof import("../auto-reply/continuation/state.js")
 > | null = null;
 let subagentSpawnRuntimePromise: Promise<
   Pick<typeof import("./subagent-spawn.js"), "spawnSubagentDirect">
@@ -84,7 +84,7 @@ function loadSubagentRegistryRuntime() {
 }
 
 function loadContinuationStateRuntime() {
-  continuationStateRuntimePromise ??= import("../auto-reply/reply/continuation-state.runtime.js");
+  continuationStateRuntimePromise ??= import("../auto-reply/continuation/state.js");
   return continuationStateRuntimePromise;
 }
 
@@ -919,8 +919,6 @@ export async function runSubagentAnnounceFlow(params: {
           const nextChainHop = chainGuardResult.nextChainHop;
           const continuationStateRuntime = await loadContinuationStateRuntime();
 
-          continuationStateRuntime.setDelegatePending(targetRequesterSessionKey);
-
           const doChainSpawn = async (timerTriggered = false) => {
             try {
               const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
@@ -1040,8 +1038,6 @@ export async function runSubagentAnnounceFlow(params: {
             delegateMode === "silent-wake" || (parentWasSilent && params.wakeOnReturn === true);
           const toolDelayMs = toolDelegate.delayMs;
           const continuationStateRuntime = await loadContinuationStateRuntime();
-
-          continuationStateRuntime.setDelegatePending(targetRequesterSessionKey);
 
           const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
           const doToolChainSpawn = async (timerTriggered = false) => {

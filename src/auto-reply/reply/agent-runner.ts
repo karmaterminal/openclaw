@@ -53,7 +53,15 @@ import {
   stagedPostCompactionDelegateCount,
   takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
+import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import { checkContextPressure } from "../continuation/context-pressure.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
+import {
+  clearTrackedContinuationTimers,
+  registerContinuationTimerHandle,
+  retainContinuationTimerRef,
+  unregisterContinuationTimerHandle,
+} from "../continuation/state.js";
 import type { ChainState } from "../continuation/types.js";
 import {
   buildFallbackClearedNotice,
@@ -84,20 +92,6 @@ import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-usage-l
 import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
-import { checkContextPressure } from "./context-pressure.js";
-import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
-import {
-  bumpContinuationGeneration,
-  clearDelegatePending,
-  clearDelegatePendingIfNoDelayedReservations,
-  clearTrackedContinuationTimers,
-  currentContinuationGeneration,
-  maybeDropContinuationGeneration,
-  registerContinuationTimerHandle,
-  retainContinuationTimerRef,
-  setDelegatePending,
-  unregisterContinuationTimerHandle,
-} from "./continuation-state.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import {
@@ -122,16 +116,6 @@ import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-t
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
 import { createTypingSignaler } from "./typing-mode.js";
 import type { TypingController } from "./typing.js";
-export {
-  bumpContinuationGeneration,
-  clearDelegatePending,
-  currentContinuationGeneration,
-  registerContinuationTimerHandle,
-  retainContinuationTimerRef,
-  setDelegatePending,
-  unregisterContinuationTimerHandle,
-} from "./continuation-state.js";
-
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 
 function buildInlinePluginStatusPayload(params: {
@@ -914,20 +898,11 @@ function refreshSessionEntryFromStore(params: {
   }
 }
 
-// clearContinuationGeneration intentionally removed: clearing the map entry
-// resets the counter to 0, creating a generation-reuse window where a new
-// chain's value can collide with a stale in-flight timer. All paths now use
-// bumpContinuationGeneration instead.
-
 /**
  * Cancel any pending continuation timer for the given session AND reset
  * chain metadata. Call this from early-return paths (inline actions, slash
  * commands, directive replies) that bypass runReplyAgent but still represent
  * real user input that should preempt a running continuation chain.
- *
- * We only bump (not clear) generations to avoid reuse: if we cleared the map
- * entry, a subsequent chain could reuse a generation value that matches a
- * stale in-flight timer callback.
  */
 export function cancelContinuationTimer(
   sessionKey: string,
@@ -937,12 +912,6 @@ export function cancelContinuationTimer(
     storePath?: string;
   },
 ): void {
-  // Only bump when a generation exists — avoids unbounded map growth
-  // from sessions that never use continuation.
-  if (currentContinuationGeneration(sessionKey) > 0) {
-    bumpContinuationGeneration(sessionKey);
-  }
-
   clearTrackedContinuationTimers(sessionKey);
   clearDelayedContinuationReservations(sessionKey);
 
@@ -1003,10 +972,6 @@ export function cancelContinuationTimer(
   // Cancel any Task Flow-backed pending delegates that may have survived a
   // restart. For the volatile store this drains the Map as a safety net.
   cancelPendingDelegates(sessionKey);
-
-  // Clear delegate-pending flag — no delegate should be considered in-flight
-  // after explicit cancellation.
-  clearDelegatePending(sessionKey);
 }
 
 export async function runReplyAgent(params: {
@@ -1426,31 +1391,6 @@ export async function runReplyAgent(params: {
         cleanupTranscripts: true,
       });
 
-    // --- Context-pressure pre-run injection (RFC §4.2) ---
-    // Fire before the agent turn so the agent can act on pressure in this turn.
-    const continuationEnabledForPressure = cfg?.agents?.defaults?.continuation?.enabled === true;
-    if (continuationEnabledForPressure && sessionKey && activeSessionEntry) {
-      const { checkContextPressure } = await import("../continuation/lazy.runtime.js");
-      const pressureConfig = resolveContinuationRuntimeConfig(cfg);
-      const threshold = pressureConfig.contextPressureThreshold;
-      // Resolve context window for pressure calculation — agentCfgContextTokens
-      // or session-stored value or default.
-      const pressureContextWindow =
-        agentCfgContextTokens ?? activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS;
-      if (threshold && activeSessionEntry.totalTokens && pressureContextWindow) {
-        const pressureEvent = checkContextPressure({
-          sessionKey,
-          totalTokens: activeSessionEntry.totalTokens,
-          contextWindow: pressureContextWindow,
-          threshold,
-          postCompaction: preflightCompactionApplied,
-        });
-        if (pressureEvent) {
-          enqueueSystemEvent(pressureEvent, { sessionKey });
-        }
-      }
-    }
-
     replyOperation.setPhase("running");
 
     // Trigger D: check context pressure before the agent's model call and
@@ -1473,6 +1413,7 @@ export async function runReplyAgent(params: {
         sessionKey,
         contextPressureThreshold,
         contextWindowTokens,
+        postCompaction: preflightCompactionApplied,
       });
       if (pressureResult.fired && storePath) {
         try {
@@ -1519,7 +1460,6 @@ export async function runReplyAgent(params: {
       isHeartbeat,
       sessionKey,
       runtimePolicySessionKey,
-      getCurrentContinuationGeneration: currentContinuationGeneration,
       getActiveSessionEntry: () => activeSessionEntry,
       activeSessionStore,
       storePath,
@@ -2155,11 +2095,6 @@ export async function runReplyAgent(params: {
               log: defaultRuntime.log,
             });
           }
-          // Bump (not clear) to invalidate stale timers without reuse risk.
-          // Clearing would reset to 0, letting a new chain's generation collide
-          // with a stale in-flight timer's captured value.
-          bumpContinuationGeneration(sessionKey);
-          maybeDropContinuationGeneration(sessionKey);
         } else {
           // Accumulate token usage for cost cap (input + output only, excludes
           // cache reads/writes which inflate with inherited system prompt context).
@@ -2201,8 +2136,6 @@ export async function runReplyAgent(params: {
                 log: defaultRuntime.log,
               });
             }
-            bumpContinuationGeneration(sessionKey);
-            maybeDropContinuationGeneration(sessionKey);
           } else {
             bracketTokensAccumulated = true;
             const nextChainCount = allocatedChainHop + 1;
@@ -2288,10 +2221,8 @@ export async function runReplyAgent(params: {
                     `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${task}`,
                     { sessionKey },
                   );
-                  clearDelegatePendingIfNoDelayedReservations(sessionKey);
                   return false;
                 } catch (err) {
-                  clearDelegatePendingIfNoDelayedReservations(sessionKey);
                   defaultRuntime.log(
                     `DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
                   );
@@ -2302,12 +2233,6 @@ export async function runReplyAgent(params: {
                   return false;
                 }
               };
-
-              // Mark delegate-pending via dedicated flag (not system event queue)
-              // so it survives buildQueuedSystemPrompt draining on intervening turns.
-              if (sessionKey) {
-                setDelegatePending(sessionKey);
-              }
 
               if (delegateDelayMs && delegateDelayMs > 0) {
                 // Timed dispatch: spawn after delay. Timer does not survive
@@ -2713,10 +2638,8 @@ export async function runReplyAgent(params: {
                 `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${task}`,
                 { sessionKey },
               );
-              clearDelegatePendingIfNoDelayedReservations(sessionKey);
               return false;
             } catch (err) {
-              clearDelegatePendingIfNoDelayedReservations(sessionKey);
               defaultRuntime.log(
                 `Tool DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
               );
@@ -2727,12 +2650,6 @@ export async function runReplyAgent(params: {
               return false;
             }
           };
-
-          // Mark delegate-pending via dedicated flag (not system event queue)
-          // so it survives buildQueuedSystemPrompt draining on intervening turns.
-          if (sessionKey) {
-            setDelegatePending(sessionKey);
-          }
 
           if (delegate.delayMs && delegate.delayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));

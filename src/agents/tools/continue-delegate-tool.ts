@@ -1,10 +1,10 @@
 import { Type } from "typebox";
+import { resolveMaxDelegatesPerTurn } from "../../auto-reply/continuation/config.js";
 import {
   enqueuePendingDelegate,
   getContinuationDelegateQueueDepths,
   stagePostCompactionDelegate,
 } from "../../auto-reply/continuation/delegate-store.js";
-import { resolveMaxDelegatesPerTurn } from "../../auto-reply/reply/continuation-runtime.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";

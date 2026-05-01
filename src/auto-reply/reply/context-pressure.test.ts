@@ -7,6 +7,7 @@ const mockedLog = vi.hoisted(() => ({
   warn: vi.fn<(msg: string) => void>(),
   error: vi.fn<(msg: string) => void>(),
   debug: vi.fn<(msg: string) => void>(),
+  isEnabled: vi.fn(() => false),
   child: vi.fn(),
 }));
 
@@ -21,7 +22,8 @@ vi.mock("../../logging/subsystem.js", () => ({
  * configurable thresholds. Dedup via `lastContextPressureBand` on
  * the session entry prevents repeated events within the same band.
  *
- * The function under test is imported from context-pressure.ts (created by #164).
+ * The function under test is imported from the canonical continuation
+ * context-pressure module.
  * Signature:
  *   checkContextPressure(params: {
  *     sessionEntry: SessionEntry;
@@ -30,9 +32,7 @@ vi.mock("../../logging/subsystem.js", () => ({
  *     contextWindowTokens: number;
  *   }): { fired: boolean; band: number }
  */
-// The module will be created by #164. Import will resolve once Cael pushes.
-// Until then, tests will fail at import — that's intentional (test-first).
-import { checkContextPressure } from "./context-pressure.js";
+import { checkContextPressure } from "../continuation/context-pressure.js";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */

@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { peekSystemEventEntries, drainSystemEventEntries } from "../../infra/system-events.js";
-import { checkContextPressure } from "./context-pressure.js";
+import { checkContextPressure } from "../continuation/context-pressure.js";
 
 const TEST_SESSION_KEY = "phase2-integration-test";
 
