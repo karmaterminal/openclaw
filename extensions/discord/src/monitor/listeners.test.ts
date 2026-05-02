@@ -183,7 +183,29 @@ describe("DiscordInteractionListener", () => {
     await flushAsyncWork();
 
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("discord interaction handler failed: Error: interaction boom"),
+      expect.stringContaining(
+        "discord interaction handler failed: interactionId=interaction-1 command=<unknown> type=<unknown> phase=receive error=Error: interaction boom",
+      ),
+    );
+  });
+
+  it("logs interaction id and command name for async interaction failures", async () => {
+    const handleInteraction = vi.fn(async () => {
+      throw Object.assign(new Error("aborted"), { name: "AbortError" });
+    });
+    const logger = createLogger();
+    const listener = new DiscordInteractionListener(logger as never);
+
+    await listener.handle(
+      { id: "interaction-2", type: "2", data: { name: "status" } } as never,
+      { handleInteraction } as never,
+    );
+    await flushAsyncWork();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "discord interaction handler failed: interactionId=interaction-2 command=status type=2 phase=receive error=AbortError: aborted",
+      ),
     );
   });
 

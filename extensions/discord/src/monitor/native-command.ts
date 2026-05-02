@@ -83,6 +83,30 @@ import type { ThreadBindingManager } from "./thread-bindings.js";
 const log = createSubsystemLogger("discord/native-command");
 export { __testing } from "./native-command.runtime.js";
 
+function formatNativeCommandError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  return String(error);
+}
+
+function readInteractionId(
+  interaction: CommandInteraction | ButtonInteraction | StringSelectMenuInteraction,
+): string {
+  const rawId = (interaction as { rawData?: { id?: unknown } }).rawData?.id;
+  return typeof rawId === "string" && rawId.trim() ? rawId : "<unknown>";
+}
+
+type NativeCommandPhase = "received" | "defer" | "ack" | "auth" | "dispatch";
+
+type NativeCommandDiagnostics = {
+  phase?: NativeCommandPhase;
+  deferAttempted?: boolean;
+  deferSucceeded?: boolean;
+  authPhase?: "not-run" | "dm-auth" | "guild-auth";
+  authResult?: "not-run" | "allowed" | "allowed-bypass" | "denied";
+};
+
 export function createDiscordNativeCommand(params: {
   command: NativeCommandSpec;
   cfg: OpenClawConfig;
@@ -151,39 +175,63 @@ export function createDiscordNativeCommand(params: {
     options = options;
 
     async run(interaction: CommandInteraction) {
-      const deferred = await safeDiscordInteractionCall("interaction defer", () =>
-        interaction.defer({ ephemeral: this.ephemeral }),
-      );
-      if (deferred === null) {
-        return;
-      }
-      const commandArgs = argDefinitions?.length
-        ? readDiscordCommandArgs(interaction, argDefinitions)
-        : command.acceptsArgs
-          ? parseCommandArgs(commandDefinition, interaction.options.getString("input") ?? "")
+      const interactionId = readInteractionId(interaction);
+      const commandLogName = commandDefinition.nativeName ?? commandDefinition.key ?? command.name;
+      const diagnostics: NativeCommandDiagnostics = {
+        phase: "received",
+        deferAttempted: false,
+        deferSucceeded: false,
+        authPhase: "not-run",
+        authResult: "not-run",
+      };
+      try {
+        diagnostics.phase = "defer";
+        diagnostics.deferAttempted = true;
+        const deferred = await safeDiscordInteractionCall("interaction defer", () =>
+          interaction.defer({ ephemeral: this.ephemeral }),
+        );
+        if (deferred === null) {
+          log.warn(
+            `discord native command defer skipped: interactionId=${interactionId} command=${commandLogName} phase=defer deferAttempted=${diagnostics.deferAttempted ?? false} deferSucceeded=false reason=unknown_interaction`,
+          );
+          return;
+        }
+        diagnostics.deferSucceeded = true;
+        diagnostics.phase = "ack";
+        const commandArgs = argDefinitions?.length
+          ? readDiscordCommandArgs(interaction, argDefinitions)
+          : command.acceptsArgs
+            ? parseCommandArgs(commandDefinition, interaction.options.getString("input") ?? "")
+            : undefined;
+        const commandArgsWithRaw = commandArgs
+          ? ({
+              ...commandArgs,
+              raw: serializeCommandArgs(commandDefinition, commandArgs) ?? commandArgs.raw,
+            } satisfies DiscordCommandArgs)
           : undefined;
-      const commandArgsWithRaw = commandArgs
-        ? ({
-            ...commandArgs,
-            raw: serializeCommandArgs(commandDefinition, commandArgs) ?? commandArgs.raw,
-          } satisfies DiscordCommandArgs)
-        : undefined;
-      const prompt = buildCommandTextFromArgs(commandDefinition, commandArgsWithRaw);
-      await dispatchDiscordCommandInteraction({
-        interaction,
-        prompt,
-        command: commandDefinition,
-        commandArgs: commandArgsWithRaw,
-        cfg,
-        discordConfig,
-        accountId,
-        sessionPrefix,
-        // Slash commands are deferred up front, so all later responses must use
-        // follow-up/edit semantics instead of the initial reply endpoint.
-        preferFollowUp: true,
-        threadBindings,
-        responseEphemeral: ephemeralDefault,
-      });
+        const prompt = buildCommandTextFromArgs(commandDefinition, commandArgsWithRaw);
+        await dispatchDiscordCommandInteraction({
+          interaction,
+          prompt,
+          command: commandDefinition,
+          commandArgs: commandArgsWithRaw,
+          cfg,
+          discordConfig,
+          accountId,
+          sessionPrefix,
+          // Slash commands are deferred up front, so all later responses must use
+          // follow-up/edit semantics instead of the initial reply endpoint.
+          preferFollowUp: true,
+          threadBindings,
+          responseEphemeral: ephemeralDefault,
+          diagnostics,
+        });
+      } catch (error) {
+        log.error(
+          `discord native command failed: interactionId=${interactionId} command=${commandLogName} phase=${diagnostics.phase ?? "received"} deferAttempted=${diagnostics.deferAttempted ?? false} deferSucceeded=${diagnostics.deferSucceeded ?? false} authPhase=${diagnostics.authPhase ?? "not-run"} authResult=${diagnostics.authResult ?? "not-run"} error=${formatNativeCommandError(error)}`,
+        );
+        throw error;
+      }
     }
   })();
 }
@@ -201,6 +249,7 @@ async function dispatchDiscordCommandInteraction(params: {
   threadBindings: ThreadBindingManager;
   responseEphemeral?: boolean;
   suppressReplies?: boolean;
+  diagnostics?: NativeCommandDiagnostics;
 }): Promise<DispatchDiscordCommandInteractionResult> {
   const {
     interaction,
@@ -215,8 +264,10 @@ async function dispatchDiscordCommandInteraction(params: {
     threadBindings,
     responseEphemeral,
     suppressReplies,
+    diagnostics,
   } = params;
   const commandName = command.nativeName ?? command.key;
+  const interactionId = readInteractionId(interaction);
   const respond = async (content: string, options?: { ephemeral?: boolean }) => {
     const ephemeral = options?.ephemeral ?? responseEphemeral;
     const payload = {
@@ -369,6 +420,11 @@ async function dispatchDiscordCommandInteraction(params: {
   const dmPolicy = resolveDiscordAccountDmPolicy({ cfg, accountId }) ?? "pairing";
   let commandAuthorized = true;
   if (isDirectMessage) {
+    if (diagnostics) {
+      diagnostics.phase = "auth";
+      diagnostics.authPhase = "dm-auth";
+      diagnostics.authResult = "not-run";
+    }
     if (!dmEnabled || dmPolicy === "disabled") {
       await respond("Discord DMs are disabled.");
       return { accepted: false };
@@ -386,6 +442,9 @@ async function dispatchDiscordCommandInteraction(params: {
       useAccessGroups,
     });
     commandAuthorized = dmAccess.commandAuthorized;
+    if (dmAccess.decision === "allow" && diagnostics) {
+      diagnostics.authResult = "allowed";
+    }
     if (dmAccess.decision !== "allow") {
       await handleDiscordDmCommandDecision({
         dmAccess,
@@ -406,6 +465,12 @@ async function dispatchDiscordCommandInteraction(params: {
           );
         },
         onUnauthorized: async () => {
+          if (diagnostics) {
+            diagnostics.authResult = "denied";
+          }
+          log.warn(
+            `discord native command auth denied: interactionId=${interactionId} command=${commandName} phase=dm-auth sender=${sender.id} reason=${dmAccess.decision}`,
+          );
           await respond("You are not authorized to use this command.", { ephemeral: true });
         },
       });
@@ -429,6 +494,11 @@ async function dispatchDiscordCommandInteraction(params: {
     return { accepted: false };
   }
   if (!isDirectMessage) {
+    if (diagnostics) {
+      diagnostics.phase = "auth";
+      diagnostics.authPhase = "guild-auth";
+      diagnostics.authResult = "not-run";
+    }
     commandAuthorized = resolveDiscordGuildNativeCommandAuthorized({
       cfg,
       discordConfig,
@@ -442,10 +512,25 @@ async function dispatchDiscordCommandInteraction(params: {
       ownerAllowListConfigured: ownerAllowList != null,
       ownerAllowed: ownerOk,
     });
+    if (commandAuthorized && diagnostics) {
+      diagnostics.authResult = "allowed";
+    }
     if (!commandAuthorized && !(await canBypassConfiguredAcpGuildGuards())) {
+      if (diagnostics) {
+        diagnostics.authResult = "denied";
+      }
+      log.warn(
+        `discord native command auth denied: interactionId=${interactionId} command=${commandName} phase=guild-auth sender=${sender.id} guild=${interaction.guild?.id ?? "<none>"} channel=${rawChannelId || "<unknown>"} reason=command_authorized_false`,
+      );
       await respond("You are not authorized to use this command.", { ephemeral: true });
       return { accepted: false };
     }
+    if (!commandAuthorized && diagnostics) {
+      diagnostics.authResult = "allowed-bypass";
+    }
+  }
+  if (diagnostics) {
+    diagnostics.phase = "dispatch";
   }
 
   const menuNeedsModelContext =
@@ -570,7 +655,6 @@ async function dispatchDiscordCommandInteraction(params: {
 
   const isGuild = Boolean(interaction.guild);
   const channelId = rawChannelId || "unknown";
-  const interactionId = interaction.rawData.id;
   const routeState = await getNativeRouteState();
   if (routeState.bindingReadiness && !routeState.bindingReadiness.ok) {
     const configuredBinding = routeState.configuredBinding;
