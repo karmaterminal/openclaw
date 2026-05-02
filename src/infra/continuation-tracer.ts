@@ -201,7 +201,8 @@ export type ContinuationSpanName =
   | "continuation.queue.drain"
   | "continuation.compaction.released"
   | "continuation.disabled"
-  | "heartbeat";
+  | "heartbeat"
+  | "rebase.classify";
 
 /**
  * Status code for a span. Mirrors OTEL's `SpanStatusCode` (UNSET=0, OK=1,
