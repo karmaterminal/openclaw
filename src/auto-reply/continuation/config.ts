@@ -49,7 +49,9 @@ function clampOptionalUnitInterval(value: unknown): number | undefined {
 }
 
 function resolveEarlyWarningBand(value: number | null | undefined): number {
-  if (value === null || value === 0) return 0;
+  if (value === null || value === 0) {
+    return 0;
+  }
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     return DEFAULT_EARLY_WARNING_BAND;
   }
