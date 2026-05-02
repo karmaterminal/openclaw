@@ -26,3 +26,9 @@
 - Typecheck: `pnpm tsgo` passed.
 - Full tests: `env NODE_OPTIONS=--max-old-space-size=4096 OPENCLAW_TEST_PROJECTS_PARALLEL=3 OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test` passed all 76 Vitest shards.
 - Local full-suite note: the default higher-parallel run hit the `vitest.gateway-server.config.ts` no-output watchdog; that shard passed when isolated with one project worker.
+
+## Checkpoint 6: PR + issue comment
+
+- PR opened: https://github.com/karmaterminal/openclaw/pull/543
+- PR base verified: `frond-scribe/20260429/v3-cohort-fixes`
+- Issue comment posted: https://github.com/karmaterminal/openclaw/issues/535#issuecomment-4364966163
