@@ -174,3 +174,11 @@ DO NOT open a PR autonomously. The branch on origin (`frond-scribe/325-canonical
 - Applied `0831ce3b8c` onto canonical2. Resolved only the recurring v3 workorder artifact conflict by deleting it again.
 - Added/expanded coverage for continuation state timer refs/handles, delegate dispatch caps and mode/spawn paths, direct post-compaction dispatch, `ReplyRunAlreadyActiveError` shielding, and compaction trigger attribution.
 - Focused Wave E coverage tests passed. No design break.
+
+### 2026-05-01T17:12-07:00 — Final stop-condition checkpoint
+
+- Waves A-E are applied on `frond-scribe/325-canonical2-pathB-rebase`; the final gated source commit before this journal entry is `fbe4c9936193`.
+- Final source gates are clean at `fbe4c9936193`: `pnpm tsgo`, `pnpm check`, `pnpm test`, and `pnpm build` all passed; the build log has no `[INEFFECTIVE_DYNAMIC_IMPORT]`.
+- Stop-condition audit is clean: rejected root artifacts are absent; duplicate reply-side continuation modules are absent; `.github/workflows/workflow-sanity.yml` has no diff; source-side identity/process greps are clean apart from literal color values; and the Type Design P0 residual grep buckets are empty.
+- RFC baseline carry verified by spot-checking B-class drift findings: B1 still has no `targetSessionKey` tool schema field; B2 span-name set remains the canonical code set; B3 normal silent/silent-wake still returns through in-memory system events plus heartbeat wake; B4 post-compaction release remains queued/asynchronous. RFC docs were not edited, so the 39 RFC baseline findings carry unchanged.
+- No design break.
