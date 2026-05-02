@@ -31,3 +31,7 @@
 ## all observability assertions + todo checkpoint
 
 - 2026-05-02T00:10:35+00:00: All H10 observability assertions and throw-shape `it.todo` items present at 087643f4e5. Gate results: `pnpm tsgo` green; `pnpm check` green; `pnpm test src/agents/pi-embedded-subscribe.handlers.compaction.test.ts` green => 1 test file passed; 6 passed, 3 todo (9 total). Workorder scoped command `pnpm test src/agents/pi-embedded-subscribe.handlers.compaction` also exited 0.
+
+## scoped test gate checkpoint
+
+- 2026-05-02T00:10:47+00:00: `pnpm test src/agents/pi-embedded-subscribe.handlers.compaction.test.ts` green at branch content 005782bddc: 1 file passed; 6 passed, 3 todo (9 total).
