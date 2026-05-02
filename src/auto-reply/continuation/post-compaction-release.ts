@@ -15,8 +15,6 @@
  * lazy.runtime owns per-process singleton state and must not be statically
  * imported anywhere in src/ (boundary rule); delegate-dispatch is heavy and
  * is loaded only when delegates are actually staged.
- *
- * See: openclaw#211 (test post-compaction lifecycle release path).
  */
 
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
@@ -26,23 +24,23 @@ import { resolveContinuationRuntimeConfig } from "./config.js";
 
 /** Minimal active-session shape this helper needs. */
 export interface PostCompactionActiveSession {
-  totalTokens?: number | null;
-  contextTokens?: number | null;
+  totalTokens?: number;
+  contextTokens?: number;
 }
 
 /** Originating channel info forwarded to spawn context. */
 export interface PostCompactionOriginating {
-  originatingChannel?: string | null;
-  originatingAccountId?: string | null;
-  originatingTo?: string | null;
-  originatingThreadId?: string | number | null;
+  originatingChannel?: string;
+  originatingAccountId?: string;
+  originatingTo?: string;
+  originatingThreadId?: string | number;
 }
 
 export interface ReleasePostCompactionParams {
   sessionKey: string;
   cfg: OpenClawConfig | undefined;
-  agentCfgContextTokens: number | null | undefined;
-  activeSessionEntry: PostCompactionActiveSession | null | undefined;
+  agentCfgContextTokens?: number;
+  activeSessionEntry?: PostCompactionActiveSession;
   originating: PostCompactionOriginating;
 }
 
@@ -74,13 +72,14 @@ export async function releasePostCompactionLifecycle(
   const pressureConfig = resolveContinuationRuntimeConfig(cfg);
   const pressureContextWindow =
     agentCfgContextTokens ?? activeSessionEntry?.contextTokens ?? DEFAULT_CONTEXT_TOKENS;
-  if (pressureContextWindow && activeSessionEntry?.totalTokens != null) {
+  if (pressureContextWindow && activeSessionEntry?.totalTokens !== undefined) {
     const postCompactionPressure = checkContextPressure({
       sessionKey,
       totalTokens: activeSessionEntry.totalTokens,
       contextWindow: pressureContextWindow,
       threshold: pressureConfig.contextPressureThreshold ?? 0.8,
       postCompaction: true,
+      earlyWarningBand: pressureConfig.earlyWarningBand,
     });
     if (postCompactionPressure) {
       enqueueSystemEvent(postCompactionPressure, { sessionKey });
@@ -92,13 +91,13 @@ export async function releasePostCompactionLifecycle(
   const stagedDelegates = consumeStagedPostCompactionDelegates(sessionKey);
   let delegatesDispatched = 0;
   if (stagedDelegates.length > 0) {
-    const { dispatchPostCompactionDelegates } = await import("./delegate-dispatch.js");
-    const result = await dispatchPostCompactionDelegates(stagedDelegates, sessionKey, {
+    const { dispatchStagedPostCompactionDelegates } = await import("./delegate-dispatch.js");
+    const result = await dispatchStagedPostCompactionDelegates(stagedDelegates, sessionKey, {
       agentSessionKey: sessionKey,
-      agentChannel: originating.originatingChannel ?? undefined,
-      agentAccountId: originating.originatingAccountId ?? undefined,
-      agentTo: originating.originatingTo ?? undefined,
-      agentThreadId: originating.originatingThreadId ?? undefined,
+      agentChannel: originating.originatingChannel,
+      agentAccountId: originating.originatingAccountId,
+      agentTo: originating.originatingTo,
+      agentThreadId: originating.originatingThreadId,
     });
     delegatesDispatched = result.dispatched;
   }

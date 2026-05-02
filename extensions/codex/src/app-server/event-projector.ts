@@ -1,6 +1,5 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, Usage } from "@mariozechner/pi-ai";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { SessionManager, type SessionContext } from "@mariozechner/pi-coding-agent";
 import {
   embeddedAgentLog,
   emitAgentEvent as emitGlobalAgentEvent,
@@ -25,6 +24,8 @@ import {
   type JsonObject,
   type JsonValue,
 } from "./protocol.js";
+
+type AgentMessage = SessionContext["messages"][number];
 
 export type CodexAppServerToolTelemetry = {
   didSendViaMessagingTool: boolean;

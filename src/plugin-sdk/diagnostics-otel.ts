@@ -19,8 +19,8 @@ export {
 } from "../infra/diagnostic-trace-context.js";
 export { redactSensitiveText } from "../logging/redact.js";
 export { emptyPluginConfigSchema } from "../plugins/config-schema.js";
-// #334 Slice 3 — continuation-tracer surface so the diagnostics-otel plugin
-// can install a real OTEL adapter against the noop default after sdk.start().
+// Continuation-tracer surface so the diagnostics-otel plugin can install a
+// real OTEL adapter against the noop default after sdk.start().
 export {
   getContinuationTracer,
   noopTracer,

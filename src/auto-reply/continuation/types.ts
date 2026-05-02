@@ -45,12 +45,8 @@ export type ContinuationSignal =
  * the delegate dispatch module after the response finalizes.
  *
  * `mode` is the single source of truth for silent/silent-wake/post-compaction
- * behaviour. Prior to karmaterminal/openclaw#227 this type also carried
- * `silent`/`silentWake`/`postCompaction` booleans alongside `mode`, which
- * the encoder resolved with an OR-fallback — creating a silent-disagreement
- * hazard when the two encodings disagreed. The booleans still appear in the
- * on-disk TaskFlow state payload (legacy persisted schema) but never on the
- * runtime object.
+ * behaviour. Legacy persisted TaskFlow rows may still carry boolean flags, but
+ * runtime objects never do.
  */
 export type PendingContinuationDelegate = {
   task: string;
@@ -95,6 +91,7 @@ export type ContinuationRuntimeConfig = {
   costCapTokens: number;
   maxDelegatesPerTurn: number;
   contextPressureThreshold?: number;
+  earlyWarningBand?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -123,9 +120,8 @@ export type StagedPostCompactionDelegate = {
  * in the same turn's post-response. Same-turn ephemeral — never persisted
  * across turn boundaries or gateway restarts.
  *
- * Single canonical definition. Prior to karmaterminal/openclaw#223 this type
- * was duplicated in `signal.ts`, `continue-work-tool.ts`, and inline in
- * `delegate-store.ts`.
+ * Single canonical definition used by signal extraction, the continue-work
+ * tool, and delegate handling.
  */
 export type ContinueWorkRequest = {
   reason: string;

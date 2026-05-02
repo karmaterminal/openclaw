@@ -1,7 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadContinuationChainState } from "./state.js";
 
-describe("loadContinuationChainState (openclaw#216)", () => {
+const delegateCounts = vi.hoisted(() => ({
+  delayedReservations: 0,
+  pendingDelegates: 0,
+  stagedPostCompaction: 0,
+}));
+
+vi.mock("./delegate-store.js", () => ({
+  delayedContinuationReservationCount: () => delegateCounts.delayedReservations,
+  pendingDelegateCount: () => delegateCounts.pendingDelegates,
+  stagedPostCompactionDelegateCount: () => delegateCounts.stagedPostCompaction,
+}));
+
+import {
+  clearTrackedContinuationTimers,
+  hasDelegatePending,
+  hasLiveContinuationTimerRefs,
+  loadContinuationChainState,
+  persistContinuationChainState,
+  registerContinuationTimerHandle,
+  releaseContinuationTimerRef,
+  resetContinuationStateForTests,
+  retainContinuationTimerRef,
+  unregisterContinuationTimerHandle,
+} from "./state.js";
+
+beforeEach(() => {
+  delegateCounts.delayedReservations = 0;
+  delegateCounts.pendingDelegates = 0;
+  delegateCounts.stagedPostCompaction = 0;
+  resetContinuationStateForTests();
+});
+
+afterEach(() => {
+  resetContinuationStateForTests();
+});
+
+describe("loadContinuationChainState", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-19T12:00:00Z"));
@@ -72,5 +107,106 @@ describe("loadContinuationChainState (openclaw#216)", () => {
       continuationChainTokens: 777,
     });
     expect(state.accumulatedChainTokens).toBe(777);
+  });
+});
+
+describe("continuation timer state", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("tracks timer refs with retain/release semantics", () => {
+    const sessionKey = "timer-refs";
+
+    retainContinuationTimerRef(sessionKey);
+    retainContinuationTimerRef(sessionKey);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
+
+    releaseContinuationTimerRef(sessionKey);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
+
+    releaseContinuationTimerRef(sessionKey);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
+  });
+
+  it("registers and unregisters timer handles while releasing refs exactly once", () => {
+    const sessionKey = "timer-handles";
+    const handle = setTimeout(() => undefined, 1_000);
+
+    retainContinuationTimerRef(sessionKey);
+    registerContinuationTimerHandle(sessionKey, handle);
+
+    expect(unregisterContinuationTimerHandle(sessionKey, handle)).toBe(true);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
+    expect(unregisterContinuationTimerHandle(sessionKey, handle)).toBe(false);
+
+    clearTimeout(handle);
+  });
+
+  it("clears tracked timers and asynchronously releases their refs", async () => {
+    const sessionKey = "timer-clear";
+    const first = setTimeout(() => undefined, 1_000);
+    const second = setTimeout(() => undefined, 2_000);
+
+    retainContinuationTimerRef(sessionKey);
+    retainContinuationTimerRef(sessionKey);
+    registerContinuationTimerHandle(sessionKey, first);
+    registerContinuationTimerHandle(sessionKey, second);
+
+    clearTrackedContinuationTimers(sessionKey);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
+  });
+});
+
+describe("hasDelegatePending", () => {
+  it("derives pending state from pending, staged, and delayed TaskFlow counts", () => {
+    expect(hasDelegatePending("session")).toBe(false);
+
+    delegateCounts.pendingDelegates = 1;
+    expect(hasDelegatePending("session")).toBe(true);
+
+    delegateCounts.pendingDelegates = 0;
+    delegateCounts.stagedPostCompaction = 1;
+    expect(hasDelegatePending("session")).toBe(true);
+
+    delegateCounts.stagedPostCompaction = 0;
+    delegateCounts.delayedReservations = 1;
+    expect(hasDelegatePending("session")).toBe(true);
+  });
+});
+
+describe("persistContinuationChainState", () => {
+  it("writes continuation chain metadata onto the session entry", () => {
+    const sessionEntry = { sessionId: "session", updatedAt: 1 };
+
+    persistContinuationChainState({
+      sessionEntry,
+      count: 2,
+      startedAt: 1_700_000_000_000,
+      tokens: 42_000,
+    });
+
+    expect(sessionEntry).toMatchObject({
+      continuationChainCount: 2,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 42_000,
+    });
+  });
+
+  it("is a no-op when no session entry is available", () => {
+    expect(() =>
+      persistContinuationChainState({
+        count: 2,
+        startedAt: 1_700_000_000_000,
+        tokens: 42_000,
+      }),
+    ).not.toThrow();
   });
 });

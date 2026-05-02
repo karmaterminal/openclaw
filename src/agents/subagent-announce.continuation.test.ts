@@ -8,11 +8,9 @@ const mocked = vi.hoisted(() => ({
   readLatestAssistantReplyMock: vi.fn(
     async (_sessionKey?: string): Promise<string | undefined> => "raw subagent reply",
   ),
-  generationState: new Map<string, number>(),
   registerContinuationTimerHandleMock: vi.fn(),
   retainContinuationTimerRefMock: vi.fn(),
   releaseContinuationTimerRefMock: vi.fn(),
-  setDelegatePendingMock: vi.fn(),
   unregisterContinuationTimerHandleMock: vi.fn(),
   countActiveDescendantRunsMock: vi.fn((_key?: string) => 0),
   countPendingDescendantRunsMock: vi.fn((_key?: string) => 0),
@@ -36,21 +34,14 @@ vi.mock("../infra/heartbeat-wake.js", () => ({
   requestHeartbeatNow: (...args: unknown[]) => mocked.requestHeartbeatNowMock(...args),
 }));
 
-vi.mock("../auto-reply/reply/continuation-state.runtime.js", () => ({
-  bumpContinuationGeneration: (sessionKey: string) => {
-    const next = (mocked.generationState.get(sessionKey) ?? 0) + 1;
-    mocked.generationState.set(sessionKey, next);
-    return next;
-  },
-  currentContinuationGeneration: (sessionKey: string) =>
-    mocked.generationState.get(sessionKey) ?? 0,
+vi.mock("../auto-reply/continuation/state.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auto-reply/continuation/state.js")>()),
   registerContinuationTimerHandle: (...args: unknown[]) =>
     mocked.registerContinuationTimerHandleMock(...args),
   retainContinuationTimerRef: (...args: unknown[]) =>
     mocked.retainContinuationTimerRefMock(...args),
   releaseContinuationTimerRef: (...args: unknown[]) =>
     mocked.releaseContinuationTimerRefMock(...args),
-  setDelegatePending: (...args: unknown[]) => mocked.setDelegatePendingMock(...args),
   unregisterContinuationTimerHandle: (...args: unknown[]) =>
     mocked.unregisterContinuationTimerHandleMock(...args),
 }));
@@ -145,11 +136,9 @@ describe("subagent announce continuation chaining", () => {
     });
     mocked.requestHeartbeatNowMock.mockReset();
     mocked.readLatestAssistantReplyMock.mockReset().mockResolvedValue("raw subagent reply");
-    mocked.generationState.clear();
     mocked.registerContinuationTimerHandleMock.mockReset();
     mocked.retainContinuationTimerRefMock.mockReset();
     mocked.releaseContinuationTimerRefMock.mockReset();
-    mocked.setDelegatePendingMock.mockReset();
     mocked.unregisterContinuationTimerHandleMock.mockReset();
     mocked.countActiveDescendantRunsMock.mockReset().mockReturnValue(0);
     mocked.countPendingDescendantRunsMock.mockReset().mockReturnValue(0);
@@ -333,7 +322,7 @@ describe("subagent announce continuation chaining", () => {
     expect(mocked.spawnSubagentDirectMock).not.toHaveBeenCalled();
   });
 
-  it("delayed chain-hop timer fires and spawns regardless of generation drift (post-RFC 2026-04-15)", async () => {
+  it("delayed chain-hop timer fires and spawns after the configured delay", async () => {
     await runContinuationAnnounce({
       childSessionKey: "agent:main:subagent:worker-live-tolerance",
       childTaskPrefix: "[continuation:chain-hop:1]",
@@ -341,10 +330,6 @@ describe("subagent announce continuation chaining", () => {
       maxChainLength: 3,
       maxDelayMs: 10,
     });
-
-    // Simulate generation drift — the RFC amendment (2026-04-15) removed
-    // noise-based cancellation, so the timer must still fire and spawn.
-    mocked.generationState.set("agent:main:main", 4);
 
     await new Promise((resolve) => setTimeout(resolve, 25));
     expect(mocked.registerContinuationTimerHandleMock).toHaveBeenCalledWith(

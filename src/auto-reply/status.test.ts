@@ -138,7 +138,7 @@ describe("buildStatusMessage", () => {
     expect(normalized).not.toContain("Continuation:");
   });
 
-  it("renders the RFC §6.3 continuation row when enabled and chain depth > 0 (regression: openclaw#187)", () => {
+  it("renders the RFC §6.3 continuation row when enabled and chain depth > 0", () => {
     const text = buildStatusMessage({
       config: {
         agents: {
@@ -172,7 +172,7 @@ describe("buildStatusMessage", () => {
     expect(normalized).toMatch(/Continuation: chain 3\/10/);
   });
 
-  it("renders the full RFC §6.3 continuation row with all four fields (review gap on karmaterminal/openclaw#188)", () => {
+  it("renders the full RFC §6.3 continuation row with all four fields", () => {
     const key = "agent:main:test-187-full-row";
     continuationMocks.pending.set(key, 2);
     continuationMocks.staged.set(key, 1);

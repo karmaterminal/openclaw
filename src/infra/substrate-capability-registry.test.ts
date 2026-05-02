@@ -7,7 +7,7 @@ import {
 } from "./substrate-capability-registry.js";
 
 describe("substrate capability registry", () => {
-  it("declares the initial substrate entries required by #344", () => {
+  it("declares the initial substrate entries", () => {
     expect(listSubstrateCapabilityEntries().map((entry) => entry.name)).toEqual([
       "session-delivery-queue",
       "TaskFlow",
@@ -24,12 +24,11 @@ describe("substrate capability registry", () => {
       "runtime-symbol": "enqueueSessionDelivery",
       "descriptor-symbol": "QueuedSessionDeliveryPayloadMetadata",
     });
-    expect(queue?.["cite-pin"]).toContain("c96e2d7955ab36ff281fedb68437b6c638eb1e0d");
     expect(queue?.capabilities).toContain("cross-session-addressable-enrichment");
     expect(queue?.capabilities).toContain("chain-budget-at-spawn");
   });
 
-  it("answers capability lookups without byte-walking runtime files", () => {
+  it("answers capability lookups without scanning runtime files", () => {
     expect(findSubstratesByCapability("restart-survival").map((entry) => entry.name)).toEqual([
       "session-delivery-queue",
       "TaskFlow",

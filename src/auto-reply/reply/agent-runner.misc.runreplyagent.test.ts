@@ -17,7 +17,10 @@ import {
 import { delayedContinuationReservationCount } from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
-import { __testing as replyRunRegistryTesting } from "./reply-run-registry.js";
+import {
+  __testing as replyRunRegistryTesting,
+  createReplyOperation,
+} from "./reply-run-registry.js";
 import { createMockTypingController } from "./test-helpers.js";
 
 function createCliBackendTestConfig() {
@@ -143,11 +146,7 @@ vi.mock("../../agents/subagent-registry.js", () => ({
   markSubagentRunTerminated: () => 0,
 }));
 
-import {
-  cancelContinuationTimer,
-  currentContinuationGeneration,
-  runReplyAgent,
-} from "./agent-runner.js";
+import { cancelContinuationTimer, runReplyAgent } from "./agent-runner.js";
 
 type RunWithModelFallbackParams = {
   provider: string;
@@ -302,7 +301,48 @@ describe("runReplyAgent continuation volatile state", () => {
     });
 
     expect(result).toMatchObject({ text: "Normal reply" });
-    expect(currentContinuationGeneration(run.sessionKey)).toBe(0);
+  });
+
+  it("shields ReplyRunAlreadyActiveError while a previous run is still shutting down", async () => {
+    const run = createContinuationRun({ sessionKey: "continuation-already-active" });
+    const activeOperation = createReplyOperation({
+      sessionKey: run.sessionKey,
+      sessionId: "session",
+      resetTriggered: false,
+    });
+
+    try {
+      const result = await runReplyAgent({
+        commandBody: "hello",
+        followupRun: run.followupRun,
+        queueKey: run.sessionKey,
+        resolvedQueue: run.resolvedQueue,
+        shouldSteer: false,
+        shouldFollowup: false,
+        isActive: false,
+        isStreaming: false,
+        typing: run.typing,
+        sessionCtx: run.sessionCtx,
+        sessionEntry: run.sessionEntry,
+        sessionStore: { [run.sessionKey]: run.sessionEntry },
+        sessionKey: run.sessionKey,
+        defaultModel: "anthropic/claude-opus-4-6",
+        resolvedVerboseLevel: "off",
+        isNewSession: false,
+        blockStreamingEnabled: false,
+        resolvedBlockStreamingBreak: "message_end",
+        shouldInjectGroupIntro: false,
+        typingMode: "instant",
+      });
+
+      expect(result).toEqual({
+        text: "⚠️ Previous run is still shutting down. Please try again in a moment.",
+      });
+      expect(run.typing.cleanup).toHaveBeenCalledOnce();
+      expect(runEmbeddedPiAgentMock).not.toHaveBeenCalled();
+    } finally {
+      activeOperation.complete();
+    }
   });
 
   it("fires a delayed WORK timer after CONTINUE_WORK is parsed", async () => {

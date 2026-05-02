@@ -1,38 +1,10 @@
-type RegisterSubagentRunParams = {
-  runId: string;
-  childSessionKey: string;
-  controllerSessionKey?: string;
-  requesterSessionKey: string;
-  requesterOrigin?: {
-    channel?: string;
-    accountId?: string;
-    to?: string;
-    threadId?: string | number;
-    groupId?: string | null;
-    groupChannel?: string | null;
-    groupSpace?: string | null;
-  };
-  requesterDisplayKey: string;
-  task: string;
-  cleanup: "delete" | "keep";
-  label?: string;
-  model?: string;
-  workspaceDir?: string;
-  runTimeoutSeconds?: number;
-  expectsCompletionMessage?: boolean;
-  spawnMode?: "run" | "session";
-  silentAnnounce?: boolean;
-  wakeOnReturn?: boolean;
-  attachmentsDir?: string;
-  attachmentsRootDir?: string;
-  retainAttachmentsOnKeep?: boolean;
-};
+import type { RegisterSubagentRunParams } from "./subagent-registry-run-manager.js";
 
 type CountActiveRunsForSessionFn = (requesterSessionKey: string) => number;
 type RegisterSubagentRunFn = (params: RegisterSubagentRunParams) => void;
 
-let countActiveRunsForSessionImpl: CountActiveRunsForSessionFn | null = null;
-let registerSubagentRunImpl: RegisterSubagentRunFn | null = null;
+let countActiveRunsForSessionImpl: CountActiveRunsForSessionFn | undefined;
+let registerSubagentRunImpl: RegisterSubagentRunFn | undefined;
 
 export function configureSubagentRegistrySpawnRuntime(params: {
   countActiveRunsForSession: CountActiveRunsForSessionFn;
@@ -44,20 +16,18 @@ export function configureSubagentRegistrySpawnRuntime(params: {
 
 export function countActiveRunsForSession(requesterSessionKey: string): number {
   if (!countActiveRunsForSessionImpl) {
-    console.warn(
-      "[subagent-registry-spawn-runtime] countActiveRunsForSession called before configureSubagentRegistrySpawnRuntime()",
+    throw new Error(
+      "subagent registry spawn runtime is not configured before countActiveRunsForSession()",
     );
-    return 0;
   }
   return countActiveRunsForSessionImpl(requesterSessionKey);
 }
 
 export function registerSubagentRun(params: RegisterSubagentRunParams): void {
   if (!registerSubagentRunImpl) {
-    console.warn(
-      "[subagent-registry-spawn-runtime] registerSubagentRun called before configureSubagentRegistrySpawnRuntime()",
+    throw new Error(
+      "subagent registry spawn runtime is not configured before registerSubagentRun()",
     );
-    return;
   }
   registerSubagentRunImpl(params);
 }

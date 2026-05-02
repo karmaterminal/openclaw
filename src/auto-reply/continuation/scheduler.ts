@@ -119,8 +119,8 @@ export function scheduleWorkContinuation(params: {
         workReason,
       );
     } catch (err) {
-      // karmaterminal/openclaw#207: the user-supplied onFire callback does
-      // enqueueSystemEvent + requestHeartbeatNow from agent-runner.ts; either
+      // The user-supplied onFire callback does enqueueSystemEvent +
+      // requestHeartbeatNow from agent-runner.ts; either
       // can throw under bounded-queue / disk conditions. Without this catch
       // the throw propagates to the event loop as an unhandled exception.
       log.warn(
@@ -208,8 +208,8 @@ export function scheduleDelegateContinuation(params: {
         log.info(
           `[continuation] DELEGATE timer fired: hop=${nextChainCount}/${config.maxChainLength} session=${sessionKey}`,
         );
-        // karmaterminal/openclaw#207: `.catch` replaces the previous bare
-        // `void` which discarded rejections and caused them to surface as
+        // `.catch` replaces the previous bare `void` which discarded
+        // rejections and caused them to surface as
         // unhandled rejections in the Node event loop.
         params
           .onDelayedSpawn({
@@ -238,8 +238,8 @@ export function scheduleDelegateContinuation(params: {
   log.info(
     `[continuation] DELEGATE immediate spawn: hop=${nextChainCount}/${config.maxChainLength} session=${sessionKey}`,
   );
-  // karmaterminal/openclaw#207: same unhandled-rejection concern as the
-  // delayed branch. Catch + warn rather than `void` discard.
+  // Same unhandled-rejection concern as the delayed branch. Catch + warn
+  // rather than `void` discard.
   params
     .onImmediateSpawn(nextChainCount, signal.task, {
       silent: signal.silent,

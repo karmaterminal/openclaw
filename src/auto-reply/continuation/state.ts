@@ -23,10 +23,18 @@ const continuationTimerRefs = new Map<string, number>();
 // the source of truth is the TaskFlow registry.
 // ---------------------------------------------------------------------------
 
-import { pendingDelegateCount } from "./delegate-store.js";
+import {
+  delayedContinuationReservationCount,
+  pendingDelegateCount,
+  stagedPostCompactionDelegateCount,
+} from "./delegate-store.js";
 
 export function hasDelegatePending(sessionKey: string): boolean {
-  return pendingDelegateCount(sessionKey) > 0;
+  return (
+    pendingDelegateCount(sessionKey) > 0 ||
+    stagedPostCompactionDelegateCount(sessionKey) > 0 ||
+    delayedContinuationReservationCount(sessionKey) > 0
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -145,8 +153,6 @@ export type ContinuationChainSource = {
  *
  * Accepts any shape compatible with `ContinuationChainSource`, including
  * `SessionEntry` (structural compatibility).
- *
- * Ref: karmaterminal/openclaw#216.
  */
 export function loadContinuationChainState(
   source: ContinuationChainSource | undefined,

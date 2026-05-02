@@ -1,5 +1,4 @@
 import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
-import { resolveContinuationRuntimeConfig } from "../auto-reply/reply/continuation-runtime.js";
 import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
@@ -48,6 +47,7 @@ import {
   callGateway,
   isEmbeddedPiRunActive,
   loadConfig,
+  resolveContinuationRuntimeConfig,
   waitForEmbeddedPiRunEnd,
 } from "./subagent-announce.runtime.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
@@ -58,12 +58,14 @@ type SubagentAnnounceDeps = {
   callGateway: typeof callGateway;
   loadConfig: typeof loadConfig;
   loadSubagentRegistryRuntime: typeof loadSubagentRegistryRuntime;
+  resolveContinuationRuntimeConfig: typeof resolveContinuationRuntimeConfig;
 };
 
 const defaultSubagentAnnounceDeps: SubagentAnnounceDeps = {
   callGateway,
   loadConfig,
   loadSubagentRegistryRuntime,
+  resolveContinuationRuntimeConfig,
 };
 
 let subagentAnnounceDeps: SubagentAnnounceDeps = defaultSubagentAnnounceDeps;
@@ -72,7 +74,7 @@ let subagentRegistryRuntimePromise: Promise<
   typeof import("./subagent-announce.registry.runtime.js")
 > | null = null;
 let continuationStateRuntimePromise: Promise<
-  typeof import("../auto-reply/reply/continuation-state.runtime.js")
+  typeof import("../auto-reply/continuation/state.js")
 > | null = null;
 let subagentSpawnRuntimePromise: Promise<
   Pick<typeof import("./subagent-spawn.js"), "spawnSubagentDirect">
@@ -84,7 +86,7 @@ function loadSubagentRegistryRuntime() {
 }
 
 function loadContinuationStateRuntime() {
-  continuationStateRuntimePromise ??= import("../auto-reply/reply/continuation-state.runtime.js");
+  continuationStateRuntimePromise ??= import("../auto-reply/continuation/state.js");
   return continuationStateRuntimePromise;
 }
 
@@ -162,10 +164,6 @@ type ContinuationDispatchModule = {
   }>;
 };
 
-type ContinuationConfigModule = {
-  resolveContinuationRuntimeConfig: (cfg?: unknown) => { maxChainLength: number };
-};
-
 type ContinuationChainSource = {
   continuationChainCount?: number;
   continuationChainStartedAt?: number;
@@ -210,9 +208,8 @@ async function drainChildContinuationQueue(params: {
   try {
     cfg = subagentAnnounceDeps.loadConfig();
   } catch (err) {
-    // karmaterminal/openclaw#208: config-load failure here silently drops
-    // the child's delegate drain — that's an F7-class stall at a different
-    // entry point. Surface it via the file's existing defaultRuntime.error
+    // Config-load failure here silently drops the child's delegate drain.
+    // Surface it via the file's existing defaultRuntime.error
     // pattern so operators can see why a chain stopped after a subagent
     // settled.
     defaultRuntime.error?.(
@@ -229,12 +226,8 @@ async function drainChildContinuationQueue(params: {
     // with a literal path would pull `subagent-spawn.js` into a cycle via
     // `delegate-dispatch.js → subagent-spawn.js → subagent-registry.js →
     // subagent-announce.ts`.
-    const [dispatchModule, configModule, stateModule, sessionStoreModule] = await Promise.all([
+    const [dispatchModule, stateModule, sessionStoreModule] = await Promise.all([
       importRuntimeModule<ContinuationDispatchModule>(import.meta.url, [
-        "./subagent-announce.continuation.runtime",
-        ".js",
-      ]),
-      importRuntimeModule<ContinuationConfigModule>(import.meta.url, [
         "./subagent-announce.continuation.runtime",
         ".js",
       ]),
@@ -248,14 +241,13 @@ async function drainChildContinuationQueue(params: {
       ]),
     ]);
     const { dispatchToolDelegates } = dispatchModule;
-    const { resolveContinuationRuntimeConfig } = configModule;
     const { loadContinuationChainState, persistContinuationChainState } = stateModule;
     const { updateSessionStore, resolveStorePath, resolveAgentIdFromSessionKey } =
       sessionStoreModule;
     const childEntry = loadSessionEntryByKey(params.childSessionKey) as
       | ContinuationChainSource
       | undefined;
-    const dispatchConfig = resolveContinuationRuntimeConfig(cfg);
+    const dispatchConfig = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
     const dispatchResult = await dispatchToolDelegates({
       sessionKey: params.childSessionKey,
       chainState: loadContinuationChainState(childEntry),
@@ -269,11 +261,11 @@ async function drainChildContinuationQueue(params: {
       maxChainLength: dispatchConfig.maxChainLength,
     });
 
-    // r3164380565: persist the advanced child chain state after delegate
-    // drain. Without this, child `continuationChainCount/StartedAt/Tokens`
+    // Persist the advanced child chain state after delegate drain. Without
+    // this, child `continuationChainCount/StartedAt/Tokens`
     // never advances after accepted spawns; later drains reload stale
     // counters and under-enforce `maxChainLength`. Mirror the agent-runner
-    // and followup-runner persist patterns from `f26a86535f`.
+    // and followup-runner persist patterns.
     if (dispatchResult && dispatchResult.dispatched > 0) {
       const advanced = dispatchResult.chainState;
       const childEntryForWrite = childEntry as
@@ -767,7 +759,7 @@ export async function runSubagentAnnounceFlow(params: {
     }
 
     // --- Sub-agent continuation chain: accumulate child token cost + parse [[CONTINUE_DELEGATE:]] ---
-    const cfg = loadConfig();
+    const cfg = subagentAnnounceDeps.loadConfig();
     const continuationEnabled = cfg?.agents?.defaults?.continuation?.enabled === true;
 
     // Accumulate the completing shard's token cost unconditionally on delegate-return,
@@ -869,7 +861,7 @@ export async function runSubagentAnnounceFlow(params: {
           continuationResult.signal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
 
         const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs } =
-          resolveContinuationRuntimeConfig(cfg);
+          subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
 
         const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
         const childChainHop = hopMatch ? Number.parseInt(hopMatch[1], 10) : 0;
@@ -919,8 +911,6 @@ export async function runSubagentAnnounceFlow(params: {
         } else {
           const nextChainHop = chainGuardResult.nextChainHop;
           const continuationStateRuntime = await loadContinuationStateRuntime();
-
-          continuationStateRuntime.setDelegatePending(targetRequesterSessionKey);
 
           const doChainSpawn = async (timerTriggered = false) => {
             try {
@@ -999,7 +989,7 @@ export async function runSubagentAnnounceFlow(params: {
           costCapTokens: toolCostCapTokens,
           minDelayMs: toolMinDelayMs,
           maxDelayMs: toolMaxDelayMs,
-        } = resolveContinuationRuntimeConfig(cfg);
+        } = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
         const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
         const childChainHop = hopMatch ? Number.parseInt(hopMatch[1], 10) : 0;
         // Use the flag captured before findings was mutated (not re-parsing stripped text).
@@ -1041,8 +1031,6 @@ export async function runSubagentAnnounceFlow(params: {
             delegateMode === "silent-wake" || (parentWasSilent && params.wakeOnReturn === true);
           const toolDelayMs = toolDelegate.delayMs;
           const continuationStateRuntime = await loadContinuationStateRuntime();
-
-          continuationStateRuntime.setDelegatePending(targetRequesterSessionKey);
 
           const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
           const doToolChainSpawn = async (timerTriggered = false) => {

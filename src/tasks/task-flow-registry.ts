@@ -61,7 +61,7 @@ type FlowRecordPatch = Omit<
 type FlowRecordCreateFields = {
   ownerKey: string;
   /**
-   * F-37-015: originating continuation chain id. Optional; default NULL when
+   * Originating continuation chain id. Optional; default NULL when
    * undefined (legacy/disabled). Set-once at create-time; ignored on update.
    */
   chainId?: string | null;
@@ -360,11 +360,9 @@ export function createFlowRecord(params: CreateFlowRecordParams): TaskFlowRecord
   return writeFlowRecord(record);
 }
 
-// F-37-015: chainId is threaded through createManagedTaskFlow via
-// FlowRecordCreateFields (which carries chainId?: string | null at line 67),
+// chainId is threaded through createManagedTaskFlow via FlowRecordCreateFields,
 // so flow_runs.chain_id is populated on the common managed-flow create path,
 // not just when callers bypass via createFlowRecord directly.
-// (codex P2 r3158438632)
 export function createManagedTaskFlow(
   params: FlowRecordCreateFields & {
     controllerId: string;

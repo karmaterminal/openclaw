@@ -29,7 +29,6 @@ export type SubstrateCapabilityEntry = {
   readonly capabilities: readonly SubstrateCapability[];
   readonly "runtime-symbol": string;
   readonly "descriptor-symbol": string;
-  readonly "cite-pin": string;
   readonly "symbol-aliases"?: readonly string[];
 };
 
@@ -48,8 +47,6 @@ const substrateCapabilityRegistry: readonly SubstrateCapabilityEntry[] = [
     ],
     "runtime-symbol": "enqueueSessionDelivery",
     "descriptor-symbol": "QueuedSessionDeliveryPayloadMetadata",
-    "cite-pin":
-      "karmaterminal/openclaw@c96e2d7955ab36ff281fedb68437b6c638eb1e0d src/infra/session-delivery-queue-storage.ts:34,154; src/infra/session-delivery-queue-recovery.ts:64; #332 issuecomment-4322708542",
     "symbol-aliases": [
       "ackSessionDelivery",
       "buildPostCompactionDelegateDeliveryPayload",
@@ -74,8 +71,6 @@ const substrateCapabilityRegistry: readonly SubstrateCapabilityEntry[] = [
     ],
     "runtime-symbol": "createManagedTaskFlow",
     "descriptor-symbol": "TaskFlowRecord",
-    "cite-pin":
-      "karmaterminal/openclaw@c96e2d7955ab36ff281fedb68437b6c638eb1e0d src/tasks/task-flow-registry.types.ts:24; src/tasks/task-flow-runtime-internal.ts:1",
     "symbol-aliases": [
       "BoundTaskFlowRuntime",
       "ManagedTaskFlowRecord",
@@ -95,8 +90,6 @@ const substrateCapabilityRegistry: readonly SubstrateCapabilityEntry[] = [
     ],
     "runtime-symbol": "taskFlowEnqueuePendingDelegate",
     "descriptor-symbol": "PendingContinuationDelegate",
-    "cite-pin":
-      "karmaterminal/openclaw@c96e2d7955ab36ff281fedb68437b6c638eb1e0d src/auto-reply/continuation-delegate-store-taskflow.ts:67; src/auto-reply/continuation-delegate-store.ts:63",
     "symbol-aliases": [
       "consumePendingDelegates",
       "enqueuePendingDelegate",

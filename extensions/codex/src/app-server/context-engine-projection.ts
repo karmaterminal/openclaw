@@ -1,4 +1,6 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { SessionContext } from "@mariozechner/pi-coding-agent";
+
+type AgentMessage = SessionContext["messages"][number];
 
 export type CodexContextProjection = {
   developerInstructionAddition?: string;

@@ -1,13 +1,16 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../src/config/config.js";
 import { buildPluginApi } from "../../src/plugins/api-builder.js";
 import type { PluginRuntime } from "../../src/plugins/runtime/types.js";
 import { registerSingleProviderPlugin } from "../../test/helpers/plugins/plugin-registration.js";
 import { resetBedrockDiscoveryCacheForTest } from "./discovery.js";
 import amazonBedrockPlugin from "./index.js";
-import { resetBedrockAppProfileCacheEligibilityForTest } from "./register.sync.runtime.js";
+import {
+  resetBedrockAppProfileCacheEligibilityForTest,
+  setBedrockAppProfileRuntimeDepsForTest,
+} from "./register.sync.runtime.js";
 
 type BedrockClientResult =
   | {
@@ -57,34 +60,17 @@ const sendBedrockCommand = vi.fn(async (command: unknown) => {
   return { models: [] };
 });
 
-vi.mock("@aws-sdk/client-bedrock", () => {
-  class GetInferenceProfileCommand {
-    constructor(readonly input: { inferenceProfileIdentifier: string }) {}
+class GetInferenceProfileCommand {
+  constructor(readonly input: { inferenceProfileIdentifier: string }) {}
+}
+
+class BedrockClient {
+  constructor(config: Record<string, unknown> = {}) {
+    bedrockClientConfigs.push(config);
   }
 
-  class ListFoundationModelsCommand {
-    constructor(readonly input: Record<string, unknown> = {}) {}
-  }
-
-  class ListInferenceProfilesCommand {
-    constructor(readonly input: Record<string, unknown> = {}) {}
-  }
-
-  class BedrockClient {
-    constructor(config: Record<string, unknown> = {}) {
-      bedrockClientConfigs.push(config);
-    }
-
-    send = sendBedrockCommand;
-  }
-
-  return {
-    BedrockClient,
-    GetInferenceProfileCommand,
-    ListFoundationModelsCommand,
-    ListInferenceProfilesCommand,
-  };
-});
+  send = sendBedrockCommand;
+}
 
 type RegisteredProviderPlugin = Awaited<ReturnType<typeof registerSingleProviderPlugin>>;
 
@@ -211,6 +197,14 @@ describe("amazon-bedrock provider plugin", () => {
     sendBedrockCommand.mockClear();
     resetBedrockDiscoveryCacheForTest();
     resetBedrockAppProfileCacheEligibilityForTest();
+    setBedrockAppProfileRuntimeDepsForTest({
+      BedrockClient,
+      GetInferenceProfileCommand,
+    });
+  });
+
+  afterEach(() => {
+    setBedrockAppProfileRuntimeDepsForTest(undefined);
   });
 
   it("marks Claude 4.6 Bedrock models as adaptive by default", async () => {

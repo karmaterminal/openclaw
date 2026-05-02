@@ -18,6 +18,7 @@ const DEFAULT_CONTINUATION_MAX_DELAY_MS = 300_000;
 const DEFAULT_CONTINUATION_MAX_CHAIN_LENGTH = 10;
 const DEFAULT_CONTINUATION_COST_CAP_TOKENS = 500_000;
 const DEFAULT_CONTINUATION_MAX_DELEGATES_PER_TURN = 5;
+const DEFAULT_EARLY_WARNING_BAND = 0.3125;
 
 function clampPositiveInt(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -45,6 +46,16 @@ function clampOptionalUnitInterval(value: unknown): number | undefined {
     return undefined;
   }
   return value;
+}
+
+function resolveEarlyWarningBand(value: number | null | undefined): number {
+  if (value === null || value === 0) {
+    return 0;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return DEFAULT_EARLY_WARNING_BAND;
+  }
+  return Math.min(1, value);
 }
 
 /**
@@ -85,6 +96,7 @@ export function resolveContinuationRuntimeConfig(
       DEFAULT_CONTINUATION_MAX_DELEGATES_PER_TURN,
     ),
     contextPressureThreshold: clampOptionalUnitInterval(continuation?.contextPressureThreshold),
+    earlyWarningBand: resolveEarlyWarningBand(continuation?.earlyWarningBand),
   };
 }
 

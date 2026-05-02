@@ -13,26 +13,49 @@ afterEach(() => {
 
 describe("resolveContextPressureBand", () => {
   it("returns 0 below all bands", () => {
-    expect(resolveContextPressureBand(0.1)).toBe(0);
-    expect(resolveContextPressureBand(0.24)).toBe(0);
+    expect(resolveContextPressureBand(0.1, 0.25)).toBe(0);
+    expect(resolveContextPressureBand(0.24, 0.25)).toBe(0);
   });
 
-  it("returns correct band at thresholds", () => {
-    expect(resolveContextPressureBand(0.25)).toBe(25);
-    expect(resolveContextPressureBand(0.8)).toBe(80);
-    expect(resolveContextPressureBand(0.9)).toBe(90);
-    expect(resolveContextPressureBand(0.95)).toBe(95);
+  it("returns configured first-threshold and escalation bands", () => {
+    expect(resolveContextPressureBand(0.25, 0.25)).toBe(25);
+    expect(resolveContextPressureBand(0.8, 0.8)).toBe(80);
+    expect(resolveContextPressureBand(0.9, 0.8)).toBe(90);
+    expect(resolveContextPressureBand(0.95, 0.8)).toBe(95);
   });
 
-  it("return type is the closed PressureBand union (#228)", () => {
-    // Compile-time assertion: assigning to PressureBand forces the closed union.
-    const band: PressureBand = resolveContextPressureBand(0.5);
+  it("return type is the pressure band type", () => {
+    const band: PressureBand = resolveContextPressureBand(0.5, 0.25);
     expect(band).toBe(25);
   });
 
   it("returns highest crossed band", () => {
-    expect(resolveContextPressureBand(0.92)).toBe(90);
-    expect(resolveContextPressureBand(0.99)).toBe(95);
+    expect(resolveContextPressureBand(0.92, 0.8)).toBe(90);
+    expect(resolveContextPressureBand(0.99, 0.8)).toBe(95);
+  });
+
+  describe("earlyWarningBand", () => {
+    it("default threshold 0.8 + earlyWarningBand 0.3125 produces 25-band", () => {
+      expect(resolveContextPressureBand(0.25, 0.8, 0.3125)).toBe(25);
+    });
+
+    it("earlyWarningBand=0 opts out (no early band at same ratio)", () => {
+      expect(resolveContextPressureBand(0.25, 0.8, 0)).toBe(0);
+    });
+
+    it("threshold 0.5 + earlyWarningBand 0.3125 fires at ~0.156 ratio", () => {
+      expect(resolveContextPressureBand(0.16, 0.5, 0.3125)).toBe(16);
+    });
+
+    it("threshold 0.95 + earlyWarningBand 0.3125 produces 30-band", () => {
+      expect(resolveContextPressureBand(0.3, 0.95, 0.3125)).toBe(30);
+    });
+
+    it("early-warning band does not shadow threshold band", () => {
+      expect(resolveContextPressureBand(0.8, 0.8, 0.3125)).toBe(80);
+      expect(resolveContextPressureBand(0.9, 0.8, 0.3125)).toBe(90);
+      expect(resolveContextPressureBand(0.95, 0.8, 0.3125)).toBe(95);
+    });
   });
 });
 
@@ -85,24 +108,40 @@ describe("checkContextPressure", () => {
     expect(checkContextPressure({ ...base, contextWindow: 0, totalTokens: 100 })).toBeNull();
   });
 
-  // karmaterminal/openclaw#580 regression: when configured threshold is below the lowest hard-coded
-  // band (currently 25%), the resolved band is 0. Without the -1 sentinel,
-  // first-time-seen sessions had previous=0 (the `?? 0` default), so the very
-  // first crossing collided band===previous===0 and was dedup-suppressed,
-  // producing zero `:fire` events fleet-wide despite `:reach` firing every
-  // turn. The sentinel ensures the first crossing of any band fires once.
-  it("karmaterminal/openclaw#580: fires once at sub-25% threshold (band=0) for first-time-seen session", () => {
+  it("fires early-warning band below threshold when earlyWarningBand is set", () => {
+    const result = checkContextPressure({
+      ...base,
+      sessionKey: "early-warn-fires",
+      totalTokens: 50_000, // 25% of 200k = ratio 0.25 = early-warn band 25 at threshold 0.8 + earlyWarningBand 0.3125
+      earlyWarningBand: 0.3125,
+    });
+    expect(result).not.toBeNull();
+    expect(result).toContain("[system:context-pressure]");
+    expect(result).toContain("25%");
+  });
+
+  it("does NOT fire below threshold when earlyWarningBand is 0", () => {
+    const result = checkContextPressure({
+      ...base,
+      sessionKey: "early-warn-opt-out",
+      totalTokens: 50_000,
+      earlyWarningBand: 0,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("fires once when the configured threshold rounds to band 0", () => {
     const lowParams = {
       sessionKey: "low-threshold-session",
       contextWindow: 200_000,
-      threshold: 0.05, // 5% — well below the lowest hard-coded band (25%)
-      totalTokens: 20_000, // 10% — above threshold, below all bands → resolves to band 0
+      threshold: 0.004,
+      totalTokens: 1_000,
     };
 
     const first = checkContextPressure(lowParams);
     expect(first).not.toBeNull();
     expect(first).toContain("[system:context-pressure]");
-    expect(first).toContain("10%");
+    expect(first).toContain("1%");
 
     // Second call at same band-0 level: dedup should suppress.
     const second = checkContextPressure(lowParams);
@@ -111,7 +150,7 @@ describe("checkContextPressure", () => {
     // Escalating into a real band still fires.
     const escalated = checkContextPressure({
       ...lowParams,
-      totalTokens: 60_000, // 30% → band 25
+      totalTokens: 182_000,
     });
     expect(escalated).not.toBeNull();
   });

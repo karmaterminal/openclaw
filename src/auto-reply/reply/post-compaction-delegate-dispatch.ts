@@ -24,11 +24,9 @@ import {
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { consumeStagedPostCompactionDelegates } from "../continuation-delegate-store.js";
+import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import type { ContinuationRuntimeConfig } from "../continuation/types.js";
 import type { ContinuationSignal } from "../tokens.js";
-import {
-  resolveContinuationRuntimeConfig,
-  type ContinuationRuntimeConfig,
-} from "./continuation-runtime.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
 import type { FollowupRun } from "./queue/types.js";
 
@@ -129,6 +127,25 @@ const defaultPostCompactionDelegateDispatchDeps: PostCompactionDelegateDispatchD
 };
 
 export const POST_COMPACTION_DELEGATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function formatErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function enqueueSystemEventOrLog(params: {
+  deps: Pick<PostCompactionDelegateDispatchDeps, "enqueueSystemEvent" | "log">;
+  label: string;
+  sessionKey: string;
+  text: string;
+}): void {
+  try {
+    params.deps.enqueueSystemEvent(params.text, { sessionKey: params.sessionKey });
+  } catch (err) {
+    params.deps.log(
+      `Failed to enqueue ${params.label} for ${params.sessionKey}: ${formatErrorMessage(err)}`,
+    );
+  }
+}
 
 function syncPendingPostCompactionDelegates(params: {
   sessionEntry?: SessionEntry;
@@ -291,8 +308,8 @@ export function buildPostCompactionLifecycleEvent(params: {
    * fresh session — individual queued entries may still fail to spawn
    * (their failure is recorded as a queue retry, not reflected here).
    *
-   * Renamed from `releasedDelegates` (codex r3144344310) to make the
-   * semantic accurate; pre-extraction agent-runner counted accepted
+   * Named `queuedDelegates` to make the semantic accurate; the previous
+   * agent-runner path counted accepted
    * spawns, but the queue-extraction architecture cannot count spawns
    * synchronously without awaiting the drain. The honest name is
    * `queuedDelegates`.
@@ -323,8 +340,8 @@ async function persistPostCompactionDelegateChainState(params: {
   storePath?: string;
   tokens: number;
 }): Promise<void> {
-  // #334 Slice 2 — mint or reuse `continuationChainId` (UUIDv7) so the
-  // post-compaction handoff carries the same correlation key that
+  // Mint or reuse `continuationChainId` (UUIDv7) so the post-compaction
+  // handoff carries the same correlation key that
   // `agent-runner.ts:persistContinuationChainState` would have used
   // before compaction. If the pre-compaction sessionEntry already had
   // a chain id, reuse it (chain survives the compaction boundary);
@@ -389,7 +406,7 @@ async function persistPostCompactionDelegateChainState(params: {
       // unfiltered drain re-considers it once backoff has elapsed. Without
       // this, the queue ack-removes the entry while the on-disk chain count
       // is stale, allowing the next compaction-delegate to overrun
-      // `maxChainLength` (codex r3144344309).
+      // `maxChainLength`.
       throw err;
     }
   }
@@ -547,7 +564,16 @@ export async function dispatchPostCompactionDelegates(
       storePath: params.storePath,
     });
   } catch (err) {
-    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${String(err)}`);
+    const message = formatErrorMessage(err);
+    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${message}`);
+    enqueueSystemEventOrLog({
+      deps,
+      label: "persisted post-compaction delegate warning",
+      sessionKey: params.sessionKey,
+      text:
+        `[system:continuation-warning] Failed to load persisted post-compaction delegates for this session: ${message}. ` +
+        "Earlier turns may have staged delegates that will not fire. Re-stage critical post-compaction work.",
+    });
   }
   const allCompactionDelegates = [
     ...persistedCompactionDelegates,
@@ -604,8 +630,19 @@ export async function dispatchPostCompactionDelegates(
         deps.enqueueSystemEvent(contextContent, { sessionKey: params.sessionKey });
       }
     })
-    .catch(() => {
-      // Silent failure: post-compaction context is best-effort.
+    .catch((err) => {
+      const message = formatErrorMessage(err);
+      deps.log(
+        `[continuation:post-compaction-context-read-failed] sessionKey=${params.sessionKey} error=${message}`,
+      );
+      enqueueSystemEventOrLog({
+        deps,
+        label: "post-compaction context read failure",
+        sessionKey: params.sessionKey,
+        text:
+          `[system:post-compaction] Context evacuation read failed: ${message}. ` +
+          "The post-compaction session may be missing AGENTS.md/RESUMPTION.md content. Check workspace permissions and re-run if needed.",
+      });
     });
 
   const deliveryContext = resolvePostCompactionDeliveryContext(params.followupRun);
@@ -675,7 +712,7 @@ export async function dispatchPostCompactionDelegates(
     // and only startup recovery would rescue them. With `entryIds`
     // omitted, `selectEntry` falls back to the sessionKey filter and
     // backoff-eligible failed retries are reconsidered alongside the
-    // entries we just enqueued (codex r3144331033).
+    // entries we just enqueued.
     void deps
       .drainPostCompactionDelegateDeliveries({
         log: defaultRecoveryLog,

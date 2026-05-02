@@ -69,9 +69,11 @@ const { subagentRegistryRuntimeMock } = vi.hoisted(() => ({
 
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
+  getRuntimeConfig: () => mockConfig,
   isEmbeddedPiRunActive: (sessionId: string) => isEmbeddedPiRunActiveMock(sessionId),
   loadConfig: () => mockConfig,
   loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
+  resolveContinuationRuntimeConfig: (cfg?: unknown) => resolveContinuationRuntimeConfigMock(cfg),
   queueEmbeddedPiMessage: (sessionId: string, text: string) =>
     queueEmbeddedPiMessageMock(sessionId, text),
   resolveAgentIdFromSessionKey: (sessionKey: string) =>
@@ -85,7 +87,7 @@ vi.mock("./subagent-announce.runtime.js", () => ({
 vi.mock("./subagent-announce-delivery.runtime.js", () =>
   createSubagentAnnounceDeliveryRuntimeMock({
     callGateway: (request: unknown) => callGatewayMock(request),
-    loadConfig: () => mockConfig,
+    getRuntimeConfig: () => mockConfig,
     loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
     resolveAgentIdFromSessionKey: (sessionKey: string) =>
       resolveAgentIdFromSessionKeyMock(sessionKey),
@@ -320,8 +322,8 @@ describe("subagent-announce continuation drain (F7)", () => {
     expect(didAnnounce).toBe(true);
   });
 
-  it("r3164380565: persists advanced child chain state after delegates dispatched", async () => {
-    // Regression for r3164380565. `drainChildContinuationQueue` must consume
+  it("persists advanced child chain state after delegates dispatched", async () => {
+    // `drainChildContinuationQueue` must consume
     // the `chainState` returned by `dispatchToolDelegates` (advanced past
     // the dispatched hops) and write it back to both the in-memory child
     // entry AND the durable session store. Without this, the next drain
@@ -337,9 +339,7 @@ describe("subagent-announce continuation drain (F7)", () => {
       "agent:main:subagent:test": childEntry,
       "agent:main:main": { sessionId: "session-main", updatedAt: Date.now() },
     };
-    loadSessionStoreMock.mockImplementation(
-      () => store as unknown as Record<string, unknown>,
-    );
+    loadSessionStoreMock.mockImplementation(() => store as unknown as Record<string, unknown>);
 
     dispatchToolDelegatesMock.mockResolvedValueOnce({
       dispatched: 2,
@@ -374,7 +374,7 @@ describe("subagent-announce continuation drain (F7)", () => {
     expect(childEntry.continuationChainTokens).toBe(12_500);
   });
 
-  it("r3164380565: skips persist when no delegates dispatched", async () => {
+  it("skips persist when no delegates dispatched", async () => {
     // Negative case: when `dispatched` is 0, the chain state is unchanged
     // and we must not re-write the entry (avoid spurious `updatedAt` churn
     // and unnecessary store I/O).
@@ -389,9 +389,7 @@ describe("subagent-announce continuation drain (F7)", () => {
       "agent:main:subagent:test": childEntry,
       "agent:main:main": { sessionId: "session-main", updatedAt: Date.now() },
     };
-    loadSessionStoreMock.mockImplementation(
-      () => store as unknown as Record<string, unknown>,
-    );
+    loadSessionStoreMock.mockImplementation(() => store as unknown as Record<string, unknown>);
 
     dispatchToolDelegatesMock.mockResolvedValueOnce({
       dispatched: 0,

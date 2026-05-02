@@ -621,7 +621,6 @@ export async function runAgentTurnWithFallback(params: {
   isHeartbeat: boolean;
   sessionKey?: string;
   runtimePolicySessionKey?: string;
-  getCurrentContinuationGeneration?: (sessionKey: string) => number;
   getActiveSessionEntry: () => SessionEntry | undefined;
   activeSessionStore?: Record<string, SessionEntry>;
   storePath?: string;
@@ -891,8 +890,8 @@ export async function runAgentTurnWithFallback(params: {
         // from streamed blocks so they never reach the channel. The regex anchors
         // to the end of the text, so mid-sentence mentions are safe. Final-payload
         // stripping in runReplyAgent still runs for the assembled payloads.
-        // Only strip when continuation is enabled — otherwise the tokens are
-        // regular text the model happened to generate. (#104)
+        // Only strip when continuation is enabled; otherwise these markers may
+        // be regular text the model happened to generate.
         if (
           text &&
           params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
@@ -1223,15 +1222,14 @@ export async function runAgentTurnWithFallback(params: {
                           try {
                             const { compactEmbeddedPiSession } =
                               await import("../../agents/pi-embedded-runner/compact.queued.js");
-                            // bug karmaterminal/openclaw#639: thread the session's active provider/model through so
-                            // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL
-                            // (openai/gpt-5.4) which nobody has auth for.
+                            // Thread the session's active provider/model through so
+                            // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL.
                             // Use inner-scope provider/model from the fallback
                             // dispatcher (line 805) so a fallback-selected model
                             // gets the compaction request, not the persisted primary
                             // (which may be in cooldown — would re-fail immediately).
-                            // bug karmaterminal/openclaw#639 (scribe follow-up): thread authProfileId only
-                            // when the inner-scope provider matches the persisted primary
+                            // Thread authProfileId only when the inner-scope provider
+                            // matches the persisted primary
                             // (the persisted profile is keyed to the primary). On fallback
                             // to a different provider, leave undefined so resolveEmbedded-
                             // CompactionTarget picks the default profile for that provider.
@@ -1253,8 +1251,8 @@ export async function runAgentTurnWithFallback(params: {
                               trigger: request.trigger,
                               diagId: request.diagId,
                             });
-                            // bug karmaterminal/openclaw#639: honor real result instead of unconditionally claiming
-                            // success — otherwise volitional-compaction telemetry lies and the
+                            // Honor the real result instead of unconditionally claiming
+                            // success; otherwise compaction telemetry lies and the
                             // failure is invisible to the caller.
                             return {
                               ok: result.ok,
@@ -1820,15 +1818,11 @@ export async function runAgentTurnWithFallback(params: {
   // overflow errors were returned as embedded error payloads.
   const finalEmbeddedError = runResult?.meta?.error;
   const hasPayloadText = runResult?.payloads?.some((p) => normalizeOptionalString(p.text));
-  // #475+#487 reconcile (option c): #487 prepends a standalone blocked-liveness
-  // notice payload; #475 (#481) prefixes existing error payloads with a blocked
-  // marker. Both fire on `livenessState === "blocked"`, producing double-emit
-  // (notice + prefixed-error) when both an error payload and blocked liveness
-  // are present. Tests written against #475's contract expect single-payload
-  // outcomes. Gate #487's prepend on the absence of an error payload so the
-  // notice surfaces only as the silent-blocked fallback (no error to prefix);
-  // when an error payload is present, #475's prefix carries the blocked-state
-  // signal alone.
+  // A standalone blocked-liveness notice and an error-payload blocked marker
+  // would double-emit when both an error payload and blocked liveness are
+  // present. Gate the standalone notice on the absence of an error payload so
+  // the notice surfaces only as the silent-blocked fallback; when an error
+  // payload is present, its prefix carries the blocked-state signal alone.
   const hasErrorPayload = runResult?.payloads?.some((p) => p.isError) ?? false;
   if (
     runResult?.meta?.livenessState === "blocked" &&
@@ -1857,16 +1851,16 @@ export async function runAgentTurnWithFallback(params: {
     }
   }
 
-  // #475: surface terminal blocked livenessState as a channel-visible marker.
-  // The embedded runner sets `meta.livenessState = "blocked"` on terminal
+  // Surface terminal blocked livenessState as a channel-visible marker. The
+  // embedded runner sets `meta.livenessState = "blocked"` on terminal
   // give-up paths (compaction-failure cap, strict-agentic blocked, role-ordering
   // give-up, etc.) but channel consumers never read this metadata. Operators
   // could not distinguish a normal error reply from a session that gave up
   // after exhausting compaction retries. Inject a one-line marker prefix on the
   // outbound error payload(s) when liveness is blocked AND the payload hasn't
   // already been auto-recovered or replaced by a more specific marker.
-  // (B-shape cascade-phase observability is tracked separately as a follow-up
-  // PR — it requires a new typing/status protocol surface.)
+  // Rich cascade observability requires a separate typing/status protocol
+  // surface.
   const finalLivenessState = runResult?.meta?.livenessState;
   if (
     runResult &&
@@ -1886,8 +1880,8 @@ export async function runAgentTurnWithFallback(params: {
       if (text.startsWith(blockedMarker)) {
         return payload;
       }
-      // #475+#487 reconcile: skip the standalone blocked-liveness notice
-      // sentinel so it surfaces unprefixed. The notice is itself a blocked-
+      // Skip the standalone blocked-liveness notice sentinel so it surfaces
+      // unprefixed. The notice is itself a blocked-
       // state marker; prefixing it produces a "⛔ Session blocked: ⚠️ Agent
       // liveness: blocked..." chimera that fails the single-marker contract.
       if (text.startsWith(BLOCKED_LIVENESS_NOTICE_TEXT)) {

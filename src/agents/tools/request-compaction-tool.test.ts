@@ -18,6 +18,9 @@ describe("request_compaction tool", () => {
   let mockTriggerCompaction: ReturnType<
     typeof vi.fn<RequestCompactionToolOpts["triggerCompaction"]>
   >;
+  let mockEnqueueSystemEvent: ReturnType<
+    typeof vi.fn<NonNullable<RequestCompactionToolOpts["enqueueSystemEvent"]>>
+  >;
 
   function makeOpts(overrides?: Partial<RequestCompactionToolOpts>): RequestCompactionToolOpts {
     return {
@@ -25,6 +28,7 @@ describe("request_compaction tool", () => {
       sessionId: SESSION_ID,
       getContextUsage: () => contextUsage,
       triggerCompaction: mockTriggerCompaction,
+      enqueueSystemEvent: mockEnqueueSystemEvent,
       ...overrides,
     };
   }
@@ -58,6 +62,7 @@ describe("request_compaction tool", () => {
         tokensAfter: 120_000,
       },
     });
+    mockEnqueueSystemEvent = vi.fn();
   });
 
   afterEach(async () => {
@@ -190,6 +195,12 @@ describe("request_compaction tool", () => {
     const second = await executeTool(tool);
     expect(second).toMatchObject({ status: "compaction_requested" });
     expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
+    expect(mockEnqueueSystemEvent).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Your evacuated state was NOT compacted. Staged post-compaction delegates remain pending.",
+      ),
+      { sessionKey: SESSION_KEY },
+    );
   });
 
   it("does not arm cooldown when background compaction rejects", async () => {
@@ -205,6 +216,14 @@ describe("request_compaction tool", () => {
     const second = await executeTool(tool);
     expect(second).toMatchObject({ status: "compaction_requested" });
     expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
+    expect(mockEnqueueSystemEvent).toHaveBeenCalledWith(
+      expect.stringContaining("Volitional compaction request"),
+      { sessionKey: SESSION_KEY },
+    );
+    expect(mockEnqueueSystemEvent).toHaveBeenCalledWith(
+      expect.stringContaining("Lane contention timeout"),
+      { sessionKey: SESSION_KEY },
+    );
   });
 
   // -------------------------------------------------------------------------

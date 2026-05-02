@@ -36,6 +36,30 @@ type AmazonBedrockPluginConfig = {
   guardrail?: GuardrailConfig;
 };
 
+type AppProfileRuntimeClient = {
+  send(command: unknown): Promise<{ models?: Array<{ modelArn?: string }> }>;
+};
+
+type AppProfileRuntimeDeps = {
+  BedrockClient: new (config?: Record<string, unknown>) => AppProfileRuntimeClient;
+  GetInferenceProfileCommand: new (input: { inferenceProfileIdentifier: string }) => unknown;
+};
+
+let appProfileRuntimeDepsForTest: AppProfileRuntimeDeps | undefined;
+
+export function setBedrockAppProfileRuntimeDepsForTest(
+  deps: AppProfileRuntimeDeps | undefined,
+): void {
+  appProfileRuntimeDepsForTest = deps;
+}
+
+async function resolveAppProfileRuntimeDeps(): Promise<AppProfileRuntimeDeps> {
+  if (appProfileRuntimeDepsForTest) {
+    return appProfileRuntimeDepsForTest;
+  }
+  return (await import("@aws-sdk/client-bedrock")) as unknown as AppProfileRuntimeDeps;
+}
+
 function createGuardrailWrapStreamFn(
   innerWrapStreamFn: (ctx: { modelId: string; streamFn?: StreamFn }) => StreamFn | null | undefined,
   guardrailConfig: GuardrailConfig,
@@ -169,7 +193,7 @@ async function resolveAppProfileCacheEligible(
     return appProfileCacheEligibleCache.get(modelId)!;
   }
   try {
-    const { BedrockClient, GetInferenceProfileCommand } = await import("@aws-sdk/client-bedrock");
+    const { BedrockClient, GetInferenceProfileCommand } = await resolveAppProfileRuntimeDeps();
     const region = extractRegionFromArn(modelId) ?? fallbackRegion;
     const client = new BedrockClient(region ? { region } : {});
     const resp = await client.send(

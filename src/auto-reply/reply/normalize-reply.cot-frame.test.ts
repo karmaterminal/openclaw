@@ -7,41 +7,41 @@ function collectSkip(reasons: NormalizeReplySkipReason[]) {
   };
 }
 
-describe("normalizeReplyPayload CoT-frame suppression (#269)", () => {
-  it("suppresses bare [cael] frames as silent", () => {
+describe("normalizeReplyPayload CoT-frame suppression", () => {
+  it("suppresses bare internal frames as silent", () => {
     const reasons: NormalizeReplySkipReason[] = [];
     const result = normalizeReplyPayload(
-      { text: "[cael] thinking out loud" },
+      { text: "[internal] thinking out loud" },
       { onSkip: collectSkip(reasons) },
     );
     expect(result).toBeNull();
     expect(reasons).toEqual(["silent"]);
   });
 
-  it("suppresses [the dandelion cult - name] frames as silent", () => {
+  it("suppresses reasoning frames as silent", () => {
     const reasons: NormalizeReplySkipReason[] = [];
     const result = normalizeReplyPayload(
-      { text: "[the dandelion cult - ronan] fleet deploy done" },
+      { text: "[reasoning] private plan" },
       { onSkip: collectSkip(reasons) },
     );
     expect(result).toBeNull();
     expect(reasons).toEqual(["silent"]);
   });
 
-  it("suppresses glyph-suffixed frames (with VS16) as silent", () => {
+  it("suppresses scratchpad frames as silent", () => {
     const reasons: NormalizeReplySkipReason[] = [];
     const result = normalizeReplyPayload(
-      { text: "[silas 🌫️] misty narration" },
+      { text: "[scratchpad - notes] private narration" },
       { onSkip: collectSkip(reasons) },
     );
     expect(result).toBeNull();
     expect(reasons).toEqual(["silent"]);
   });
 
-  it("suppresses glyph-suffixed frames (without VS16) as silent", () => {
+  it("suppresses chain-of-thought frames as silent", () => {
     const reasons: NormalizeReplySkipReason[] = [];
     const result = normalizeReplyPayload(
-      { text: "[ronan 🌊] no-vs16 narration" },
+      { text: "[chain of thought] hidden narration" },
       { onSkip: collectSkip(reasons) },
     );
     expect(result).toBeNull();
@@ -51,23 +51,26 @@ describe("normalizeReplyPayload CoT-frame suppression (#269)", () => {
   it("suppresses mixed-case frames as silent", () => {
     const reasons: NormalizeReplySkipReason[] = [];
     const result = normalizeReplyPayload(
-      { text: "[CAEL] thinking" },
+      { text: "[INTERNAL] thinking" },
       { onSkip: collectSkip(reasons) },
     );
     expect(result).toBeNull();
     expect(reasons).toEqual(["silent"]);
   });
 
-  it("suppresses zero-whitespace frames like [cael]leak as silent", () => {
+  it("suppresses zero-whitespace frames like [internal]leak as silent", () => {
     const reasons: NormalizeReplySkipReason[] = [];
-    const result = normalizeReplyPayload({ text: "[cael]leak" }, { onSkip: collectSkip(reasons) });
+    const result = normalizeReplyPayload(
+      { text: "[internal]leak" },
+      { onSkip: collectSkip(reasons) },
+    );
     expect(result).toBeNull();
     expect(reasons).toEqual(["silent"]);
   });
 
   it("drops CoT-leaked text but keeps media when media is present", () => {
     const result = normalizeReplyPayload({
-      text: "[cael] thinking out loud",
+      text: "[internal] thinking out loud",
       mediaUrl: "https://example.com/img.png",
     });
     expect(result).not.toBeNull();
@@ -78,7 +81,7 @@ describe("normalizeReplyPayload CoT-frame suppression (#269)", () => {
   it("suppresses error-flagged CoT-frame payloads as silent too", () => {
     const reasons: NormalizeReplySkipReason[] = [];
     const result = normalizeReplyPayload(
-      { text: "[cael] internal error narration", isError: true },
+      { text: "[internal] error narration", isError: true },
       { onSkip: collectSkip(reasons) },
     );
     expect(result).toBeNull();
@@ -91,13 +94,13 @@ describe("normalizeReplyPayload CoT-frame suppression (#269)", () => {
     expect(result!.text).toBe("Normal user reply");
   });
 
-  it("passes through body-pure replies starting with a glyph", () => {
-    const result = normalizeReplyPayload({ text: "🩸 figs — body-pure reply" });
+  it("passes through body-pure replies starting with punctuation", () => {
+    const result = normalizeReplyPayload({ text: "* body-pure reply" });
     expect(result).not.toBeNull();
-    expect(result!.text).toBe("🩸 figs — body-pure reply");
+    expect(result!.text).toBe("* body-pure reply");
   });
 
-  it("passes through [user] / [system] / [assistant] (not prince names)", () => {
+  it("passes through [user] / [system] / [assistant] role labels", () => {
     const userResult = normalizeReplyPayload({ text: "[user] reported a bug" });
     expect(userResult).not.toBeNull();
     expect(userResult!.text).toBe("[user] reported a bug");
@@ -112,8 +115,8 @@ describe("normalizeReplyPayload CoT-frame suppression (#269)", () => {
   });
 
   it("passes through frames that are not at the start", () => {
-    const result = normalizeReplyPayload({ text: "Some text [cael] not-at-start" });
+    const result = normalizeReplyPayload({ text: "Some text [internal] not-at-start" });
     expect(result).not.toBeNull();
-    expect(result!.text).toBe("Some text [cael] not-at-start");
+    expect(result!.text).toBe("Some text [internal] not-at-start");
   });
 });

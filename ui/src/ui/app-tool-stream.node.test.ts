@@ -275,4 +275,30 @@ describe("app-tool-stream fallback lifecycle handling", () => {
 
     vi.useRealTimers();
   });
+
+  it("ignores compaction warning events without clearing active status", () => {
+    vi.useFakeTimers();
+    const host = createHost();
+
+    handleAgentEvent(host, agentEvent("run-1", 1, "compaction", { phase: "start" }));
+    const clearTimer = host.compactionClearTimer;
+
+    handleAgentEvent(
+      host,
+      agentEvent("run-1", 2, "compaction", {
+        phase: "warning",
+        warning: "compaction_count_reconcile_failed",
+      }),
+    );
+
+    expect(host.compactionStatus).toEqual({
+      phase: "active",
+      runId: "run-1",
+      startedAt: expect.any(Number),
+      completedAt: null,
+    });
+    expect(host.compactionClearTimer).toBe(clearTimer);
+
+    vi.useRealTimers();
+  });
 });

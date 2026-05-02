@@ -1,14 +1,14 @@
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
+import { resolveMaxDelegatesPerTurn } from "../../auto-reply/continuation/config.js";
 import {
   enqueuePendingDelegate,
   getContinuationDelegateQueueDepths,
   stagePostCompactionDelegate,
 } from "../../auto-reply/continuation/delegate-store.js";
-import { resolveMaxDelegatesPerTurn } from "../../auto-reply/reply/continuation-runtime.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
-import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
+import { jsonResult, parseToolParams, ToolInputError } from "./common.js";
 
 const log = createSubsystemLogger("continuation/delegate-tool");
 
@@ -38,13 +38,15 @@ const ContinueDelegateToolSchema = Type.Object({
   }),
 });
 
+type ContinueDelegateToolParams = Static<typeof ContinueDelegateToolSchema>;
+
 /**
  * Creates the `continue_delegate` tool.
  *
  * This tool dispatches a sub-agent as a continuation delegate — tracked by the
  * gateway's continuation chain (cost caps, depth limits, chain counters).
  *
- * Architecture (Path A — side-channel):
+ * Architecture:
  *   1. Tool writes to the module-level pending-delegate store during execution.
  *   2. After the agent's response finalizes, `agent-runner.ts` reads from the
  *      store and feeds delegates into the same scheduler that bracket-parsed
@@ -71,14 +73,10 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
       "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
       "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
-      "This is the (a)-shape continuation surface: explicit recipient-addressing via the " +
-      "session-delivery-queue substrate (intra-host today). The (b)-shape evolution — " +
-      "broadcast/publish-stream addressing across hosts where the dispatcher names an aspect-stream " +
-      "and listeners tune in independently — is tracked in karmaterminal/binary-canticle#11; " +
-      "both shapes share the same substrate when the (b)-shape lands.",
+      "This is the continuation surface for explicit recipient addressing via the " +
+      "session-delivery-queue substrate.",
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
-      const params = args as Record<string, unknown>;
       const sessionKey = opts.agentSessionKey;
 
       if (!sessionKey) {
@@ -87,15 +85,16 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         );
       }
 
-      const task = readStringParam(params, "task", { required: true });
-      if (!task.trim()) {
+      const params: ContinueDelegateToolParams = parseToolParams(ContinueDelegateToolSchema, args);
+      const task = params.task.trim();
+      if (!task) {
         throw new ToolInputError("task must be a non-empty string describing the delegated work.");
       }
 
-      const delaySeconds = readNumberParam(params, "delaySeconds");
+      const delaySeconds = params.delaySeconds;
       const delayMs = delaySeconds !== undefined ? Math.max(0, delaySeconds) * 1000 : undefined;
 
-      const modeRaw = typeof params.mode === "string" ? params.mode.trim().toLowerCase() : "";
+      const modeRaw = params.mode?.trim().toLowerCase() ?? "";
       if (modeRaw && !DELEGATE_MODES.includes(modeRaw as (typeof DELEGATE_MODES)[number])) {
         throw new ToolInputError(
           `Unknown mode "${modeRaw}". Valid modes: ${DELEGATE_MODES.join(", ")}`,

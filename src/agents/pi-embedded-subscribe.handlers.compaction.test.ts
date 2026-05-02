@@ -198,4 +198,56 @@ describe("handleCompactionEnd", () => {
       },
     });
   });
+
+  it("surfaces durable compaction-count reconcile failures", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compaction-reconcile-fail-"));
+    const storePath = path.join(tmp, "sessions.json");
+    await seedSessionStore({
+      storePath,
+      sessionKey: "main",
+      compactionCount: 1,
+    });
+    setSessionWriteLockAcquirerForTests(async () => {
+      throw new Error("session store locked");
+    });
+    const events: Array<{ stream: string; data: Record<string, unknown> }> = [];
+    const ctx = createCompactionContext({
+      storePath,
+      sessionKey: "main",
+      initialCount: 1,
+      onAgentEvent: (event) => {
+        events.push(event as { stream: string; data: Record<string, unknown> });
+      },
+    });
+
+    handleCompactionEnd(ctx, {
+      type: "compaction_end",
+      reason: "threshold",
+      result: { kept: 12 },
+      willRetry: false,
+      aborted: false,
+    } as never);
+
+    await vi.waitFor(() => {
+      expect(events).toContainEqual({
+        stream: "compaction",
+        data: {
+          phase: "warning",
+          warning: "compaction_count_reconcile_failed",
+          sessionKey: "main",
+          trigger: "budget",
+          outcome: "compacted",
+          error: "session store locked",
+          compactionCountBefore: 1,
+          compactionCountAfter: 2,
+          compactionCountDelta: 1,
+        },
+      });
+    });
+    expect(ctx.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("[compaction-counter:reconcile-failed]"),
+    );
+    expect(ctx.getCompactionCount()).toBe(2);
+    expect(await readCompactionCount(storePath, "main")).toBe(1);
+  });
 });

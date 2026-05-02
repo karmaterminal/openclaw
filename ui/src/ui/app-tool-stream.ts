@@ -304,6 +304,10 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
   const phase = typeof data.phase === "string" ? data.phase : "";
   const completed = data.completed === true;
 
+  if (phase !== "start" && phase !== "end") {
+    return;
+  }
+
   clearCompactionTimer(host);
 
   if (phase === "start") {

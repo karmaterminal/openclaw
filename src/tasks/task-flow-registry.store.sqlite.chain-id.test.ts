@@ -14,8 +14,6 @@ import {
 import type { TaskFlowRecord } from "./task-flow-registry.types.js";
 
 /**
- * F-37-015: flow_runs.chain_id schema + writer wire (compounds-fix Slice-3).
- *
  * Design invariants under test:
  *   (a) Idempotent-by-PRAGMA-guard schema migration (mirroring state_json).
  *   (b) Set-once-at-create, originating-chain semantic; UPDATE-on-hop deferred.
@@ -32,7 +30,7 @@ function makeFlow(overrides: Partial<TaskFlowRecord> = {}): TaskFlowRecord {
     revision: 0,
     status: "queued",
     notifyPolicy: "done_only",
-    goal: "F-37-015 round-trip pin",
+    goal: "chain-id round-trip pin",
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -57,7 +55,7 @@ async function withSqliteFlowRegistry<T>(run: (path: string) => Promise<T> | T):
   });
 }
 
-describe("task-flow-registry sqlite store: F-37-015 chain_id", () => {
+describe("task-flow-registry sqlite store: chain_id", () => {
   beforeEach(() => {
     closeTaskFlowRegistrySqliteStore();
   });
@@ -102,7 +100,7 @@ describe("task-flow-registry sqlite store: F-37-015 chain_id", () => {
 
   it("migrates from a pre-chain_id schema by adding the column once", async () => {
     await withSqliteFlowRegistry((dbPath) => {
-      // Build a pre-F-37-015 schema by hand: omit chain_id entirely.
+      // Build a pre-chain_id schema by hand: omit chain_id entirely.
       mkdirSync(resolveTaskFlowRegistryDir(process.env), { recursive: true, mode: 0o700 });
       const { DatabaseSync } = requireNodeSqlite();
       const db = new DatabaseSync(dbPath);

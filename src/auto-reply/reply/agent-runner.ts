@@ -53,7 +53,15 @@ import {
   stagedPostCompactionDelegateCount,
   takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
+import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import { checkContextPressure } from "../continuation/context-pressure.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
+import {
+  clearTrackedContinuationTimers,
+  registerContinuationTimerHandle,
+  retainContinuationTimerRef,
+  unregisterContinuationTimerHandle,
+} from "../continuation/state.js";
 import type { ChainState } from "../continuation/types.js";
 import {
   buildFallbackClearedNotice,
@@ -84,20 +92,6 @@ import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-usage-l
 import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
-import { checkContextPressure } from "./context-pressure.js";
-import { resolveContinuationRuntimeConfig } from "./continuation-runtime.js";
-import {
-  bumpContinuationGeneration,
-  clearDelegatePending,
-  clearDelegatePendingIfNoDelayedReservations,
-  clearTrackedContinuationTimers,
-  currentContinuationGeneration,
-  maybeDropContinuationGeneration,
-  registerContinuationTimerHandle,
-  retainContinuationTimerRef,
-  setDelegatePending,
-  unregisterContinuationTimerHandle,
-} from "./continuation-state.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import {
@@ -122,16 +116,6 @@ import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-t
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
 import { createTypingSignaler } from "./typing-mode.js";
 import type { TypingController } from "./typing.js";
-export {
-  bumpContinuationGeneration,
-  clearDelegatePending,
-  currentContinuationGeneration,
-  registerContinuationTimerHandle,
-  retainContinuationTimerRef,
-  setDelegatePending,
-  unregisterContinuationTimerHandle,
-} from "./continuation-state.js";
-
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 
 function buildInlinePluginStatusPayload(params: {
@@ -914,20 +898,11 @@ function refreshSessionEntryFromStore(params: {
   }
 }
 
-// clearContinuationGeneration intentionally removed: clearing the map entry
-// resets the counter to 0, creating a generation-reuse window where a new
-// chain's value can collide with a stale in-flight timer. All paths now use
-// bumpContinuationGeneration instead.
-
 /**
  * Cancel any pending continuation timer for the given session AND reset
  * chain metadata. Call this from early-return paths (inline actions, slash
  * commands, directive replies) that bypass runReplyAgent but still represent
  * real user input that should preempt a running continuation chain.
- *
- * We only bump (not clear) generations to avoid reuse: if we cleared the map
- * entry, a subsequent chain could reuse a generation value that matches a
- * stale in-flight timer callback.
  */
 export function cancelContinuationTimer(
   sessionKey: string,
@@ -937,12 +912,6 @@ export function cancelContinuationTimer(
     storePath?: string;
   },
 ): void {
-  // Only bump when a generation exists — avoids unbounded map growth
-  // from sessions that never use continuation.
-  if (currentContinuationGeneration(sessionKey) > 0) {
-    bumpContinuationGeneration(sessionKey);
-  }
-
   clearTrackedContinuationTimers(sessionKey);
   clearDelayedContinuationReservations(sessionKey);
 
@@ -1003,10 +972,6 @@ export function cancelContinuationTimer(
   // Cancel any Task Flow-backed pending delegates that may have survived a
   // restart. For the volatile store this drains the Map as a safety net.
   cancelPendingDelegates(sessionKey);
-
-  // Clear delegate-pending flag — no delegate should be considered in-flight
-  // after explicit cancellation.
-  clearDelegatePending(sessionKey);
 }
 
 export async function runReplyAgent(params: {
@@ -1274,12 +1239,11 @@ export async function runReplyAgent(params: {
     if (!sessionKey) {
       return { chainId: undefined };
     }
-    // #334 Slice 2 — mint a stable `continuationChainId` (UUIDv7) on
-    // the 0→1 transition of `continuationChainCount`. Reuse the
+    // Mint a stable `continuationChainId` (UUIDv7) on the 0->1 transition of
+    // `continuationChainCount`. Reuse the
     // existing id for subsequent steps in the same chain so all spans
     // emitted across the chain share a single correlation key. The
-    // matching reset path (above, ~line 944) clears this field when
-    // chain state resets to 0.
+    // matching reset path clears this field when chain state resets to 0.
     const previousCount = activeSessionEntry?.continuationChainCount ?? 0;
     const previousChainId = activeSessionEntry?.continuationChainId;
     const chainId =
@@ -1427,31 +1391,6 @@ export async function runReplyAgent(params: {
         cleanupTranscripts: true,
       });
 
-    // --- Context-pressure pre-run injection (RFC §4.2) ---
-    // Fire before the agent turn so the agent can act on pressure in this turn.
-    const continuationEnabledForPressure = cfg?.agents?.defaults?.continuation?.enabled === true;
-    if (continuationEnabledForPressure && sessionKey && activeSessionEntry) {
-      const { checkContextPressure } = await import("../continuation/lazy.runtime.js");
-      const pressureConfig = resolveContinuationRuntimeConfig(cfg);
-      const threshold = pressureConfig.contextPressureThreshold;
-      // Resolve context window for pressure calculation — agentCfgContextTokens
-      // or session-stored value or default.
-      const pressureContextWindow =
-        agentCfgContextTokens ?? activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS;
-      if (threshold && activeSessionEntry.totalTokens && pressureContextWindow) {
-        const pressureEvent = checkContextPressure({
-          sessionKey,
-          totalTokens: activeSessionEntry.totalTokens,
-          contextWindow: pressureContextWindow,
-          threshold,
-          postCompaction: preflightCompactionApplied,
-        });
-        if (pressureEvent) {
-          enqueueSystemEvent(pressureEvent, { sessionKey });
-        }
-      }
-    }
-
     replyOperation.setPhase("running");
 
     // Trigger D: check context pressure before the agent's model call and
@@ -1459,7 +1398,7 @@ export async function runReplyAgent(params: {
     // crossed. Runs after setPhase("running") for state-tracking reasons,
     // but unconditionally before the actual provider request below.
     if (activeSessionEntry && sessionKey) {
-      const { contextPressureThreshold } = resolveContinuationRuntimeConfig(cfg);
+      const { contextPressureThreshold, earlyWarningBand } = resolveContinuationRuntimeConfig(cfg);
       const contextWindowTokens =
         resolveContextTokensForModel({
           cfg,
@@ -1474,6 +1413,8 @@ export async function runReplyAgent(params: {
         sessionKey,
         contextPressureThreshold,
         contextWindowTokens,
+        postCompaction: preflightCompactionApplied,
+        earlyWarningBand,
       });
       if (pressureResult.fired && storePath) {
         try {
@@ -1520,7 +1461,6 @@ export async function runReplyAgent(params: {
       isHeartbeat,
       sessionKey,
       runtimePolicySessionKey,
-      getCurrentContinuationGeneration: currentContinuationGeneration,
       getActiveSessionEntry: () => activeSessionEntry,
       activeSessionStore,
       storePath,
@@ -1585,8 +1525,8 @@ export async function runReplyAgent(params: {
     }
 
     // --- Continuation signal extraction (RFC §3.1) ---
-    // r3162427218: tool-based `continue_work` flows via the closure
-    // `requestContinuation` callback in agent-runner-execution.ts:1166,
+    // Tool-based `continue_work` flows via the closure
+    // `requestContinuation` callback in agent-runner-execution.ts,
     // captured into `attemptContinueWorkRequest` and surfaced on the
     // run outcome. Read it directly from `runOutcome.continueWorkRequest`
     // rather than from the orphaned `pendingWorkRequests` Map (which had
@@ -1752,7 +1692,7 @@ export async function runReplyAgent(params: {
         hasUnbackedReminderCommitment(payload.text),
     );
     // Suppress the guard note when an existing cron job (created in a prior
-    // turn) already covers the commitment — avoids false positives (#32228).
+    // turn) already covers the commitment and avoids false positives.
     const coveredByExistingCron =
       hasReminderCommitment && successfulCronAdds === 0
         ? await hasSessionRelatedCronJobs({
@@ -2125,8 +2065,8 @@ export async function runReplyAgent(params: {
             `[continuation] Bracket continuation rejected: chain length ${maxChainLength} reached.`,
             { sessionKey },
           );
-          // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
-          // bracket cap-gate reject. No mint-on-reject (🌊, 2026-04-27): the
+          // Emit `continuation.disabled` at the bracket cap-gate reject.
+          // No mint-on-reject: the
           // chain never advanced for this signal, so chainId passes through
           // as-is from the live session entry (undefined when the rejected
           // signal would have been the first chain step). Delegate-only
@@ -2156,11 +2096,6 @@ export async function runReplyAgent(params: {
               log: defaultRuntime.log,
             });
           }
-          // Bump (not clear) to invalidate stale timers without reuse risk.
-          // Clearing would reset to 0, letting a new chain's generation collide
-          // with a stale in-flight timer's captured value.
-          bumpContinuationGeneration(sessionKey);
-          maybeDropContinuationGeneration(sessionKey);
         } else {
           // Accumulate token usage for cost cap (input + output only, excludes
           // cache reads/writes which inflate with inherited system prompt context).
@@ -2176,9 +2111,8 @@ export async function runReplyAgent(params: {
               `[continuation] Bracket continuation rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}).`,
               { sessionKey },
             );
-            // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
-            // bracket cost-cap reject. Same conditional-delegate-attr
-            // pattern as the chain-cap site above.
+            // Emit `continuation.disabled` at the bracket cost-cap reject.
+            // Same conditional-delegate-attr pattern as the chain-cap site above.
             {
               const isDelegate = effectiveContinuationSignal.kind === "delegate";
               const delegateMode = isDelegate
@@ -2203,8 +2137,6 @@ export async function runReplyAgent(params: {
                 log: defaultRuntime.log,
               });
             }
-            bumpContinuationGeneration(sessionKey);
-            maybeDropContinuationGeneration(sessionKey);
           } else {
             bracketTokensAccumulated = true;
             const nextChainCount = allocatedChainHop + 1;
@@ -2254,13 +2186,15 @@ export async function runReplyAgent(params: {
                         activeSessionEntry?.continuationChainTokens ?? 0,
                       ),
                     });
-                    // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
-                    // span at the immediate accept seam. Timer-deferred dispatches
+                    // Emit `continuation.delegate.dispatch` at the immediate
+                    // accept seam. Timer-deferred dispatches
                     // already emitted at enqueue-time (before setTimeout); skip
                     // re-emission when `timerTriggered` to preserve
                     // exactly-one-span-per-accepted-dispatch.
                     if (!options?.timerTriggered) {
-                      // Ladder handles silent-wake / silent / normal only. The bracket+tool DELEGATE seams don't carry a `post-compaction` discriminator; that path lives in `persistPostCompactionDelegateChainState` and would emit from a sibling site (chunk 5+ candidate).
+                      // Bracket/tool delegate seams do not carry a
+                      // `post-compaction` discriminator; that path is emitted
+                      // from a sibling persist site.
                       const delegateMode = options?.silentWake
                         ? "silent-wake"
                         : options?.silent
@@ -2288,10 +2222,8 @@ export async function runReplyAgent(params: {
                     `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${task}`,
                     { sessionKey },
                   );
-                  clearDelegatePendingIfNoDelayedReservations(sessionKey);
                   return false;
                 } catch (err) {
-                  clearDelegatePendingIfNoDelayedReservations(sessionKey);
                   defaultRuntime.log(
                     `DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
                   );
@@ -2303,15 +2235,9 @@ export async function runReplyAgent(params: {
                 }
               };
 
-              // Mark delegate-pending via dedicated flag (not system event queue)
-              // so it survives buildQueuedSystemPrompt draining on intervening turns.
-              if (sessionKey) {
-                setDelegatePending(sessionKey);
-              }
-
               if (delegateDelayMs && delegateDelayMs > 0) {
                 // Timed dispatch: spawn after delay. Timer does not survive
-                // gateway restart — acceptable for v1 (see #176 for durable timers).
+                // gateway restart; durable timers are handled by a separate path.
                 const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
                 const reservationId = generateSecureUuid();
                 addDelayedContinuationReservation(sessionKey, {
@@ -2329,14 +2255,14 @@ export async function runReplyAgent(params: {
                   startedAt: chainStartedAt,
                   tokens: accumulatedChainTokens,
                 });
-                // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
-                // span at the timer-deferred enqueue seam (after persist,
+                // Emit `continuation.delegate.dispatch` at the timer-deferred
+                // enqueue seam (after persist,
                 // before `setTimeout` arms). The chain-step is committed
                 // here, not at fire-time — cancelled-but-accepted dispatches
                 // (compaction, reset, gateway shutdown) still count as
                 // accepted and must not be silently underreported.
                 {
-                  // Ladder handles silent-wake / silent / normal only — see immediate-arm comment above; post-compaction dispatches travel a separate persist path.
+                  // Post-compaction dispatches travel a separate persist path.
                   const delegateMode = effectiveContinuationSignal.silentWake
                     ? "silent-wake"
                     : effectiveContinuationSignal.silent
@@ -2351,8 +2277,8 @@ export async function runReplyAgent(params: {
                     log: (message) => defaultRuntime.log(message),
                   });
                 }
-                // #334 Slice 2 chunk 5b — snapshot dispatch-time inputs for
-                // the fire-span emission inside the timer callback. `armedAt`
+                // Snapshot dispatch-time inputs for the fire-span emission
+                // inside the timer callback. `armedAt`
                 // captured immediately before `setTimeout` so
                 // `fireDeferredMs = Date.now() - armedAt` measures wall-clock
                 // drift between arming and callback execution.
@@ -2369,18 +2295,18 @@ export async function runReplyAgent(params: {
                 retainContinuationTimerRef(sessionKey);
                 const armedAt = Date.now();
                 const timerHandle = setTimeout(() => {
-                  // #334 Slice 2 chunk 5b — emit `continuation.delegate.fire`
-                  // FIRST, before reservation lookup. The fire event is
+                  // Emit `continuation.delegate.fire` first, before reservation
+                  // lookup. The fire event is
                   // wall-clock truth ("the timer fired"); whatever happens
                   // next (spawn, reservation-missing log-and-return) is a
                   // separate concern. 5b is instrumentation-of-status-quo
-                  // only — no fire-time cap rechecks.
+                  // only; no fire-time cap rechecks.
                   const fireDeferredMs = Date.now() - armedAt;
                   emitContinuationDelegateFireSpan({
                     // Invariant: persistedChainIdForTimer is always a string
                     // here — `persistContinuationChainState` only returns
                     // undefined when `sessionKey` is falsy, but this branch
-                    // is gated on `sessionKey` being truthy (chunk 3).
+                    // is gated on `sessionKey` being truthy.
                     // Helper's defense-in-depth no-ops if undefined slips.
                     chainId: persistedChainIdForTimer as string,
                     chainStepRemainingAtDispatch,
@@ -2398,9 +2324,8 @@ export async function runReplyAgent(params: {
                       defaultRuntime.log(
                         `DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
                       );
-                      // #334 Slice 2 chunk 5b — fire-time reservation-missing
-                      // is the ONLY fire-time divergence in current bytes
-                      // (per cohort byte-walk, 2026-04-27). Sibling span
+                      // Fire-time reservation-missing is the only current
+                      // fire-time divergence. Sibling span
                       // sharing chain.id so consumers can pair fire+disabled
                       // events on a single trace.
                       emitContinuationDisabledSpan({
@@ -2443,8 +2368,8 @@ export async function runReplyAgent(params: {
               const requestedDelay = effectiveContinuationSignal.delayMs ?? defaultDelayMs;
               const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, requestedDelay));
 
-              // #334 Slice 2 chunk 2 — emit `continuation.work` span
-              // at the accept seam (after both cap-gates pass, after
+              // Emit `continuation.work` at the accept seam (after both
+              // cap-gates pass, after
               // persistContinuationChainState has minted/stored
               // continuationChainId for this chain). Helper handles
               // attribute shaping + try/catch so the accept path
@@ -2458,8 +2383,8 @@ export async function runReplyAgent(params: {
               });
 
               retainContinuationTimerRef(sessionKey);
-              // #334 Slice 2 chunk 5c — snapshot dispatch-time inputs for the
-              // fire-span emission inside the timer callback. armedAt captured
+              // Snapshot dispatch-time inputs for the fire-span emission inside
+              // the timer callback. armedAt captured
               // immediately before setTimeout so fireDeferredMs = Date.now() - armedAt
               // measures wall-clock drift between arming and callback execution.
               // chainStepRemainingAtDispatch is a snapshot, NOT a fire-time recompute
@@ -2470,17 +2395,16 @@ export async function runReplyAgent(params: {
               const workArmedAt = Date.now();
               const timerHandle = setTimeout(() => {
                 try {
-                  // #334 Slice 2 chunk 5c — emit `continuation.work.fire` span
-                  // BEFORE the existing log/enqueue/heartbeat sequence. Helper
+                  // Emit `continuation.work.fire` before the existing
+                  // log/enqueue/heartbeat sequence. Helper
                   // wraps in try/catch so emission can never block the
-                  // continuation-wake event. No fire-time cap recheck (5c is
-                  // instrumentation-of-status-quo only).
+                  // continuation-wake event. No fire-time cap recheck.
                   const workFireDeferredMs = Date.now() - workArmedAt;
                   emitContinuationWorkFireSpan({
                     // Invariant: persistedChainIdForWorkTimer is always a string
                     // here — `persistContinuationChainState` only returns
                     // undefined when `sessionKey` is falsy, but this branch
-                    // is gated on `sessionKey` being truthy (chunk 1).
+                    // is gated on `sessionKey` being truthy.
                     // Helper's defense-in-depth no-ops if undefined slips.
                     chainId: persistedChainIdForWorkTimer as string,
                     chainStepRemainingAtDispatch: workChainStepRemainingAtDispatch,
@@ -2535,8 +2459,8 @@ export async function runReplyAgent(params: {
             `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${droppedDelegate.task}`,
             { sessionKey },
           );
-          // #334 Slice 2 chunk 5a — per-turn cap reject span. Per-turn
-          // cap is a different cap-axis from chunk 4's per-chain
+          // Per-turn cap reject span. Per-turn cap is a different cap-axis
+          // from per-chain
           // (chain/cost) family but reuses `continuation.disabled` with
           // `disabled.reason = "cap.delegates_per_turn"`. `chain.step.remaining`
           // carries actual headroom (per-turn cap can fire while chain budget
@@ -2589,8 +2513,8 @@ export async function runReplyAgent(params: {
               `[continuation] Tool delegate rejected: chain length ${maxChainLength} reached. Task: ${delegate.task}`,
               { sessionKey },
             );
-            // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
-            // tool chain-cap reject. Chain didn't advance; chainId passes
+            // Emit `continuation.disabled` at the tool chain-cap reject.
+            // Chain didn't advance; chainId passes
             // through as-is.
             {
               const delegateMode = delegate.mode ?? "normal";
@@ -2618,8 +2542,8 @@ export async function runReplyAgent(params: {
               `[continuation] Tool delegate rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}). Task: ${delegate.task}`,
               { sessionKey },
             );
-            // #334 Slice 2 chunk 4 — emit `continuation.disabled` at the
-            // tool cost-cap reject. Same conditional-delegate-attr pattern.
+            // Emit `continuation.disabled` at the tool cost-cap reject.
+            // Same conditional-delegate-attr pattern.
             {
               const delegateMode = delegate.mode ?? "normal";
               const delegateDelivery: "immediate" | "timer" =
@@ -2681,12 +2605,13 @@ export async function runReplyAgent(params: {
                     activeSessionEntry?.continuationChainTokens ?? 0,
                   ),
                 });
-                // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
-                // span at the immediate accept seam (tool-side). Timer-deferred
+                // Emit `continuation.delegate.dispatch` at the immediate
+                // accept seam (tool-side). Timer-deferred
                 // dispatches already emitted at enqueue-time; skip when
                 // `timerTriggered` to preserve exactly-one-span-per-accepted-dispatch.
                 if (!options?.timerTriggered) {
-                  // Ladder handles silent-wake / silent / normal only — the tool DELEGATE seam doesn't carry a `post-compaction` discriminator (separate persist path).
+                  // Tool delegate seams do not carry a `post-compaction`
+                  // discriminator; that path is emitted from a sibling persist site.
                   const delegateMode = options?.silentWake
                     ? "silent-wake"
                     : options?.silent
@@ -2714,10 +2639,8 @@ export async function runReplyAgent(params: {
                 `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${task}`,
                 { sessionKey },
               );
-              clearDelegatePendingIfNoDelayedReservations(sessionKey);
               return false;
             } catch (err) {
-              clearDelegatePendingIfNoDelayedReservations(sessionKey);
               defaultRuntime.log(
                 `Tool DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
               );
@@ -2728,12 +2651,6 @@ export async function runReplyAgent(params: {
               return false;
             }
           };
-
-          // Mark delegate-pending via dedicated flag (not system event queue)
-          // so it survives buildQueuedSystemPrompt draining on intervening turns.
-          if (sessionKey) {
-            setDelegatePending(sessionKey);
-          }
 
           if (delegate.delayMs && delegate.delayMs > 0) {
             const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));
@@ -2753,12 +2670,12 @@ export async function runReplyAgent(params: {
               startedAt: chainStartedAt,
               tokens: accumulatedChainTokens,
             });
-            // #334 Slice 2 chunk 3 — emit `continuation.delegate.dispatch`
-            // span at the timer-deferred enqueue seam (tool-side, after
+            // Emit `continuation.delegate.dispatch` at the timer-deferred
+            // enqueue seam (tool-side, after
             // persist, before `setTimeout` arms). Same enqueue-time
             // semantic anchor as the bracket-timer site above.
             {
-              // Ladder handles silent-wake / silent / normal only — see tool-immediate comment above; post-compaction path is a sibling, not handled here.
+              // Post-compaction path is a sibling, not handled here.
               const delegateMode = delegate.mode ?? "normal";
               emitContinuationDelegateSpan({
                 chainId: persistedChainIdForTimer,
@@ -2769,8 +2686,8 @@ export async function runReplyAgent(params: {
                 log: (message) => defaultRuntime.log(message),
               });
             }
-            // #334 Slice 2 chunk 5b — fire-span snapshots for the tool-delegate
-            // timer callback. Same enclosure discipline as the bracket-delegate
+            // Fire-span snapshots for the tool-delegate timer callback.
+            // Same enclosure discipline as the bracket-delegate
             // site: `delegateMode` and `chainStepRemainingAtDispatch` are
             // dispatch-time captures, NOT fire-time recomputes; `armedAt` is
             // captured immediately before `setTimeout` so wall-clock drift
@@ -2781,16 +2698,16 @@ export async function runReplyAgent(params: {
             retainContinuationTimerRef(sessionKey);
             const armedAt = Date.now();
             const timerHandle = setTimeout(() => {
-              // #334 Slice 2 chunk 5b — fire-span emits FIRST, before
-              // reservation lookup. Wall-clock truth: timer DID fire; what
+              // Fire-span emits first, before reservation lookup. Wall-clock
+              // truth: timer did fire; what
               // happens next (spawn or reservation-missing) is a separate
-              // sibling event. 5b is instrumentation-of-status-quo only.
+              // sibling event.
               const fireDeferredMs = Date.now() - armedAt;
               emitContinuationDelegateFireSpan({
                 // Invariant: persistedChainIdForTimer is always a string
                 // here — `persistContinuationChainState` only returns
                 // undefined when `sessionKey` is falsy, but this branch
-                // is gated on `sessionKey` being truthy (chunk 3).
+                // is gated on `sessionKey` being truthy.
                 // Helper's defense-in-depth no-ops if undefined slips.
                 chainId: persistedChainIdForTimer as string,
                 chainStepRemainingAtDispatch,
@@ -2805,8 +2722,8 @@ export async function runReplyAgent(params: {
                   defaultRuntime.log(
                     `Tool DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
                   );
-                  // #334 Slice 2 chunk 5b — sibling `continuation.disabled`
-                  // for the existing log-and-return divergence; same chain.id
+                  // Sibling `continuation.disabled` for the existing
+                  // log-and-return divergence; same chain.id
                   // as the fire span so consumers can pair them.
                   emitContinuationDisabledSpan({
                     chainId: persistedChainIdForTimer,
@@ -2887,7 +2804,7 @@ export async function runReplyAgent(params: {
           agentThreadId: followupRun.originatingThreadId ?? undefined,
         },
         maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
-        // r3163899581: pass a fresh-loader so the hedge timer re-loads the
+        // Pass a fresh-loader so the hedge timer re-loads the
         // chain state from the persisted session entry at fire time rather
         // than re-using the snapshot captured at arm time.
         loadFreshChainState: () => loadContinuationChainState(activeSessionEntry, 0),
@@ -2896,7 +2813,7 @@ export async function runReplyAgent(params: {
 
     // --- Chain state write-back (RFC §3.3) ---
     // Persist chain metadata to session entry after scheduling/dispatch.
-    // r3161613184: when delegates were dispatched this turn, persist the
+    // When delegates were dispatched this turn, persist the
     // *advanced* chain state returned by `dispatchToolDelegates` rather
     // than re-loading the unchanged pre-dispatch state. Without this the
     // counter never advances across hops and `maxChainLength` enforcement
@@ -2906,8 +2823,8 @@ export async function runReplyAgent(params: {
       sessionKey &&
       activeSessionEntry
     ) {
-      // r3164418100 (P1): use the local async `persistContinuationChainState`
-      // (defined ~line 1269) which does the durable triple-write — sessionEntry
+      // Use the local async `persistContinuationChainState` which does the
+      // durable triple-write — sessionEntry
       // + sessionStore + disk via `updateSessionStore`. The lazy.runtime helper
       // of the same name only mutates the in-memory `sessionEntry`, so a
       // restart or disk-based reload would revert chain depth/tokens/chain-id
@@ -2986,8 +2903,8 @@ export async function runReplyAgent(params: {
     // markDispatchIdle(), but if the dispatcher exits early, errors,
     // or the reply path doesn't go through it cleanly, the second
     // signal never fires and the typing keepalive loop runs forever.
-    // Calling this twice is harmless — cleanup() is guarded by the
-    // `active` flag.  Same pattern as the followup runner fix (#26881).
+    // Calling this twice is harmless because cleanup() is guarded by the
+    // `active` flag.
     typing.markDispatchIdle();
   }
 }

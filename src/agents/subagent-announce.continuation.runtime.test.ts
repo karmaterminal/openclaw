@@ -1,15 +1,15 @@
-// Regression coverage for issue karmaterminal/openclaw#473:
+// Regression coverage for the continuation runtime entry:
 // `subagent-announce.ts` lazy-loads the continuation drain via
 // `importRuntimeModule(import.meta.url, [...])`. That dynamic import path
 // is NOT bundler-rewritten; the bundler emits the source modules into a
 // flat hashed dist layout and the lazy import resolves against the dist
 // file's own URL. Pre-fix, the import targeted
-// `../auto-reply/continuation/{delegate-dispatch,config}.js` which does not
+// `../auto-reply/continuation/delegate-dispatch.js` which does not
 // exist post-bundle, producing `ERR_MODULE_NOT_FOUND` at runtime.
 //
 // Fix shape (mirrors `subagent-registry.runtime.ts`):
 //   1. Co-located runtime entry `subagent-announce.continuation.runtime.ts`
-//      that re-exports the two needed symbols.
+//      that re-exports the lazy drain symbols.
 //   2. Registered as a tsdown bundler entry so it lands at a stable on-disk
 //      path post-bundle.
 //   3. `subagent-announce.ts` lazy-imports against `["./subagent-announce.continuation.runtime", ".js"]`
@@ -49,7 +49,7 @@ function entriesOfMainGraph(): Record<string, string> {
   return main.entry;
 }
 
-describe("subagent-announce continuation runtime entry (issue karmaterminal/openclaw#473)", () => {
+describe("subagent-announce continuation runtime entry", () => {
   it("registers the continuation runtime as a tsdown bundler entry", () => {
     const entries = entriesOfMainGraph();
     expect(entries).toHaveProperty("subagent-announce.continuation.runtime");
@@ -60,10 +60,6 @@ describe("subagent-announce continuation runtime entry (issue karmaterminal/open
 
   it("exports dispatchToolDelegates from the continuation runtime", () => {
     expect(typeof continuationRuntime.dispatchToolDelegates).toBe("function");
-  });
-
-  it("exports resolveContinuationRuntimeConfig from the continuation runtime", () => {
-    expect(typeof continuationRuntime.resolveContinuationRuntimeConfig).toBe("function");
   });
 
   it("subagent-announce lazy-imports the runtime entry by its co-located path, not the source-tree path", () => {

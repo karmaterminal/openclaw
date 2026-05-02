@@ -233,9 +233,8 @@ function loadAuthProfileStoreForAgent(
     saveAuthProfileStore(store, agentDir);
   }
 
-  // PR #368: legacy auth.json could get re-migrated from other agent dirs,
-  // overwriting fresh OAuth creds with stale tokens (fixes #363). Delete only
-  // after we've successfully written auth-profiles.json.
+  // Remove the legacy auth file only after the migrated profile store is
+  // written, so stale tokens cannot overwrite fresh OAuth credentials later.
   if (shouldWrite && legacy !== null) {
     const legacyPath = resolveLegacyAuthStorePath(agentDir);
     try {

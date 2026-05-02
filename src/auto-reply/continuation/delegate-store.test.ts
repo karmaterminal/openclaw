@@ -108,11 +108,59 @@ describe("delegate store — TaskFlow-backed", () => {
       mode: "silent-wake",
     });
 
+    const state = [...mockFlows.values()][0]?.stateJson;
+    expect(state).toMatchObject({ mode: "silent-wake" });
+    expect(state).not.toHaveProperty("silentWake");
+
     const delegates = consumePendingDelegates("session-1");
     expect(delegates[0]).toMatchObject({
       task: "silent task",
       mode: "silent-wake",
     });
+  });
+
+  it("decodes legacy single-mode flags without accepting contradictory flags", () => {
+    mockFlows.set("legacy-ok", {
+      flowId: "legacy-ok",
+      syncMode: "managed",
+      ownerKey: "session-1",
+      controllerId: CONTINUATION_DELEGATE_CONTROLLER_ID,
+      status: "queued",
+      stateJson: {
+        kind: "continuation_delegate",
+        task: "legacy wake",
+        silentWake: true,
+      },
+      goal: "legacy",
+      currentStep: "queued",
+      revision: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    mockFlows.set("legacy-bad", {
+      flowId: "legacy-bad",
+      syncMode: "managed",
+      ownerKey: "session-1",
+      controllerId: CONTINUATION_DELEGATE_CONTROLLER_ID,
+      status: "queued",
+      stateJson: {
+        kind: "continuation_delegate",
+        task: "ambiguous legacy",
+        silent: true,
+        silentWake: true,
+      },
+      goal: "legacy",
+      currentStep: "queued",
+      revision: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const delegates = consumePendingDelegates("session-1");
+
+    expect(delegates).toEqual([{ task: "legacy wake", mode: "silent-wake" }]);
+    expect(mockFlows.get("legacy-ok")?.status).toBe("succeeded");
+    expect(mockFlows.get("legacy-bad")?.status).toBe("failed");
   });
 
   it("cancels all delegates (regular + post-compaction)", () => {

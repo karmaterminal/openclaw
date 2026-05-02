@@ -148,10 +148,10 @@ describe("scheduleWorkContinuation", () => {
 });
 
 describe("scheduleDelegateContinuation", () => {
-  it("does NOT cancel on channel noise (no generation guard) — F-NOISE delegate mirror (karmaterminal/openclaw#531)", async () => {
-    // Mirrors the F-NOISE work-path test above on the delegate path.
-    // B4 (karmaterminal/openclaw#531) drift-guard: scheduleDelegateContinuation has no generation
-    // guard by construction; this test is the regression sentinel for that.
+  it("does NOT cancel on channel noise (no generation guard)", async () => {
+    // Mirrors the work-path test above on the delegate path. The delegate
+    // scheduler has no generation guard by construction; this test is the
+    // regression sentinel for that.
     const onImmediateSpawn = vi.fn().mockResolvedValue(true);
     const onDelayedSpawn = vi.fn().mockResolvedValue(true);
 
@@ -174,7 +174,7 @@ describe("scheduleDelegateContinuation", () => {
   });
 });
 
-describe("scheduler timer callbacks swallow rejections (openclaw#207)", () => {
+describe("scheduler timer callbacks swallow rejections", () => {
   it("scheduleWorkContinuation: onFire throw does not propagate past the timer", async () => {
     const onFire = vi.fn(() => {
       throw new Error("enqueue-system-event exploded");

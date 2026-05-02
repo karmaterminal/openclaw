@@ -16,8 +16,8 @@ describe("ChainBudget.declineToCarry", () => {
   });
 
   it("does not decline when state is undefined (caller has not opted in)", () => {
-    // Slice 1 additive contract: callers that don't pass a budget see no
-    // behavioral change. The chain has not opted in to carrying trace.
+    // Callers that don't pass a budget see no behavioral change. The chain has
+    // not opted in to carrying trace.
     expect(ChainBudget.declineToCarry(undefined)).toBe(false);
   });
 

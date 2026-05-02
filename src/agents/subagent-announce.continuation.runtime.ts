@@ -1,7 +1,7 @@
 // Co-located runtime entry for subagent-announce continuation drain.
 //
-// Bug karmaterminal/openclaw#473 fix: `subagent-announce.ts` lazy-loads
-// `../auto-reply/continuation/{delegate-dispatch,config}.js` via
+// `subagent-announce.ts` lazy-loads
+// `../auto-reply/continuation/delegate-dispatch.js` via
 // `importRuntimeModule(import.meta.url, [...])`. The bundler does not rewrite
 // the path expression inside `importRuntimeModule`, and the flat-dist emission
 // drops the source-tree subdirectory, so at runtime the import resolves to a
@@ -16,7 +16,6 @@
 // Registered as a tsdown bundler entry: `subagent-announce.continuation.runtime`
 // in `tsdown.config.ts`.
 export { dispatchToolDelegates } from "../auto-reply/continuation/delegate-dispatch.js";
-export { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 export {
   loadContinuationChainState,
   persistContinuationChainState,
