@@ -49,12 +49,16 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       }
 
       const rawParams = asToolParamsRecord(args);
-      const params: ContinueWorkToolParams = parseToolParams(ContinueWorkToolSchema, {
-        ...rawParams,
-        ...(typeof rawParams.reason === "string"
-          ? { reason: rawParams.reason.slice(0, 1024) }
-          : {}),
-      });
+      const params: ContinueWorkToolParams = parseToolParams(
+        ContinueWorkToolSchema,
+        {
+          ...rawParams,
+          ...(typeof rawParams.reason === "string"
+            ? { reason: rawParams.reason.slice(0, 1024) }
+            : {}),
+        },
+        { numericStringKeys: ["delaySeconds"] },
+      );
       const reason = params.reason.trim().slice(0, 1024);
       if (!reason) {
         throw new ToolInputError("reason required");

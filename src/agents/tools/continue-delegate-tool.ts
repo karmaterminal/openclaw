@@ -85,7 +85,9 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         );
       }
 
-      const params: ContinueDelegateToolParams = parseToolParams(ContinueDelegateToolSchema, args);
+      const params: ContinueDelegateToolParams = parseToolParams(ContinueDelegateToolSchema, args, {
+        numericStringKeys: ["delaySeconds"],
+      });
       const task = params.task.trim();
       if (!task) {
         throw new ToolInputError("task must be a non-empty string describing the delegated work.");

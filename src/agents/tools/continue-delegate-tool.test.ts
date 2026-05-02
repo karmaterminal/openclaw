@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelPendingDelegates,
   consumePendingDelegates,
@@ -20,6 +20,7 @@ describe("continue_delegate tool", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cancelPendingDelegates("test-session");
     clearRuntimeConfigSnapshot();
   });
@@ -136,6 +137,34 @@ describe("continue_delegate tool", () => {
     });
     expect(consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({ task: "fresh turn immediate" }),
+    ]);
+  });
+
+  it("accepts numeric-string delaySeconds values", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "delayed delegate",
+      delaySeconds: "5",
+      mode: "silent",
+    });
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      mode: "silent",
+      delaySeconds: 5,
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([]);
+
+    vi.setSystemTime(1_005_000);
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "delayed delegate",
+        delayMs: 5_000,
+        mode: "silent",
+      }),
     ]);
   });
 
