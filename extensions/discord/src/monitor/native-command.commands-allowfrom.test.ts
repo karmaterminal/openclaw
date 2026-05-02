@@ -152,6 +152,26 @@ describe("Discord native slash commands with commands.allowFrom", () => {
     expectNotUnauthorizedReply(interaction);
   });
 
+  it("authorizes guild slash commands when Discord groupPolicy is open and commands.allowFrom is not configured", async () => {
+    const { dispatchSpy, interaction } = await runGuildSlashCommand({
+      mutateConfig: (cfg) => {
+        cfg.commands = {
+          ...cfg.commands,
+          allowFrom: undefined,
+        };
+        cfg.channels = {
+          ...cfg.channels,
+          discord: {
+            groupPolicy: "open",
+            allowFrom: ["*"],
+          },
+        };
+      },
+    });
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    expectNotUnauthorizedReply(interaction);
+  });
+
   it("authorizes guild slash commands from an allowlisted channel when commands.allowFrom is not configured", async () => {
     const { dispatchSpy, interaction } = await runGuildSlashCommand({
       mutateConfig: (cfg) => {

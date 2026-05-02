@@ -542,9 +542,14 @@ export function resolveDiscordChannelPolicyCommandAuthorizer(params: {
   const channelAllowlistConfigured =
     Boolean(params.guildInfo?.channels) && Object.keys(params.guildInfo?.channels ?? {}).length > 0;
   return {
+    // For command authorization, an explicitly open guild policy is itself a
+    // configured authorizer. Without this, guild slash commands can pass the
+    // route gate above but still fail the later command-auth aggregation when
+    // commands.allowFrom and per-guild/member restrictions are absent.
     configured:
-      params.groupPolicy === "allowlist" &&
-      (Boolean(params.guildInfo) || channelAllowlistConfigured),
+      params.groupPolicy === "open" ||
+      (params.groupPolicy === "allowlist" &&
+        (Boolean(params.guildInfo) || channelAllowlistConfigured)),
     allowed: isDiscordGroupAllowedByPolicy({
       groupPolicy: params.groupPolicy,
       guildAllowlisted: Boolean(params.guildInfo),
