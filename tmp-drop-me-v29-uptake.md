@@ -177,3 +177,15 @@ No cherry-pick conflicts occurred.
 - `pnpm build` passed.
 - `pnpm test src/auto-reply src/agents/tools/request-compaction-tool.test.ts src/agents/tools/continuation-tools-registration.test.ts src/config/zod-schema.continuation.test.ts` passed after fixing the auto-reply directory target routing bug that initially sent `src/auto-reply` to the default unit shard.
 - During the exact scoped test gate, the active-session `/compact` e2e exposed that first-turn manual compaction updated the in-memory session entry but not the missing on-disk store entry. Fixed by making `incrementCompactionCount` merge-or-create from the active session entry before persisting.
+
+## Step 7 final ancestor verification
+
+`git merge-base --is-ancestor a448042c2edd94a4e8ee86d5ed90a5ed9fe8e4cd HEAD` exited 0.
+
+## Step 9 canonical2 open PR assessment
+
+`gh pr list --repo karmaterminal/openclaw --base cael/325-canonical2 --state open --limit 50` returned 0 open PRs.
+
+REDIRECT: 0
+CLOSE-WITH-REASON: 0
+WAIT: 0
