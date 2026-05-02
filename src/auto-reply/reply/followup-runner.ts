@@ -444,7 +444,7 @@ export function createFollowupRunner(params: {
       if (runtimeConfig?.agents?.defaults?.continuation?.enabled === true && sessionKey) {
         const [
           { dispatchToolDelegates },
-          { resolveContinuationRuntimeConfig },
+          { resolveLiveContinuationRuntimeConfig },
           { loadContinuationChainState, persistContinuationChainState },
           { updateSessionStore, resolveSessionStoreEntry },
         ] = await Promise.all([
@@ -467,7 +467,7 @@ export function createFollowupRunner(params: {
             agentTo: queued.originatingTo ?? undefined,
             agentThreadId: queued.originatingThreadId ?? undefined,
           },
-          maxChainLength: resolveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
+          maxChainLength: resolveLiveContinuationRuntimeConfig(runtimeConfig).maxChainLength,
           // Hedge re-arm must see fresh chain state.
           loadFreshChainState: () => loadContinuationChainState(tailEntry, 0),
         });

@@ -8,7 +8,7 @@
  * RFC: docs/design/continue-work-signal-v2.md §5
  */
 
-import { getRuntimeConfig } from "../../config/config.js";
+import { getRuntimeConfig, getRuntimeConfigSnapshot } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
 
@@ -95,6 +95,12 @@ export function resolveContinuationRuntimeConfig(
     contextPressureThreshold: clampOptionalUnitInterval(continuation?.contextPressureThreshold),
     earlyWarningBand: clampEarlyWarningBand(continuation?.earlyWarningBand),
   };
+}
+
+export function resolveLiveContinuationRuntimeConfig(
+  fallbackCfg: OpenClawConfig,
+): ContinuationRuntimeConfig {
+  return resolveContinuationRuntimeConfig(getRuntimeConfigSnapshot() ?? fallbackCfg);
 }
 
 /**

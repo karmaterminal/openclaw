@@ -649,6 +649,7 @@ export function createOpenClawCodingTools(options?: {
         : undefined,
       sandboxed: !!sandbox,
       config: options?.config,
+      liveSessionToolConfig: true,
       pluginToolAllowlist: collectExplicitAllowlist([
         profilePolicy,
         providerProfilePolicy,

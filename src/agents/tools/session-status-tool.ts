@@ -254,6 +254,7 @@ async function resolveModelOverride(params: {
 export function createSessionStatusTool(opts?: {
   agentSessionKey?: string;
   config?: OpenClawConfig;
+  getConfig?: () => OpenClawConfig;
   sandboxed?: boolean;
 }): AnyAgentTool {
   return {
@@ -264,7 +265,7 @@ export function createSessionStatusTool(opts?: {
     parameters: SessionStatusToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
-      const cfg = opts?.config ?? getRuntimeConfig();
+      const cfg = opts?.getConfig?.() ?? opts?.config ?? getRuntimeConfig();
       const { mainKey, alias, effectiveRequesterKey } = resolveSandboxedSessionToolContext({
         cfg,
         agentSessionKey: opts?.agentSessionKey,
