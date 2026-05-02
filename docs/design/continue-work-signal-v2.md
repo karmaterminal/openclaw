@@ -38,9 +38,10 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
   - [4.6 Gateway as lifecycle broker](#46-gateway-as-lifecycle-broker)
 - [5. Configuration](#5-configuration)
   - [5.1 Core configuration surface](#51-core-configuration-surface)
-  - [5.2 Human-user profiles](#52-human-user-profiles)
-  - [5.3 Wide fan-out patterns](#53-wide-fan-out-patterns)
-  - [5.4 Task Flow backing and durable delegate queues](#54-task-flow-backing-and-durable-delegate-queues)
+  - [5.2 Session visibility model and delegate return session targeting](#52-session-visibility-model-and-delegate-return-session-targeting)
+  - [5.3 Human-user profiles](#53-human-user-profiles)
+  - [5.4 Wide fan-out patterns](#54-wide-fan-out-patterns)
+  - [5.5 Task Flow backing and durable delegate queues](#55-task-flow-backing-and-durable-delegate-queues)
 - [6. Observability](#6-observability)
   - [6.1 Diagnostic log anchors](#61-diagnostic-log-anchors)
   - [6.2 Lifecycle traces](#62-lifecycle-traces)
@@ -153,9 +154,9 @@ If `delaySeconds` is 30 and the current turn is still active, the 30-second time
 
 The shipped runtime has one canonical completion recipient per delegate. By default, that recipient is the session that dispatched the delegate. Delegates using `normal` mode also announce their result to the channel, where the main session can observe it directly regardless of chain depth. For `silent` and `silent-wake` modes, the result is routed through the continuation chain without visible channel echo.
 
-The descriptor surface also includes `targetSessionKey?: string` as the explicit local-recipient seam. Current execution still rejects a provided `targetSessionKey` as descriptor-only, so this RFC treats explicit cross-session return as an exposed design seam whose runtime wiring is pending, not as shipped behavior.
+The shipped tool descriptor does **not** include a recipient parameter such as `targetSessionKey`. Explicit cross-session return targeting is deferred to recipient-bearing delivery work: the session-delivery-queue substrate tracked at `karmaterminal/openclaw#332` and the (b)-shape stream evolution in `karmaterminal/binary-canticle#11`.
 
-The next shape is multi-recipient delegate return, tracked in #355: `targetSessionKeys: string[]`. Its goal is "generate once, deliver byte-identically to many" for cases such as "return to the parent and announce to an operations session." This is distinct from multi-delegate fan-out. Multi-delegate fan-out runs N delegates that may produce N different artifacts; multi-recipient return runs one delegate and delivers the same completion envelope to N recipients. Each recipient should resolve independently through the `FallbackResolver` policy shape (`"follow" | "echo" | "drop"` or a resolver function), so one unavailable receiver does not implicitly drop the whole fan-out. Aspect multiplexing, per-receiver transformation, and backpressure-aware multicast remain future surfaces outside this RFC.
+A possible later shape is multi-recipient delegate return: `targetSessionKeys: string[]`. Its goal is "generate once, deliver byte-identically to many" for cases such as "return to the parent and announce to an operations session." This is distinct from multi-delegate fan-out. Multi-delegate fan-out runs N delegates that may produce N different artifacts; multi-recipient return runs one delegate and delivers the same completion envelope to N recipients. Each recipient should resolve independently through the `FallbackResolver` policy shape (`"follow" | "echo" | "drop"` or a resolver function), so one unavailable receiver does not implicitly drop the whole fan-out. Aspect multiplexing, per-receiver transformation, and backpressure-aware multicast remain future surfaces outside this RFC.
 
 Compared with bracket syntax, `continue_delegate()` adds three core properties:
 
@@ -689,7 +690,26 @@ Operational notes:
 - delegate durability is unconditional; there is no delegate-store switch.
 - all runtime values are hot-reloadable; changes take effect at the next enforcement point.
 
-### 5.2 Human-user profiles
+### 5.2 Session visibility model and delegate return session targeting
+
+`tools.sessions.visibility` controls which local sessions can be targeted by the session tools: `sessions_list`, `sessions_history`, `sessions_send`, and the status surface (`session_status`). It is a local gateway policy for session-tool access. It does not add a recipient parameter to `continue_delegate()`.
+
+| Level   | Reach                                              | Notes                                                                                               |
+| ------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `self`  | current session only                               | strictest setting; all other session keys are rejected                                              |
+| `tree`  | current session tree: parent plus spawned children | recommended ship-default; blocks cross-tree reach even when the target session belongs to the agent |
+| `agent` | same-agent sessions across trees                   | permits a main DM session and a channel-bound session for the same agent to reach each other        |
+| `all`   | any local session in the current gateway namespace | permits cross-agent reach only after the `tools.agentToAgent` enabled/allow policy also passes      |
+
+The recommended upstream ship-default is `tree`. It is conservative for arbitrary operators because it preserves same-tree delegate workflows while requiring explicit opt-in before an agent can reach sibling trees (`agent`) or other agents (`all`).
+
+Sandboxed sessions keep a second clamp. With the default sandbox policy (`agents.defaults.sandbox.sessionToolsVisibility: "spawned"`), non-tree `tools.sessions.visibility` levels are reduced to `tree` for sandboxed tool use. Setting `tools.sessions.visibility` alone cannot widen sandboxed reach; relaxing that clamp is a separate sandbox policy decision.
+
+The visibility model is scoped to one `openclaw-gateway` process. Setting `tools.sessions.visibility: all` enables cross-tree and cross-agent reach inside that gateway, subject to `tools.agentToAgent`, but it does **not** create cross-host reach. Cross-host inter-session communication today still travels through messaging-channel tools such as `message` with `action=send`. A cross-gateway RPC substrate is tracked separately at `karmaterminal/binary-canticle#20`, with the OpenClaw breadcrumb at `karmaterminal/openclaw#526`, and remains out of scope for this RFC.
+
+Delegate return targeting is a different surface. Today `continue_delegate()` spawns a new sub-session under the dispatcher's tree and returns to the canonical dispatcher-owned continuation path; it does not target an arbitrary recipient session. Operators that need recipient-bearing delegate flows should wait for the session-delivery-queue recipient work tracked at `karmaterminal/openclaw#332` or the (b)-shape evolution tracked at `karmaterminal/binary-canticle#11`, rather than overloading `continue_delegate()` with an unshipped recipient field.
+
+### 5.3 Human-user profiles
 
 #### Shipped defaults: single-agent, safety-first
 
@@ -731,7 +751,7 @@ This profile is suitable for multiple persistent agents in shared channels. In t
 
 Adjust fan-out and tolerance based on the activity level and agent count in the target channel.
 
-### 5.3 Wide fan-out patterns
+### 5.4 Wide fan-out patterns
 
 A common fleet pattern is wide sensor fan-out:
 
@@ -754,7 +774,7 @@ Representative use cases:
 
 In these patterns, width is normally adjusted before depth. `costCapTokens` remains the primary global safety mechanism.
 
-### 5.4 Task Flow backing and durable delegate queues
+### 5.5 Task Flow backing and durable delegate queues
 
 Pending delegates are backed by Task Flow (SQLite persistence) unconditionally. There is no opt-out — delegates must survive gateway restarts for the continuation lifecycle to work correctly, particularly for post-compaction delegate release.
 
@@ -1178,8 +1198,8 @@ Several future directions are now technically credible because the continuation 
 - richer post-compaction recovery strategies,
 - stronger integrity guarantees on delegate payloads,
 - more durable background-work management through Task Flow,
-- explicit cross-session return wiring for `targetSessionKey`,
-- multi-recipient delegate return via `targetSessionKeys: string[]`, delivering one byte-identical completion envelope to multiple local recipients with per-recipient fallback resolution,
+- recipient-bearing delegate return through `karmaterminal/openclaw#332` and `karmaterminal/binary-canticle#11`, rather than a `continue_delegate()` recipient field,
+- multi-recipient delegate return via a future `targetSessionKeys: string[]` shape, delivering one byte-identical completion envelope to multiple local recipients with per-recipient fallback resolution,
 - inter-session enrichment between persistent OpenClaw instances, including multi-channel presence where a single instance spans several channels,
 - compaction-time preservation strategies that better retain working-state shape rather than only summary facts.
 
