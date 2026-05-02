@@ -19,6 +19,7 @@ describe("resolveContinuationRuntimeConfig", () => {
       maxChainLength: 10,
       costCapTokens: 500_000,
       maxDelegatesPerTurn: 5,
+      earlyWarningBand: 0.3125,
     });
     expect(config.contextPressureThreshold).toBeUndefined();
   });
@@ -34,6 +35,7 @@ describe("resolveContinuationRuntimeConfig", () => {
             costCapTokens: 0,
             maxDelegatesPerTurn: 20,
             contextPressureThreshold: 0.8,
+            earlyWarningBand: 0,
             defaultDelayMs: 30_000,
             minDelayMs: 1_000,
             maxDelayMs: 600_000,
@@ -48,6 +50,7 @@ describe("resolveContinuationRuntimeConfig", () => {
       costCapTokens: 0,
       maxDelegatesPerTurn: 20,
       contextPressureThreshold: 0.8,
+      earlyWarningBand: 0,
       defaultDelayMs: 30_000,
       minDelayMs: 1_000,
       maxDelayMs: 600_000,
@@ -84,6 +87,19 @@ describe("resolveContinuationRuntimeConfig", () => {
     ).toBeUndefined();
   });
 
+  it("defaults invalid earlyWarningBand and preserves explicit opt-out", () => {
+    expect(
+      resolveContinuationRuntimeConfig({
+        agents: { defaults: { continuation: { earlyWarningBand: 0 } } },
+      } as never).earlyWarningBand,
+    ).toBe(0);
+    expect(
+      resolveContinuationRuntimeConfig({
+        agents: { defaults: { continuation: { earlyWarningBand: 1.5 } } },
+      } as never).earlyWarningBand,
+    ).toBe(0.3125);
+  });
+
   it("has no generationGuardTolerance field", () => {
     const config = resolveContinuationRuntimeConfig({} as never);
     expect("generationGuardTolerance" in config).toBe(false);
@@ -100,6 +116,7 @@ describe("clampDelayMs", () => {
     maxChainLength: 10,
     costCapTokens: 500_000,
     maxDelegatesPerTurn: 5,
+    earlyWarningBand: 0.3125,
   };
 
   it("uses default when undefined", () => {

@@ -41,12 +41,24 @@ const lastFiredBand = new Map<string, PressureBand>();
  * Resolve which pressure band the current ratio falls into.
  * Returns 0 if below all bands.
  */
-export function resolveContextPressureBand(ratio: number, threshold: number): PressureBand {
+export function resolveContextPressureBand(
+  ratio: number,
+  threshold: number,
+  earlyWarningBand?: number,
+): PressureBand {
   if (!Number.isFinite(ratio) || ratio < 0 || !Number.isFinite(threshold) || threshold <= 0) {
     return 0;
   }
   const thresholdPct = Math.round(threshold * 100);
+  const earlyWarningMultiplier = earlyWarningBand ?? 0;
+  const earlyWarningThreshold =
+    Number.isFinite(earlyWarningMultiplier) && earlyWarningMultiplier > 0
+      ? threshold * earlyWarningMultiplier
+      : 0;
   const pressureBands = [
+    ...(earlyWarningThreshold > 0
+      ? [{ threshold: earlyWarningThreshold, band: Math.round(earlyWarningThreshold * 100) }]
+      : []),
     { threshold, band: thresholdPct },
     ...(threshold < 0.9 ? [{ threshold: 0.9, band: 90 }] : []),
     ...(Math.max(threshold, 0.9) < 0.95 ? [{ threshold: 0.95, band: 95 }] : []),
@@ -65,6 +77,7 @@ export interface CheckSessionContextPressureParams {
   sessionKey: string;
   contextPressureThreshold: number | undefined;
   contextWindowTokens: number;
+  earlyWarningBand?: number;
   postCompaction?: boolean;
 }
 
@@ -73,6 +86,7 @@ export interface CheckTokenContextPressureParams {
   totalTokens: number;
   contextWindow: number;
   threshold: number;
+  earlyWarningBand?: number;
   postCompaction?: boolean;
 }
 
@@ -117,6 +131,7 @@ function checkSessionContextPressure(
     sessionKey,
     contextPressureThreshold,
     contextWindowTokens,
+    earlyWarningBand,
     postCompaction = false,
   } = params;
   const threshold =
@@ -136,8 +151,8 @@ function checkSessionContextPressure(
   }
 
   const ratio = Math.max(0, sessionEntry.totalTokens / contextWindowTokens);
-  const band = resolveContextPressureBand(ratio, threshold);
-  if (!postCompaction && ratio < threshold) {
+  const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
+  if (!postCompaction && band === 0 && ratio < threshold) {
     if (log.isEnabled("debug")) {
       log.debug(
         `[context-pressure:noop] reason=below-threshold ratio=${Math.round(ratio * 100)}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
@@ -180,7 +195,14 @@ function checkSessionContextPressure(
 }
 
 function checkTokenContextPressure(params: CheckTokenContextPressureParams): string | null {
-  const { sessionKey, totalTokens, contextWindow, threshold, postCompaction = false } = params;
+  const {
+    sessionKey,
+    totalTokens,
+    contextWindow,
+    threshold,
+    earlyWarningBand,
+    postCompaction = false,
+  } = params;
 
   if (!Number.isFinite(contextWindow) || contextWindow <= 0 || !Number.isFinite(totalTokens)) {
     if (log.isEnabled("debug")) {
@@ -195,7 +217,7 @@ function checkTokenContextPressure(params: CheckTokenContextPressureParams): str
   const percentUsed = Math.round(ratio * 100);
 
   if (postCompaction) {
-    const band = resolveContextPressureBand(ratio, threshold);
+    const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
     lastFiredBand.set(sessionKey, band);
     const eventText = buildContextPressureEvent({
       percentUsed,
@@ -210,7 +232,9 @@ function checkTokenContextPressure(params: CheckTokenContextPressureParams): str
     return eventText;
   }
 
-  if (ratio < threshold) {
+  const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
+
+  if (band === 0 && ratio < threshold) {
     if (log.isEnabled("debug")) {
       log.debug(
         `[context-pressure:noop] reason=below-threshold ratio=${percentUsed}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
@@ -219,7 +243,6 @@ function checkTokenContextPressure(params: CheckTokenContextPressureParams): str
     return null;
   }
 
-  const band = resolveContextPressureBand(ratio, threshold);
   const previous = lastFiredBand.get(sessionKey);
   const isFirstFire = previous === undefined;
   if (!isFirstFire && band === previous) {

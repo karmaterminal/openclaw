@@ -1427,7 +1427,7 @@ export async function runReplyAgent(params: {
     // crossed. Runs after setPhase("running") for state-tracking reasons,
     // but unconditionally before the actual provider request below.
     if (activeSessionEntry && sessionKey) {
-      const { contextPressureThreshold } = resolveContinuationRuntimeConfig(cfg);
+      const { contextPressureThreshold, earlyWarningBand } = resolveContinuationRuntimeConfig(cfg);
       const contextWindowTokens =
         resolveContextTokensForModel({
           cfg,
@@ -1442,6 +1442,7 @@ export async function runReplyAgent(params: {
         sessionKey,
         contextPressureThreshold,
         contextWindowTokens,
+        earlyWarningBand,
         postCompaction: preflightCompactionApplied,
       });
       if (pressureResult.fired && storePath) {

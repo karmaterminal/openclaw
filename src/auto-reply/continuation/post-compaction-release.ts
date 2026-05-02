@@ -78,6 +78,7 @@ export async function releasePostCompactionLifecycle(
       totalTokens: activeSessionEntry.totalTokens,
       contextWindow: pressureContextWindow,
       threshold: pressureConfig.contextPressureThreshold ?? 0.8,
+      earlyWarningBand: pressureConfig.earlyWarningBand,
       postCompaction: true,
     });
     if (postCompactionPressure) {

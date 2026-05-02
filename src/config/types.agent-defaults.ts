@@ -437,6 +437,11 @@ export type AgentDefaultsConfig = {
      * unset. Recommended: 0.8 (80%).
      */
     contextPressureThreshold?: number;
+    /**
+     * Early-warning band as a fraction of contextPressureThreshold (default: 0.3125,
+     * which fires at 25% when the threshold is 0.8). Set to 0 to opt out.
+     */
+    earlyWarningBand?: number;
   };
 };
 

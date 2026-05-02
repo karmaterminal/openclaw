@@ -139,6 +139,39 @@ describe("continue_delegate tool", () => {
     ]);
   });
 
+  it("accepts string-encoded delaySeconds values", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "delayed delegate",
+      delaySeconds: "5",
+      mode: "silent",
+    });
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      delaySeconds: 5,
+      mode: "silent",
+    });
+  });
+
+  it("accepts mixed-case delegate mode values", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "mixed-case mode delegate",
+      mode: "Silent-Wake",
+    });
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      mode: "silent-wake",
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({ task: "mixed-case mode delegate", mode: "silent-wake" }),
+    ]);
+  });
+
   it("stages post-compaction delegates as silent-wake delegates", async () => {
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 

@@ -139,3 +139,6 @@ DO NOT open PR autonomously. Push branch only; the dispatcher (frond-scribe) dec
 ## Journal section (append as you go)
 
 <!-- start journal -->
+
+- 2026-05-02: Re-derived all six cohort fixes directly on v3: restored `earlyWarningBand` config/runtime/schema/tests; preserved legacy `silent + silentWake` delegate decode while rejecting malformed multi-flag payloads; pinned numeric-string `delaySeconds` tolerance for `continue_work` and `continue_delegate`; regenerated generated config/API baselines; restored and wired the swim-37 durability harness; verified `nativeCommandAuthorized` security-boundary coverage is present.
+- 2026-05-02: Validation green: `pnpm tsgo`; `pnpm check`; full `pnpm test` with `OPENCLAW_TEST_PROJECTS_PARALLEL=6 OPENCLAW_VITEST_MAX_WORKERS=1 OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS=600000`; `pnpm build`; `pnpm config:schema:check`; `pnpm config:docs:check`; `pnpm plugin-sdk:api:check`.

@@ -58,6 +58,24 @@ import {
   stagedPostCompactionDelegateCount,
 } from "./delegate-store.js";
 
+function queueRawPendingFlow(sessionKey: string, stateJson: Record<string, unknown>): string {
+  const flowId = `flow-${++flowIdCounter}`;
+  mockFlows.set(flowId, {
+    flowId,
+    syncMode: "managed",
+    ownerKey: sessionKey,
+    controllerId: CONTINUATION_DELEGATE_CONTROLLER_ID,
+    status: "queued",
+    stateJson,
+    goal: "raw pending delegate",
+    currentStep: "Queued for continuation dispatch",
+    revision: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+  return flowId;
+}
+
 beforeEach(() => {
   mockFlows.clear();
   flowIdCounter = 0;
@@ -113,6 +131,36 @@ describe("delegate store — TaskFlow-backed", () => {
       task: "silent task",
       mode: "silent-wake",
     });
+  });
+
+  it("decodes legacy silent and silentWake dual-flag rows as silent-wake", () => {
+    const flowId = queueRawPendingFlow("session-1", {
+      kind: "continuation_delegate",
+      task: "legacy silent wake task",
+      silent: true,
+      silentWake: true,
+    });
+
+    const delegates = consumePendingDelegates("session-1");
+    expect(delegates).toEqual([
+      expect.objectContaining({
+        task: "legacy silent wake task",
+        mode: "silent-wake",
+      }),
+    ]);
+    expect(mockFlows.get(flowId)?.status).toBe("succeeded");
+  });
+
+  it("rejects malformed multi-flag rows instead of choosing precedence", () => {
+    const flowId = queueRawPendingFlow("session-1", {
+      kind: "continuation_delegate",
+      task: "malformed mode task",
+      silent: true,
+      postCompaction: true,
+    });
+
+    expect(consumePendingDelegates("session-1")).toEqual([]);
+    expect(mockFlows.get(flowId)?.status).toBe("failed");
   });
 
   it("cancels all delegates (regular + post-compaction)", () => {

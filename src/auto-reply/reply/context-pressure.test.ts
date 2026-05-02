@@ -125,6 +125,33 @@ describe("checkContextPressure", () => {
     expect(result.band).toBe(0);
   });
 
+  it("fires the configured early-warning band below threshold", () => {
+    const entry = makeSessionEntry({ totalTokens: 25_000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+      earlyWarningBand: 0.3125,
+    });
+    expect(result.fired).toBe(true);
+    expect(result.band).toBe(25);
+    expect(entry.lastContextPressureBand).toBe(25);
+  });
+
+  it("does not fire below threshold when early-warning band is 0", () => {
+    const entry = makeSessionEntry({ totalTokens: 25_000, totalTokensFresh: true });
+    const result = checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+      earlyWarningBand: 0,
+    });
+    expect(result.fired).toBe(false);
+    expect(result.band).toBe(0);
+  });
+
   /* ---------------------------------------------------------------- */
   /*  Event fires at threshold                                        */
   /* ---------------------------------------------------------------- */

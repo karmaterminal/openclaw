@@ -33,6 +33,12 @@ describe("resolveContextPressureBand", () => {
     expect(resolveContextPressureBand(0.92, 0.8)).toBe(90);
     expect(resolveContextPressureBand(0.99, 0.8)).toBe(95);
   });
+
+  it("resolves the configured early-warning band below threshold", () => {
+    expect(resolveContextPressureBand(0.1, 0.8, 0.3125)).toBe(0);
+    expect(resolveContextPressureBand(0.25, 0.8, 0.3125)).toBe(25);
+    expect(resolveContextPressureBand(0.25, 0.8, 0)).toBe(0);
+  });
 });
 
 describe("checkContextPressure", () => {
@@ -44,6 +50,27 @@ describe("checkContextPressure", () => {
 
   it("returns null below threshold", () => {
     expect(checkContextPressure({ ...base, totalTokens: 100_000 })).toBeNull();
+  });
+
+  it("fires early-warning band below threshold when configured", () => {
+    const result = checkContextPressure({
+      ...base,
+      totalTokens: 50_000,
+      earlyWarningBand: 0.3125,
+    });
+
+    expect(result).toContain("[system:context-pressure]");
+    expect(result).toContain("25%");
+  });
+
+  it("does not fire below threshold when early-warning band is 0", () => {
+    expect(
+      checkContextPressure({
+        ...base,
+        totalTokens: 50_000,
+        earlyWarningBand: 0,
+      }),
+    ).toBeNull();
   });
 
   it("fires at threshold", () => {

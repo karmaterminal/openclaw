@@ -18,6 +18,7 @@ const DEFAULT_CONTINUATION_MAX_DELAY_MS = 300_000;
 const DEFAULT_CONTINUATION_MAX_CHAIN_LENGTH = 10;
 const DEFAULT_CONTINUATION_COST_CAP_TOKENS = 500_000;
 const DEFAULT_CONTINUATION_MAX_DELEGATES_PER_TURN = 5;
+const DEFAULT_EARLY_WARNING_BAND = 0.3125;
 
 function clampPositiveInt(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -43,6 +44,13 @@ function clampNonNegativeInt(value: unknown, fallback: number): number {
 function clampOptionalUnitInterval(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1) {
     return undefined;
+  }
+  return value;
+}
+
+function clampEarlyWarningBand(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+    return DEFAULT_EARLY_WARNING_BAND;
   }
   return value;
 }
@@ -85,6 +93,7 @@ export function resolveContinuationRuntimeConfig(
       DEFAULT_CONTINUATION_MAX_DELEGATES_PER_TURN,
     ),
     contextPressureThreshold: clampOptionalUnitInterval(continuation?.contextPressureThreshold),
+    earlyWarningBand: clampEarlyWarningBand(continuation?.earlyWarningBand),
   };
 }
 

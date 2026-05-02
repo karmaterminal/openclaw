@@ -56,6 +56,27 @@ describe("continue_work tool", () => {
     });
   });
 
+  it("accepts string-encoded delaySeconds values", async () => {
+    const requestContinuation = vi.fn();
+    const tool = makeTool({ requestContinuation });
+
+    const result = (
+      await tool.execute("call-delay-string", {
+        reason: "Wait for the background write to settle.",
+        delaySeconds: "5",
+      })
+    )?.details as Record<string, unknown>;
+
+    expect(requestContinuation).toHaveBeenCalledWith({
+      reason: "Wait for the background write to settle.",
+      delaySeconds: 5,
+    });
+    expect(result).toEqual({
+      status: "scheduled",
+      delaySeconds: 5,
+    });
+  });
+
   it("requires a reason", async () => {
     const tool = makeTool();
     await expect(tool.execute("call-3", {})).rejects.toThrow(/reason required/i);

@@ -39,15 +39,29 @@ export const CONTINUATION_POST_COMPACTION_CONTROLLER_ID = "core/continuation-pos
 // Zod validation for TaskFlow state payloads
 // ---------------------------------------------------------------------------
 
-const PendingDelegateStateSchema = z.object({
-  kind: z.literal("continuation_delegate"),
-  task: z.string().min(1),
-  delayMs: z.number().int().nonnegative().optional(),
-  silent: z.boolean().optional(),
-  silentWake: z.boolean().optional(),
-  postCompaction: z.boolean().optional(),
-  firstArmedAt: z.number().int().nonnegative().optional(),
-});
+const PendingDelegateStateSchema = z
+  .object({
+    kind: z.literal("continuation_delegate"),
+    task: z.string().min(1),
+    delayMs: z.number().int().nonnegative().optional(),
+    silent: z.boolean().optional(),
+    silentWake: z.boolean().optional(),
+    postCompaction: z.boolean().optional(),
+    firstArmedAt: z.number().int().nonnegative().optional(),
+  })
+  .superRefine((state, ctx) => {
+    const hasSilent = state.silent === true;
+    const hasSilentWake = state.silentWake === true;
+    const hasPostCompaction = state.postCompaction === true;
+    const flagCount = [hasSilent, hasSilentWake, hasPostCompaction].filter(Boolean).length;
+    if (flagCount <= 1 || (hasSilent && hasSilentWake && !hasPostCompaction)) {
+      return;
+    }
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "continuation delegate payload has incompatible mode flags",
+    });
+  });
 
 type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
 

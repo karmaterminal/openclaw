@@ -50,6 +50,20 @@ describe("continuation config schema validation", () => {
   it("accepts contextPressureThreshold = undefined (optional)", () => {
     const result = parseContinuation({});
     expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.continuation?.earlyWarningBand).toBe(0.3125);
+  });
+
+  it("accepts earlyWarningBand = 0 as opt-out", () => {
+    const result = parseContinuation({ earlyWarningBand: 0 });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects earlyWarningBand outside the unit interval", () => {
+    expect(parseContinuation({ earlyWarningBand: -0.1 }).success).toBe(false);
+    expect(parseContinuation({ earlyWarningBand: 1.1 }).success).toBe(false);
   });
 
   /* ---------------------------------------------------------------- */
