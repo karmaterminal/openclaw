@@ -11,3 +11,7 @@
 ## scaffold + first assertion green checkpoint
 
 - 2026-05-02T00:06:38+00:00: Test scaffold/assertions pushed at 1c32108747. Scoped exact test green: `pnpm test src/agents/pi-embedded-subscribe.handlers.compaction.test.ts` => 1 test file passed; 7 passed, 3 todo (10 total). Bare workorder scoped command `pnpm test src/agents/pi-embedded-subscribe.handlers.compaction` also exited 0.
+
+## tsgo gate checkpoint
+
+- 2026-05-02T00:07:30+00:00: `pnpm tsgo` green at branch content e9296eab6a.
