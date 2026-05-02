@@ -119,7 +119,7 @@ describe("delegate store — TaskFlow-backed", () => {
     });
   });
 
-  it("decodes legacy single-mode flags without accepting contradictory flags", () => {
+  it("decodes legacy silent-wake dual flags without accepting contradictory flags", () => {
     mockFlows.set("legacy-ok", {
       flowId: "legacy-ok",
       syncMode: "managed",
@@ -129,6 +129,7 @@ describe("delegate store — TaskFlow-backed", () => {
       stateJson: {
         kind: "continuation_delegate",
         task: "legacy wake",
+        silent: true,
         silentWake: true,
       },
       goal: "legacy",
@@ -147,7 +148,7 @@ describe("delegate store — TaskFlow-backed", () => {
         kind: "continuation_delegate",
         task: "ambiguous legacy",
         silent: true,
-        silentWake: true,
+        postCompaction: true,
       },
       goal: "legacy",
       currentStep: "queued",

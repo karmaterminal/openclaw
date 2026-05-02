@@ -70,13 +70,14 @@ const LegacyPendingDelegateStateSchema = z
   })
   .strict()
   .superRefine((state, ctx) => {
+    const isLegacySilentWake = state.silent === true && state.silentWake === true;
     const enabledModes = [state.silent, state.silentWake, state.postCompaction].filter(
       Boolean,
     ).length;
-    if (enabledModes > 1) {
+    if (enabledModes > 1 && !(isLegacySilentWake && state.postCompaction !== true)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "legacy continuation delegate state must set at most one mode flag",
+        message: "legacy continuation delegate state must not set contradictory mode flags",
       });
     }
   })
