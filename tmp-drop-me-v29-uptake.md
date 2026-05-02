@@ -168,3 +168,12 @@ No cherry-pick conflicts occurred.
 ## Step 5 generated baselines
 
 `pnpm config:docs:gen` and `pnpm plugin-sdk:api:gen` completed with no tracked `.sha256` drift on the v29-rooted branch.
+
+## Step 6 gates
+
+- `pnpm install --prefer-offline` completed.
+- `pnpm tsgo` passed.
+- `pnpm check` passed.
+- `pnpm build` passed.
+- `pnpm test src/auto-reply src/agents/tools/request-compaction-tool.test.ts src/agents/tools/continuation-tools-registration.test.ts src/config/zod-schema.continuation.test.ts` passed after fixing the auto-reply directory target routing bug that initially sent `src/auto-reply` to the default unit shard.
+- During the exact scoped test gate, the active-session `/compact` e2e exposed that first-turn manual compaction updated the in-memory session entry but not the missing on-disk store entry. Fixed by making `incrementCompactionCount` merge-or-create from the active session entry before persisting.
