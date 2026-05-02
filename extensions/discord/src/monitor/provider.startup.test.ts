@@ -29,7 +29,15 @@ vi.mock("openclaw/plugin-sdk/dangerous-name-runtime", () => ({
 }));
 
 vi.mock("openclaw/plugin-sdk/runtime-env", () => ({
+  createSubsystemLogger: () => ({
+    child: vi.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  }),
   danger: (value: string) => value,
+  logVerbose: vi.fn(),
 }));
 
 vi.mock("openclaw/plugin-sdk/text-runtime", () => ({
