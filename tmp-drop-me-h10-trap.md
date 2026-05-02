@@ -46,3 +46,16 @@
 - File count / line delta before declare-done journal: 2 files changed, 107 insertions(+)
 - PR base verified: frond-scribe/325-canonical2-pathB-rebase; changedFiles=2.
 - Open questions for silas 🌫 (§9): none; cohort-quorum-needed: yes.
+
+## §7 declare done
+
+- 2026-05-02T00:12:37+00:00: PR URL created: https://github.com/karmaterminal/openclaw/pull/513
+- Walk findings: call site src/agents/pi-embedded-subscribe.handlers.compaction.ts:117-135 fire-and-forget reconcile; emitter src/agents/pi-embedded-subscribe.handlers.compaction.ts:15-52; return/event path src/agents/pi-embedded-subscribe.handlers.compaction.ts:137-183 computes completed before reconcile settles.
+- Failure data shape pinned: { phase: "warning", warning: "compaction_count_reconcile_failed", sessionKey, trigger, outcome: "compacted", error, compactionCountBefore, compactionCountAfter, compactionCountDelta }.
+- emitAgentEvent shape pinned: { runId, stream: "compaction", sessionKey, data }. onAgentEvent shape pinned: { stream: "compaction", data }.
+- All three observability assertions passing: ctx.log.warn prefix, emitAgentEvent compaction warning event, ctx.params.onAgentEvent callback with same stream/data shape.
+- it.todo items present: propagate reconcile failure to caller; mark outcome differently when reconcile fails; make reconcile failure detectable downstream of handleCompactionEnd.
+- Final pre-declare content SHA: b6dbfb208d; exact final branch SHA is reported in issue #510 after this journal commit lands.
+- File count / line delta before declare journal: 2 files changed, 107 insertions.
+- PR base verified as frond-scribe/325-canonical2-pathB-rebase; changed files verified as src/agents/pi-embedded-subscribe.handlers.compaction.test.ts and tmp-drop-me-h10-trap.md.
+- Open questions for silas 🌫 (§9): none.
