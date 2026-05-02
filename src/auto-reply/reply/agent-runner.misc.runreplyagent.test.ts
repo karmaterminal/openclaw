@@ -7,6 +7,7 @@ import {
   abortEmbeddedPiRun,
   isEmbeddedPiRunActive,
 } from "../../agents/pi-embedded-runner/runs.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import * as sessionTypesModule from "../../config/sessions.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
@@ -200,6 +201,7 @@ beforeEach(() => {
 afterEach(() => {
   resetDiagnosticEventsForTest();
   vi.useRealTimers();
+  clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
   replyRunRegistryTesting.resetReplyRunRegistry();
   embeddedRunTesting.resetActiveEmbeddedRuns();
@@ -266,6 +268,8 @@ describe("runReplyAgent continuation volatile state", () => {
         blockReplyBreak: "message_end",
       },
     } as unknown as FollowupRun;
+
+    setRuntimeConfigSnapshot(followupRun.run.config);
 
     return {
       sessionKey,
