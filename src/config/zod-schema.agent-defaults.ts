@@ -305,7 +305,8 @@ export const AgentDefaultsSchema = z
           .min(0, "earlyWarningBand must be >= 0 (0 opts out of the early-warning band)")
           .max(1)
           .nullable()
-          .optional(),
+          .optional()
+          .default(0.3125),
       })
       .strict()
       .refine(
