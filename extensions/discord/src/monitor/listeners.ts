@@ -54,6 +54,33 @@ export class DiscordMessageListener extends MessageCreateListener {
   }
 }
 
+function readInteractionString(data: DiscordInteractionEvent, key: string): string | undefined {
+  if (!data || typeof data !== "object" || !(key in data)) {
+    return undefined;
+  }
+  const value = (data as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function describeInteractionForLog(data: DiscordInteractionEvent): string {
+  const id = readInteractionString(data, "id") ?? "<unknown>";
+  const rawData =
+    data && typeof data === "object" && "data" in data
+      ? (data as { data?: unknown }).data
+      : undefined;
+  const nestedCommandName =
+    rawData && typeof rawData === "object" && "name" in rawData
+      ? (rawData as { name?: unknown }).name
+      : undefined;
+  const commandName =
+    readInteractionString(data, "name") ??
+    (typeof nestedCommandName === "string" && nestedCommandName.trim()
+      ? nestedCommandName
+      : "<unknown>");
+  const type = readInteractionString(data, "type") ?? "<unknown>";
+  return `interactionId=${id} command=${commandName} type=${type}`;
+}
+
 export class DiscordInteractionListener extends InteractionCreateListener {
   constructor(
     private logger?: Logger,
@@ -70,7 +97,11 @@ export class DiscordInteractionListener extends InteractionCreateListener {
       .then(() => client.handleInteraction(data as Parameters<Client["handleInteraction"]>[0], {}))
       .catch((err) => {
         const logger = this.logger ?? discordEventQueueLog;
-        logger.error(danger(`discord interaction handler failed: ${String(err)}`));
+        logger.error(
+          danger(
+            `discord interaction handler failed: ${describeInteractionForLog(data)} phase=receive error=${String(err)}`,
+          ),
+        );
       });
   }
 }

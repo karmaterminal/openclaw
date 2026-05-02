@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { createSubsystemLogger, danger } from "openclaw/plugin-sdk/runtime-env";
 import { serializeRequestBody } from "./rest-body.js";
 import {
   DiscordError,
@@ -62,6 +63,33 @@ const defaultOptions = {
 };
 
 const DEFAULT_MAX_CONCURRENT_WORKERS = 4;
+const log = createSubsystemLogger("discord/rest");
+
+function sanitizeDiscordRestPath(path: string): string {
+  const [pathname = path] = path.split("?");
+  const parts = pathname.replace(/^\/+/, "").split("/");
+  if (parts[0] === "interactions" && parts.length >= 4) {
+    return `/${["interactions", parts[1] || "<unknown>", "<token>", ...parts.slice(3)].join("/")}`;
+  }
+  if (parts[0] === "webhooks" && parts.length >= 3) {
+    return `/${["webhooks", parts[1] || "<unknown>", "<token>", ...parts.slice(3)].join("/")}`;
+  }
+  return pathname;
+}
+
+function formatDiscordRestAbortMessage(params: {
+  method: string;
+  path: string;
+  routeKey: string;
+  timeoutMs: number;
+  elapsedMs: number;
+  timedOut: boolean;
+}): string {
+  const method = params.method.toUpperCase();
+  const path = sanitizeDiscordRestPath(params.path);
+  const routeKey = sanitizeDiscordRestPath(params.routeKey.replace(/^\S+\s+/, ""));
+  return `Discord REST request aborted: method=${method} path=${path} route=${method} ${routeKey} timeoutMs=${params.timeoutMs} elapsedMs=${params.elapsedMs} timedOut=${params.timedOut}`;
+}
 
 function coerceResponseBody(raw: string): unknown {
   if (!raw) {
@@ -147,7 +175,13 @@ export class RequestClient {
     }
     const body = serializeRequestBody(params.data, headers);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.options.timeout ?? 15_000);
+    const timeoutMs = this.options.timeout ?? 15_000;
+    const startedAt = Date.now();
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
     timeout.unref?.();
     this.requestControllers.add(controller);
     try {
@@ -178,7 +212,16 @@ export class RequestClient {
       return parsed;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        throw error;
+        const message = formatDiscordRestAbortMessage({
+          method,
+          path,
+          routeKey,
+          timeoutMs,
+          elapsedMs: Date.now() - startedAt,
+          timedOut,
+        });
+        log.warn(danger(message));
+        throw new DOMException(message, "AbortError");
       }
       if (error instanceof Error) {
         throw error;
