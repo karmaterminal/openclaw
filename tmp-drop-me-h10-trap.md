@@ -19,3 +19,7 @@
 ## tsgo gate checkpoint
 
 - 2026-05-02T00:08:25+00:00: `pnpm tsgo` green at branch content efd016bae3.
+
+## check gate checkpoint
+
+- 2026-05-02T00:09:39+00:00: `pnpm check` green at branch content f80d4543d7 (preflight, prod typecheck, lint, policy guards).
