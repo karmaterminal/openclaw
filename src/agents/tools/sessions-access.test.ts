@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { SessionToolsVisibility } from "./sessions-access.js";
 import {
   createAgentToAgentPolicy,
   createSessionVisibilityGuard,
@@ -9,6 +10,25 @@ import {
   resolveSessionToolsVisibility,
 } from "./sessions-access.js";
 import { __testing as sessionsResolutionTesting } from "./sessions-resolution.js";
+
+const SESSION_TOOLS_VISIBILITY_VALUES = [
+  "self",
+  "tree",
+  "agent",
+  "all",
+] as const satisfies readonly SessionToolsVisibility[];
+
+type ExactSessionToolsVisibility =
+  Exclude<SessionToolsVisibility, (typeof SESSION_TOOLS_VISIBILITY_VALUES)[number]> extends never
+    ? Exclude<
+        (typeof SESSION_TOOLS_VISIBILITY_VALUES)[number],
+        SessionToolsVisibility
+      > extends never
+      ? true
+      : never
+    : never;
+
+const exactSessionToolsVisibility: ExactSessionToolsVisibility = true;
 
 describe("resolveSessionToolsVisibility", () => {
   it("defaults to tree when unset or invalid", () => {
@@ -26,6 +46,11 @@ describe("resolveSessionToolsVisibility", () => {
         tools: { sessions: { visibility: "ALL" } },
       } as unknown as OpenClawConfig),
     ).toBe("all");
+  });
+
+  it("pins the exact visibility enum values", () => {
+    expect(SESSION_TOOLS_VISIBILITY_VALUES).toEqual(["self", "tree", "agent", "all"]);
+    expect(exactSessionToolsVisibility).toBe(true);
   });
 });
 
