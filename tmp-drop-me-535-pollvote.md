@@ -19,3 +19,10 @@
 - Local targeted gate: `pnpm test extensions/discord/src/actions/runtime.test.ts extensions/discord/src/actions/handle-action.test.ts extensions/discord/src/send.creates-thread.test.ts` passed.
 - Patch budget: production diff is 94 added lines, excluding tests and journal.
 - Heartbeat attempts: relay helper was absent; OpenClaw CLI heartbeat failed first on missing deps, then after install/build with `Unknown target "frond-scribe-535-pollvote-relaunch-hook"`; local config search found no matching alias.
+
+## Validation
+
+- Blacksmith/Testbox: unavailable locally because `blacksmith testbox warmup ci-check-testbox.yml --ref main --idle-timeout 90` reported unauthenticated.
+- Typecheck: `pnpm tsgo` passed.
+- Full tests: `env NODE_OPTIONS=--max-old-space-size=4096 OPENCLAW_TEST_PROJECTS_PARALLEL=3 OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test` passed all 76 Vitest shards.
+- Local full-suite note: the default higher-parallel run hit the `vitest.gateway-server.config.ts` no-output watchdog; that shard passed when isolated with one project worker.
