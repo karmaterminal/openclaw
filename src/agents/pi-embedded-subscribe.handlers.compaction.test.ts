@@ -2,6 +2,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const agentEventMocks = vi.hoisted(() => ({
+  emitAgentEvent: vi.fn(),
+}));
+
+vi.mock("../infra/agent-events.js", () => ({
+  emitAgentEvent: agentEventMocks.emitAgentEvent,
+}));
+
 import {
   drainSessionStoreLockQueuesForTest,
   resetSessionStoreLockRuntimeForTests,
@@ -57,6 +66,7 @@ function createCompactionContext(params: {
 }
 
 beforeEach(() => {
+  agentEventMocks.emitAgentEvent.mockClear();
   setSessionWriteLockAcquirerForTests(async () => ({
     release: async () => {},
   }));
@@ -111,6 +121,70 @@ describe("reconcileSessionStoreCompactionCountAfterSuccess", () => {
     expect(nextCount).toBe(3);
     expect(await readCompactionCount(storePath, sessionKey)).toBe(3);
   });
+});
+
+describe("H10 reconcile failure observability + throw-shape gap", () => {
+  it("emits all reconcile failure observability surfaces", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compaction-h10-trap-"));
+    const storePath = path.join(tmp, "sessions.json");
+    await seedSessionStore({
+      storePath,
+      sessionKey: "main",
+      compactionCount: 1,
+    });
+    setSessionWriteLockAcquirerForTests(async () => {
+      throw new Error("session store locked");
+    });
+    const events: Array<{ stream: string; data: Record<string, unknown> }> = [];
+    const ctx = createCompactionContext({
+      storePath,
+      sessionKey: "main",
+      initialCount: 1,
+      onAgentEvent: (event) => {
+        events.push(event as { stream: string; data: Record<string, unknown> });
+      },
+    });
+
+    handleCompactionEnd(ctx, {
+      type: "compaction_end",
+      reason: "threshold",
+      result: { kept: 12 },
+      willRetry: false,
+      aborted: false,
+    } as never);
+
+    const warningData = {
+      phase: "warning",
+      warning: "compaction_count_reconcile_failed",
+      sessionKey: "main",
+      trigger: "budget",
+      outcome: "compacted",
+      error: "session store locked",
+      compactionCountBefore: 1,
+      compactionCountAfter: 2,
+      compactionCountDelta: 1,
+    };
+
+    await vi.waitFor(() => {
+      expect(ctx.log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("[compaction-counter:reconcile-failed]"),
+      );
+      expect(agentEventMocks.emitAgentEvent).toHaveBeenCalledWith({
+        runId: "run-test",
+        stream: "compaction",
+        sessionKey: "main",
+        data: warningData,
+      });
+      expect(events).toContainEqual({
+        stream: "compaction",
+        data: warningData,
+      });
+    });
+  });
+
+  it.todo("handleCompactionEnd should propagate reconcile failure to caller");
+  it.todo("handleCompactionEnd should mark outcome differently when reconcile fails");
+  it.todo("reconcile failure should be detectable downstream of handleCompactionEnd");
 });
 
 describe("handleCompactionEnd", () => {
