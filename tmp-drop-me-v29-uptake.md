@@ -164,3 +164,7 @@ None yet.
 - `fb69037275` — volatile map allowlist guard.
 
 No cherry-pick conflicts occurred.
+
+## Step 5 generated baselines
+
+`pnpm config:docs:gen` and `pnpm plugin-sdk:api:gen` completed with no tracked `.sha256` drift on the v29-rooted branch.
