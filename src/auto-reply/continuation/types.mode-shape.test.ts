@@ -61,7 +61,7 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
       return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
     }
     flow.status = "succeeded";
-    flow.revision = (flow.revision as number) + 1;
+    flow.revision = flow.revision + 1;
     return { applied: true, flow: { ...flow } };
   }),
   failFlow: vi.fn((params: { flowId: string }) => {
@@ -112,7 +112,7 @@ describe("[#438] keeps PendingContinuationDelegate mode-only at runtime boundari
         });
         const consumed = consumePendingDelegates(SESSION_KEY);
         expect(consumed).toHaveLength(1);
-        const delegate = consumed[0]!;
+        const delegate = consumed[0];
         for (const field of RUNTIME_BOOLEAN_FIELDS) {
           expect(
             Object.prototype.hasOwnProperty.call(delegate, field),
@@ -132,7 +132,7 @@ describe("[#438] keeps PendingContinuationDelegate mode-only at runtime boundari
       });
       const consumed = consumeStagedPostCompactionDelegates(SESSION_KEY);
       expect(consumed).toHaveLength(1);
-      const delegate = consumed[0]!;
+      const delegate = consumed[0];
       expect(delegate.mode).toBe("post-compaction");
       for (const field of RUNTIME_BOOLEAN_FIELDS) {
         expect(
@@ -159,7 +159,7 @@ describe("[#438] keeps PendingContinuationDelegate mode-only at runtime boundari
         } else {
           enqueuePendingDelegate(SESSION_KEY, { task: "back-compat", mode });
         }
-        const flow = [...mockFlows.values()][0]!;
+        const flow = [...mockFlows.values()][0];
         const stateJson = flow.stateJson as Record<string, unknown>;
         expect(stateJson[expectedBooleanField]).toBe(true);
       },
@@ -167,7 +167,7 @@ describe("[#438] keeps PendingContinuationDelegate mode-only at runtime boundari
 
     it("persisted stateJson for normal mode projects no boolean mode flags", () => {
       enqueuePendingDelegate(SESSION_KEY, { task: "normal" });
-      const flow = [...mockFlows.values()][0]!;
+      const flow = [...mockFlows.values()][0];
       const stateJson = flow.stateJson as Record<string, unknown>;
       for (const field of RUNTIME_BOOLEAN_FIELDS) {
         expect(stateJson[field]).toBeUndefined();
@@ -200,13 +200,19 @@ describe("[#438] continue_delegate tool descriptor exposes mode enum, not boolea
     // optionalStringEnum may render as anyOf [ { const: "normal" }, ... ] OR as enum.
     const enumValues = new Set<string>();
     if (Array.isArray(modeProp.enum)) {
-      for (const v of modeProp.enum) enumValues.add(v);
+      for (const v of modeProp.enum) {
+        enumValues.add(v);
+      }
     }
     if (Array.isArray(modeProp.anyOf)) {
       for (const branch of modeProp.anyOf) {
-        if (typeof branch.const === "string") enumValues.add(branch.const);
+        if (typeof branch.const === "string") {
+          enumValues.add(branch.const);
+        }
         if (Array.isArray(branch.enum)) {
-          for (const v of branch.enum) enumValues.add(v);
+          for (const v of branch.enum) {
+            enumValues.add(v);
+          }
         }
       }
     }
