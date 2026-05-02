@@ -35,3 +35,14 @@
 ## scoped test gate checkpoint
 
 - 2026-05-02T00:10:47+00:00: `pnpm test src/agents/pi-embedded-subscribe.handlers.compaction.test.ts` green at branch content 005782bddc: 1 file passed; 6 passed, 3 todo (9 total).
+
+## §7 declare done
+
+- PR URL: https://github.com/karmaterminal/openclaw/pull/513
+- Walk findings: call site src/agents/pi-embedded-subscribe.handlers.compaction.ts:117-135 fire-and-forget reconcile; emitter src/agents/pi-embedded-subscribe.handlers.compaction.ts:15-52; return/event path src/agents/pi-embedded-subscribe.handlers.compaction.ts:137-183 computes completed before reconcile settles.
+- Observability assertions passing: ctx.log.warn prefix, emitAgentEvent compaction warning shape, and ctx.params.onAgentEvent callback warning shape.
+- Throw-shape it.todo items present: caller propagation, non-normal outcome marking, downstream detectability.
+- Implementation SHA before declare-done journal: a895f001c79e3cd1b3092634e78b88accdb88fdd
+- File count / line delta before declare-done journal: 2 files changed, 107 insertions(+)
+- PR base verified: frond-scribe/325-canonical2-pathB-rebase; changedFiles=2.
+- Open questions for silas 🌫 (§9): none; cohort-quorum-needed: yes.
