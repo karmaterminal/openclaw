@@ -8,6 +8,7 @@ import {
   setDiagnosticsEnabledForProcess,
   type DiagnosticEventPayload,
 } from "../infra/diagnostic-events.js";
+import { registerDiagnosticContinuationQueueMetricsProvider } from "./diagnostic-continuation-queues.js";
 import {
   diagnosticSessionStates,
   getDiagnosticSessionStateCountForTest,
@@ -268,6 +269,116 @@ describe("stuck session diagnostics threshold", () => {
         active: 0,
         waiting: 0,
         queued: 0,
+      }),
+    );
+  });
+
+  it("emits continuation queue samples and attaches queue history to liveness warnings", () => {
+    const emitMemorySample = createEmitMemorySampleMock();
+    const events: DiagnosticEventPayload[] = [];
+    const unsubscribe = onDiagnosticEvent((event) => events.push(event));
+    const unregisterContinuationQueue = registerDiagnosticContinuationQueueMetricsProvider(
+      (now) => ({
+        sampledAt: now,
+        intervalMs: 30_000,
+        totalQueued: 3,
+        pendingQueued: 2,
+        pendingRunnable: 1,
+        pendingScheduled: 1,
+        stagedPostCompaction: 1,
+        invalidQueued: 0,
+        enqueuedSinceLastSample: 2,
+        drainedSinceLastSample: 1,
+        failedSinceLastSample: 0,
+        enqueueRatePerMinute: 4,
+        drainRatePerMinute: 2,
+        failedRatePerMinute: 0,
+        topQueues: [
+          {
+            sessionKey: "session-a",
+            pendingQueued: 2,
+            pendingRunnable: 1,
+            pendingScheduled: 1,
+            stagedPostCompaction: 1,
+            invalidQueued: 0,
+            totalQueued: 3,
+          },
+        ],
+        queueDepthHistory: [
+          {
+            sampledAt: now,
+            intervalMs: 30_000,
+            totalQueued: 3,
+            pendingRunnable: 1,
+            pendingScheduled: 1,
+            stagedPostCompaction: 1,
+            invalidQueued: 0,
+            enqueued: 2,
+            drained: 1,
+            failed: 0,
+          },
+        ],
+      }),
+    );
+
+    try {
+      startDiagnosticHeartbeat(
+        {
+          diagnostics: {
+            enabled: true,
+          },
+        },
+        {
+          emitMemorySample,
+          sampleLiveness: () => ({
+            reasons: ["cpu"],
+            intervalMs: 30_000,
+            cpuCoreRatio: 1,
+          }),
+        },
+      );
+
+      vi.advanceTimersByTime(30_000);
+    } finally {
+      unregisterContinuationQueue();
+      unsubscribe();
+    }
+
+    const livenessWarning = events.find(
+      (event): event is Extract<DiagnosticEventPayload, { type: "diagnostic.liveness.warning" }> =>
+        event.type === "diagnostic.liveness.warning",
+    );
+    const queueSample = events.find(
+      (
+        event,
+      ): event is Extract<
+        DiagnosticEventPayload,
+        { type: "diagnostic.continuation_queue.sample" }
+      > => event.type === "diagnostic.continuation_queue.sample",
+    );
+
+    expect(emitMemorySample).toHaveBeenLastCalledWith({ emitSample: true });
+    expect(livenessWarning?.continuationQueue).toMatchObject({
+      totalQueued: 3,
+      drainedSinceLastSample: 1,
+      drainRatePerMinute: 2,
+    });
+    expect(queueSample?.continuationQueue.queueDepthHistory[0]).toMatchObject({
+      totalQueued: 3,
+      enqueued: 2,
+      drained: 1,
+    });
+    expect(getDiagnosticStabilitySnapshot({ limit: 10 }).events).toContainEqual(
+      expect.objectContaining({
+        type: "diagnostic.continuation_queue.sample",
+        count: 3,
+        queueDepth: 3,
+        continuationQueue: expect.objectContaining({
+          totalQueued: 3,
+          pendingRunnable: 1,
+          drainedSinceLastSample: 1,
+          drainRatePerMinute: 2,
+        }),
       }),
     );
   });

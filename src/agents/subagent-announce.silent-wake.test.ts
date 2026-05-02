@@ -238,14 +238,16 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, R
     expect(eventText.length).toBeGreaterThan(0);
     expect(eventOptions?.sessionKey).toBe(requesterSessionKey);
 
-    // Heartbeat wake fired with continuation reason.
+    // Heartbeat wake fired with delegate-return provenance.
     expect(requestHeartbeatNowMock).toHaveBeenCalledTimes(1);
     const wakeOptions = requestHeartbeatNowMock.mock.calls[0]?.[0] as {
       sessionKey?: string;
       reason?: string;
+      parentRunId?: string;
     };
     expect(wakeOptions?.sessionKey).toBe(requesterSessionKey);
-    expect(wakeOptions?.reason).toBe("continuation");
+    expect(wakeOptions?.reason).toBe("silent-wake-enrichment");
+    expect(wakeOptions?.parentRunId).toBe(baseParams.childRunId);
   });
 
   it("silentAnnounce:true + wakeOnReturn:false → enqueues system event but does NOT wake", async () => {

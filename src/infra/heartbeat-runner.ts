@@ -926,6 +926,7 @@ export async function runHeartbeatOnce(opts: {
   sessionKey?: string;
   heartbeat?: HeartbeatConfig;
   reason?: string;
+  parentRunId?: string;
   deps?: HeartbeatDeps;
 }): Promise<HeartbeatRunResult> {
   const cfg = opts.cfg ?? getRuntimeConfig();
@@ -1342,6 +1343,7 @@ export async function runHeartbeatOnce(opts: {
       bootstrapContextMode,
       onModelSelected: replyPrefix.onModelSelected,
       continuationTrigger,
+      parentRunId: opts.parentRunId,
     };
     const getReplyFromConfig =
       opts.deps?.getReplyFromConfig ?? (await loadHeartbeatRunnerRuntime()).getReplyFromConfig;
