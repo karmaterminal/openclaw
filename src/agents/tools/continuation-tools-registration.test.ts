@@ -161,8 +161,8 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     const properties = params.properties ?? {};
 
     // Closed-set assertion: exactly these advertised keys, no more, no less.
-    const expectedKeys = ["task", "delaySeconds", "mode"].sort();
-    const actualKeys = Object.keys(properties).sort();
+    const expectedKeys = ["task", "delaySeconds", "mode"].toSorted();
+    const actualKeys = Object.keys(properties).toSorted();
     expect(
       actualKeys,
       `continue_delegate descriptor must advertise exactly [task, delaySeconds, mode]; got [${actualKeys.join(", ")}]`,
@@ -178,13 +178,19 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     };
     const modeEnumValues = new Set<string>();
     if (Array.isArray(modeProp.enum)) {
-      for (const v of modeProp.enum) modeEnumValues.add(v);
+      for (const v of modeProp.enum) {
+        modeEnumValues.add(v);
+      }
     }
     if (Array.isArray(modeProp.anyOf)) {
       for (const branch of modeProp.anyOf) {
-        if (typeof branch.const === "string") modeEnumValues.add(branch.const);
+        if (typeof branch.const === "string") {
+          modeEnumValues.add(branch.const);
+        }
         if (Array.isArray(branch.enum)) {
-          for (const v of branch.enum) modeEnumValues.add(v);
+          for (const v of branch.enum) {
+            modeEnumValues.add(v);
+          }
         }
       }
     }
