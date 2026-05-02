@@ -151,3 +151,16 @@ CONFLICT: 0 initially; conflicts, if any, will be documented during Step 4.
 ## Step 4 conflicts
 
 None yet.
+
+## Step 4 applied PORT commits
+
+- `a69c7e1e5e` — RFC OTEL queue-boundary trace wiring docs.
+- `ae4c653488` — continuation store merge updatedAt churn guard.
+- `afe015c415` — request_compaction pending Set cleanup/restart guard.
+- `b72ab03718` — continue_delegate descriptor exact-keys guard.
+- `35c65d4db9` — PendingContinuationDelegate mode-only compatibility guard.
+- `74940e55e0` — delegate span uniformity tests. Applied without the temporary `tmp-drop-me-otel-span-uniformity.md` note.
+- `aa7a5859be` — RFC coarse-bucket rejection rationale.
+- `fb69037275` — volatile map allowlist guard.
+
+No cherry-pick conflicts occurred.
