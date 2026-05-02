@@ -1,0 +1,1 @@
+- 2026-05-01T23:59:55+00:00: worktree+branch+tracking-issue created; workorder with §0a/§0b in place; ready to dispatch copilot
