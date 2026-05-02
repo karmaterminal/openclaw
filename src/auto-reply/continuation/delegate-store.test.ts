@@ -1,27 +1,50 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the TaskFlow registry before importing the store.
-const mockFlows = new Map<string, Record<string, unknown>>();
+type MockTaskFlowRecord = {
+  flowId: string;
+  syncMode: "managed";
+  ownerKey: string;
+  controllerId: string;
+  status: string;
+  stateJson: unknown;
+  goal: string;
+  currentStep: string;
+  revision: number;
+  createdAt: number;
+  updatedAt: number;
+  endedAt?: number;
+};
+
+const mockFlows = new Map<string, MockTaskFlowRecord>();
 let flowIdCounter = 0;
 
 vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Record<string, unknown>) => {
-    const flowId = `flow-${++flowIdCounter}`;
-    mockFlows.set(flowId, {
-      flowId,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      controllerId: params.controllerId,
-      status: "queued",
-      stateJson: params.stateJson,
-      goal: params.goal,
-      currentStep: params.currentStep,
-      revision: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    return mockFlows.get(flowId);
-  }),
+  createManagedTaskFlow: vi.fn(
+    (params: {
+      ownerKey: string;
+      controllerId: string;
+      stateJson: unknown;
+      goal: string;
+      currentStep: string;
+    }) => {
+      const flowId = `flow-${++flowIdCounter}`;
+      mockFlows.set(flowId, {
+        flowId,
+        syncMode: "managed",
+        ownerKey: params.ownerKey,
+        controllerId: params.controllerId,
+        status: "queued",
+        stateJson: params.stateJson,
+        goal: params.goal,
+        currentStep: params.currentStep,
+        revision: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      return mockFlows.get(flowId);
+    },
+  ),
   listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
     [...mockFlows.values()].filter((f) => f.ownerKey === ownerKey),
   ),
