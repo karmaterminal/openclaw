@@ -25,6 +25,7 @@ import {
   handleCompactionEnd,
   reconcileSessionStoreCompactionCountAfterSuccess,
 } from "./pi-embedded-subscribe.handlers.compaction.js";
+import * as compactionRuntime from "./pi-embedded-subscribe.handlers.compaction.runtime.js";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 
 function createCompactionContext(params: {
@@ -73,6 +74,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   resetSessionStoreLockRuntimeForTests();
   await drainSessionStoreLockQueuesForTest();
 });
@@ -125,21 +127,15 @@ describe("reconcileSessionStoreCompactionCountAfterSuccess", () => {
 
 describe("H10 reconcile failure observability + throw-shape gap", () => {
   it("emits all reconcile failure observability surfaces", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compaction-h10-trap-"));
-    const storePath = path.join(tmp, "sessions.json");
-    await seedSessionStore({
-      storePath,
-      sessionKey: "main",
-      compactionCount: 1,
-    });
-    setSessionWriteLockAcquirerForTests(async () => {
-      throw new Error("session store locked");
-    });
+    vi.spyOn(
+      compactionRuntime,
+      "reconcileSessionStoreCompactionCountAfterSuccess",
+    ).mockRejectedValueOnce(new Error("h10 reconcile failed"));
     const events: Array<{ stream: string; data: Record<string, unknown> }> = [];
     const ctx = createCompactionContext({
-      storePath,
+      storePath: "unused-h10-trap-store.json",
       sessionKey: "main",
-      initialCount: 1,
+      initialCount: 7,
       onAgentEvent: (event) => {
         events.push(event as { stream: string; data: Record<string, unknown> });
       },
@@ -159,9 +155,9 @@ describe("H10 reconcile failure observability + throw-shape gap", () => {
       sessionKey: "main",
       trigger: "budget",
       outcome: "compacted",
-      error: "session store locked",
-      compactionCountBefore: 1,
-      compactionCountAfter: 2,
+      error: "h10 reconcile failed",
+      compactionCountBefore: 7,
+      compactionCountAfter: 8,
       compactionCountDelta: 1,
     };
 
