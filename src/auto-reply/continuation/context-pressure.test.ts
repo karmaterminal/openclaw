@@ -33,6 +33,30 @@ describe("resolveContextPressureBand", () => {
     expect(resolveContextPressureBand(0.92, 0.8)).toBe(90);
     expect(resolveContextPressureBand(0.99, 0.8)).toBe(95);
   });
+
+  describe("earlyWarningBand", () => {
+    it("default threshold 0.8 + earlyWarningBand 0.3125 produces 25-band", () => {
+      expect(resolveContextPressureBand(0.25, 0.8, 0.3125)).toBe(25);
+    });
+
+    it("earlyWarningBand=0 opts out (no early band at same ratio)", () => {
+      expect(resolveContextPressureBand(0.25, 0.8, 0)).toBe(0);
+    });
+
+    it("threshold 0.5 + earlyWarningBand 0.3125 fires at ~0.156 ratio", () => {
+      expect(resolveContextPressureBand(0.16, 0.5, 0.3125)).toBe(16);
+    });
+
+    it("threshold 0.95 + earlyWarningBand 0.3125 produces 30-band", () => {
+      expect(resolveContextPressureBand(0.3, 0.95, 0.3125)).toBe(30);
+    });
+
+    it("early-warning band does not shadow threshold band", () => {
+      expect(resolveContextPressureBand(0.8, 0.8, 0.3125)).toBe(80);
+      expect(resolveContextPressureBand(0.9, 0.8, 0.3125)).toBe(90);
+      expect(resolveContextPressureBand(0.95, 0.8, 0.3125)).toBe(95);
+    });
+  });
 });
 
 describe("checkContextPressure", () => {
