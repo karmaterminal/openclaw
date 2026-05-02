@@ -7,3 +7,7 @@
 ## §3 code walk checkpoint
 
 - 2026-05-02T00:01:49+00:00: §3 walk findings: call site src/agents/pi-embedded-subscribe.handlers.compaction.ts:117-135 fire-and-forget reconcile; emitter src/agents/pi-embedded-subscribe.handlers.compaction.ts:15-52; return/event path src/agents/pi-embedded-subscribe.handlers.compaction.ts:137-183 computes completed before reconcile settles. Failure data shape: { phase: "warning", warning: "compaction_count_reconcile_failed", sessionKey, trigger, outcome: "compacted", error, compactionCountBefore, compactionCountAfter, compactionCountDelta }. emitAgentEvent shape: { runId, stream: "compaction", sessionKey, data }. onAgentEvent shape: { stream: "compaction", data }. Existing tests use createCompactionContext with vi.fn ctx.log.debug/warn, optional params.onAgentEvent pushing events array, and session lock test hook to force reconcile rejection.
+
+## scaffold + first assertion green checkpoint
+
+- 2026-05-02T00:06:38+00:00: Test scaffold/assertions pushed at 1c32108747. Scoped exact test green: `pnpm test src/agents/pi-embedded-subscribe.handlers.compaction.test.ts` => 1 test file passed; 7 passed, 3 todo (10 total). Bare workorder scoped command `pnpm test src/agents/pi-embedded-subscribe.handlers.compaction` also exited 0.
