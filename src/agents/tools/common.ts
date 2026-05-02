@@ -41,9 +41,46 @@ export function asToolParamsRecord(params: unknown): Record<string, unknown> {
     : {};
 }
 
-export function parseToolParams<T extends TSchema>(schema: T, params: unknown): Static<T> {
+export type ParseToolParamsOptions = {
+  numericStringKeys?: readonly string[];
+};
+
+function parseNumericString(value: unknown): number | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function coerceNumericStringParams(params: unknown, keys: readonly string[] | undefined): unknown {
+  if (!keys?.length || !params || typeof params !== "object" || Array.isArray(params)) {
+    return params;
+  }
+  const source = params as Record<string, unknown>;
+  let next: Record<string, unknown> | undefined;
+  for (const key of keys) {
+    const parsed = parseNumericString(readSnakeCaseParamRaw(source, key));
+    if (parsed === undefined) {
+      continue;
+    }
+    next ??= { ...source };
+    next[key] = parsed;
+  }
+  return next ?? params;
+}
+
+export function parseToolParams<T extends TSchema>(
+  schema: T,
+  params: unknown,
+  options: ParseToolParamsOptions = {},
+): Static<T> {
   try {
-    return Parse(schema, params);
+    return Parse(schema, coerceNumericStringParams(params, options.numericStringKeys));
   } catch (err) {
     if (err instanceof ParseError) {
       const firstError =
