@@ -152,10 +152,10 @@ function checkSessionContextPressure(
 
   const ratio = Math.max(0, sessionEntry.totalTokens / contextWindowTokens);
   const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
-  if (!postCompaction && ratio < threshold) {
+  if (!postCompaction && band === 0 && ratio < threshold) {
     if (log.isEnabled("debug")) {
       log.debug(
-        `[context-pressure:noop] reason=below-threshold ratio=${Math.round(ratio * 100)}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
+        `[context-pressure:noop] reason=below-all-bands ratio=${Math.round(ratio * 100)}% threshold=${Math.round(threshold * 100)}% earlyWarningBand=${earlyWarningBand} rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
       );
     }
     return { fired: false, band: 0 };
@@ -232,16 +232,15 @@ function checkTokenContextPressure(params: CheckTokenContextPressureParams): str
     return eventText;
   }
 
-  if (ratio < threshold) {
+  const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
+  if (band === 0 && ratio < threshold) {
     if (log.isEnabled("debug")) {
       log.debug(
-        `[context-pressure:noop] reason=below-threshold ratio=${percentUsed}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
+        `[context-pressure:noop] reason=below-all-bands ratio=${percentUsed}% threshold=${Math.round(threshold * 100)}% earlyWarningBand=${earlyWarningBand} rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
       );
     }
     return null;
   }
-
-  const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
   const previous = lastFiredBand.get(sessionKey);
   const isFirstFire = previous === undefined;
   if (!isFirstFire && band === previous) {

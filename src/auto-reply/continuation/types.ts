@@ -91,7 +91,7 @@ export type ContinuationRuntimeConfig = {
   costCapTokens: number;
   maxDelegatesPerTurn: number;
   contextPressureThreshold?: number;
-  earlyWarningBand: number;
+  earlyWarningBand?: number;
 };
 
 // ---------------------------------------------------------------------------

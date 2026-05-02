@@ -108,6 +108,28 @@ describe("checkContextPressure", () => {
     expect(checkContextPressure({ ...base, contextWindow: 0, totalTokens: 100 })).toBeNull();
   });
 
+  it("fires early-warning band below threshold when earlyWarningBand is set", () => {
+    const result = checkContextPressure({
+      ...base,
+      sessionKey: "early-warn-fires",
+      totalTokens: 50_000, // 25% of 200k = ratio 0.25 = early-warn band 25 at threshold 0.8 + earlyWarningBand 0.3125
+      earlyWarningBand: 0.3125,
+    });
+    expect(result).not.toBeNull();
+    expect(result).toContain("[system:context-pressure]");
+    expect(result).toContain("25%");
+  });
+
+  it("does NOT fire below threshold when earlyWarningBand is 0", () => {
+    const result = checkContextPressure({
+      ...base,
+      sessionKey: "early-warn-opt-out",
+      totalTokens: 50_000,
+      earlyWarningBand: 0,
+    });
+    expect(result).toBeNull();
+  });
+
   it("fires once when the configured threshold rounds to band 0", () => {
     const lowParams = {
       sessionKey: "low-threshold-session",

@@ -5864,6 +5864,18 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     exclusiveMinimum: 0,
                     maximum: 1,
                   },
+                  earlyWarningBand: {
+                    anyOf: [
+                      {
+                        type: "number",
+                        minimum: 0,
+                        maximum: 1,
+                      },
+                      {
+                        type: "null",
+                      },
+                    ],
+                  },
                 },
                 additionalProperties: false,
               },
