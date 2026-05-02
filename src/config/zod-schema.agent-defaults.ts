@@ -300,6 +300,12 @@ export const AgentDefaultsSchema = z
           .gt(0, "contextPressureThreshold must be > 0 (0 would fire on empty sessions)")
           .max(1)
           .optional(),
+        earlyWarningBand: z
+          .number()
+          .min(0, "earlyWarningBand must be >= 0 (0 opts out of the early-warning band)")
+          .max(1)
+          .nullable()
+          .optional(),
       })
       .strict()
       .refine(

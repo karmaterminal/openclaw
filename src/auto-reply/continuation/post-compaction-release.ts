@@ -79,6 +79,7 @@ export async function releasePostCompactionLifecycle(
       contextWindow: pressureContextWindow,
       threshold: pressureConfig.contextPressureThreshold ?? 0.8,
       postCompaction: true,
+      earlyWarningBand: pressureConfig.earlyWarningBand,
     });
     if (postCompactionPressure) {
       enqueueSystemEvent(postCompactionPressure, { sessionKey });
