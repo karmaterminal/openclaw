@@ -39,6 +39,7 @@ export {
   searchMessagesDiscord,
   unpinMessageDiscord,
 } from "./send.messages.js";
+export { castPollVoteDiscord } from "./send.outbound.js";
 export { sendMessageDiscord, sendPollDiscord, sendStickerDiscord } from "./send.outbound.js";
 export { sendWebhookMessageDiscord } from "./send.webhook.js";
 export { sendVoiceMessageDiscord } from "./send.voice.js";

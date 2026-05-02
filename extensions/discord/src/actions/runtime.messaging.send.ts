@@ -21,6 +21,30 @@ function hasDiscordComponentObjectKeys(value: unknown): value is Record<string, 
   );
 }
 
+function readDiscordPollVoteAnswerIds(params: Record<string, unknown>): readonly unknown[] {
+  const selectors = [
+    [
+      "pollOptionId",
+      readNumberParam(params, "pollOptionId", { integer: true, strict: true }) ??
+        params.pollOptionId,
+    ],
+    [
+      "pollOptionIndex",
+      readNumberParam(params, "pollOptionIndex", { integer: true, strict: true }) ??
+        params.pollOptionIndex,
+    ],
+    ["pollOptionIndexes", params.pollOptionIndexes],
+  ].filter((entry) => entry[1] !== undefined);
+  if (selectors.length === 0) {
+    throw new Error("poll-vote requires pollOptionId, pollOptionIndex, or pollOptionIndexes");
+  }
+  if (selectors.length > 1) {
+    throw new Error("poll-vote accepts exactly one poll option selector");
+  }
+  const raw = selectors[0][1];
+  return Array.isArray(raw) ? raw : [raw];
+}
+
 export async function handleDiscordMessageSendAction(ctx: DiscordMessagingActionContext) {
   switch (ctx.action) {
     case "sticker": {
@@ -62,6 +86,25 @@ export async function handleDiscordMessageSendAction(ctx: DiscordMessagingAction
         ctx.withOpts({ content }),
       );
       return jsonResult({ ok: true });
+    }
+    case "poll-vote": {
+      if (!ctx.isActionEnabled("polls")) {
+        throw new Error("Discord polls are disabled.");
+      }
+      const to =
+        readStringParam(ctx.params, "to") ??
+        readStringParam(ctx.params, "target") ??
+        readStringParam(ctx.params, "channelId") ??
+        readStringParam(ctx.params, "channel", { required: true });
+      const messageId = readStringParam(ctx.params, "messageId", { required: true });
+      const answerIds = readDiscordPollVoteAnswerIds(ctx.params);
+      const result = await discordMessagingActionRuntime.castPollVoteDiscord(
+        to,
+        messageId,
+        answerIds,
+        ctx.withOpts(),
+      );
+      return jsonResult({ ok: true, result });
     }
     case "sendMessage": {
       if (!ctx.isActionEnabled("messages")) {

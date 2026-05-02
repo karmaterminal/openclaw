@@ -21,6 +21,7 @@ import {
   sendStickerDiscord,
   sendVoiceMessageDiscord,
   unpinMessageDiscord,
+  castPollVoteDiscord,
 } from "../send.js";
 import { resolveDiscordTargetChannelId } from "../send.shared.js";
 import { resolveDiscordChannelId } from "../targets.js";
@@ -43,6 +44,7 @@ export const discordMessagingActionRuntime = {
   resolveDiscordReactionTargetChannelId,
   resolveDiscordChannelId,
   searchMessagesDiscord,
+  castPollVoteDiscord,
   sendDiscordComponentMessage,
   sendMessageDiscord,
   sendPollDiscord,

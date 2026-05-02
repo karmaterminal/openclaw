@@ -1,7 +1,7 @@
 import { ChannelType, Routes } from "discord-api-types/v10";
 import { loadWebMediaRaw } from "openclaw/plugin-sdk/web-media";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { RateLimitError } from "./internal/discord.js";
+import { RateLimitError, RequestClient } from "./internal/discord.js";
 import { makeDiscordRest } from "./send.test-harness.js";
 
 vi.mock("openclaw/plugin-sdk/web-media", async () => {
@@ -23,6 +23,7 @@ let sendStickerDiscord: typeof import("./send.js").sendStickerDiscord;
 let timeoutMemberDiscord: typeof import("./send.js").timeoutMemberDiscord;
 let uploadEmojiDiscord: typeof import("./send.js").uploadEmojiDiscord;
 let uploadStickerDiscord: typeof import("./send.js").uploadStickerDiscord;
+let castPollVoteDiscord: typeof import("./send.js").castPollVoteDiscord;
 
 const DISCORD_TEST_CFG = {
   channels: {
@@ -60,6 +61,7 @@ beforeAll(async () => {
   ({
     addRoleDiscord,
     banMemberDiscord,
+    castPollVoteDiscord,
     createThreadDiscord,
     DiscordThreadInitialMessageError,
     listGuildEmojisDiscord,
@@ -482,6 +484,33 @@ describe("sendPollDiscord", () => {
         }),
       }),
     );
+  });
+});
+
+describe("castPollVoteDiscord", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("casts a poll vote through the Discord poll answer endpoint", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    const rest = new RequestClient("vote-token", {
+      fetch: fetchMock,
+      queueRequests: false,
+    });
+
+    const res = await castPollVoteDiscord("channel:789", "msg1", [2], {
+      cfg: DISCORD_TEST_CFG,
+      rest,
+      token: "vote-token",
+    });
+
+    expect(res).toEqual({ ok: true, channelId: "789", messageId: "msg1", answerIds: [2] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://discord.com/api/v10/channels/789/polls/msg1/answers/2/@me");
+    expect(init.method).toBe("PUT");
+    expect((init.headers as Headers).get("Authorization")).toBe("Bot vote-token");
   });
 });
 

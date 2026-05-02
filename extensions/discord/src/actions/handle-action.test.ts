@@ -266,6 +266,32 @@ describe("handleDiscordMessageAction", () => {
     expect(handleDiscordActionMock).not.toHaveBeenCalled();
   });
 
+  it("routes poll-vote actions to the Discord runtime", async () => {
+    await handleDiscordMessageAction({
+      action: "poll-vote",
+      params: {
+        target: "channel:123",
+        messageId: "M1",
+        pollOptionId: "2",
+      },
+      cfg: {
+        channels: { discord: { token: "tok" } },
+      } as OpenClawConfig,
+      toolContext: { currentChannelProvider: "discord" },
+    });
+
+    expect(handleDiscordActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "poll-vote",
+        to: "channel:123",
+        messageId: "M1",
+        pollOptionId: "2",
+      }),
+      expect.any(Object),
+      expect.any(Object),
+    );
+  });
+
   it("does not use another provider's current target for Discord reactions", async () => {
     await expect(
       handleDiscordMessageAction({

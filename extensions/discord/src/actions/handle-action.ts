@@ -187,6 +187,30 @@ export async function handleDiscordMessageAction(
     );
   }
 
+  if (action === "poll-vote") {
+    const to =
+      readStringParam(params, "to") ??
+      readStringParam(params, "target") ??
+      readStringParam(params, "channelId") ??
+      readCurrentDiscordTarget(ctx.toolContext);
+    if (!to) {
+      throw new Error("Discord channel target is required (use channel:<id>).");
+    }
+    return await handleDiscordAction(
+      {
+        action: "poll-vote",
+        accountId: accountId ?? undefined,
+        to,
+        messageId: readStringParam(params, "messageId", { required: true }),
+        pollOptionId: params.pollOptionId,
+        pollOptionIndex: params.pollOptionIndex,
+        pollOptionIndexes: params.pollOptionIndexes,
+      },
+      cfg,
+      actionOptions,
+    );
+  }
+
   if (action === "react") {
     const messageIdRaw = resolveReactionMessageId({ args: params, toolContext: ctx.toolContext });
     const messageId = normalizeOptionalStringifiedId(messageIdRaw) ?? "";

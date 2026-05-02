@@ -43,6 +43,7 @@ const discordSendMocks = {
   listThreadsDiscord: vi.fn(async () => ({})),
   moveChannelDiscord: vi.fn(async () => ({ ok: true })),
   pinMessageDiscord: vi.fn(async () => ({})),
+  castPollVoteDiscord: vi.fn(async () => ({})),
   reactMessageDiscord: vi.fn(async () => ({})),
   readMessagesDiscord: vi.fn(async () => []),
   removeChannelPermissionDiscord: vi.fn(async () => ({ ok: true })),
@@ -71,6 +72,7 @@ const {
   listPinsDiscord,
   moveChannelDiscord,
   reactMessageDiscord,
+  castPollVoteDiscord,
   readMessagesDiscord,
   removeChannelPermissionDiscord,
   removeOwnReactionsDiscord,
@@ -340,6 +342,34 @@ describe("handleDiscordMessagingAction", () => {
       },
       expect.any(Object),
     );
+  });
+
+  it("dispatches poll-vote actions with a required option selector", async () => {
+    await handleMessagingAction(
+      "poll-vote",
+      {
+        to: "channel:123",
+        messageId: "M1",
+        pollOptionIndex: "2",
+      },
+      enableAllActions,
+    );
+
+    expect(castPollVoteDiscord).toHaveBeenCalledWith("channel:123", "M1", [2], expect.any(Object));
+  });
+
+  it("rejects poll-vote actions without an option selector", async () => {
+    await expect(
+      handleMessagingAction(
+        "poll-vote",
+        {
+          to: "channel:123",
+          messageId: "M1",
+        },
+        enableAllActions,
+      ),
+    ).rejects.toThrow(/pollOptionId/);
+    expect(castPollVoteDiscord).not.toHaveBeenCalled();
   });
 
   it("adds normalized timestamps to readMessages payloads", async () => {

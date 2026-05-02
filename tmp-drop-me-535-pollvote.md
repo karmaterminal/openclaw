@@ -9,3 +9,13 @@
 - Required runtime files read: `extensions/discord/src/actions/runtime.messaging.send.ts`, `extensions/discord/src/actions/runtime.messaging.ts`, `extensions/discord/src/actions/runtime.messaging.runtime.ts`, `extensions/discord/src/send.outbound.ts`, and surrounding REST/test harness files.
 - Discord docs read: poll create-answer endpoint reference; current docs include the caveat that apps are not allowed to vote on polls, so no live-fire test is planned.
 - Heartbeat note: documented relay helper path was not present locally; will attempt heartbeat via `pnpm openclaw message send --channel discord --target frond-scribe-535-pollvote-relaunch-hook`.
+
+## Checkpoints 2-5: wire, implementation, dispatch, tests
+
+- Wire-walk: `action="poll-vote"` already existed in `CHANNEL_MESSAGE_ACTION_NAMES` and the message tool schema exposed `pollOptionId`, `pollOptionIndex`, and `pollOptionIndexes`; the missing path was Discord plugin adapter/runtime dispatch.
+- Runtime: added `castPollVoteDiscord(to, messageId, answerIds, opts)` using Discord REST `PUT /channels/{channel.id}/polls/{message.id}/answers/{answer_id}/@me`.
+- Dispatch: added lower Discord runtime `case "poll-vote"` and the message-tool adapter route from generic `poll-vote` to Discord runtime params.
+- Tests: added mocked REST coverage for URL + Authorization header passthrough and dispatch/required-selector coverage.
+- Local targeted gate: `pnpm test extensions/discord/src/actions/runtime.test.ts extensions/discord/src/actions/handle-action.test.ts extensions/discord/src/send.creates-thread.test.ts` passed.
+- Patch budget: production diff is 94 added lines, excluding tests and journal.
+- Heartbeat attempts: relay helper was absent; OpenClaw CLI heartbeat failed first on missing deps, then after install/build with `Unknown target "frond-scribe-535-pollvote-relaunch-hook"`; local config search found no matching alias.

@@ -387,6 +387,29 @@ export async function sendPollDiscord(
   return toDiscordSendResult(res, channelId);
 }
 
+export async function castPollVoteDiscord(
+  to: string,
+  messageId: string,
+  answerIds: readonly unknown[],
+  opts: DiscordSendOpts,
+): Promise<{ ok: true; channelId: string; messageId: string; answerIds: number[] }> {
+  const { rest, request, channelId } = await resolveDiscordSendTarget(to, opts);
+  const normalizedAnswerIds = Array.from(new Set(answerIds.map((answerId) => Number(answerId))));
+  if (!normalizedAnswerIds.length) {
+    throw new Error("pollOptionId required");
+  }
+  if (normalizedAnswerIds.some((answerId) => !Number.isInteger(answerId) || answerId < 1)) {
+    throw new Error("pollOptionId must be a positive integer");
+  }
+  for (const answerId of normalizedAnswerIds) {
+    await request(
+      () => rest.put(`/channels/${channelId}/polls/${messageId}/answers/${answerId}/@me`),
+      "poll-vote",
+    );
+  }
+  return { ok: true, channelId, messageId, answerIds: normalizedAnswerIds };
+}
+
 async function resolveDiscordStructuredSendContext(
   to: string,
   opts: DiscordSendOpts & { content?: string },
