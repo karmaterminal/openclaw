@@ -5865,6 +5865,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     maximum: 1,
                   },
                   earlyWarningBand: {
+                    default: 0.3125,
                     anyOf: [
                       {
                         type: "number",
@@ -5877,6 +5878,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     ],
                   },
                 },
+                required: ["earlyWarningBand"],
                 additionalProperties: false,
               },
             },
