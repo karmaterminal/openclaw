@@ -64,6 +64,7 @@ type AssistantDecisionParams = {
   timedOut: boolean;
   timedOutDuringCompaction: boolean;
   timedOutDuringToolExecution: boolean;
+  compactionFailureContext: boolean;
   profileRotated: boolean;
 };
 
@@ -153,6 +154,12 @@ export function resolveRunFailoverDecision(params: RunFailoverDecisionParams): R
     };
   }
 
+  if (params.compactionFailureContext) {
+    return {
+      action: "surface_error",
+      reason: params.failoverReason,
+    };
+  }
   if (params.externalAbort) {
     return {
       action: "surface_error",

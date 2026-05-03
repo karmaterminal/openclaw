@@ -1147,6 +1147,7 @@ export async function runEmbeddedPiAgent(
             currentAttemptAssistant,
           } = attempt;
           const timedOutDuringToolExecution = attempt.timedOutDuringToolExecution ?? false;
+          let compactionFailureContext = false;
           if (sessionIdUsed && sessionIdUsed !== activeSessionId) {
             activeSessionId = sessionIdUsed;
           }
@@ -1376,6 +1377,7 @@ export async function runEmbeddedPiAgent(
                 );
                 continue;
               } else {
+                compactionFailureContext = true;
                 log.warn(
                   `[timeout-compaction] compaction did not reduce context for ${provider}/${modelId}; falling through to normal handling`,
                 );
@@ -1993,6 +1995,7 @@ export async function runEmbeddedPiAgent(
             timedOut,
             timedOutDuringCompaction,
             timedOutDuringToolExecution,
+            compactionFailureContext,
             profileRotated: false,
           });
           const assistantFailoverOutcome = await handleAssistantFailover({
@@ -2006,6 +2009,7 @@ export async function runEmbeddedPiAgent(
             idleTimedOut,
             timedOutDuringCompaction,
             timedOutDuringToolExecution,
+            compactionFailureContext,
             allowSameModelIdleTimeoutRetry:
               timedOut &&
               idleTimedOut &&
