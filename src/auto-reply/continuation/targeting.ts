@@ -6,45 +6,24 @@ import {
 } from "../../infra/session-delivery-queue-storage.js";
 import type { SessionDeliveryContext } from "../../infra/session-delivery-queue-storage.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
-import { normalizeOptionalString } from "../../shared/string-coerce.js";
+import {
+  CONTINUATION_DELEGATE_FANOUT_MODES,
+  hasContinuationDelegateTargeting,
+  normalizeContinuationTargetKey,
+  normalizeContinuationTargetKeys,
+} from "./targeting-pure.js";
+import type {
+  ContinuationDelegateFanoutMode,
+  ContinuationDelegateTargeting,
+} from "./targeting-pure.js";
 
-export const CONTINUATION_DELEGATE_FANOUT_MODES = ["tree", "all"] as const;
-
-export type ContinuationDelegateFanoutMode = (typeof CONTINUATION_DELEGATE_FANOUT_MODES)[number];
-
-export type ContinuationDelegateTargeting = {
-  targetSessionKey?: string;
-  targetSessionKeys?: readonly string[];
-  fanoutMode?: ContinuationDelegateFanoutMode;
+export {
+  CONTINUATION_DELEGATE_FANOUT_MODES,
+  hasContinuationDelegateTargeting,
+  normalizeContinuationTargetKey,
+  normalizeContinuationTargetKeys,
 };
-
-export function normalizeContinuationTargetKey(value?: string): string | undefined {
-  return normalizeOptionalString(value);
-}
-
-export function normalizeContinuationTargetKeys(values?: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const keys: string[] = [];
-  for (const value of values ?? []) {
-    const normalized = normalizeContinuationTargetKey(value);
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    keys.push(normalized);
-  }
-  return keys;
-}
-
-export function hasContinuationDelegateTargeting(
-  targeting: ContinuationDelegateTargeting,
-): boolean {
-  return Boolean(
-    normalizeContinuationTargetKey(targeting.targetSessionKey) ||
-    normalizeContinuationTargetKeys(targeting.targetSessionKeys).length > 0 ||
-    targeting.fanoutMode,
-  );
-}
+export type { ContinuationDelegateFanoutMode, ContinuationDelegateTargeting };
 
 export function resolveContinuationReturnTargetSessionKeys(
   params: ContinuationDelegateTargeting & {
