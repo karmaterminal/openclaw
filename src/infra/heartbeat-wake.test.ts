@@ -6,6 +6,7 @@ import {
   hasHeartbeatWakeHandler,
   hasPendingHeartbeatWake,
   requestHeartbeat,
+  requestHeartbeatNow,
   resetHeartbeatWakeStateForTests,
   setHeartbeatWakeHandler,
 } from "./heartbeat-wake.js";
