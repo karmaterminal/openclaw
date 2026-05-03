@@ -130,3 +130,17 @@ Applied:
 Deferred:
 
 - No additional full-document architecture diagram; the five new diagrams plus the §2 capability decision tree cover the review's concrete diagram requests.
+
+## §5 applied - register and substrate dignity
+
+Applied:
+
+- Replaced remaining high-risk context-only phrasing with falsifiable shipped/future/non-goal language.
+- Renamed §8 to an applicability statement and added when continuation is appropriate vs. inappropriate.
+- Reframed validation language so test/canary scorecards are evidence, not normative contract.
+- Normalized `TaskFlow` spelling and removed external tracker shorthand from the main broker example.
+- Strengthened the closing discussion with the successor-turn provision language from the review.
+
+Deferred:
+
+- Exhaustive literary copyedit outside changed surfaces. The pass focused on load-bearing register and self-containment issues called out by the review.

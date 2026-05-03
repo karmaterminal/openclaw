@@ -54,7 +54,7 @@ This mechanism is not a polling convenience. It is bounded authority for a turn-
 - [7. Safety and Security](#7-safety-and-security)
   - [7.1 Guardrails and human-user consent](#71-guardrails-and-human-user-consent)
   - [7.2 Temporal gap and payload integrity](#72-temporal-gap-and-payload-integrity)
-- [8. Production Use Cases](#8-production-use-cases)
+- [8. Applicability Statement and Production Use Cases](#8-applicability-statement-and-production-use-cases)
   - [8.1 Persistent development workflows](#81-persistent-development-workflows)
   - [8.2 Background research and scheduled follow-up](#82-background-research-and-scheduled-follow-up)
   - [8.3 Ambient self-knowledge and quiet enrichment](#83-ambient-self-knowledge-and-quiet-enrichment)
@@ -65,7 +65,7 @@ This mechanism is not a polling convenience. It is bounded authority for a turn-
   - [9.3 Blind enrichment methodology](#93-blind-enrichment-methodology)
   - [9.4 Integration test session results](#94-integration-test-session-results)
   - [9.5 Major findings from live validation](#95-major-findings-from-live-validation)
-- [10. Summary and Future](#10-summary-and-future)
+- [10. Discussion and Future Work](#10-discussion-and-future-work)
   - [10.1 Summary](#101-summary)
   - [10.2 Future directions](#102-future-directions)
 - [Appendix A. Proposed and unimplemented extensions](#appendix-a-proposed-and-unimplemented-extensions)
@@ -90,7 +90,7 @@ This mechanism is not a polling convenience. It is bounded authority for a turn-
 
 ### 1.1 Inter-turn inertia
 
-Existing mechanisms for keeping an OpenClaw agent active—heartbeat timers, cron-scheduled wake-ups, loop instructions in system prompts authored by **the human user** (operator, herein human-user)—all work by injecting **external** events on a fixed schedule. They solve the liveness problem: the agent wakes up periodically. They do not solve the **volition** problem: the agent cannot say, mid-work, “I need another turn.” It can only wait for the next scheduled tick.
+Existing mechanisms for keeping an OpenClaw agent active—heartbeat timers, cron-scheduled wake-ups, loop instructions in system prompts authored by the **human-user** or operator—all work by injecting **external** events on a fixed schedule. They solve the liveness problem: the agent wakes up periodically. They do not solve the **volition** problem: the agent cannot say, mid-work, “I need another turn.” It can only wait for the next scheduled tick.
 
 This distinction matters for three reasons.
 
@@ -553,7 +553,7 @@ The continuation contribution can also be described as trigger causes plus emiss
 | E: `request_compaction()` | initiated volitional | agent               | new tool-driven trigger                                              |
 | F: mid-turn pressure-fire | reactive in-turn     | platform (in-turn)  | overflow / timeout-recovery emit path in `pi-embedded-runner/run.ts` |
 
-Triggers A–C predate this work. Triggers D and E are the continuation additions. **Trigger F** is not a new compaction _cause_ — it is the in-turn emission shape that the existing Trigger A (overflow) and Trigger B (timeout + high usage) paths take when they fire from inside `pi-embedded-runner/run.ts` rather than from the pre-run `checkContextPressure()` gate. It is named separately because it is what human users grep for: A and B emit a `[context-pressure:fire] mid-turn trigger=overflow` / `mid-turn trigger=timeout` log anchor in the same format as the pre-run band fires, plus a `[system:context-pressure]` system event to the session, so a single grep across the `[context-pressure:fire]` anchor surfaces both pre-run (D) and in-turn (F) compaction events. Trigger F is therefore a _convergent emission_ of Triggers A and B, not an independent decision path; it is the human-user-visible name for the thing that lets one grep find every mid-turn compaction that bypassed the pre-run pressure check.
+Triggers A–C predate this work. Triggers D and E are the continuation additions. **Trigger F** is not a new compaction _cause_ — it is the in-turn emission shape that the existing Trigger A (overflow) and Trigger B (timeout + high usage) paths take when they fire from inside `pi-embedded-runner/run.ts` rather than from the pre-run `checkContextPressure()` gate. It is named separately because it is what operators grep for: A and B emit a `[context-pressure:fire] mid-turn trigger=overflow` / `mid-turn trigger=timeout` log anchor in the same format as the pre-run band fires, plus a `[system:context-pressure]` system event to the session, so a single grep across the `[context-pressure:fire]` anchor surfaces both pre-run (D) and in-turn (F) compaction events. Trigger F is therefore a _convergent emission_ of Triggers A and B, not an independent decision path; it is the human-user-visible name for the thing that lets one grep find every mid-turn compaction that bypassed the pre-run pressure check.
 
 ```mermaid
 flowchart TD
@@ -766,7 +766,7 @@ flowchart LR
 | Tool      | TaskFlow enqueue/stage, hedge timer, post-compaction queue handoff, span emission (§6.6) |
 | Substrate | path-specific persistence and retry: process timer, TaskFlow row, or queue record (§3.6) |
 
-**Worked example — projected new tool-surface (binary-canticle#11 `publish_to_stream(streamRef, payload, mode?)`):** the same shape. The agent supplies stream reference, payload bytes, and mode (`broadcast` vs. `addressed`); the tool picks UDP fan-out (substrate: ringbuffer / SeedLink station-broadcast) vs. an `enqueueSessionDelivery` bridge (substrate: §3.6 queue) underneath. The boundary-line is identical to `continue_delegate`'s; the substrate differs.
+**Worked example — projected stream-publish tool surface:** the same shape. The agent supplies stream reference, payload bytes, and mode (`broadcast` vs. `addressed`); the tool picks UDP fan-out (substrate: ringbuffer / station-broadcast) vs. an `enqueueSessionDelivery` bridge (substrate: §3.6 queue) underneath. The boundary-line is identical to `continue_delegate`'s; the substrate differs. The specific stream-publish tracker is external to this RFC and is included only as an illustration of the broker discipline.
 
 | Layer (bc#11 example)         | Owns                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -1137,9 +1137,11 @@ Stronger options include HMAC signing, encrypted attachments, and signed announc
 
 Operational failure modes and inherited behavioral limitations are documented in [Appendix C](#appendix-c-failure-modes-and-behavioral-limitations).
 
-## 8. Production Use Cases
+## 8. Applicability Statement and Production Use Cases
 
 Observed in production across 4 persistent agent sessions, the continuation system supports several recurring patterns.
+
+Continuation is appropriate when the next unit of work is known only after the current turn has produced evidence. It is inappropriate as a substitute for human-user consent, for unbounded background loops, or for durable job orchestration that needs stronger integrity and retention guarantees than this substrate currently provides.
 
 ### 8.1 Persistent development workflows
 
@@ -1183,7 +1185,7 @@ These patterns were previously dependent on manual external wake-ups or ad hoc r
 
 ## 9. Testing
 
-> The fleet of OpenClaw instances described in this section has been running continuation-enabled builds in daily production use since early March 2026. The features documented here are not laboratory constructs; they are the daily-driver tools of a persistent multi-agent deployment.
+> The fleet of OpenClaw instances described in this section has been running continuation-enabled builds in daily production use since early March 2026. The scorecards below are validation evidence for the shipped behaviors, not additional normative contract.
 
 ### 9.1 Test strategy and terminology
 
@@ -1296,7 +1298,7 @@ The deferred test (`10-H1`) concerned fallback behavior under `tools.deny`; the 
 4. **Continuation is resilient under pressure, but only with correct routing metadata.** Silent-wake, post-compaction dispatch, and sub-agent tool access all depend on small pieces of topology data being preserved end to end.
 5. **Session reset is an interruption boundary.** Explicit directive or inline-action reset cancels process timers, clears delayed reservations, resets chain state, and deletes pending TaskFlow delegates for the session. Delayed work should not be described as surviving `/new` unless a future substrate explicitly provides that behavior.
 
-## 10. Summary and Future
+## 10. Discussion and Future Work
 
 ### 10.1 Summary
 
@@ -1321,12 +1323,14 @@ Several future directions are now technically credible because the continuation 
 - richer post-compaction recovery strategies,
 - stronger integrity guarantees on delegate payloads,
 - more durable background-work management through TaskFlow,
-- explicit cross-session return wiring for `targetSessionKey`,
-- multi-recipient delegate return via `targetSessionKeys: string[]`, delivering one byte-identical completion envelope to multiple local recipients with per-recipient fallback resolution,
+- explicit cross-session return wiring after a schema addition for `targetSessionKey`,
+- multi-recipient delegate return after a schema addition for `targetSessionKeys: string[]`, delivering one byte-identical completion envelope to multiple local recipients with per-recipient fallback resolution,
 - inter-session enrichment between persistent OpenClaw instances, including multi-channel presence where a single instance spans several channels,
 - compaction-time preservation strategies that better retain working-state shape rather than only summary facts.
 
 One especially promising direction is **sovereign peer enrichment**: multiple persistent OpenClaw instances exchanging quiet, scoped enrichment across a fleet without forcing central orchestration or requiring omniscience. The continuation system does not implement that pattern directly, but it provides the transport primitives from which such patterns can be built.
+
+The substrate's central promise is modest and consequential: a bounded agent turn can arrange work beyond itself without pretending that the future context is identical to the present one. It can leave a wake, a shard, a compaction request, or a post-compaction recovery path. Those provisions are auditable, bounded, and interruptible; they are how volition in one turn becomes usable structure for another.
 
 ## Appendix A. Proposed and unimplemented extensions
 
