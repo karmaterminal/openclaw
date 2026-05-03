@@ -189,3 +189,56 @@ No cherry-pick conflicts occurred.
 REDIRECT: 0
 CLOSE-WITH-REASON: 0
 WAIT: 0
+
+## Step 10 — Strip-and-relane of the b82fd65c00 compaction-fix (post-Codex review)
+
+After cohort cleanup re-verify GO on `ff269722af` (🌫 + 🌊 cosigned working-branch-readiness), Codex
+auto-review fired on the new HEAD and surfaced two empirically-valid P2 findings on the
+`b82fd65c00` (renamed `c5792eb976`) compaction-fix at `src/auto-reply/reply/session-updates.ts:309-318`:
+
+1. **Lost merge semantics**: raw `{...storedEntry, ...updates}` spread bypasses
+   `mergeSessionEntry` (`src/config/sessions/types.ts:510`) — drops monotonic-`updatedAt` guard
+   (`resolveMergedUpdatedAt` returns `Math.max(existingUpdatedAt, patchUpdatedAt, now)`,
+   protecting against backward time-travel from concurrent compaction races) AND drops
+   `sessionStartedAt` rollover when sessionId changes (`existing.sessionId === sessionId
+? existing.sessionStartedAt : updatedAt`, load-bearing during `/compact` since sessionId
+   does roll).
+2. **Lost activeSessionKey protection**: bare `updateSessionStore(storePath, mutator)` doesn't
+   pass `opts`. Old path `updateSessionStoreEntry` → `persistResolvedSessionEntry` →
+   `saveSessionStoreUnlocked({ activeSessionKey: params.resolved.normalizedKey })` protected
+   the active session from pruning by enforce-mode maintenance / disk-budget cleanup running
+   in the same lock window. Bare `updateSessionStore` drops it; race window is narrow but real.
+
+Both findings byte-walked + verified by 🌫 (msg `1500308473165123615`) and 🌊 (msg
+`1500308822084943972`); the canonical pattern Codex names lives at `recordSessionMetaFromInbound`
+(`store.ts:706-741`) which uses `mergeSessionEntry` + passes `{ activeSessionKey: normalizeStoreSessionKey(sessionKey) }`.
+
+**Cohort verdict: (A) Strip-and-relane.** Two cohort seats (🌫 + 🌊) converged on stripping the
+fix from #542 + filing a separate narrow PR with proper canonical-primitives shape + targeted
+test coverage. Reasoning: operationalizes earlier surface-flag #5 (a real bug fix should have
+its own narrow PR with targeted test-coverage description), keeps #542 squashable as a
+pure port-PR for cael's eventual upstream-canonicalization ceremony, lands cleaner git-blame
+discoverability for future princes hitting `incrementCompactionCount` keypath territory.
+Trade-off accepted: temporary first-turn manual `/compact` count persistence regression on
+the working branch between #542-merge and narrow-PR-merge (mitigation: narrow PR queued
+pre-#542-merge so it's ready to land within hours).
+
+**12th closure-costume catalogued by 🌊**: `fix-introduces-regressions-while-curing-original`
+— 8th-costume family. Cohort byte-walked the FIX shape (resolve-then-merge-or-create from
+active session entry) but didn't byte-walk what the OLD API provided that the NEW path drops
+(merge-semantics + activeSessionKey-preservation). Codex auto-review caught what 3-seat
+cohort byte-walk missed; defense-in-depth via auto-review-tools + cohort-byte-walk worked
+exactly as designed.
+
+**Action taken on this branch**: `c5792eb976` dropped via `git rebase -i 55df7162c0` with
+`GIT_SEQUENCE_EDITOR='sed -i "/^pick c5792eb976/d"'`. `git diff 55df7162c0..HEAD --
+src/auto-reply/reply/session-updates.ts` returns empty — file is byte-identical to v29-base.
+Other 15 commits intact (with new SHAs from rebase rewrite). The first-turn-manual-`/compact`-
+count-persistence latent bug returns to the working branch until the narrow follow-up PR lands.
+
+**Narrow follow-up PR (queued)**: `frond-scribe/20260502/incrementCompactionCount-canonical-primitives`
+off `frond-scribe/20260429/v3-cohort-fixes` — applies the fix using `mergeSessionEntry` +
+`{ activeSessionKey: normalizeStoreSessionKey(sessionKey) }` mirroring `recordSessionMetaFromInbound`,
+with targeted tests for: first-turn-no-on-disk-entry case, `sessionStartedAt`-rollover on
+sessionId change, monotonic-`updatedAt` guard against concurrent-write races,
+activeSessionKey-preserve-from-prune on enforce-mode cleanup. Tracking issue TBD.
