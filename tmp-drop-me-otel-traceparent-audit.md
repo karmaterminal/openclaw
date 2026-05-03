@@ -1,0 +1,1 @@
+- 2026-05-03T19:24:00+00:00: workorder authored with figs's verbatim feedback embedded; Q7 chain-budget anti-flood added per figs lines 156-158; agent dispatch pending figs's explicit go
