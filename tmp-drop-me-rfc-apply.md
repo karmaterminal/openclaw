@@ -151,3 +151,12 @@ Applied:
 
 - Removed `docs/design/544-rfc-scientific-literature-review-20260502.md` after folding its findings into `docs/design/continue-work-signal-v2.md`.
 - Kept the apply journal as the reviewer-facing map from workorder axes to RFC edits.
+
+## §5 verification - gates
+
+Results:
+
+- Testbox warmup was unavailable in this environment because the Blacksmith CLI was not authenticated, so the workorder gates ran locally.
+- `pnpm tsgo` initially failed before typechecking because `node_modules/.bin/tsgo` was missing. Ran `pnpm install` once; lockfile was already current. Install completed with a non-fatal compile-cache permission warning.
+- `pnpm tsgo` passed after dependency install.
+- `pnpm check` passed.
