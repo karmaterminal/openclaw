@@ -11,6 +11,8 @@ import {
 } from "../../config/config.js";
 import { createContinueDelegateTool } from "./continue-delegate-tool.js";
 
+const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
 describe("continue_delegate tool", () => {
   beforeEach(() => {
     cancelPendingDelegates("test-session");
@@ -242,6 +244,48 @@ describe("continue_delegate tool", () => {
     ]);
   });
 
+  it("persists a valid optional traceparent carrier", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "continue traced chain",
+      traceparent: VALID_TRACEPARENT,
+    });
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      traceparent: VALID_TRACEPARENT,
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "continue traced chain",
+        traceparent: VALID_TRACEPARENT,
+      }),
+    ]);
+  });
+
+  it("rejects malformed traceparent carriers", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    await expect(
+      tool.execute("call-bad-traceparent", {
+        task: "continue malformed traced chain",
+        traceparent: "not-a-traceparent",
+      }),
+    ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
+    expect(consumePendingDelegates("test-session")).toEqual([]);
+  });
+
+  it("omits traceparent when the carrier is absent", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    await executeTool(tool, 0, { task: "continue untraced chain" });
+
+    const delegates = consumePendingDelegates("test-session");
+    expect(delegates).toHaveLength(1);
+    expect(delegates[0].traceparent).toBeUndefined();
+  });
+
   it("fails loudly for invalid target arrays and fanout conflicts", async () => {
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
@@ -285,6 +329,27 @@ describe("continue_delegate tool", () => {
         task: "carry compacted working state forward",
         silent: true,
         silentWake: true,
+      }),
+    ]);
+  });
+
+  it("threads traceparent into staged post-compaction delegates", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "carry traced compacted working state forward",
+      mode: "post-compaction",
+      traceparent: VALID_TRACEPARENT,
+    });
+
+    expect(result).toMatchObject({
+      status: "queued-for-compaction",
+      traceparent: VALID_TRACEPARENT,
+    });
+    expect(consumeStagedPostCompactionDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "carry traced compacted working state forward",
+        traceparent: VALID_TRACEPARENT,
       }),
     ]);
   });

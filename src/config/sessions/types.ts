@@ -161,6 +161,7 @@ export type SessionPostCompactionDelegate = {
   targetSessionKey?: string;
   targetSessionKeys?: string[];
   fanoutMode?: "tree" | "all";
+  traceparent?: string;
 };
 
 export type SessionEntry = {

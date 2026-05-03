@@ -16,6 +16,10 @@ import type {
   DiagnosticContinuationQueueMetrics,
   DiagnosticContinuationQueueOwnerSample,
 } from "../../infra/diagnostic-events.js";
+import {
+  DIAGNOSTIC_TRACEPARENT_PATTERN,
+  normalizeDiagnosticTraceparent,
+} from "../../infra/diagnostic-trace-context.js";
 import { registerDiagnosticContinuationQueueMetricsProvider } from "../../logging/diagnostic-continuation-queues.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
@@ -51,6 +55,20 @@ export const CONTINUATION_POST_COMPACTION_CONTROLLER_ID = "core/continuation-pos
 // Zod validation for TaskFlow state payloads
 // ---------------------------------------------------------------------------
 
+const TraceparentStateSchema = z
+  .preprocess(
+    (value) => (value === null ? undefined : value),
+    z
+      .string()
+      .regex(new RegExp(DIAGNOSTIC_TRACEPARENT_PATTERN))
+      .refine((value) => normalizeDiagnosticTraceparent(value) !== undefined, {
+        message: "invalid W3C traceparent",
+      })
+      .transform((value) => normalizeDiagnosticTraceparent(value)!)
+      .optional(),
+  )
+  .optional();
+
 const PendingDelegateStateSchema = z
   .object({
     kind: z.literal("continuation_delegate"),
@@ -63,6 +81,7 @@ const PendingDelegateStateSchema = z
     targetSessionKey: z.string().min(1).optional(),
     targetSessionKeys: z.array(z.string().min(1)).optional(),
     fanoutMode: z.enum(CONTINUATION_DELEGATE_FANOUT_MODES).optional(),
+    traceparent: TraceparentStateSchema,
   })
   .superRefine((state, ctx) => {
     const hasSilent = state.silent === true;
@@ -126,6 +145,7 @@ function buildDelegateState(delegate: PendingContinuationDelegate): PendingDeleg
   // historical TaskFlow rows.
   const targetSessionKey = normalizeContinuationTargetKey(delegate.targetSessionKey);
   const targetSessionKeys = normalizeContinuationTargetKeys(delegate.targetSessionKeys);
+  const traceparent = normalizeDiagnosticTraceparent(delegate.traceparent);
   return {
     kind: "continuation_delegate",
     task: delegate.task,
@@ -137,6 +157,7 @@ function buildDelegateState(delegate: PendingContinuationDelegate): PendingDeleg
     ...(targetSessionKey ? { targetSessionKey } : {}),
     ...(targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
     ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
+    ...(traceparent ? { traceparent } : {}),
   };
 }
 
@@ -360,6 +381,7 @@ function flowToDelegate(
       ? { targetSessionKeys: state.targetSessionKeys }
       : {}),
     ...(state.fanoutMode ? { fanoutMode: state.fanoutMode } : {}),
+    ...(state.traceparent ? { traceparent: state.traceparent } : {}),
   };
 }
 
@@ -539,6 +561,7 @@ export function stagePostCompactionDelegate(
     ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
     ...(delegate.targetSessionKeys ? { targetSessionKeys: delegate.targetSessionKeys } : {}),
     ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
+    ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
   });
 }
 

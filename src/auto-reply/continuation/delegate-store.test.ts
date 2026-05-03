@@ -98,6 +98,8 @@ import {
   stagedPostCompactionDelegateCount,
 } from "./delegate-store.js";
 
+const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
 function queueRawPendingFlow(sessionKey: string, stateJson: Record<string, unknown>): string {
   const flowId = `flow-${++flowIdCounter}`;
   mockFlows.set(flowId, {
@@ -201,6 +203,26 @@ describe("delegate store — TaskFlow-backed", () => {
       task: "tree task",
       fanoutMode: "tree",
     });
+  });
+
+  it("preserves traceparent through TaskFlow round-trip", () => {
+    enqueuePendingDelegate("session-1", {
+      task: "traced task",
+      traceparent: VALID_TRACEPARENT,
+    });
+
+    expect(consumePendingDelegates("session-1")[0]).toMatchObject({
+      task: "traced task",
+      traceparent: VALID_TRACEPARENT,
+    });
+  });
+
+  it("omits traceparent when the TaskFlow row has no carrier", () => {
+    enqueuePendingDelegate("session-1", { task: "untraced task" });
+
+    const delegate = consumePendingDelegates("session-1")[0];
+    expect(delegate.task).toBe("untraced task");
+    expect(delegate.traceparent).toBeUndefined();
   });
 
   it("decodes legacy silent and silentWake dual-flag rows as silent-wake", () => {
@@ -356,6 +378,20 @@ describe("post-compaction delegate staging", () => {
       task: "targeted compaction shard",
       mode: "post-compaction",
       targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+    });
+  });
+
+  it("preserves traceparent across post-compaction TaskFlow storage", () => {
+    stagePostCompactionDelegate("session-1", {
+      task: "traced compaction shard",
+      stagedAt: 20_000,
+      traceparent: VALID_TRACEPARENT,
+    });
+
+    expect(consumeStagedPostCompactionDelegates("session-1")[0]).toMatchObject({
+      task: "traced compaction shard",
+      mode: "post-compaction",
+      traceparent: VALID_TRACEPARENT,
     });
   });
 

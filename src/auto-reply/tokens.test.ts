@@ -11,6 +11,8 @@ import {
   stripLeadingSilentToken,
 } from "./tokens.js";
 
+const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
 /* ------------------------------------------------------------------ */
 /*  parseContinuationSignal                                           */
 /* ------------------------------------------------------------------ */
@@ -279,6 +281,48 @@ describe("parseContinuationSignal", () => {
     const result = parseContinuationSignal("[[CONTINUE_DELEGATE: plain task]]");
     expect(result?.kind === "delegate" ? result.silent : undefined).toBeUndefined();
     expect(result?.kind === "delegate" ? result.silentWake : undefined).toBeUndefined();
+  });
+
+  it("parses traceparent directive options on bracket delegates", () => {
+    const result = parseContinuationSignal(
+      `[[CONTINUE_DELEGATE: traced handoff | silent-wake | target=agent:main:root | traceparent=${VALID_TRACEPARENT}]]`,
+    );
+
+    expect(result).toEqual({
+      kind: "delegate",
+      task: "traced handoff",
+      silentWake: true,
+      targetSessionKey: "agent:main:root",
+      traceparent: VALID_TRACEPARENT,
+    });
+  });
+
+  it("ignores a missing traceparent directive value without rejecting the delegate", () => {
+    const result = parseContinuationSignal(
+      "[[CONTINUE_DELEGATE: untraced handoff | traceparent=]]",
+    );
+
+    expect(result).toEqual({
+      kind: "delegate",
+      task: "untraced handoff",
+    });
+  });
+
+  it("handles malformed traceparent directives without throwing or dropping the task", () => {
+    expect(() =>
+      parseContinuationSignal(
+        "[[CONTINUE_DELEGATE: malformed traced handoff | silent | traceparent=not-a-traceparent]]",
+      ),
+    ).not.toThrow();
+
+    const result = parseContinuationSignal(
+      "[[CONTINUE_DELEGATE: malformed traced handoff | silent | traceparent=not-a-traceparent]]",
+    );
+    expect(result).toEqual({
+      kind: "delegate",
+      task: "malformed traced handoff",
+      silent: true,
+    });
   });
 
   // --- Precedence ---

@@ -13,7 +13,7 @@ import {
   normalizeDeliveryContext,
 } from "../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
-import { parseDiagnosticTraceparent } from "./diagnostic-trace-context.js";
+import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 
 export type SystemEvent = {
   text: string;
@@ -59,15 +59,7 @@ type SystemEventOptions = {
 };
 
 function normalizeTraceparent(traceparent?: string): string | undefined {
-  if (typeof traceparent !== "string") {
-    return undefined;
-  }
-  const trimmed = traceparent.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  // Round-trip via the parser to validate shape; invalid -> dropped silently.
-  return parseDiagnosticTraceparent(trimmed) ? trimmed.toLowerCase() : undefined;
+  return normalizeDiagnosticTraceparent(traceparent);
 }
 
 function requireSessionKey(key?: string | null): string {

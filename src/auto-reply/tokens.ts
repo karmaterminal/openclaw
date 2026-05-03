@@ -1,3 +1,4 @@
+import { normalizeDiagnosticTraceparent } from "../infra/diagnostic-trace-context.js";
 import { escapeRegExp } from "../shared/regexp.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
@@ -199,6 +200,7 @@ type DelegateDirectiveState = {
   targetSessionKey?: string;
   targetSessionKeys?: string[];
   fanoutMode?: "tree" | "all";
+  traceparent?: string;
 };
 
 function splitDirectiveAssignment(segment: string): { key: string; value: string } | null {
@@ -277,6 +279,14 @@ function parseDelegateDirective(
     return { status: "applied" };
   }
 
+  if (assignment.key === "traceparent" || assignment.key === "trace_parent") {
+    const traceparent = normalizeDiagnosticTraceparent(assignment.value);
+    if (traceparent) {
+      state.traceparent = traceparent;
+    }
+    return { status: "applied" };
+  }
+
   return { status: "unknown" };
 }
 
@@ -352,7 +362,7 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
       return null;
     }
     taskBody = parsedBody.taskBody;
-    const { silent, silentWake, targetSessionKey, targetSessionKeys, fanoutMode } =
+    const { silent, silentWake, targetSessionKey, targetSessionKeys, fanoutMode, traceparent } =
       parsedBody.directives;
 
     // Parse optional +Ns delay suffix (e.g. "+30s", "+5s")
@@ -377,6 +387,7 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
         ...(targetSessionKey ? { targetSessionKey } : {}),
         ...(targetSessionKeys && targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
         ...(fanoutMode ? { fanoutMode } : {}),
+        ...(traceparent ? { traceparent } : {}),
       };
     }
   }
