@@ -58,7 +58,7 @@ let mockConfig: ReturnType<(typeof import("../config/config.js"))["loadConfig"]>
 const { continuationTargetingMock, subagentRegistryRuntimeMock } = vi.hoisted(() => ({
   continuationTargetingMock: {
     CONTINUATION_DELEGATE_FANOUT_MODES: ["tree", "all"] as const,
-    enqueueContinuationReturnDeliveries: vi.fn(async () => ({
+    enqueueContinuationReturnDeliveries: vi.fn(async (_params: unknown) => ({
       enqueued: 0,
       delivered: 0,
       deliveryIds: [],
