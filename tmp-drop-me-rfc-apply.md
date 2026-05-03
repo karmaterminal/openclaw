@@ -105,3 +105,15 @@ Applied:
 - Reframed `continue_work()`, `continue_delegate()`, and `request_compaction()` as future-turn arrangement primitives.
 - Expanded fallback grammar into one self-contained constraints block.
 - Replaced the old capability diagram with a decision tree so the cold-reader can follow enabled/tool-denied/fallback/disabled paths.
+
+## §3 applied - claims validation
+
+Applied:
+
+- Added/strengthened code-backed claims for bracket-vs-tool precedence, last-text-payload parsing, fallback grammar, TaskFlow filter-at-consume, hedge timers, corrupt TaskFlow payload failure, canonical delegate `mode`, follow-up delegate drain, success-only compaction cooldown, failed compaction recovery event, 24h volitional counter semantics, post-compaction TTL/budget/queue-first behavior, and post-compaction context boundary/time shaping.
+- Corrected stale or contradicted claims: `targetSessionKey` is future/non-goal rather than shipped schema; `earlyWarningBand` is shipped and defaulted; old `continuation.delegate.enqueue/spawn/return` span names are explicitly stale; `/new` is an interruption boundary; `pnpm lint:substrate-adoption` is not a shipped script in this checkout.
+- Rewrote persistence claims into a path-specific substrate matrix: process timers/reservations, TaskFlow pending/staged delegates, and `session-delivery-queue` delivery.
+
+Deferred:
+
+- No substrate-bug issue filed. The contradicted claims were documentation drift, not implementation defects.
