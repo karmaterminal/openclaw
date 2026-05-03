@@ -5,3 +5,4 @@
 - 2026-05-03T22:02:49+00:00: Validation checkpoint: pnpm tsgo passed; grouped touched-file test run passed after aligning the continuation tool descriptor trap with the existing RFC §6.8 traceparent field.
 - 2026-05-03T22:03:38+00:00: Build-in-temp-dir verification passed: build-verify SHA dd433aadc04300391ab72aec67faaa81cccc4e1b at 2026-05-03T22:03:30+00:00
 - 2026-05-03T22:04:37+00:00: Final cleanup: removed leftover private #443 assertion-message refs; post-strip sample scan now shows only upstream-looking 4-digit refs; private-pattern scan is empty; store.continuation-merge targeted test passed.
+- 2026-05-03T22:05:23+00:00: Final build-in-temp-dir verification passed after cleanup: build-verify SHA f33074923dca7fefc0255bf3cad588fa9a620d03 at 2026-05-03T22:05:15+00:00
