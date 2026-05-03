@@ -290,3 +290,17 @@ Results:
 | `docs/.generated/config-baseline.sha256`         | Regenerated for v5.2 candidate tree.    |
 | `docs/.generated/plugin-sdk-api-baseline.sha256` | Regenerated for v5.2 candidate tree.    |
 | `pnpm install --prefer-offline`                  | Completed; lockfile already up to date. |
+
+## §5 — savegame push closeout
+
+Closed: 2026-05-03T00:22:00-07:00
+
+Savegame ref: `origin/frond-scribe/20260503/v52-uptake-of-v3-cohort-fixes`
+
+Unsquashed remote HEAD at §5: `44e82c8327`
+
+Notes:
+
+- The branch has been pushed without squashing after the v5.2 base-rotation merge and regenerated baseline checkpoint.
+- No force-push has been used after the first pushed savegame checkpoint.
+- From this point onward, the candidate branch remains append-only under #326 discipline.
