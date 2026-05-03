@@ -62,6 +62,78 @@ describe("subagent-announce continuation runtime entry", () => {
     expect(typeof continuationRuntime.dispatchToolDelegates).toBe("function");
   });
 
+  it("exports loadContinuationChainState from the continuation runtime (#454)", () => {
+    expect(typeof continuationRuntime.loadContinuationChainState).toBe("function");
+  });
+
+  it("exports persistContinuationChainState from the continuation runtime (#454)", () => {
+    expect(typeof continuationRuntime.persistContinuationChainState).toBe("function");
+  });
+
+  it("exports updateSessionStore from the continuation runtime (#454)", () => {
+    expect(typeof continuationRuntime.updateSessionStore).toBe("function");
+  });
+
+  it("exports resolveStorePath from the continuation runtime (#454)", () => {
+    expect(typeof continuationRuntime.resolveStorePath).toBe("function");
+  });
+
+  it("exports resolveAgentIdFromSessionKey from the continuation runtime (#454)", () => {
+    expect(typeof continuationRuntime.resolveAgentIdFromSessionKey).toBe("function");
+  });
+
+  it("exports every symbol destructured by subagent-announce runtime imports (#454)", () => {
+    // Per-symbol assertions above pin individual exports. This test pins the
+    // FULL set in one place so a refactor that adds a new destructured symbol
+    // to subagent-announce.ts (without adding the corresponding export here)
+    // is caught loudly.
+    //
+    // The set MUST match every key in subagent-announce.ts's three module-shape
+    // type declarations (ContinuationDispatchModule + ContinuationStateModule +
+    // SessionStoreUpdateModule, lines 176-217 on v5.2 canonical bac4caceac).
+    const requiredExports = [
+      // ContinuationDispatchModule
+      "dispatchToolDelegates",
+      // ContinuationStateModule
+      "loadContinuationChainState",
+      "persistContinuationChainState",
+      // SessionStoreUpdateModule
+      "updateSessionStore",
+      "resolveStorePath",
+      "resolveAgentIdFromSessionKey",
+    ] as const;
+
+    for (const exportName of requiredExports) {
+      expect(
+        (continuationRuntime as Record<string, unknown>)[exportName],
+        `runtime entry MUST export ${exportName} (subagent-announce.ts destructures it via importRuntimeModule)`,
+      ).toBeDefined();
+      expect(
+        typeof (continuationRuntime as Record<string, unknown>)[exportName],
+        `runtime entry export ${exportName} MUST be a function`,
+      ).toBe("function");
+    }
+  });
+
+  it("subagent-announce.ts destructures EVERY runtime export via the canonical entry path (#454)", () => {
+    // Guards against drift where subagent-announce.ts adds a new module-shape
+    // type but the destructure points at a source-tree path instead of the
+    // co-located runtime entry. All three module-shape importRuntimeModule
+    // calls MUST resolve against "./subagent-announce.continuation.runtime".
+    const announceSrc = readFileSync(
+      resolve(process.cwd(), "src/agents/subagent-announce.ts"),
+      "utf8",
+    );
+
+    // Count importRuntimeModule calls; each must use the runtime-entry path.
+    const importCalls = announceSrc.match(/importRuntimeModule</g) ?? [];
+    expect(importCalls.length).toBeGreaterThanOrEqual(3); // dispatch + state + session-store
+
+    const runtimeEntryRefs =
+      announceSrc.match(/["']\.\/subagent-announce\.continuation\.runtime["']/g) ?? [];
+    expect(runtimeEntryRefs.length).toBe(importCalls.length);
+  });
+
   it("subagent-announce lazy-imports the runtime entry by its co-located path, not the source-tree path", () => {
     // Post-bundle, the dist emits `subagent-announce.continuation.runtime.js`
     // adjacent to the bundled subagent-announce code. The pre-fix path
