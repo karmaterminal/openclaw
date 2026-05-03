@@ -673,13 +673,17 @@ If enqueueing fails, the affected delegate is re-staged for a later attempt. If 
 stateDiagram-v2
     [*] --> Staged: continue_delegate(mode="post-compaction")
     Staged --> Persisted: TaskFlow row
+    Persisted --> Persisted: diagnostic sample totalQueued / pendingRunnable / stagedPostCompaction
     Persisted --> Compaction: platform or request_compaction fires
     Compaction --> Released: after_compaction consumes staged work
     Released --> Queued: enqueue postCompactionDelegate delivery
     Queued --> Draining: drainPendingSessionDeliveries()
+    Draining --> Draining: diagnostic sample drained / failed rates + queueDepthHistory
     Draining --> Spawned: spawnSubagentDirect accepted
+    Spawned --> Spawned: run.started fireReason=continuation-chain
     Spawned --> Returned: silent-wake enrichment returns
-    Returned --> SuccessorTurn: parent/successor session wakes
+    Returned --> SuccessorTurn: parent/successor session wakes with parentRunId
+    SuccessorTurn --> SuccessorTurn: run.started fireReason=continuation-chain
     Draining --> Retry: spawn/delivery failure
     Retry --> Queued: backoff eligible
     Retry --> Failed: retry cap exceeded
