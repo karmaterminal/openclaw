@@ -379,23 +379,28 @@ sequenceDiagram
     participant Spawn as spawnSubagentDirect()
     participant Child as delegate session
     participant Parent as parent session
+    participant Diag as diagnostics events / metrics
 
     Agent->>Tool: task, mode, delaySeconds?
     Tool->>Store: enqueuePendingDelegate(sessionKey, descriptor)
     Tool-->>Agent: status=scheduled / queued-for-compaction
+    Store-->>Diag: metrics sample pendingQueued / pendingScheduled / stagedPostCompaction
     Runner->>Store: consume matured delegates
     Store-->>Runner: matured delegates
+    Store-->>Diag: next sample drainedSinceLastSample + queueDepthHistory
     Runner->>Store: peekSoonestUnmaturedDelegateDueAt()
     alt unmatured delegate exists
         Runner->>Hedge: arm timer for dueAt
         Hedge-->>Runner: re-drain when quiet-channel timer fires
     end
     Runner->>Runner: enforce maxDelegatesPerTurn, chain, cost
-    Runner->>Spawn: spawnSubagentDirect(task, silent/wake flags)
+    Runner->>Spawn: spawnSubagentDirect(task, silent/wake flags, drainsContinuationDelegateQueue)
     Spawn-->>Child: accepted child session
+    Child->>Diag: run.started / run.completed fireReason=continuation-chain
     Child-->>Parent: announce or silent enrichment return
     alt silent-wake
-        Parent->>Parent: requestHeartbeatNow()
+        Parent->>Parent: requestHeartbeatNow(parentRunId)
+        Parent->>Diag: successor run fireReason=continuation-chain
     end
 ```
 
