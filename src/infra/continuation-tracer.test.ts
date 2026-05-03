@@ -5,6 +5,7 @@ import {
   emitContinuationDelegateFireSpan,
   emitContinuationDelegateSpan,
   emitContinuationDisabledSpan,
+  emitContinuationFanoutSpan,
   emitContinuationQueueDrainSpan,
   emitContinuationWorkSpan,
   getContinuationTracer,
@@ -144,6 +145,7 @@ describe("continuation-tracer :: contract pin", () => {
     tracer.startSpan("continuation.delegate.dispatch");
     tracer.startSpan("continuation.delegate.fire");
     tracer.startSpan("continuation.queue.enqueue");
+    tracer.startSpan("continuation.queue.fanout");
     tracer.startSpan("continuation.queue.drain");
     tracer.startSpan("continuation.compaction.released");
     tracer.startSpan("continuation.disabled");
@@ -155,6 +157,7 @@ describe("continuation-tracer :: contract pin", () => {
       "continuation.delegate.dispatch",
       "continuation.delegate.fire",
       "continuation.queue.enqueue",
+      "continuation.queue.fanout",
       "continuation.queue.drain",
       "continuation.compaction.released",
       "continuation.disabled",
@@ -215,6 +218,7 @@ describe("continuation-tracer :: contract pin", () => {
       "continuation.delegate.dispatch",
       "continuation.delegate.fire",
       "continuation.queue.enqueue",
+      "continuation.queue.fanout",
       "continuation.queue.drain",
       "continuation.compaction.released",
       "continuation.disabled",
@@ -1203,6 +1207,90 @@ describe("continuation-tracer :: emitContinuationQueueDrainSpan helper", () => {
         drainedContinuationCount: 0,
       }),
     ).not.toThrow();
+  });
+});
+
+describe("continuation-tracer :: emitContinuationFanoutSpan helper", () => {
+  type RecordedSpan = {
+    name: string;
+    options?: StartSpanOptions;
+    statusCalls: Array<{ status: SpanStatus; message?: string }>;
+    ended: boolean;
+  };
+
+  function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+    const spans: RecordedSpan[] = [];
+    const tracer: Tracer = {
+      startSpan(name, options) {
+        const recorded: RecordedSpan = {
+          name,
+          options,
+          statusCalls: [],
+          ended: false,
+        };
+        spans.push(recorded);
+        const span: Span = {
+          setAttributes() {},
+          setStatus(status, message) {
+            recorded.statusCalls.push({ status, message });
+          },
+          recordException() {},
+          end() {
+            recorded.ended = true;
+          },
+        };
+        return span;
+      },
+    };
+    return { tracer, spans };
+  }
+
+  it("emits one fanout span with aggregate recipient outcomes and parent trace context", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+    emitContinuationFanoutSpan({
+      fanoutMode: "all",
+      targetSessionKeys: ["agent:main:a", "agent:main:b", "agent:main:c"],
+      deliveredCount: 3,
+      chainStepRemaining: 8,
+      traceparent,
+    });
+
+    expect(spans).toHaveLength(1);
+    expect(spans[0].name).toBe("continuation.queue.fanout");
+    expect(spans[0].options?.traceparent).toBe(traceparent);
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["fanout.mode"]).toBe("all");
+    expect(attrs["fanout.recipient_count"]).toBe(3);
+    expect(attrs["fanout.delivered_count"]).toBe(3);
+    expect(attrs["fanout.recipient.session_keys"]).toEqual([
+      "agent:main:a",
+      "agent:main:b",
+      "agent:main:c",
+    ]);
+    expect(attrs["fanout.recipient.outcomes"]).toEqual(["delivered", "delivered", "delivered"]);
+    expect(attrs["chain.step.remaining"]).toBe(8);
+    expect(spans[0].statusCalls).toEqual([{ status: "OK", message: undefined }]);
+    expect(spans[0].ended).toBe(true);
+  });
+
+  it("omits traceparent when mercy-cap forwarding is disabled", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationFanoutSpan({
+      fanoutMode: "tree",
+      targetSessionKeys: ["agent:main:a", "agent:main:b"],
+      deliveredCount: 2,
+      chainStepRemaining: 0,
+    });
+
+    expect(spans).toHaveLength(1);
+    expect(spans[0].options?.traceparent).toBeUndefined();
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["chain.step.remaining"]).toBe(0);
   });
 });
 

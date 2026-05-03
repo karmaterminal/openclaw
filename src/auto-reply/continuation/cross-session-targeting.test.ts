@@ -1,4 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  resetContinuationTracer,
+  setContinuationTracer,
+  type ContinuationSpanAttrs,
+  type Span,
+  type StartSpanOptions,
+  type Tracer,
+} from "../../infra/continuation-tracer.js";
 import type { QueuedSessionDeliveryPayload } from "../../infra/session-delivery-queue-storage.js";
 import {
   enqueueContinuationReturnDeliveries,
@@ -9,6 +17,10 @@ const validTraceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-0
 
 describe("continuation cross-session targeting", () => {
   type EnqueueSystemEvent = typeof import("../../infra/system-events.js").enqueueSystemEvent;
+
+  afterEach(() => {
+    resetContinuationTracer();
+  });
 
   it("defaults returns to the dispatching session", () => {
     expect(
@@ -213,5 +225,57 @@ describe("continuation cross-session targeting", () => {
     expect(enqueued).toHaveLength(1);
     expect(enqueued[0].traceparent).toBeUndefined();
     expect(systemEvents).toEqual([{ traceparent: undefined }]);
+  });
+
+  it("emits one aggregate fanout span for many recipients instead of per-recipient spans", async () => {
+    const enqueued: QueuedSessionDeliveryPayload[] = [];
+    const targetSessionKeys = Array.from(
+      { length: 50 },
+      (_, index) => `agent:main:recipient-${index}`,
+    );
+    const spans: Array<{ name: string; options?: StartSpanOptions }> = [];
+    const tracer: Tracer = {
+      startSpan(name, options): Span {
+        spans.push({ name, options });
+        return {
+          setAttributes() {},
+          setStatus() {},
+          recordException() {},
+          end() {},
+        };
+      },
+    };
+    setContinuationTracer(tracer);
+
+    await enqueueContinuationReturnDeliveries(
+      {
+        targetSessionKeys,
+        text: "[continuation:enrichment-return] traced payload",
+        idempotencyKeyBase: "continuation-return:fanout",
+        traceparent: validTraceparent,
+        fanoutMode: "all",
+        chainStepRemaining: 9,
+      },
+      {
+        enqueueSessionDelivery: vi.fn(async (payload: QueuedSessionDeliveryPayload) => {
+          enqueued.push(payload);
+          return `delivery-${enqueued.length}`;
+        }),
+        ackSessionDelivery: vi.fn(async () => undefined),
+        enqueueSystemEvent: vi.fn<EnqueueSystemEvent>(() => true),
+        requestHeartbeatNow: vi.fn(),
+      },
+    );
+
+    expect(enqueued).toHaveLength(50);
+    expect(spans).toHaveLength(1);
+    expect(spans[0].name).toBe("continuation.queue.fanout");
+    expect(spans[0].options?.traceparent).toBe(validTraceparent);
+    const attrs = spans[0].options?.attributes as ContinuationSpanAttrs;
+    expect(attrs["fanout.mode"]).toBe("all");
+    expect(attrs["fanout.recipient_count"]).toBe(50);
+    expect(attrs["fanout.delivered_count"]).toBe(50);
+    expect(attrs["fanout.recipient.outcomes"]).toEqual(targetSessionKeys.map(() => "delivered"));
+    expect(attrs["chain.step.remaining"]).toBe(9);
   });
 });

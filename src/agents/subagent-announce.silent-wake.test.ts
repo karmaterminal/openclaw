@@ -190,6 +190,16 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, R
   beforeEach(() => {
     callGatewayMock.mockReset().mockImplementation(async () => ({}));
     dispatchToolDelegatesMock.mockReset().mockResolvedValue({ dispatched: 0, rejected: 0 });
+    resolveContinuationRuntimeConfigMock.mockReset().mockImplementation((_cfg?: unknown) => ({
+      enabled: true,
+      defaultDelayMs: 15_000,
+      minDelayMs: 5_000,
+      maxDelayMs: 300_000,
+      maxChainLength: 10,
+      costCapTokens: 500_000,
+      maxDelegatesPerTurn: 5,
+      contextPressureThreshold: undefined,
+    }));
     loadSessionStoreMock.mockReset();
     resolveAgentIdFromSessionKeyMock.mockReset().mockImplementation(() => "main");
     resolveStorePathMock.mockReset().mockImplementation(() => "/tmp/sessions.json");
@@ -275,6 +285,35 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, R
 
     // Critical: no wake when wakeOnReturn is false.
     expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
+  });
+
+  it("omits traceparent from silent returns when chain-step budget is exhausted", async () => {
+    seedDefaultStore();
+    resolveContinuationRuntimeConfigMock.mockReturnValue({
+      enabled: true,
+      defaultDelayMs: 15_000,
+      minDelayMs: 5_000,
+      maxDelayMs: 300_000,
+      maxChainLength: 1,
+      costCapTokens: 500_000,
+      maxDelegatesPerTurn: 5,
+      contextPressureThreshold: undefined,
+    });
+
+    await runSubagentAnnounceFlow({
+      ...baseParams,
+      task: "[continuation:chain-hop:1] capped silent return",
+      silentAnnounce: true,
+      wakeOnReturn: true,
+      traceparent: validTraceparent,
+    });
+
+    const [, eventOptions] = enqueueSystemEventMock.mock.calls[0] as [
+      string,
+      { sessionKey?: string; traceparent?: string } | undefined,
+    ];
+    expect(eventOptions?.sessionKey).toBe(requesterSessionKey);
+    expect(eventOptions?.traceparent).toBeUndefined();
   });
 
   it("silentAnnounce:true with omitted wakeOnReturn → enqueues system event but does NOT wake", async () => {

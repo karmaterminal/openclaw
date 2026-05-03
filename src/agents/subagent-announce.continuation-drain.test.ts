@@ -22,6 +22,7 @@ const resolveMainSessionKeyMock = vi.fn((_cfg: unknown) => "agent:main:main");
 const isEmbeddedPiRunActiveMock = vi.fn((_sessionId: string) => false);
 const queueEmbeddedPiMessageMock = vi.fn((_sessionId: string, _text: string) => false);
 const waitForEmbeddedPiRunEndMock = vi.fn(async (_sessionId: string, _timeoutMs?: number) => true);
+const validTraceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
 const dispatchToolDelegatesMock = vi.fn(
   async (
@@ -173,6 +174,14 @@ vi.mock("../auto-reply/continuation/config.js", () => ({
 
 vi.mock("../auto-reply/continuation/targeting.js", () => continuationTargetingMock);
 
+vi.mock("../config/sessions/targets.js", () => ({
+  resolveAllAgentSessionStoreTargetsSync: () => [{ storePath: "/tmp/sessions.json" }],
+}));
+
+vi.mock("../config/sessions/store-load.js", () => ({
+  loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
+}));
+
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 
 describe("subagent-announce continuation drain (F7)", () => {
@@ -180,6 +189,16 @@ describe("subagent-announce continuation drain (F7)", () => {
     agentSpy.mockClear();
     callGatewayMock.mockReset().mockImplementation(async () => ({}));
     dispatchToolDelegatesMock.mockReset().mockResolvedValue({ dispatched: 0, rejected: 0 });
+    resolveContinuationRuntimeConfigMock.mockReset().mockImplementation((_cfg?: unknown) => ({
+      enabled: true,
+      defaultDelayMs: 15_000,
+      minDelayMs: 5_000,
+      maxDelayMs: 300_000,
+      maxChainLength: 10,
+      costCapTokens: 500_000,
+      maxDelegatesPerTurn: 5,
+      contextPressureThreshold: undefined,
+    }));
     loadSessionStoreMock.mockReset().mockImplementation(() => ({}));
     resolveAgentIdFromSessionKeyMock.mockReset().mockImplementation(() => "main");
     resolveStorePathMock.mockReset().mockImplementation(() => "/tmp/sessions.json");
@@ -534,6 +553,110 @@ describe("subagent-announce continuation drain (F7)", () => {
         wakeRecipients: true,
         childRunId: "run-targeted",
       }),
+    );
+  });
+
+  it("fanoutMode=all spends one chain step per completion, not per recipient", async () => {
+    const knownSessionKeys = [
+      "agent:main:main",
+      "agent:main:subagent:test",
+      ...Array.from({ length: 48 }, (_, index) => `agent:main:recipient-${index}`),
+    ];
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        Object.fromEntries(
+          knownSessionKeys.map((sessionKey) => [
+            sessionKey,
+            {
+              sessionId: `session-${sessionKey}`,
+              updatedAt: Date.now(),
+            },
+          ]),
+        ) as Record<string, unknown>,
+    );
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-fanout",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "[continuation:chain-hop:1] fanout task",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "fanout result",
+      continuationFanoutMode: "all",
+      traceparent: validTraceparent,
+    });
+
+    const call = continuationTargetingMock.enqueueContinuationReturnDeliveries.mock
+      .calls[0]?.[0] as
+      | {
+          targetSessionKeys?: string[];
+          fanoutMode?: string;
+          chainStepRemaining?: number;
+          traceparent?: string;
+        }
+      | undefined;
+    expect(call?.targetSessionKeys).toHaveLength(50);
+    expect(call?.fanoutMode).toBe("all");
+    expect(call?.chainStepRemaining).toBe(9);
+    expect(call?.traceparent).toBe(validTraceparent);
+  });
+
+  it("drops return traceparent once the completion exhausts chain-step budget", async () => {
+    resolveContinuationRuntimeConfigMock.mockImplementation((_cfg?: unknown) => ({
+      enabled: true,
+      defaultDelayMs: 15_000,
+      minDelayMs: 5_000,
+      maxDelayMs: 300_000,
+      maxChainLength: 2,
+      costCapTokens: 500_000,
+      maxDelegatesPerTurn: 5,
+      contextPressureThreshold: undefined,
+    }));
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        ({
+          "agent:main:subagent:test": {
+            sessionId: "session-child",
+            updatedAt: Date.now(),
+          },
+          "agent:main:main": {
+            sessionId: "session-main",
+            updatedAt: Date.now(),
+          },
+        }) as Record<string, unknown>,
+    );
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-capped",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "[continuation:chain-hop:2] capped targeted task",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "targeted result",
+      continuationTargetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+      traceparent: validTraceparent,
+    });
+
+    expect(continuationTargetingMock.enqueueContinuationReturnDeliveries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+        chainStepRemaining: 0,
+      }),
+    );
+    expect(continuationTargetingMock.enqueueContinuationReturnDeliveries).toHaveBeenCalledWith(
+      expect.not.objectContaining({ traceparent: expect.any(String) }),
     );
   });
 });
