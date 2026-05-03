@@ -270,3 +270,23 @@ Merge sanity:
 | Unmerged paths                   | 0      |
 | Conflict markers in source paths | 0      |
 | `git diff --cached --check`      | PASS   |
+
+## §4 — v5.2 baseline regeneration closeout
+
+Closed: 2026-05-03T00:20:00-07:00
+
+Commands run:
+
+```bash
+pnpm install --prefer-offline
+pnpm config:docs:gen
+pnpm plugin-sdk:api:gen
+```
+
+Results:
+
+| Artifact                                         | Result                                  |
+| ------------------------------------------------ | --------------------------------------- |
+| `docs/.generated/config-baseline.sha256`         | Regenerated for v5.2 candidate tree.    |
+| `docs/.generated/plugin-sdk-api-baseline.sha256` | Regenerated for v5.2 candidate tree.    |
+| `pnpm install --prefer-offline`                  | Completed; lockfile already up to date. |
