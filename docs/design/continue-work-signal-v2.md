@@ -756,12 +756,17 @@ flowchart LR
     Broker --> TaskFlow["TaskFlow<br/>pending tool delegates"]
     Broker --> Queue["session-delivery-queue<br/>post-compaction delivery / restart recovery"]
     Broker --> Compaction["Compaction lane<br/>request + after_compaction hooks"]
+    Broker --> Diag["diagnostic event surface<br/>message.queued / session.state / run fireReason"]
     Timer --> Wake["system event + heartbeat wake"]
     TaskFlow --> Spawn["spawnSubagentDirect"]
+    TaskFlow --> Metrics["continuation queue metrics provider<br/>depths, drain rates, top queues"]
+    Metrics --> Diag
     Queue --> Spawn
     Compaction --> Queue
     Spawn --> Return["announce / silent / silent-wake return"]
+    Spawn --> Diag
     Return --> Wake
+    Wake --> Diag
 ```
 
 **Brokered surface.** The `tool-result-middleware` extension becomes the brokered seam for results returning from these three primitives: a single seam, three primitives, deterministic mechanics underneath. `src/agents/harness/native-hook-relay.ts` replaces the previous PTY-scraping pattern-match pipeline with structured lifecycle-hook subscription for downstream consumers; this is the runtime expression of the brokered-seam discipline.
