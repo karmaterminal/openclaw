@@ -1650,8 +1650,6 @@ The `totalTokensFresh !== false` check is the staleness guard: only an explicit 
 
 The key property is **pre-run inclusion**: the event is enqueued and then drained into the same upcoming system prompt.
 
-<!-- TODO(figs): confirm whether D.1 should keep this illustrative sketch or be replaced with a source-exact excerpt in the next RFC pass. -->
-
 ### D.2 Evidence locations
 
 | Artifact                                      | Location                                                                                                                                                                          |
