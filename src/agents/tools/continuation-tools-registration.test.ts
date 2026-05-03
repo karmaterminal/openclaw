@@ -256,4 +256,63 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(properties).toHaveProperty("targetSessionKeys");
     expect(properties).toHaveProperty("fanoutMode");
   });
+
+  // Truth-table coverage for request_compaction registration. Pins the
+  // three-state matrix (continuation enabled + opts present, continuation
+  // disabled, opts omitted) so a future refactor cannot silently drop the
+  // tool from normal runner wiring. Coverage shape mirrors the existing
+  // `drainsContinuationDelegateQueue` truth-table for continue_delegate.
+  // Tracked at #445.
+  describe("request_compaction registration truth-table (#445)", () => {
+    const requestCompactionOpts = {
+      sessionId: "sess-1",
+      getContextUsage: () => 0.85,
+      triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })),
+    };
+
+    it("exposes request_compaction when continuation enabled AND requestCompactionOpts wired", () => {
+      const tools = createOpenClawTools({
+        config,
+        agentSessionKey: "main",
+        requestCompactionOpts,
+      });
+      expect(tools.some((tool) => tool.name === "request_compaction")).toBe(true);
+    });
+
+    it("hides request_compaction when continuation disabled (regardless of opts)", () => {
+      const tools = createOpenClawTools({
+        config: {
+          ...config,
+          agents: { defaults: { continuation: { enabled: false } } },
+        },
+        agentSessionKey: "main",
+        requestCompactionOpts,
+      });
+      expect(tools.some((tool) => tool.name === "request_compaction")).toBe(false);
+    });
+
+    it("hides request_compaction when continuation enabled but opts omitted", () => {
+      const tools = createOpenClawTools({
+        config,
+        agentSessionKey: "main",
+        // requestCompactionOpts intentionally omitted
+      });
+      expect(tools.some((tool) => tool.name === "request_compaction")).toBe(false);
+    });
+
+    it("descriptor name is stable across registrations", () => {
+      const tools = createOpenClawTools({
+        config,
+        agentSessionKey: "main",
+        requestCompactionOpts,
+      });
+      const tool = tools.find((candidate) => candidate.name === "request_compaction");
+      if (!tool) {
+        throw new Error("request_compaction tool not registered");
+      }
+      // Descriptor name + presence pinned; reason-schema stability lives in
+      // the dedicated request-compaction-tool tests.
+      expect(tool.name).toBe("request_compaction");
+    });
+  });
 });
