@@ -144,3 +144,10 @@ Applied:
 Deferred:
 
 - Exhaustive literary copyedit outside changed surfaces. The pass focused on load-bearing register and self-containment issues called out by the review.
+
+## §4 deletion - intermediate review retired
+
+Applied:
+
+- Removed `docs/design/544-rfc-scientific-literature-review-20260502.md` after folding its findings into `docs/design/continue-work-signal-v2.md`.
+- Kept the apply journal as the reviewer-facing map from workorder axes to RFC edits.
