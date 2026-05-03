@@ -322,3 +322,45 @@ Gate log:
 Closed: 2026-05-02T19:47:48-07:00
 
 Closeout: ready for cohort byte-walk + figs greenlight.
+
+## §8 — declare done
+
+Closed: 2026-05-02T19:48:44-07:00
+
+Final validated code+gate HEAD before this journal-only §8 entry: `4b09389d41265316ee9da0b106646a4dc57facaa`
+
+Disposition counts from §2:
+
+| Disposition       | Count |
+| ----------------- | ----: |
+| PORT              |   119 |
+| DROP-release-prep |     0 |
+| ALREADY-ON-V52    |     0 |
+| FOLD              |     0 |
+
+Gate results:
+
+| Gate                                                                                                                                                                            | Result                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `pnpm tsgo`                                                                                                                                                                     | PASS after merge-seam repair                                                                                       |
+| `pnpm check`                                                                                                                                                                    | PASS                                                                                                               |
+| `pnpm test src/auto-reply src/agents/tools/request-compaction-tool.test.ts src/agents/tools/continuation-tools-registration.test.ts src/config/zod-schema.continuation.test.ts` | PASS after test-runner routing repair                                                                              |
+| `pnpm build`                                                                                                                                                                    | PASS                                                                                                               |
+| `pnpm test src/infra/heartbeat src/agents/heartbeat-system-prompt.test.ts src/auto-reply/heartbeat src/auto-reply/heartbeat-filter.test.ts`                                     | PASS; supplemented with current explicit heartbeat test files because two directory operands are historical in v52 |
+
+Notable conflicts resolved:
+
+- Base rotation was completed as a non-rewriting merge from `8b2a6e57fef6c582ec6d27b85150616f9e3a7ba4` after the first pushed savegame made force-push replay inappropriate under #326. `8b2a6e57fef6c582ec6d27b85150616f9e3a7ba4` is an ancestor of the candidate.
+- Release/version/generated files took v5.2 side and generated baselines were regenerated in §4.
+- Continuation substrate kept cohort behavior while adopting v5.2 seams in `src/agents/pi-tools.ts`, `src/agents/system-prompt.ts`, `src/auto-reply/reply/session-system-events.ts`, `src/agents/command/session-store.ts`, and `src/infra/heartbeat-runner.ts`.
+- `mergeSessionEntry` / `updateSessionStore` surface: retained normalized session-key resolution and `mergeSessionEntry` update behavior in `src/agents/command/session-store.ts`; converted heartbeat-runner writes to v5.2 `updateSessionStore` with normalized alias cleanup. Source tip did not contain PR #545, so no additional #545 commit was replayed.
+- Post-merge TypeScript repair restored v5.2 timeout/tool-execution failover shape, heartbeat wake compatibility, TaskFlow owner listing export, gateway agent cleanup option de-duplication, and the v5.2 public-artifact loader API.
+- Test-runner repair routes exact `src/auto-reply` targets to the auto-reply shard so the workorder continuation test command executes real auto-reply tests.
+
+Diffs of interest vs. `frond-scribe/20260429/v3-cohort-fixes` beyond base mechanics:
+
+- v5.2 upstream is now included wholesale by merge; diff stat vs. source is dominated by upstream's 1543-commit window.
+- Candidate-specific adaptation commits after the merge are `b8cae29b2f0ca02c45be2ed3d1e1617776261a4c`, `76b76c6df5a4b83e806e4d805a1d99a08051bfa5`, and this journal closeout.
+- The branch intentionally preserves the 119 PORT cohort commits and adds no DROP / already-upstream / fold changes.
+
+Recommendation: ship-as-successor-candidate after cohort byte-walk, with surface flags for figs on (1) non-rewriting merge shape chosen for savegame discipline, (2) #545 still needing separate v52 uptake if/when it lands, and (3) historical heartbeat test command operands in the workorder no longer matching v52 file layout.
