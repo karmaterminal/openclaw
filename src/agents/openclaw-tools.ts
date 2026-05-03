@@ -1,4 +1,4 @@
-import { selectApplicableRuntimeConfig } from "../config/config.js";
+import { getRuntimeConfig, selectApplicableRuntimeConfig } from "../config/config.js";
 import type { AgentModelConfig } from "../config/types.agents-shared.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { callGateway } from "../gateway/call.js";
@@ -292,6 +292,13 @@ export function createOpenClawTools(
     enableHeartbeatTool?: boolean;
     /** If true, skip plugin tool resolution and return only shipped core tools. */
     disablePluginTools?: boolean;
+    /**
+     * If true, session tools resolve config from the active runtime snapshot at
+     * each execution rather than capturing the construction-time config. Lets
+     * `tools.sessions.visibility` and other session-tool-relevant keys hot-reload
+     * without rebuilding the tool list. RFC §6.5.
+     */
+    liveSessionToolConfig?: boolean;
     /** Records hot-path tool-prep stages for reply startup diagnostics. */
     recordToolPrepStage?: (name: string) => void;
     /** Trusted sender id from inbound context (not tool args). */
@@ -491,6 +498,9 @@ export function createOpenClawTools(
   const effectiveCallGateway = embedded
     ? createEmbeddedCallGateway()
     : openClawToolsDeps.callGateway;
+  const sessionToolConfig = options?.liveSessionToolConfig
+    ? ({ getConfig: getRuntimeConfig } as const)
+    : ({ config: resolvedConfig } as const);
   const tools: AnyAgentTool[] = [
     ...(embedded
       ? []
@@ -543,13 +553,13 @@ export function createOpenClawTools(
     createSessionsListTool({
       agentSessionKey: options?.agentSessionKey,
       sandboxed: options?.sandboxed,
-      config: resolvedConfig,
+      ...sessionToolConfig,
       callGateway: effectiveCallGateway,
     }),
     createSessionsHistoryTool({
       agentSessionKey: options?.agentSessionKey,
       sandboxed: options?.sandboxed,
-      config: resolvedConfig,
+      ...sessionToolConfig,
       callGateway: effectiveCallGateway,
     }),
     ...(embedded
@@ -559,7 +569,7 @@ export function createOpenClawTools(
             agentSessionKey: options?.agentSessionKey,
             agentChannel: options?.agentChannel,
             sandboxed: options?.sandboxed,
-            config: resolvedConfig,
+            ...sessionToolConfig,
             callGateway: openClawToolsDeps.callGateway,
           }),
           createSessionsSpawnTool({
@@ -587,7 +597,7 @@ export function createOpenClawTools(
     }),
     createSessionStatusTool({
       agentSessionKey: options?.agentSessionKey,
-      config: resolvedConfig,
+      ...sessionToolConfig,
       sandboxed: options?.sandboxed,
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
