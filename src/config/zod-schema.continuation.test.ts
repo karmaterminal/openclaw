@@ -113,7 +113,7 @@ describe("continuation config schema validation", () => {
   /*  defaultDelayMs / minDelayMs / maxDelayMs / maxChainLength       */
   /* ---------------------------------------------------------------- */
 
-  it("accepts defaultDelayMs = 0 (nonnegative per canonical2 widening 6f36158177)", () => {
+  it("accepts defaultDelayMs = 0 (nonnegative)", () => {
     const result = parseContinuation({ defaultDelayMs: 0 });
     expect(result.success).toBe(true);
   });
@@ -143,7 +143,7 @@ describe("continuation config schema validation", () => {
   });
 
   /* ---------------------------------------------------------------- */
-  /*  delay bounds cross-field guard (#452):                          */
+  /*  delay bounds cross-field guard:                                 */
   /*    refine: minDelayMs ≤ defaultDelayMs ≤ maxDelayMs              */
   /*  Pinned by tests so refactors that drop/break the guard are      */
   /*  caught at parse-time, not silently at runtime via clampDelayMs  */
@@ -168,7 +168,7 @@ describe("continuation config schema validation", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects inverted minDelayMs > maxDelayMs (the original #452 bug-shape)", () => {
+  it("rejects inverted minDelayMs > maxDelayMs", () => {
     const result = parseContinuation({
       minDelayMs: 60000,
       maxDelayMs: 1000,

@@ -138,8 +138,8 @@ const ALLOWLIST = [
 ] as const satisfies readonly AllowlistEntry[];
 
 // These older reply-continuation symbols are already pinned by
-// src/auto-reply/reply/continuation-state.test.ts. OV-5 guards the canonical2
-// TaskFlow continuation surface's reviewed 10 safe-volatile remnants.
+// src/auto-reply/reply/continuation-state.test.ts. OV-5 guards the TaskFlow
+// continuation surface's reviewed 10 safe-volatile remnants.
 const EXISTING_GUARD_OWNED_SYMBOLS = new Set([
   "src/auto-reply/continuation/context-pressure.ts:lastFiredBand",
   "src/auto-reply/reply/continuation-state.ts:continuationGenerations",

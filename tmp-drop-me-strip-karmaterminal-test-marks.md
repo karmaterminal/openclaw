@@ -1,3 +1,4 @@
 - 2026-05-03T21:54:09+00:00: workorder authored; dispatch starting; figs directive: strip karmaterminal-fork-specific test marks for upstream-PR-presentation
 - 2026-05-03T21:55:46+00:00: §1 reads complete; tracking issue filed as https://github.com/karmaterminal/openclaw/issues/567. RFC §6.8 read: trace-context propagation references are upstream-meaningful; swim/canonical-cycle metadata is fork coordination noise.
 - 2026-05-03T21:57:14+00:00: Inventory complete: raw small numeric tokens=227 (includes false positives like trace IDs/colors); refined surface candidates=92; high-confidence categories: karmaterminal URLs=3, prince emoji=2, swim refs=7, cohort jargon=1, canonical-line refs=5.
+- 2026-05-03T22:00:10+00:00: Edit batch complete: stripped high-confidence fork-specific marks from comments/test names across 36 test files; private-pattern scan is clean; remaining small-number hits are test data/HTML entities/channel ids, not fork issue refs.

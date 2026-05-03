@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Logger mock for breadcrumb assertion (#453 corrupt-payload coverage).
+// Logger mock for corrupt-payload breadcrumb assertions.
 // Mirrors the shape used in sibling delegate-dispatch.test.ts so log.warn
 // emissions land in `loggerRecords` for inspection.
 const loggerRecords: Array<{ level: string; message: string }> = [];
@@ -435,7 +435,7 @@ describe("post-compaction delegate staging", () => {
   });
 });
 
-describe("consumePendingDelegates — delayMs gating (swim-35/A2)", () => {
+describe("consumePendingDelegates — delayMs gating", () => {
   it("leaves an unmatured delegate (delayMs in the future) in queued state", () => {
     enqueuePendingDelegate("session-1", { task: "future", delayMs: 60_000 });
 
@@ -472,7 +472,7 @@ describe("consumePendingDelegates — delayMs gating (swim-35/A2)", () => {
   });
 });
 
-describe("peekSoonestUnmaturedDelegateDueAt (swim-35/A2)", () => {
+describe("peekSoonestUnmaturedDelegateDueAt", () => {
   it("returns undefined when no entries are queued", async () => {
     const { peekSoonestUnmaturedDelegateDueAt } = await import("./delegate-store.js");
     expect(peekSoonestUnmaturedDelegateDueAt("empty")).toBeUndefined();
@@ -499,11 +499,11 @@ describe("peekSoonestUnmaturedDelegateDueAt (swim-35/A2)", () => {
   });
 });
 
-describe("consumePendingDelegates — concurrent-consumer race contract (#448)", () => {
+describe("consumePendingDelegates — concurrent-consumer race contract", () => {
   // Pins the contract that two consumers racing on the same TaskFlow rows
   // release each queued delegate AT MOST ONCE via finishFlow(expectedRevision).
   //
-  // Background (from #448): runner / followup / hedge drains can fire near-
+  // Background: runner / followup / hedge drains can fire near-
   // simultaneously. Existing tests cover serial consumers + FIFO order;
   // none exercise the actual race where two `consumePendingDelegates` calls
   // each acquire the same `flow.revision` then race to `finishFlow`.
@@ -652,16 +652,15 @@ describe("consumePendingDelegates — concurrent-consumer race contract (#448)",
 });
 
 /* ------------------------------------------------------------------- */
-/*  consume-paths corrupt-payload contract (#453):                     */
+/*  consume-paths corrupt-payload contract:                            */
 /*    Schema-drift / corrupt stateJson on a TaskFlow row MUST fail     */
 /*    the row + emit a tagged breadcrumb so the wedge-shape (decode-   */
 /*    null + silent-continue accumulating in queue) cannot regress.    */
-/*    Cures the substrate-evidence pattern from #552 mode-1 cohort     */
-/*    byte-walk this turn (drainer-failFlow at consume-paths is the    */
-/*    canonical wedge cure).                                           */
+/*    Drainer-failFlow at consume-paths is the canonical wedge cure:   */
+/*    corrupt rows fail instead of silently accumulating in the queue.  */
 /* ------------------------------------------------------------------- */
 
-describe("consume-paths corrupt-payload breadcrumbs (#453)", () => {
+describe("consume-paths corrupt-payload breadcrumbs", () => {
   beforeEach(() => {
     loggerRecords.length = 0;
   });

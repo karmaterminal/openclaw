@@ -90,9 +90,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   // Truth-table coverage for the drainsContinuationDelegateQueue gate predicate
   // in createOpenClawTools (`!== false`). Three states must be pinned so a future
   // refactor cannot silently regress to `=== true` (which broke the
-  // "normal turns" case on PR #306 commit c825009e9b8 before the !== false fix
-  // landed in 9f00132dd67). See discussion at
-  // https://github.com/karmaterminal/openclaw/pull/306
+  // "normal turns" case before the !== false fix landed.
   it("exposes continue_delegate when drainsContinuationDelegateQueue is undefined (default normal turns)", () => {
     const tools = createOpenClawTools({
       config,
@@ -123,20 +121,20 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(false);
   });
 
-  // [#446, #550] Exact-keys trap for continue_delegate descriptor.
+  // Exact-keys trap for continue_delegate descriptor.
   //
   // Bug-shape / risk:
-  //   #438's mode-only trap (PR #462) pins that `mode` is exposed as an enum
+  //   The mode-only trap pins that `mode` is exposed as an enum
   //   AND that boolean `silent`/`silentWake` are absent. This test extends
   //   that surface with the COMPLEMENTARY pin: the EXACT set of advertised
   //   parameter keys on the tool descriptor. A refactor that adds a new
   //   model-facing parameter (cross-session addressing, retry knobs, priority)
-  //   without an ADR would slip past #438's trap because #438 only checks
+  //   without an ADR would slip past the mode-only trap because it only checks
   //   what MUST be absent (silent/silentWake) and what MUST be present (mode
   //   enum). This trap pins the closed set, including the resurrected
-  //   cross-session return targeting fields from #550.
+  //   cross-session return targeting fields.
   //
-  // The canonical advertised keys after #550 are:
+  // The canonical advertised keys are:
   //   - task         (required)
   //   - delaySeconds (optional)
   //   - mode         (optional, enum)
@@ -144,7 +142,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   //   - targetSessionKeys (optional)
   //   - fanoutMode        (optional, enum)
   //
-  // Extension to #438's mode-only trap, not duplication: #438 lives in
+  // Extension to the mode-only trap, not duplication: it lives in
   // `src/auto-reply/continuation/types.mode-shape.test.ts` and asserts
   // mode-as-enum + silent/silentWake-absent on the descriptor. This file
   // asserts the closed-set + cross-session targeting + boolean-runtime-absent.
@@ -262,8 +260,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   // disabled, opts omitted) so a future refactor cannot silently drop the
   // tool from normal runner wiring. Coverage shape mirrors the existing
   // `drainsContinuationDelegateQueue` truth-table for continue_delegate.
-  // Tracked at #445.
-  describe("request_compaction registration truth-table (#445)", () => {
+  describe("request_compaction registration truth-table", () => {
     const requestCompactionOpts = {
       sessionId: "sess-1",
       getContextUsage: () => 0.85,

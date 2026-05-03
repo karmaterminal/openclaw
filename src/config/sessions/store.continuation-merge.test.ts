@@ -12,7 +12,7 @@ import {
 import type { SessionEntry } from "./types.js";
 
 /**
- * Trap-test for #443 — negative store-merge guard for `updatedAt` churn during
+ * Trap-test for the negative store-merge guard for `updatedAt` churn during
  * continuation persist.
  *
  * The production path lives in `src/auto-reply/reply/agent-runner.ts`
@@ -95,7 +95,7 @@ async function persistChainSpread(
   );
 }
 
-describe("session store: continuation chain persist updatedAt churn guard (#443)", () => {
+describe("session store: continuation chain persist updatedAt churn guard", () => {
   const suiteRootTracker = createSuiteTempRootTracker({
     prefix: "openclaw-store-cont-merge-",
   });

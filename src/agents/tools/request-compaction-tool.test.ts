@@ -464,7 +464,7 @@ describe("request_compaction tool", () => {
     expect(second).toMatchObject({ status: "compaction_requested" });
   });
 
-  // [#447] In-flight dedup cleanup on background rejection.
+  // In-flight dedup cleanup on background rejection.
   //
   // Bug-shape / risk:
   //   `pendingCompactionSessions` is the volatile in-flight dedup Set guarded
@@ -514,7 +514,7 @@ describe("request_compaction tool", () => {
     ).not.toMatchObject({ status: "already_pending" });
   });
 
-  // [#447] _resetGuardState restart/test-isolation contract.
+  // _resetGuardState restart/test-isolation contract.
   //
   // Bug-shape / risk:
   //   `_resetGuardState()` is the test-only helper that simulates process

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSubagentAnnounceDeliveryRuntimeMock } from "./subagent-announce.test-support.js";
 
-// Issue #210: pin the silent / silent-wake / wakeOnReturn announce routing
+// Pins the silent / silent-wake / wakeOnReturn announce routing
 // at src/agents/subagent-announce.ts:604-634. RFC §2.3 calls this the
 // specific fix for an observed six-minute stall — a canary-verified
 // behavior that must have a pinning test.
 //
-// Behaviors pinned (per issue #210):
+// Behaviors pinned:
 // 1. silentAnnounce:true, wakeOnReturn:true →
 //    - deliverSubagentAnnouncement NOT invoked
 //    - enqueueSystemEvent called with [continuation:enrichment-return] text + target session key
@@ -186,7 +186,7 @@ const baseParams = {
   roundOneReply: "done",
 };
 
-describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, RFC §2.3)", () => {
+describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2.3)", () => {
   beforeEach(() => {
     callGatewayMock.mockReset().mockImplementation(async () => ({}));
     dispatchToolDelegatesMock.mockReset().mockResolvedValue({ dispatched: 0, rejected: 0 });

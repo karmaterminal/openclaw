@@ -153,7 +153,7 @@ vi.mock("../../agents/sandbox.js", () => ({
 
 vi.mock("../../config/sessions.js", () => ({
   updateSessionStore: vi.fn(async () => {}),
-  // Stubbed for swim-35/A1: identity-style resolver returns normalizedKey=sessionKey,
+  // Stubbed identity-style resolver returns normalizedKey=sessionKey,
   // existing=store[sessionKey], no legacyKeys. Real impl applies session-key normalization;
   // tests don't exercise legacy-key cleanup paths, so this stub is behavior-equivalent here.
   resolveSessionStoreEntry: vi.fn(

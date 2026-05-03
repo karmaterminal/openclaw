@@ -356,10 +356,10 @@ describe("parseContinuationSignal", () => {
     });
   });
 
-  it("parses bracket delegate after multi-line response with emoji (live regression)", () => {
-    // Exact pattern from Ronan's Test 5 at 01:08:16 UTC 2026-03-28
+  it("parses bracket delegate after multi-line response with emoji", () => {
+    // Representative multi-line response with an emoji before the delegate token.
     const text =
-      "✅ Test 2 passed.\nMoving to Test 5:\nBracket delegate dispatched. 🌊\n" +
+      "✅ Test 2 passed.\nMoving to Test 5:\nBracket delegate dispatched. 🙂\n" +
       "[[CONTINUE_DELEGATE: Report back with 'bracket delegate confirmed' +3s]]";
     const result = parseContinuationSignal(text);
     expect(result).toEqual({
