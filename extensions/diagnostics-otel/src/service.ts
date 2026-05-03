@@ -2235,11 +2235,16 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             case "session.state":
               recordSessionState(evt);
               return;
+            case "session.long_running":
+            case "session.stalled":
+              return;
             case "session.stuck":
               recordSessionStuck(evt);
               return;
             case "run.attempt":
               recordRunAttempt(evt);
+              return;
+            case "run.progress":
               return;
             case "diagnostic.heartbeat":
               recordHeartbeat(evt);

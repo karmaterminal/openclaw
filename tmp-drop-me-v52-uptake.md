@@ -242,3 +242,31 @@ These two commits are not part of the 119 source replay set, but current HEAD in
 ### Rebase todo plan
 
 Pick all 119 source replay commits and the two v52 journal commits onto `8b2a6e57fef6c582ec6d27b85150616f9e3a7ba4`. No source commits are planned for DROP/FOLD before the rebase. Release/generation conflicts still follow the §3 policy: newer upstream wins for release-prep/version/generated-basis files; continuation substrate wins for continuation files; anything outside those rules becomes DESIGN-BREAK.
+
+## §3 — base rotation execution closeout
+
+Closed: 2026-05-03T00:14:00-07:00
+
+Execution note: the first plain `git rebase -i 8b2a6e57fef6c582ec6d27b85150616f9e3a7ba4` was aborted because this graph would replay pre-v29/release-prep commits: the v5.2 target does not contain the fork's v29 base as an ancestor, and the real merge-base is `9f0bf1c71ea2`. The correct mechanical replay was `git rebase -i --onto 8b2a6e57fef6c582ec6d27b85150616f9e3a7ba4 a448042c2edd94a4e8ee86d5ed90a5ed9fe8e4cd HEAD`, but the candidate branch had already been pushed for §1/§2 heartbeats under #326 savegame discipline. Rewriting it would require a force-push after first push, so §3 was completed as a non-ff base-rotation merge of v2026.5.2 into the candidate branch. This preserves the pushed savegame history and makes v2026.5.2 an ancestor without force-pushing.
+
+Conflict policy applied:
+
+| Surface                                                                                           | Resolution                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Release/version/generated basis files (`package.json`, app versions, generated schema/API hashes) | Took v5.2 side; hashes are regenerated in §4.                                                                                                                                                                              |
+| Base-noise files untouched by the 119 source commits                                              | Took v5.2 side.                                                                                                                                                                                                            |
+| Continuation/tooling/session substrate                                                            | Manually merged source continuation behavior with v5.2 adjacent changes.                                                                                                                                                   |
+| `src/agents/pi-tools.ts`                                                                          | Preserved v5.2 `includeCoreTools`, runtime tool allowlist, heartbeat/auth/profile prep instrumentation; retained cohort `continue_work`, `request_compaction`, append/memory-day write guards, and continuation tool opts. |
+| `src/agents/system-prompt.ts`                                                                     | Preserved v5.2 stable-prefix prompt cache while retaining cohort continuation/delegate guidance and continuation sections.                                                                                                 |
+| `src/auto-reply/reply/session-system-events.ts`                                                   | Preserved v5.2 exec-completion event filtering while retaining `continuation.queue.drain` span emission.                                                                                                                   |
+| `src/agents/command/session-store.ts`                                                             | Preserved v5.2 heartbeat runtime-model preservation and metadata patch scrubbing while retaining cohort normalized-key `resolveSessionStoreEntry` + `mergeSessionEntry` persistence.                                       |
+| `src/infra/heartbeat-runner.ts`                                                                   | Converted manual load/save writes to v5.2 `updateSessionStore` while retaining normalized-key alias cleanup.                                                                                                               |
+| `extensions/discord/src/internal/rest.ts`                                                         | Retained v5.2 scheduler lane defaults plus cohort abort metadata logging/sanitization from #529.                                                                                                                           |
+
+Merge sanity:
+
+| Check                            | Result |
+| -------------------------------- | ------ |
+| Unmerged paths                   | 0      |
+| Conflict markers in source paths | 0      |
+| `git diff --cached --check`      | PASS   |

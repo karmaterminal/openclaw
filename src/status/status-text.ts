@@ -7,7 +7,6 @@ import {
   resolveAgentModelFallbacksOverride,
 } from "../agents/agent-scope.js";
 import { resolveFastModeState } from "../agents/fast-mode.js";
-import { selectAgentHarness } from "../agents/harness/selection.js";
 import { resolveModelAuthLabel } from "../agents/model-auth-label.js";
 import { getVolitionalCompactionCount } from "../agents/tools/request-compaction-tool.js";
 import {
@@ -52,6 +51,9 @@ const USAGE_OAUTH_ONLY_PROVIDERS = new Set([
 
 let statusMessageRuntimePromise: Promise<typeof import("../auto-reply/status.runtime.js")> | null =
   null;
+let agentHarnessSelectionRuntimePromise: Promise<
+  typeof import("../agents/harness/selection.js")
+> | null = null;
 let statusQueueRuntimePromise: Promise<typeof import("./status-queue.runtime.js")> | null = null;
 let statusSubagentsRuntimePromise: Promise<typeof import("./status-subagents.runtime.js")> | null =
   null;
@@ -61,6 +63,14 @@ function loadStatusMessageRuntime(): Promise<typeof import("../auto-reply/status
     import("./status-message.runtime.js").then((module) =>
       module.loadStatusMessageRuntimeModule(),
     ));
+  return runtimePromise;
+}
+
+function loadAgentHarnessSelectionRuntime(): Promise<
+  typeof import("../agents/harness/selection.js")
+> {
+  const runtimePromise = (agentHarnessSelectionRuntimePromise ??=
+    import("../agents/harness/selection.js"));
   return runtimePromise;
 }
 
@@ -107,15 +117,16 @@ function formatSessionTaskLine(sessionKey: string): string | undefined {
   return parts.length ? `📌 Tasks: ${parts.join(" · ")}` : undefined;
 }
 
-function resolveStatusHarnessId(params: {
+async function resolveStatusHarnessId(params: {
   cfg: OpenClawConfig;
   provider: string;
   model: string;
   agentId: string;
   sessionKey: string;
   sessionEntry?: SessionEntry;
-}): string | undefined {
+}): Promise<string | undefined> {
   try {
+    const { selectAgentHarness } = await loadAgentHarnessSelectionRuntime();
     const selected = selectAgentHarness({
       provider: params.provider,
       modelId: params.model,
@@ -129,6 +140,18 @@ function resolveStatusHarnessId(params: {
   } catch {
     return undefined;
   }
+}
+
+function resolveStatusAuthProvider(params: {
+  provider: string;
+  effectiveHarness?: string;
+}): string {
+  const harness = normalizeOptionalLowercaseString(params.effectiveHarness);
+  const provider = normalizeOptionalLowercaseString(params.provider);
+  if (harness === "codex" && provider === "openai") {
+    return "openai-codex";
+  }
+  return params.provider;
 }
 
 function formatAgentTaskCountsLine(agentId: string): string | undefined {
@@ -173,10 +196,23 @@ export async function buildStatusText(params: BuildStatusTextParams): Promise<st
     selectedModel: model,
     sessionEntry,
   });
+  const effectiveHarness =
+    params.resolvedHarness ??
+    (await resolveStatusHarnessId({
+      cfg,
+      provider,
+      model,
+      agentId: statusAgentId,
+      sessionKey,
+      sessionEntry,
+    }));
   const selectedModelAuth = Object.hasOwn(params, "modelAuthOverride")
     ? params.modelAuthOverride
     : resolveModelAuthLabel({
-        provider,
+        provider: resolveStatusAuthProvider({
+          provider,
+          effectiveHarness,
+        }),
         cfg,
         sessionEntry,
         agentDir: statusAgentDir,
@@ -187,7 +223,10 @@ export async function buildStatusText(params: BuildStatusTextParams): Promise<st
     ? params.activeModelAuthOverride
     : modelRefs.activeDiffers
       ? resolveModelAuthLabel({
-          provider: modelRefs.active.provider,
+          provider: resolveStatusAuthProvider({
+            provider: modelRefs.active.provider,
+            effectiveHarness,
+          }),
           cfg,
           sessionEntry,
           agentDir: statusAgentDir,
@@ -310,16 +349,6 @@ export async function buildStatusText(params: BuildStatusTextParams): Promise<st
       agentId: statusAgentId,
       sessionEntry,
     }).enabled;
-  const effectiveHarness =
-    params.resolvedHarness ??
-    resolveStatusHarnessId({
-      cfg,
-      provider,
-      model,
-      agentId: statusAgentId,
-      sessionKey,
-      sessionEntry,
-    });
   const agentFallbacksOverride = resolveAgentModelFallbacksOverride(cfg, statusAgentId);
   const { buildStatusMessage } = await loadStatusMessageRuntime();
   const explicitThinkingDefault =

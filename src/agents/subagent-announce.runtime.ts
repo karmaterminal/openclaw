@@ -3,12 +3,7 @@ export { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/con
 export {
   loadSessionStore,
   resolveAgentIdFromSessionKey,
-  resolveMainSessionKey,
   resolveStorePath,
 } from "../config/sessions.js";
 export { callGateway } from "../gateway/call.js";
-export {
-  isEmbeddedPiRunActive,
-  queueEmbeddedPiMessage,
-  waitForEmbeddedPiRunEnd,
-} from "./pi-embedded-runner/runs.js";
+export { isEmbeddedPiRunActive, waitForEmbeddedPiRunEnd } from "./pi-embedded-runner/runs.js";

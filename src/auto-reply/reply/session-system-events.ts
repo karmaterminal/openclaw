@@ -7,12 +7,20 @@ import {
   formatZonedTimestamp,
   resolveTimezone,
 } from "../../infra/format-time/format-datetime.ts";
-import { drainSystemEventEntries } from "../../infra/system-events.js";
+import { isExecCompletionEvent } from "../../infra/heartbeat-events-filter.js";
+import {
+  consumeSelectedSystemEventEntries,
+  peekSystemEventEntries,
+  type SystemEvent,
+} from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
+
+const selectGenericSystemEvents = (events: readonly SystemEvent[]): SystemEvent[] =>
+  events.filter((event) => !isExecCompletionEvent(event.text));
 
 /** Drain queued system events, format as `System:` lines, return the block (or undefined). */
 export async function drainFormattedSystemEvents(params: {
@@ -85,7 +93,12 @@ export async function drainFormattedSystemEvents(params: {
   };
 
   const systemLines: string[] = [];
-  const queued = drainSystemEventEntries(params.sessionKey);
+  // Exec completions have a dedicated heartbeat prompt; leave those entries queued
+  // so the heartbeat path can consume and deliver them.
+  const queued = consumeSelectedSystemEventEntries(
+    params.sessionKey,
+    selectGenericSystemEvents(peekSystemEventEntries(params.sessionKey)),
+  );
   // Emit `continuation.queue.drain` on every drain, including empty drains;
   // absence of work is still a drain tick. Continuation-prefix detection is
   // best-effort, while structural traceparent reconstruction belongs to the
