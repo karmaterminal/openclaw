@@ -21,3 +21,5 @@
 - 2026-05-03T20:58:58+00:00: Verification checkpoint: pnpm tsgo passed; scoped seam/integration suite passed (18 files, 363 assertions); pnpm check initially found one lint issue in the new integration test and passed after fixing the branch-local spread fallback. Preparing temp-dir build verification.
 
 - 2026-05-03T21:00:10+00:00: Build verification passed in clean temp copy. Receipt: build-verify SHA 487385987fff470bfcacaa7adf9ffbba8b6a7b42 at 2026-05-03T21:00:10+00:00 temp /tmp/openclaw-otel-wiring-build-20260503T2059. Commands: pnpm install --frozen-lockfile; pnpm build; dist/ output confirmed.
+
+- 2026-05-03T21:01:17+00:00: §6.8 deviation follow-up filed as https://github.com/karmaterminal/openclaw/issues/559. Rationale: current tracer shim has no production span-context extraction/link primitive, so this PR preserves the upstream traceparent across carriers and same-trace stitching but does not make child first spans parent to the just-emitted dispatch span or model wake-side successor consumption as an OTEL link.
