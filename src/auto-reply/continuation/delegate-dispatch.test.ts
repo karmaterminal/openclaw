@@ -253,6 +253,34 @@ describe("tool delegate dispatch contract", () => {
     });
   });
 
+  it("threads cross-session targeting metadata into spawned continuation runs", async () => {
+    const sessionKey = "session-delegate-targeting";
+    enqueuePendingDelegate(sessionKey, {
+      task: "targeted fanout",
+      mode: "silent-wake",
+      targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+    });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringContaining("targeted fanout"),
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        continuationTargetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+      }),
+      expect.objectContaining({
+        agentSessionKey: sessionKey,
+      }),
+    );
+  });
+
   it("advances chain state and prefixes spawned tasks with the next hop", async () => {
     const sessionKey = "session-delegate-chain";
     enqueuePendingDelegate(sessionKey, { task: "inspect logs" });

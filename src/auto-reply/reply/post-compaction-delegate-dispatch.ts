@@ -178,6 +178,11 @@ export function normalizePostCompactionDelegate(
     firstArmedAt,
     ...(delegate.silent != null || legacySilentWake ? { silent } : {}),
     ...(delegate.silentWake != null || legacySilentWake ? { silentWake } : {}),
+    ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
+    ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
+      ? { targetSessionKeys: delegate.targetSessionKeys }
+      : {}),
+    ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
   };
 }
 
@@ -491,6 +496,13 @@ export async function deliverQueuedPostCompactionDelegate(
         `Compaction just completed. Carry this working state to the post-compaction session: ${params.entry.task}`,
       ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
       ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+      ...(params.entry.targetSessionKey
+        ? { continuationTargetSessionKey: params.entry.targetSessionKey }
+        : {}),
+      ...(params.entry.targetSessionKeys && params.entry.targetSessionKeys.length > 0
+        ? { continuationTargetSessionKeys: params.entry.targetSessionKeys }
+        : {}),
+      ...(params.entry.fanoutMode ? { continuationFanoutMode: params.entry.fanoutMode } : {}),
       drainsContinuationDelegateQueue: true,
     },
     {

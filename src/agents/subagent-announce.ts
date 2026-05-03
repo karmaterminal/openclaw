@@ -97,6 +97,26 @@ function loadSubagentSpawnRuntime() {
   return subagentSpawnRuntimePromise;
 }
 
+async function listKnownSessionKeysOnHost(
+  cfg: ReturnType<typeof getRuntimeConfig>,
+): Promise<string[]> {
+  const [{ resolveAllAgentSessionStoreTargetsSync }, { loadSessionStore }] = await Promise.all([
+    import("../config/sessions/targets.js"),
+    import("../config/sessions/store-load.js"),
+  ]);
+  const keys = new Set<string>();
+  for (const target of resolveAllAgentSessionStoreTargetsSync(cfg)) {
+    const store = loadSessionStore(target.storePath);
+    for (const key of Object.keys(store)) {
+      const normalized = normalizeOptionalString(key);
+      if (normalized) {
+        keys.add(normalized);
+      }
+    }
+  }
+  return [...keys].toSorted();
+}
+
 export { buildSubagentSystemPrompt } from "./subagent-system-prompt.js";
 export { captureSubagentCompletionReply } from "./subagent-announce-output.js";
 export type { SubagentRunOutcome } from "./subagent-announce-output.js";
@@ -461,6 +481,9 @@ export async function runSubagentAnnounceFlow(params: {
    *  session after enrichment delivery. Enables autonomous cognition loops
    *  (DELEGATE | silent-wake). */
   wakeOnReturn?: boolean;
+  continuationTargetSessionKey?: string;
+  continuationTargetSessionKeys?: string[];
+  continuationFanoutMode?: "tree" | "all";
 }): Promise<boolean> {
   let didAnnounce = false;
   const expectsCompletionMessage = params.expectsCompletionMessage === true;
@@ -853,15 +876,13 @@ export async function runSubagentAnnounceFlow(params: {
       } else if (continuationResult.signal?.kind === "delegate") {
         bracketDelegateConsumed = true;
         findings = continuationResult.text || "(no output)";
-        const chainTask = continuationResult.signal.task;
-        const chainDelayMs = continuationResult.signal.delayMs;
+        const chainSignal = continuationResult.signal;
+        const chainTask = chainSignal.task;
+        const chainDelayMs = chainSignal.delayMs;
         const parentWasSilent = params.silentAnnounce === true;
-        const chainSilent =
-          continuationResult.signal.silent ||
-          continuationResult.signal.silentWake ||
-          parentWasSilent;
+        const chainSilent = chainSignal.silent || chainSignal.silentWake || parentWasSilent;
         const chainWake =
-          continuationResult.signal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
+          chainSignal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
 
         const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs } =
           subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
@@ -924,6 +945,15 @@ export async function runSubagentAnnounceFlow(params: {
                   task: `[continuation:chain-hop:${nextChainHop}] Delegated from sub-agent (depth ${childDepth}): ${chainTask}`,
                   ...(chainSilent ? { silentAnnounce: true } : {}),
                   ...(chainWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                  ...(chainSignal.targetSessionKey
+                    ? { continuationTargetSessionKey: chainSignal.targetSessionKey }
+                    : {}),
+                  ...(chainSignal.targetSessionKeys && chainSignal.targetSessionKeys.length > 0
+                    ? { continuationTargetSessionKeys: chainSignal.targetSessionKeys }
+                    : {}),
+                  ...(chainSignal.fanoutMode
+                    ? { continuationFanoutMode: chainSignal.fanoutMode }
+                    : {}),
                   drainsContinuationDelegateQueue: true,
                 },
                 {
@@ -1044,6 +1074,15 @@ export async function runSubagentAnnounceFlow(params: {
                   task: `[continuation:chain-hop:${nextToolHop}] Tool-delegated from sub-agent (depth ${childDepth}): ${toolDelegate.task}`,
                   ...(toolSilent ? { silentAnnounce: true } : {}),
                   ...(toolWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+                  ...(toolDelegate.targetSessionKey
+                    ? { continuationTargetSessionKey: toolDelegate.targetSessionKey }
+                    : {}),
+                  ...(toolDelegate.targetSessionKeys && toolDelegate.targetSessionKeys.length > 0
+                    ? { continuationTargetSessionKeys: toolDelegate.targetSessionKeys }
+                    : {}),
+                  ...(toolDelegate.fanoutMode
+                    ? { continuationFanoutMode: toolDelegate.fanoutMode }
+                    : {}),
                   drainsContinuationDelegateQueue: true,
                 },
                 {
@@ -1142,6 +1181,44 @@ export async function runSubagentAnnounceFlow(params: {
       },
     ];
     const triggerMessage = buildAnnounceSteerMessage(internalEvents);
+    const hasContinuationTargeting = Boolean(
+      params.continuationTargetSessionKey ||
+      (params.continuationTargetSessionKeys && params.continuationTargetSessionKeys.length > 0) ||
+      params.continuationFanoutMode,
+    );
+    if (hasContinuationTargeting) {
+      const { enqueueContinuationReturnDeliveries, resolveContinuationReturnTargetSessionKeys } =
+        await import("../auto-reply/continuation/targeting.js");
+      const treeSessionKeys =
+        params.continuationFanoutMode === "tree" && subagentRegistryRuntime
+          ? subagentRegistryRuntime.listAncestorSessionKeys(targetRequesterSessionKey)
+          : undefined;
+      const allSessionKeys =
+        params.continuationFanoutMode === "all" ? await listKnownSessionKeysOnHost(cfg) : undefined;
+      const targetSessionKeys = resolveContinuationReturnTargetSessionKeys({
+        defaultSessionKey: targetRequesterSessionKey,
+        targetSessionKey: params.continuationTargetSessionKey,
+        targetSessionKeys: params.continuationTargetSessionKeys,
+        fanoutMode: params.continuationFanoutMode,
+        treeSessionKeys,
+        allSessionKeys,
+      });
+      const enrichmentText =
+        triggerMessage || `[continuation:enrichment-return] Delegate completed: ${taskLabel}`;
+      await enqueueContinuationReturnDeliveries({
+        targetSessionKeys,
+        text: enrichmentText,
+        idempotencyKeyBase: `continuation-return:${announceId}`,
+        wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
+        childRunId: params.childRunId,
+      });
+      defaultRuntime.log(
+        `[continuation:targeted-return] Delivered to ${targetSessionKeys.join(",")} from ${params.childSessionKey}`,
+      );
+      didAnnounce = true;
+      shouldDeleteChildSession = params.cleanup === "delete";
+      return true;
+    }
 
     // Send to the requester session. For nested subagents this is an internal
     // follow-up injection (deliver=false) so the orchestrator receives it.

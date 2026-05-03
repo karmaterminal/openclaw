@@ -685,6 +685,9 @@ export function createSubagentRegistryLifecycleController(params: {
         },
         silentAnnounce: entry.silentAnnounce,
         wakeOnReturn: entry.wakeOnReturn,
+        continuationTargetSessionKey: entry.continuationTargetSessionKey,
+        continuationTargetSessionKeys: entry.continuationTargetSessionKeys,
+        continuationFanoutMode: entry.continuationFanoutMode,
       })
       .then((didAnnounce) => {
         finalizeAnnounceCleanup(didAnnounce);

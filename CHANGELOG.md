@@ -14,6 +14,7 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
+- Agents/continuation: let `continue_delegate()` return to one target session, multiple target sessions, all ancestors with `fanoutMode: "tree"`, or every known host session with `fanoutMode: "all"`, and teach the bracket fallback the matching `target=`, `targets=`, and `fanout=` syntax. (#550)
 - Gateway/startup and restart: skip plugin-backed auth-profile overlays during startup secrets preflight, reducing gateway readiness latency while keeping reload and OAuth recovery paths overlay-capable; add `openclaw gateway restart --force` and `--wait <duration>`, log active task run IDs before restart deferral timers, and report timeout restarts as explicit forced restarts. (#68327) Thanks @JIRBOY.
 - Plugins/ClawHub: make diagnostics, onboarding, doctor repair, and channel setup carry ClawPack metadata through install records while keeping explicit `clawhub:` installs on ClawHub and bare package installs on npm for the launch cutover. Thanks @vincentkoc.
 - Plugins/CLI: include package dependency install state in `openclaw plugins list --json` so scripts can spot missing plugin dependencies without runtime-loading plugins.

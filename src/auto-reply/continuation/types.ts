@@ -8,6 +8,8 @@
  * the rest of the continuation surface is built on.
  */
 
+import type { ContinuationDelegateFanoutMode } from "./targeting.js";
+
 // ---------------------------------------------------------------------------
 // Continuation signals — parsed from response text or captured from tool calls
 // ---------------------------------------------------------------------------
@@ -33,6 +35,9 @@ export type ContinuationSignal =
       delayMs?: number;
       silent?: boolean;
       silentWake?: boolean;
+      targetSessionKey?: string;
+      targetSessionKeys?: string[];
+      fanoutMode?: ContinuationDelegateFanoutMode;
     };
 
 // ---------------------------------------------------------------------------
@@ -53,6 +58,9 @@ export type PendingContinuationDelegate = {
   delayMs?: number;
   mode?: "normal" | "silent" | "silent-wake" | "post-compaction";
   firstArmedAt?: number;
+  targetSessionKey?: string;
+  targetSessionKeys?: string[];
+  fanoutMode?: ContinuationDelegateFanoutMode;
 };
 
 /**
@@ -109,6 +117,9 @@ export type StagedPostCompactionDelegate = {
   task: string;
   stagedAt: number;
   firstArmedAt?: number;
+  targetSessionKey?: string;
+  targetSessionKeys?: string[];
+  fanoutMode?: ContinuationDelegateFanoutMode;
 };
 
 // ---------------------------------------------------------------------------

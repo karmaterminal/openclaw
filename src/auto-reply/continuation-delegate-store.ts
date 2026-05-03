@@ -44,7 +44,8 @@ export {
 // Post-compaction wrappers — adapt SessionPostCompactionDelegate ↔ TaskFlow
 //
 // Downstream callers (agent-runner persist path, delivery queue) speak
-// SessionPostCompactionDelegate { task, createdAt, firstArmedAt?, silent?, silentWake? }.
+// SessionPostCompactionDelegate { task, createdAt, firstArmedAt?, silent?,
+// silentWake?, targetSessionKey?, targetSessionKeys?, fanoutMode? }.
 // The canonical store speaks StagedPostCompactionDelegate { task, stagedAt, firstArmedAt? }
 // and returns PendingContinuationDelegate { task, mode?, firstArmedAt? }.
 // ---------------------------------------------------------------------------
@@ -58,6 +59,9 @@ export function stagePostCompactionDelegate(
     task: delegate.task,
     stagedAt,
     firstArmedAt: delegate.firstArmedAt ?? stagedAt,
+    ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
+    ...(delegate.targetSessionKeys ? { targetSessionKeys: delegate.targetSessionKeys } : {}),
+    ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
   });
 }
 
@@ -67,12 +71,22 @@ export function consumeStagedPostCompactionDelegates(
   const now = Date.now();
   return canonicalConsumeStaged(sessionKey).map((d) => {
     const firstArmedAt = d.firstArmedAt ?? now;
-    return {
+    const delegate: SessionPostCompactionDelegate = {
       task: d.task,
       createdAt: firstArmedAt,
       firstArmedAt,
       silent: true,
       silentWake: true,
     };
+    if (d.targetSessionKey) {
+      delegate.targetSessionKey = d.targetSessionKey;
+    }
+    if (d.targetSessionKeys) {
+      delegate.targetSessionKeys = d.targetSessionKeys;
+    }
+    if (d.fanoutMode) {
+      delegate.fanoutMode = d.fanoutMode;
+    }
+    return delegate;
   });
 }

@@ -5,7 +5,12 @@ import {
   getContinuationDelegateQueueDepths,
   stagePostCompactionDelegate,
 } from "../../auto-reply/continuation/delegate-store.js";
+import {
+  CONTINUATION_DELEGATE_FANOUT_MODES,
+  normalizeContinuationTargetKeys,
+} from "../../auto-reply/continuation/targeting.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { readSnakeCaseParamRaw } from "../../param-key.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
@@ -13,6 +18,7 @@ import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./
 const log = createSubsystemLogger("continuation/delegate-tool");
 
 const DELEGATE_MODES = ["normal", "silent", "silent-wake", "post-compaction"] as const;
+const FANOUT_MODES = CONTINUATION_DELEGATE_FANOUT_MODES;
 
 const ContinueDelegateToolSchema = Type.Object({
   task: Type.String({
@@ -36,7 +42,50 @@ const ContinueDelegateToolSchema = Type.Object({
       '"post-compaction" = silent-wake delegate that fires when compaction happens, not on a timer. ' +
       "Use for context evacuation: the shard starts at the moment of compaction and returns to the post-compaction session.",
   }),
+  targetSessionKey: Type.Optional(
+    Type.String({
+      description:
+        "Address one specific session on this host for the delegate's return. " +
+        "Use when a child should return enrichment to an ancestor, sibling, or root session instead of the dispatching session.",
+    }),
+  ),
+  targetSessionKeys: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "Address multiple sessions on this host for byte-identical fan-out return. " +
+        "Each listed session receives the same delegate completion payload through the session-delivery queue.",
+    }),
+  ),
+  fanoutMode: optionalStringEnum(FANOUT_MODES, {
+    description:
+      'Broadcast return targeting. "tree" returns to every ancestor in the current continuation/subagent chain; ' +
+      '"all" returns to every known session on this host. Do not combine with targetSessionKey/targetSessionKeys.',
+  }),
 });
+
+function readStrictStringArrayParam(
+  params: Record<string, unknown>,
+  key: string,
+): string[] | undefined {
+  const raw = readSnakeCaseParamRaw(params, key);
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(raw)) {
+    throw new ToolInputError(`${key} must be an array of non-empty strings.`);
+  }
+  if (raw.length === 0) {
+    throw new ToolInputError(`${key} must include at least one session key.`);
+  }
+  const values: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string" || !entry.trim()) {
+      throw new ToolInputError(`${key} must contain only non-empty strings.`);
+    }
+    values.push(entry.trim());
+  }
+  return normalizeContinuationTargetKeys(values);
+}
 
 /**
  * Creates the `continue_delegate` tool.
@@ -70,6 +119,9 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
       'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
       "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
+      "Return targeting modes: default returns to the dispatching session; targetSessionKey returns to one other session; " +
+      "targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; " +
+      "fanoutMode=all returns to all known sessions on this host. " +
       "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
       "This is the (a)-shape continuation surface: explicit recipient-addressing via the " +
       "session-delivery-queue substrate (intra-host today). The (b)-shape evolution — " +
@@ -103,6 +155,25 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       }
       const mode = (modeRaw || "normal") as (typeof DELEGATE_MODES)[number];
       const isPostCompaction = mode === "post-compaction";
+      const targetSessionKey = readStringParam(params, "targetSessionKey");
+      const targetSessionKeys = readStrictStringArrayParam(params, "targetSessionKeys");
+      const fanoutModeRaw = readStringParam(params, "fanoutMode");
+      const fanoutMode = fanoutModeRaw?.toLowerCase();
+      if (fanoutMode && !FANOUT_MODES.includes(fanoutMode as (typeof FANOUT_MODES)[number])) {
+        throw new ToolInputError(
+          `Unknown fanoutMode "${fanoutMode}". Valid fanout modes: ${FANOUT_MODES.join(", ")}`,
+        );
+      }
+      if (fanoutMode && (targetSessionKey || (targetSessionKeys && targetSessionKeys.length > 0))) {
+        throw new ToolInputError(
+          "fanoutMode cannot be combined with targetSessionKey or targetSessionKeys.",
+        );
+      }
+      const targetingFields = {
+        ...(targetSessionKey ? { targetSessionKey } : {}),
+        ...(targetSessionKeys && targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
+        ...(fanoutMode ? { fanoutMode: fanoutMode as (typeof FANOUT_MODES)[number] } : {}),
+      };
 
       // Check per-turn delegate limit. Durable queued depth is reported for
       // visibility but does not consume this turn's admission budget.
@@ -126,6 +197,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         stagePostCompactionDelegate(sessionKey, {
           task,
           stagedAt: Date.now(),
+          ...targetingFields,
         });
         delegatesThisTurn += 1;
 
@@ -134,6 +206,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           mode: "post-compaction",
           delegateIndex: delegatesThisTurn,
           delegatesThisTurn,
+          ...targetingFields,
           note:
             "Delegate will fire when compaction occurs, not on a timer. " +
             "The shard starts at the moment of compaction and returns to the post-compaction session. " +
@@ -142,12 +215,13 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       }
 
       log.debug(
-        `[continue_delegate:enqueue] session=${sessionKey} mode=${mode} delayMs=${delayMs} task=${task.slice(0, 80)}`,
+        `[continue_delegate:enqueue] session=${sessionKey} mode=${mode} delayMs=${delayMs} fanoutMode=${fanoutMode ?? "none"} targets=${targetSessionKeys?.length ?? (targetSessionKey ? 1 : 0)} task=${task.slice(0, 80)}`,
       );
       enqueuePendingDelegate(sessionKey, {
         task,
         delayMs,
         ...(mode !== "normal" ? { mode } : {}),
+        ...targetingFields,
       });
 
       delegatesThisTurn += 1;
@@ -159,6 +233,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         delaySeconds: delaySeconds ?? 0,
         delegateIndex: dispatchIndex,
         delegatesThisTurn: dispatchIndex,
+        ...targetingFields,
         note:
           "Delegate will be dispatched after your response completes. " +
           "Chain tracking (cost cap, depth limit) applies.",

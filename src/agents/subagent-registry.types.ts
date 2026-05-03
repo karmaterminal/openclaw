@@ -50,4 +50,10 @@ export type SubagentRunRecord = {
   wakeOnReturn?: boolean;
   /** Continuation: marks this run as a chain-hop that can consume pending delegates. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Continuation: return to one explicitly addressed session instead of the dispatcher. */
+  continuationTargetSessionKey?: string;
+  /** Continuation: byte-identical return fan-out to explicit sessions. */
+  continuationTargetSessionKeys?: string[];
+  /** Continuation: computed fan-out over the local session graph. */
+  continuationFanoutMode?: "tree" | "all";
 };
