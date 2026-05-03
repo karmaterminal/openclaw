@@ -160,3 +160,37 @@ Results:
 - `pnpm tsgo` initially failed before typechecking because `node_modules/.bin/tsgo` was missing. Ran `pnpm install` once; lockfile was already current. Install completed with a non-fatal compile-cache permission warning.
 - `pnpm tsgo` passed after dependency install.
 - `pnpm check` passed.
+
+## §7 final - declare done
+
+Final SHA note:
+
+- Apply payload SHA before this declaration-only journal commit: `d8b17f57bfb69a5a4d42d030f4e97acb68699f76`.
+- The pushed branch head after this block is the authoritative final HEAD; it is echoed in the declare-done heartbeat, issue comment, and PR body.
+
+Per-axis outcome:
+
+- §2.A TOC byte-accuracy: applied. Explicit TOC anchors resolve against body headings; unlisted intra-section subheads remain intentionally outside the TOC.
+- §2.B structural separation: applied. Added terminology/scope up front and separated primitive semantics, substrate behavior, security, validation evidence, and future work more clearly without replacing the RFC's whole skeleton.
+- §2.C narrative flow: applied. Cold-pickup forward references were reduced, duplicate primitive definitions were unified, and the closing discussion now carries the successor-turn framing.
+- §3 claims validation: applied. Stale `targetSessionKey`, span vocabulary, `earlyWarningBand`, `/new` survival, TaskFlow, context-pressure, post-compaction, queue, and diagnostics claims were corrected against current code. No contradicted claim required a substrate code fix.
+- §4 depth and Mermaid: applied. Added the delegate dispatch, trigger taxonomy, post-compaction relay, gateway broker, and trace-correlation diagrams; replaced the old interface diagram with a capability decision tree. Deferred only a redundant whole-system mega-diagram.
+- §5 register and substrate dignity: applied. Marketing-register phrasing was tightened, applicability language was added, test prose was reframed as evidence, and the final section names the elective self-control substrate more plainly. Deferred only exhaustive literary copyediting outside the review findings.
+- Review document deletion: applied. The intermediate review document was removed after the RFC absorbed its findings.
+- Verification: applied. `pnpm tsgo` and `pnpm check` passed locally after dependency install; Testbox remained unavailable due missing Blacksmith authentication.
+
+Code edits made: 0. This was a docs-only lane.
+
+RFC LOC changed versus `origin/frond-scribe/20260429/v3-cohort-fixes`: 306 insertions, 159 deletions, 465 changed lines total, net +147 lines.
+
+Highest-confidence applies:
+
+1. Shipped schema correction: `continue_delegate()` no longer claims `targetSessionKey`; future routing is framed as a future schema addition.
+2. Persistence and failure semantics: TaskFlow filter-at-consume, corrupt-payload failure, hedge timers, session-delivery queue, and post-compaction re-stage behavior now match code.
+3. Observability correction: span names and traceparent/remote-parent behavior now match the current tracer and diagnostics adapter.
+
+Lowest-confidence applies for Ronan review:
+
+1. Register balance: the final prose is more direct about successor-turn agency, but authorial taste belongs with the RFC primary author.
+2. Diagram density: five new Mermaid diagrams cover the review requests, but reviewer eyes should decide whether any are still too much scaffolding.
+3. Future-work boundaries: `targetSessionKeys`, owner-scoped routing, and richer broker policy are intentionally left future-facing; reviewer should confirm the non-goals feel neither too narrow nor too broad.
