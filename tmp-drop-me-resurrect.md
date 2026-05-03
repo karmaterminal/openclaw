@@ -58,8 +58,13 @@
 
 ## §7 push / heartbeat
 
-- Pending.
+- Implementation commit pushed to `working/frond-scribe/20260503/continue-delegate-cross-session-resurrection`: `6f8303bd71caca3b59b423913eb170280122c0be`.
+- §7 heartbeat sent after push with username `frond-scribe-resurrect-continue-delegate-hook`.
+- One unrelated untracked local console artifact remains intentionally uncommitted: `tmp-drop-me-resurrect.console.log`.
 
 ## §8 PR / done
 
-- Pending.
+- PR opened: https://github.com/karmaterminal/openclaw/pull/551.
+- P0 issue: https://github.com/karmaterminal/openclaw/issues/550.
+- Validation results remain those recorded in §6.
+- Final implementation HEAD recorded for the resurrection work: `6f8303bd71caca3b59b423913eb170280122c0be`.
