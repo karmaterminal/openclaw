@@ -367,6 +367,37 @@ The durability contract is path-specific:
 | Tool `continue_delegate()`  | TaskFlow queued row                                                     | Queued work survives restart; exact hedge timer state is process-scoped and may be re-established by a later drain/recovery path.  |
 | `mode="post-compaction"`    | TaskFlow staged row, then session-delivery queue entry after compaction | Staged work survives until consumed, expired, cancelled, or released; queued post-compaction delivery has retry/restart semantics. |
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Agent
+    participant Tool as continue_delegate()
+    participant Store as TaskFlow delegate store
+    participant Runner as reply/follow-up drain
+    participant Hedge as quiet-channel hedge timer
+    participant Spawn as spawnSubagentDirect()
+    participant Child as delegate session
+    participant Parent as parent session
+
+    Agent->>Tool: task, mode, delaySeconds?
+    Tool->>Store: enqueuePendingDelegate(sessionKey, descriptor)
+    Tool-->>Agent: status=scheduled / queued-for-compaction
+    Runner->>Store: consume matured delegates
+    Store-->>Runner: matured delegates
+    Runner->>Store: peekSoonestUnmaturedDelegateDueAt()
+    alt unmatured delegate exists
+        Runner->>Hedge: arm timer for dueAt
+        Hedge-->>Runner: re-drain when quiet-channel timer fires
+    end
+    Runner->>Runner: enforce maxDelegatesPerTurn, chain, cost
+    Runner->>Spawn: spawnSubagentDirect(task, silent/wake flags)
+    Spawn-->>Child: accepted child session
+    Child-->>Parent: announce or silent enrichment return
+    alt silent-wake
+        Parent->>Parent: requestHeartbeatNow()
+    end
+```
+
 #### Gap window
 
 Between scheduling and spawn, the parent session is idle while either a bracket reservation or a TaskFlow row is live. This is the principal temporal gap for audit and security analysis. The gap stores task text and routing metadata, not a private cryptographic capability.
@@ -511,7 +542,7 @@ The two-layer model is:
 | Initiated  | context-pressure alerts, `continue_delegate()` with `post-compaction`, `request_compaction()` | agent-directed preservation of working state           |
 | Obligatory | overflow compaction, `memoryFlush`, `postCompactionSections`                                  | platform-directed preservation when limits are crossed |
 
-The continuation contribution can also be described as a five-trigger taxonomy:
+The continuation contribution can also be described as trigger causes plus emission surfaces:
 
 | Trigger                   | Type                 | Who decides         | Source                                                               |
 | ------------------------- | -------------------- | ------------------- | -------------------------------------------------------------------- |
@@ -523,6 +554,21 @@ The continuation contribution can also be described as a five-trigger taxonomy:
 | F: mid-turn pressure-fire | reactive in-turn     | platform (in-turn)  | overflow / timeout-recovery emit path in `pi-embedded-runner/run.ts` |
 
 Triggers A–C predate this work. Triggers D and E are the continuation additions. **Trigger F** is not a new compaction _cause_ — it is the in-turn emission shape that the existing Trigger A (overflow) and Trigger B (timeout + high usage) paths take when they fire from inside `pi-embedded-runner/run.ts` rather than from the pre-run `checkContextPressure()` gate. It is named separately because it is what human users grep for: A and B emit a `[context-pressure:fire] mid-turn trigger=overflow` / `mid-turn trigger=timeout` log anchor in the same format as the pre-run band fires, plus a `[system:context-pressure]` system event to the session, so a single grep across the `[context-pressure:fire]` anchor surfaces both pre-run (D) and in-turn (F) compaction events. Trigger F is therefore a _convergent emission_ of Triggers A and B, not an independent decision path; it is the human-user-visible name for the thing that lets one grep find every mid-turn compaction that bypassed the pre-run pressure check.
+
+```mermaid
+flowchart TD
+    A["Compaction-related event"] --> B{"Who initiates?"}
+    B -- "platform" --> P{"Cause"}
+    P -- "context overflow" --> A1["A: overflow compaction"]
+    P -- "idle timeout + high usage" --> B1["B: timeout/high-usage compaction"]
+    B -- "human-user" --> C1["C: /compact"]
+    B -- "continuation system" --> D1["D: pre-run context-pressure advisory"]
+    B -- "agent" --> E1["E: request_compaction()"]
+    A1 --> EMIT{"emission timing"}
+    B1 --> EMIT
+    EMIT -- "inside pi-embedded-runner turn" --> F1["F: mid-turn pressure-fire emission"]
+    EMIT -- "pre-run / lifecycle" --> ORD["ordinary compaction/log path"]
+```
 
 Code anchors for Trigger F: `src/agents/pi-embedded-runner/run.ts:1085` (overflow recovery emit), the timeout-recovery emit a few hundred lines up in the same file, and regression guards in `src/agents/pi-embedded-runner/run.overflow-compaction.loop.test.ts:96` and `src/agents/pi-embedded-runner/run.timeout-triggered-compaction.test.ts:105` that pin the shared anchor format across both paths.
 
@@ -617,6 +663,25 @@ For `post-compaction` delegates, the release semantics are intentionally fixed: 
 
 If enqueueing fails, the affected delegate is re-staged for a later attempt. If draining fails, the queue retry path owns backoff and eventual failure movement. The lifecycle event reports queued and dropped counts, not guaranteed child-spawn counts.
 
+```mermaid
+stateDiagram-v2
+    [*] --> Staged: continue_delegate(mode="post-compaction")
+    Staged --> Persisted: TaskFlow row
+    Persisted --> Compaction: platform or request_compaction fires
+    Compaction --> Released: after_compaction consumes staged work
+    Released --> Queued: enqueue postCompactionDelegate delivery
+    Queued --> Draining: drainPendingSessionDeliveries()
+    Draining --> Spawned: spawnSubagentDirect accepted
+    Spawned --> Returned: silent-wake enrichment returns
+    Returned --> SuccessorTurn: parent/successor session wakes
+    Draining --> Retry: spawn/delivery failure
+    Retry --> Queued: backoff eligible
+    Retry --> Failed: retry cap exceeded
+    Released --> Dropped: stale TTL or maxDelegatesPerTurn overflow
+    Released --> ReStaged: enqueue failure
+    ReStaged --> Persisted: preserve for later compaction
+```
+
 The post-compaction rehydration path consists of three layers:
 
 1. **Immediate lifecycle signal:** `[system:post-compaction]` establishes that compaction occurred.
@@ -672,6 +737,22 @@ The continuation primitives — `continue_work`, `continue_delegate`, `request_c
 **Enforcement.** The capability registry at `src/infra/substrate-capability-registry.ts` mechanizes this review discipline as an explicit inventory of substrate capabilities, including `session-delivery-queue`, TaskFlow, and chain-budget-at-spawn behavior for queue-drained post-compaction delegates. There is no shipped `pnpm lint:substrate-adoption` script in this checkout; the registry is the shipped artifact, and bespoke transport remains possible when it carries a named functional reason.
 
 The agent supplies structured intent (`delaySeconds`, `mode`, `reason`); the tool's code path picks the substrate (process timer/reservation, TaskFlow, or `session-delivery-queue`, see §3.6), the lifecycle hook (compaction-pending vs. immediate dispatch, see §4.5), and the wire (single-session today, broader addressing only when supported). The agent never names a substrate, hook, or wire — those are the tool's job.
+
+```mermaid
+flowchart LR
+    Agent["Agent intent<br/>delaySeconds / mode / reason / task"] --> Tool["Tool surface<br/>continue_work / continue_delegate / request_compaction"]
+    Tool --> Broker["Gateway broker<br/>policy, lifecycle, routing"]
+    Broker --> Timer["Process timer<br/>same-session wake / bracket delay"]
+    Broker --> TaskFlow["TaskFlow<br/>pending tool delegates"]
+    Broker --> Queue["session-delivery-queue<br/>post-compaction delivery / restart recovery"]
+    Broker --> Compaction["Compaction lane<br/>request + after_compaction hooks"]
+    Timer --> Wake["system event + heartbeat wake"]
+    TaskFlow --> Spawn["spawnSubagentDirect"]
+    Queue --> Spawn
+    Compaction --> Queue
+    Spawn --> Return["announce / silent / silent-wake return"]
+    Return --> Wake
+```
 
 **Brokered surface.** The `tool-result-middleware` extension becomes the brokered seam for results returning from these three primitives: a single seam, three primitives, deterministic mechanics underneath. `src/agents/harness/native-hook-relay.ts` replaces the previous PTY-scraping pattern-match pipeline with structured lifecycle-hook subscription for downstream consumers; this is the runtime expression of the brokered-seam discipline.
 
@@ -987,6 +1068,24 @@ The schema below documents the **shipped contract** that emitters and downstream
 The old `continuation.delegate.enqueue`, `continuation.delegate.spawn`, `continuation.delegate.return`, `continuation.compaction.requested`, `continuation.compaction.enqueued`, `continuation.compaction.completed`, and `continuation.context_pressure.fire` names are not the current shipped vocabulary.
 
 **Propagation pattern.** The continuation-tracer surface carries W3C `traceparent` through `StartSpanOptions`. The diagnostics-otel adapter parses that value and uses it as the remote parent context under the `openclaw.continuation` tracer. System events and queued deliveries can carry `traceparent` metadata, so queue and successor-turn spans can be stitched to the producer trace when the metadata is present.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Parent as parent turn
+    participant Tracer as continuation-tracer facade
+    participant Queue as system-event / delivery queue
+    participant Adapter as diagnostics-otel adapter
+    participant Child as child or successor turn
+
+    Parent->>Tracer: continuation.work / delegate.dispatch
+    Tracer->>Adapter: startSpan(name, attrs, traceparent?)
+    Parent->>Queue: enqueue event or delivery payload with traceparent when available
+    Queue-->>Child: drain/recover payload
+    Child->>Tracer: continuation.work.fire / delegate.fire / queue.drain / compaction.released
+    Tracer->>Adapter: parse traceparent and set remote parent context
+    Adapter-->>Adapter: emit span under openclaw.continuation
+```
 
 **Tier visibility.** The current contract does not promise equivalent spans for every capability tier. Tools-first paths emit the spans wired at their accept/fire/drain/release seams. Response-token fallback emits through the scheduler and queue seams it actually uses. Disabled/gated attempts emit `continuation.disabled` spans, not a separate count metric.
 

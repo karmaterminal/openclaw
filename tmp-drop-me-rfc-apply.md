@@ -117,3 +117,16 @@ Applied:
 Deferred:
 
 - No substrate-bug issue filed. The contradicted claims were documentation drift, not implementation defects.
+
+## §4 applied - depth and Mermaid
+
+Applied:
+
+- Existing §2 capability diagram was replaced with a decision tree during §2.C.
+- Added Mermaid diagrams for TaskFlow delegate dispatch, trigger causes vs. emission surfaces, post-compaction delegate lifecycle, gateway-as-lifecycle-broker, and trace/chain correlation.
+- Expanded under-depth mechanics around filter-at-consume, hedge timers, queue-first post-compaction release, stale/overflow/re-stage behavior, path-specific persistence, and traceparent parent stitching.
+- Trimmed overbroad `session-delivery-queue` language by explicitly limiting ordinary tool delegates to TaskFlow before compaction.
+
+Deferred:
+
+- No additional full-document architecture diagram; the five new diagrams plus the §2 capability decision tree cover the review's concrete diagram requests.
