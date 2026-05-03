@@ -1256,7 +1256,10 @@ export async function runSubagentAnnounceFlow(params: {
       // Inject completion as system event (invisible to channel).
       const enrichmentText =
         triggerMessage || `[continuation:enrichment-return] Delegate completed: ${taskLabel}`;
-      enqueueSystemEvent(enrichmentText, { sessionKey: targetRequesterSessionKey });
+      enqueueSystemEvent(enrichmentText, {
+        sessionKey: targetRequesterSessionKey,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+      });
       continuationLog.info(
         `[continuation:enrichment-return] Delivered to ${targetRequesterSessionKey} from ${params.childSessionKey}`,
       );
@@ -1303,6 +1306,7 @@ export async function runSubagentAnnounceFlow(params: {
       directIdempotencyKey,
       signal: params.signal,
       continuationTriggerOverride: delegateReturnTrigger,
+      ...(params.traceparent ? { traceparent: params.traceparent } : {}),
     });
     params.onDeliveryResult?.(delivery);
     didAnnounce = delivery.delivered;

@@ -7,3 +7,5 @@
 - 2026-05-03T20:33:09+00:00: Seam 2 complete: emitContinuationDelegateSpan accepts traceparent and agent-runner bracket/tool immediate+timer dispatch paths pass the persisted delegate carrier into StartSpanOptions. Focused Seam 2 tests passed: 76 assertions across continuation-tracer and agent-runner delegate dispatch.
 
 - 2026-05-03T20:36:10+00:00: Seam 3 complete: spawn params, subagent run registry metadata, persisted registry replay, and announce-flow invocation now carry traceparent from dispatched delegates into child run context. Focused Seam 3 tests passed: 30 assertions across agent-runner, subagent-spawn, and registry persistence.
+
+- 2026-05-03T20:39:49+00:00: Seam 4 complete: child run traceparent now threads through silent return system events, visible queued/direct announce delivery, direct gateway agent params, and direct fallback send args. Focused Seam 4 tests passed: 29 assertions across subagent-announce silent-wake and announce-delivery.

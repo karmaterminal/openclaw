@@ -153,6 +153,7 @@ import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 
 const childSessionKey = "agent:main:subagent:silent-test";
 const requesterSessionKey = "agent:main:main";
+const validTraceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
 function seedDefaultStore() {
   loadSessionStoreMock.mockImplementation(
@@ -221,6 +222,7 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, R
       ...baseParams,
       silentAnnounce: true,
       wakeOnReturn: true,
+      traceparent: validTraceparent,
     });
 
     expect(didAnnounce).toBe(true);
@@ -232,11 +234,12 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, R
     expect(enqueueSystemEventMock).toHaveBeenCalledTimes(1);
     const [eventText, eventOptions] = enqueueSystemEventMock.mock.calls[0] as [
       string,
-      { sessionKey?: string } | undefined,
+      { sessionKey?: string; traceparent?: string } | undefined,
     ];
     expect(typeof eventText).toBe("string");
     expect(eventText.length).toBeGreaterThan(0);
     expect(eventOptions?.sessionKey).toBe(requesterSessionKey);
+    expect(eventOptions?.traceparent).toBe(validTraceparent);
 
     // Heartbeat wake fired with delegate-return provenance.
     expect(requestHeartbeatNowMock).toHaveBeenCalledTimes(1);
@@ -265,9 +268,10 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, R
     expect(enqueueSystemEventMock).toHaveBeenCalledTimes(1);
     const [, eventOptions] = enqueueSystemEventMock.mock.calls[0] as [
       string,
-      { sessionKey?: string } | undefined,
+      { sessionKey?: string; traceparent?: string } | undefined,
     ];
     expect(eventOptions?.sessionKey).toBe(requesterSessionKey);
+    expect(eventOptions?.traceparent).toBeUndefined();
 
     // Critical: no wake when wakeOnReturn is false.
     expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
@@ -317,10 +321,14 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (#210, R
       ...baseParams,
       silentAnnounce: false,
       wakeOnReturn: false,
+      traceparent: validTraceparent,
     });
 
     // Ordinary delivery path runs.
     expect(deliverSubagentAnnouncementMock).toHaveBeenCalledTimes(1);
+    expect(deliverSubagentAnnouncementMock).toHaveBeenCalledWith(
+      expect.objectContaining({ traceparent: validTraceparent }),
+    );
 
     // No silent-path side effects.
     expect(enqueueSystemEventMock).not.toHaveBeenCalled();
