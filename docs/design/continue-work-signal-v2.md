@@ -86,6 +86,7 @@ This mechanism is not a polling convenience. It is bounded authority for a turn-
   - [D.1 Context-pressure inclusion sketch](#d1-context-pressure-inclusion-sketch)
   - [D.2 Evidence locations](#d2-evidence-locations)
   - [D.3 Most-recent integration test session results (Swim 9 and Swim 10)](#d3-most-recent-integration-test-session-results-swim-9-and-swim-10)
+  - [D.4 In-flight: Swim 41 v5.2-substrate-verification](#d4-in-flight-swim-41-v52-substrate-verification)
 
 ## 1. Problem
 
@@ -1560,8 +1561,7 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 
 | Artifact                                                                 | Location                                                                                                                                                                                                                                                                                                                    |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Swim 7 evidence                                                          | Results doc + raw runtime logs on the [runtime evidence branch](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence) (`SWIM7-RESULTS.md`, `gateway.log`, `raw-capture.log`); chat capture on the [chat evidence branch](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence) |
-| Swim 8 evidence                                                          | [RFC evidence appendix branch](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix)                                                                                                                                                                                                                  |
+| Earlier integration sessions (Swim 7 + Swim 8)                           | Superseded by Swim 9 + Swim 10. Historical evidence preserved on archived branches: [`silas/swim7-runtime-evidence`](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence), [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence), and [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix). See §D.3 for why these are retained as historical context only. |
 | Swim 9 + 10 issue captures and results                                   | [RFC evidence appendix branch](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix)                                                                                                                                                                                                                  |
 | Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191)                                                                                                               |
 | Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                                                                                                                               |
@@ -1618,3 +1618,28 @@ Additional retained notes:
 - `10-H1` was deferred for operational reasons rather than correctness: provider 429s, timeout and restart churn, and an incorrect test syntax (`[[CONTINUE_WORK: text]]` instead of bare `CONTINUE_WORK`).
 - a six-path delegate wiring audit found one divergence on post-compaction flag normalization; the defensive fix was accepted in `1a1e88e15e` after independent cross-review.
 - the qualitative canary report was positive: tools felt natural, silent-wake was effective, and the guardrails held at boundaries.
+
+### D.4 In-flight: Swim 41 v5.2-substrate-verification
+
+**Status:** Forward-looking — prep complete, driver wake-stamp pending.
+
+Swim 41 is the next full-coverage canary cycle following Swim 9 + Swim 10. It targets the v5.2 substrate base after the cohort canonical-line rotation from v2026.4.29 → v2026.5.2. The cycle is intended as the first integration test session against the new base, exercising the substrate-development work from the v3-cohort-fixes line as it lands on v5.2.
+
+**Tracker:** [`karmaterminal/openclaw-bootstrap#892`](https://github.com/karmaterminal/openclaw-bootstrap/issues/892) (`swim-41-v5.2-substrate-verification — TRACKER`).
+
+**Initial OV (observability/verification) coverage scope:**
+
+| OV  | Scope                                                                                                                                                                                                                          | Tracker                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| 1   | failover-policy upstream `#52147` gate works correctly on v5.2 (compaction-failure-no-rotate flow + assistant-rotation-on-plain-timeout flow both behave per `failover-policy.test.ts` + `run.timeout-triggered-compaction.test.ts`) | [openclaw-bootstrap#893](https://github.com/karmaterminal/openclaw-bootstrap/issues/893) |
+| 2   | `incrementCompactionCount` canonical primitives (`mergeSessionEntry` + `activeSessionKey` opt with `normalizeStoreSessionKey(sessionKey.trim())` shape) hold on v5.2: first-turn manual `/compact` count persists; sessionId-rollover sessionStartedAt rolls; activeSessionKey preserve-from-prune holds inside disk lock window | [openclaw-bootstrap#894](https://github.com/karmaterminal/openclaw-bootstrap/issues/894) |
+| 3   | silas-saturation diagnostic instrumentation captures the next continuation-engine saturation event from one liveness/run trace (run-provenance + queue-depth/drain metrics + metrics provider seam + diagnostic events all wire end-to-end on v5.2) | [openclaw-bootstrap#895](https://github.com/karmaterminal/openclaw-bootstrap/issues/895) |
+| 4   | `earlyWarningBand` context-pressure post-compact behaves as `0.3125` default (intentional-pin per figs canon): post-compaction event fires once even on stale-count; early-warning band fires at 25% of configured `contextPressureThreshold`; early `continue_delegate` shape works against the new band                          | [openclaw-bootstrap#896](https://github.com/karmaterminal/openclaw-bootstrap/issues/896) |
+
+The OV row set is initial coverage; additional rows can be added as design lands during driver execution.
+
+**Driver wake-stamp opens execution.** Swim 41 prep is complete; the driver volunteer or figs assignment writes the first execution wake-stamp on tracker `#892`. The cycle then proceeds against the v5.2 base.
+
+**Expected evidence corpus shape:** matches Swim 9 + Swim 10 precedent (issue captures + scorecards + headline result + retained notes). Evidence will land on a future `<author>/swim41-evidence` branch following the existing convention from Swim 9 + 10 evidence locations (§D.2). The corpus will be retained in this appendix as `### D.5 Swim 41 results` once the driver completes the cycle and the corpus settles.
+
+**Why Swim 41 matters for this RFC:** the substrate work documented in this RFC (continuation primitives, context-pressure system, post-compaction lifecycle, OTel chain correlation) was integrated and validated against the v2026.4.29 base in Swim 9 + 10. Swim 41 is the first integration validation against v2026.5.2 base, where the substrate sits alongside upstream changes from the 1543-commit window between v29 and v5.2 (notably: the failover-policy `#52147` gate change). A clean Swim 41 result establishes the substrate's behavior is stable across the base rotation, not just historically validated against the prior base.
