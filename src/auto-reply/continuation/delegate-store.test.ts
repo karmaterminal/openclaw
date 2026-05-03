@@ -435,3 +435,159 @@ describe("peekSoonestUnmaturedDelegateDueAt (swim-35/A2)", () => {
     expect(soonest!).toBeLessThan(before + 30_000 + 5_000);
   });
 });
+
+describe("consumePendingDelegates — concurrent-consumer race contract (#448)", () => {
+  // Pins the contract that two consumers racing on the same TaskFlow rows
+  // release each queued delegate AT MOST ONCE via finishFlow(expectedRevision).
+  //
+  // Background (from #448): runner / followup / hedge drains can fire near-
+  // simultaneously. Existing tests cover serial consumers + FIFO order;
+  // none exercise the actual race where two `consumePendingDelegates` calls
+  // each acquire the same `flow.revision` then race to `finishFlow`.
+  //
+  // The substrate guard is `finishFlow({ expectedRevision })` returning
+  // `{ applied: false, reason: "revision_conflict" }` when the revision has
+  // moved. The mock flow store implements identical semantics. We pin the
+  // contract by interleaving two consumer invocations: both read the queue,
+  // each captures the same flow.revision, then both call finishFlow with the
+  // same expectedRevision. Exactly one wins; the loser must NOT spawn.
+
+  it("sequential consumers: second call sees flow already drained, returns empty", () => {
+    enqueuePendingDelegate("session-1", { task: "single" });
+
+    const first = consumePendingDelegates("session-1");
+    expect(first).toHaveLength(1);
+    expect(first[0].task).toBe("single");
+
+    // The flow is now status=succeeded; second call sees nothing in queued.
+    const second = consumePendingDelegates("session-1");
+    expect(second).toHaveLength(0);
+  });
+
+  it("interleaved consumers: only one wins finishFlow per delegate; loser gets revision_conflict", async () => {
+    const { finishFlow } = await import("../../tasks/task-flow-registry.js");
+    enqueuePendingDelegate("session-1", { task: "raced" });
+
+    // Snapshot the queued flow as both consumers would observe it before
+    // either calls finishFlow. This mirrors the race window where both
+    // consumePendingDelegates invocations have already iterated the queued
+    // list and captured the same revision.
+    const queuedBefore = [
+      ...mockFlows.values(),
+    ].filter((f) => f.ownerKey === "session-1" && f.status === "queued");
+    expect(queuedBefore).toHaveLength(1);
+    const sharedRevision = queuedBefore[0].revision;
+    const flowId = queuedBefore[0].flowId;
+
+    // Consumer A and Consumer B both attempt finishFlow with the same
+    // expectedRevision. The mock implements the same revision-check as the
+    // real TaskFlow store: applied=true on match, revision_conflict otherwise.
+    const aResult = finishFlow({
+      flowId,
+      expectedRevision: sharedRevision,
+      currentStep: "Released to continuation scheduler (consumer A)",
+      stateJson: { releasedBy: "A" },
+    });
+    const bResult = finishFlow({
+      flowId,
+      expectedRevision: sharedRevision,
+      currentStep: "Released to continuation scheduler (consumer B)",
+      stateJson: { releasedBy: "B" },
+    });
+
+    // Exactly one consumer wins.
+    const winners = [aResult, bResult].filter((r: { applied: boolean }) => r.applied);
+    const losers = [aResult, bResult].filter((r: { applied: boolean }) => !r.applied);
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect((losers[0] as { reason?: string }).reason).toBe("revision_conflict");
+
+    // The flow is finalized exactly once (status=succeeded, revision++).
+    const finalized = mockFlows.get(flowId)!;
+    expect(finalized.status).toBe("succeeded");
+    expect(finalized.revision).toBe(sharedRevision + 1);
+  });
+
+  it("two real consumePendingDelegates calls back-to-back: only first drains, second is empty", () => {
+    // The existing consumer code path (`consumePendingDelegates`) already
+    // serializes finishFlow per row internally. This test exercises the
+    // public API rather than the mock primitive: confirms back-to-back
+    // invocations don't double-spawn even when the second call's iteration
+    // happens after the first completed.
+    enqueuePendingDelegate("session-1", { task: "first" });
+    enqueuePendingDelegate("session-1", { task: "second" });
+    enqueuePendingDelegate("session-1", { task: "third" });
+
+    const drained1 = consumePendingDelegates("session-1");
+    expect(drained1.map((d) => d.task)).toEqual(["first", "second", "third"]);
+
+    // Subsequent call sees nothing — all three flows are status=succeeded.
+    const drained2 = consumePendingDelegates("session-1");
+    expect(drained2).toHaveLength(0);
+
+    // Verify total delegate spawns equals enqueue count, not 2× enqueue count.
+    expect(drained1).toHaveLength(3);
+    expect(drained2).toHaveLength(0);
+  });
+
+  it("interleaved consumers across multiple flows: each flow released exactly once", async () => {
+    const { finishFlow } = await import("../../tasks/task-flow-registry.js");
+    enqueuePendingDelegate("session-1", { task: "A" });
+    enqueuePendingDelegate("session-1", { task: "B" });
+    enqueuePendingDelegate("session-1", { task: "C" });
+
+    // Snapshot all three queued flows with their current revisions.
+    // Capture revision as a primitive BEFORE the race: the mock's finishFlow
+    // mutates flow.revision in place, so a live-reference read during the
+    // loop would observe the post-A revision, not the pre-race revision.
+    const queuedBefore = [
+      ...mockFlows.values(),
+    ]
+      .filter((f) => f.ownerKey === "session-1" && f.status === "queued")
+      .map((f) => ({ flowId: f.flowId, capturedRevision: f.revision }));
+    expect(queuedBefore).toHaveLength(3);
+
+    // Two consumers each attempt finishFlow on every flow with the captured
+    // pre-race revision. Each flow should be released exactly once across
+    // both consumers.
+    type Result = { applied: boolean; reason?: string };
+    const aResults: Result[] = [];
+    const bResults: Result[] = [];
+    for (const flow of queuedBefore) {
+      aResults.push(
+        finishFlow({
+          flowId: flow.flowId,
+          expectedRevision: flow.capturedRevision,
+          currentStep: "consumer A",
+        }) as Result,
+      );
+      bResults.push(
+        finishFlow({
+          flowId: flow.flowId,
+          expectedRevision: flow.capturedRevision,
+          currentStep: "consumer B",
+        }) as Result,
+      );
+    }
+
+    // For each flow: exactly one of (A, B) applied; the other got
+    // revision_conflict (because A's finishFlow incremented revision before
+    // B's call). Order is deterministic in this test (A always first per the
+    // sync mock) — proves the contract holds even when A wins every race.
+    for (let i = 0; i < queuedBefore.length; i++) {
+      const a = aResults[i];
+      const b = bResults[i];
+      const winners = [a, b].filter((r) => r.applied);
+      const losers = [a, b].filter((r) => !r.applied);
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(1);
+      expect(losers[0].reason).toBe("revision_conflict");
+    }
+
+    // All three flows are now status=succeeded.
+    const finalized = [
+      ...mockFlows.values(),
+    ].filter((f) => f.ownerKey === "session-1");
+    expect(finalized.every((f) => f.status === "succeeded")).toBe(true);
+  });
+});
