@@ -325,6 +325,26 @@ export function requestHeartbeat(opts: {
   schedule(opts.coalesceMs ?? DEFAULT_COALESCE_MS, "normal");
 }
 
+export function requestHeartbeatNow(opts?: {
+  source?: HeartbeatWakeSource;
+  intent?: HeartbeatWakeIntent;
+  reason?: string;
+  coalesceMs?: number;
+  agentId?: string;
+  sessionKey?: string;
+  heartbeat?: { target?: string };
+}) {
+  requestHeartbeat({
+    source: opts?.source ?? "other",
+    intent: opts?.intent ?? "immediate",
+    reason: opts?.reason,
+    coalesceMs: opts?.coalesceMs,
+    agentId: opts?.agentId,
+    sessionKey: opts?.sessionKey,
+    heartbeat: opts?.heartbeat,
+  });
+}
+
 export function hasHeartbeatWakeHandler() {
   return handler !== null;
 }

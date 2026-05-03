@@ -63,6 +63,7 @@ type AssistantDecisionParams = {
   failoverReason: FailoverReason | null;
   timedOut: boolean;
   timedOutDuringCompaction: boolean;
+  timedOutDuringToolExecution: boolean;
   profileRotated: boolean;
 };
 
@@ -86,10 +87,10 @@ function shouldRotatePrompt(params: PromptDecisionParams): boolean {
 }
 
 function shouldRotateAssistant(params: AssistantDecisionParams): boolean {
-  if (params.aborted) {
-    return false;
-  }
-  return params.failoverFailure || params.failoverReason !== null;
+  return (
+    (!params.aborted && (params.failoverFailure || params.failoverReason !== null)) ||
+    (params.timedOut && !params.timedOutDuringCompaction && !params.timedOutDuringToolExecution)
+  );
 }
 
 export function mergeRetryFailoverReason(params: {

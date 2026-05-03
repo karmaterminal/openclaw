@@ -304,3 +304,13 @@ Notes:
 - The branch has been pushed without squashing after the v5.2 base-rotation merge and regenerated baseline checkpoint.
 - No force-push has been used after the first pushed savegame checkpoint.
 - From this point onward, the candidate branch remains append-only under #326 discipline.
+
+## §6 — verification gates
+
+Started: 2026-05-02T19:40:23-07:00
+
+Gate log:
+
+| Gate        | Result                  | Notes                                                                                                                                                                                                                                                                                          |
+| ----------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm tsgo` | DESIGN-BREAK, then PASS | First run failed with v52 merge-adaptation TypeScript errors in failover timeout policy, heartbeat wake compatibility, continuation TaskFlow owner listing, gateway agent request options, and provider public-artifact loading. Patched those merge seams and reran `pnpm tsgo` successfully. |
