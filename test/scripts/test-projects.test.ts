@@ -548,6 +548,17 @@ describe("scripts/test-projects changed-target routing", () => {
     });
   });
 
+  it("routes the top-level auto-reply target to the auto-reply shard", () => {
+    expect(buildVitestRunPlans(["src/auto-reply"], process.cwd())).toEqual([
+      {
+        config: "test/vitest/vitest.auto-reply.config.ts",
+        forwardedArgs: [],
+        includePatterns: ["src/auto-reply/**/*.test.ts"],
+        watchMode: false,
+      },
+    ]);
+  });
+
   it("routes ACP command source files to ACP command regression tests", () => {
     expect(
       resolveChangedTestTargetPlan([
