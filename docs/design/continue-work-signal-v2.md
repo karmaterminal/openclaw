@@ -8,6 +8,8 @@
 
 This RFC documents a continuation system for persistent OpenClaw sessions. It introduces self-elected turn continuation, delegated follow-up work, context-pressure awareness, and agent-initiated compaction. The implementation is bounded, observable, interruptible, and opt-in.
 
+This mechanism is not a polling convenience. It is bounded authority for a turn-bound agent to make provisions for successor turns: another turn in the same session, a delegated shard, a post-compaction recovery action, or a compaction request that changes the shape of the session before the next agent sees it. The acting agent may not occupy that future context. The substrate therefore records intent in a form a successor can inherit, reject, audit, or complete.
+
 ## Table of Contents
 
 - [1. Problem](#1-problem)
@@ -15,13 +17,14 @@ This RFC documents a continuation system for persistent OpenClaw sessions. It in
   - [1.2 The dwindle pattern](#12-the-dwindle-pattern)
   - [1.3 Requirements for a continuation primitive](#13-requirements-for-a-continuation-primitive)
 - [2. Solution](#2-solution)
-  - [2.1 Unified interface: tools first, response-token fallback](#21-unified-interface-tools-first-response-token-fallback)
-  - [2.2 `continue_work()` semantics](#22-continue_work-semantics)
-  - [2.3 `continue_delegate()` semantics and return modes](#23-continue_delegate-semantics-and-return-modes)
-  - [2.4 `request_compaction()` semantics](#24-request_compaction-semantics)
-  - [2.5 Response-token fallback and token interaction](#25-response-token-fallback-and-token-interaction)
-  - [2.6 Three-tier fallback hierarchy](#26-three-tier-fallback-hierarchy)
-  - [2.7 Design rationale](#27-design-rationale)
+  - [2.1 Terminology and scope](#21-terminology-and-scope)
+  - [2.2 Unified interface: tools first, response-token fallback](#22-unified-interface-tools-first-response-token-fallback)
+  - [2.3 `continue_work()` semantics](#23-continue_work-semantics)
+  - [2.4 `continue_delegate()` semantics and return modes](#24-continue_delegate-semantics-and-return-modes)
+  - [2.5 `request_compaction()` semantics](#25-request_compaction-semantics)
+  - [2.6 Response-token fallback and token interaction](#26-response-token-fallback-and-token-interaction)
+  - [2.7 Capability-tier hierarchy](#27-capability-tier-hierarchy)
+  - [2.8 Design rationale](#28-design-rationale)
 - [3. Implementation](#3-implementation)
   - [3.1 Architecture](#31-architecture)
   - [3.2 Delegate dispatch walkthrough](#32-delegate-dispatch-walkthrough)
@@ -116,7 +119,35 @@ A usable continuation primitive for OpenClaw had to satisfy several constraints 
 
 ## 2. Solution
 
-### 2.1 Unified interface: tools first, response-token fallback
+### 2.1 Terminology and scope
+
+This RFC uses the following terms consistently:
+
+| Term                   | Meaning                                                                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **human-user**         | The person who owns the deployment, grants opt-in, and can interrupt or disable continuation.                                                  |
+| **operator**           | The deploying human-user role when discussing configuration, logs, or runtime policy.                                                          |
+| **turn**               | One model generation cycle with a bounded prompt, tool surface, and reply/follow-up lifecycle.                                                 |
+| **successor turn**     | A later turn that receives structure arranged by an earlier turn: a wake, a delegate result, post-compaction context, or a compaction outcome. |
+| **continuation**       | Agent-elected work that crosses a turn boundary without becoming an unbounded loop.                                                            |
+| **continuation chain** | The bounded sequence of successor turns and delegates tracked by chain count, token budget, and chain id where available.                      |
+| **delegate**           | A sub-agent shard spawned through `continue_delegate()` or bracket fallback, with a task string, mode, and optional delay.                     |
+| **relay**              | A precursor or fallback pattern where one session wakes another by returning a result later.                                                   |
+| **temporal shard**     | Work split across time rather than only across simultaneous agents.                                                                            |
+| **substrate**          | The mechanism that carries a continuation path: process timer/reservation, TaskFlow, session-delivery queue, or compaction lifecycle.          |
+| **broker**             | Gateway code that translates agent intent into substrate mechanics and policy enforcement.                                                     |
+| **TaskFlow**           | The managed-work SQLite-backed substrate used for tool-path pending delegates and post-compaction staging.                                     |
+| **OTel**               | OpenTelemetry trace emission through `extensions/diagnostics-otel`.                                                                            |
+
+Status markers:
+
+- **Shipped behavior** names current runtime and schema contracts.
+- **Implementation note** explains how the contract is carried today without making the implementation shape the public contract.
+- **Historical note** records why a decision exists, but is not itself normative.
+- **Future seam** names plausible extension points that are not shipped.
+- **Non-goal** explicitly excludes behavior from the current RFC.
+
+### 2.2 Unified interface: tools first, response-token fallback
 
 The implemented solution exposes three continuation capabilities as tools on main-session turns when `continuation.enabled: true`, with fallback response syntax when tools are unavailable.
 
@@ -133,11 +164,13 @@ This yields a strict two-interface model:
 - **Primary path:** typed tools with validation, multiple calls per turn where appropriate, and explicit schemas.
 - **Fallback path:** response-terminal syntax that works when tools are disabled by human-user policy, unavailable to a given depth, or fail in the current turn.
 
-### 2.2 `continue_work()` semantics
+### 2.3 `continue_work()` semantics
 
 `continue_work()` is the same-session continuation primitive.
 
 **Purpose:** request another turn for the current session after an optional delay.
+
+`continue_work()` is temporal self-scheduling, not a loop primitive. Each accepted call elects one successor turn and remains subject to chain, cost, delay, and human-user opt-in bounds. The absence of a continuation request is as meaningful as its presence: the agent can elect to stop.
 
 **Behavior:** calling `continue_work()` schedules a future turn and the current turn completes normally. The call does not terminate the active turn, and it does not force an immediate second generation inside the same turn.
 
@@ -145,17 +178,17 @@ If `delaySeconds` is 30 and the current turn is still active, the 30-second time
 
 **Safety model:** the scheduled continuation remains subject to chain-length and token-budget guards. If the session has already exhausted its configured continuation budget, the call is rejected and the agent may stop, persist state to files, or choose another recovery path.
 
-### 2.3 `continue_delegate()` semantics and return modes
+### 2.4 `continue_delegate()` semantics and return modes
 
 `continue_delegate()` is the delegated continuation primitive.
 
 **Purpose:** dispatch a sub-agent with typed task, mode, and delay parameters, then route its completion back into the parent continuation chain.
 
-The shipped runtime has one canonical completion recipient per delegate. By default, that recipient is the session that dispatched the delegate. Delegates using `normal` mode also announce their result to the channel, where the main session can observe it directly regardless of chain depth. For `silent` and `silent-wake` modes, the result is routed through the continuation chain without visible channel echo.
+`continue_delegate()` externalizes a shard of future cognition. The task string is a letter to a successor worker: it must carry scope, evidence requirements, desired return shape, and the parent action it is meant to enable.
 
-The descriptor surface also includes `targetSessionKey?: string` as the explicit local-recipient seam. Current execution still rejects a provided `targetSessionKey` as descriptor-only, so this RFC treats explicit cross-session return as an exposed design seam whose runtime wiring is pending, not as shipped behavior.
+**Shipped behavior:** the current tool schema exposes `task`, `delaySeconds`, and `mode`. It does **not** expose `targetSessionKey`. The shipped runtime has one completion recipient per delegate: the session that dispatched the delegate. Delegates using `normal` mode also announce their result to the channel, where the main session can observe it directly regardless of chain depth. For `silent` and `silent-wake` modes, the result is routed through the continuation chain without visible channel echo.
 
-The next shape is multi-recipient delegate return, tracked in #355: `targetSessionKeys: string[]`. Its goal is "generate once, deliver byte-identically to many" for cases such as "return to the parent and announce to an operations session." This is distinct from multi-delegate fan-out. Multi-delegate fan-out runs N delegates that may produce N different artifacts; multi-recipient return runs one delegate and delivers the same completion envelope to N recipients. Each recipient should resolve independently through the `FallbackResolver` policy shape (`"follow" | "echo" | "drop"` or a resolver function), so one unavailable receiver does not implicitly drop the whole fan-out. Aspect multiplexing, per-receiver transformation, and backpressure-aware multicast remain future surfaces outside this RFC.
+**Future seam / non-goal:** explicit local-recipient addressing (`targetSessionKey`) and multi-recipient delegate return (`targetSessionKeys: string[]`) are future work unless and until the tool schema exposes them. Multi-recipient return is distinct from multi-delegate fan-out: multi-delegate fan-out runs N delegates that may produce N different artifacts; multi-recipient return would run one delegate and deliver the same completion envelope to N recipients. Aspect multiplexing, per-receiver transformation, and backpressure-aware multicast remain outside this RFC.
 
 Compared with bracket syntax, `continue_delegate()` adds three core properties:
 
@@ -180,11 +213,13 @@ The delegate return modes are:
 
 Without `silent-wake`, parent-orchestrated chain hops can stall. In canary testing, enrichment arrived successfully but did not trigger hop 2 until an unrelated external message arrived six minutes later.
 
-### 2.4 `request_compaction()` semantics
+### 2.5 `request_compaction()` semantics
 
 `request_compaction()` is the agent-initiated compaction primitive.
 
 **Purpose:** allow the agent to prepare working state, then request compaction on its own schedule rather than waiting for overflow.
+
+`request_compaction()` is the agent asking to become smaller under controlled conditions. It does not compact immediately and it does not let a child compact its parent. It asks the platform to perform the lifecycle transition after the current turn, after the agent has had a chance to evacuate state.
 
 **Behavior:** the tool enqueues compaction and returns immediately. The current turn finishes normally; compaction runs between turns on the same path used by platform compaction.
 
@@ -194,7 +229,7 @@ The tool has no response-token fallback. Volitional compaction is tool-only in t
 
 `request_compaction()` works in concert with context-pressure awareness (§4.2) and post-compaction delegate release (§4.4): the agent notices rising pressure, prepares working state, stages recovery delegates, and then elects compaction. The three capabilities together form a volitional compaction lifecycle—awareness, preparation, and execution—all under agent control.
 
-### 2.5 Response-token fallback and token interaction
+### 2.6 Response-token fallback and token interaction
 
 When tools are unavailable, the continuation system falls back to terminal response syntax:
 
@@ -214,6 +249,15 @@ Limitations of fallback syntax:
 - No multi-delegate fan-out in a single turn.
 - No fallback form for `request_compaction()`.
 
+Parser constraints are part of the portable interface:
+
+- The runner scans backward to the last text payload before parsing, because tool-call payloads may follow the response text.
+- Bracket/response-token syntax takes precedence over a same-turn `continue_work()` tool request when both exist.
+- The delegate parser matches the last end-anchored `[[CONTINUE_DELEGATE: ...]]` block and supports multiline task bodies.
+- Delegate fallback accepts an optional `+Ns` suffix for spawn delay and optional `| silent` / `| silent-wake` suffixes.
+- Delegate fallback task text is truncated to 4096 characters, matching the tool schema.
+- `CONTINUE_WORK` accepts an optional integer seconds suffix as `CONTINUE_WORK:N`.
+
 Token interaction remains straightforward:
 
 | Combination                      | Behavior                                          |
@@ -223,7 +267,7 @@ Token interaction remains straightforward:
 | Response text + `CONTINUE_WORK`  | Deliver response text, then schedule continuation |
 | `CONTINUE_WORK` alone            | Silent continuation                               |
 
-### 2.6 Three-tier fallback hierarchy
+### 2.7 Capability-tier hierarchy
 
 The system follows a three-tier capability hierarchy.
 
@@ -243,36 +287,26 @@ Tier 3: continuation.enabled=false
 ```
 
 ```mermaid
-flowchart TB
-    subgraph T1["Tier 1: Tools available"]
-        CW1["continue_work()"] --> SCHED1["Schedule turn"]
-        CD1["continue_delegate()"] --> DISP1["Dispatch delegate"]
-        RC1["request_compaction()"] --> COMP1["Enqueue compaction"]
-    end
-
-    subgraph T2["Tier 2: Response-token fallback"]
-        CW2["CONTINUE_WORK / CONTINUE_WORK:N"] --> SCHED2["Schedule turn"]
-        CD2["[[CONTINUE_DELEGATE: ...]]"] --> DISP2["Dispatch delegate"]
-        RC2["request_compaction() unavailable"]
-    end
-
-    subgraph T3["Tier 3: Continuation disabled"]
-        OFF["Standard single-turn mode"]
-    end
-
-    subgraph OUT["Shared continuation machinery"]
-        direction LR
-        WAKE["[continuation:wake]"]
-        SPAWN["Sub-agent spawned"]
-        LANE["Compaction after turn"]
-    end
-
-    SCHED1 & SCHED2 --> WAKE
-    DISP1 & DISP2 --> SPAWN
-    COMP1 --> LANE
+flowchart TD
+    A["Agent wants a successor-turn action"] --> B{"continuation.enabled?"}
+    B -- "false" --> OFF["Tier 3: no continuation surface; ordinary single-turn behavior"]
+    B -- "true" --> C{"typed tool registered and available in this turn?"}
+    C -- "yes" --> D["Tier 1: prefer tool call"]
+    D --> E{"tool call accepted?"}
+    E -- "yes: continue_work" --> W["schedule same-session wake after turn"]
+    E -- "yes: continue_delegate" --> G["enqueue/drain delegate work"]
+    E -- "yes: request_compaction" --> Q["enqueue async compaction"]
+    E -- "no / tool denied / leaf policy" --> F{"terminal response-token syntax present?"}
+    C -- "no" --> F
+    F -- "CONTINUE_WORK[:N]" --> W
+    F -- "[[CONTINUE_DELEGATE: ...]]" --> G
+    F -- "none" --> IDLE["turn ends; no elected continuation"]
+    F -- "request_compaction wanted" --> NOFALL["unavailable: no response-token fallback"]
 ```
 
-### 2.7 Design rationale
+The hierarchy is a decision rule, not a user-facing mode switch. Tier 2 is selected by capability or policy failure; agents should prefer typed tools when the gateway presents them.
+
+### 2.8 Design rationale
 
 1. **Gate by capability, not turn type.** Tool visibility is controlled by `continuation.enabled`, while abuse prevention is handled by runtime guards such as `maxDelegatesPerTurn`, `maxChainLength`, and `costCapTokens`.
 2. **Prefer structured invocation.** Tools avoid the fragility of regex parsing and allow explicit schemas.

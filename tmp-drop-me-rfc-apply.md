@@ -74,3 +74,34 @@ Initial rewrite estimate:
 - Apply: inline the review's language into §1, primitive semantics, applicability, and the final discussion.
 - Defer: none.
 - Cross-check: closing returns to bounded successor-turn provision rather than ending as a backlog list.
+
+## §2.A applied - TOC byte-accuracy
+
+Applied in `docs/design/continue-work-signal-v2.md`:
+
+- Added `2.1 Terminology and scope` to the TOC/body.
+- Renumbered the §2 interface subsections through `2.8 Design rationale`.
+- Replaced the old §2.6 title with `2.7 Capability-tier hierarchy`.
+
+Check result: heading/TOC count is 73/73 after the structural insert. The quick slug script needs GitHub-style underscore preservation for code spans, but the changed anchors follow the same convention already used by the RFC (`continue_work`, `continue_delegate`, `request_compaction`).
+
+## §2.B applied - structural separation
+
+Applied:
+
+- Added early term definitions for human-user/operator, turn/successor turn, continuation chain, delegate, relay, temporal shard, substrate, broker, TaskFlow, and OTel.
+- Added explicit shipped/implementation/historical/future/non-goal status markers.
+- Corrected the §2 primitive surface so shipped semantics are separated from future seams (`targetSessionKey` and multi-recipient return).
+
+Deferred:
+
+- Full top-level rewrite into the review's proposed 11-section outline. The concrete fixes are being applied in-place to preserve reviewability and avoid whole-document churn.
+
+## §2.C applied - narrative flow
+
+Applied:
+
+- Added bounded successor-turn authority language in the opening.
+- Reframed `continue_work()`, `continue_delegate()`, and `request_compaction()` as future-turn arrangement primitives.
+- Expanded fallback grammar into one self-contained constraints block.
+- Replaced the old capability diagram with a decision tree so the cold-reader can follow enabled/tool-denied/fallback/disabled paths.
