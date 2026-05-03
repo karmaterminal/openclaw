@@ -1671,7 +1671,7 @@ Public evidence (Swim 9, Swim 10, Swim 41) is published in the [`karmaterminal/k
 
 ### D.3 Historical integration test session results (Swim 9 and Swim 10)
 
-These sessions are retained as historical behavioral evidence for the shipped feature. They are not the current validation cycle; Swim 41 is the current v5.2 substrate recheck (§D.4). Public evidence links are pending the public evidence repository named in §D.2.
+These sessions are retained as historical behavioral evidence for the shipped feature. They are not the current validation cycle; Swim 41 is the current v5.2 substrate recheck (§D.4). Public evidence is published in the repository named in §D.2.
 
 Swim 9:
 
@@ -1716,7 +1716,7 @@ Additional retained notes:
 
 ### D.4 Current validation cycle: Swim 41 v5.2 substrate verification
 
-**Current validation status:** execution opened; two of four initial observability/verification rows are closed; final public evidence publication is pending.
+**Current validation status:** execution opened; three of four initial observability/verification rows are closed; public evidence is published; OV-4 live-host verification remains in flight.
 
 Swim 41 is the current full-coverage canary cycle following Swim 9 + Swim 10. It targets the v5.2 substrate base after the base rotation from v2026.4.29 to v2026.5.2. The cycle exercises the continuation substrate against the new base, with emphasis on compaction, context-pressure, continuation-queue diagnostics, and upstream failover-policy interaction.
 
