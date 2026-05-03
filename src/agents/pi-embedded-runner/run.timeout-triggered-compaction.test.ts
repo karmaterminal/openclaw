@@ -100,7 +100,7 @@ describe("timeout-triggered compaction", () => {
       }),
     );
     expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
-    // Regression guard (#61 / #289): timeout-compaction path must emit a
+    // Regression guard: timeout-compaction path must emit a
     // [context-pressure:fire] anchor in the same format as the overflow path,
     // so operators grepping for mid-turn pressure triggers (trigger F,
     // RFC §4.1) see the timeout-driven compaction that bypasses
@@ -543,7 +543,7 @@ describe("timeout-triggered compaction", () => {
   it("emits [session-key:missing] when sessionKey is missing on timeout path", async () => {
     // Same setup as the first test but with empty sessionKey — the
     // enqueueSystemEvent gate should skip and leave a breadcrumb via the
-    // canonical session-key skip helper (#292).
+    // canonical session-key skip helper.
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(
       makeAttemptResult({
         timedOut: true,

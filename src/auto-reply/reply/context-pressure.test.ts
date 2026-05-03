@@ -15,7 +15,7 @@ vi.mock("../../logging/subsystem.js", () => ({
   createSubsystemLogger: () => mockedLog,
 }));
 /**
- * Context-pressure awareness tests (#165).
+ * Context-pressure awareness tests.
  *
  * Tests the `checkContextPressure` injection logic that fires
  * [system:context-pressure] events when session token usage crosses

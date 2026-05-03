@@ -12,7 +12,7 @@ import {
 import type { SessionEntry } from "./types.js";
 
 /**
- * Trap-test for #443 — negative store-merge guard for `updatedAt` churn during
+ * Trap-test for the negative store-merge guard for `updatedAt` churn during
  * continuation persist.
  *
  * The production path lives in `src/auto-reply/reply/agent-runner.ts`
@@ -95,7 +95,7 @@ async function persistChainSpread(
   );
 }
 
-describe("session store: continuation chain persist updatedAt churn guard (#443)", () => {
+describe("session store: continuation chain persist updatedAt churn guard", () => {
   const suiteRootTracker = createSuiteTempRootTracker({
     prefix: "openclaw-store-cont-merge-",
   });
@@ -149,7 +149,7 @@ describe("session store: continuation chain persist updatedAt churn guard (#443)
     expect(
       after[SESSION_KEY]?.updatedAt,
       "updatedAt must not change when continuation-chain fields are byte-identical " +
-        "(persistContinuationChainState must not include updatedAt in its spread — #443)",
+        "(persistContinuationChainState must not include updatedAt in its spread)",
     ).toBe(SEEDED_UPDATED_AT);
 
     // All chain fields must still equal the seeded values.
@@ -172,7 +172,7 @@ describe("session store: continuation chain persist updatedAt churn guard (#443)
       expect(
         writeSpy,
         "no-op continuation-chain persist must not hit writeTextAtomic " +
-          "(getSerializedSessionStore short-circuit at store.ts:~358 — #443)",
+          "(getSerializedSessionStore short-circuit at store.ts:~358)",
       ).not.toHaveBeenCalled();
     } finally {
       writeSpy.mockRestore();
@@ -202,7 +202,7 @@ describe("session store: continuation chain persist updatedAt churn guard (#443)
     expect(
       after[SESSION_KEY]?.updatedAt,
       "updatedAt must be preserved even when chain tokens change — " +
-        "the spread in persistContinuationChainState carries chain fields only (#443)",
+        "the spread in persistContinuationChainState carries chain fields only",
     ).toBe(SEEDED_UPDATED_AT);
     expect(after[SESSION_KEY]?.continuationChainTokens).toBe(mutated.continuationChainTokens);
   });

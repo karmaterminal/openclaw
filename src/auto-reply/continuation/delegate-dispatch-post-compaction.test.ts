@@ -1,11 +1,9 @@
 /**
  * Tests for post-compaction delegate dispatch error handling.
  *
- * Issue #203: Silent catch was swallowing post-compaction delegate spawn failures.
+ * Silent catch was swallowing post-compaction delegate spawn failures.
  * This test verifies that spawn failures are now properly logged and surfaced
  * as system events, matching the pattern in the regular delegate dispatch path.
- *
- * See also: #639 for the bug-class precedent.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

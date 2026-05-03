@@ -346,8 +346,8 @@ describe("tool delegate dispatch contract", () => {
   });
 });
 
-describe("dispatchToolDelegates — TaskFlow status after spawn failure (#449)", () => {
-  // Pins the contract that #449 issue body called out as structurally-unpinned:
+describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => {
+  // Pins the contract that the regression report called out as structurally unpinned:
   // "what is the intended TaskFlow status after spawn failure?"
   //
   // Current emergent behavior on v5.2 (`delegate-dispatch.ts:160 + 240-292`):

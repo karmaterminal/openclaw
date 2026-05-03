@@ -1,7 +1,7 @@
 /**
  * Tests for volitional compaction call-site threading.
  *
- * Regression coverage for #639 fix arc:
+ * Regression coverage for the volitional compaction threading fix arc:
  * - The triggerCompaction closure passed to request_compaction tool must call
  *   compactEmbeddedPiSession with the session's active provider/model/authProfileId
  *   — NOT the hardcoded defaults (DEFAULT_PROVIDER/DEFAULT_MODEL).
@@ -55,7 +55,7 @@ vi.mock("../../agents/pi-embedded-runner/compact.queued.js", () => ({
  * Recreates the triggerCompaction closure pattern from followup-runner.ts:269-312.
  *
  * This is the closure that gets passed to createRequestCompactionTool.
- * The key bug #639 behavior: it must use the captured provider/model from the
+ * Key behavior: it must use the captured provider/model from the
  * fallback dispatcher, NOT the hardcoded DEFAULT_PROVIDER/DEFAULT_MODEL.
  *
  * @param innerProvider - The provider selected by runWithModelFallback (may differ from run.provider on fallback)
@@ -81,11 +81,11 @@ function buildTriggerCompactionClosure(
       const { compactEmbeddedPiSession } =
         await import("../../agents/pi-embedded-runner/compact.queued.js");
 
-      // bug #639: thread the session's active provider/model through so
+      // Thread the session's active provider/model through so
       // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL
       // (openai/gpt-5.4) which nobody has auth for.
       //
-      // bug #639 (scribe follow-up): thread authProfileId only when the
+      // Thread authProfileId only when the
       // inner-scope provider matches the persisted primary (the persisted
       // profile is keyed to the primary). On fallback to a different provider,
       // leave undefined so resolveEmbeddedCompactionTarget picks the default
@@ -120,10 +120,10 @@ function buildTriggerCompactionClosure(
 }
 
 // ---------------------------------------------------------------------------
-// Tests: Provider/Model threading (#639 regression)
+// Tests: Provider/Model threading
 // ---------------------------------------------------------------------------
 
-describe("call-site threading: provider/model passthrough (#639)", () => {
+describe("call-site threading: provider/model passthrough", () => {
   beforeEach(() => {
     capturedCompactCalls.length = 0;
     compactEmbeddedPiSessionMock.mockClear();
@@ -234,10 +234,10 @@ describe("call-site threading: provider/model passthrough (#639)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests: authProfileId fallback-drop (#639 scribe follow-up)
+// Tests: authProfileId fallback-drop
 // ---------------------------------------------------------------------------
 
-describe("call-site threading: authProfileId fallback-drop (#639)", () => {
+describe("call-site threading: authProfileId fallback-drop", () => {
   beforeEach(() => {
     capturedCompactCalls.length = 0;
     compactEmbeddedPiSessionMock.mockClear();

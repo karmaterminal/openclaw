@@ -1,7 +1,7 @@
 /**
  * Tests for volitional compaction counter truthfulness and log-level correctness.
  *
- * Regression coverage for #639 fix arc:
+ * Regression coverage for the volitional compaction outcome-accounting fix arc:
  * - Counter increments ONLY on {ok:true, compacted:true}
  * - Legit-skip reasons (nothing to compact, below threshold, etc.) log at info
  * - Real failures (unknown model, provider errors) log at warn
@@ -86,10 +86,10 @@ async function drainMicrotasks(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Tests: Counter truthfulness (#639 regression)
+// Tests: Counter truthfulness
 // ---------------------------------------------------------------------------
 
-describe("volitional compaction counter truthfulness (#639)", () => {
+describe("volitional compaction counter truthfulness", () => {
   beforeEach(() => {
     _resetGuardState();
     _resetVolitionalCounts();
@@ -222,7 +222,7 @@ describe("volitional compaction counter truthfulness (#639)", () => {
     expect(countAfter).toBe(countBefore);
   });
 
-  it("does NOT increment counter on {ok:false, reason:'unknown model'} (bug #639)", async () => {
+  it("does NOT increment counter on {ok:false, reason:'unknown model'}", async () => {
     const triggerCompaction = vi.fn(async () => ({
       ok: false,
       compacted: false,
@@ -306,10 +306,10 @@ describe("volitional compaction counter truthfulness (#639)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests: Log level correctness per outcome (#639 regression)
+// Tests: Log level correctness per outcome
 // ---------------------------------------------------------------------------
 
-describe("volitional compaction log levels (#639)", () => {
+describe("volitional compaction log levels", () => {
   beforeEach(() => {
     _resetGuardState();
     _resetVolitionalCounts();
@@ -376,7 +376,7 @@ describe("volitional compaction log levels (#639)", () => {
     expect(infoCall).toBeDefined();
   });
 
-  it("logs at WARN level with [resolved-failure] anchor for 'unknown model' (bug #639)", async () => {
+  it("logs at WARN level with [resolved-failure] anchor for 'unknown model'", async () => {
     const triggerCompaction = vi.fn(async () => ({
       ok: false,
       compacted: false,

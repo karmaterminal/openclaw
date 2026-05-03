@@ -18,7 +18,7 @@ vi.mock("../../agents/sandbox.js", () => ({
 
 vi.mock("../../config/sessions/store.js", () => ({
   updateSessionStore: vi.fn(async () => {}),
-  // Stubbed for swim-35/A1: identity-style resolver. See sister test for rationale.
+  // Stubbed identity-style resolver. See sister test for rationale.
   resolveSessionStoreEntry: vi.fn(
     ({ store, sessionKey }: { store: Record<string, unknown>; sessionKey: string }) => ({
       normalizedKey: sessionKey,

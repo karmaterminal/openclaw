@@ -6,9 +6,8 @@ import { loadSessionStore, type SessionEntry } from "../../config/sessions.js";
 import { incrementCompactionCount } from "./session-updates.js";
 
 // Regression coverage for the canonical-primitives fix in
-// `incrementCompactionCount` (replaces the b82fd65c00 shape that was stripped
-// from #542 because it dropped `mergeSessionEntry` semantics + the
-// `activeSessionKey` preserve-from-prune opt).
+// `incrementCompactionCount` (replaces the b82fd65c00 shape that dropped
+// `mergeSessionEntry` semantics + the `activeSessionKey` preserve-from-prune opt).
 //
 // These tests exercise the load-bearing edges via real fs:
 //   1. First-turn manual /compact: in-memory session has an entry but the
