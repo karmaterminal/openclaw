@@ -154,6 +154,7 @@ export type SpawnSubagentParams = {
   continuationTargetSessionKey?: string;
   continuationTargetSessionKeys?: string[];
   continuationFanoutMode?: "tree" | "all";
+  traceparent?: string;
 };
 
 export type SpawnSubagentContext = {
@@ -1281,6 +1282,7 @@ export async function spawnSubagentDirect(
       ...(params.continuationFanoutMode
         ? { continuationFanoutMode: params.continuationFanoutMode }
         : {}),
+      ...(params.traceparent ? { traceparent: params.traceparent } : {}),
     });
   } catch (err) {
     await rollbackPreparedContextEngine(contextEnginePreparation);

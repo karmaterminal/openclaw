@@ -410,6 +410,9 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     expect(dispatch.attributes["delegate.delivery"]).toBe("immediate");
     expect(dispatch.attributes["delegate.mode"]).toBe("normal");
     expect(dispatch.traceparent).toBe("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+    });
   });
 
   it("reservation-missing path: timer fire emits `continuation.delegate.fire` AND sibling `continuation.disabled (reason=reservation.missing)` sharing chain.id", async () => {

@@ -2228,6 +2228,7 @@ export async function runReplyAgent(params: {
                       ...(options?.silent ? { silentAnnounce: true } : {}),
                       ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                       drainsContinuationDelegateQueue: true,
+                      ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
                     },
                     {
                       agentSessionKey: sessionKey,
@@ -2656,6 +2657,7 @@ export async function runReplyAgent(params: {
                   ...(options?.silent ? { silentAnnounce: true } : {}),
                   ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                   drainsContinuationDelegateQueue: true,
+                  ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
                 },
                 {
                   agentSessionKey: sessionKey,

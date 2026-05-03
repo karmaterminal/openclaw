@@ -283,6 +283,7 @@ describe("subagent registry persistence", () => {
       cleanup: "keep",
       silentAnnounce: true,
       wakeOnReturn: true,
+      traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
     });
     await writeChildSessionEntry({
       sessionKey: "agent:main:subagent:silent-test",
@@ -293,10 +294,12 @@ describe("subagent registry persistence", () => {
     const run = await readPersistedRun<{
       silentAnnounce?: boolean;
       wakeOnReturn?: boolean;
+      traceparent?: string;
     }>(registryPath, "run-silent");
     expect(run).toMatchObject({
       silentAnnounce: true,
       wakeOnReturn: true,
+      traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
     });
 
     resetSubagentRegistryForTests({ persist: false });
@@ -313,6 +316,7 @@ describe("subagent registry persistence", () => {
           childRunId: "run-silent",
           silentAnnounce: true,
           wakeOnReturn: true,
+          traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
         }),
       );
     });
