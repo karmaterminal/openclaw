@@ -420,3 +420,56 @@ Planned command:
 ```bash
 git merge origin/frond-scribe/20260429/v3-cohort-fixes
 ```
+
+### §3 — absorption merge closeout
+
+Closed: 2026-05-02T20:27:00-07:00
+
+Merge commit: `bc7f0503ae70fc3b8fb957633662ed8b729840b4`
+
+Follow-up test-import repair commit: `62c89210d4fe` (`src/infra/heartbeat-wake.test.ts` imported the absorbed `requestHeartbeatNow` helper).
+
+Conflicts resolved:
+
+| Path                                                | Resolution                                                                                                                                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/.generated/plugin-sdk-api-baseline.sha256`    | Temporarily kept v52 side; §5 regeneration will produce the authoritative merged hash.                                                                                                |
+| `src/cli/gateway-cli/run.option-collisions.test.ts` | Kept v52 partial mock that preserves `SUPERVISOR_HINT_ENV_VARS` while overriding `detectRespawnSupervisor`.                                                                           |
+| `src/infra/heartbeat-wake.ts`                       | Combined v52 wake source/intent priority shape with #537 `parentRunId` propagation, then corrected coalescing so a newer same-target wake without `parentRunId` clears stale lineage. |
+| `src/logging/diagnostic.ts`                         | Combined v52 idle-liveness info behavior / warning cooldown separation with #537 continuation queue metrics, samples, and log suffixes.                                               |
+| `src/logging/diagnostic.test.ts`                    | Kept both v52 idle/open-work liveness tests and #537 continuation queue sample/history coverage.                                                                                      |
+
+Merge sanity:
+
+| Check                              | Result                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| `02e438a9b5` ancestor of HEAD      | yes                                                                                    |
+| `b8a8c0674d` ancestor of HEAD      | yes                                                                                    |
+| `dda74a79f0` ancestor of HEAD      | yes                                                                                    |
+| `8b2a6e57fe` ancestor of HEAD      | yes                                                                                    |
+| Root `WORKORDER.md` from #537      | absent; source had already moved it to `docs/design/532-silas-saturation-workorder.md` |
+| Conflict markers in resolved files | none                                                                                   |
+
+Focused preflight:
+
+```bash
+pnpm test src/infra/heartbeat-wake.test.ts src/infra/heartbeat-runner.scheduler.test.ts src/logging/diagnostic.test.ts src/auto-reply/reply/session-updates.compaction.test.ts src/auto-reply/reply/run-provenance.test.ts
+```
+
+Result: PASS after the follow-up import repair commit.
+
+### §4 — Codex / prince comment-pop closeout
+
+Closed: 2026-05-02T20:28:00-07:00
+
+Comment-pops checked:
+
+| Source                                                             | Disposition                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #542 Codex P2s on `session-updates.ts`                             | Absorbed through #545's replacement fix; #542 review threads are outdated.                                                                                                                                                          |
+| #545 Codex P2 on trimmed active-session key                        | Addressed in absorbed code: `updateSessionStore(..., { activeSessionKey: normalizeStoreSessionKey(sessionKey.trim()) })`.                                                                                                           |
+| #537 Codex P2 on stale `parentRunId` coalescing                    | Addressed during merge resolution in `src/infra/heartbeat-wake.ts`; newer same-target wakes without a parent now clear stale lineage.                                                                                               |
+| #537 Codex P2 on forwarding `parentRunId` through heartbeat runner | Addressed in `src/infra/heartbeat-runner.ts`; wake handler and targeted/all-agent `runOnce` calls now forward `params.parentRunId`.                                                                                                 |
+| #537 prince comments on root `WORKORDER.md` and authorship         | Root workorder pollution was already resolved by the source wave (`docs/design/532-silas-saturation-workorder.md`); authorship cleanup is history-level source-branch concern and not rewritten in this append-only v52 absorption. |
+
+No additional prince feedback on #546 required code beyond the wave absorption.
