@@ -92,3 +92,98 @@ Started: 2026-05-02T18:41:32-07:00.
 - Top surprise 2: `continue_delegate` intentionally omits `targetSessionKey` from the shipped schema, while the RFC still says the descriptor surface includes it and treats it as a pending runtime seam.
 - Top surprise 3: the shipped OTel/trace surface has outpaced §6.6 substantially; current code has `work.fire`, `delegate.fire`, queue-drain, compaction-release, disabled, and heartbeat spans, while the RFC table uses older enqueue/spawn/return names.
 - Initial gut: the RFC contains the raw material for scientific literature, but currently reads as a hybrid of functional documentation, post-hoc implementation ledger, and canary report. The strongest substrate claims are real; the document needs sharper terminology, normative/implementation separation, and updated claim pins before it reads like cold-pickup scientific literature for future agents.
+
+## §2 — TOC accuracy + narrative flow audit
+
+### §2.A — TOC byte-accuracy
+
+Programmatic heading walk result:
+
+- TOC entries: 72.
+- Body `##` / `###` headings excluding `## Table of Contents`: 72.
+- TOC entries that do not exist in body: none.
+- Body sections missing from TOC: none.
+- Anchor mismatches between TOC slug and heading slug: none.
+- Body placement disagreements against TOC order: none.
+
+Conclusion: byte-accuracy is a pass. The table of contents is mechanically correct against the current body.
+
+### §2.B — TOC organizational rewrite proposal
+
+The current TOC is accurate but not the right canonical shape for a load-bearing RFC. It organizes the document around implementation chronology (`Implementation`, `Platform Integration`, `Configuration`, `Observability`, `Testing`) rather than around the contract a future agent/operator needs to rely on. That makes several normative claims hard to distinguish from shipped-code evidence and canary narrative.
+
+Proposed top-level structure:
+
+```text
+1. Introduction and Problem Statement
+2. Terminology and Scope
+   2.1 Agent, human-user, turn, successor turn
+   2.2 Continuation, continuation chain, delegate, relay
+   2.3 Temporal shard, lifecycle trigger, substrate, broker
+   2.4 Normative language and implementation-status markers
+3. Interface Semantics
+   3.1 Capability tiers: tools-first, response-token fallback, disabled
+   3.2 continue_work()
+   3.3 continue_delegate()
+   3.4 request_compaction()
+   3.5 Response-token fallback grammar
+   3.6 Return modes and recipient model
+4. Lifecycle Model
+   4.1 Turn-bound scheduling and delay semantics
+   4.2 Delegate dispatch, return, and chain-budget accounting
+   4.3 Context-pressure trigger taxonomy
+   4.4 Volitional compaction lifecycle
+   4.5 Post-compaction relay and rehydration
+5. Substrates and Persistence
+   5.1 Gateway integration architecture
+   5.2 TaskFlow-backed delegate queue
+   5.3 Session-delivery queue and restart recovery
+   5.4 Gateway as lifecycle broker
+   5.5 Non-goals: cross-host wire exposure and explicit targetSessionKey
+6. Operational Configuration
+   6.1 Core configuration surface and defaults
+   6.2 Hot-reload enforcement points
+   6.3 Fleet and fan-out profiles
+7. Observability and Trace Semantics
+   7.1 Log anchors
+   7.2 Status surface
+   7.3 Span names and required attributes
+   7.4 Privacy/redaction expectations
+8. Applicability Statement / Production Use Cases
+9. Security and Safety Considerations
+   9.1 Human-user consent and abuse bounds
+   9.2 Temporal gap and payload integrity
+   9.3 Failure modes and operational limitations
+10. Implementation Status and Validation Summary
+11. Future Work
+Appendix A. Detailed test evidence
+Appendix B. Alternatives and prior art
+Appendix C. Proposed but unimplemented extensions
+Appendix D. Evidence map
+```
+
+Rationale by requested cut:
+
+- Add `Terminology and Scope` before solution. IETF-style RFCs define terms before depending on them; here `delegate`, `relay`, `temporal shard`, `substrate`, `chain`, and `successor turn` carry contract weight and are currently introduced opportunistically across §2–§4.
+- Collapse current §3 and §4 into a semantics/lifecycle/substrate sequence. Implementation usually supports a protocol/lifecycle contract; putting `Platform Integration` beside `Implementation` makes compaction hooks feel like an adjacent feature instead of part of the continuation lifecycle.
+- Move configuration after substrate semantics, not as a peer of implementation. In canonical operational RFCs, configuration is an operational control plane over a defined behavior, not the behavior itself.
+- Move safety/security toward the end, after the reader knows the full substrate and before appendices. RFC convention treats Security Considerations as an explicit late section so every earlier contract can be evaluated against it; the current §7 before use cases is defensible but weakens the final security scan.
+- Move detailed testing to an appendix or "Implementation Status and Validation Summary." RFC 7942-style implementation-status content is useful, but it should not be the main close of a substrate RFC. The contract is the substrate; tests are evidence.
+- Keep `Applicability Statement / Production Use Cases` in the body but make it shorter. In RFC convention, applicability statements explain where the mechanism fits; detailed canary/test scorecards belong in validation appendices.
+- Split shipped behavior from future seams. Current §2.3 and §10.2 mix shipped recipient semantics with `targetSessionKey`/multi-recipient future shapes; the rewritten TOC should isolate non-goals/future work so future agents do not mistake future seams for available contract.
+
+### §2.C — Narrative flow
+
+- §1 motivates the substrate well enough to justify the work, especially the inter-turn inertia and dwindle-pattern framing. It should still name the larger substrate-stakes claim earlier: this is not merely "agent can continue"; it is "agent can make bounded arrangements for successor turns across time and lifecycle boundaries."
+- §2.x is mostly self-contained for the three public primitives, but §2.3 undercuts itself by mixing shipped `continue_delegate()` semantics with future `targetSessionKey` and multi-recipient return. Cold-pickup readers need one crisp shipped contract first, then a separate future-seam note.
+- §2.5 is clear for response-token fallback but should include exact grammar constraints in one place: terminal/end-anchored, last text payload wins, last delegate bracket wins, 4096-character task truncation, optional `+Ns`, and optional `| silent` / `| silent-wake`.
+- §2.6's three-tier prose is clear, but the diagram is too static. It shows equivalence of outputs but not the decision rule a reader needs: enabled? tools registered? tool use denied? fallback parsed? disabled?
+- §3.1 and §5.4 loop over delegate durability with different substrate emphasis. §3.1 still says post-compaction delegates are stored on `SessionEntry.pendingPostCompactionDelegates`; current code has TaskFlow staging plus compatibility/session delivery layers, so the narrative creates a stale-shape hazard.
+- §3.2 is the first place where process-scoped timers versus durable records becomes explicit. This distinction is important enough to move into the lifecycle model and test against the general claim "restart may change timing but should not erase queued work."
+- §3.6 and §4.6 both define the substrate doctrine. The ideas are good, but the repetition blurs the claim boundary. §3.6 should define the concrete queue contract; §4.6 should define the broker/adoption discipline and refer back once.
+- §4.1 trigger taxonomy is useful but awkward: it calls the contribution a "five-trigger taxonomy" and then lists A–F, with F as convergent emission rather than a trigger. It should be renamed "six observed emission surfaces" or split trigger causes from emission shapes.
+- §4.3 contains a long issue-history block about provider/model threading. The bug is important evidence, but it interrupts the semantic flow of `request_compaction()`. Move it to implementation-status evidence unless the normative claim is "volitional compaction MUST use the active session provider/model."
+- §6.4 fleet evidence is high-value but overlong in the main narrative. Keep the falsifiable precondition/dedup conclusions in the body; move n=3/n=4 deployment archaeology to validation evidence.
+- §6.6 starts with "shipped contract" and then presents span names that do not match the current tracer code. This is both a claims-validation issue and a narrative issue: readers cannot tell whether the table or the bullet above it is authoritative.
+- §9 testing now becomes the document's center of gravity near the end. A scientific RFC should use tests as evidence, not end as a test report. The document should close on substrate contract, security considerations, and future work; detailed test matrices should be appendices.
+- §10.2 has the best closing-stakes material ("sovereign peer enrichment") but it arrives after an implementation/test report and does not fully reconnect to §1. The final section should return explicitly to successor-turn arrangement, not merely list feature extensions.
