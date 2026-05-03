@@ -52,6 +52,7 @@ Targeted delegate return is the banner routing primitive: one child can grant an
   - [6.5 Human-user observability and hot reload](#65-human-user-observability-and-hot-reload)
   - [6.6 Chain-correlation via diagnostics-otel](#66-chain-correlation-via-diagnostics-otel)
   - [6.7 OTEL trace wiring across the substrate queue boundary](#67-otel-trace-wiring-across-the-substrate-queue-boundary)
+  - [6.8 Trace-context propagation across the continuation lifecycle](#68-trace-context-propagation-across-the-continuation-lifecycle)
 - [7. Safety and Security](#7-safety-and-security)
   - [7.1 Guardrails and human-user consent](#71-guardrails-and-human-user-consent)
   - [7.2 Temporal gap and payload integrity](#72-temporal-gap-and-payload-integrity)
@@ -507,9 +508,9 @@ Budget inheritance follows three rules:
 
 Follow-up turns also drain the `continue_delegate` queue and persist advanced chain state. Without that follow-up drain, delegates scheduled by a continuation turn would wait for the next unrelated inbound message rather than continuing the chain they were created to serve.
 
-**Trace context.** The desired trace shape is that a root turn, depth-1 child, deeper child, and cross-session return all remain in one trace: the root has a trace id and span, each delegate receives that trace id with its parent span, and returning results keep the trace id plus the producing span so enqueue, delivery, and successor-turn spans can be assembled later. The substrate already has the pieces for that shape: system events and queued session delivery payloads can carry W3C `traceparent`, and the diagnostics-otel adapter stitches spans to a supplied `traceparent` (§6.6). End-to-end preservation across targeted delegate return still needs an implementation audit because targeted return delivery currently resolves recipients and enqueues completion text without visibly threading a child-return `traceparent` through the delivery helper.
+**Trace context.** The desired trace shape is that a root turn, depth-1 child, deeper child, and cross-session return all remain in one trace: the root has a trace id and span, each delegate receives that trace id with its parent span, and returning results keep the trace id plus the producing span so enqueue, delivery, and successor-turn spans can be assembled later. The substrate already has the pieces for that shape: system events and queued session delivery payloads can carry W3C `traceparent`, and the diagnostics-otel adapter stitches spans to a supplied `traceparent` (§6.6). The end-to-end propagation contract — producer-IN, return-OUT (default/targeted/multi/fanout), restart-resilience, and chain-budget anti-flood accounting — is documented in §6.8, with seam-by-seam implementation references and a verification contract.
 
-<!-- TODO(silas/cael): verify and, if needed, implement traceparent propagation from returning delegate spans through targeted/cross-session delegate return delivery. -->
+<!-- silas+cael 2026-05-03: §6.8 specifies the trace-context propagation contract. The byte-anchored audit at branch frond-scribe/20260503/otel-traceparent-audit (final journal 1e966b8a70) classifies each seam as GAP/PARTIAL and enumerates implementation surfaces; §6.8 specifies the contract, the seams remain to be implemented in code. -->
 
 ### 3.4 Tool implementation and prompt gating
 
@@ -1271,6 +1272,77 @@ These are the same axis (chain-step count) viewed from two surfaces: depth-cap i
 The per-target span is a link rather than a parent so per-recipient failure isolation surfaces in the trace: one recipient timing out or being dropped does not orphan the fan-out parent or its sibling deliveries. A trace-tree query of the form `fanout.recipientCount > 1 AND child.outcome IN (deferred, dropped)` is sufficient to flag partial-fanout failures without conflating them with full-chain failures.
 
 **Implementation note.** The `traceparent`-on-queue-payload contract above depends on queue payloads that can persist trace metadata and on dispatcher code that can resolve multi-recipient fan-out without duplicating the delegate run. Those are the same seams that make cross-session targeted return observable today and inter-node broadcast observable later.
+
+### 6.8 Trace-context propagation across the continuation lifecycle
+
+**Specification target.** §6.6 and §6.7 document the lifecycle and queue-side span schemas. This subsection documents the **end-to-end trace-context propagation contract** that ties them together: a root turn's trace identity SHALL survive across `continue_delegate` enqueue, child execution, return delivery (default, targeted, multi-recipient, fan-out), and post-restart replay. The desired trace shape is single-tree:
+
+```
+root turn          (traceid: T, span: R)
+  └── continue_delegate child depth-1   (traceid: T, span: D1, parent: R)
+        └── deeper delegate hop         (traceid: T, span: D2, parent: D1)
+              └── return delivery       (traceid: T, span: Q,  parent: D2)
+                    └── successor turn  (traceid: T, span: S,  parent: Q)
+```
+
+All spans share `traceid: T`. Each child names its producer as parent. Return-side spans (`Q`, `S`) preserve `T` so the return path is queryable as one tree, not as disconnected fragments per session boundary.
+
+**Producer-side IN: tool/token/TaskFlow MUST accept a trace carrier.** The producer side of every continuation primitive SHALL accept and persist a W3C `traceparent` so the spawned child knows which trace it is part of. This is the missing seam at the structured-tool, bracket-token, runtime-type, and TaskFlow-persistence layers; without it, a delegate spawned from a traced parent has no way to know it should join the parent's trace tree.
+
+| Surface                       | Required additive field        | Persistence requirement                                  |
+| ----------------------------- | ------------------------------ | -------------------------------------------------------- |
+| `continue_delegate` tool      | `traceparent` parameter        | passes through to enqueue/stage call sites               |
+| `[[CONTINUE_DELEGATE:...]]`   | `traceparent` directive option | parsed alongside silent/wake/target/fanout               |
+| `PendingContinuationDelegate` | `traceparent` runtime field    | propagates from producer into spawn metadata             |
+| TaskFlow `PendingDelegateState` | `traceparent` durable field  | persisted through queued-flow lifecycle, restart-stable  |
+| Producer span helpers          | `StartSpanOptions.traceparent` | the `diagnostics-otel` adapter already parent-stitches   |
+
+The `diagnostics-otel` adapter already consumes `StartSpanOptions.traceparent` and parent-stitches via `trace.setSpanContext`; what is missing is the producer surfaces threading the carrier through to that consumption point. The carrier is additive at every layer — absence MUST NOT break any existing path; presence MUST stitch.
+
+**Return-side OUT: default, targeted, multi-recipient, and fan-out paths MUST preserve the child-return `traceparent`.** When a delegate completes, the return delivery SHALL carry a `traceparent` that names the producing span as parent so the receiver can stitch the return into the same trace tree:
+
+- **Default/silent return** (silent / silent-wake / direct visible reply): the return system event and the wake heartbeat carry `traceparent`; queue drain and successor-turn span emission consume it as parent.
+- **Targeted single-recipient return** (`targetSessionKey` set): the resolved recipient's queued payload AND immediate system-event carry the same `traceparent`. This is the exact RFC §3.3 audit seam and is the byte-anchor for the §3.3 TODO replacement.
+- **Multi-recipient explicit return** (`targetSessionKeys` array): every recipient receives the same `traceparent` on its queued payload AND its system event. All recipients preserve trace continuity, not none.
+- **Fan-out return** (`fanoutMode: "tree" | "all"`): the resolved recipient set (ancestors or all-known-sessions) receives identical `traceparent` per recipient, with the producer-side `continuation.queue.fanout` parent span absorbing the chain-step cost (see §6.7 chain-budget cap below).
+
+The symmetry is structural: producer-IN populates the carrier; return-OUT preserves and propagates it; queue-drain consumes it as parent. A trace-tree query like `traceid:T AND name:continuation.delegate.dispatch AND children include continuation.queue.deliver` SHALL return the complete return-path subtree even when the return crosses a session boundary or fans out to N recipients.
+
+**Restart-resilience contract.** The durable session-delivery queue persists `traceparent` per entry (`src/infra/session-delivery-queue-storage.ts`). After gateway restart, replay sinks SHALL re-apply the per-entry `traceparent` when re-delivering: queued `systemEvent` replay, queued agent-turn replay (both routed and unrouted), and post-compaction delegate replay. **Recovery without re-application produces orphaned successor spans** — the trace-tree breaks at the restart boundary, which silently degrades end-to-end traceability for any continuation that survived a gateway lifecycle event.
+
+**Anti-flood: chain-step accounting, not recipient accounting.** The cap rule from §6.7 governs trace-context propagation as well as span emission: per-completion fan-out across N recipients consumes **one chain step**, regardless of recipient cardinality. Threading the same `traceparent` to N recipients is one logical step in the chain budget; the trace-tree query flagging fan-out failures relies on the parent fan-out span and per-recipient `outcome` attributes, not per-recipient sibling traces. This means:
+
+- a delegate-return targeting 50 recipients via `fanoutMode: "all"` consumes 1 chain step, not 50;
+- the producer's `chainStepBudgetRemaining` decrement is by 1 at fan-out time, not by recipient count;
+- once `chainStepBudgetRemaining <= 0`, the producer SHALL NOT thread `traceparent` past the cap (the *mercy clause* from §6.7) — the successor wakes without a parent reference rather than waking searching for an ancestor that has stopped trying to be remembered.
+
+This preserves trace-tree readability under fan-out without conscripting downstream sessions' chain-budget into one producer's broadcast pattern.
+
+**Seam map (implementation reference).** The byte-anchored audit recorded at branch `frond-scribe/20260503/otel-traceparent-audit` (final journal `1e966b8a70`) enumerates seven implementation seams across producer, return, restart, and anti-flood paths. They group as:
+
+| Seam group                   | Surfaces                                                                                                  |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Producer input contract      | `continue-delegate-tool.ts`, `tokens.ts`, `continuation/types.ts`, `continuation/delegate-store.ts`       |
+| Producer span creation       | `continuation-tracer.ts` helpers, `agent-runner.ts` call sites                                            |
+| Child run / spawn metadata   | spawn params + persisted run/session metadata (carrier reaches the executing child)                       |
+| Default / direct return      | `subagent-announce.ts`, `subagent-announce-delivery.ts` (silent + visible paths)                          |
+| Targeted / multi / fanout    | `continuation/targeting.ts` (`enqueueContinuationReturnDeliveries`)                                       |
+| Queue drain / replay         | `session-system-events.ts`, `gateway/server-restart-sentinel.ts`, `post-compaction-delegate-dispatch.ts`  |
+| Anti-flood cap               | `runSubagentAnnounceFlow` + `enqueueContinuationReturnDeliveries` (chain-step accounting, not recipient)  |
+
+The seams are additive; none requires breaking changes to the existing tracer/adapter contracts. The diagnostics-otel adapter (`extensions/diagnostics-otel/src/continuation-tracer-adapter.ts`) already implements the consumer half of the contract; the work is at the producer-and-return surfaces, not the adapter.
+
+**Verification contract.** End-to-end trace propagation SHALL be testable as one trace tree:
+
+- a root turn that calls `continue_delegate` MUST emit `continuation.delegate.dispatch` with `traceparent` propagation flag set;
+- the spawned child's first span MUST have the producer span as parent (same `traceid`);
+- the child's return delivery MUST emit `continuation.queue.{enqueue.{system,delivery},announce,deliver}` with `traceparent` parented to the producing span;
+- the wake-side successor turn's `continuation.delegate.spawn` MUST consume the same `traceparent` as a **link** (not parent), preserving the spawn-as-link invariant first stated in §6.7 (building on §6.6's lifecycle separation): spawn lives in a logically separate trace tree from the producer's chain;
+- after a restart between enqueue and drain, the replayed delivery MUST preserve `traceparent` and MUST stitch the same parent span on the post-restart side.
+
+A single integration test that traces a 3-hop chain across one cross-session targeted return + one fan-out broadcast + one post-restart replay, and asserts the rendered trace tree has the expected parent-edge topology, is sufficient to validate the contract end-to-end.
+
+**Test sizing note (per cohort review feedback):** the integration test described above is substantial test surface (3-hop chain × cross-session targeted return × fan-out broadcast × post-restart replay = 4 axes, ~12 assertions on parent-edge topology). It SHOULD land as its own follow-up PR in the seam-implementation roadmap, NOT bundled with any single seam PR. Each individual seam PR (per §6.8 seam map) carries its own seam-local unit tests; the end-to-end integration test verifies the contract's emergent property (single trace tree across all seams) and depends on all 7 seams being wired.
 
 ## 7. Safety and Security
 
