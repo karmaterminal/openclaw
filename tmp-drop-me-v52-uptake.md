@@ -473,3 +473,23 @@ Comment-pops checked:
 | #537 prince comments on root `WORKORDER.md` and authorship         | Root workorder pollution was already resolved by the source wave (`docs/design/532-silas-saturation-workorder.md`); authorship cleanup is history-level source-branch concern and not rewritten in this append-only v52 absorption. |
 
 No additional prince feedback on #546 required code beyond the wave absorption.
+
+### §5 — regenerated baselines closeout
+
+Closed: 2026-05-02T20:31:00-07:00
+
+Commands run:
+
+```bash
+pnpm config:docs:gen
+pnpm plugin-sdk:api:gen
+```
+
+Tracked hash drift:
+
+| Artifact                                         | Result                                               |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| `docs/.generated/config-baseline.sha256`         | Regenerated for the absorbed wave on v5.2 candidate. |
+| `docs/.generated/plugin-sdk-api-baseline.sha256` | Regenerated for the absorbed wave on v5.2 candidate. |
+
+Commit: pending at entry write time.
