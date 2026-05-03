@@ -492,4 +492,29 @@ Tracked hash drift:
 | `docs/.generated/config-baseline.sha256`         | Regenerated for the absorbed wave on v5.2 candidate. |
 | `docs/.generated/plugin-sdk-api-baseline.sha256` | Regenerated for the absorbed wave on v5.2 candidate. |
 
-Commit: pending at entry write time.
+Commit: `9618ac80bf9e`
+
+### §6 — verification closeout
+
+Closed: 2026-05-02T20:39:00-07:00
+
+Validation mode: local fallback. Blacksmith Testbox was attempted first but the CLI was unauthenticated and no `BLACKSMITH_*` org/token was configured in env/profile. Crabbox fallback was checked next; `.crabbox.yaml` exists, but no `crabbox` binary, repo-local `../crabbox/bin/crabbox`, or `CRABBOX_*` token was available. Required gates were therefore run in this worktree with `OPENCLAW_LOCAL_CHECK=1 OPENCLAW_LOCAL_CHECK_MODE=throttled`.
+
+Gate results:
+
+| Gate                                                                                                                                                                                                                                    | Result |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `pnpm tsgo`                                                                                                                                                                                                                             | PASS   |
+| `pnpm check`                                                                                                                                                                                                                            | PASS   |
+| `pnpm test src/auto-reply src/agents/tools/request-compaction-tool.test.ts src/agents/tools/continuation-tools-registration.test.ts src/config/zod-schema.continuation.test.ts src/auto-reply/reply/session-updates.compaction.test.ts` | PASS   |
+| `pnpm build`                                                                                                                                                                                                                            | PASS   |
+
+Additional focused preflight before §6:
+
+```bash
+pnpm test src/infra/heartbeat-wake.test.ts src/infra/heartbeat-runner.scheduler.test.ts src/logging/diagnostic.test.ts src/auto-reply/reply/session-updates.compaction.test.ts src/auto-reply/reply/run-provenance.test.ts
+```
+
+Result: PASS after `62c89210d4fe`.
+
+Post-gate status: no tracked drift from validation/build. Only pre-existing untracked console logs remain (`tmp-drop-me-v52-absorption.console.log`, `tmp-drop-me-v52-uptake.console.log`).
