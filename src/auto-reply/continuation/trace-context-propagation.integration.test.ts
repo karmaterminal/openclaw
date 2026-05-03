@@ -157,7 +157,7 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
       spans.push(span);
       return {
         setAttributes(attrs) {
-          span.attributes = { ...(span.attributes ?? {}), ...attrs };
+          span.attributes = span.attributes ? { ...span.attributes, ...attrs } : attrs;
         },
         setStatus(status, message) {
           span.statusCalls.push({ status, message });
