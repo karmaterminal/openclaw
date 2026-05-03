@@ -1094,6 +1094,32 @@ describe("continuation-tracer :: emitContinuationQueueDrainSpan helper", () => {
     expect(attrs["disabled.reason"]).toBeUndefined();
   });
 
+  it("parents drain spans to the supplied traceparent when a drained entry carries one", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+    emitContinuationQueueDrainSpan({
+      drainedCount: 2,
+      drainedContinuationCount: 1,
+      traceparent,
+    });
+
+    expect(spans[0].options?.traceparent).toBe(traceparent);
+  });
+
+  it("omits traceparent options for untraced drains", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationQueueDrainSpan({
+      drainedCount: 2,
+      drainedContinuationCount: 1,
+    });
+
+    expect(spans[0].options?.traceparent).toBeUndefined();
+  });
+
   it("does NOT carry chain.id or chain.step.remaining (multi-chain seam)", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);

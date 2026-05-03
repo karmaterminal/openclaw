@@ -166,6 +166,7 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
       ? { targetSessionKeys: params.delegate.targetSessionKeys }
       : {}),
     ...(params.delegate.fanoutMode ? { fanoutMode: params.delegate.fanoutMode } : {}),
+    ...(params.delegate.traceparent ? { traceparent: params.delegate.traceparent } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
     idempotencyKey:
       params.idempotencyKey ??

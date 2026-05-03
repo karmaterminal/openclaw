@@ -706,6 +706,7 @@ export function emitContinuationWorkFireSpan(args: {
 export function emitContinuationQueueDrainSpan(args: {
   drainedCount: number;
   drainedContinuationCount: number;
+  traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
   try {
@@ -724,6 +725,7 @@ export function emitContinuationQueueDrainSpan(args: {
     };
     const span = activeTracer.startSpan("continuation.queue.drain", {
       attributes: attrs,
+      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
     span.end();

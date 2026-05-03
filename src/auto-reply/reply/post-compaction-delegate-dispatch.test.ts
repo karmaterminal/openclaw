@@ -41,6 +41,7 @@ function delegate(
     ...(overrides?.firstArmedAt != null ? { firstArmedAt: overrides.firstArmedAt } : {}),
     ...(overrides?.silent != null ? { silent: overrides.silent } : {}),
     ...(overrides?.silentWake != null ? { silentWake: overrides.silentWake } : {}),
+    ...(overrides?.traceparent ? { traceparent: overrides.traceparent } : {}),
   };
 }
 
@@ -671,6 +672,35 @@ describe("post-compaction delegate dispatch extraction", () => {
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
         { sessionKey: "main" },
+      );
+    });
+  });
+
+  it("preserves traceparent when queued post-compaction replay spawns a child", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: Date.now() } }, null, 2),
+        "utf-8",
+      );
+      const { deps, enqueueSystemEvent, spawnSubagentDirect } = createDeliveryDeps({ storePath });
+
+      await deliverQueuedPostCompactionDelegate(
+        {
+          entry: createQueuedEntry({ traceparent }),
+        },
+        deps,
+      );
+
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({ traceparent }),
+        expect.any(Object),
+      );
+      expect(enqueueSystemEvent).toHaveBeenCalledWith(
+        "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
+        { sessionKey: "main", traceparent },
       );
     });
   });
