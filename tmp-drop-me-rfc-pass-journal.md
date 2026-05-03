@@ -1,0 +1,1 @@
+- 2026-05-03T22:23:53+00:00: workorder authored; dispatch starting; figs directive: RFC pass for mermaid + trace-implementation assurance + strip karmaterminal-fork refs
