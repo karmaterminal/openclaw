@@ -1431,9 +1431,7 @@ Overall: **10/12 passed**. When dispatch occurred correctly, the accuracy rate w
 
 Detailed scorecards for the historical full-coverage canary sessions are preserved in Appendix D. The headline coverage of feature shipping was Swim 9 (context-pressure and volitional compaction) and Swim 10 (full tool parity).
 
-The current validation frame is Swim 41: the same substrate is being rechecked on the v5.2 base with observability/verification rows for failover policy, compaction-count primitives, continuation-queue diagnostics, and `earlyWarningBand` context-pressure behavior. Current status: execution has opened and two of the four initial OV rows are closed. The RFC intentionally does not link internal trackers; public evidence links are left as TODOs in Appendix D pending the public evidence repository.
-
-<!-- TODO(ronan): add public Swim 41 evidence link here after karmaterminal/karmaterminal-openclaw-docs is available. -->
+The current validation frame is Swim 41: the same substrate is being rechecked on the v5.2 base with observability/verification rows for failover policy, compaction-count primitives, continuation-queue diagnostics, and `earlyWarningBand` context-pressure behavior. Current status: 3 of the 4 initial OV rows are closed; the fourth (OV-4 `earlyWarningBand` context-pressure behavior) has step-zero PASS and live-host verification in flight. The RFC intentionally does not link internal trackers; public evidence is published in [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs) under [`swims/swim-41/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-41) (per-OV verdicts under [`swims/swim-41/rows/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-41/rows)).
 
 #### Swim 9
 
@@ -1665,7 +1663,11 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 | `/status` continuation row                    | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts`                                                                                                                      |
 | Trace context carrier surfaces                | `src/infra/system-events.ts`, `src/infra/session-delivery-queue-storage.ts`, `src/infra/continuation-tracer.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts` |
 
-<!-- TODO(ronan): once karmaterminal/karmaterminal-openclaw-docs exists, link public Swim 9/10/41 evidence and scorecards here instead of internal tracker or branch references. -->
+Public evidence (Swim 9, Swim 10, Swim 41) is published in the [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs) repository:
+
+- [`swims/swim-09/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-09/README.md) — Swim 9 historical scorecard
+- [`swims/swim-10/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-10/README.md) — Swim 10 full 13-row scorecard
+- [`swims/swim-41/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-41) — Swim 41 v5.2 substrate verification cycle (per-OV verdicts under `rows/`)
 
 ### D.3 Historical integration test session results (Swim 9 and Swim 10)
 
@@ -1718,9 +1720,13 @@ Additional retained notes:
 
 Swim 41 is the current full-coverage canary cycle following Swim 9 + Swim 10. It targets the v5.2 substrate base after the base rotation from v2026.4.29 to v2026.5.2. The cycle exercises the continuation substrate against the new base, with emphasis on compaction, context-pressure, continuation-queue diagnostics, and upstream failover-policy interaction.
 
-The RFC does not link internal execution trackers. Public evidence should be linked here after the public evidence repository is available.
+The RFC does not link internal execution trackers. Public evidence is published in [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs):
 
-<!-- TODO(ronan): once karmaterminal/karmaterminal-openclaw-docs is created, add Swim 41 public scorecard and evidence links here. -->
+- Cycle overview: [`swims/swim-41/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/README.md)
+- OV-1 (failover-policy `#52147` gate): [`swims/swim-41/rows/OV-1/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-1/verdict.md) — ✅ PASS
+- OV-2 (`incrementCompactionCount` canonical primitives): [`swims/swim-41/rows/OV-2/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-2/verdict.md) — ✅ PASS
+- OV-3 (silas-saturation diagnostic instrumentation): [`swims/swim-41/rows/OV-3/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-3/verdict.md) — ✅ PASS
+- OV-4 (`earlyWarningBand` context-pressure): [`swims/swim-41/rows/OV-4/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-4/verdict.md) — 🟡 step-zero PASS, live-host verification in flight
 
 **Initial OV (observability/verification) coverage scope:**
 
