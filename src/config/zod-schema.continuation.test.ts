@@ -143,6 +143,100 @@ describe("continuation config schema validation", () => {
   });
 
   /* ---------------------------------------------------------------- */
+  /*  delay bounds cross-field guard (#452):                          */
+  /*    refine: minDelayMs ≤ defaultDelayMs ≤ maxDelayMs              */
+  /*  Pinned by tests so refactors that drop/break the guard are      */
+  /*  caught at parse-time, not silently at runtime via clampDelayMs  */
+  /*  returning a value outside the configured contract.              */
+  /* ---------------------------------------------------------------- */
+
+  it("accepts well-ordered delay bounds (min < default < max)", () => {
+    const result = parseContinuation({
+      minDelayMs: 100,
+      defaultDelayMs: 1000,
+      maxDelayMs: 60000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts equal delay bounds (min = default = max)", () => {
+    const result = parseContinuation({
+      minDelayMs: 5000,
+      defaultDelayMs: 5000,
+      maxDelayMs: 5000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects inverted minDelayMs > maxDelayMs (the original #452 bug-shape)", () => {
+    const result = parseContinuation({
+      minDelayMs: 60000,
+      maxDelayMs: 1000,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((i) => i.message.includes("continuation delay bounds violate")),
+      ).toBe(true);
+    }
+  });
+
+  it("rejects minDelayMs > defaultDelayMs (default below floor)", () => {
+    const result = parseContinuation({
+      minDelayMs: 5000,
+      defaultDelayMs: 1000,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((i) => i.message.includes("continuation delay bounds violate")),
+      ).toBe(true);
+    }
+  });
+
+  it("rejects defaultDelayMs > maxDelayMs (default above ceiling)", () => {
+    const result = parseContinuation({
+      defaultDelayMs: 60000,
+      maxDelayMs: 5000,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((i) => i.message.includes("continuation delay bounds violate")),
+      ).toBe(true);
+    }
+  });
+
+  it("rejects all three inverted (min > default > max)", () => {
+    const result = parseContinuation({
+      minDelayMs: 60000,
+      defaultDelayMs: 30000,
+      maxDelayMs: 1000,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((i) => i.message.includes("continuation delay bounds violate")),
+      ).toBe(true);
+    }
+  });
+
+  it("accepts only minDelayMs set (no cross-field constraint to violate)", () => {
+    const result = parseContinuation({ minDelayMs: 60000 });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts only maxDelayMs set (no cross-field constraint to violate)", () => {
+    const result = parseContinuation({ maxDelayMs: 1000 });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts only defaultDelayMs set (no cross-field constraint to violate)", () => {
+    const result = parseContinuation({ defaultDelayMs: 5000 });
+    expect(result.success).toBe(true);
+  });
+
+  /* ---------------------------------------------------------------- */
   /*  strict mode: unknown keys rejected                               */
   /* ---------------------------------------------------------------- */
 
