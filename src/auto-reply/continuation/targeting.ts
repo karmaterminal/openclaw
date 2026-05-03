@@ -1,3 +1,4 @@
+import { emitContinuationFanoutSpan } from "../../infra/continuation-tracer.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import {
   ackSessionDelivery,
@@ -95,6 +96,9 @@ export async function enqueueContinuationReturnDeliveries(
     wakeRecipients?: boolean;
     childRunId?: string;
     stateDir?: string;
+    traceparent?: string;
+    fanoutMode?: ContinuationDelegateFanoutMode;
+    chainStepRemaining?: number;
   },
   deps: ContinuationReturnDeliveryDeps = defaultContinuationReturnDeliveryDeps,
 ): Promise<{ enqueued: number; delivered: number; deliveryIds: string[] }> {
@@ -109,6 +113,7 @@ export async function enqueueContinuationReturnDeliveries(
         sessionKey,
         text: params.text,
         ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
         idempotencyKey: `${params.idempotencyKeyBase}:${index}:${sessionKey}`,
       },
       params.stateDir,
@@ -118,6 +123,7 @@ export async function enqueueContinuationReturnDeliveries(
     deps.enqueueSystemEvent(params.text, {
       sessionKey,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+      ...(params.traceparent ? { traceparent: params.traceparent } : {}),
     });
     if (params.wakeRecipients) {
       deps.requestHeartbeatNow({
@@ -128,6 +134,21 @@ export async function enqueueContinuationReturnDeliveries(
     }
     await deps.ackSessionDelivery(deliveryId, params.stateDir);
     delivered += 1;
+  }
+
+  if (
+    (params.traceparent !== undefined || params.chainStepRemaining !== undefined) &&
+    (params.fanoutMode !== undefined || targetSessionKeys.length > 1)
+  ) {
+    emitContinuationFanoutSpan({
+      targetSessionKeys,
+      deliveredCount: delivered,
+      ...(params.fanoutMode ? { fanoutMode: params.fanoutMode } : {}),
+      ...(params.chainStepRemaining !== undefined
+        ? { chainStepRemaining: params.chainStepRemaining }
+        : {}),
+      ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+    });
   }
 
   return {

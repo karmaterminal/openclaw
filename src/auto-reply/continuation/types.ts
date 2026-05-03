@@ -38,6 +38,7 @@ export type ContinuationSignal =
       targetSessionKey?: string;
       targetSessionKeys?: string[];
       fanoutMode?: ContinuationDelegateFanoutMode;
+      traceparent?: string;
     };
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,7 @@ export type PendingContinuationDelegate = {
   targetSessionKey?: string;
   targetSessionKeys?: string[];
   fanoutMode?: ContinuationDelegateFanoutMode;
+  traceparent?: string;
 };
 
 /**
@@ -76,6 +78,7 @@ export type DelayedContinuationReservation = {
   plannedHop: number;
   silent?: boolean;
   silentWake?: boolean;
+  traceparent?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -120,6 +123,7 @@ export type StagedPostCompactionDelegate = {
   targetSessionKey?: string;
   targetSessionKeys?: string[];
   fanoutMode?: ContinuationDelegateFanoutMode;
+  traceparent?: string;
 };
 
 // ---------------------------------------------------------------------------

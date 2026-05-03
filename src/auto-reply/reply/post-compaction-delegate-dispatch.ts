@@ -41,7 +41,7 @@ export type PostCompactionDelegateSpawn = (
 ) => Promise<SpawnSubagentResult>;
 
 export type PostCompactionDelegateDeliveryDeps = {
-  enqueueSystemEvent(text: string, options: { sessionKey: string }): void;
+  enqueueSystemEvent(text: string, options: { sessionKey: string; traceparent?: string }): void;
   getRuntimeConfig(): OpenClawConfig;
   loadSessionStore(storePath: string): Record<string, SessionEntry>;
   log(message: string): void;
@@ -66,7 +66,7 @@ export type PostCompactionDelegateDispatchDeps = {
     compactionCount?: number;
     deliveryContext?: SessionDeliveryContext;
   }): Promise<string>;
-  enqueueSystemEvent(text: string, options: { sessionKey: string }): void;
+  enqueueSystemEvent(text: string, options: { sessionKey: string; traceparent?: string }): void;
   log(message: string): void;
   now(): number;
   readPostCompactionContext(
@@ -183,6 +183,7 @@ export function normalizePostCompactionDelegate(
       ? { targetSessionKeys: delegate.targetSessionKeys }
       : {}),
     ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
+    ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
   };
 }
 
@@ -466,7 +467,10 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     deps.enqueueSystemEvent(
       `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${params.entry.task}`,
-      { sessionKey: params.entry.sessionKey },
+      {
+        sessionKey: params.entry.sessionKey,
+        ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),
+      },
     );
     return;
   }
@@ -477,7 +481,10 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     deps.enqueueSystemEvent(
       `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${params.entry.task}`,
-      { sessionKey: params.entry.sessionKey },
+      {
+        sessionKey: params.entry.sessionKey,
+        ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),
+      },
     );
     return;
   }
@@ -504,6 +511,7 @@ export async function deliverQueuedPostCompactionDelegate(
         : {}),
       ...(params.entry.fanoutMode ? { continuationFanoutMode: params.entry.fanoutMode } : {}),
       drainsContinuationDelegateQueue: true,
+      ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),
     },
     {
       agentSessionKey: params.entry.sessionKey,
@@ -519,7 +527,10 @@ export async function deliverQueuedPostCompactionDelegate(
 
   deps.enqueueSystemEvent(
     `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${params.entry.task}`,
-    { sessionKey: params.entry.sessionKey },
+    {
+      sessionKey: params.entry.sessionKey,
+      ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),
+    },
   );
   await persistPostCompactionDelegateChainState({
     count: nextCompactionChainCount,

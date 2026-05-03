@@ -301,6 +301,7 @@ describe("scheduleRestartSentinelWake", () => {
   });
 
   it("recovers queued post-compaction delegates through session delivery recovery", async () => {
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
     mocks.recoverPendingSessionDeliveries.mockImplementationOnce(
       async (params?: RecoverPendingSessionDeliveriesParams) => {
         await params!.deliver({
@@ -308,6 +309,7 @@ describe("scheduleRestartSentinelWake", () => {
           kind: "postCompactionDelegate",
           sessionKey: "agent:main:main",
           task: "carry state forward",
+          traceparent,
           createdAt: 123,
           enqueuedAt: 1,
           retryCount: 0,
@@ -331,6 +333,7 @@ describe("scheduleRestartSentinelWake", () => {
         kind: "postCompactionDelegate",
         sessionKey: "agent:main:main",
         task: "carry state forward",
+        traceparent,
       }),
     });
   });
@@ -776,6 +779,7 @@ describe("scheduleRestartSentinelWake", () => {
   });
 
   it("requests another wake after enqueueing a systemEvent continuation", async () => {
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
     mocks.readRestartSentinel.mockResolvedValue({
       payload: {
         sessionKey: "agent:main:main",
@@ -789,6 +793,7 @@ describe("scheduleRestartSentinelWake", () => {
         continuation: {
           kind: "systemEvent",
           text: "continue after restart",
+          traceparent,
         },
       },
     } as Awaited<ReturnType<typeof mocks.readRestartSentinel>>);
@@ -806,6 +811,7 @@ describe("scheduleRestartSentinelWake", () => {
           accountId: "acct-2",
           threadId: "thread-42",
         }),
+        traceparent,
       }),
     );
     expect(mocks.requestHeartbeat).toHaveBeenNthCalledWith(1, {
@@ -820,6 +826,30 @@ describe("scheduleRestartSentinelWake", () => {
       reason: "wake",
       sessionKey: "agent:main:main",
     });
+  });
+
+  it("preserves traceparent on queued agentTurn continuations before replay", async () => {
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+    mocks.readRestartSentinel.mockResolvedValue({
+      payload: {
+        sessionKey: "agent:main:main",
+        deliveryContext: {
+          channel: "whatsapp",
+          to: "+15550002",
+          accountId: "acct-2",
+        },
+        ts: 123,
+        continuation: {
+          kind: "agentTurn",
+          message: "continue after restart",
+          traceparent,
+        },
+      },
+    } as Awaited<ReturnType<typeof mocks.readRestartSentinel>>);
+
+    await scheduleRestartSentinelWake({ deps: {} as never });
+
+    expect(mocks.queuedSessionDelivery).toEqual(expect.objectContaining({ traceparent }));
   });
 
   it("enqueues systemEvent continuation without stale partial delivery context", async () => {

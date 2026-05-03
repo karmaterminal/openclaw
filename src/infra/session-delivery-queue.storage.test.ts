@@ -89,6 +89,7 @@ describe("session-delivery queue storage", () => {
           createdAt: 123,
           silent: true,
           silentWake: true,
+          traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
         },
         sequence: 2,
         compactionCount: 4,
@@ -108,6 +109,7 @@ describe("session-delivery queue storage", () => {
             createdAt: 123,
             silent: true,
             silentWake: true,
+            traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
           },
           sequence: 2,
           compactionCount: 4,
@@ -130,6 +132,7 @@ describe("session-delivery queue storage", () => {
         firstArmedAt: 123,
         silent: true,
         silentWake: true,
+        traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
         deliveryContext: {
           channel: "discord",
           to: "channel",

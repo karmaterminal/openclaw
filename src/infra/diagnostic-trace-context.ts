@@ -9,6 +9,8 @@ const SPAN_ID_RE = /^[0-9a-f]{16}$/;
 const TRACE_FLAGS_RE = /^[0-9a-f]{2}$/;
 const TRACEPARENT_VERSION_RE = /^[0-9a-f]{2}$/;
 const DIAGNOSTIC_TRACE_SCOPE_STATE_KEY = Symbol.for("openclaw.diagnosticTraceScope.state.v1");
+export const DIAGNOSTIC_TRACEPARENT_PATTERN = "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$";
+const DIAGNOSTIC_TRACEPARENT_RE = new RegExp(DIAGNOSTIC_TRACEPARENT_PATTERN);
 
 export type DiagnosticTraceContext = {
   /** W3C trace id, 32 lowercase hex chars. */
@@ -153,6 +155,19 @@ export function parseDiagnosticTraceparent(
     spanId: normalizedSpanId,
     traceFlags: normalizedTraceFlags,
   };
+}
+
+export function normalizeDiagnosticTraceparent(
+  traceparent: string | undefined,
+): string | undefined {
+  if (typeof traceparent !== "string") {
+    return undefined;
+  }
+  const normalized = traceparent.trim().toLowerCase();
+  if (!DIAGNOSTIC_TRACEPARENT_RE.test(normalized)) {
+    return undefined;
+  }
+  return parseDiagnosticTraceparent(normalized) ? normalized : undefined;
 }
 
 export function formatDiagnosticTraceparent(

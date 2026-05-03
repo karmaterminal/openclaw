@@ -157,6 +157,16 @@ export type ContinuationSpanAttrs = {
    * Always `≤ queue.drained_count`. Integer ≥ 0.
    */
   readonly "queue.drained_continuation_count"?: number;
+  /** Only set on aggregate fan-out return spans. */
+  readonly "fanout.mode"?: string;
+  /** Only set on aggregate fan-out return spans. */
+  readonly "fanout.recipient_count"?: number;
+  /** Only set on aggregate fan-out return spans. */
+  readonly "fanout.delivered_count"?: number;
+  /** Only set on aggregate fan-out return spans. */
+  readonly "fanout.recipient.session_keys"?: readonly string[];
+  /** Only set on aggregate fan-out return spans. */
+  readonly "fanout.recipient.outcomes"?: readonly string[];
   /**
    * Only set on `continuation.compaction.released` spans.
    * Aggregate count of staged post-compaction delegates released for
@@ -198,6 +208,7 @@ export type ContinuationSpanName =
   | "continuation.delegate.dispatch"
   | "continuation.delegate.fire"
   | "continuation.queue.enqueue"
+  | "continuation.queue.fanout"
   | "continuation.queue.drain"
   | "continuation.compaction.released"
   | "continuation.disabled"
@@ -426,6 +437,7 @@ export function emitContinuationDelegateSpan(args: {
   delivery: "immediate" | "timer";
   delegateMode?: string | undefined;
   reason?: string | undefined;
+  traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
   try {
@@ -444,6 +456,7 @@ export function emitContinuationDelegateSpan(args: {
     };
     const span = activeTracer.startSpan("continuation.delegate.dispatch", {
       attributes: attrs,
+      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
     span.end();
@@ -704,6 +717,7 @@ export function emitContinuationWorkFireSpan(args: {
 export function emitContinuationQueueDrainSpan(args: {
   drainedCount: number;
   drainedContinuationCount: number;
+  traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
   try {
@@ -722,11 +736,46 @@ export function emitContinuationQueueDrainSpan(args: {
     };
     const span = activeTracer.startSpan("continuation.queue.drain", {
       attributes: attrs,
+      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.queue.drain span: ${String(err)}`);
+  }
+}
+
+export function emitContinuationFanoutSpan(args: {
+  fanoutMode?: string | undefined;
+  targetSessionKeys: readonly string[];
+  deliveredCount: number;
+  chainStepRemaining?: number | undefined;
+  traceparent?: string | undefined;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const recipientCount = Math.max(0, Math.floor(args.targetSessionKeys.length));
+    const deliveredCount = Math.min(recipientCount, Math.max(0, Math.floor(args.deliveredCount)));
+    const attrs: ContinuationSpanAttrs = {
+      "fanout.recipient_count": recipientCount,
+      "fanout.delivered_count": deliveredCount,
+      "fanout.recipient.session_keys": [...args.targetSessionKeys],
+      "fanout.recipient.outcomes": args.targetSessionKeys.map((_, index) =>
+        index < deliveredCount ? "delivered" : "queued",
+      ),
+      ...(args.fanoutMode !== undefined ? { "fanout.mode": args.fanoutMode } : {}),
+      ...(args.chainStepRemaining !== undefined
+        ? { "chain.step.remaining": Math.max(0, args.chainStepRemaining) }
+        : {}),
+    };
+    const span = activeTracer.startSpan("continuation.queue.fanout", {
+      attributes: attrs,
+      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
+    });
+    span.setStatus("OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.queue.fanout span: ${String(err)}`);
   }
 }
 

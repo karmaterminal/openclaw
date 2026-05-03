@@ -56,4 +56,6 @@ export type SubagentRunRecord = {
   continuationTargetSessionKeys?: string[];
   /** Continuation: computed fan-out over the local session graph. */
   continuationFanoutMode?: "tree" | "all";
+  /** Continuation: producer span carrier available to child completion paths. */
+  traceparent?: string;
 };

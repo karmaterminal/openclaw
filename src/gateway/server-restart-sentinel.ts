@@ -245,6 +245,7 @@ async function deliverQueuedSessionDelivery(params: {
             },
           }
         : {}),
+      ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),
     });
     requestHeartbeat({
       source: "restart-sentinel",
@@ -265,6 +266,7 @@ async function deliverQueuedSessionDelivery(params: {
             },
           }
         : {}),
+      ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),
     });
     requestHeartbeat({
       source: "restart-sentinel",
@@ -380,6 +382,7 @@ function buildQueuedRestartContinuation(params: {
       sessionKey: params.sessionKey,
       text: params.continuation.text,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+      ...(params.continuation.traceparent ? { traceparent: params.continuation.traceparent } : {}),
       idempotencyKey,
     };
   }
@@ -390,6 +393,7 @@ function buildQueuedRestartContinuation(params: {
     messageId: idempotencyKey,
     ...(params.route ? { route: params.route } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+    ...(params.continuation.traceparent ? { traceparent: params.continuation.traceparent } : {}),
     idempotencyKey,
   };
 }

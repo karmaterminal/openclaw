@@ -106,9 +106,11 @@ export async function drainFormattedSystemEvents(params: {
   const drainedContinuationCount = queued.filter((event) =>
     event.text.startsWith("[continuation:"),
   ).length;
+  const traceparent = queued.find((event) => event.traceparent)?.traceparent;
   emitContinuationQueueDrainSpan({
     drainedCount: queued.length,
     drainedContinuationCount,
+    ...(traceparent ? { traceparent } : {}),
     log: (message) => defaultRuntime.log(message),
   });
   systemLines.push(

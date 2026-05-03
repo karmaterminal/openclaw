@@ -105,6 +105,7 @@ export type RegisterSubagentRunParams = {
   continuationTargetSessionKey?: string;
   continuationTargetSessionKeys?: string[];
   continuationFanoutMode?: "tree" | "all";
+  traceparent?: string;
 };
 
 export function createSubagentRunManager(params: {
@@ -430,6 +431,7 @@ export function createSubagentRunManager(params: {
       continuationTargetSessionKey: registerParams.continuationTargetSessionKey,
       continuationTargetSessionKeys: registerParams.continuationTargetSessionKeys,
       continuationFanoutMode: registerParams.continuationFanoutMode,
+      ...(registerParams.traceparent ? { traceparent: registerParams.traceparent } : {}),
     };
     params.runs.set(runId, entry);
     try {

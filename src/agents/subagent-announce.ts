@@ -79,6 +79,31 @@ let continuationStateRuntimePromise: Promise<
 let subagentSpawnRuntimePromise: Promise<
   Pick<typeof import("./subagent-spawn.js"), "spawnSubagentDirect">
 > | null = null;
+const CONTINUATION_CHAIN_HOP_PATTERN = /\[continuation:chain-hop:(\d+)\]/;
+
+function resolveCompletionTraceContext(params: {
+  traceparent?: string;
+  task: string;
+  resolveMaxChainLength: () => number;
+}): { traceparent?: string; chainStepRemaining?: number } {
+  if (!params.traceparent) {
+    return {};
+  }
+  const hopMatch = params.task.match(CONTINUATION_CHAIN_HOP_PATTERN);
+  if (!hopMatch) {
+    return { traceparent: params.traceparent };
+  }
+  const childChainHop = Number.parseInt(hopMatch[1], 10);
+  if (!Number.isFinite(childChainHop)) {
+    return { traceparent: params.traceparent };
+  }
+  const chainStepRemaining = Math.max(0, params.resolveMaxChainLength() - childChainHop);
+  return {
+    chainStepRemaining,
+    ...(chainStepRemaining > 0 ? { traceparent: params.traceparent } : {}),
+  };
+}
+
 const subagentRegistryRuntimeLoader = createLazyImportLoader(
   () => import("./subagent-announce.registry.runtime.js"),
 );
@@ -484,6 +509,7 @@ export async function runSubagentAnnounceFlow(params: {
   continuationTargetSessionKey?: string;
   continuationTargetSessionKeys?: string[];
   continuationFanoutMode?: "tree" | "all";
+  traceparent?: string;
 }): Promise<boolean> {
   let didAnnounce = false;
   const expectsCompletionMessage = params.expectsCompletionMessage === true;
@@ -792,7 +818,7 @@ export async function runSubagentAnnounceFlow(params: {
     // even if the child doesn't emit another [[CONTINUE_DELEGATE:]]. Without this,
     // children that finish normally leak their tokens from the chain budget.
     const childTask = params.task ?? "";
-    const isContinuationChainDelegate = /\[continuation:chain-hop:\d+\]/.test(childTask);
+    const isContinuationChainDelegate = CONTINUATION_CHAIN_HOP_PATTERN.test(childTask);
     let accumulatedChildTokens = 0;
     if (continuationEnabled && isContinuationChainDelegate) {
       let childEntry = readSessionEntryByKey(params.childSessionKey);
@@ -887,7 +913,7 @@ export async function runSubagentAnnounceFlow(params: {
         const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs } =
           subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
 
-        const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
+        const hopMatch = childTask.match(CONTINUATION_CHAIN_HOP_PATTERN);
         const childChainHop = hopMatch ? Number.parseInt(hopMatch[1], 10) : 0;
         const nextChainHop = childChainHop + 1;
 
@@ -1023,7 +1049,7 @@ export async function runSubagentAnnounceFlow(params: {
           minDelayMs: toolMinDelayMs,
           maxDelayMs: toolMaxDelayMs,
         } = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
-        const hopMatch = childTask.match(/\[continuation:chain-hop:(\d+)\]/);
+        const hopMatch = childTask.match(CONTINUATION_CHAIN_HOP_PATTERN);
         const childChainHop = hopMatch ? Number.parseInt(hopMatch[1], 10) : 0;
         // Use the flag captured before findings was mutated (not re-parsing stripped text).
         const bracketConsumedHop = bracketDelegateConsumed ? 1 : 0;
@@ -1181,6 +1207,12 @@ export async function runSubagentAnnounceFlow(params: {
       },
     ];
     const triggerMessage = buildAnnounceSteerMessage(internalEvents);
+    const completionTrace = resolveCompletionTraceContext({
+      traceparent: params.traceparent,
+      task: childTask,
+      resolveMaxChainLength: () =>
+        subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg).maxChainLength,
+    });
     const hasContinuationTargeting = Boolean(
       params.continuationTargetSessionKey ||
       (params.continuationTargetSessionKeys && params.continuationTargetSessionKeys.length > 0) ||
@@ -1211,6 +1243,11 @@ export async function runSubagentAnnounceFlow(params: {
         idempotencyKeyBase: `continuation-return:${announceId}`,
         wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
         childRunId: params.childRunId,
+        ...(params.continuationFanoutMode ? { fanoutMode: params.continuationFanoutMode } : {}),
+        ...(completionTrace.chainStepRemaining !== undefined
+          ? { chainStepRemaining: completionTrace.chainStepRemaining }
+          : {}),
+        ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
       });
       defaultRuntime.log(
         `[continuation:targeted-return] Delivered to ${targetSessionKeys.join(",")} from ${params.childSessionKey}`,
@@ -1255,7 +1292,10 @@ export async function runSubagentAnnounceFlow(params: {
       // Inject completion as system event (invisible to channel).
       const enrichmentText =
         triggerMessage || `[continuation:enrichment-return] Delegate completed: ${taskLabel}`;
-      enqueueSystemEvent(enrichmentText, { sessionKey: targetRequesterSessionKey });
+      enqueueSystemEvent(enrichmentText, {
+        sessionKey: targetRequesterSessionKey,
+        ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
+      });
       continuationLog.info(
         `[continuation:enrichment-return] Delivered to ${targetRequesterSessionKey} from ${params.childSessionKey}`,
       );
@@ -1302,6 +1342,7 @@ export async function runSubagentAnnounceFlow(params: {
       directIdempotencyKey,
       signal: params.signal,
       continuationTriggerOverride: delegateReturnTrigger,
+      ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
     });
     params.onDeliveryResult?.(delivery);
     didAnnounce = delivery.delivered;

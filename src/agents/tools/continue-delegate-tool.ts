@@ -9,6 +9,10 @@ import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
   normalizeContinuationTargetKeys,
 } from "../../auto-reply/continuation/targeting.js";
+import {
+  DIAGNOSTIC_TRACEPARENT_PATTERN,
+  normalizeDiagnosticTraceparent,
+} from "../../infra/diagnostic-trace-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { readSnakeCaseParamRaw } from "../../param-key.js";
 import { optionalStringEnum } from "../schema/typebox.js";
@@ -61,6 +65,14 @@ const ContinueDelegateToolSchema = Type.Object({
       'Broadcast return targeting. "tree" returns to every ancestor in the current continuation/subagent chain; ' +
       '"all" returns to every known session on this host. Do not combine with targetSessionKey/targetSessionKeys.',
   }),
+  traceparent: Type.Optional(
+    Type.String({
+      description:
+        "Optional W3C traceparent carrier. When supplied by an instrumented upstream caller, " +
+        "the delegate and return path can stitch continuation spans into the same trace tree.",
+      pattern: DIAGNOSTIC_TRACEPARENT_PATTERN,
+    }),
+  ),
 });
 
 function readStrictStringArrayParam(
@@ -174,6 +186,13 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         ...(targetSessionKeys && targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
         ...(fanoutMode ? { fanoutMode: fanoutMode as (typeof FANOUT_MODES)[number] } : {}),
       };
+      const traceparentRaw = readStringParam(params, "traceparent");
+      const traceparent =
+        traceparentRaw !== undefined ? normalizeDiagnosticTraceparent(traceparentRaw) : undefined;
+      if (traceparentRaw !== undefined && !traceparent) {
+        throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
+      }
+      const traceContextFields = traceparent ? { traceparent } : {};
 
       // Check per-turn delegate limit. Durable queued depth is reported for
       // visibility but does not consume this turn's admission budget.
@@ -198,6 +217,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           task,
           stagedAt: Date.now(),
           ...targetingFields,
+          ...traceContextFields,
         });
         delegatesThisTurn += 1;
 
@@ -207,6 +227,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           delegateIndex: delegatesThisTurn,
           delegatesThisTurn,
           ...targetingFields,
+          ...traceContextFields,
           note:
             "Delegate will fire when compaction occurs, not on a timer. " +
             "The shard starts at the moment of compaction and returns to the post-compaction session. " +
@@ -222,6 +243,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         delayMs,
         ...(mode !== "normal" ? { mode } : {}),
         ...targetingFields,
+        ...traceContextFields,
       });
 
       delegatesThisTurn += 1;
@@ -234,6 +256,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         delegateIndex: dispatchIndex,
         delegatesThisTurn: dispatchIndex,
         ...targetingFields,
+        ...traceContextFields,
         note:
           "Delegate will be dispatched after your response completes. " +
           "Chain tracking (cost cap, depth limit) applies.",

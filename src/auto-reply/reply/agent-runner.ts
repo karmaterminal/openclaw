@@ -2216,6 +2216,7 @@ export async function runReplyAgent(params: {
                   silent?: boolean;
                   silentWake?: boolean;
                   startedAt?: number;
+                  traceparent?: string;
                 },
               ) => {
                 try {
@@ -2227,6 +2228,7 @@ export async function runReplyAgent(params: {
                       ...(options?.silent ? { silentAnnounce: true } : {}),
                       ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                       drainsContinuationDelegateQueue: true,
+                      ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
                     },
                     {
                       agentSessionKey: sessionKey,
@@ -2270,6 +2272,7 @@ export async function runReplyAgent(params: {
                         delayMs: 0,
                         delivery: "immediate",
                         delegateMode,
+                        traceparent: options?.traceparent,
                         log: (message) => defaultRuntime.log(message),
                       });
                     }
@@ -2313,6 +2316,9 @@ export async function runReplyAgent(params: {
                   plannedHop: nextChainCount,
                   silent: effectiveContinuationSignal.silent,
                   silentWake: effectiveContinuationSignal.silentWake,
+                  ...(effectiveContinuationSignal.traceparent
+                    ? { traceparent: effectiveContinuationSignal.traceparent }
+                    : {}),
                 });
                 const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
                   count: currentChainCount,
@@ -2338,6 +2344,7 @@ export async function runReplyAgent(params: {
                     delayMs: clampedDelay,
                     delivery: "timer",
                     delegateMode,
+                    traceparent: effectiveContinuationSignal.traceparent,
                     log: (message) => defaultRuntime.log(message),
                   });
                 }
@@ -2408,6 +2415,7 @@ export async function runReplyAgent(params: {
                       silent: reservation.silent,
                       silentWake: reservation.silentWake,
                       startedAt: reservation.createdAt,
+                      ...(reservation.traceparent ? { traceparent: reservation.traceparent } : {}),
                     });
                   } finally {
                     unregisterContinuationTimerHandle(sessionKey, timerHandle);
@@ -2420,6 +2428,9 @@ export async function runReplyAgent(params: {
                   silent: effectiveContinuationSignal.silent,
                   silentWake: effectiveContinuationSignal.silentWake,
                   startedAt: chainStartedAt,
+                  ...(effectiveContinuationSignal.traceparent
+                    ? { traceparent: effectiveContinuationSignal.traceparent }
+                    : {}),
                 });
               }
             } else {
@@ -2636,6 +2647,7 @@ export async function runReplyAgent(params: {
               silent?: boolean;
               silentWake?: boolean;
               startedAt?: number;
+              traceparent?: string;
             },
           ) => {
             try {
@@ -2645,6 +2657,7 @@ export async function runReplyAgent(params: {
                   ...(options?.silent ? { silentAnnounce: true } : {}),
                   ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                   drainsContinuationDelegateQueue: true,
+                  ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
                 },
                 {
                   agentSessionKey: sessionKey,
@@ -2687,6 +2700,7 @@ export async function runReplyAgent(params: {
                     delayMs: 0,
                     delivery: "immediate",
                     delegateMode,
+                    traceparent: options?.traceparent,
                     log: (message) => defaultRuntime.log(message),
                   });
                 }
@@ -2728,6 +2742,7 @@ export async function runReplyAgent(params: {
               plannedHop: nextChainCount,
               silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
               silentWake: delegate.mode === "silent-wake",
+              ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
             });
             const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
               count: currentChainCount,
@@ -2747,6 +2762,7 @@ export async function runReplyAgent(params: {
                 delayMs: clampedDelay,
                 delivery: "timer",
                 delegateMode,
+                traceparent: delegate.traceparent,
                 log: (message) => defaultRuntime.log(message),
               });
             }
@@ -2805,6 +2821,7 @@ export async function runReplyAgent(params: {
                   silent: reservation.silent,
                   silentWake: reservation.silentWake,
                   startedAt: reservation.createdAt,
+                  ...(reservation.traceparent ? { traceparent: reservation.traceparent } : {}),
                 });
               } finally {
                 unregisterContinuationTimerHandle(sessionKey, timerHandle);
@@ -2817,6 +2834,7 @@ export async function runReplyAgent(params: {
               silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
               silentWake: delegate.mode === "silent-wake",
               startedAt: chainStartedAt,
+              ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
             });
           }
         }

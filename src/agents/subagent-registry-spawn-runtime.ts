@@ -30,6 +30,7 @@ type RegisterSubagentRunParams = {
   continuationTargetSessionKey?: string;
   continuationTargetSessionKeys?: string[];
   continuationFanoutMode?: "tree" | "all";
+  traceparent?: string;
 };
 
 type CountActiveRunsForSessionFn = (requesterSessionKey: string) => number;

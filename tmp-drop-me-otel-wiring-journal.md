@@ -1,0 +1,27 @@
+- 2026-05-03T20:23:40+00:00: workorder authored; dispatch starting; figs caveats embedded re sampling-reality + W3C best-practices + zero-overhead + bracket-parity
+
+- 2026-05-03T20:26:33+00:00: §1 reads done; required RFC §3/§6.6-§6.8, audit journal, figs feedback, producer/return/queue/replay/adapter surfaces, and reference tests read. Scope understood; starting Seam 1 producer input contract. Deviation noted: continue_delegate descriptor is TypeBox in current substrate, so wiring will extend that schema and reuse existing W3C parser rather than introduce a parallel zod-only surface.
+
+- 2026-05-03T20:30:38+00:00: Seam 1 complete: optional traceparent added to continue_delegate TypeBox schema/execution, bracket directive parser, continuation delegate runtime types, TaskFlow persistence, and post-compaction wrapper. Focused Seam 1 tests passed: 121 assertions across continue-delegate-tool, tokens, and delegate-store.
+
+- 2026-05-03T20:33:09+00:00: Seam 2 complete: emitContinuationDelegateSpan accepts traceparent and agent-runner bracket/tool immediate+timer dispatch paths pass the persisted delegate carrier into StartSpanOptions. Focused Seam 2 tests passed: 76 assertions across continuation-tracer and agent-runner delegate dispatch.
+
+- 2026-05-03T20:36:10+00:00: Seam 3 complete: spawn params, subagent run registry metadata, persisted registry replay, and announce-flow invocation now carry traceparent from dispatched delegates into child run context. Focused Seam 3 tests passed: 30 assertions across agent-runner, subagent-spawn, and registry persistence.
+
+- 2026-05-03T20:39:49+00:00: Seam 4 complete: child run traceparent now threads through silent return system events, visible queued/direct announce delivery, direct gateway agent params, and direct fallback send args. Focused Seam 4 tests passed: 29 assertions across subagent-announce silent-wake and announce-delivery.
+
+- 2026-05-03T20:40:52+00:00: Seam 5 complete: targeted return delivery now passes traceparent to every session-delivery payload and immediate system-event enqueue for single-target, multi-target, tree fanout, and all fanout; absence remains omitted. Focused Seam 5 tests passed: 17 assertions across cross-session-targeting and silent-wake coverage.
+
+- 2026-05-03T20:46:22+00:00: Seam 6 complete: queue-drain spans consume the first traced drained entry; restart-sentinel system/agent-turn queue payloads and replayed system-event wakes preserve traceparent; post-compaction delegate queue payloads, replay spawns, and replay system events preserve traceparent. Focused Seam 6 tests passed: 140 assertions across continuation-tracer, session-system-events, server-restart-sentinel, post-compaction-delegate-dispatch, and session-delivery-queue storage.
+
+- 2026-05-03T20:51:50+00:00: Seam 7 complete: completion-return trace propagation now spends one chain step per completing shard (not per recipient), omits traceparent when the remaining chain-step budget is 0, and fanout returns emit one aggregate continuation.queue.fanout span with per-recipient outcome attributes. Focused Seam 7 tests passed: 105 assertions across continuation-tracer, cross-session-targeting, subagent-announce silent-wake, and continuation-drain.
+
+- 2026-05-03T20:55:47+00:00: Integration test added/passing: src/auto-reply/continuation/trace-context-propagation.integration.test.ts covers a 3-hop delegate chain, cross-session targeted return, fanout broadcast, and post-restart session-delivery replay with one optional traceparent carrier. Deviation documented in-test: current tracer substrate has no production span-context extraction/link primitive, so spawned child spans stitch to the carried upstream traceparent rather than the just-emitted dispatch span; this preserves one trace id and all queue/replay carriers while leaving exact dispatch-span-parenting/link semantics for a follow-up substrate amendment. Integration result: 1 test passing.
+
+- 2026-05-03T20:58:58+00:00: Verification checkpoint: pnpm tsgo passed; scoped seam/integration suite passed (18 files, 363 assertions); pnpm check initially found one lint issue in the new integration test and passed after fixing the branch-local spread fallback. Preparing temp-dir build verification.
+
+- 2026-05-03T21:00:10+00:00: Build verification passed in clean temp copy. Receipt: build-verify SHA 487385987fff470bfcacaa7adf9ffbba8b6a7b42 at 2026-05-03T21:00:10+00:00 temp /tmp/openclaw-otel-wiring-build-20260503T2059. Commands: pnpm install --frozen-lockfile; pnpm build; dist/ output confirmed.
+
+- 2026-05-03T21:01:17+00:00: §6.8 deviation follow-up filed as https://github.com/karmaterminal/openclaw/issues/559. Rationale: current tracer shim has no production span-context extraction/link primitive, so this PR preserves the upstream traceparent across carriers and same-trace stitching but does not make child first spans parent to the just-emitted dispatch span or model wake-side successor consumption as an OTEL link.
+
+- 2026-05-03T21:02:19+00:00: PR opened: https://github.com/karmaterminal/openclaw/pull/560 against frond/v2026.5.2/canonical. Declare-done pending final SHA publication only. Verification summary: pnpm tsgo passed; scoped seam/integration suite passed (18 files, 363 assertions); pnpm check passed; clean temp build passed at SHA 487385987fff470bfcacaa7adf9ffbba8b6a7b42 in /tmp/openclaw-otel-wiring-build-20260503T2059. Cohort cosign needed.
