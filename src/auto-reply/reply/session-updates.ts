@@ -11,12 +11,13 @@ import {
 } from "../../agents/skills/refresh-state.js";
 import { ensureSkillsWatcher } from "../../agents/skills/refresh.js";
 import {
+  mergeSessionEntry,
+  normalizeStoreSessionKey,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
   resolveSessionStoreEntry,
   type SessionEntry,
   updateSessionStore,
-  updateSessionStoreEntry,
 } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveStableSessionEndTranscript } from "../../gateway/session-transcript-files.fs.js";
@@ -298,19 +299,30 @@ export async function incrementCompactionCount(params: {
     updates.cacheRead = undefined;
     updates.cacheWrite = undefined;
   }
-  sessionStore[memResolved.normalizedKey] = {
-    ...entry,
-    ...updates,
-  };
+  sessionStore[memResolved.normalizedKey] = mergeSessionEntry(entry, updates);
   for (const legacyKey of memResolved.legacyKeys) {
     delete sessionStore[legacyKey];
   }
   if (storePath) {
-    await updateSessionStoreEntry({
+    await updateSessionStore(
       storePath,
-      sessionKey,
-      update: async () => updates,
-    });
+      (store) => {
+        const resolved = resolveSessionStoreEntry({ store, sessionKey });
+        // Resolve-then-merge-or-create: when the on-disk store has no entry yet
+        // (first-turn manual /compact lands before any other persist), fall back
+        // to the active in-memory entry so the count is not silently dropped.
+        // mergeSessionEntry preserves monotonic updatedAt + sessionStartedAt
+        // rollover on sessionId change + stale-modelProvider scrub.
+        const storedEntry = resolved.existing ?? entry;
+        store[resolved.normalizedKey] = mergeSessionEntry(storedEntry, updates);
+        for (const legacyKey of resolved.legacyKeys) {
+          delete store[legacyKey];
+        }
+      },
+      // activeSessionKey opt protects this entry from enforce-mode pruning /
+      // disk-budget cleanup that runs inside the same lock window.
+      { activeSessionKey: normalizeStoreSessionKey(sessionKey) },
+    );
   }
   if ((sessionIdChanged || sessionFileChanged) && cfg) {
     emitCompactionSessionLifecycleHooks({
