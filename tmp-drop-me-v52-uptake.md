@@ -364,3 +364,40 @@ Diffs of interest vs. `frond-scribe/20260429/v3-cohort-fixes` beyond base mechan
 - The branch intentionally preserves the 119 PORT cohort commits and adds no DROP / already-upstream / fold changes.
 
 Recommendation: ship-as-successor-candidate after cohort byte-walk, with surface flags for figs on (1) non-rewriting merge shape chosen for savegame discipline, (2) #545 still needing separate v52 uptake if/when it lands, and (3) historical heartbeat test command operands in the workorder no longer matching v52 file layout.
+
+## §X-absorption — restart 2 absorption pass
+
+Lane: `frond-scribe/v52-absorption-copilot`
+
+Branch: `frond-scribe/20260503/v52-uptake-of-v3-cohort-fixes`
+
+Source wave target: `frond-scribe/20260429/v3-cohort-fixes` current tip expected at `dda74a79f0`
+
+Heartbeat username: `frond-scribe-v52-absorption-hook`
+
+### §1 — required reads closeout
+
+Started: 2026-05-02T20:06:33-07:00
+Closed: 2026-05-02T20:18:00-07:00
+
+Required surfaces read:
+
+| Surface                      | Notes                                                                                                                                                                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `karmaterminal/openclaw#546` | Original v52-uptake issue and declare-done comment confirmed branch, guardrails, `dea43a844b` savegame, and the prior caveat that #545 had not yet been replayed.                                                                                                      |
+| `karmaterminal/openclaw#542` | v29-uptake of canonical2 merged into the source line; primarily additive docs/tests plus the earlier compaction persistence fix that was stripped and relaned into #545 after Codex review.                                                                            |
+| `karmaterminal/openclaw#545` | Canonical-primitives compaction persistence fix: preserve `mergeSessionEntry` semantics and active-session prune protection. Codex later tightened the shape to `normalizeStoreSessionKey(sessionKey.trim())`; absorption must preserve that exact trimmed active key. |
+| `karmaterminal/openclaw#537` | Silas-saturation diagnostics: continuation queue metrics provider seam, diagnostic queue samples/snapshots/OTEL, and run provenance fields (`fireReason`, `parentRunId`) for `run.started` / `run.completed`.                                                          |
+| `tmp-drop-me-v52-uptake.md`  | Prior lane journal confirms v5.2 basis merge, generated baseline regeneration, gates green, and missing #545/#537 wave content at declare-done time.                                                                                                                   |
+
+Comment-pop / conflict surfaces to watch during absorption:
+
+| Surface                                                                          | Watch item                                                                                                                                                                            |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/auto-reply/reply/session-updates.ts`                                        | Preserve #545's canonical primitive shape: in-memory + on-disk `mergeSessionEntry`, and `{ activeSessionKey: normalizeStoreSessionKey(sessionKey.trim()) }`.                          |
+| `src/infra/heartbeat-wake.ts`                                                    | Address #537 Codex P2 if still present: coalesced wake reasons must not preserve a stale `parentRunId` when the newer wake is no longer causally tied to that parent.                 |
+| `src/infra/heartbeat-runner.ts`                                                  | Address #537 Codex P2 if still present: heartbeat wake handling must forward `params.parentRunId` into `run()` / `runOnce()` so continuation-chain lineage reaches reply diagnostics. |
+| `src/auto-reply/diagnostics/*`, `src/logging/*`, `extensions/diagnostics-otel/*` | #537 adds metrics/snapshot/provider wiring; expected to be additive but likely to touch the v52 diagnostic seams.                                                                     |
+| Root lane artifacts                                                              | #537 review flagged root `WORKORDER.md` pollution before merge; confirm the absorbed source tip does not reintroduce it into the v52 candidate.                                       |
+
+No Discord chat. Webhook heartbeats only.
