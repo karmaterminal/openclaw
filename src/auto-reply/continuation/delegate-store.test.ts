@@ -1,5 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Logger mock for breadcrumb assertion (#453 corrupt-payload coverage).
+// Mirrors the shape used in sibling delegate-dispatch.test.ts so log.warn
+// emissions land in `loggerRecords` for inspection.
+const loggerRecords: Array<{ level: string; message: string }> = [];
+vi.mock("../../logging/subsystem.js", () => {
+  const record =
+    (level: string) =>
+    (message: string): void => {
+      loggerRecords.push({ level, message });
+    };
+  const logger = {
+    subsystem: "test",
+    isEnabled: () => true,
+    trace: record("trace"),
+    debug: record("debug"),
+    info: record("info"),
+    warn: record("warn"),
+    error: record("error"),
+    fatal: record("fatal"),
+    raw: record("raw"),
+    child: () => logger,
+  };
+  return {
+    createSubsystemLogger: () => logger,
+  };
+});
+
 // Mock the TaskFlow registry before importing the store.
 type MockTaskFlowRecord = {
   flowId: string;
@@ -508,9 +535,9 @@ describe("consumePendingDelegates — concurrent-consumer race contract (#448)",
     // either calls finishFlow. This mirrors the race window where both
     // consumePendingDelegates invocations have already iterated the queued
     // list and captured the same revision.
-    const queuedBefore = [
-      ...mockFlows.values(),
-    ].filter((f) => f.ownerKey === "session-1" && f.status === "queued");
+    const queuedBefore = [...mockFlows.values()].filter(
+      (f) => f.ownerKey === "session-1" && f.status === "queued",
+    );
     expect(queuedBefore).toHaveLength(1);
     const sharedRevision = queuedBefore[0].revision;
     const flowId = queuedBefore[0].flowId;
@@ -576,9 +603,7 @@ describe("consumePendingDelegates — concurrent-consumer race contract (#448)",
     // Capture revision as a primitive BEFORE the race: the mock's finishFlow
     // mutates flow.revision in place, so a live-reference read during the
     // loop would observe the post-A revision, not the pre-race revision.
-    const queuedBefore = [
-      ...mockFlows.values(),
-    ]
+    const queuedBefore = [...mockFlows.values()]
       .filter((f) => f.ownerKey === "session-1" && f.status === "queued")
       .map((f) => ({ flowId: f.flowId, capturedRevision: f.revision }));
     expect(queuedBefore).toHaveLength(3);
@@ -621,9 +646,130 @@ describe("consumePendingDelegates — concurrent-consumer race contract (#448)",
     }
 
     // All three flows are now status=succeeded.
-    const finalized = [
-      ...mockFlows.values(),
-    ].filter((f) => f.ownerKey === "session-1");
+    const finalized = [...mockFlows.values()].filter((f) => f.ownerKey === "session-1");
     expect(finalized.every((f) => f.status === "succeeded")).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------- */
+/*  consume-paths corrupt-payload contract (#453):                     */
+/*    Schema-drift / corrupt stateJson on a TaskFlow row MUST fail     */
+/*    the row + emit a tagged breadcrumb so the wedge-shape (decode-   */
+/*    null + silent-continue accumulating in queue) cannot regress.    */
+/*    Cures the substrate-evidence pattern from #552 mode-1 cohort     */
+/*    byte-walk this turn (drainer-failFlow at consume-paths is the    */
+/*    canonical wedge cure).                                           */
+/* ------------------------------------------------------------------- */
+
+describe("consume-paths corrupt-payload breadcrumbs (#453)", () => {
+  beforeEach(() => {
+    loggerRecords.length = 0;
+  });
+
+  it("fails a pending delegate row with corrupt stateJson + emits the [continuation:delegate-decode-failed] breadcrumb", () => {
+    const flowId = queueRawPendingFlow("session-453a", { not_a_real_field: "corrupt" });
+    const result = consumePendingDelegates("session-453a");
+
+    // No delegates returned — corrupt payload didn't decode to a valid one.
+    expect(result).toEqual([]);
+
+    // failFlow was called against the corrupt row — it's no longer queued.
+    const flow = mockFlows.get(flowId);
+    expect(flow?.status).toBe("failed");
+
+    // Breadcrumb emitted at warn level with the canonical tag + flowId + session.
+    const warns = loggerRecords.filter((r) => r.level === "warn");
+    expect(
+      warns.some(
+        (r) =>
+          r.message.includes("[continuation:delegate-decode-failed]") &&
+          r.message.includes(`flowId=${flowId}`) &&
+          r.message.includes("session=session-453a"),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails a post-compaction delegate row with corrupt stateJson + emits the [continuation:post-compaction-decode-failed] breadcrumb", () => {
+    // Stage a raw post-compaction row (corrupt stateJson).
+    const flowId = `flow-${++flowIdCounter}`;
+    mockFlows.set(flowId, {
+      flowId,
+      syncMode: "managed",
+      ownerKey: "session-453b",
+      controllerId: CONTINUATION_POST_COMPACTION_CONTROLLER_ID,
+      status: "queued",
+      stateJson: { not_a_real_field: "corrupt-post-compaction" },
+      goal: "raw post-compaction delegate",
+      currentStep: "Staged for release after compaction",
+      revision: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const result = consumeStagedPostCompactionDelegates("session-453b");
+
+    // No delegates returned — corrupt payload didn't decode.
+    expect(result).toEqual([]);
+
+    // failFlow was called — row no longer queued.
+    const flow = mockFlows.get(flowId);
+    expect(flow?.status).toBe("failed");
+
+    // Post-compaction breadcrumb tag fired.
+    const warns = loggerRecords.filter((r) => r.level === "warn");
+    expect(
+      warns.some(
+        (r) =>
+          r.message.includes("[continuation:post-compaction-decode-failed]") &&
+          r.message.includes(`flowId=${flowId}`) &&
+          r.message.includes("session=session-453b"),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails multiple corrupt rows in a single consume call without aborting later valid ones", () => {
+    const corruptId1 = queueRawPendingFlow("session-453c", { bad_shape: 1 });
+    enqueuePendingDelegate("session-453c", { task: "valid task" });
+    const corruptId2 = queueRawPendingFlow("session-453c", { bad_shape: 2 });
+
+    const result = consumePendingDelegates("session-453c");
+
+    // Only the valid delegate returned.
+    expect(result).toHaveLength(1);
+    expect(result[0].task).toBe("valid task");
+
+    // Both corrupt rows failed.
+    expect(mockFlows.get(corruptId1)?.status).toBe("failed");
+    expect(mockFlows.get(corruptId2)?.status).toBe("failed");
+
+    // Both corrupt-row breadcrumbs emitted.
+    const decodeFailedWarns = loggerRecords.filter(
+      (r) => r.level === "warn" && r.message.includes("[continuation:delegate-decode-failed]"),
+    );
+    expect(decodeFailedWarns.length).toBe(2);
+  });
+
+  it("does NOT emit breadcrumbs when consume runs against an empty queue (clean session)", () => {
+    const result = consumePendingDelegates("session-453d-empty");
+    expect(result).toEqual([]);
+    const decodeFailedWarns = loggerRecords.filter(
+      (r) => r.level === "warn" && r.message.includes("[continuation:delegate-decode-failed]"),
+    );
+    expect(decodeFailedWarns).toEqual([]);
+  });
+
+  it("does NOT emit breadcrumbs when consume runs against well-formed payloads (regression-resistance for valid path)", () => {
+    enqueuePendingDelegate("session-453e", { task: "clean task 1" });
+    enqueuePendingDelegate("session-453e", { task: "clean task 2" });
+
+    const result = consumePendingDelegates("session-453e");
+    expect(result).toHaveLength(2);
+
+    // Zero decode-failed breadcrumbs on the happy path — verifies the
+    // breadcrumb is failure-only, not always-on.
+    const decodeFailedWarns = loggerRecords.filter(
+      (r) => r.level === "warn" && r.message.includes("[continuation:delegate-decode-failed]"),
+    );
+    expect(decodeFailedWarns).toEqual([]);
   });
 });
