@@ -128,7 +128,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   //   AND that boolean `silent`/`silentWake` are absent. This test extends
   //   that surface with the COMPLEMENTARY pin: the EXACT set of advertised
   //   parameter keys on the tool descriptor. A refactor that adds a new
-  //   model-facing parameter (cross-session addressing, retry knobs, priority)
+  //   model-facing parameter (cross-session addressing, trace context, retry knobs, priority)
   //   without an ADR would slip past the mode-only trap because it only checks
   //   what MUST be absent (silent/silentWake) and what MUST be present (mode
   //   enum). This trap pins the closed set, including the resurrected
@@ -141,6 +141,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   //   - targetSessionKey  (optional)
   //   - targetSessionKeys (optional)
   //   - fanoutMode        (optional, enum)
+  //   - traceparent       (optional, W3C trace-context carrier)
   //
   // Extension to the mode-only trap, not duplication: it lives in
   // `src/auto-reply/continuation/types.mode-shape.test.ts` and asserts
@@ -172,11 +173,12 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
       "targetSessionKey",
       "targetSessionKeys",
       "fanoutMode",
+      "traceparent",
     ].toSorted();
     const actualKeys = Object.keys(properties).toSorted();
     expect(
       actualKeys,
-      `continue_delegate descriptor must advertise exactly [task, delaySeconds, mode, targetSessionKey, targetSessionKeys, fanoutMode]; got [${actualKeys.join(", ")}]`,
+      `continue_delegate descriptor must advertise exactly [task, delaySeconds, mode, targetSessionKey, targetSessionKeys, fanoutMode, traceparent]; got [${actualKeys.join(", ")}]`,
     ).toEqual(expectedKeys);
 
     // task is required (model-facing contract).
