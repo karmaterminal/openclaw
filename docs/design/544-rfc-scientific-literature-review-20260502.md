@@ -8,17 +8,17 @@ WIP after §1 read pass.
 
 ## Compliance scorecard
 
-| Axis                                | Verdict                                                                  | Evidence                                                                                                                            |
-| ----------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| TOC accuracy                        | pass                                                                     | §2.A: 72 TOC entries, 72 body headings, no missing entries, no anchor mismatches, no ordering defects                               |
-| Narrative flow                      | pass-with-fixes                                                          | §2.C: motivation is strong, but shipped contract, future seams, substrate doctrine, and validation evidence need clearer separation |
-| Coverage of feature surface         | pass-with-fixes                                                          | §3: important behaviors are implemented but several code-backed semantics are missing from the RFC                                  |
-| Technical depth calibration         | WIP                                                                      | §4.C pending                                                                                                                        |
-| Mermaid diagrams pulling weight     | WIP                                                                      | §4.A,B pending                                                                                                                      |
-| Scientific-literature register      | WIP                                                                      | §5 pending                                                                                                                          |
-| Claims validation                   | 8 verified / 8 partial / 1 cannot-locate / 3 contradicted, of 20 audited | §3.B table                                                                                                                          |
-| Code without claim                  | 16 missing claims, 14 load-bearing / 2 supporting                        | §3.A table                                                                                                                          |
-| Substrate dignity / stakes register | WIP                                                                      | §5.special pending                                                                                                                  |
+| Axis                                | Verdict                                                                  | Evidence                                                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| TOC accuracy                        | pass                                                                     | §2.A: 72 TOC entries, 72 body headings, no missing entries, no anchor mismatches, no ordering defects                                   |
+| Narrative flow                      | pass-with-fixes                                                          | §2.C: motivation is strong, but shipped contract, future seams, substrate doctrine, and validation evidence need clearer separation     |
+| Coverage of feature surface         | pass-with-fixes                                                          | §3: important behaviors are implemented but several code-backed semantics are missing from the RFC                                      |
+| Technical depth calibration         | pass-with-fixes                                                          | §4.C: depth is strong in places but misallocated between substrate contract, implementation history, and validation evidence            |
+| Mermaid diagrams pulling weight     | pass-with-fixes                                                          | §4.A,B: the only diagram should be redrawn as a decision tree; add diagrams for delegate dispatch, compaction relay, broker, and traces |
+| Scientific-literature register      | WIP                                                                      | §5 pending                                                                                                                              |
+| Claims validation                   | 8 verified / 8 partial / 1 cannot-locate / 3 contradicted, of 20 audited | §3.B table                                                                                                                              |
+| Code without claim                  | 16 missing claims, 14 load-bearing / 2 supporting                        | §3.A table                                                                                                                              |
+| Substrate dignity / stakes register | WIP                                                                      | §5.special pending                                                                                                                      |
 
 ## §2.A - TOC byte-accuracy findings
 
@@ -172,15 +172,170 @@ Audited 20 load-bearing claims. Count: 8 verified, 8 partially verified / overbr
 
 ## §4.A - Existing Mermaid audit
 
-WIP.
+The RFC has one Mermaid diagram, at `docs/design/continue-work-signal-v2.md:245` in §2.6.
+
+| Diagram                            | Verdict          | Finding                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §2.6 three-tier fallback hierarchy | Partial / redraw | It shows that Tier 1 and Tier 2 converge on wake/spawn machinery, but it does not show the decision rule: continuation enabled, tool available, tool denied/fails, response-token syntax present, or disabled. Replace it with a capability decision tree, or keep it only as a secondary "outputs converge" diagram. |
 
 ## §4.B - Proposed new Mermaid diagrams
 
-WIP.
+### Diagram 1: §2.6 capability-tier decision tree
+
+```mermaid
+flowchart TD
+    A["Agent wants a successor-turn action"] --> B{"continuation.enabled?"}
+    B -- "false" --> OFF["Tier 3: no continuation surface; ordinary single-turn behavior"]
+    B -- "true" --> C{"typed tool registered and available in this turn?"}
+    C -- "yes" --> D["Tier 1: prefer tool call"]
+    D --> E{"tool call accepted?"}
+    E -- "yes: continue_work" --> W["schedule same-session wake after turn"]
+    E -- "yes: continue_delegate" --> G["enqueue/drain delegate work"]
+    E -- "yes: request_compaction" --> Q["enqueue async compaction"]
+    E -- "no / tool denied / leaf policy" --> F{"terminal response-token syntax present?"}
+    C -- "no" --> F
+    F -- "CONTINUE_WORK[:N]" --> W
+    F -- "[[CONTINUE_DELEGATE:...]]" --> G
+    F -- "none" --> IDLE["turn ends; no elected continuation"]
+    F -- "request_compaction wanted" --> NOFALL["unavailable: no response-token fallback"]
+```
+
+This illuminates the capability-selection claim the prose currently carries alone. It also shows that `request_compaction()` is tool-only and that Tier 2 is selected by capability/policy failure, not by an agent preference.
+
+### Diagram 2: §3.2 delegate dispatch sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Agent
+    participant Tool as continue_delegate()
+    participant Store as TaskFlow delegate store
+    participant Runner as reply/followup drain
+    participant Hedge as quiet-channel hedge timer
+    participant Spawn as spawnSubagentDirect()
+    participant Child as delegate session
+    participant Parent as parent session
+
+    Agent->>Tool: task, mode, delaySeconds?
+    Tool->>Store: enqueuePendingDelegate(sessionKey, descriptor)
+    Tool-->>Agent: status=scheduled / queued-for-compaction
+    Runner->>Store: consume matured delegates
+    Store-->>Runner: matured delegates
+    Runner->>Store: peekSoonestUnmaturedDelegateDueAt()
+    alt unmatured delegate exists
+        Runner->>Hedge: arm timer for dueAt
+        Hedge-->>Runner: re-drain when quiet-channel timer fires
+    end
+    Runner->>Runner: enforce maxDelegatesPerTurn, chain, cost
+    Runner->>Spawn: spawnSubagentDirect(task, silent/wake flags)
+    Spawn-->>Child: accepted child session
+    Child-->>Parent: announce or silent enrichment return
+    alt silent-wake
+        Parent->>Parent: requestHeartbeatNow()
+    end
+```
+
+This diagram makes the TaskFlow/filter-at-consume/hedge-timer model legible. It prevents a reader from conflating tool-path delayed delegates with bracket-path process-scoped reservations.
+
+### Diagram 3: §4.1 trigger taxonomy decision tree
+
+```mermaid
+flowchart TD
+    A["Compaction-related event"] --> B{"Who initiates?"}
+    B -- "platform" --> P{"Cause"}
+    P -- "context overflow" --> A1["A: overflow compaction"]
+    P -- "idle timeout + high usage" --> B1["B: timeout/high-usage compaction"]
+    B -- "human-user" --> C1["C: /compact"]
+    B -- "continuation system" --> D1["D: pre-run context-pressure advisory"]
+    B -- "agent" --> E1["E: request_compaction()"]
+    A1 --> EMIT{"emission timing"}
+    B1 --> EMIT
+    EMIT -- "inside pi-embedded-runner turn" --> F1["F: mid-turn pressure-fire emission"]
+    EMIT -- "pre-run / lifecycle" --> ORD["ordinary compaction/log path"]
+```
+
+This redraw fixes the "five-trigger taxonomy" / A-F mismatch by separating causes from emission timing. Trigger F becomes a convergent emission surface of A/B rather than a sixth independent decision cause.
+
+### Diagram 4: §4.4 post-compaction delegate lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Staged: continue_delegate(mode="post-compaction")
+    Staged --> Persisted: persist pending delegate
+    Persisted --> Compaction: platform or request_compaction fires
+    Compaction --> Released: after_compaction hook consumes staged work
+    Released --> Queued: enqueue postCompactionDelegate delivery
+    Queued --> Draining: drainPendingSessionDeliveries()
+    Draining --> Spawned: spawnSubagentDirect accepted
+    Spawned --> Returned: silent-wake enrichment returns
+    Returned --> SuccessorTurn: parent/successor session wakes
+    Draining --> Retry: spawn/delivery failure
+    Retry --> Queued: backoff eligible
+    Retry --> Failed: retry cap exceeded
+    Released --> Dropped: stale TTL or maxDelegatesPerTurn overflow
+```
+
+This diagram distinguishes staged, queued, drained, spawned, and returned states. The distinction is currently easy to miss because the prose uses "released" and "dispatched" where the current code first queues delivery and drains asynchronously.
+
+### Diagram 5: §4.6 gateway-as-lifecycle-broker component diagram
+
+```mermaid
+flowchart LR
+    Agent["Agent intent<br/>delaySeconds / mode / reason / task"] --> Tool["Tool surface<br/>continue_work / continue_delegate / request_compaction"]
+    Tool --> Broker["Gateway broker<br/>policy, lifecycle, routing"]
+    Broker --> Timer["Process timer<br/>same-session wake / bracket delay"]
+    Broker --> TaskFlow["TaskFlow<br/>pending tool delegates"]
+    Broker --> Queue["session-delivery-queue<br/>post-compaction delivery / restart recovery"]
+    Broker --> Compaction["Compaction lane<br/>request + after_compaction hooks"]
+    Timer --> Wake["system event + heartbeat wake"]
+    TaskFlow --> Spawn["spawnSubagentDirect"]
+    Queue --> Spawn
+    Compaction --> Queue
+    Spawn --> Return["announce / silent / silent-wake return"]
+    Return --> Wake
+```
+
+This diagram makes the boundary-line doctrine concrete: agent owns intent, tool/broker own mechanics, substrates own persistence/retry/delivery properties. It also shows that there are multiple substrates, so "the substrate" should not be used as a synonym for `session-delivery-queue` everywhere.
+
+### Diagram 6: §6.6 trace/chain-correlation diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Parent as parent turn
+    participant Tracer as continuation-tracer facade
+    participant Queue as system-event / delivery queue
+    participant Adapter as diagnostics-otel adapter
+    participant Child as child or successor turn
+
+    Parent->>Tracer: continuation.work / delegate.dispatch
+    Tracer->>Adapter: startSpan(name, attrs, traceparent?)
+    Parent->>Queue: enqueue event or delivery payload with traceparent when available
+    Queue-->>Child: drain/recover payload
+    Child->>Tracer: continuation.work.fire / delegate.fire / queue.drain / compaction.released
+    Tracer->>Adapter: parse traceparent and set remote parent context
+    Adapter-->>Adapter: emit span under openclaw.continuation
+```
+
+This diagram explains the claim that chain correlation crosses turns, queues, and sometimes sessions. It should sit beside an updated span-name table from `src/infra/continuation-tracer.ts`.
 
 ## §4.C - Technical depth findings
 
-WIP.
+| Section                 | Calibration                                                 | Finding / edit                                                                                                                                                                                                         |
+| ----------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §1 Problem              | Under-depth                                                 | Strong motivation, but not enough substrate terminology/stakes. Add terms and one paragraph on successor-turn arrangement as the core freedom.                                                                         |
+| §2 Solution             | Mixed                                                       | Public primitive semantics are clear, but fallback grammar is under-specified and future recipient seams are over-present in shipped semantics. Move `targetSessionKey`/multi-recipient to non-goals/future.           |
+| §3 Implementation       | Under-depth where load-bearing, over-depth where historical | Add path-specific durability: tool pending delegates = TaskFlow, bracket delayed reservations/timers = process-scoped, post-compaction delivery = session-delivery queue. Cut stale line-pin tables or update them.    |
+| §3.2 Delegate dispatch  | Under-depth                                                 | Add the filter-at-consume + hedge-timer model and make "queued" vs "timer armed" explicit.                                                                                                                             |
+| §3.6 Persistence        | Overbroad                                                   | `session-delivery-queue` capabilities are described as though they carry all continuation primitives. Restrict the claim to system-event/agent-turn/post-compaction delivery and name TaskFlow/timer roles separately. |
+| §4 Platform Integration | Mixed                                                       | Trigger taxonomy and compaction lifecycle are valuable, but §4.3's provider/model bug history should move to implementation-status evidence unless recast as a MUST.                                                   |
+| §4.4 Post-compaction    | Under-depth                                                 | Add queue states, stale TTL, overflow drop, re-stage-on-enqueue-failure, async drain, and context read failure event. Current prose says "released/dispatched" too early.                                              |
+| §5 Configuration        | Under-depth                                                 | Include `earlyWarningBand`; clarify `contextPressureThreshold` optional semantics and early-warning derived band.                                                                                                      |
+| §6 Observability        | Under-depth / stale                                         | Update span names/attributes from `src/infra/continuation-tracer.ts`. Move fleet archaeology to validation appendix; keep falsifiable telemetry conclusions in body.                                                   |
+| §7 Safety/Security      | Under-depth                                                 | Add filesystem boundary protections for post-compaction context, response-token task truncation, plaintext trust boundary, and missing cryptographic origin/auth guarantees.                                           |
+| §8 Production Use Cases | Slight under-depth                                          | Good examples, but they should be framed as an Applicability Statement with constraints: when continuation is appropriate, when it should be disabled, and when human-user orchestration remains preferable.           |
+| §9 Testing              | Over-depth in body                                          | Keep a short Implementation Status / Validation Summary in the main document and move Swim scorecards, blind matrices, and canary narratives to appendices.                                                            |
+| §10 Summary/Future      | Under-depth at close                                        | It should close the loop back to §1: bounded future-turn arrangement across time/lifecycle boundaries, not just a list of future features.                                                                             |
 
 ## §5 - Register findings
 
