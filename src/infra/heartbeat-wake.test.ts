@@ -71,6 +71,35 @@ describe("heartbeat-wake", () => {
     expect(hasPendingHeartbeatWake()).toBe(false);
   });
 
+  it("preserves parent run id on wake delivery", async () => {
+    vi.useFakeTimers();
+    const handler = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
+    setHeartbeatWakeHandler(handler);
+
+    requestHeartbeatNow({ reason: "continuation", parentRunId: "run-parent", coalesceMs: 0 });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(handler).toHaveBeenCalledWith({
+      reason: "continuation",
+      parentRunId: "run-parent",
+    });
+  });
+
+  it("keeps parent run id when a later same-target wake coalesces without one", async () => {
+    vi.useFakeTimers();
+    const handler = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
+    setHeartbeatWakeHandler(handler);
+
+    requestHeartbeatNow({ reason: "continuation", parentRunId: "run-parent", coalesceMs: 200 });
+    requestHeartbeatNow({ reason: "continuation", coalesceMs: 200 });
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(handler).toHaveBeenCalledWith({
+      reason: "continuation",
+      parentRunId: "run-parent",
+    });
+  });
+
   it("retries requests-in-flight after the default retry delay", async () => {
     vi.useFakeTimers();
     const handler = vi

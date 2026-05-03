@@ -57,6 +57,18 @@ export type DiagnosticStabilityEventRecord = {
   active?: number;
   waiting?: number;
   queued?: number;
+  fireReason?: string;
+  continuationQueue?: {
+    totalQueued: number;
+    pendingRunnable: number;
+    pendingScheduled: number;
+    stagedPostCompaction: number;
+    invalidQueued: number;
+    enqueuedSinceLastSample: number;
+    drainedSinceLastSample: number;
+    failedSinceLastSample: number;
+    drainRatePerMinute?: number;
+  };
   webhooks?: {
     received: number;
     processed: number;
@@ -170,6 +182,32 @@ function assignReasonCode(
   }
 }
 
+function assignContinuationQueueSummary(
+  record: DiagnosticStabilityEventRecord,
+  event: Extract<
+    DiagnosticEventPayload,
+    { type: "diagnostic.continuation_queue.sample" | "diagnostic.liveness.warning" }
+  >,
+): void {
+  if (!("continuationQueue" in event) || !event.continuationQueue) {
+    return;
+  }
+  record.queueDepth = event.continuationQueue.totalQueued;
+  record.continuationQueue = {
+    totalQueued: event.continuationQueue.totalQueued,
+    pendingRunnable: event.continuationQueue.pendingRunnable,
+    pendingScheduled: event.continuationQueue.pendingScheduled,
+    stagedPostCompaction: event.continuationQueue.stagedPostCompaction,
+    invalidQueued: event.continuationQueue.invalidQueued,
+    enqueuedSinceLastSample: event.continuationQueue.enqueuedSinceLastSample,
+    drainedSinceLastSample: event.continuationQueue.drainedSinceLastSample,
+    failedSinceLastSample: event.continuationQueue.failedSinceLastSample,
+    ...(event.continuationQueue.drainRatePerMinute !== undefined
+      ? { drainRatePerMinute: event.continuationQueue.drainRatePerMinute }
+      : {}),
+  };
+}
+
 function isRecord(
   record: DiagnosticStabilityEventRecord | undefined,
 ): record is DiagnosticStabilityEventRecord {
@@ -271,6 +309,10 @@ function sanitizeDiagnosticEvent(event: DiagnosticEventPayload): DiagnosticStabi
       record.waiting = event.waiting;
       record.queued = event.queued;
       break;
+    case "diagnostic.continuation_queue.sample":
+      record.count = event.continuationQueue.totalQueued;
+      assignContinuationQueueSummary(record, event);
+      break;
     case "diagnostic.liveness.warning":
       record.level = "warning";
       record.durationMs = event.intervalMs;
@@ -283,6 +325,7 @@ function sanitizeDiagnosticEvent(event: DiagnosticEventPayload): DiagnosticStabi
       record.active = event.active;
       record.waiting = event.waiting;
       record.queued = event.queued;
+      assignContinuationQueueSummary(record, event);
       break;
     case "tool.loop":
       record.toolName = event.toolName;
@@ -324,6 +367,8 @@ function sanitizeDiagnosticEvent(event: DiagnosticEventPayload): DiagnosticStabi
       record.provider = event.provider;
       record.model = event.model;
       record.channel = event.channel;
+      record.fireReason = event.fireReason;
+      assignReasonCode(record, event.fireReason);
       break;
     case "run.completed":
       record.provider = event.provider;
@@ -331,6 +376,7 @@ function sanitizeDiagnosticEvent(event: DiagnosticEventPayload): DiagnosticStabi
       record.channel = event.channel;
       record.durationMs = event.durationMs;
       record.outcome = event.outcome;
+      record.fireReason = event.fireReason;
       assignReasonCode(record, event.errorCategory);
       break;
     case "harness.run.started":

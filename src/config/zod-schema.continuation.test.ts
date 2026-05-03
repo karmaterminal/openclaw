@@ -53,7 +53,7 @@ describe("continuation config schema validation", () => {
     if (!result.success) {
       return;
     }
-    expect(result.data.continuation?.earlyWarningBand).toBe(0.3125);
+    expect(result.data?.continuation?.earlyWarningBand).toBe(0.3125);
   });
 
   it("accepts earlyWarningBand = 0 as opt-out", () => {
