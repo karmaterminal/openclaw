@@ -33,6 +33,7 @@ import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { refreshQueuedFollowupSession, type FollowupRun } from "./queue.js";
 import { createReplyOperation } from "./reply-run-registry.js";
 import { isRoutableChannel, routeReply } from "./route-reply.js";
+import { resolveReplyRunFireReason } from "./run-provenance.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
 import { createTypingSignaler } from "./typing-mode.js";
 import type { TypingController } from "./typing.js";
@@ -278,6 +279,11 @@ export function createFollowupRunner(params: {
                 sessionKey: run.sessionKey,
                 agentId: run.agentId,
                 trigger: "user",
+                fireReason: resolveReplyRunFireReason({
+                  opts,
+                  drainsContinuationDelegateQueue: run.drainsContinuationDelegateQueue === true,
+                }),
+                parentRunId: opts?.parentRunId,
                 messageChannel: queued.originatingChannel ?? undefined,
                 messageProvider: run.messageProvider,
                 agentAccountId: run.agentAccountId,

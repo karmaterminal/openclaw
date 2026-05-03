@@ -279,6 +279,19 @@ describe("scripts/test-projects changed-target routing", () => {
     ]);
   });
 
+  it("routes the auto-reply directory root to the auto-reply shard", () => {
+    const plans = buildVitestRunPlans(["src/auto-reply"], process.cwd());
+
+    expect(plans).toEqual([
+      {
+        config: "test/vitest/vitest.auto-reply.config.ts",
+        forwardedArgs: [],
+        includePatterns: ["src/auto-reply/**/*.test.ts"],
+        watchMode: false,
+      },
+    ]);
+  });
+
   it("routes browser extension changes to the browser extension lane", () => {
     const plans = buildVitestRunPlans(["--changed", "origin/main"], process.cwd(), () => [
       "extensions/browser/src/browser/cdp.helpers.ts",

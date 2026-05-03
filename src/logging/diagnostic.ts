@@ -5,8 +5,10 @@ import {
   areDiagnosticsEnabledForProcess,
   emitDiagnosticEvent,
   isDiagnosticsEnabled,
+  type DiagnosticContinuationQueueMetrics,
   type DiagnosticLivenessWarningReason,
 } from "../infra/diagnostic-events.js";
+import { getDiagnosticContinuationQueueMetrics } from "./diagnostic-continuation-queues.js";
 import { emitDiagnosticMemorySample, resetDiagnosticMemoryForTest } from "./diagnostic-memory.js";
 import {
   diagnosticLogger as diag,
@@ -281,9 +283,85 @@ function shouldEmitDiagnosticLivenessWarning(now: number): boolean {
   return true;
 }
 
+function formatContinuationQueueNumber(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "n/a";
+}
+
+function hasContinuationQueueActivity(
+  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
+): continuationQueue is DiagnosticContinuationQueueMetrics {
+  return (
+    continuationQueue !== undefined &&
+    (continuationQueue.totalQueued > 0 ||
+      continuationQueue.enqueuedSinceLastSample > 0 ||
+      continuationQueue.drainedSinceLastSample > 0 ||
+      continuationQueue.failedSinceLastSample > 0)
+  );
+}
+
+function safeGetDiagnosticContinuationQueueMetrics(
+  now: number,
+): DiagnosticContinuationQueueMetrics | undefined {
+  try {
+    return getDiagnosticContinuationQueueMetrics(now);
+  } catch (err) {
+    diag.debug(`continuation queue diagnostics failed: ${String(err)}`);
+    return undefined;
+  }
+}
+
+function formatContinuationQueueTopQueues(
+  continuationQueue: DiagnosticContinuationQueueMetrics,
+): string {
+  return continuationQueue.topQueues
+    .map(
+      (queue) =>
+        `${queue.sessionKey}(total=${queue.totalQueued},runnable=${queue.pendingRunnable},scheduled=${queue.pendingScheduled},staged=${queue.stagedPostCompaction},invalid=${queue.invalidQueued})`,
+    )
+    .join(",");
+}
+
+function formatContinuationQueueHistory(
+  continuationQueue: DiagnosticContinuationQueueMetrics,
+): string {
+  return JSON.stringify(
+    continuationQueue.queueDepthHistory.map((point) => ({
+      sampled_at: point.sampledAt,
+      total_queued: point.totalQueued,
+      runnable: point.pendingRunnable,
+      scheduled: point.pendingScheduled,
+      staged_post_compaction: point.stagedPostCompaction,
+      invalid_queued: point.invalidQueued,
+      enqueued: point.enqueued,
+      drained: point.drained,
+      failed: point.failed,
+    })),
+  );
+}
+
+function formatContinuationQueueLogSuffix(
+  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
+): string {
+  if (!hasContinuationQueueActivity(continuationQueue)) {
+    return "";
+  }
+  return ` continuationQueueTotal=${continuationQueue.totalQueued} continuationQueueRunnable=${continuationQueue.pendingRunnable} continuationQueueScheduled=${continuationQueue.pendingScheduled} continuationQueueStagedPostCompaction=${continuationQueue.stagedPostCompaction} continuationQueueInvalid=${continuationQueue.invalidQueued} continuationQueueEnqueued=${continuationQueue.enqueuedSinceLastSample} continuationQueueDrained=${continuationQueue.drainedSinceLastSample} continuationQueueFailed=${continuationQueue.failedSinceLastSample} continuationQueueEnqueueRatePerMinute=${formatContinuationQueueNumber(continuationQueue.enqueueRatePerMinute)} continuationQueueDrainRatePerMinute=${formatContinuationQueueNumber(continuationQueue.drainRatePerMinute)} continuationQueueFailedRatePerMinute=${formatContinuationQueueNumber(continuationQueue.failedRatePerMinute)} continuationQueueTop=[${formatContinuationQueueTopQueues(continuationQueue)}] queue_depth_history=${formatContinuationQueueHistory(continuationQueue)}`;
+}
+
+function emitDiagnosticContinuationQueueSample(
+  continuationQueue: DiagnosticContinuationQueueMetrics,
+): void {
+  emitDiagnosticEvent({
+    type: "diagnostic.continuation_queue.sample",
+    continuationQueue,
+  });
+  markActivity();
+}
+
 function emitDiagnosticLivenessWarning(
   sample: DiagnosticLivenessSample,
   work: DiagnosticWorkSnapshot,
+  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
 ): void {
   diag.warn(
     `liveness warning: reasons=${sample.reasons.join(",")} interval=${Math.round(
@@ -296,7 +374,9 @@ function emitDiagnosticLivenessWarning(
       sample.eventLoopUtilization,
     )} cpuCoreRatio=${formatOptionalDiagnosticMetric(sample.cpuCoreRatio)} active=${
       work.activeCount
-    } waiting=${work.waitingCount} queued=${work.queuedCount}`,
+    } waiting=${work.waitingCount} queued=${
+      work.queuedCount
+    }${formatContinuationQueueLogSuffix(continuationQueue)}`,
   );
   emitDiagnosticEvent({
     type: "diagnostic.liveness.warning",
@@ -312,6 +392,7 @@ function emitDiagnosticLivenessWarning(
     active: work.activeCount,
     waiting: work.waitingCount,
     queued: work.queuedCount,
+    ...(hasContinuationQueueActivity(continuationQueue) ? { continuationQueue } : {}),
   });
   markActivity();
 }
@@ -650,11 +731,16 @@ export function startDiagnosticHeartbeat(
     const now = Date.now();
     pruneDiagnosticSessionStates(now, true);
     const work = getDiagnosticWorkSnapshot();
+    const continuationQueue = safeGetDiagnosticContinuationQueueMetrics(now);
     const livenessSample = (opts?.sampleLiveness ?? sampleDiagnosticLiveness)(now, work);
     const shouldEmitLivenessWarning =
       livenessSample !== null && shouldEmitDiagnosticLivenessWarning(now);
+    const hasContinuationActivity = hasContinuationQueueActivity(continuationQueue);
     const shouldRecordMemorySample =
-      shouldEmitLivenessWarning || hasRecentDiagnosticActivity(now) || hasOpenDiagnosticWork(work);
+      shouldEmitLivenessWarning ||
+      hasRecentDiagnosticActivity(now) ||
+      hasOpenDiagnosticWork(work) ||
+      hasContinuationActivity;
     (opts?.emitMemorySample ?? emitDiagnosticMemorySample)({
       emitSample: shouldRecordMemorySample,
     });
@@ -664,11 +750,15 @@ export function startDiagnosticHeartbeat(
     }
 
     if (shouldEmitLivenessWarning && livenessSample) {
-      emitDiagnosticLivenessWarning(livenessSample, work);
+      emitDiagnosticLivenessWarning(livenessSample, work, continuationQueue);
+    }
+
+    if (hasContinuationActivity) {
+      emitDiagnosticContinuationQueueSample(continuationQueue);
     }
 
     diag.debug(
-      `heartbeat: webhooks=${webhookStats.received}/${webhookStats.processed}/${webhookStats.errors} active=${work.activeCount} waiting=${work.waitingCount} queued=${work.queuedCount}`,
+      `heartbeat: webhooks=${webhookStats.received}/${webhookStats.processed}/${webhookStats.errors} active=${work.activeCount} waiting=${work.waitingCount} queued=${work.queuedCount}${formatContinuationQueueLogSuffix(continuationQueue)}`,
     );
     emitDiagnosticEvent({
       type: "diagnostic.heartbeat",

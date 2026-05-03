@@ -2481,7 +2481,7 @@ export async function runReplyAgent(params: {
                       (continuationWorkReason ? ` Reason: ${continuationWorkReason}` : ""),
                     { sessionKey },
                   );
-                  requestHeartbeatNow({ sessionKey, reason: "continuation" });
+                  requestHeartbeatNow({ sessionKey, reason: "continuation", parentRunId: runId });
                 } finally {
                   unregisterContinuationTimerHandle(sessionKey, timerHandle);
                 }

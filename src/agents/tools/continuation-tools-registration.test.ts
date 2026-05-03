@@ -120,4 +120,103 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
 
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(false);
   });
+
+  // [#446] Exact-keys trap for continue_delegate descriptor.
+  //
+  // Bug-shape / risk:
+  //   #438's mode-only trap (PR #462) pins that `mode` is exposed as an enum
+  //   AND that boolean `silent`/`silentWake` are absent. This test extends
+  //   that surface with the COMPLEMENTARY pin: the EXACT set of advertised
+  //   parameter keys on the tool descriptor. A refactor that adds a new
+  //   model-facing parameter (cross-session addressing, retry knobs, priority)
+  //   without an ADR would slip past #438's trap because #438 only checks
+  //   what MUST be absent (silent/silentWake) and what MUST be present (mode
+  //   enum). This trap pins the closed set.
+  //
+  // The canonical advertised keys (cf7830ffb3) are:
+  //   - task         (required)
+  //   - delaySeconds (optional)
+  //   - mode         (optional, enum)
+  //
+  // Extension to #438's mode-only trap, not duplication: #438 lives in
+  // `src/auto-reply/continuation/types.mode-shape.test.ts` and asserts
+  // mode-as-enum + silent/silentWake-absent on the descriptor. This file
+  // asserts the closed-set + targetSessionKey-absent + boolean-runtime-absent.
+  it("pins continue_delegate descriptor to mode enum and no boolean compatibility fields", () => {
+    const tools = createOpenClawTools({
+      config,
+      agentSessionKey: "main",
+    });
+    const tool = tools.find((candidate) => candidate.name === "continue_delegate");
+    if (!tool) {
+      throw new Error("continue_delegate tool not registered");
+    }
+
+    const params = tool.parameters as {
+      type?: string;
+      properties?: Record<string, unknown>;
+      required?: string[];
+    };
+    expect(params.type).toBe("object");
+    const properties = params.properties ?? {};
+
+    // Closed-set assertion: exactly these advertised keys, no more, no less.
+    const expectedKeys = ["task", "delaySeconds", "mode"].toSorted();
+    const actualKeys = Object.keys(properties).toSorted();
+    expect(
+      actualKeys,
+      `continue_delegate descriptor must advertise exactly [task, delaySeconds, mode]; got [${actualKeys.join(", ")}]`,
+    ).toEqual(expectedKeys);
+
+    // task is required (model-facing contract).
+    expect(params.required).toContain("task");
+
+    // mode enum must include the four canonical values.
+    const modeProp = properties.mode as {
+      anyOf?: Array<{ const?: string; enum?: string[] }>;
+      enum?: string[];
+    };
+    const modeEnumValues = new Set<string>();
+    if (Array.isArray(modeProp.enum)) {
+      for (const v of modeProp.enum) {
+        modeEnumValues.add(v);
+      }
+    }
+    if (Array.isArray(modeProp.anyOf)) {
+      for (const branch of modeProp.anyOf) {
+        if (typeof branch.const === "string") {
+          modeEnumValues.add(branch.const);
+        }
+        if (Array.isArray(branch.enum)) {
+          for (const v of branch.enum) {
+            modeEnumValues.add(v);
+          }
+        }
+      }
+    }
+    for (const expected of ["normal", "silent", "silent-wake", "post-compaction"]) {
+      expect(
+        modeEnumValues.has(expected),
+        `mode enum must include '${expected}' (got: ${[...modeEnumValues].join(", ")})`,
+      ).toBe(true);
+    }
+
+    // Boolean-runtime compatibility fields MUST be absent at the descriptor.
+    // (Their on-disk back-compat lives in the Zod state schema, not the tool surface.)
+    for (const forbidden of ["silent", "silentWake", "postCompaction"]) {
+      expect(
+        Object.prototype.hasOwnProperty.call(properties, forbidden),
+        `continue_delegate descriptor must not expose boolean compatibility field '${forbidden}'`,
+      ).toBe(false);
+    }
+
+    // Cross-session addressing belongs to the (b)-shape lane (binary-canticle#11),
+    // not this verb. Reaffirmed here as part of the closed-set check, but kept
+    // as an explicit named assertion so a future regression surfaces with the
+    // load-bearing reason in the failure message.
+    expect(
+      Object.prototype.hasOwnProperty.call(properties, "targetSessionKey"),
+      "continue_delegate descriptor must not expose 'targetSessionKey' — cross-session addressing is the (b)-shape lane (binary-canticle#11)",
+    ).toBe(false);
+  });
 });

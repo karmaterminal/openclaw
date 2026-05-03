@@ -1,43 +1,81 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the TaskFlow registry before importing the store.
-const mockFlows = new Map<string, Record<string, unknown>>();
+type MockTaskFlowRecord = {
+  flowId: string;
+  syncMode: "managed";
+  ownerKey: string;
+  controllerId: string;
+  status: string;
+  stateJson: unknown;
+  goal: string;
+  currentStep: string;
+  revision: number;
+  createdAt: number;
+  updatedAt: number;
+  endedAt?: number;
+};
+
+const mockFlows = new Map<string, MockTaskFlowRecord>();
 let flowIdCounter = 0;
 
 vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Record<string, unknown>) => {
-    const flowId = `flow-${++flowIdCounter}`;
-    mockFlows.set(flowId, {
-      flowId,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      controllerId: params.controllerId,
-      status: "queued",
-      stateJson: params.stateJson,
-      goal: params.goal,
-      currentStep: params.currentStep,
-      revision: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    return mockFlows.get(flowId);
-  }),
+  createManagedTaskFlow: vi.fn(
+    (params: {
+      ownerKey: string;
+      controllerId: string;
+      stateJson: unknown;
+      goal: string;
+      currentStep: string;
+    }) => {
+      const flowId = `flow-${++flowIdCounter}`;
+      mockFlows.set(flowId, {
+        flowId,
+        syncMode: "managed",
+        ownerKey: params.ownerKey,
+        controllerId: params.controllerId,
+        status: "queued",
+        stateJson: params.stateJson,
+        goal: params.goal,
+        currentStep: params.currentStep,
+        revision: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      return mockFlows.get(flowId);
+    },
+  ),
   listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
     [...mockFlows.values()].filter((f) => f.ownerKey === ownerKey),
   ),
-  finishFlow: vi.fn((params: { flowId: string; expectedRevision: number }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (!flow || flow.revision !== params.expectedRevision) {
-      return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-    }
-    flow.status = "succeeded";
-    flow.revision = flow.revision + 1;
-    return { applied: true, flow: { ...flow } };
-  }),
-  failFlow: vi.fn((params: { flowId: string }) => {
+  listTaskFlowRecords: vi.fn(() => [...mockFlows.values()]),
+  finishFlow: vi.fn(
+    (params: {
+      flowId: string;
+      expectedRevision: number;
+      updatedAt?: number;
+      endedAt?: number;
+      stateJson?: unknown;
+    }) => {
+      const flow = mockFlows.get(params.flowId);
+      if (!flow || flow.revision !== params.expectedRevision) {
+        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
+      }
+      flow.status = "succeeded";
+      flow.stateJson = params.stateJson ?? flow.stateJson;
+      flow.endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
+      flow.updatedAt = params.updatedAt ?? flow.endedAt;
+      flow.revision = flow.revision + 1;
+      return { applied: true, flow: { ...flow } };
+    },
+  ),
+  failFlow: vi.fn((params: { flowId: string; updatedAt?: number; endedAt?: number }) => {
     const flow = mockFlows.get(params.flowId);
     if (flow) {
       flow.status = "failed";
+      flow.endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
+      flow.updatedAt = params.updatedAt ?? flow.endedAt;
+      flow.revision = flow.revision + 1;
     }
     return { applied: !!flow };
   }),
@@ -46,6 +84,7 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
   }),
 }));
 
+import { getDiagnosticContinuationQueueMetrics } from "../../logging/diagnostic-continuation-queues.js";
 import {
   CONTINUATION_DELEGATE_CONTROLLER_ID,
   CONTINUATION_POST_COMPACTION_CONTROLLER_ID,
@@ -54,6 +93,7 @@ import {
   consumeStagedPostCompactionDelegates,
   enqueuePendingDelegate,
   pendingDelegateCount,
+  resetDelegateStoreForTests,
   stagePostCompactionDelegate,
   stagedPostCompactionDelegateCount,
 } from "./delegate-store.js";
@@ -79,10 +119,13 @@ function queueRawPendingFlow(sessionKey: string, stateJson: Record<string, unkno
 beforeEach(() => {
   mockFlows.clear();
   flowIdCounter = 0;
+  resetDelegateStoreForTests();
 });
 
 afterEach(() => {
   mockFlows.clear();
+  resetDelegateStoreForTests();
+  vi.useRealTimers();
 });
 
 describe("delegate store — TaskFlow-backed", () => {
@@ -183,6 +226,56 @@ describe("delegate store — TaskFlow-backed", () => {
     const flows = [...mockFlows.values()];
     expect(flows[0].controllerId).toBe(CONTINUATION_DELEGATE_CONTROLLER_ID);
     expect(flows[1].controllerId).toBe(CONTINUATION_POST_COMPACTION_CONTROLLER_ID);
+  });
+
+  it("reports global continuation queue depth and drain-rate diagnostics", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+
+    enqueuePendingDelegate("session-1", { task: "due" });
+    enqueuePendingDelegate("session-1", { task: "future", delayMs: 60_000 });
+    stagePostCompactionDelegate("session-2", { task: "post-compact", stagedAt: 1_000 });
+    queueRawPendingFlow("session-3", {
+      kind: "continuation_delegate",
+      task: "invalid flags",
+      silent: true,
+      postCompaction: true,
+    });
+
+    const first = getDiagnosticContinuationQueueMetrics(1_000);
+    expect(first).toMatchObject({
+      totalQueued: 4,
+      pendingQueued: 3,
+      pendingRunnable: 1,
+      pendingScheduled: 1,
+      stagedPostCompaction: 1,
+      invalidQueued: 1,
+      enqueuedSinceLastSample: 0,
+      drainedSinceLastSample: 0,
+      failedSinceLastSample: 0,
+    });
+    expect(first?.topQueues[0]).toMatchObject({
+      sessionKey: "session-1",
+      totalQueued: 2,
+    });
+
+    vi.setSystemTime(2_000);
+    expect(consumePendingDelegates("session-1")).toHaveLength(1);
+
+    const second = getDiagnosticContinuationQueueMetrics(2_000);
+    expect(second).toMatchObject({
+      totalQueued: 3,
+      pendingQueued: 2,
+      pendingRunnable: 0,
+      pendingScheduled: 1,
+      stagedPostCompaction: 1,
+      invalidQueued: 1,
+      enqueuedSinceLastSample: 0,
+      drainedSinceLastSample: 1,
+      failedSinceLastSample: 0,
+      drainRatePerMinute: 60,
+    });
+    expect(second?.queueDepthHistory.map((point) => point.totalQueued)).toEqual([4, 3]);
   });
 });
 

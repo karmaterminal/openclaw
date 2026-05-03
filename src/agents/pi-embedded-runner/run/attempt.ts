@@ -751,6 +751,8 @@ export async function runEmbeddedAttempt(
       ...((params.messageChannel ?? params.messageProvider)
         ? { channel: params.messageChannel ?? params.messageProvider }
         : {}),
+      ...(params.fireReason ? { fireReason: params.fireReason } : {}),
+      ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
       trace: runTrace,
     };
     emitTrustedDiagnosticEvent({

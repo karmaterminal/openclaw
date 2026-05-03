@@ -395,10 +395,13 @@ describe("runReplyAgent continuation volatile state", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
 
-    expect(requestHeartbeatNowMock).toHaveBeenCalledWith({
-      sessionKey: run.sessionKey,
-      reason: "continuation",
-    });
+    expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: run.sessionKey,
+        reason: "continuation",
+        parentRunId: expect.any(String),
+      }),
+    );
   });
 
   it("delayed work survives a plain inbound turn (post-RFC 2026-04-15: no noise-based cancellation)", async () => {
@@ -466,10 +469,13 @@ describe("runReplyAgent continuation volatile state", () => {
 
     // RFC 2026-04-15: generation-guard removed — unrelated inbound traffic
     // does not cancel delayed work. The WORK timer still fires.
-    expect(requestHeartbeatNowMock).toHaveBeenCalledWith({
-      sessionKey: run.sessionKey,
-      reason: "continuation",
-    });
+    expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: run.sessionKey,
+        reason: "continuation",
+        parentRunId: expect.any(String),
+      }),
+    );
   });
 
   it("clears delayed delegate reservations and timers on explicit cancellation", async () => {

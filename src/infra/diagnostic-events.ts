@@ -167,6 +167,55 @@ export type DiagnosticHeartbeatEvent = DiagnosticBaseEvent & {
   queued: number;
 };
 
+export type DiagnosticContinuationQueueOwnerSample = {
+  sessionKey: string;
+  pendingQueued: number;
+  pendingRunnable: number;
+  pendingScheduled: number;
+  stagedPostCompaction: number;
+  invalidQueued: number;
+  totalQueued: number;
+  oldestQueuedAgeMs?: number;
+  newestQueuedAgeMs?: number;
+};
+
+export type DiagnosticContinuationQueueHistoryPoint = {
+  sampledAt: number;
+  intervalMs?: number;
+  totalQueued: number;
+  pendingRunnable: number;
+  pendingScheduled: number;
+  stagedPostCompaction: number;
+  invalidQueued: number;
+  enqueued: number;
+  drained: number;
+  failed: number;
+};
+
+export type DiagnosticContinuationQueueMetrics = {
+  sampledAt: number;
+  intervalMs?: number;
+  totalQueued: number;
+  pendingQueued: number;
+  pendingRunnable: number;
+  pendingScheduled: number;
+  stagedPostCompaction: number;
+  invalidQueued: number;
+  enqueuedSinceLastSample: number;
+  drainedSinceLastSample: number;
+  failedSinceLastSample: number;
+  enqueueRatePerMinute?: number;
+  drainRatePerMinute?: number;
+  failedRatePerMinute?: number;
+  topQueues: DiagnosticContinuationQueueOwnerSample[];
+  queueDepthHistory: DiagnosticContinuationQueueHistoryPoint[];
+};
+
+export type DiagnosticContinuationQueueSampleEvent = DiagnosticBaseEvent & {
+  type: "diagnostic.continuation_queue.sample";
+  continuationQueue: DiagnosticContinuationQueueMetrics;
+};
+
 export type DiagnosticLivenessWarningReason = "event_loop_delay" | "event_loop_utilization" | "cpu";
 
 export type DiagnosticLivenessWarningEvent = DiagnosticBaseEvent & {
@@ -183,6 +232,7 @@ export type DiagnosticLivenessWarningEvent = DiagnosticBaseEvent & {
   active: number;
   waiting: number;
   queued: number;
+  continuationQueue?: DiagnosticContinuationQueueMetrics;
 };
 
 export type DiagnosticToolLoopEvent = DiagnosticBaseEvent & {
@@ -261,6 +311,8 @@ export type DiagnosticExecProcessCompletedEvent = DiagnosticBaseEvent & {
     | "runtime-error";
 };
 
+export type DiagnosticRunFireReason = "timer" | "external-trigger" | "continuation-chain";
+
 type DiagnosticRunBaseEvent = DiagnosticBaseEvent & {
   runId: string;
   sessionKey?: string;
@@ -269,6 +321,8 @@ type DiagnosticRunBaseEvent = DiagnosticBaseEvent & {
   model?: string;
   trigger?: string;
   channel?: string;
+  fireReason?: DiagnosticRunFireReason;
+  parentRunId?: string;
 };
 
 export type DiagnosticRunStartedEvent = DiagnosticRunBaseEvent & {
@@ -460,6 +514,7 @@ export type DiagnosticEventPayload =
   | DiagnosticLaneDequeueEvent
   | DiagnosticRunAttemptEvent
   | DiagnosticHeartbeatEvent
+  | DiagnosticContinuationQueueSampleEvent
   | DiagnosticLivenessWarningEvent
   | DiagnosticToolLoopEvent
   | DiagnosticToolExecutionStartedEvent
