@@ -401,3 +401,22 @@ Comment-pop / conflict surfaces to watch during absorption:
 | Root lane artifacts                                                              | #537 review flagged root `WORKORDER.md` pollution before merge; confirm the absorbed source tip does not reintroduce it into the v52 candidate.                                       |
 
 No Discord chat. Webhook heartbeats only.
+
+### §2 — absorption strategy closeout
+
+Closed: 2026-05-02T20:21:00-07:00
+
+Choice: **2.A merge `origin/frond-scribe/20260429/v3-cohort-fixes` into HEAD**.
+
+Reasoning:
+
+- The existing v52 candidate is already append-only after savegame discipline; preserving the wave merge commits is consistent with the prior lane's non-rewriting merge choice.
+- The source branch tip is `dda74a79f0a4e2482f711e74863cd5b100298444`, with the expected wave merge commits in order: `02e438a9b5` (#542), `b8a8c0674d` (#545), `dda74a79f0` (#537).
+- Pre-merge ancestor checks confirm `02e438a9b5`, `b8a8c0674d`, and `dda74a79f0` are not ancestors of current HEAD, while v5.2 `8b2a6e57fe` remains an ancestor.
+- Cherry-picking merge commits would be less faithful and risk losing cleanup/history context from the source wave.
+
+Planned command:
+
+```bash
+git merge origin/frond-scribe/20260429/v3-cohort-fixes
+```
