@@ -518,3 +518,52 @@ pnpm test src/infra/heartbeat-wake.test.ts src/infra/heartbeat-runner.scheduler.
 Result: PASS after `62c89210d4fe`.
 
 Post-gate status: no tracked drift from validation/build. Only pre-existing untracked console logs remain (`tmp-drop-me-v52-absorption.console.log`, `tmp-drop-me-v52-uptake.console.log`).
+
+### §7 — push closeout
+
+Closed: 2026-05-02T20:40:00-07:00
+
+Pushed append-only:
+
+```bash
+git push origin frond-scribe/20260503/v52-uptake-of-v3-cohort-fixes
+```
+
+Remote update: `dea43a844b..5da4dbc953`.
+
+No force-push used.
+
+### §8 — absorption declare-done
+
+Closed: 2026-05-02T20:42:00-07:00
+
+Final validated code+gate HEAD before this journal-only declare-done entry: `5da4dbc9537e1405673157d34f5864c32c75382a`.
+
+Absorbed wave:
+
+| Wave merge   | PR                                       | Ancestor of validated HEAD |
+| ------------ | ---------------------------------------- | -------------------------- |
+| `02e438a9b5` | #542 v29-uptake of canonical2            | yes                        |
+| `b8a8c0674d` | #545 canonical-primitives compaction fix | yes                        |
+| `dda74a79f0` | #537 silas-saturation diagnostics        | yes                        |
+
+Required ancestor checks:
+
+| SHA                                        | Meaning                 | Result      |
+| ------------------------------------------ | ----------------------- | ----------- |
+| `dda74a79f0a4e2482f711e74863cd5b100298444` | current source wave tip | IS ancestor |
+| `8b2a6e57fef6c582ec6d27b85150616f9e3a7ba4` | v2026.5.2 basis         | IS ancestor |
+
+Per-section closure:
+
+| Section               | Status                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| §1 required reads     | complete; issue/PRs/journal read and watch surfaces recorded                             |
+| §2 plan               | complete; strategy 2.A merge selected                                                    |
+| §3 execute absorption | complete; merge commit `bc7f0503ae70` plus test import repair `62c89210d4fe`             |
+| §4 comment-pops       | complete; #545 trimmed active key and both #537 Codex P2s addressed                      |
+| §5 baselines          | complete; config/plugin SDK `.sha256` hashes regenerated in `9618ac80bf9e`               |
+| §6 verification       | complete; required gates passed via local fallback after remote runners were unavailable |
+| §7 push               | complete; append-only push performed                                                     |
+
+Recommendation: ready-for-cohort-byte-walk plus figs greenlight on `COHORT_TARGET_TAG` bump from `v2026.4.29` to `v2026.5.2`. Do not modify the variable from this lane.
