@@ -426,6 +426,7 @@ export function emitContinuationDelegateSpan(args: {
   delivery: "immediate" | "timer";
   delegateMode?: string | undefined;
   reason?: string | undefined;
+  traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
   try {
@@ -444,6 +445,7 @@ export function emitContinuationDelegateSpan(args: {
     };
     const span = activeTracer.startSpan("continuation.delegate.dispatch", {
       attributes: attrs,
+      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
     span.end();

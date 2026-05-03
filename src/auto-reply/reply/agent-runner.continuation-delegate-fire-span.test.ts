@@ -144,6 +144,7 @@ type RunWithModelFallbackParams = {
 type RecordedSpan = {
   name: string;
   attributes: SpanAttributes;
+  traceparent: string | undefined;
   status: SpanStatus | undefined;
   ended: boolean;
 };
@@ -155,6 +156,7 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
       const rec: RecordedSpan = {
         name,
         attributes: { ...opts?.attributes },
+        traceparent: opts?.traceparent,
         status: undefined,
         ended: false,
       };
@@ -324,7 +326,11 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
 
     const run = createContinuationRun({ sessionKey: "continuation-delegate-fire-bracket" });
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
-      payloads: [{ text: "Reply\n[[CONTINUE_DELEGATE: inspect logs +1s]]" }],
+      payloads: [
+        {
+          text: "Reply\n[[CONTINUE_DELEGATE: inspect logs +1s | traceparent=00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01]]",
+        },
+      ],
       meta: { agentMeta: { usage: { input: 1, output: 1 } } },
     });
 
@@ -333,6 +339,9 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     // Before timer fires: dispatch span recorded, fire span not yet.
     const dispatchSpans = spans.filter((s) => s.name === "continuation.delegate.dispatch");
     expect(dispatchSpans).toHaveLength(1);
+    expect(dispatchSpans[0]?.traceparent).toBe(
+      "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+    );
     expect(spans.filter((s) => s.name === "continuation.delegate.fire")).toHaveLength(0);
 
     // Advance past the clamped delay (1000ms) to fire the timer callback.
@@ -375,6 +384,7 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
       enqueuePendingDelegate(sessionKey, {
         task: "poll PR #999 status",
         mode: "normal",
+        traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
       });
       return {
         payloads: [{ text: "Spawning a delegate to handle this." }],
@@ -399,6 +409,7 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     expect(dispatch.attributes["delay.ms"]).toBe(0);
     expect(dispatch.attributes["delegate.delivery"]).toBe("immediate");
     expect(dispatch.attributes["delegate.mode"]).toBe("normal");
+    expect(dispatch.traceparent).toBe("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
   });
 
   it("reservation-missing path: timer fire emits `continuation.delegate.fire` AND sibling `continuation.disabled (reason=reservation.missing)` sharing chain.id", async () => {

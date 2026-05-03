@@ -477,6 +477,36 @@ describe("continuation-tracer :: emitContinuationDelegateSpan helper", () => {
     });
   });
 
+  it("parents dispatch spans to a supplied traceparent", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+    emitContinuationDelegateSpan({
+      chainId: "abc",
+      chainStepRemaining: 1,
+      delayMs: 0,
+      delivery: "immediate",
+      traceparent,
+    });
+
+    expect(spans[0].options?.traceparent).toBe(traceparent);
+  });
+
+  it("omits traceparent options when no parent carrier is supplied", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+
+    emitContinuationDelegateSpan({
+      chainId: "abc",
+      chainStepRemaining: 1,
+      delayMs: 0,
+      delivery: "immediate",
+    });
+
+    expect(spans[0].options?.traceparent).toBeUndefined();
+  });
+
   it("threads delegate.mode through unchanged", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
