@@ -1212,6 +1212,7 @@ export async function runSubagentAnnounceFlow(params: {
         idempotencyKeyBase: `continuation-return:${announceId}`,
         wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
         childRunId: params.childRunId,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
       });
       defaultRuntime.log(
         `[continuation:targeted-return] Delivered to ${targetSessionKeys.join(",")} from ${params.childSessionKey}`,

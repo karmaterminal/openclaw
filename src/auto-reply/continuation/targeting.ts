@@ -95,6 +95,7 @@ export async function enqueueContinuationReturnDeliveries(
     wakeRecipients?: boolean;
     childRunId?: string;
     stateDir?: string;
+    traceparent?: string;
   },
   deps: ContinuationReturnDeliveryDeps = defaultContinuationReturnDeliveryDeps,
 ): Promise<{ enqueued: number; delivered: number; deliveryIds: string[] }> {
@@ -109,6 +110,7 @@ export async function enqueueContinuationReturnDeliveries(
         sessionKey,
         text: params.text,
         ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
         idempotencyKey: `${params.idempotencyKeyBase}:${index}:${sessionKey}`,
       },
       params.stateDir,
@@ -118,6 +120,7 @@ export async function enqueueContinuationReturnDeliveries(
     deps.enqueueSystemEvent(params.text, {
       sessionKey,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+      ...(params.traceparent ? { traceparent: params.traceparent } : {}),
     });
     if (params.wakeRecipients) {
       deps.requestHeartbeatNow({
