@@ -462,3 +462,22 @@ Suggested final closing paragraph:
 - Final document structure matches the workorder: summary, scorecard, §2.A/B/C, §3.A/B tables, §4.A/B/C with Mermaid drafts, §5 register findings, §5.special substrate-dignity language proposals, Appendix A code walked, Appendix B commands used.
 - Scorecard outcome: overall pass-with-fixes. The RFC is substantively strong and implementable, but it needs contract corrections (`targetSessionKey`, `earlyWarningBand`, span table, delayed-reset survival), terminology/status separation, path-specific substrate durability, and a louder successor-turn-provision frame.
 - Validation for this docs-only checkpoint: `git diff --check -- tmp-drop-me-rfc-review.md docs/design/544-rfc-scientific-literature-review-20260502.md`. No source files were edited, so no source typecheck was run.
+
+## §8 — Declare-done entry
+
+- Review document path: `docs/design/544-rfc-scientific-literature-review-20260502.md`.
+- Final commit before declare-done entry: `5cd4395c3c`.
+- Total elapsed wall-clock from journal start `2026-05-02T18:41:32-07:00` to declare-done pass `2026-05-02T18:57:51-07:00`: about 16m 19s.
+- Validation/gates: docs-only lane; `git diff --check -- tmp-drop-me-rfc-review.md docs/design/544-rfc-scientific-literature-review-20260502.md` passed before §6 commit. No source files were edited; per workorder guardrail, no whole-tree tests/builds and no source typecheck were run.
+
+Top-3 highest-confidence findings:
+
+1. `continue_delegate()` shipped schema does not include `targetSessionKey`; the registration test explicitly asserts that omission, so the RFC should not present it as shipped contract.
+2. §6.6 telemetry span table is stale against `src/infra/continuation-tracer.ts:195-204`; downstream operators need the current span vocabulary.
+3. Delegate durability must be path-specific: tool pending delegates use TaskFlow, bracket delayed timers/reservations remain process-scoped, and post-compaction release crosses the session-delivery queue.
+
+Top-3 lowest-confidence / cohort-eye findings:
+
+1. Exact new TOC shape: I am confident a Terminology/Scope + appendices split is needed, but Ronan should choose the final canonical section order.
+2. Register volume: I am confident the substrate-dignity language should be louder, but the cohort should tune how lyrical vs. IETF-dry the final prose should be.
+3. Validation placement: I am confident canary/test archaeology should move out of the contract body, but the final amount of implementation-status evidence in body is a product/editorial call.
