@@ -159,7 +159,17 @@ export function resolveRunFailoverDecision(params: RunFailoverDecisionParams): R
       reason: params.failoverReason,
     };
   }
-  if (params.timedOut) {
+  if (
+    params.timedOut &&
+    !params.aborted &&
+    !params.timedOutDuringToolExecution &&
+    !params.timedOutDuringCompaction
+  ) {
+    // Plain LLM-phase timeout outside an in-flight abort: surface so local
+    // timeout recovery can run (#86 deadlock fix). Aborted + LLM-phase
+    // timeouts fall through to shouldRotateAssistant rotation; tool-execution
+    // + compaction timeouts fall through to continue_normal (#52147 — neither
+    // rotate nor fallback while a tool/compaction is in flight).
     return {
       action: "surface_error",
       reason: params.failoverReason,
