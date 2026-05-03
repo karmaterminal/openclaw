@@ -345,3 +345,128 @@ describe("tool delegate dispatch contract", () => {
     );
   });
 });
+
+describe("dispatchToolDelegates — TaskFlow status after spawn failure (#449)", () => {
+  // Pins the contract that #449 issue body called out as structurally-unpinned:
+  // "what is the intended TaskFlow status after spawn failure?"
+  //
+  // Current emergent behavior on v5.2 (`delegate-dispatch.ts:160 + 240-292`):
+  //   1. consumePendingDelegates(sessionKey) at line 160 calls finishFlow on
+  //      each consumed delegate → TaskFlow row → status="succeeded"
+  //   2. spawnSubagentDirect(...) per delegate
+  //   3. If spawn returns non-"accepted" status → log info + enqueue system
+  //      event + rejected++
+  //   4. If spawn throws → log info + enqueue system event + rejected++
+  //   5. NO retry, NO un-finish, NO mark-for-inspection — durable record is
+  //      already in succeeded state, only observability remains.
+  //
+  // This is the **one-shot-loss + observability-only** invariant. It is
+  // substrate-consistent with task-executor's exit-code-failure shape (also
+  // single-shot, no retry). The substrate has NO infrastructure for automatic
+  // re-enqueue, NO retry-count metadata field, NO transitional
+  // failed_retryable state — runaway-amplification-via-retry-storm is
+  // structurally pre-empted by the absence of those primitives.
+  //
+  // Pin the contract here so a refactor that introduces retry semantics
+  // OR moves finishFlow to after-spawn-success will surface as a test
+  // failure rather than a silent invariant change. Architectural decision
+  // (one-shot-loss vs retry vs inspection-shape via failFlow) is figs's call;
+  // this test pins the CURRENT invariant so the call lands as a deliberate
+  // change, not an inferred drift.
+
+  it("leaves consumed flows in succeeded status after spawn rejection", async () => {
+    const sessionKey = "session-449-rejected";
+    enqueuePendingDelegate(sessionKey, { task: "rejected-task" });
+    spawnSubagentDirectMock.mockResolvedValueOnce({ status: "forbidden" });
+
+    // Capture flowId before dispatch so we can inspect its post-dispatch state.
+    const queuedBefore = [...mockFlows.values()].filter(
+      (f) => f.ownerKey === sessionKey && f.status === "queued",
+    );
+    expect(queuedBefore).toHaveLength(1);
+    const flowId = queuedBefore[0].flowId as string;
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.dispatched).toBe(0);
+    expect(result.rejected).toBe(1);
+
+    // Substrate-state assertion: the TaskFlow record is in `succeeded` state
+    // (one-shot-loss invariant). The consumePendingDelegates call already
+    // ran finishFlow; the spawn-rejection does NOT roll the row back to
+    // queued, does NOT mark it as failed, does NOT increment a retry-count.
+    // If a future refactor moves finishFlow to after-spawn-success OR adds
+    // retry semantics, this assertion fails — and that failure is the signal
+    // that the architectural-invariant changed deliberately (or accidentally).
+    const finalized = mockFlows.get(flowId);
+    expect(finalized?.status).toBe("succeeded");
+  });
+
+  it("leaves consumed flows in succeeded status after spawn throws", async () => {
+    const sessionKey = "session-449-thrown";
+    enqueuePendingDelegate(sessionKey, { task: "throwing-task" });
+    spawnSubagentDirectMock.mockRejectedValueOnce(new Error("spawn unavailable"));
+
+    const queuedBefore = [...mockFlows.values()].filter(
+      (f) => f.ownerKey === sessionKey && f.status === "queued",
+    );
+    expect(queuedBefore).toHaveLength(1);
+    const flowId = queuedBefore[0].flowId as string;
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.dispatched).toBe(0);
+    expect(result.rejected).toBe(1);
+
+    // Same invariant for the throw-path: spawn throwing does NOT change
+    // the TaskFlow state from succeeded back to queued/failed. Substrate
+    // remains one-shot-loss; only the system event captures the failure.
+    const finalized = mockFlows.get(flowId);
+    expect(finalized?.status).toBe("succeeded");
+  });
+
+  it("preserves succeeded status across mixed spawn outcomes (rejected + thrown + accepted)", async () => {
+    // Mirror of existing "counts spawn rejections and thrown spawn errors
+    // without aborting later delegates" test, but with the substrate-state
+    // assertion added. Pins that mixed outcomes don't accidentally roll any
+    // record back — every consumed delegate stays in succeeded regardless of
+    // its individual spawn outcome.
+    const sessionKey = "session-449-mixed";
+    enqueuePendingDelegate(sessionKey, { task: "rejected" });
+    enqueuePendingDelegate(sessionKey, { task: "throws" });
+    enqueuePendingDelegate(sessionKey, { task: "accepted" });
+    spawnSubagentDirectMock
+      .mockResolvedValueOnce({ status: "forbidden" })
+      .mockRejectedValueOnce(new Error("spawn unavailable"))
+      .mockResolvedValueOnce({ status: "accepted" });
+
+    const queuedBefore = [...mockFlows.values()]
+      .filter((f) => f.ownerKey === sessionKey && f.status === "queued")
+      .map((f) => f.flowId as string);
+    expect(queuedBefore).toHaveLength(3);
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    // All three flows reach `succeeded` status regardless of individual
+    // spawn outcome. The one-shot-loss invariant holds uniformly.
+    for (const flowId of queuedBefore) {
+      const finalized = mockFlows.get(flowId);
+      expect(finalized?.status).toBe("succeeded");
+    }
+  });
+});
