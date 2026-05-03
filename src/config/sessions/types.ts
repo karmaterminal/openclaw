@@ -158,6 +158,9 @@ export type SessionPostCompactionDelegate = {
    */
   silent?: boolean;
   silentWake?: boolean;
+  targetSessionKey?: string;
+  targetSessionKeys?: string[];
+  fanoutMode?: "tree" | "all";
 };
 
 export type SessionEntry = {

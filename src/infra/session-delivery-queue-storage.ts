@@ -89,6 +89,9 @@ export type QueuedSessionDeliveryPayload = (
       firstArmedAt?: number;
       silent?: boolean;
       silentWake?: boolean;
+      targetSessionKey?: string;
+      targetSessionKeys?: string[];
+      fanoutMode?: "tree" | "all";
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
     }
@@ -156,6 +159,13 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
     firstArmedAt: params.delegate.firstArmedAt ?? params.delegate.createdAt,
     ...(params.delegate.silent != null ? { silent: params.delegate.silent } : {}),
     ...(params.delegate.silentWake != null ? { silentWake: params.delegate.silentWake } : {}),
+    ...(params.delegate.targetSessionKey
+      ? { targetSessionKey: params.delegate.targetSessionKey }
+      : {}),
+    ...(params.delegate.targetSessionKeys && params.delegate.targetSessionKeys.length > 0
+      ? { targetSessionKeys: params.delegate.targetSessionKeys }
+      : {}),
+    ...(params.delegate.fanoutMode ? { fanoutMode: params.delegate.fanoutMode } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
     idempotencyKey:
       params.idempotencyKey ??

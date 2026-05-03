@@ -482,19 +482,22 @@ describe("setupChannels workspace shadow exclusion", () => {
     expect(loadChannelSetupPluginRegistrySnapshotForChannel).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
+        cfg: {},
+        runtime: {},
         channel: "external-chat",
         pluginId: "external-chat",
         workspaceDir: "/tmp/openclaw-workspace",
-        installRuntimeDeps: false,
+        forceSetupOnlyChannelPlugins: true,
       }),
     );
     expect(loadChannelSetupPluginRegistrySnapshotForChannel).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
+        cfg: {},
+        runtime: {},
         channel: "external-chat",
         workspaceDir: "/tmp/openclaw-workspace",
         forceSetupOnlyChannelPlugins: true,
-        installRuntimeDeps: true,
       }),
     );
     expect(getChannelSetupPlugin).not.toHaveBeenCalled();

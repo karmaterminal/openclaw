@@ -176,6 +176,33 @@ describe("delegate store — TaskFlow-backed", () => {
     });
   });
 
+  it("preserves cross-session target metadata through TaskFlow round-trip", () => {
+    enqueuePendingDelegate("session-1", {
+      task: "targeted task",
+      targetSessionKey: "agent:main:root",
+      targetSessionKeys: ["agent:main:sibling", "agent:main:root"],
+    });
+
+    const delegates = consumePendingDelegates("session-1");
+    expect(delegates[0]).toMatchObject({
+      task: "targeted task",
+      targetSessionKey: "agent:main:root",
+      targetSessionKeys: ["agent:main:sibling", "agent:main:root"],
+    });
+  });
+
+  it("preserves fanoutMode through TaskFlow round-trip", () => {
+    enqueuePendingDelegate("session-1", {
+      task: "tree task",
+      fanoutMode: "tree",
+    });
+
+    expect(consumePendingDelegates("session-1")[0]).toMatchObject({
+      task: "tree task",
+      fanoutMode: "tree",
+    });
+  });
+
   it("decodes legacy silent and silentWake dual-flag rows as silent-wake", () => {
     const flowId = queueRawPendingFlow("session-1", {
       kind: "continuation_delegate",
@@ -200,6 +227,18 @@ describe("delegate store — TaskFlow-backed", () => {
       task: "malformed mode task",
       silent: true,
       postCompaction: true,
+    });
+
+    expect(consumePendingDelegates("session-1")).toEqual([]);
+    expect(mockFlows.get(flowId)?.status).toBe("failed");
+  });
+
+  it("rejects rows that combine explicit targets with fanoutMode", () => {
+    const flowId = queueRawPendingFlow("session-1", {
+      kind: "continuation_delegate",
+      task: "malformed targeting task",
+      targetSessionKey: "agent:main:root",
+      fanoutMode: "tree",
     });
 
     expect(consumePendingDelegates("session-1")).toEqual([]);
@@ -303,6 +342,20 @@ describe("post-compaction delegate staging", () => {
       task: "old shard",
       mode: "post-compaction",
       firstArmedAt: 10_000,
+    });
+  });
+
+  it("preserves targeting across post-compaction TaskFlow storage", () => {
+    stagePostCompactionDelegate("session-1", {
+      task: "targeted compaction shard",
+      stagedAt: 20_000,
+      targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+    });
+
+    expect(consumeStagedPostCompactionDelegates("session-1")[0]).toMatchObject({
+      task: "targeted compaction shard",
+      mode: "post-compaction",
+      targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
     });
   });
 

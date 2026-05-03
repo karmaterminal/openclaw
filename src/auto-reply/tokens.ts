@@ -1,4 +1,9 @@
 import { escapeRegExp } from "../shared/regexp.js";
+import {
+  CONTINUATION_DELEGATE_FANOUT_MODES,
+  normalizeContinuationTargetKey,
+  normalizeContinuationTargetKeys,
+} from "./continuation/targeting.js";
 import type { ContinuationSignal } from "./continuation/types.js";
 
 export const HEARTBEAT_TOKEN = "HEARTBEAT_OK";
@@ -186,6 +191,125 @@ export function isSilentReplyPrefixText(
 
 export type { ContinuationSignal };
 
+type DelegateDirectiveParse = { status: "applied" } | { status: "unknown" } | { status: "invalid" };
+
+type DelegateDirectiveState = {
+  silent?: boolean;
+  silentWake?: boolean;
+  targetSessionKey?: string;
+  targetSessionKeys?: string[];
+  fanoutMode?: "tree" | "all";
+};
+
+function splitDirectiveAssignment(segment: string): { key: string; value: string } | null {
+  const separator = segment.indexOf("=");
+  if (separator < 0) {
+    return null;
+  }
+  return {
+    key: segment.slice(0, separator).trim().toLowerCase(),
+    value: segment.slice(separator + 1).trim(),
+  };
+}
+
+function parseDelegateDirective(
+  segment: string,
+  state: DelegateDirectiveState,
+): DelegateDirectiveParse {
+  const normalized = segment.trim().toLowerCase();
+  if (!normalized) {
+    return { status: "invalid" };
+  }
+  if (normalized === "normal") {
+    return { status: "applied" };
+  }
+  if (normalized === "silent-wake" || normalized === "silent wake") {
+    state.silentWake = true;
+    state.silent = undefined;
+    return { status: "applied" };
+  }
+  if (normalized === "silent") {
+    state.silent = true;
+    return { status: "applied" };
+  }
+
+  const assignment = splitDirectiveAssignment(segment);
+  if (!assignment) {
+    return { status: "unknown" };
+  }
+
+  if (
+    assignment.key === "target" ||
+    assignment.key === "targetsessionkey" ||
+    assignment.key === "target_session_key"
+  ) {
+    const targetSessionKey = normalizeContinuationTargetKey(assignment.value);
+    if (!targetSessionKey) {
+      return { status: "invalid" };
+    }
+    state.targetSessionKey = targetSessionKey;
+    return { status: "applied" };
+  }
+
+  if (
+    assignment.key === "targets" ||
+    assignment.key === "targetsessionkeys" ||
+    assignment.key === "target_session_keys"
+  ) {
+    const targetSessionKeys = normalizeContinuationTargetKeys(assignment.value.split(","));
+    if (targetSessionKeys.length === 0) {
+      return { status: "invalid" };
+    }
+    state.targetSessionKeys = targetSessionKeys;
+    return { status: "applied" };
+  }
+
+  if (
+    assignment.key === "fanout" ||
+    assignment.key === "fanoutmode" ||
+    assignment.key === "fanout_mode"
+  ) {
+    const fanoutMode = assignment.value.trim().toLowerCase();
+    if (!CONTINUATION_DELEGATE_FANOUT_MODES.includes(fanoutMode as "tree" | "all")) {
+      return { status: "invalid" };
+    }
+    state.fanoutMode = fanoutMode as "tree" | "all";
+    return { status: "applied" };
+  }
+
+  return { status: "unknown" };
+}
+
+function parseDelegateBodyDirectives(taskBody: string): {
+  taskBody: string;
+  directives: DelegateDirectiveState;
+} | null {
+  const segments = taskBody.split("|").map((segment) => segment.trim());
+  const directives: DelegateDirectiveState = {};
+  while (segments.length > 1) {
+    const segment = segments.at(-1) ?? "";
+    const parsed = parseDelegateDirective(segment, directives);
+    if (parsed.status === "unknown") {
+      break;
+    }
+    if (parsed.status === "invalid") {
+      return null;
+    }
+    segments.pop();
+  }
+  if (
+    directives.fanoutMode &&
+    (directives.targetSessionKey ||
+      (directives.targetSessionKeys && directives.targetSessionKeys.length > 0))
+  ) {
+    return null;
+  }
+  return {
+    taskBody: segments.join(" | ").trim(),
+    directives,
+  };
+}
+
 /**
  * Checks if the agent response ends with a continuation signal.
  * Returns the parsed signal or null if no continuation is requested.
@@ -195,6 +319,9 @@ export type { ContinuationSignal };
  *   CONTINUE_WORK:30           → continue after 30 seconds
  *   [[CONTINUE_DELEGATE: task]]      → spawn sub-agent with task immediately
  *   [[CONTINUE_DELEGATE: task +30s]] → spawn sub-agent after 30-second delay
+ *   [[CONTINUE_DELEGATE: task | target=session-key]]
+ *   [[CONTINUE_DELEGATE: task | targets=key1,key2]]
+ *   [[CONTINUE_DELEGATE: task | fanout=tree]]
  *
  * The `+Ns` suffix on DELEGATE specifies a timer offset before the sub-agent
  * spawns (delegate-as-scheduler pattern). Timers do not survive gateway restarts.
@@ -220,21 +347,14 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
   );
   if (delegateMatch) {
     let taskBody = delegateMatch[1].trim();
-    // Parse optional | silent-wake or | silent suffix
-    // Check silent-wake FIRST to avoid partial match on silent
-    let silent: boolean | undefined;
-    let silentWake: boolean | undefined;
-    const silentWakeSuffixMatch = taskBody.match(/\s*\|\s*silent[- ]wake\s*$/i);
-    if (silentWakeSuffixMatch) {
-      silentWake = true;
-      taskBody = taskBody.slice(0, -silentWakeSuffixMatch[0].length).trimEnd();
-    } else {
-      const silentSuffixMatch = taskBody.match(/\s*\|\s*silent\s*$/i);
-      if (silentSuffixMatch) {
-        silent = true;
-        taskBody = taskBody.slice(0, -silentSuffixMatch[0].length).trimEnd();
-      }
+    const parsedBody = parseDelegateBodyDirectives(taskBody);
+    if (!parsedBody) {
+      return null;
     }
+    taskBody = parsedBody.taskBody;
+    const { silent, silentWake, targetSessionKey, targetSessionKeys, fanoutMode } =
+      parsedBody.directives;
+
     // Parse optional +Ns delay suffix (e.g. "+30s", "+5s")
     let delayMs: number | undefined;
     const delayMatch = taskBody.match(/\s+\+(\d+)s\s*$/);
@@ -248,7 +368,16 @@ export function parseContinuationSignal(text: string | undefined): ContinuationS
       const maxTaskLength = 4096;
       const truncatedTask =
         taskBody.length > maxTaskLength ? taskBody.slice(0, maxTaskLength) : taskBody;
-      return { kind: "delegate", task: truncatedTask, delayMs, silent, silentWake };
+      return {
+        kind: "delegate",
+        task: truncatedTask,
+        delayMs,
+        silent,
+        silentWake,
+        ...(targetSessionKey ? { targetSessionKey } : {}),
+        ...(targetSessionKeys && targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
+        ...(fanoutMode ? { fanoutMode } : {}),
+      };
     }
   }
 

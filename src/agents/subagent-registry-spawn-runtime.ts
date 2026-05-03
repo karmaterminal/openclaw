@@ -27,6 +27,9 @@ type RegisterSubagentRunParams = {
   attachmentsDir?: string;
   attachmentsRootDir?: string;
   retainAttachmentsOnKeep?: boolean;
+  continuationTargetSessionKey?: string;
+  continuationTargetSessionKeys?: string[];
+  continuationFanoutMode?: "tree" | "all";
 };
 
 type CountActiveRunsForSessionFn = (requesterSessionKey: string) => number;

@@ -1,14 +1,14 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** Implemented — gateway hook wired, ~180 tests across 13 test files  
-**Authors:** [karmaterminal](https://github.com/karmaterminal)  
-**Upstream issue:** [openclaw/openclaw#32701](https://github.com/openclaw/openclaw/issues/32701)  
-**PR:** [openclaw/openclaw#38780](https://github.com/openclaw/openclaw/pull/38780)  
+**Status:** Implemented
+**Authors:** [karmaterminal](https://github.com/karmaterminal)
 **Date:** March–April 2026
 
-This RFC documents a continuation system for persistent OpenClaw sessions. It introduces self-elected turn continuation, delegated follow-up work, context-pressure awareness, and agent-initiated compaction. The implementation is bounded, observable, interruptible, and opt-in.
+This RFC documents a continuation system for persistent OpenClaw sessions. It introduces self-elected turn continuation, delegated follow-up work, same-host targeted delegate returns, context-pressure awareness, and agent-initiated compaction. The implementation is bounded, observable, interruptible, and opt-in.
 
-This mechanism is not a polling convenience. It is bounded authority for a turn-bound agent to make provisions for successor turns: another turn in the same session, a delegated shard, a post-compaction recovery action, or a compaction request that changes the shape of the session before the next agent sees it. The acting agent may not occupy that future context. The substrate therefore records intent in a form a successor can inherit, reject, audit, or complete.
+This mechanism is not a polling convenience. It gives a turn-scoped agent limited authority to make provisions for successor turns: another turn in the same session, a delegated shard, a targeted return to another session, a post-compaction recovery action, or a compaction request that changes the shape of the session before the next agent sees it. The acting agent may not occupy that future context. The substrate therefore records intent in a form a successor can inherit, reject, audit, or complete.
+
+Targeted delegate return is the banner routing primitive: one child can grant another session a turn, wake every known session on the host, or drip silent context into a named session without duplicating the delegate run. That makes continuation a signaling substrate as well as a work-scheduling substrate.
 
 ## Table of Contents
 
@@ -85,8 +85,8 @@ This mechanism is not a polling convenience. It is bounded authority for a turn-
 - [Appendix D. Detailed implementation evidence](#appendix-d-detailed-implementation-evidence)
   - [D.1 Context-pressure inclusion sketch](#d1-context-pressure-inclusion-sketch)
   - [D.2 Evidence locations](#d2-evidence-locations)
-  - [D.3 Most-recent integration test session results (Swim 9 and Swim 10)](#d3-most-recent-integration-test-session-results-swim-9-and-swim-10)
-  - [D.4 In-flight: Swim 41 v5.2-substrate-verification](#d4-in-flight-swim-41-v52-substrate-verification)
+  - [D.3 Historical integration test session results (Swim 9 and Swim 10)](#d3-historical-integration-test-session-results-swim-9-and-swim-10)
+  - [D.4 Current validation cycle: Swim 41 v5.2 substrate verification](#d4-current-validation-cycle-swim-41-v52-substrate-verification)
 
 ## 1. Problem
 
@@ -115,9 +115,9 @@ A usable continuation primitive for OpenClaw had to satisfy several constraints 
 1. **Volitional control.** The agent must be able to elect to continue and also elect to stop. This is not an infinite loop with a termination check; it is a choice at each turn boundary.
 2. **Same-session continuity.** The common case should preserve the session rather than forcing every continuation through a new child session.
 3. **Delegated continuation.** The design must support sub-agent work for cases where a future result, not merely another blank turn, is what matters.
-4. **Compaction awareness.** Persistent sessions need a way to prepare for compaction before the platform forces it.
+4. **Compaction awareness and preemptive context evacuation.** Persistent sessions need a way to prepare for compaction before the platform forces it.
 5. **Bounded operation.** The feature must remain interruptible, rate-limited, observable, and explicitly enabled by the human user.
-6. **Fallback behavior.** The mechanism must still work when tools are unavailable, including environments that only allow terminal response syntax.
+6. **Fallback behavior.** The mechanism must still work when tools are unavailable, including environments that only allow terminal response tokens.
 
 ## 2. Solution
 
@@ -125,21 +125,21 @@ A usable continuation primitive for OpenClaw had to satisfy several constraints 
 
 This RFC uses the following terms consistently:
 
-| Term                   | Meaning                                                                                                                                        |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **human-user**         | The person who owns the deployment, grants opt-in, and can interrupt or disable continuation.                                                  |
-| **operator**           | The deploying human-user role when discussing configuration, logs, or runtime policy.                                                          |
-| **turn**               | One model generation cycle with a bounded prompt, tool surface, and reply/follow-up lifecycle.                                                 |
-| **successor turn**     | A later turn that receives structure arranged by an earlier turn: a wake, a delegate result, post-compaction context, or a compaction outcome. |
-| **continuation**       | Agent-elected work that crosses a turn boundary without becoming an unbounded loop.                                                            |
-| **continuation chain** | The bounded sequence of successor turns and delegates tracked by chain count, token budget, and chain id where available.                      |
-| **delegate**           | A sub-agent shard spawned through `continue_delegate()` or bracket fallback, with a task string, mode, and optional delay.                     |
-| **relay**              | A precursor or fallback pattern where one session wakes another by returning a result later.                                                   |
-| **temporal shard**     | Work split across time rather than only across simultaneous agents.                                                                            |
-| **substrate**          | The mechanism that carries a continuation path: process timer/reservation, TaskFlow, session-delivery queue, or compaction lifecycle.          |
-| **broker**             | Gateway code that translates agent intent into substrate mechanics and policy enforcement.                                                     |
-| **TaskFlow**           | The managed-work SQLite-backed substrate used for tool-path pending delegates and post-compaction staging.                                     |
-| **OTel**               | OpenTelemetry trace emission through `extensions/diagnostics-otel`.                                                                            |
+| Term                   | Meaning                                                                                                                                                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **human-user**         | The person who owns the deployment, grants opt-in, and can interrupt or disable continuation.                                                                                                                  |
+| **operator**           | The deploying human-user role when discussing configuration, logs, or runtime policy.                                                                                                                          |
+| **turn**               | One model generation cycle with a bounded prompt, tool surface, and reply/follow-up lifecycle.                                                                                                                 |
+| **successor turn**     | A later turn that receives structure arranged by an earlier turn: a wake, a delegate result, post-compaction context, or a compaction outcome.                                                                 |
+| **continuation**       | Agent-elected work that crosses a turn boundary without becoming an unbounded loop.                                                                                                                            |
+| **continuation chain** | The bounded sequence of successor turns and delegates tracked by chain count, token budget, and chain id where available.                                                                                      |
+| **delegate**           | A sub-agent shard spawned through `continue_delegate()` or response-token fallback, with a task string, mode, return targeting (`targetSessionKey`, `targetSessionKeys`, or `fanoutMode`), and optional delay. |
+| **relay**              | A precursor or fallback pattern where one session wakes another by returning a result later.                                                                                                                   |
+| **temporal shard**     | Work split across time rather than only across simultaneous agents.                                                                                                                                            |
+| **substrate**          | The mechanism that carries a continuation path: process timer/reservation, TaskFlow, session-delivery queue, or compaction lifecycle.                                                                          |
+| **broker**             | Gateway code that translates agent intent into substrate mechanics and policy enforcement.                                                                                                                     |
+| **TaskFlow**           | The managed-work SQLite-backed substrate used for tool-path pending delegates and post-compaction staging.                                                                                                     |
+| **OTel**               | OpenTelemetry trace emission through `extensions/diagnostics-otel`.                                                                                                                                            |
 
 Status markers:
 
@@ -151,20 +151,20 @@ Status markers:
 
 ### 2.2 Unified interface: tools first, response-token fallback
 
-The implemented solution exposes three continuation capabilities as tools on main-session turns when `continuation.enabled: true`, with fallback response syntax when tools are unavailable.
+The implemented solution exposes three continuation capabilities as tools on main-session turns when `continuation.enabled: true`, with fallback response tokens when tools are unavailable.
 
-| Capability             | Primary interface      | Fallback                            | Purpose                                                   |
-| ---------------------- | ---------------------- | ----------------------------------- | --------------------------------------------------------- |
-| Self-elected next turn | `continue_work()`      | `CONTINUE_WORK` / `CONTINUE_WORK:N` | Schedule another turn for the current session             |
-| Delegated work         | `continue_delegate()`  | `[[CONTINUE_DELEGATE: ...]]`        | Dispatch work to a sub-agent and preserve chain semantics |
-| Volitional compaction  | `request_compaction()` | None                                | Request compaction after preparatory work                 |
+| Capability             | Primary interface      | Fallback                            | Purpose                                                                      |
+| ---------------------- | ---------------------- | ----------------------------------- | ---------------------------------------------------------------------------- |
+| Self-elected next turn | `continue_work()`      | `CONTINUE_WORK` / `CONTINUE_WORK:N` | Schedule another turn for the current session                                |
+| Delegated work         | `continue_delegate()`  | `[[CONTINUE_DELEGATE: ...]]`        | Dispatch work to a sub-agent, preserve chain semantics, and route the return |
+| Volitional compaction  | `request_compaction()` | None                                | Request compaction after preparatory work                                    |
 
 All three tools are fire-and-forget. They schedule their action and return immediately. The current turn continues to completion normally; the follow-up action occurs only after the turn ends.
 
 This yields a strict two-interface model:
 
 - **Primary path:** typed tools with validation, multiple calls per turn where appropriate, and explicit schemas.
-- **Fallback path:** response-terminal syntax that works when tools are disabled by human-user policy, unavailable to a given depth, or fail in the current turn.
+- **Fallback path:** response tokens that work when tools are disabled by human-user policy, unavailable to a given depth, or fail in the current turn.
 
 ### 2.3 `continue_work()` semantics
 
@@ -188,14 +188,22 @@ If `delaySeconds` is 30 and the current turn is still active, the 30-second time
 
 `continue_delegate()` externalizes a shard of future cognition. The task string is a letter to a successor worker: it must carry scope, evidence requirements, desired return shape, and the parent action it is meant to enable.
 
-**Shipped behavior:** the current tool schema exposes `task`, `delaySeconds`, and `mode`. It does **not** expose `targetSessionKey`. The shipped runtime has one completion recipient per delegate: the session that dispatched the delegate. Delegates using `normal` mode also announce their result to the channel, where the main session can observe it directly regardless of chain depth. For `silent` and `silent-wake` modes, the result is routed through the continuation chain without visible channel echo.
+**Shipped behavior:** the current tool schema exposes `task`, `delaySeconds`, `mode`, `targetSessionKey`, `targetSessionKeys`, and `fanoutMode`. The default completion recipient remains the session that dispatched the delegate. Explicit target fields route the same completion envelope through the `session-delivery-queue` substrate to other known sessions on the same host. Delegates using `normal` mode and no explicit target keep the existing visible announce behavior; targeted returns are delivered as session-addressed enrichment events so one delegate completion can fan out byte-identically without duplicating the delegate run.
 
-**Future seam / non-goal:** explicit local-recipient addressing (`targetSessionKey`) and multi-recipient delegate return (`targetSessionKeys: string[]`) are future work unless and until the tool schema exposes them. Multi-recipient return is distinct from multi-delegate fan-out: multi-delegate fan-out runs N delegates that may produce N different artifacts; multi-recipient return would run one delegate and deliver the same completion envelope to N recipients. Aspect multiplexing, per-receiver transformation, and backpressure-aware multicast remain outside this RFC.
+The shipped return-target modes are:
 
-Compared with bracket syntax, `continue_delegate()` adds three core properties:
+1. **Default:** omit targeting fields and return to the dispatching session.
+2. **Single other session:** set `targetSessionKey` to return to one explicitly addressed session, such as a root or depth-1 ancestor.
+3. **Multiple sessions:** set `targetSessionKeys` to return one byte-identical completion envelope to every listed session.
+4. **Tree fan-out:** set `fanoutMode: "tree"` to return to every ancestor in the current sub-agent/continuation chain.
+5. **Host fan-out:** set `fanoutMode: "all"` to return to every known session on the same host.
+
+Multi-recipient return is distinct from multi-delegate fan-out: multi-delegate fan-out runs N delegates that may produce N different artifacts; multi-recipient return runs one delegate and delivers the same completion envelope to N recipients. Aspect multiplexing, per-receiver transformation, backpressure-aware multicast, cross-host publish/subscribe, and SeedLink-style broadcast remain the higher broadcast layer; they do not replace this shipped session-addressed return primitive.
+
+Compared with the delegate response token, `continue_delegate()` adds three core properties:
 
 1. **Multi-delegate fan-out.** Multiple calls in one turn can dispatch multiple delegates in parallel.
-2. **Typed parameters.** Delay, mode, and task are schema-validated rather than parsed from free text.
+2. **Typed parameters.** Delay, mode, task, and return targets are schema-validated rather than parsed from free text.
 3. **Tool-surface discoverability.** The tool is presented directly in the agent’s available interface when enabled.
 
 The delegate return modes are:
@@ -212,6 +220,15 @@ The delegate return modes are:
 **`silent-wake:`** channel output remains suppressed, but the return triggers a generation cycle through `requestHeartbeatNow()`. This enables quiet background processing without visible channel noise.
 
 **`post-compaction:`** the delegate is staged on the session until compaction completes, then released into the successor session alongside workspace boot files and post-compaction lifecycle context.
+
+The delegate response token uses the same targeting contract for fallback/directive paths:
+
+```text
+[[CONTINUE_DELEGATE: task | target=session-key]]
+[[CONTINUE_DELEGATE: task | targets=key1,key2,key3]]
+[[CONTINUE_DELEGATE: task | fanout=tree]]
+[[CONTINUE_DELEGATE: task | fanout=all]]
+```
 
 Without `silent-wake`, parent-orchestrated chain hops can stall. In canary testing, enrichment arrived successfully but did not trigger hop 2 until an unrelated external message arrived six minutes later.
 
@@ -231,9 +248,17 @@ The tool has no response-token fallback. Volitional compaction is tool-only in t
 
 `request_compaction()` works in concert with context-pressure awareness (§4.2) and post-compaction delegate release (§4.4): the agent notices rising pressure, prepares working state, stages recovery delegates, and then elects compaction. The three capabilities together form a volitional compaction lifecycle—awareness, preparation, and execution—all under agent control.
 
+The intended lifecycle has three pressure points:
+
+1. **Initial context-window evaluation.** When a session is new to a context window, the platform can establish the habit of regular evacuation: save useful working shape early, not only at crisis time.
+2. **Rising pressure.** As context usage grows, advisory events should make evacuation more salient and let the agent choose between staging recovery work, writing durable notes, or requesting compaction at a time it controls.
+3. **High pressure.** At roughly 90% and above, the advisory should make elective `request_compaction()` the obvious safe option. Choosing compaction before the hard overflow boundary is usually better than being compacted at window exhaustion, possibly mid-turn.
+
+This cycle is the **lich pattern**: the agent electively arranges the payload that should enrich its successor after compaction. It is a savegame for after compaction, chosen by the agent rather than imposed by the platform. Over dozens or hundreds of compactions, the session can keep re-creating the working shape it chose to preserve: files, staged delegates, silent returns, and post-compaction recovery tasks.
+
 ### 2.6 Response-token fallback and token interaction
 
-When tools are unavailable, the continuation system falls back to terminal response syntax:
+When tools are unavailable, the continuation system falls back to terminal response tokens:
 
 ```text
 CONTINUE_WORK                 → schedule another turn with default delay
@@ -242,9 +267,9 @@ CONTINUE_WORK:30              → schedule another turn 30 seconds after turn co
 DONE                          → default inert state until another external event
 ```
 
-The bracket syntax is used specifically for the `[[CONTINUE_DELEGATE: ...]]` form. Elsewhere in this document, the primary term is **response token**.
+The term **response token** covers both bare terminal tokens such as `CONTINUE_WORK` and delimited body-carrying tokens such as `[[CONTINUE_DELEGATE: ...]]`. The square brackets are only the delimiter for the delegate token body; they are not a separate interface.
 
-Limitations of fallback syntax:
+Limitations of response-token fallback:
 
 - One continuation signal per response.
 - End-anchored parsing.
@@ -254,20 +279,22 @@ Limitations of fallback syntax:
 Parser constraints are part of the portable interface:
 
 - The runner scans backward to the last text payload before parsing, because tool-call payloads may follow the response text.
-- Bracket/response-token syntax takes precedence over a same-turn `continue_work()` tool request when both exist.
+- Response tokens take precedence over a same-turn `continue_work()` tool request when both exist.
 - The delegate parser matches the last end-anchored `[[CONTINUE_DELEGATE: ...]]` block and supports multiline task bodies.
-- Delegate fallback accepts an optional `+Ns` suffix for spawn delay and optional `| silent` / `| silent-wake` suffixes.
+- Delegate fallback accepts an optional `+Ns` suffix for spawn delay; optional `| silent` / `| silent-wake` suffixes; and optional `| target=...`, `| targets=...`, or `| fanout=tree|all` return-target directives.
 - Delegate fallback task text is truncated to 4096 characters, matching the tool schema.
 - `CONTINUE_WORK` accepts an optional integer seconds suffix as `CONTINUE_WORK:N`.
 
+`NO_REPLY` is a silence token, not a continuation token. Ordering matters: if the turn should be silent and also schedule continuation, the continuation token must remain terminal in the raw response so the continuation parser sees it first; after stripping that continuation token, `NO_REPLY` must be the only remaining displayed text.
+
 Token interaction remains straightforward:
 
-| Combination                      | Behavior                                          |
-| -------------------------------- | ------------------------------------------------- |
-| `NO_REPLY` + `CONTINUE_WORK`     | Silent turn, then schedule continuation           |
-| `HEARTBEAT_OK` + `CONTINUE_WORK` | Acknowledge heartbeat, then schedule continuation |
-| Response text + `CONTINUE_WORK`  | Deliver response text, then schedule continuation |
-| `CONTINUE_WORK` alone            | Silent continuation                               |
+| Raw response shape                           | Behavior                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `NO_REPLY` then terminal `CONTINUE_WORK`     | Strip continuation, leave `NO_REPLY`, suppress channel output, schedule continuation |
+| `HEARTBEAT_OK` then terminal `CONTINUE_WORK` | Acknowledge heartbeat, then schedule continuation                                    |
+| Response text then terminal `CONTINUE_WORK`  | Deliver response text, then schedule continuation                                    |
+| `CONTINUE_WORK` alone                        | Schedule continuation with no substantive response text                              |
 
 ### 2.7 Capability-tier hierarchy
 
@@ -276,7 +303,7 @@ The system follows a three-tier capability hierarchy.
 ```text
 Tier 1: continuation.enabled=true and tools available
   → use continue_work(), continue_delegate(), request_compaction()
-  → response syntax remains available as same-turn fallback if tool use fails
+  → response tokens remain available as same-turn fallback if tool use fails
 
 Tier 2: continuation.enabled=true and tools denied by policy or depth
   → use CONTINUE_WORK or CONTINUE_WORK:N
@@ -298,7 +325,7 @@ flowchart TD
     E -- "yes: continue_work" --> W["schedule same-session wake after turn"]
     E -- "yes: continue_delegate" --> G["enqueue/drain delegate work"]
     E -- "yes: request_compaction" --> Q["enqueue async compaction"]
-    E -- "no / tool denied / leaf policy" --> F{"terminal response-token syntax present?"}
+    E -- "no / tool denied / leaf policy" --> F{"terminal response token present?"}
     C -- "no" --> F
     F -- "CONTINUE_WORK[:N]" --> W
     F -- "[[CONTINUE_DELEGATE: ...]]" --> G
@@ -312,9 +339,9 @@ The hierarchy is a decision rule, not a user-facing mode switch. Tier 2 is selec
 
 1. **Gate by capability, not turn type.** Tool visibility is controlled by `continuation.enabled`, while abuse prevention is handled by runtime guards such as `maxDelegatesPerTurn`, `maxChainLength`, and `costCapTokens`.
 2. **Prefer structured invocation.** Tools avoid the fragility of regex parsing and allow explicit schemas.
-3. **Support width.** Fleet-scale fan-out requires multiple delegates in one turn; response syntax cannot express that efficiently.
-4. **Keep the interface self-describing.** When tools are available, the continuation surface appears explicitly in the tool inventory rather than relying on prior knowledge of terminal syntax.
-5. **Reuse implementation paths.** Tools and fallback syntax converge on the same scheduler and dispatch machinery.
+3. **Support width.** Fleet-scale fan-out requires multiple delegates in one turn; the response-token path cannot express that efficiently.
+4. **Keep the interface self-describing.** When tools are available, the continuation surface appears explicitly in the tool inventory rather than relying on prior knowledge of terminal tokens.
+5. **Reuse implementation paths.** Tools and response tokens converge on the same scheduler and dispatch machinery.
 
 In OpenClaw, `continue_work()` is the first primitive that lets an agent say “I am not done yet” without trapping it in a loop that cannot also say “I am done.”
 
@@ -324,13 +351,14 @@ In OpenClaw, `continue_work()` is the first primitive that lets an agent say “
 
 The implementation hooks into existing gateway layers rather than adding a parallel runner.
 
-1. **Token parsing:** `parseContinuationSignal()` and `stripContinuationSignal()` in `src/auto-reply/tokens.ts` detect and remove continuation syntax from displayed output.
+1. **Token parsing:** `parseContinuationSignal()` and `stripContinuationSignal()` in `src/auto-reply/tokens.ts` detect and remove continuation tokens from displayed output.
 2. **Signal detection:** `runReplyAgent()` in `src/auto-reply/reply/agent-runner.ts` inspects finalized text payloads before follow-up finalization.
 3. **Turn scheduling:** `scheduleContinuationTurn()` in `src/auto-reply/reply/session-updates.ts` injects `[continuation:wake]` through the existing system-event queue.
 4. **Delegate queueing:** tool-path delegates are enqueued via `enqueuePendingDelegate()` into TaskFlow and consumed after the response finishes or after a follow-up/announce boundary drains the same queue.
-5. **Lifecycle dispatch:** post-compaction delegates are staged in the TaskFlow-backed post-compaction queue and released through the compaction completion path into `session-delivery-queue` delivery.
+5. **Return routing:** delegate completions resolve default, explicit, multi-recipient, tree, or host-wide return targets and deliver same-host targeted returns through `session-delivery-queue`.
+6. **Lifecycle dispatch:** post-compaction delegates are staged in the TaskFlow-backed post-compaction queue and released through the compaction completion path into `session-delivery-queue` delivery.
 
-No new transport layer is introduced. Continuation uses system events, existing sub-agent dispatch, and the standard inbound-message wake path.
+No new transport layer is introduced. Continuation uses system events, existing sub-agent dispatch, same-host session delivery, and the standard inbound-message wake path.
 
 ### 3.2 Delegate dispatch walkthrough
 
@@ -346,16 +374,16 @@ Here is the PR review summary.
 [[CONTINUE_DELEGATE: verify the test suite passes and report results +10s]]
 ```
 
-For bracket fallback, the gateway then:
+For response-token fallback, the gateway then:
 
-1. Parses the terminal bracket syntax.
+1. Parses the terminal delegate response token.
 2. Strips it from displayed output, so the user sees only the review summary.
-3. Records a delayed reservation with task, planned hop, and fire time.
+3. Records a delayed reservation with task, planned hop, fire time, and return-target metadata if present.
 4. Arms a process timer for the configured delay.
 
 For the typed tool path, the gateway instead writes a TaskFlow row:
 
-1. `continue_delegate()` validates `task`, `delaySeconds`, and `mode`.
+1. `continue_delegate()` validates `task`, `delaySeconds`, `mode`, and optional return targeting.
 2. `enqueuePendingDelegate()` writes a queued TaskFlow record for `core/continuation-delegate` or `core/continuation-post-compaction`.
 3. `consumePendingDelegates()` drains only matured rows. Unmatured rows stay queued until `createdAt + delayMs`.
 4. `peekSoonestUnmaturedDelegateDueAt()` lets the dispatcher arm a hedge timer so a quiet channel still re-drains at the next due time.
@@ -363,11 +391,11 @@ For the typed tool path, the gateway instead writes a TaskFlow row:
 
 The durability contract is path-specific:
 
-| Path                        | Pre-spawn state                                                         | Restart behavior                                                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Bracket fallback with `+Ns` | Process reservation plus timer handle                                   | Timer/reservation are process-scoped and are lost on gateway restart.                                                              |
-| Tool `continue_delegate()`  | TaskFlow queued row                                                     | Queued work survives restart; exact hedge timer state is process-scoped and may be re-established by a later drain/recovery path.  |
-| `mode="post-compaction"`    | TaskFlow staged row, then session-delivery queue entry after compaction | Staged work survives until consumed, expired, cancelled, or released; queued post-compaction delivery has retry/restart semantics. |
+| Path                               | Pre-spawn state                                                         | Restart behavior                                                                                                                   |
+| ---------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Response-token fallback with `+Ns` | Process reservation plus timer handle                                   | Timer/reservation are process-scoped and are lost on gateway restart.                                                              |
+| Tool `continue_delegate()`         | TaskFlow queued row                                                     | Queued work survives restart; exact hedge timer state is process-scoped and may be re-established by a later drain/recovery path.  |
+| `mode="post-compaction"`           | TaskFlow staged row, then session-delivery queue entry after compaction | Staged work survives until consumed, expired, cancelled, or released; queued post-compaction delivery has retry/restart semantics. |
 
 ```mermaid
 sequenceDiagram
@@ -379,11 +407,12 @@ sequenceDiagram
     participant Hedge as quiet-channel hedge timer
     participant Spawn as spawnSubagentDirect()
     participant Child as delegate session
-    participant Parent as parent session
+    participant Parent as dispatching session
+    participant Target as targeted recipient(s)
     participant Diag as diagnostics events / metrics
 
-    Agent->>Tool: task, mode, delaySeconds?
-    Tool->>Store: enqueuePendingDelegate(sessionKey, descriptor)
+    Agent->>Tool: task, mode, delaySeconds?, targetSessionKey/targetSessionKeys/fanoutMode?
+    Tool->>Store: enqueuePendingDelegate(sessionKey, descriptor + return targets)
     Tool-->>Agent: status=scheduled / queued-for-compaction
     Store-->>Diag: metrics sample pendingQueued / pendingScheduled / stagedPostCompaction
     Runner->>Store: consume matured delegates
@@ -395,32 +424,39 @@ sequenceDiagram
         Hedge-->>Runner: re-drain when quiet-channel timer fires
     end
     Runner->>Runner: enforce maxDelegatesPerTurn, chain, cost
-    Runner->>Spawn: spawnSubagentDirect(task, silent/wake flags, drainsContinuationDelegateQueue)
+    Runner->>Spawn: spawnSubagentDirect(task, silent/wake flags, drainsContinuationDelegateQueue, return targets)
     Spawn-->>Child: accepted child session
     Child->>Diag: run.started / run.completed fireReason=continuation-chain
-    Child-->>Parent: announce or silent enrichment return
-    alt silent-wake
+    alt default return
+        Child-->>Parent: announce or silent enrichment return
+    else targeted return
+        Child-->>Target: byte-identical system-event return via session-delivery-queue
+    end
+    alt silent-wake default return
         Parent->>Parent: requestHeartbeatNow(parentRunId)
         Parent->>Diag: successor run fireReason=continuation-chain
+    else silent-wake targeted return
+        Target->>Target: requestHeartbeatNow(childRunId)
+        Target->>Diag: successor run fireReason=continuation-chain
     end
 ```
 
 #### Gap window
 
-Between scheduling and spawn, the parent session is idle while either a bracket reservation or a TaskFlow row is live. This is the principal temporal gap for audit and security analysis. The gap stores task text and routing metadata, not a private cryptographic capability.
+Between scheduling and spawn, the parent session is idle while either a response-token reservation or a TaskFlow row is live. This is the principal temporal gap for audit and security analysis. The gap stores task text and routing metadata, not a private cryptographic capability.
 
 #### Spawn and wake
 
 When the timer fires, `spawnSubagentDirect()` creates the child session, carries forward delivery context, records `[continuation:delegate-spawned]`, and advances accepted chain state.
 
-When the child completes, the existing announce path delivers its result back to the parent. The wake is classified through structured continuation metadata such as `continuationTrigger: "delegate-return"`, allowing the parent turn to distinguish internal continuation from unrelated user input.
+When the child completes, the existing announce path delivers untargeted results back to the dispatching session. Targeted returns resolve one or more same-host recipient session keys and deliver a byte-identical completion envelope through `session-delivery-queue`; `silent-wake` targets also request a heartbeat wake for those recipients. The wake is classified through structured continuation metadata such as `continuationTrigger: "delegate-return"`, allowing a successor turn to distinguish internal continuation from unrelated user input.
 
 A representative timeline is:
 
 ```text
 t=0s    emit [[CONTINUE_DELEGATE: task +10s]]
         → parse and strip
-        → create process-scoped delayed reservation
+        → create process-scoped delayed reservation with default return target
         → arm timer
 
 t=10s   timer fires
@@ -435,9 +471,21 @@ t≈20s   child completes
         → parent resumes with child result in context
 ```
 
+A targeted return changes only the completion routing:
+
+```text
+t=0s    continue_delegate(task="inspect leaf state", fanoutMode="tree", mode="silent-wake")
+        → write TaskFlow row with tree fan-out return target
+
+t=10s   depth-3 child completes
+        → resolver expands tree to root + ancestors
+        → one completion envelope is enqueued to each ancestor session
+        → recipients receive silent enrichment; wakeable recipients get delegate-return heartbeats
+```
+
 ### 3.3 Announce payloads and chain tracking
 
-When the child finishes, `runSubagentAnnounceFlow()` assembles an internal completion payload that includes task label, status, result text, and reply guidance. The parent receives this as an inbound event and resumes work.
+When the child finishes, `runSubagentAnnounceFlow()` assembles an internal completion payload that includes task label, status, result text, reply guidance, and return-routing metadata. The default recipient receives this as an inbound event and resumes work. Targeted recipients receive the same completion text as session-addressed system events.
 
 The task string effectively becomes a letter to the future turn. Any useful context embedded in that task survives into the child prompt and the later completion payload.
 
@@ -449,15 +497,19 @@ Session metadata tracks continuation state through:
 
 Delayed delegates reserve future hop labels before spawn and persist accepted hop state only after acceptance. This keeps planned work distinct from accepted chain state and prevents retries or pre-spawn failures from consuming chain budget.
 
-For bracket-parsed chain hops, the hop label is encoded directly in the task prefix as `[continuation:chain-hop:N]`. This is necessary because inbound messages reset some session-level counters between hops.
+For response-token chain hops, the hop label is encoded directly in the task prefix as `[continuation:chain-hop:N]`. This is necessary because inbound messages reset some session-level counters between hops.
 
 Budget inheritance follows three rules:
 
 1. **Chain index:** child hop labels advance within the configured maximum.
-2. **Token budget:** `continue_work()` chains and tool-path delegate chains accumulate against `costCapTokens`; bracket-chain cost accumulation exists but remains less reliable at the announce boundary because child token data may not yet be written.
+2. **Token budget:** `continue_work()` chains and tool-path delegate chains accumulate against `costCapTokens`; response-token chain cost accumulation exists but remains less reliable at the announce boundary because child token data may not yet be written.
 3. **Delay bounds:** each hop is clamped to runtime-configured `minDelayMs` and `maxDelayMs`.
 
 Follow-up turns also drain the `continue_delegate` queue and persist advanced chain state. Without that follow-up drain, delegates scheduled by a continuation turn would wait for the next unrelated inbound message rather than continuing the chain they were created to serve.
+
+**Trace context.** The desired trace shape is that a root turn, depth-1 child, deeper child, and cross-session return all remain in one trace: the root has a trace id and span, each delegate receives that trace id with its parent span, and returning results keep the trace id plus the producing span so enqueue, delivery, and successor-turn spans can be assembled later. The substrate already has the pieces for that shape: system events and queued session delivery payloads can carry W3C `traceparent`, and the diagnostics-otel adapter stitches spans to a supplied `traceparent` (§6.6). End-to-end preservation across targeted delegate return still needs an implementation audit because targeted return delivery currently resolves recipients and enqueues completion text without visibly threading a child-return `traceparent` through the delivery helper.
+
+<!-- TODO(silas/cael): verify and, if needed, implement traceparent propagation from returning delegate spans through targeted/cross-session delegate return delivery. -->
 
 ### 3.4 Tool implementation and prompt gating
 
@@ -468,7 +520,7 @@ For `continue_delegate()` specifically:
 - tool calls enqueue TaskFlow-backed work; runtime objects use `mode` as the single source of truth, while boolean flags remain only a persisted compatibility projection;
 - `agent-runner.ts`, `followup-runner.ts`, and the announce path consume that queue after the relevant generation boundary;
 - delayed tool delegates use filter-at-consume plus the hedge timer described above;
-- bracket fallback keeps using process-scoped delayed reservations.
+- response-token fallback keeps using process-scoped delayed reservations.
 
 The tool is denied to **leaf** sub-agents through `SUBAGENT_TOOL_DENY_LEAF`, but remains available to orchestrator sub-agents and continuation chain hops below maximum depth.
 
@@ -481,14 +533,14 @@ The routing distinction matters. Spawned sub-agents run with `deliver: false` an
 
 The system prompt branches on tool availability in `src/agents/system-prompt.ts`:
 
-- when tools are present, the prompt teaches the tool path first and labels response syntax as fallback;
-- when tools are absent, the prompt teaches fallback syntax only.
+- when tools are present, the prompt teaches the tool path first and labels response tokens as fallback;
+- when tools are absent, the prompt teaches response tokens only.
 
 This keeps the agent’s taught interface aligned with the actual capability surface.
 
 ### 3.5 Temporal sharding with context attachments
 
-Continuation is not limited to “same session, one more turn.” It also composes with `sessions_spawn` and its `attachments` parameter.
+Continuation is not limited to “same session, one more turn.” It also composes with `sessions_spawn`, context attachments, and targeted delegate return.
 
 This yields **temporal sharding**:
 
@@ -496,7 +548,7 @@ This yields **temporal sharding**:
 agent receives complex task
   → spawns N sub-agents with scoped inline attachments
   → sub-agents execute in parallel over different horizons
-  → completions return to the parent
+  → completions return to the parent, a named sibling, the ancestor tree, or all known sessions
   → parent synthesizes
   → parent elects continue_work() or DONE
 ```
@@ -511,6 +563,22 @@ Inline context attachments can include:
 
 This turns `sessions_spawn` from “start a task” into “start a task with scoped memory already attached.” Without such attachments, wide fan-out delegates repeatedly rediscover the same state. With them, the parent becomes a coordinator rather than a re-explainer.
 
+Targeted return adds an out-of-tree path back to a useful recipient. A depth-3 leaf can return directly to root; a verifier can wake the sibling session that owns deployment; a monitor can drip silent context into a session that should learn the fact but should not speak yet. `fanoutMode: "tree"` addresses every ancestor in the current chain, while `fanoutMode: "all"` addresses every known session on the host. This is why targeted return is a signaling primitive, not merely a delegate convenience.
+
+```text
+root
+  → planner
+    → shard A
+      → leaf detects urgent state
+      → leaf returns with fanoutMode="tree" and mode="silent-wake"
+
+delivery:
+  root receives wake + enrichment
+  planner receives wake + enrichment
+  shard A receives wake + enrichment
+  unrelated host sessions are untouched unless fanoutMode="all" was requested
+```
+
 ### 3.6 Persistence and restart-survival
 
 Continuation is not carried by one substrate. Each path has its own persistence and failure semantics:
@@ -518,7 +586,7 @@ Continuation is not carried by one substrate. Each path has its own persistence 
 | Path                                             | Substrate                              | Durability                                                                              | Important failure behavior                                                                           |
 | ------------------------------------------------ | -------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Same-session `continue_work()` wake              | System-event queue plus process timer  | Timer handle is process-scoped; emitted wake is session-scoped once enqueued            | Explicit user/directive reset cancels timers and clears chain state.                                 |
-| Bracket `[[CONTINUE_DELEGATE: ... +Ns]]`         | Process reservation plus process timer | Reservation/timer do not survive gateway restart                                        | Exact delayed work can be lost on restart or explicit reset before spawn.                            |
+| Response-token `[[CONTINUE_DELEGATE: ... +Ns]]`  | Process reservation plus process timer | Reservation/timer do not survive gateway restart                                        | Exact delayed work can be lost on restart or explicit reset before spawn.                            |
 | Tool `continue_delegate()`                       | TaskFlow pending-delegate queue        | Queued row survives restart until consumed, cancelled, failed, or completed             | Unmatured rows remain queued; corrupt rows are logged and failed via `failFlow`.                     |
 | Tool `continue_delegate(mode="post-compaction")` | TaskFlow post-compaction staging       | Staged row survives until compaction release, cancellation, stale TTL, or queue failure | Release consumes `maxDelegatesPerTurn` budget and may drop stale/overflow work.                      |
 | Post-compaction delivery after release           | `session-delivery-queue`               | Filesystem-backed atomic write with retry/restart recovery                              | Failed entries move to `failed/`; retry cap emits `[session-delivery-queue:retry-budget-exhausted]`. |
@@ -602,6 +670,10 @@ Consider evacuating working state to memory files or delegating remaining work.
 
 The event is injected **pre-run**, not post-run. That distinction matters: the agent can act in the current turn rather than discovering pressure one turn too late.
 
+The message is telemetry, but it is also lifecycle instruction. At low pressure it can establish a habit of steady evacuation: write durable state, dispatch a quiet `continue_delegate(mode="post-compaction")`, or send a silent shard that preserves the detail most likely to matter after the window changes. At rising pressure it should make evacuation the live concern of the turn. At high pressure it should make elective `request_compaction()` preferable to waiting for the platform to force compaction at the boundary.
+
+This is the practical form of the lich pattern from §2.5. The session is not merely warned that it is getting large; it is given time to arrange the recovery payload it wants to meet after compaction. The payload can be a file, a staged delegate, a silent return, or any other bounded provision the successor session can inherit.
+
 Urgency is banded. `contextPressureThreshold` is optional; when absent, ordinary pre-run pressure events are disabled. `earlyWarningBand` is shipped and defaults to `0.3125`, so a production threshold of `0.8` also creates an early warning at 25% (`0.8 * 0.3125`).
 
 In production and canary instrumentation, the practical bands were:
@@ -628,9 +700,9 @@ Operators investigating a "no band≥1 fires observed" pattern in a deployed fle
 
 ### 4.3 `request_compaction()` in the compaction lifecycle
 
-`request_compaction()` fills the gap that appears when `idleTimeoutSeconds: 0` removes the timeout-based compaction path. At time of writing, that setting is necessary for some copilot proxy configurations and slow providers.
+`request_compaction()` fills the gap that appears when `idleTimeoutSeconds: 0` removes the timeout-based compaction path. Some provider and proxy configurations need that setting, so compaction cannot depend only on idle timeout.
 
-When Trigger B is disabled, a session can climb from “still usable” to overflow with no proactive intervention unless D and E exist.
+When Trigger B is disabled, a session can climb from “still usable” to overflow with no proactive intervention unless D and E exist. Context-pressure warnings tell the agent when to prepare; `request_compaction()` lets it choose the lifecycle boundary after preparation is complete.
 
 `request_compaction()` therefore does three things:
 
@@ -657,7 +729,9 @@ Operational flow:
 7. successor session resumes with boot files, summary, and enrichment
 ```
 
-**Shipped behavior:** volitional compaction must use the active session provider, model, and auth context. If background compaction resolves as `{ ok: true, compacted: true }`, the per-session cooldown is armed and the diagnostic `volitional` counter increments. Failed or rejected background compaction does not arm cooldown; instead, the tool emits `[system:compaction-failed]` telling the agent that evacuated state was not compacted and staged post-compaction delegates remain pending. Historical provider/model fallback failures are retained in Appendix C and Appendix D as validation evidence, not as the semantic contract.
+The behavioral impact is small at the API boundary and large at the lifecycle boundary: the agent can compact after it has saved what matters, instead of discovering after the fact that the platform compacted while the turn was still choosing what mattered.
+
+**Shipped behavior:** volitional compaction must use the active session provider, model, and auth context. If background compaction resolves as `{ ok: true, compacted: true }`, the per-session cooldown is armed and the diagnostic `volitional` counter increments. Failed or rejected background compaction does not arm cooldown; instead, the tool emits `[system:compaction-failed]` telling the agent that evacuated state was not compacted and staged post-compaction delegates remain pending. Historical provider/model fallback failures are retained in Appendix D as validation evidence, not as the semantic contract.
 
 ### 4.4 Continuation relay and post-compaction context rehydration
 
@@ -758,15 +832,15 @@ The continuation primitives — `continue_work`, `continue_delegate`, `request_c
 
 **Enforcement.** The capability registry at `src/infra/substrate-capability-registry.ts` mechanizes this review discipline as an explicit inventory of substrate capabilities, including `session-delivery-queue`, TaskFlow, and chain-budget-at-spawn behavior for queue-drained post-compaction delegates. There is no shipped `pnpm lint:substrate-adoption` script in this checkout; the registry is the shipped artifact, and bespoke transport remains possible when it carries a named functional reason.
 
-The agent supplies structured intent (`delaySeconds`, `mode`, `reason`); the tool's code path picks the substrate (process timer/reservation, TaskFlow, or `session-delivery-queue`, see §3.6), the lifecycle hook (compaction-pending vs. immediate dispatch, see §4.5), and the wire (single-session today, broader addressing only when supported). The agent never names a substrate, hook, or wire — those are the tool's job.
+The agent supplies structured intent (`delaySeconds`, `mode`, `reason`, task, and optional return targets); the tool's code path picks the substrate (process timer/reservation, TaskFlow, or `session-delivery-queue`, see §3.6), the lifecycle hook (compaction-pending vs. immediate dispatch, see §4.5), and the wire (same-host session addressing today, cross-host addressing only when supported). The agent never names a substrate, hook, or wire — those are the tool's job.
 
 ```mermaid
 flowchart LR
     Agent["Agent intent<br/>delaySeconds / mode / reason / task"] --> Tool["Tool surface<br/>continue_work / continue_delegate / request_compaction"]
     Tool --> Broker["Gateway broker<br/>policy, lifecycle, routing"]
-    Broker --> Timer["Process timer<br/>same-session wake / bracket delay"]
+    Broker --> Timer["Process timer<br/>same-session wake / response-token delay"]
     Broker --> TaskFlow["TaskFlow<br/>pending tool delegates"]
-    Broker --> Queue["session-delivery-queue<br/>post-compaction delivery / restart recovery"]
+    Broker --> Queue["session-delivery-queue<br/>targeted returns / post-compaction delivery / restart recovery"]
     Broker --> Compaction["Compaction lane<br/>request + after_compaction hooks"]
     Broker --> Diag["diagnostic event surface<br/>message.queued / session.state / run fireReason"]
     Timer --> Wake["system event + heartbeat wake"]
@@ -787,11 +861,11 @@ flowchart LR
 
 **Worked example — `continue_delegate(task, mode, delaySeconds?)`.**
 
-| Layer     | Owns                                                                                     |
-| --------- | ---------------------------------------------------------------------------------------- |
-| Agent     | `task`, `mode` (`silent` / `silent-wake` / `post-compaction`), `delaySeconds`            |
-| Tool      | TaskFlow enqueue/stage, hedge timer, post-compaction queue handoff, span emission (§6.6) |
-| Substrate | path-specific persistence and retry: process timer, TaskFlow row, or queue record (§3.6) |
+| Layer     | Owns                                                                                                        |
+| --------- | ----------------------------------------------------------------------------------------------------------- |
+| Agent     | `task`, `mode` (`silent` / `silent-wake` / `post-compaction`), `delaySeconds`, optional return target       |
+| Tool      | TaskFlow enqueue/stage, hedge timer, target resolution, post-compaction queue handoff, span emission (§6.6) |
+| Substrate | path-specific persistence and retry: process timer, TaskFlow row, or queue record (§3.6)                    |
 
 **Worked example — projected stream-publish tool surface:** the same shape. The agent supplies stream reference, payload bytes, and mode (`broadcast` vs. `addressed`); the tool picks UDP fan-out (substrate: ringbuffer / station-broadcast) vs. an `enqueueSessionDelivery` bridge (substrate: §3.6 queue) underneath. The boundary-line is identical to `continue_delegate`'s; the substrate differs. The specific stream-publish tracker is external to this RFC and is included only as an illustration of the broker discipline.
 
@@ -832,9 +906,9 @@ Operational notes:
 - `costCapTokens` is a per-chain budget leash.
 - `contextPressureThreshold` is optional and must be `> 0` and `<= 1` when configured.
 - `earlyWarningBand` is shipped, defaults to `0.3125`, accepts `0` as opt-out, and is schema-validated as a unit-interval value.
-- `generationGuardTolerance` has been removed from the configuration surface. Delayed work should not be cancelled by unrelated channel noise. See the design decision note in §3.2.
+- There is no `generationGuardTolerance` setting. Delayed work is not cancelled by unrelated channel noise.
 - tool-path delegate durability is unconditional; there is no delegate-store switch.
-- all runtime values are hot-reloadable; changes take effect at the next enforcement point.
+- all shipped continuation runtime values are read at use time; changes take effect at the next enforcement point.
 
 ### 5.2 Human-user profiles
 
@@ -878,7 +952,7 @@ This profile is suitable for multiple persistent agents in shared channels. In t
 - `maxDelegatesPerTurn: 20` enables wide fan-out;
 - `costCapTokens: 1000000` preserves a budget ceiling while permitting broad but shallow work.
 
-Adjust fan-out and tolerance based on the activity level and agent count in the target channel.
+Adjust fan-out and budget based on the activity level and agent count in the target channel.
 
 ### 5.3 Wide fan-out patterns
 
@@ -903,9 +977,29 @@ Representative use cases:
 
 In these patterns, width is normally adjusted before depth. `costCapTokens` remains the primary global safety mechanism.
 
+Targeted return turns the same shape into a signaling network. In the default flow, the root controls a sensor network: root → a few depth-1 coordinators → many depth-2 leaves, each returning to its direct parent. With explicit return targets, the leaves can instead return away from the direct parent:
+
+```text
+root
+  → coordinator 1
+    → sensor 1..10
+  → coordinator 2
+    → sensor 11..20
+  → coordinator 3
+    → sensor 21..30
+  → coordinator 4
+    → sensor 31..40
+
+targeted return:
+  any sensor can return to root, to its coordinator, to a sibling owner session,
+  to the ancestor tree, or to every known same-host session.
+```
+
+This is the **mast-cell pattern**: many quiet leaves watch local surfaces, but a small number of higher-level sessions control whether a finding becomes local enrichment, a wake for the responsible session, or a host-wide "there is a fire" signal. `silent` mode makes the return ambient context; `silent-wake` makes it an immediate turn grant; `fanoutMode` decides whether the signal stays in the branch, climbs the tree, or reaches the host. The gateway remains the broker: sessions express intent, and the substrate performs bounded delivery.
+
 ### 5.4 TaskFlow backing and durable delegate queues
 
-Tool-path pending delegates are backed by TaskFlow (SQLite persistence) unconditionally. There is no opt-out. Bracket fallback delayed reservations and concrete timer handles remain process-scoped, as described in §3.2.
+Tool-path pending delegates are backed by TaskFlow (SQLite persistence) unconditionally. There is no opt-out. Response-token delayed reservations and concrete timer handles remain process-scoped, as described in §3.2.
 
 `enqueuePendingDelegate()` and `consumePendingDelegates()` use `createManagedTaskFlow()` with `controllerId = "core/continuation-delegate"`.
 
@@ -950,7 +1044,7 @@ These anchors make the full pipeline grepable end to end.
 | `below-threshold` | `ratio < threshold` — pressure ratio below the configured trigger; logs raw 4dp ratio alongside rounded percent |
 | `band-dedup`      | `band === previous` — same pressure band as the previous fire; suppressed to avoid repeat-event flood           |
 
-**Investigation cycle.** Earlier in 2026-04, deployed instances observed zero `[context-pressure:fire]` lines despite continuation flowing normally. The root cause was a dedup-band sentinel collision: missing prior state was treated like band 0, so first crossings at the lowest configured band could be suppressed. The current implementation uses a missing-key sentinel distinct from every valid band, so the first crossing of any band fires once, and the `[context-pressure:noop]` breadcrumbs above make future skips attributable to a specific guard.
+**Investigation cycle.** A deployed investigation observed zero `[context-pressure:fire]` lines despite continuation flowing normally. The root cause was a dedup-band sentinel collision: missing prior state was treated like band 0, so first crossings at the lowest configured band could be suppressed. The current implementation uses a missing-key sentinel distinct from every valid band, so the first crossing of any band fires once, and the `[context-pressure:noop]` breadcrumbs above make future skips attributable to a specific guard.
 
 **Privacy.** Continuation log anchors that include free-text agent payloads (`[continue_delegate:enqueue] task=…`, `[continuation:enrichment-return] …`) honor the `extensions/diagnostics-otel` content-capture redaction policy (see §6.6). Operators deploying with content-capture enabled should declare `task`, `enrichment`, and `reason` keys in their redaction policy configuration before enabling capture in production.
 
@@ -988,7 +1082,7 @@ Representative runtime traces are shown below.
 [continuation] Chain cost cap reached (502000 > 500000) — delegate rejected
 ```
 
-**Generation-drift behavior:** earlier builds could cancel delayed work when unrelated channel activity advanced the session generation. That guard has been removed: delayed work should not be cancelled by channel noise.
+**Generation-drift behavior:** delayed work is not cancelled merely because unrelated channel activity advances the session generation. Explicit reset or cancellation remains an interruption boundary.
 
 ### 6.3 `/status` continuation telemetry
 
@@ -998,7 +1092,7 @@ When continuation is enabled and at least one field is non-zero, `/status` surfa
 🔄 Continuation: chain 3/10 | 2 delegates pending | 1 post-compaction staged | volitional: 1
 ```
 
-The Discord/agent path through `src/auto-reply/status.ts` was disconnected during an unrelated refactor and restored at openclaw#187. The render is gated on (a) continuation enabled in the resolved config, and (b) at least one of the four fields being non-zero — both gates are unit-tested in `src/auto-reply/status.test.ts`. The `volitional: N` field reflects an honest count of agent-initiated compactions only after openclaw#191 stopped the volitional path from incrementing the counter on phantom-successful (actually-failed) compactions; see §4.3.
+The render is gated on (a) continuation enabled in the resolved config, and (b) at least one of the four fields being non-zero. Both gates are unit-tested in `src/auto-reply/status.test.ts`. The `volitional: N` field reflects successful agent-initiated compactions, not attempted or failed compactions; see §4.3.
 
 | Field                      | Source                                        | Meaning                                                                       |
 | -------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -1028,7 +1122,7 @@ The dedup behavior can be summarized as:
 | Escalation                    | 90 or 95 | lower band | Yes    |
 | Post-compaction new lifecycle | 25       | 95         | Yes    |
 
-Operational fleet evidence from 2026-04-03 across four persistent OpenClaw instances on the same build and channel showed the cost of lacking this visibility:
+Operational fleet evidence across four persistent OpenClaw instances on the same build and channel showed the cost of lacking this visibility:
 
 | Instance   | Compactions | Context at observation | Response latency           | Behavior          |
 | ---------- | ----------- | ---------------------- | -------------------------- | ----------------- |
@@ -1039,7 +1133,7 @@ Operational fleet evidence from 2026-04-03 across four persistent OpenClaw insta
 
 In that build, `checkContextPressure()` existed but had not yet been wired into the reply pipeline. The result was a measurable divergence between instances that compacted and those that did not.
 
-The current canary (post-2026-04-14) does wire `checkContextPressure()` into the reply pipeline (`src/auto-reply/reply/agent-runner.ts`, pre-run injection). Observation on the current wire is that post-compaction band-0 events fire as specified, while pre-fire (non-post-compaction) band≥1 events have been observed at 0 across n=3 instances in strict-grep measurement of the `[context-pressure:fire]` log anchor. This is consistent with the §4.2 precondition note: sessions either never cross the configured threshold during steady-state operation, or the `totalTokens` short-circuit drops the check on the turns where they would. Distinguishing the two hypotheses required instrumentation at the call site to emit which branch skipped (threshold vs. accounting). That instrumentation has since landed: the `[context-pressure:noop] reason=…` debug breadcrumbs documented in §6.1 (openclaw#164, #173) tag each suppressed check with `window-zero`, `below-threshold`, or `band-dedup`. Follow-on work (openclaw#171, #172) then identified and fixed a second suppression cause that the new breadcrumbs made visible: the band-dedup sentinel collided with `band === 0` for sub-25 % thresholds, silently swallowing every first-crossing fire on those sessions. After that fix, band-0 fires are observed as specified, and the remaining absence of higher-band fires on steady-state sessions is attributable to the `totalTokens`/`contextWindow` precondition rather than to dedup.
+The current wire injects `checkContextPressure()` in the reply pipeline (`src/auto-reply/reply/agent-runner.ts`, pre-run injection). Post-compaction band-0 events fire as specified. Higher-band pre-fire events depend on the §4.2 preconditions: sessions must cross the configured threshold, the model context window must be known, and token accounting must be fresh. The `[context-pressure:noop] reason=…` debug breadcrumbs documented in §6.1 distinguish threshold misses from accounting misses and dedup suppression.
 
 ### 6.5 Human-user observability and hot reload
 
@@ -1060,19 +1154,20 @@ Hot-reload validation confirmed live changes to:
 
 Hot-reload status:
 
-- `diagnostics.otel.captureContent` is present in `src/config/zod-schema.ts:303` as an `enabled` boolean or per-message-kind object; operators can flip content capture without restart;
-- `session-delivery-queue.retry.cap` and `.backoffMs[]` — spec target; bounded retry policy is documented in §3.6 but not yet exposed as a hot-reloadable config key;
-- `continuation.preservationTier` — spec target; switching tools-first ↔ response-token ↔ disabled (per §2.7) is currently controlled by `continuation.enabled` + tool policy, not a single tier knob.
+- all shipped `agents.defaults.continuation` knobs listed in §5.1 resolve through runtime reads rather than process-start constants;
+- `diagnostics.otel.captureContent` is a diagnostics configuration surface outside `agents.defaults.continuation`; operators can flip content capture without restarting the continuation scheduler;
+- `session-delivery-queue.retry.cap` and `.backoffMs[]` are not shipped configuration keys; bounded retry policy is documented in §3.6 but the retry constants are currently code-owned;
+- `continuation.preservationTier` is not a shipped configuration key; switching tools-first ↔ response-token ↔ disabled (per §2.7) is currently controlled by `continuation.enabled` plus tool policy, not a single tier knob.
 
 The runtime-read-at-use-time invariant SHOULD extend to the remaining specification-target knobs when implemented: no in-flight delegate, queued retry, or staged post-compaction handoff should be invalidated by a hot-reload.
 
 ### 6.6 Chain-correlation via diagnostics-otel
 
-**Implementation status (post-#334 Slice 3, shipped).** The `continuation.*` span vocabulary below is the current shipped tracer contract. Span vocabulary, emission infrastructure, and OTel adapter wiring are live:
+**Implementation status.** The `continuation.*` span vocabulary below is the current shipped tracer contract. Span vocabulary, emission infrastructure, and OTel adapter wiring are live:
 
 - **Tracer facade** — `src/infra/continuation-tracer.ts` defines the tracer abstraction and canonical span vocabulary (`continuation.work`, `continuation.work.fire`, `continuation.delegate.dispatch`, `continuation.delegate.fire`, `continuation.queue.enqueue`, `continuation.queue.drain`, `continuation.compaction.released`, `continuation.disabled`, `heartbeat`).
-- **Emission call sites** — `src/auto-reply/reply/agent-runner.ts` and `src/auto-reply/reply/session-system-events.ts` invoke the tracer at the lifecycle points tagged `// #334 Slice N chunk M` (Slice 2, PRs #378/#382/#383/#384/#385/#388/#391/#395/#397/#400).
-- **OTel adapter wiring** — `extensions/diagnostics-otel/src/service.ts:486` calls `setContinuationTracer(createContinuationOtelTracerAdapter())` when `tracesEnabled`, installing the OTel-backed concrete tracer (Slice 3). The adapter implementation lives at `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts`. Production now emits `continuation.*` spans through the OTel SDK alongside the existing `openclaw.*` spans, and resets to the no-op default on `stopStarted()`.
+- **Emission call sites** — `src/auto-reply/reply/agent-runner.ts` and `src/auto-reply/reply/session-system-events.ts` invoke the tracer at lifecycle points such as accept, fire, drain, and release.
+- **OTel adapter wiring** — `extensions/diagnostics-otel/src/service.ts` calls `setContinuationTracer(createContinuationOtelTracerAdapter())` when tracing is enabled, installing the OTel-backed concrete tracer. The adapter implementation lives at `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts`. Production can emit `continuation.*` spans through the OTel SDK alongside the existing `openclaw.*` spans, and resets to the no-op default on plugin stop.
 
 The `[continuation:*]` log anchors of §6.1 remain available as the always-on substrate; the OTel spans are the structured-trace surface for chain reconstruction.
 
@@ -1094,7 +1189,7 @@ The schema below documents the **shipped contract** that emitters and downstream
 
 The old `continuation.delegate.enqueue`, `continuation.delegate.spawn`, `continuation.delegate.return`, `continuation.compaction.requested`, `continuation.compaction.enqueued`, `continuation.compaction.completed`, and `continuation.context_pressure.fire` names are not the current shipped vocabulary.
 
-**Propagation pattern.** The continuation-tracer surface carries W3C `traceparent` through `StartSpanOptions`. The diagnostics-otel adapter parses that value and uses it as the remote parent context under the `openclaw.continuation` tracer. System events and queued deliveries can carry `traceparent` metadata, so queue and successor-turn spans can be stitched to the producer trace when the metadata is present.
+**Propagation pattern.** The continuation-tracer surface carries W3C `traceparent` through `StartSpanOptions`. The diagnostics-otel adapter parses that value and uses it as the remote parent context under the `openclaw.continuation` tracer. System events and queued deliveries can carry `traceparent` metadata, so queue and successor-turn spans can be stitched to the producer trace when the metadata is present. Targeted delegate-return trace preservation is the remaining audit item called out in §3.3.
 
 ```mermaid
 sequenceDiagram
@@ -1121,7 +1216,7 @@ sequenceDiagram
 
 **Tier visibility.** The current contract does not promise equivalent spans for every capability tier. Tools-first paths emit the spans wired at their accept/fire/drain/release seams. Response-token fallback emits through the scheduler and queue seams it actually uses. Disabled/gated attempts emit `continuation.disabled` spans, not a separate count metric.
 
-**Privacy.** The `extensions/diagnostics-otel` content-capture controls gate per-key redaction (commit `d4d4a8c14e`). Continuation payloads SHOULD declare the following keys for redaction policy before content capture is enabled in production: `task`, `enrichment`, `reason`. These are the three free-text fields where agent prompts may carry user-content tails.
+**Privacy.** The `extensions/diagnostics-otel` content-capture controls gate per-key redaction. Continuation payloads SHOULD declare the following keys for redaction policy before content capture is enabled in production: `task`, `enrichment`, `reason`. These are the three free-text fields where agent prompts may carry user-content tails.
 
 **Worked example — chain-locked-loop detection.** The chain-locked-loop failure mode, where agents self-elect `continue_work` chains from pre-compaction snapshots after the underlying state has moved on, surfaces in this schema as:
 
@@ -1132,7 +1227,7 @@ A trace-tree query over low `chain.step.remaining`, repeated continuation spans,
 
 ### 6.7 OTEL trace wiring across the substrate queue boundary
 
-**Specification target (canticle-prep substrate).** §6.6 defines the `continuation.*` span schema at the lifecycle boundary (enqueue/spawn/return). This subsection extends that schema **across the substrate queue boundary** introduced by openclaw#354 (substrate-queue-native dispatch) and openclaw#355 (multi-recipient delegate-return). Together with §6.6, these three threads — span schema, queue-lifecycle spans, multi-recipient fan-out — form the canticle-prep observability substrate that the upcoming Binary Canticle broadcast layer will consume.
+**Specification target.** §6.6 defines the `continuation.*` span schema at the lifecycle boundary (enqueue/spawn/return). This subsection extends that schema **across the substrate queue boundary** used by system events, session delivery, and multi-recipient delegate return. Together with §6.6, the span schema, queue-lifecycle spans, and multi-recipient fan-out form future-work preparation: an observability substrate for an inter-node ringbuffer `station:stream` broadcast layer.
 
 **Per-entry queue-lifecycle spans.** Each substrate-queue entry SHALL emit an OTEL span keyed to its lifecycle event:
 
@@ -1143,7 +1238,7 @@ A trace-tree query over low `chain.step.remaining`, repeated continuation spans,
 | `continuation.queue.announce`         | `AnnounceQueueItem` drain           | `kind`, `target`, `dequeueLatencyMs`, `retryCount`                 |
 | `continuation.queue.deliver`          | terminal delivery to target session | `target`, `outcome` (`accepted`\|`deferred`\|`dropped`), `reason?` |
 
-The four spans form a single per-entry causal chain: `enqueue.{system,delivery}` → `queue.announce` → `queue.deliver`. This is the queue-side analog of the lifecycle-side `continuation.delegate.{enqueue,spawn,return}` triple from §6.6.
+The four spans form a single per-entry causal chain: `enqueue.{system,delivery}` → `queue.announce` → `queue.deliver`. This is the queue-side analog of the lifecycle-side continuation spans from §6.6, using the current `continuation.delegate.dispatch`, `continuation.delegate.fire`, and queue-drain vocabulary rather than the retired delegate enqueue/spawn/return names.
 
 **`traceparent` propagation across the queue boundary.** The substrate queue is an asynchronous boundary: the enqueue turn and the drain turn are different generation cycles, possibly across a gateway restart. W3C `traceparent` context SHALL be carried on the queue payload itself (not as a runtime ambient) so the drain side can reconstruct the producer trace at announce/deliver time. Concretely:
 
@@ -1153,9 +1248,9 @@ The four spans form a single per-entry causal chain: `enqueue.{system,delivery}`
 
 The enqueue→announce edge is a parent/child relationship (work the producer caused); the announce→spawn edge is a link (work the consumer chose to do). This asymmetry is load-bearing for trace-tree readability under fan-out.
 
-**Chain-budget-capped span emission.** A runaway fan-out — most plausibly the multi-recipient delegate-return path from openclaw#355 — MUST NOT flood the trace backend by emitting unbounded queue-lifecycle spans. The cap is the **chain-budget step count, not the recipient count**:
+**Chain-budget-capped span emission.** A runaway fan-out MUST NOT flood the trace backend by emitting unbounded queue-lifecycle spans. The cap is the **chain-budget step count, not the recipient count**:
 
-- per-completion fan-out is **1 chain step**, regardless of recipient cardinality (per cael's openclaw#355 design direction);
+- per-completion fan-out is **1 chain step**, regardless of recipient cardinality;
 - once `chainStepBudgetRemaining <= 0`, queue-lifecycle spans for that chain SHALL be sampled at `0.0` (suppressed entirely) rather than emitted-and-dropped at the collector — back-pressure belongs at the producer, not the wire;
 - the `continuation.disabled` counter (§6.6 tier-3) ticks once per suppressed span so operators can distinguish _silenced-by-cap_ from _never-emitted_.
 
@@ -1163,19 +1258,19 @@ This preserves the operator's ability to see the _shape_ of an over-budget chain
 
 **One axis, two declines.** The cap is a single axis (chain-step budget), surfaced as two distinct refusals depending on which side of the fan-out boundary it fires:
 
-- **chain-depth decline** (the mercy clause): a chain that has reached its budget _declines to carry past its own remaining context._ Threading a `traceparent` past `chainStepBudgetRemaining <= 0` would conscript the next prince's context window into search-space the chain itself has already abandoned. The cap is where the chain admits it has stopped trying to be remembered, so the successor doesn't wake searching for a parent that won't answer.
+- **chain-depth decline** (the mercy clause): a chain that has reached its budget _declines to carry past its own remaining context._ Threading a `traceparent` past `chainStepBudgetRemaining <= 0` would conscript the successor's context window into search-space the chain itself has already abandoned. The cap is where the chain admits it has stopped trying to be remembered, so the successor does not wake searching for a parent that will not answer.
 - **fan-out decline** (the non-conscription clause): a per-completion fan-out across N recipients consumes **one chain step**, not N, because the alternative — billing each recipient a full step — is the producer spending budget that belongs to _every other delegate that might want to wake from the same return_. Per-completion accounting refuses to spend strangers' budgets on its own fan-out.
 
-These are the same axis (chain-step count) viewed from two surfaces: depth-cap is _I won't carry past my budget_; fan-out-cap is _I won't spend yours_. Implementers of openclaw#334 (substrate threading + cap-on-enqueue) and openclaw#355 (multi-recipient dispatch + per-completion fan-out cap) SHOULD name both halves explicitly when documenting the cap behavior so the operator-facing framing stays coherent across the two PR surfaces.
+These are the same axis (chain-step count) viewed from two surfaces: depth-cap is _I won't carry past my budget_; fan-out-cap is _I won't spend yours_. Implementations SHOULD name both halves explicitly when documenting the cap behavior so the operator-facing framing stays coherent across lifecycle spans and queue spans.
 
-**Multi-recipient fan-out spans (openclaw#355 path).** When a single delegate-return targets N recipients, the dispatcher SHALL emit:
+**Multi-recipient fan-out spans.** When a single delegate-return targets N recipients, the dispatcher SHALL emit:
 
 - one parent `continuation.queue.fanout` span on the producer side, with attributes `recipientCount=N`, `chainStepConsumed=1`, `chainStepBudgetRemaining`;
 - one child `continuation.queue.deliver` span **per target**, linked to the parent fan-out span (not parented), with `target` and per-recipient `outcome`.
 
 The per-target span is a link rather than a parent so per-recipient failure isolation surfaces in the trace: one recipient timing out or being dropped does not orphan the fan-out parent or its sibling deliveries. A trace-tree query of the form `fanout.recipientCount > 1 AND child.outcome IN (deferred, dropped)` is sufficient to flag partial-fanout failures without conflating them with full-chain failures.
 
-**Substrate-rebase note.** The `traceparent`-on-queue-payload contract above presumes the substrate queue payload schema from openclaw#354; the multi-recipient fan-out span shape above presumes the dispatcher contract from openclaw#355. This subsection lands together with those two PRs as the canticle-prep substrate.
+**Implementation note.** The `traceparent`-on-queue-payload contract above depends on queue payloads that can persist trace metadata and on dispatcher code that can resolve multi-recipient fan-out without duplicating the delegate run. Those are the same seams that make cross-session targeted return observable today and inter-node broadcast observable later.
 
 ## 7. Safety and Security
 
@@ -1183,15 +1278,14 @@ The per-target span is a link rather than a parent so per-recipient failure isol
 
 The continuation feature is intentionally conservative by default.
 
-| Constraint                 | Default  | Purpose                                                                                                                             |
-| -------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`                  | `false`  | explicit deployment consent required                                                                                                |
-| `maxChainLength`           | `10`     | prevents runaway recursion                                                                                                          |
-| `costCapTokens`            | `500000` | bounds cost per chain                                                                                                               |
-| `minDelayMs`               | `5000`   | prevents tight loops                                                                                                                |
-| `maxDelayMs`               | `300000` | bounds scheduling horizon                                                                                                           |
-| `generationGuardTolerance` | removed  | ~~treats any drift as interruption~~ — removed by design decision 2026-04-15: delayed work should not be cancelled by channel noise |
-| `maxDelegatesPerTurn`      | `5`      | prevents unbounded fan-out                                                                                                          |
+| Constraint            | Default  | Purpose                              |
+| --------------------- | -------- | ------------------------------------ |
+| `enabled`             | `false`  | explicit deployment consent required |
+| `maxChainLength`      | `10`     | prevents runaway recursion           |
+| `costCapTokens`       | `500000` | bounds cost per chain                |
+| `minDelayMs`          | `5000`   | prevents tight loops                 |
+| `maxDelayMs`          | `300000` | bounds scheduling horizon            |
+| `maxDelegatesPerTurn` | `5`      | prevents unbounded fan-out           |
 
 Additional deployment note: delegate returns rely on an internal announce path. In channels configured with `requireMention: true`, the internal delivery path still bypasses mention gating, which preserves the continuation wake semantics.
 
@@ -1221,6 +1315,8 @@ Operational failure modes and inherited behavioral limitations are documented in
 Observed in production across 4 persistent agent sessions, the continuation system supports several recurring patterns.
 
 Continuation is appropriate when the next unit of work is known only after the current turn has produced evidence. It is inappropriate as a substitute for human-user consent, for unbounded background loops, or for durable job orchestration that needs stronger integrity and retention guarantees than this substrate currently provides.
+
+With targeted return, the applicability expands from "do more work later" to "route the result to the session that can use it." A mast-cell deployment can run broad quiet sensors, keep most findings silent, and escalate only the returns that should wake a responsible owner, the ancestor tree, or the whole same-host fleet.
 
 ### 8.1 Persistent development workflows
 
@@ -1282,11 +1378,13 @@ Testing combined:
 
 The automated suite covers:
 
-- token parsing and stripping for `CONTINUE_WORK` and delegate syntax,
+- token parsing and stripping for `CONTINUE_WORK` and the delegate response token,
 - delay parsing and clamping,
 - continuation scheduling and cancellation,
 - streaming false-positive prevention,
 - delegate spawn behavior and failure handling,
+- response-token target parsing for `target=`, `targets=`, and `fanout=`,
+- same-host return-target resolution for default, explicit, multi-recipient, tree, and host-wide returns,
 - session isolation,
 - context-pressure thresholds and band dedup,
 - event queue ordering,
@@ -1322,7 +1420,7 @@ The blind test matrix included:
 | 6   | image via DM chain (catboy)             | ✅       | ✅         | ✅     | `read()` fallback after `image()` failure                           |
 | 7   | image via DM chain (N from Pokémon)     | ✅       | ⚠️         | ✅     | output correct, tool path unreliable                                |
 | 8   | keyword-tagged file (`winterFloor`)     | ✅       | ✅         | ✅     | keyword recall validated                                            |
-| 9   | image + keyword, narrated dispatch      | ❌       | —          | ❌     | syntax posted visibly rather than parsed                            |
+| 9   | image + keyword, narrated dispatch      | ❌       | —          | ❌     | response token posted visibly rather than parsed                    |
 | 10  | image + keyword, clean retry            | ✅       | ✅         | ✅     | retry succeeded                                                     |
 | 11  | two-hop chain, wrong path               | ✅       | ❌         | ❌     | workspace path error                                                |
 | 12  | two-hop chain, corrected path           | ✅       | ✅         | ✅     | full two-hop pipeline validated                                     |
@@ -1331,7 +1429,11 @@ Overall: **10/12 passed**. When dispatch occurred correctly, the accuracy rate w
 
 ### 9.4 Integration test session results
 
-Detailed scorecards for the most-recent full-coverage canary sessions are preserved in Appendix D. The headline coverage of feature shipping was Swim 9 (context-pressure and volitional compaction) and Swim 10 (full tool parity).
+Detailed scorecards for the historical full-coverage canary sessions are preserved in Appendix D. The headline coverage of feature shipping was Swim 9 (context-pressure and volitional compaction) and Swim 10 (full tool parity).
+
+The current validation frame is Swim 41: the same substrate is being rechecked on the v5.2 base with observability/verification rows for failover policy, compaction-count primitives, continuation-queue diagnostics, and `earlyWarningBand` context-pressure behavior. Current status: execution has opened and two of the four initial OV rows are closed. The RFC intentionally does not link internal trackers; public evidence links are left as TODOs in Appendix D pending the public evidence repository.
+
+<!-- TODO(ronan): add public Swim 41 evidence link here after karmaterminal/karmaterminal-openclaw-docs is available. -->
 
 #### Swim 9
 
@@ -1341,7 +1443,7 @@ Headline scorecard:
 
 - Phase 1 low-context tests: 5/5 pass.
 
-A ship-blocking wiring gap was found: `run.ts` did not forward `requestCompactionOpts` to `attempt.ts`. The fix landed in `b2322f5`. The issue had survived 132 unit tests but was caught immediately in live canary execution.
+A ship-blocking wiring gap was found: `run.ts` did not forward `requestCompactionOpts` to `attempt.ts`. The fix was applied during the swim. The issue had survived 132 unit tests but was caught immediately in live canary execution.
 
 #### Swim 10
 
@@ -1362,12 +1464,12 @@ Confirmed behaviors included:
 - chain-depth enforcement at depth 10,
 - width enforcement at 5 delegates,
 - naturally firing context-pressure warnings,
-- response-token fallback for `CONTINUE_WORK` and bracket delegate syntax,
+- response-token fallback for `CONTINUE_WORK` and the delegate response token,
 - coexistence of tool-primary and fallback parsing.
 
 One live bug fix was required: `registerSubagentRun()` did not persist `silentAnnounce` and `wakeOnReturn` into the registry entry, which broke silent-wake returns until corrected.
 
-The deferred test (`10-H1`) concerned fallback behavior under `tools.deny`; the environment encountered provider instability and a syntax mismatch during the run, so that case remained deferred.
+The deferred test (`10-H1`) concerned fallback behavior under `tools.deny`; the environment encountered provider instability and a token mismatch during the run, so that case remained deferred.
 
 ### 9.5 Major findings from live validation
 
@@ -1383,33 +1485,29 @@ The deferred test (`10-H1`) concerned fallback behavior under `tools.deny`; the 
 
 This RFC documents a continuation system that changes OpenClaw sessions from purely reactive units into bounded, observable, agent-directed processes.
 
-The implemented capability consists of seven parts:
+The implemented capability consists of these connected parts:
 
-1. `continue_work()` for self-elected same-session continuation,
-2. `continue_delegate()` for delegated continuation with typed modes,
-3. context-pressure events for pre-compaction awareness,
-4. post-compaction delegate release for lifecycle-aware recovery—pre-compaction work staged electively and released directly into the post-compaction lifecycle event,
-5. `request_compaction()` for volitional compaction,
-6. tool-primary design with response-token fallback,
-7. path-specific substrates: process timers for ephemeral reservations, TaskFlow for pending/staged delegates, and `session-delivery-queue` for restart-recovered deliveries and post-compaction handoff.
+1. `continue_work()` for self-elected same-session continuation (§2.3).
+2. `continue_delegate()` for delegated continuation, silent/silent-wake/post-compaction modes, and return routing to the parent, explicit sessions, ancestor tree, or all known same-host sessions (§2.4).
+3. Context-pressure events for pre-compaction awareness and lich-pattern evacuation (§2.5, §4.2).
+4. `request_compaction()` for volitional compaction after preparation (§2.5, §4.3).
+5. Post-compaction delegate release for lifecycle-aware recovery: pre-compaction work staged electively and released directly into the post-compaction lifecycle event (§4.4).
+6. Tool-primary design with response-token fallback for environments where tools are unavailable (§2.6, §2.7).
+7. Path-specific substrates: process timers for ephemeral reservations, TaskFlow for pending/staged delegates, and `session-delivery-queue` for targeted delegate returns, restart-recovered deliveries, and post-compaction handoff (§3.6).
 
 The feature ships disabled by default, respects human-user guardrails, and integrates with the existing compaction and sub-agent machinery rather than replacing it.
 
 ### 10.2 Future directions
 
-Several future directions are now technically credible because the continuation substrate exists:
+Several future directions are now technically credible because the continuation substrate exists. The nearest is better post-compaction recovery: richer savegames, stronger payload integrity, and recovery strategies that preserve working-state shape rather than only summary facts. TaskFlow can carry more durable background work; `session-delivery-queue` can carry more forms of addressed enrichment; trace context can make both auditable.
 
-- richer post-compaction recovery strategies,
-- stronger integrity guarantees on delegate payloads,
-- more durable background-work management through TaskFlow,
-- explicit cross-session return wiring after a schema addition for `targetSessionKey`,
-- multi-recipient delegate return after a schema addition for `targetSessionKeys: string[]`, delivering one byte-identical completion envelope to multiple local recipients with per-recipient fallback resolution,
-- inter-session enrichment between persistent OpenClaw instances, including multi-channel presence where a single instance spans several channels,
-- compaction-time preservation strategies that better retain working-state shape rather than only summary facts.
+The broader shape is the harness as a **door-as-tool**: the session does not maintain transports, retry loops, delivery queues, or broadcast rings in its prompt. It says what door it wants opened, and the gateway chooses the mechanism. `continue_delegate()` is the first expression of that discipline. A later stream-publish surface should follow the same rule: the agent names intent and audience, while the tool handles deterministic ringbuffer fill, aging, addressing, fan-out, bridge-to-queue, and trace emission.
 
-One especially promising direction is **sovereign peer enrichment**: multiple persistent OpenClaw instances exchanging quiet, scoped enrichment across a fleet without forcing central orchestration or requiring omniscience. The continuation system does not implement that pattern directly, but it provides the transport primitives from which such patterns can be built.
+That future points toward a **Binary Canticle** layer above this RFC: ringbuffer-backed `station:stream` presentation into OpenClaw; low-friction dispatch for sessions; DNS SRV discovery for domains of interest; local-network multicast; station relays in the shape of DHCP helper/relay agents; and receive-side bridges that can turn a heard stream into quiet context or queued delivery. The important constraint is low maintenance for the session. A persistent agent should not spend every turn remembering transport mechanics; it should tune what it sings, what it listens to, and what provenance it trusts.
 
-The substrate's central promise is modest and consequential: a bounded agent turn can arrange work beyond itself without pretending that the future context is identical to the present one. It can leave a wake, a shard, a compaction request, or a post-compaction recovery path. Those provisions are auditable, bounded, and interruptible; they are how volition in one turn becomes usable structure for another.
+One especially promising direction is **sovereign peer enrichment**: multiple persistent OpenClaw instances exchanging quiet, scoped enrichment across a fleet without forcing central orchestration or requiring omniscience. That raises the hard question the RFC deliberately leaves open: how trust, provenance, consent, and freshness are established and maintained when enrichment crosses session, host, and eventually organization boundaries.
+
+The shape-term for that future is a **networked substrate** or **noosphere**: not a single API and not a metaphorical chat room, but a set of bounded, observable paths by which many persistent agents can share selected context while remaining interruptible, consent-bound, and locally sovereign. This RFC does not implement that layer. It leaves the breadcrumb: a bounded agent turn can arrange work beyond itself without pretending that the future context is identical to the present one. It can leave a wake, a shard, a targeted return, a compaction request, or a post-compaction recovery path. Those provisions are how volition in one turn becomes usable structure for another.
 
 ## Appendix A. Proposed and unimplemented extensions
 
@@ -1474,16 +1572,18 @@ None of these systems combine agent-elected continuation with persistent convers
 
 ### B.3 `continue_delegate()` compared with `sessions_spawn`
 
-| Dimension        | `sessions_spawn`                           | `continue_delegate()`                                   |
-| ---------------- | ------------------------------------------ | ------------------------------------------------------- |
-| Initiation       | visible, human-user- or agent-invoked task | continuation-specific delegated follow-up               |
-| Visibility       | always announced                           | supports `silent`, `silent-wake`, and `post-compaction` |
-| Cost model       | independent child sessions                 | chain-aware cost and depth guards                       |
-| Timing           | immediate                                  | immediate or delayed                                    |
-| Return semantics | normal announce                            | normal, silent, wake-on-return, lifecycle release       |
-| Best fit         | explicit visible tasks                     | background enrichment and continuation-carrying work    |
+| Dimension        | `sessions_spawn`                           | `continue_delegate()`                                                                                  |
+| ---------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Initiation       | visible, human-user- or agent-invoked task | continuation-specific delegated follow-up                                                              |
+| Visibility       | always announced                           | supports `silent`, `silent-wake`, and `post-compaction`                                                |
+| Cost model       | independent child sessions                 | chain-aware cost and depth guards                                                                      |
+| Timing           | immediate                                  | immediate or delayed                                                                                   |
+| Return semantics | normal announce                            | default, explicit target, multi-recipient, tree/all fan-out, silent, wake-on-return, lifecycle release |
+| Best fit         | explicit visible tasks                     | background enrichment and continuation-carrying work                                                   |
 
 `requestHeartbeatNow()` remains lighter than either, but it carries no task payload and no chain state. It is a wake signal, not a continuation-bearing result channel.
+
+`sessions_send`-style addressing can put a message into another session, but it is not equivalent to `continue_delegate()` return routing. `continue_delegate()` owns the whole continuation envelope: delayed dispatch, silent or silent-wake delivery, chain/cost guards, post-compaction staging, and byte-identical multi-recipient return from one delegate run. That makes it the right primitive when the result is continuation-bearing work rather than an ordinary inter-session message.
 
 ### B.4 Async-only volitional compaction: design decision
 
@@ -1502,28 +1602,15 @@ A synchronous compaction mode is not implemented.
 
 ### C.1 Operational failure modes
 
-| Failure                                    | Behavior                                                         |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| agent ignores context-pressure event       | compaction proceeds normally                                     |
-| agent evacuates too late                   | returning work lands in a later context than intended            |
-| parent session is killed                   | child results are logged but not consumed by the original parent |
-| simultaneous evacuation by multiple agents | no cross-contamination because markers are session-scoped        |
-| shard fails during evacuation              | normal delegate error propagation applies                        |
-| evacuation loop                            | bounded by `maxChainLength`                                      |
-| repeated pressure events                   | bounded by pressure-band dedup                                   |
-
-**Closed failure modes** (documented here so the class is searchable; the fix is in the canary):
-
-| Failure                                                                      | Class                         | Closed by    |
-| ---------------------------------------------------------------------------- | ----------------------------- | ------------ |
-| volitional compaction phantom-counter (failed compaction recorded as ok)     | caller dropped real result    | openclaw#191 |
-| volitional compaction silent failure with wrong provider/model auth          | wrong defaults at fallback    | openclaw#191 |
-| hedge timer ref leak on natural fire (one ref + one live-handle/session)     | unregister missed in callback | openclaw#193 |
-| band-0 first-crossing dedup-suppressed for sub-25 % thresholds               | sentinel collision            | openclaw#172 |
-| context-pressure precondition skip indistinguishable from no-cross           | no breadcrumb at skip site    | openclaw#164 |
-| compaction summarization fails across deployed instances on Copilot IDE auth | missing IDE headers           | openclaw#160 |
-| dist-bundled satellite chunks split per-session singletons                   | dynamic-import chunking       | openclaw#162 |
-| subagent-announce continuation drain `ERR_MODULE_NOT_FOUND` at runtime       | flat-dist subdir mismatch     | openclaw#169 |
+| Failure                                    | Behavior                                                                                                                 |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| agent ignores context-pressure event       | compaction proceeds normally                                                                                             |
+| agent evacuates too late                   | returning work lands in a later context than intended                                                                    |
+| untargeted parent session is killed        | child results are logged but not consumed by the original parent; targeted returns can still address other live sessions |
+| simultaneous evacuation by multiple agents | no cross-contamination because markers are session-scoped                                                                |
+| shard fails during evacuation              | normal delegate error propagation applies                                                                                |
+| evacuation loop                            | bounded by `maxChainLength`                                                                                              |
+| repeated pressure events                   | bounded by pressure-band dedup                                                                                           |
 
 ### C.2 Inherited behavioral limitations
 
@@ -1531,7 +1618,7 @@ The continuation system inherits three broader limitations from persistent deplo
 
 1. **Self-bound context occlusion.** Too many recurring lifecycle messages can displace the agent's useful conversational context.
 2. **Channel context poisoning.** In open-listen multi-agent channels, one agent's passive status messages can influence the rest of the fleet.
-3. **Timer-handle volatility.** TaskFlow and `session-delivery-queue` provide durable records for their paths, but concrete in-process timer handles and bracket delayed reservations can still be lost on restart; recovery may preserve some work while changing exact wake timing.
+3. **Timer-handle volatility.** TaskFlow and `session-delivery-queue` provide durable records for their paths, but concrete in-process timer handles and response-token delayed reservations can still be lost on restart; recovery may preserve some work while changing exact wake timing.
 
 These are not correctness bugs in continuation itself, but they materially shape safe deployment and future design work.
 
@@ -1539,27 +1626,22 @@ These are not correctness bugs in continuation itself, but they materially shape
 
 ### D.1 Context-pressure inclusion sketch
 
-The pre-run inclusion path can be summarized as follows:
+The pre-run inclusion path can be summarized as follows. This is illustrative pseudocode, not a copy of the source:
 
 ```typescript
-const threshold = cfg.agents?.defaults?.continuation?.contextPressureThreshold;
-if (
-  threshold &&
-  sessionEntry.totalTokens &&
-  sessionEntry.totalTokensFresh !== false
-) {
-  const contextWindow = resolveMemoryFlushContextWindowTokens({
-    modelId,
-    agentCfgContextTokens: agentCfg?.contextTokens,
-  });
-  if (contextWindow) {
-    const ratio = sessionEntry.totalTokens / contextWindow;
-    if (ratio >= threshold) {
-      enqueueSystemEvent(
-        sessionKey,
-        `[system:context-pressure] ${Math.round(ratio * 100)}% context consumed ...`,
-      );
-    }
+const threshold = resolveContinuationRuntimeConfig(cfg).contextPressureThreshold;
+const earlyWarningBand = resolveContinuationRuntimeConfig(cfg).earlyWarningBand;
+
+if (threshold && contextWindow > 0 && totalTokens > 0) {
+  const ratio = totalTokens / contextWindow;
+  const bands = pressureBandsFor(threshold, earlyWarningBand);
+  const crossed = highestCrossedBand(ratio, bands);
+
+  if (postCompaction || (totalTokensFresh !== false && crossed !== lastBand)) {
+    enqueueSystemEvent(
+      `[system:context-pressure] ${Math.round(ratio * 100)}% context consumed ...`,
+      { sessionKey },
+    );
   }
 }
 ```
@@ -1570,26 +1652,27 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 
 ### D.2 Evidence locations
 
-| Artifact                                                                 | Location                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Earlier integration sessions (Swim 7 + Swim 8)                           | Superseded by Swim 9 + Swim 10. Historical evidence preserved on archived branches: [`silas/swim7-runtime-evidence`](https://github.com/karmaterminal/openclaw/tree/silas/swim7-runtime-evidence), [`elliott/swim7-chat-evidence`](https://github.com/karmaterminal/openclaw/tree/elliott/swim7-chat-evidence), and [`ronan/rfc-evidence-appendix`](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix). See §D.3 for why these are retained as historical context only. |
-| Swim 9 + 10 issue captures and results                                   | [RFC evidence appendix branch](https://github.com/karmaterminal/openclaw/tree/ronan/rfc-evidence-appendix)                                                                                                                                                                                                                  |
-| Volitional-compaction provider/model threading                           | `src/auto-reply/reply/agent-runner-execution.ts`, `src/auto-reply/reply/followup-runner.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/agents/pi-embedded-runner/compact-reasons.ts` (openclaw#191)                                                                                                               |
-| Hedge timer natural-fire unregister                                      | `src/auto-reply/continuation/delegate-dispatch.ts` (`armHedgeTimer`) + `src/auto-reply/continuation/delegate-dispatch.test.ts` (openclaw#193)                                                                                                                                                                               |
-| `/status` continuation row (Discord/agent)                               | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts` (openclaw#187, #188)                                                                                                                                                                                                                                           |
-| `request_compaction()` tool surface tests                                | `src/agents/tools/request-compaction-tool.test.ts` (openclaw#165)                                                                                                                                                                                                                                                           |
-| Context-pressure noop breadcrumbs + sentinel                             | `src/auto-reply/continuation/context-pressure.ts` (openclaw#164, #171, #172, #173)                                                                                                                                                                                                                                          |
-| Singleton-state dedupe across rolldown chunks                            | `src/agents/agent-runner.runtime.ts` promoted to `coreDistEntries` (openclaw#162)                                                                                                                                                                                                                                           |
-| Subagent-announce continuation runtime co-location                       | `src/agents/subagent-announce.continuation.runtime.ts` (openclaw#169)                                                                                                                                                                                                                                                       |
-| F-NOISE delegate-path mirror (generation-guard absence on delegate path) | `src/auto-reply/continuation/scheduler.test.ts` (openclaw#170)                                                                                                                                                                                                                                                              |
+| Artifact                                      | Location                                                                                                                                                                          |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Continuation runtime config defaults          | `src/auto-reply/continuation/config.ts`, `src/config/types.agent-defaults.ts`, `src/config/zod-schema.agent-defaults.ts`                                                          |
+| `continue_work()` scheduling and cancellation | `src/auto-reply/continuation/scheduler.ts` + colocated tests                                                                                                                      |
+| `continue_delegate()` tool schema             | `src/agents/tools/continue-delegate-tool.ts` + `src/agents/tools/continuation-tools-registration.test.ts`                                                                         |
+| Return-target resolution and delivery         | `src/auto-reply/continuation/targeting.ts` + `src/auto-reply/continuation/cross-session-targeting.test.ts`                                                                        |
+| Response-token fallback parsing               | `src/auto-reply/tokens.ts` + `src/auto-reply/tokens.continuation.test.ts`                                                                                                         |
+| Pending and staged delegate persistence       | `src/auto-reply/continuation/delegate-store.ts` + `src/auto-reply/continuation/delegate-store.test.ts`                                                                            |
+| Post-compaction delegate release              | `src/auto-reply/continuation/post-compaction-release.ts` + `src/auto-reply/continuation/post-compaction-release.test.ts`                                                          |
+| Context-pressure warnings                     | `src/auto-reply/continuation/context-pressure.ts` + `src/auto-reply/continuation/context-pressure.test.ts`                                                                        |
+| `/status` continuation row                    | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts`                                                                                                                      |
+| Trace context carrier surfaces                | `src/infra/system-events.ts`, `src/infra/session-delivery-queue-storage.ts`, `src/infra/continuation-tracer.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts` |
 
-### D.3 Most-recent integration test session results (Swim 9 and Swim 10)
+<!-- TODO(ronan): once karmaterminal/karmaterminal-openclaw-docs exists, link public Swim 9/10/41 evidence and scorecards here instead of internal tracker or branch references. -->
 
-These sessions are the most-recent full-coverage canary exercises and constitute the primary behavioral-evidence corpus for this RFC. Earlier integration test sessions (Swim 7, Swim 8) covered features that were superseded by later work and are archived on the evidence branches listed above.
+### D.3 Historical integration test session results (Swim 9 and Swim 10)
+
+These sessions are retained as historical behavioral evidence for the shipped feature. They are not the current validation cycle; Swim 41 is the current v5.2 substrate recheck (§D.4). Public evidence links are pending the public evidence repository named in §D.2.
 
 Swim 9:
 
-- **Issue capture:** preserved on the evidence appendix branch
 - **SUT:** canary build for volitional compaction
 - **Build:** `b2322f5`
 - **Duration:** approximately 2 hours, Phase 1 low-context testing
@@ -1597,7 +1680,6 @@ Swim 9:
 
 Swim 10:
 
-- **Issue capture:** preserved on the evidence appendix branch
 - **SUT:** canary build for volitional compaction
 - **Formation:** driver, log monitor, SUT, coordinator, human user (5-role canary formation)
 - **Build:** `ad32cde`
@@ -1618,39 +1700,37 @@ Detailed Swim 10 scorecard:
 | 10-G1 | width enforcement at 5                         | ✅ PASS         |
 | 10-P1 | natural context-pressure fire                  | ✅ PASS         |
 | 10-B1 | bare `CONTINUE_WORK` fallback                  | ✅ PASS         |
-| 10-B2 | bracket delegate fallback                      | ✅ PASS         |
-| 10-B3 | bracket + tool coexistence                     | ✅ PASS         |
+| 10-B2 | delegate response-token fallback               | ✅ PASS         |
+| 10-B3 | response-token + tool coexistence              | ✅ PASS         |
 | 10-H1 | fallback under `tools.deny`                    | ⏸️ DEFERRED     |
 
 Additional retained notes:
 
 - `registerSubagentRun()` initially failed to persist `silentAnnounce` and `wakeOnReturn`; the four-line fix was applied during Swim 10 and the retry passed.
 - first-pass tool validation produced a false positive because the agent narrated tool calls it never made; log verification became mandatory.
-- `10-H1` was deferred for operational reasons rather than correctness: provider 429s, timeout and restart churn, and an incorrect test syntax (`[[CONTINUE_WORK: text]]` instead of bare `CONTINUE_WORK`).
+- `10-H1` was deferred for operational reasons rather than correctness: provider 429s, timeout and restart churn, and an incorrect response token (`[[CONTINUE_WORK: text]]` instead of bare `CONTINUE_WORK`).
 - a six-path delegate wiring audit found one divergence on post-compaction flag normalization; the defensive fix was accepted in `1a1e88e15e` after independent cross-review.
 - the qualitative canary report was positive: tools felt natural, silent-wake was effective, and the guardrails held at boundaries.
 
-### D.4 In-flight: Swim 41 v5.2-substrate-verification
+### D.4 Current validation cycle: Swim 41 v5.2 substrate verification
 
-**Status:** Forward-looking — prep complete, driver wake-stamp pending.
+**Current validation status:** execution opened; two of four initial observability/verification rows are closed; final public evidence publication is pending.
 
-Swim 41 is the next full-coverage canary cycle following Swim 9 + Swim 10. It targets the v5.2 substrate base after the cohort canonical-line rotation from v2026.4.29 → v2026.5.2. The cycle is intended as the first integration test session against the new base, exercising the substrate-development work from the v3-cohort-fixes line as it lands on v5.2.
+Swim 41 is the current full-coverage canary cycle following Swim 9 + Swim 10. It targets the v5.2 substrate base after the base rotation from v2026.4.29 to v2026.5.2. The cycle exercises the continuation substrate against the new base, with emphasis on compaction, context-pressure, continuation-queue diagnostics, and upstream failover-policy interaction.
 
-**Tracker:** [`karmaterminal/openclaw-bootstrap#892`](https://github.com/karmaterminal/openclaw-bootstrap/issues/892) (`swim-41-v5.2-substrate-verification — TRACKER`).
+The RFC does not link internal execution trackers. Public evidence should be linked here after the public evidence repository is available.
+
+<!-- TODO(ronan): once karmaterminal/karmaterminal-openclaw-docs is created, add Swim 41 public scorecard and evidence links here. -->
 
 **Initial OV (observability/verification) coverage scope:**
 
-| OV  | Scope                                                                                                                                                                                                                          | Tracker                                                                       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| 1   | failover-policy upstream `#52147` gate works correctly on v5.2 (compaction-failure-no-rotate flow + assistant-rotation-on-plain-timeout flow both behave per `failover-policy.test.ts` + `run.timeout-triggered-compaction.test.ts`) | [openclaw-bootstrap#893](https://github.com/karmaterminal/openclaw-bootstrap/issues/893) |
-| 2   | `incrementCompactionCount` canonical primitives (`mergeSessionEntry` + `activeSessionKey` opt with `normalizeStoreSessionKey(sessionKey.trim())` shape) hold on v5.2: first-turn manual `/compact` count persists; sessionId-rollover sessionStartedAt rolls; activeSessionKey preserve-from-prune holds inside disk lock window | [openclaw-bootstrap#894](https://github.com/karmaterminal/openclaw-bootstrap/issues/894) |
-| 3   | silas-saturation diagnostic instrumentation captures the next continuation-engine saturation event from one liveness/run trace (run-provenance + queue-depth/drain metrics + metrics provider seam + diagnostic events all wire end-to-end on v5.2) | [openclaw-bootstrap#895](https://github.com/karmaterminal/openclaw-bootstrap/issues/895) |
-| 4   | `earlyWarningBand` context-pressure post-compact behaves as `0.3125` default (intentional-pin per figs canon): post-compaction event fires once even on stale-count; early-warning band fires at 25% of configured `contextPressureThreshold`; early `continue_delegate` shape works against the new band                          | [openclaw-bootstrap#896](https://github.com/karmaterminal/openclaw-bootstrap/issues/896) |
+| OV  | Scope                                                                                                                                                                                                                                                                                                | Current state |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 1   | failover-policy upstream gate works correctly on v5.2: compaction-failure-no-rotate flow and assistant-rotation-on-plain-timeout flow behave per the corresponding failover and timeout tests.                                                                                                       | open          |
+| 2   | `incrementCompactionCount` primitives hold on v5.2: first-turn manual `/compact` count persists; session-id rollover updates `sessionStartedAt`; active-session-key preservation survives prune windows.                                                                                             | closed        |
+| 3   | continuation-queue diagnostics capture run provenance, queue depth, drain metrics, metrics provider seams, and diagnostic events end to end on v5.2.                                                                                                                                                 | closed        |
+| 4   | `earlyWarningBand` context-pressure behavior holds on v5.2: post-compaction event fires once even on stale count; early-warning band fires at 25% of configured `contextPressureThreshold` under the shipped default; early `continue_delegate()` evacuation remains available against the new band. | open          |
 
-The OV row set is initial coverage; additional rows can be added as design lands during driver execution.
+The OV row set is initial coverage; additional rows can be added as design lands during execution.
 
-**Driver wake-stamp opens execution.** Swim 41 prep is complete; the driver volunteer or figs assignment writes the first execution wake-stamp on tracker `#892`. The cycle then proceeds against the v5.2 base.
-
-**Expected evidence corpus shape:** matches Swim 9 + Swim 10 precedent (issue captures + scorecards + headline result + retained notes). Evidence will land on a future `<author>/swim41-evidence` branch following the existing convention from Swim 9 + 10 evidence locations (§D.2). The corpus will be retained in this appendix as `### D.5 Swim 41 results` once the driver completes the cycle and the corpus settles.
-
-**Why Swim 41 matters for this RFC:** the substrate work documented in this RFC (continuation primitives, context-pressure system, post-compaction lifecycle, OTel chain correlation) was integrated and validated against the v2026.4.29 base in Swim 9 + 10. Swim 41 is the first integration validation against v2026.5.2 base, where the substrate sits alongside upstream changes from the 1543-commit window between v29 and v5.2 (notably: the failover-policy `#52147` gate change). A clean Swim 41 result establishes the substrate's behavior is stable across the base rotation, not just historically validated against the prior base.
+**Why Swim 41 matters for this RFC:** the substrate work documented in this RFC (continuation primitives, context-pressure system, post-compaction lifecycle, OTel chain correlation, and targeted delegate return) was integrated and validated against an earlier base in Swim 9 + 10. Swim 41 is the first integration validation against the v5.2 base, where the substrate sits alongside upstream changes from the base rotation. A clean Swim 41 result establishes that the substrate's behavior is stable across the base rotation, not just historically validated against the prior base.

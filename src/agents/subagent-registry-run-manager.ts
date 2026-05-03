@@ -102,6 +102,9 @@ export type RegisterSubagentRunParams = {
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
   drainsContinuationDelegateQueue?: boolean;
+  continuationTargetSessionKey?: string;
+  continuationTargetSessionKeys?: string[];
+  continuationFanoutMode?: "tree" | "all";
 };
 
 export function createSubagentRunManager(params: {
@@ -424,6 +427,9 @@ export function createSubagentRunManager(params: {
       silentAnnounce: registerParams.silentAnnounce,
       wakeOnReturn: registerParams.wakeOnReturn,
       drainsContinuationDelegateQueue: registerParams.drainsContinuationDelegateQueue,
+      continuationTargetSessionKey: registerParams.continuationTargetSessionKey,
+      continuationTargetSessionKeys: registerParams.continuationTargetSessionKeys,
+      continuationFanoutMode: registerParams.continuationFanoutMode,
     };
     params.runs.set(runId, entry);
     try {

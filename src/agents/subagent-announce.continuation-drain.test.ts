@@ -54,13 +54,55 @@ let mockConfig: ReturnType<(typeof import("../config/config.js"))["loadConfig"]>
   session: { mainKey: "main", scope: "per-sender" },
 };
 
-const { subagentRegistryRuntimeMock } = vi.hoisted(() => ({
+const { continuationTargetingMock, subagentRegistryRuntimeMock } = vi.hoisted(() => ({
+  continuationTargetingMock: {
+    CONTINUATION_DELEGATE_FANOUT_MODES: ["tree", "all"] as const,
+    enqueueContinuationReturnDeliveries: vi.fn(async () => ({
+      enqueued: 0,
+      delivered: 0,
+      deliveryIds: [],
+    })),
+    normalizeContinuationTargetKey: (value?: string) => {
+      const trimmed = value?.trim();
+      return trimmed || undefined;
+    },
+    normalizeContinuationTargetKeys: (values?: readonly string[]) => {
+      const seen = new Set<string>();
+      const keys: string[] = [];
+      for (const value of values ?? []) {
+        const trimmed = value.trim();
+        if (!trimmed || seen.has(trimmed)) {
+          continue;
+        }
+        seen.add(trimmed);
+        keys.push(trimmed);
+      }
+      return keys;
+    },
+    hasContinuationDelegateTargeting: () => false,
+    resolveContinuationReturnTargetSessionKeys: vi.fn((params: Record<string, unknown>) => {
+      if (Array.isArray(params.targetSessionKeys)) {
+        return params.targetSessionKeys;
+      }
+      if (typeof params.targetSessionKey === "string") {
+        return [params.targetSessionKey];
+      }
+      if (Array.isArray(params.treeSessionKeys)) {
+        return params.treeSessionKeys;
+      }
+      if (Array.isArray(params.allSessionKeys)) {
+        return params.allSessionKeys;
+      }
+      return typeof params.defaultSessionKey === "string" ? [params.defaultSessionKey] : [];
+    }),
+  },
   subagentRegistryRuntimeMock: {
     shouldIgnorePostCompletionAnnounceForSession: vi.fn(() => false),
     isSubagentSessionRunActive: vi.fn(() => true),
     countActiveDescendantRuns: vi.fn(() => 0),
     countPendingDescendantRuns: vi.fn(() => 0),
     countPendingDescendantRunsExcludingRun: vi.fn(() => 0),
+    listAncestorSessionKeys: vi.fn(() => []),
     listSubagentRunsForRequester: vi.fn(() => []),
     replaceSubagentRunAfterSteer: vi.fn(() => true),
     resolveRequesterForChildSession: vi.fn(() => null),
@@ -129,6 +171,8 @@ vi.mock("../auto-reply/continuation/config.js", () => ({
   resolveContinuationRuntimeConfig: (cfg?: unknown) => resolveContinuationRuntimeConfigMock(cfg),
 }));
 
+vi.mock("../auto-reply/continuation/targeting.js", () => continuationTargetingMock);
+
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 
 describe("subagent-announce continuation drain (F7)", () => {
@@ -152,8 +196,31 @@ describe("subagent-announce continuation drain (F7)", () => {
       .mockReturnValue(false);
     subagentRegistryRuntimeMock.isSubagentSessionRunActive.mockReset().mockReturnValue(true);
     subagentRegistryRuntimeMock.countPendingDescendantRuns.mockReset().mockReturnValue(0);
+    subagentRegistryRuntimeMock.listAncestorSessionKeys.mockReset().mockReturnValue([]);
     subagentRegistryRuntimeMock.listSubagentRunsForRequester.mockReset().mockReturnValue([]);
     subagentRegistryRuntimeMock.resolveRequesterForChildSession.mockReset().mockReturnValue(null);
+    continuationTargetingMock.enqueueContinuationReturnDeliveries.mockReset().mockResolvedValue({
+      enqueued: 0,
+      delivered: 0,
+      deliveryIds: [],
+    });
+    continuationTargetingMock.resolveContinuationReturnTargetSessionKeys
+      .mockReset()
+      .mockImplementation((params: Record<string, unknown>) => {
+        if (Array.isArray(params.targetSessionKeys)) {
+          return params.targetSessionKeys;
+        }
+        if (typeof params.targetSessionKey === "string") {
+          return [params.targetSessionKey];
+        }
+        if (Array.isArray(params.treeSessionKeys)) {
+          return params.treeSessionKeys;
+        }
+        if (Array.isArray(params.allSessionKeys)) {
+          return params.allSessionKeys;
+        }
+        return typeof params.defaultSessionKey === "string" ? [params.defaultSessionKey] : [];
+      });
   });
 
   it("drains the child session's continue_delegate queue using inherited chain state", async () => {
@@ -419,5 +486,54 @@ describe("subagent-announce continuation drain (F7)", () => {
     // Counter unchanged — no advance to persist.
     expect(childEntry.continuationChainCount).toBe(1);
     expect(childEntry.continuationChainTokens).toBe(5_000);
+  });
+
+  it("threads targeted returns through the session-delivery fanout helper", async () => {
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        ({
+          "agent:main:subagent:test": {
+            sessionId: "session-child",
+            updatedAt: Date.now(),
+          },
+          "agent:main:main": {
+            sessionId: "session-main",
+            updatedAt: Date.now(),
+          },
+        }) as Record<string, unknown>,
+    );
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-targeted",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "[continuation:chain-hop:1] targeted task",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "targeted result",
+      continuationTargetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+    });
+
+    expect(
+      continuationTargetingMock.resolveContinuationReturnTargetSessionKeys,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultSessionKey: "agent:main:main",
+        targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+      }),
+    );
+    expect(continuationTargetingMock.enqueueContinuationReturnDeliveries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+        idempotencyKeyBase: expect.stringContaining("continuation-return:"),
+        wakeRecipients: true,
+        childRunId: "run-targeted",
+      }),
+    );
   });
 });

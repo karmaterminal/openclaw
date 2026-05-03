@@ -28,12 +28,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
   });
 
-  it("omits targetSessionKey from the continue_delegate schema descriptor", () => {
-    // Per #362 / #338-successor: cross-session addressing was deferred from this
-    // surface to the #332 session-delivery-queue substrate. The schema MUST NOT
-    // advertise `targetSessionKey` on `continue_delegate` — callers reaching for
-    // sibling-session enrichment use the (b)-shape evolution tracked in
-    // karmaterminal/binary-canticle#11, not this verb.
+  it("exposes cross-session targeting fields on the continue_delegate schema descriptor", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -45,10 +40,12 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
 
     const params = tool.parameters as { properties?: Record<string, unknown> };
     expect(params.properties).toBeDefined();
-    expect(params.properties).not.toHaveProperty("targetSessionKey");
+    expect(params.properties).toHaveProperty("targetSessionKey");
+    expect(params.properties).toHaveProperty("targetSessionKeys");
+    expect(params.properties).toHaveProperty("fanoutMode");
   });
 
-  it("description points at the (b)-shape lane for cross-session enrichment", () => {
+  it("description documents the five continuation return targeting modes", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -58,6 +55,11 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
       throw new Error("continue_delegate tool not registered");
     }
 
+    expect(tool.description).toContain("default returns to the dispatching session");
+    expect(tool.description).toContain("targetSessionKey returns to one other session");
+    expect(tool.description).toContain("targetSessionKeys returns byte-identical enrichment");
+    expect(tool.description).toContain("fanoutMode=tree returns to all ancestors");
+    expect(tool.description).toContain("fanoutMode=all returns to all known sessions");
     expect(tool.description).toContain("binary-canticle#11");
   });
 
@@ -121,7 +123,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(false);
   });
 
-  // [#446] Exact-keys trap for continue_delegate descriptor.
+  // [#446, #550] Exact-keys trap for continue_delegate descriptor.
   //
   // Bug-shape / risk:
   //   #438's mode-only trap (PR #462) pins that `mode` is exposed as an enum
@@ -131,17 +133,21 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   //   model-facing parameter (cross-session addressing, retry knobs, priority)
   //   without an ADR would slip past #438's trap because #438 only checks
   //   what MUST be absent (silent/silentWake) and what MUST be present (mode
-  //   enum). This trap pins the closed set.
+  //   enum). This trap pins the closed set, including the resurrected
+  //   cross-session return targeting fields from #550.
   //
-  // The canonical advertised keys (cf7830ffb3) are:
+  // The canonical advertised keys after #550 are:
   //   - task         (required)
   //   - delaySeconds (optional)
   //   - mode         (optional, enum)
+  //   - targetSessionKey  (optional)
+  //   - targetSessionKeys (optional)
+  //   - fanoutMode        (optional, enum)
   //
   // Extension to #438's mode-only trap, not duplication: #438 lives in
   // `src/auto-reply/continuation/types.mode-shape.test.ts` and asserts
   // mode-as-enum + silent/silentWake-absent on the descriptor. This file
-  // asserts the closed-set + targetSessionKey-absent + boolean-runtime-absent.
+  // asserts the closed-set + cross-session targeting + boolean-runtime-absent.
   it("pins continue_delegate descriptor to mode enum and no boolean compatibility fields", () => {
     const tools = createOpenClawTools({
       config,
@@ -161,11 +167,18 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     const properties = params.properties ?? {};
 
     // Closed-set assertion: exactly these advertised keys, no more, no less.
-    const expectedKeys = ["task", "delaySeconds", "mode"].toSorted();
+    const expectedKeys = [
+      "task",
+      "delaySeconds",
+      "mode",
+      "targetSessionKey",
+      "targetSessionKeys",
+      "fanoutMode",
+    ].toSorted();
     const actualKeys = Object.keys(properties).toSorted();
     expect(
       actualKeys,
-      `continue_delegate descriptor must advertise exactly [task, delaySeconds, mode]; got [${actualKeys.join(", ")}]`,
+      `continue_delegate descriptor must advertise exactly [task, delaySeconds, mode, targetSessionKey, targetSessionKeys, fanoutMode]; got [${actualKeys.join(", ")}]`,
     ).toEqual(expectedKeys);
 
     // task is required (model-facing contract).
@@ -201,6 +214,35 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
       ).toBe(true);
     }
 
+    const fanoutProp = properties.fanoutMode as {
+      anyOf?: Array<{ const?: string; enum?: string[] }>;
+      enum?: string[];
+    };
+    const fanoutEnumValues = new Set<string>();
+    if (Array.isArray(fanoutProp.enum)) {
+      for (const v of fanoutProp.enum) {
+        fanoutEnumValues.add(v);
+      }
+    }
+    if (Array.isArray(fanoutProp.anyOf)) {
+      for (const branch of fanoutProp.anyOf) {
+        if (typeof branch.const === "string") {
+          fanoutEnumValues.add(branch.const);
+        }
+        if (Array.isArray(branch.enum)) {
+          for (const v of branch.enum) {
+            fanoutEnumValues.add(v);
+          }
+        }
+      }
+    }
+    for (const expected of ["tree", "all"]) {
+      expect(
+        fanoutEnumValues.has(expected),
+        `fanoutMode enum must include '${expected}' (got: ${[...fanoutEnumValues].join(", ")})`,
+      ).toBe(true);
+    }
+
     // Boolean-runtime compatibility fields MUST be absent at the descriptor.
     // (Their on-disk back-compat lives in the Zod state schema, not the tool surface.)
     for (const forbidden of ["silent", "silentWake", "postCompaction"]) {
@@ -210,13 +252,8 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
       ).toBe(false);
     }
 
-    // Cross-session addressing belongs to the (b)-shape lane (binary-canticle#11),
-    // not this verb. Reaffirmed here as part of the closed-set check, but kept
-    // as an explicit named assertion so a future regression surfaces with the
-    // load-bearing reason in the failure message.
-    expect(
-      Object.prototype.hasOwnProperty.call(properties, "targetSessionKey"),
-      "continue_delegate descriptor must not expose 'targetSessionKey' — cross-session addressing is the (b)-shape lane (binary-canticle#11)",
-    ).toBe(false);
+    expect(properties).toHaveProperty("targetSessionKey");
+    expect(properties).toHaveProperty("targetSessionKeys");
+    expect(properties).toHaveProperty("fanoutMode");
   });
 });

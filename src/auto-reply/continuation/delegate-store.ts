@@ -27,6 +27,11 @@ import {
   listTaskFlowRecords,
   listTaskFlowsForOwnerKey,
 } from "../../tasks/task-flow-runtime-internal.js";
+import {
+  CONTINUATION_DELEGATE_FANOUT_MODES,
+  normalizeContinuationTargetKey,
+  normalizeContinuationTargetKeys,
+} from "./targeting.js";
 import type {
   DelayedContinuationReservation,
   PendingContinuationDelegate,
@@ -55,12 +60,25 @@ const PendingDelegateStateSchema = z
     silentWake: z.boolean().optional(),
     postCompaction: z.boolean().optional(),
     firstArmedAt: z.number().int().nonnegative().optional(),
+    targetSessionKey: z.string().min(1).optional(),
+    targetSessionKeys: z.array(z.string().min(1)).optional(),
+    fanoutMode: z.enum(CONTINUATION_DELEGATE_FANOUT_MODES).optional(),
   })
   .superRefine((state, ctx) => {
     const hasSilent = state.silent === true;
     const hasSilentWake = state.silentWake === true;
     const hasPostCompaction = state.postCompaction === true;
     const flagCount = [hasSilent, hasSilentWake, hasPostCompaction].filter(Boolean).length;
+    if (
+      state.fanoutMode &&
+      (state.targetSessionKey || (state.targetSessionKeys && state.targetSessionKeys.length > 0))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "continuation delegate payload cannot combine explicit targets with fanoutMode",
+      });
+      return;
+    }
     if (flagCount <= 1 || (hasSilent && hasSilentWake && !hasPostCompaction)) {
       return;
     }
@@ -106,6 +124,8 @@ function buildDelegateState(delegate: PendingContinuationDelegate): PendingDeleg
   // (which predate the mode-only runtime shape) keep their familiar schema
   // and `decodeDelegateState` / `flowToDelegate` keep working unchanged for
   // historical TaskFlow rows.
+  const targetSessionKey = normalizeContinuationTargetKey(delegate.targetSessionKey);
+  const targetSessionKeys = normalizeContinuationTargetKeys(delegate.targetSessionKeys);
   return {
     kind: "continuation_delegate",
     task: delegate.task,
@@ -114,6 +134,9 @@ function buildDelegateState(delegate: PendingContinuationDelegate): PendingDeleg
     ...(delegate.mode === "silent-wake" ? { silentWake: true } : {}),
     ...(delegate.mode === "post-compaction" ? { postCompaction: true } : {}),
     ...(delegate.firstArmedAt !== undefined ? { firstArmedAt: delegate.firstArmedAt } : {}),
+    ...(targetSessionKey ? { targetSessionKey } : {}),
+    ...(targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
+    ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
   };
 }
 
@@ -332,6 +355,11 @@ function flowToDelegate(
     ...(state.delayMs !== undefined ? { delayMs: state.delayMs } : {}),
     ...(mode !== undefined ? { mode } : {}),
     ...(state.firstArmedAt !== undefined ? { firstArmedAt: state.firstArmedAt } : {}),
+    ...(state.targetSessionKey ? { targetSessionKey: state.targetSessionKey } : {}),
+    ...(state.targetSessionKeys && state.targetSessionKeys.length > 0
+      ? { targetSessionKeys: state.targetSessionKeys }
+      : {}),
+    ...(state.fanoutMode ? { fanoutMode: state.fanoutMode } : {}),
   };
 }
 
@@ -508,6 +536,9 @@ export function stagePostCompactionDelegate(
     task: delegate.task,
     mode: "post-compaction",
     firstArmedAt: delegate.firstArmedAt ?? delegate.stagedAt,
+    ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
+    ...(delegate.targetSessionKeys ? { targetSessionKeys: delegate.targetSessionKeys } : {}),
+    ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
   });
 }
 

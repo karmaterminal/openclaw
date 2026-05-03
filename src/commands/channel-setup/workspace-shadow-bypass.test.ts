@@ -18,6 +18,7 @@ const listChannelPluginCatalogEntries = vi.hoisted(() => vi.fn((_opts?: unknown)
 const listChatChannels = vi.hoisted(() => vi.fn((): unknown[] => []));
 const loadPluginManifestRegistry = vi.hoisted(() => vi.fn());
 const loadPluginRegistrySnapshot = vi.hoisted(() => vi.fn());
+const loadPluginRegistrySnapshotWithMetadata = vi.hoisted(() => vi.fn());
 const listPluginContributionIds = vi.hoisted(() => vi.fn((_params?: unknown): string[] => []));
 const applyPluginAutoEnable = vi.hoisted(() =>
   vi.fn(({ config }: { config: unknown }) => ({
@@ -60,6 +61,8 @@ vi.mock("../../plugins/plugin-registry.js", () => ({
   loadPluginManifestRegistryForPluginRegistry: (...args: unknown[]) =>
     loadPluginManifestRegistry(...args),
   loadPluginRegistrySnapshot: (...args: unknown[]) => loadPluginRegistrySnapshot(...args),
+  loadPluginRegistrySnapshotWithMetadata: (...args: unknown[]) =>
+    loadPluginRegistrySnapshotWithMetadata(...args),
   listPluginContributionIds: (...args: unknown[]) => listPluginContributionIds(...args),
 }));
 vi.mock("../../config/plugin-auto-enable.js", () => ({
@@ -87,6 +90,21 @@ beforeEach(() => {
     generatedAtMs: 0,
     installRecords: {},
     plugins: [],
+    diagnostics: [],
+  });
+  loadPluginRegistrySnapshotWithMetadata.mockReturnValue({
+    source: "derived",
+    snapshot: {
+      version: 1,
+      hostContractVersion: "test",
+      compatRegistryVersion: "test",
+      migrationVersion: 1,
+      policyHash: "test",
+      generatedAtMs: 0,
+      installRecords: {},
+      plugins: [],
+      diagnostics: [],
+    },
     diagnostics: [],
   });
   listPluginContributionIds.mockReturnValue([]);

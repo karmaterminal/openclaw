@@ -172,6 +172,102 @@ describe("continue_delegate tool", () => {
     ]);
   });
 
+  it("persists singular cross-session target metadata", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "return to root",
+      targetSessionKey: "agent:main:root",
+    });
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      targetSessionKey: "agent:main:root",
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "return to root",
+        targetSessionKey: "agent:main:root",
+      }),
+    ]);
+  });
+
+  it("persists multi-recipient target metadata from snake_case input", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await executeTool(tool, 0, {
+      task: "return to siblings",
+      target_session_keys: ["agent:main:root", " agent:main:sibling ", "agent:main:root"],
+    });
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "return to siblings",
+        targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+      }),
+    ]);
+  });
+
+  it("persists tree/all fanout metadata", async () => {
+    const treeTool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+    const treeResult = await executeTool(treeTool, 0, {
+      task: "return up the chain",
+      fanoutMode: "tree",
+    });
+
+    expect(treeResult).toMatchObject({
+      status: "scheduled",
+      fanoutMode: "tree",
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({ task: "return up the chain", fanoutMode: "tree" }),
+    ]);
+
+    const allTool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+    const allResult = await executeTool(allTool, 0, {
+      task: "return to everyone",
+      fanout_mode: "ALL",
+    });
+
+    expect(allResult).toMatchObject({
+      status: "scheduled",
+      fanoutMode: "all",
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({ task: "return to everyone", fanoutMode: "all" }),
+    ]);
+  });
+
+  it("fails loudly for invalid target arrays and fanout conflicts", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    await expect(
+      tool.execute("call-invalid-array", {
+        task: "bad targets",
+        targetSessionKeys: "agent:main:root",
+      }),
+    ).rejects.toThrow("targetSessionKeys must be an array of non-empty strings");
+
+    await expect(
+      tool.execute("call-invalid-entry", {
+        task: "bad target entry",
+        targetSessionKeys: ["agent:main:root", ""],
+      }),
+    ).rejects.toThrow("targetSessionKeys must contain only non-empty strings");
+
+    await expect(
+      tool.execute("call-conflict", {
+        task: "conflicting targets",
+        targetSessionKey: "agent:main:root",
+        fanoutMode: "tree",
+      }),
+    ).rejects.toThrow("fanoutMode cannot be combined with targetSessionKey or targetSessionKeys");
+  });
+
   it("stages post-compaction delegates as silent-wake delegates", async () => {
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 

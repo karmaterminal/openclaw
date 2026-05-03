@@ -83,6 +83,63 @@ describe("parseContinuationSignal", () => {
     });
   });
 
+  it("parses delegate target syntax", () => {
+    const signal = parseContinuationSignal(
+      "[[CONTINUE_DELEGATE: summarize sibling work | target=agent:main:root]]",
+    );
+    expect(signal).toEqual({
+      kind: "delegate",
+      task: "summarize sibling work",
+      delayMs: undefined,
+      silent: undefined,
+      silentWake: undefined,
+      targetSessionKey: "agent:main:root",
+    });
+  });
+
+  it("parses delegate targets syntax", () => {
+    const signal = parseContinuationSignal(
+      "[[CONTINUE_DELEGATE: return to root and sibling | silent-wake | targets=agent:main:root, agent:main:sibling]]",
+    );
+    expect(signal).toEqual({
+      kind: "delegate",
+      task: "return to root and sibling",
+      delayMs: undefined,
+      silent: undefined,
+      silentWake: true,
+      targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+    });
+  });
+
+  it("parses delegate fanout syntax", () => {
+    expect(parseContinuationSignal("[[CONTINUE_DELEGATE: return up chain | fanout=tree]]")).toEqual(
+      {
+        kind: "delegate",
+        task: "return up chain",
+        delayMs: undefined,
+        silent: undefined,
+        silentWake: undefined,
+        fanoutMode: "tree",
+      },
+    );
+    expect(parseContinuationSignal("[[CONTINUE_DELEGATE: return to host | fanout=all]]")).toEqual({
+      kind: "delegate",
+      task: "return to host",
+      delayMs: undefined,
+      silent: undefined,
+      silentWake: undefined,
+      fanoutMode: "all",
+    });
+  });
+
+  it("rejects conflicting delegate target and fanout syntax", () => {
+    expect(
+      parseContinuationSignal(
+        "[[CONTINUE_DELEGATE: ambiguous targeting | target=agent:main:root | fanout=tree]]",
+      ),
+    ).toBeNull();
+  });
+
   it("does not match CONTINUE_WORK mid-text", () => {
     expect(parseContinuationSignal("I used CONTINUE_WORK earlier. Done now.")).toBeNull();
   });

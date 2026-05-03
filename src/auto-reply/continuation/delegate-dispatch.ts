@@ -243,6 +243,13 @@ export async function dispatchToolDelegates(params: {
           drainsContinuationDelegateQueue: true,
           ...(silent ? { silentAnnounce: true } : {}),
           ...(silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+          ...(delegate.targetSessionKey
+            ? { continuationTargetSessionKey: delegate.targetSessionKey }
+            : {}),
+          ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
+            ? { continuationTargetSessionKeys: delegate.targetSessionKeys }
+            : {}),
+          ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
         },
         spawnCtx,
       );
@@ -317,7 +324,12 @@ export interface PostCompactionSpawnContext {
  * than silently swallowed.
  */
 export async function dispatchStagedPostCompactionDelegates(
-  delegates: Array<{ task: string }>,
+  delegates: Array<{
+    task: string;
+    targetSessionKey?: string;
+    targetSessionKeys?: string[];
+    fanoutMode?: "tree" | "all";
+  }>,
   sessionKey: string,
   spawnCtx: PostCompactionSpawnContext,
 ): Promise<{ dispatched: number; failed: number }> {
@@ -336,6 +348,13 @@ export async function dispatchStagedPostCompactionDelegates(
           silentAnnounce: true,
           wakeOnReturn: true,
           drainsContinuationDelegateQueue: true,
+          ...(delegate.targetSessionKey
+            ? { continuationTargetSessionKey: delegate.targetSessionKey }
+            : {}),
+          ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
+            ? { continuationTargetSessionKeys: delegate.targetSessionKeys }
+            : {}),
+          ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
         },
         spawnCtx,
       );

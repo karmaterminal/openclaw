@@ -150,6 +150,10 @@ export type SpawnSubagentParams = {
   /** When true, the spawned sub-agent's run drains the continuation delegate queue,
    *  enabling the continue_delegate tool for chain-hop delegates. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Continuation return targeting for cross-session delegate enrichment. */
+  continuationTargetSessionKey?: string;
+  continuationTargetSessionKeys?: string[];
+  continuationFanoutMode?: "tree" | "all";
 };
 
 export type SpawnSubagentContext = {
@@ -1268,6 +1272,15 @@ export async function spawnSubagentDirect(
       ...(params.silentAnnounce ? { silentAnnounce: true } : {}),
       ...(params.wakeOnReturn ? { wakeOnReturn: true } : {}),
       ...(params.drainsContinuationDelegateQueue ? { drainsContinuationDelegateQueue: true } : {}),
+      ...(params.continuationTargetSessionKey
+        ? { continuationTargetSessionKey: params.continuationTargetSessionKey }
+        : {}),
+      ...(params.continuationTargetSessionKeys && params.continuationTargetSessionKeys.length > 0
+        ? { continuationTargetSessionKeys: params.continuationTargetSessionKeys }
+        : {}),
+      ...(params.continuationFanoutMode
+        ? { continuationFanoutMode: params.continuationFanoutMode }
+        : {}),
     });
   } catch (err) {
     await rollbackPreparedContextEngine(contextEnginePreparation);
