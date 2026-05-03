@@ -4,3 +4,4 @@
 - 2026-05-03T22:00:10+00:00: Edit batch complete: stripped high-confidence fork-specific marks from comments/test names across 36 test files; private-pattern scan is clean; remaining small-number hits are test data/HTML entities/channel ids, not fork issue refs.
 - 2026-05-03T22:02:49+00:00: Validation checkpoint: pnpm tsgo passed; grouped touched-file test run passed after aligning the continuation tool descriptor trap with the existing RFC §6.8 traceparent field.
 - 2026-05-03T22:03:38+00:00: Build-in-temp-dir verification passed: build-verify SHA dd433aadc04300391ab72aec67faaa81cccc4e1b at 2026-05-03T22:03:30+00:00
+- 2026-05-03T22:04:37+00:00: Final cleanup: removed leftover private #443 assertion-message refs; post-strip sample scan now shows only upstream-looking 4-digit refs; private-pattern scan is empty; store.continuation-merge targeted test passed.
