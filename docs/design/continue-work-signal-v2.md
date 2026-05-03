@@ -612,7 +612,7 @@ In production and canary instrumentation, the practical bands were:
 
 The dedup rule is equality-based: the same band does not fire twice consecutively, but a new band always fires. This allows post-compaction lifecycles to begin again at lower bands without suppressing fresh advisories.
 
-**Precondition: session token accounting.** The pre-fire check runs only when the reply pipeline has populated the current session's token count for the turn. Specifically, the reply-pipeline call site at `src/auto-reply/reply/agent-runner.ts` gates the entire pressure check on `activeSessionEntry.totalTokens` and a resolved `contextWindow` both being present. If either is unavailable—typically during the first completed turn before session-cost accounting has landed—the pressure check is a no-op for that turn, and the next turn picks it up once accounting is populated. Post-compaction events fire regardless as part of the compaction lifecycle hook. Operators investigating a "no band≥1 fires observed" pattern in a deployed fleet should first check whether `totalTokens` is populated at the call site for the session class in question; a silent short-circuit here is distinguishable from a threshold-configuration issue only via instrumentation at the call site.
+**Precondition: session token accounting.** The pre-fire check runs only when the reply pipeline has populated the current session's token count for the turn. Specifically, the reply-pipeline call site at `src/auto-reply/reply/agent-runner.ts` gates the entire pressure check on three conditions all holding: (1) `activeSessionEntry.totalTokens` is populated and finite and positive, (2) a resolved `contextWindow` is present and finite and positive, and (3) `activeSessionEntry.totalTokensFresh !== false` (i.e., either explicitly fresh or undefined; only an explicit `false` blocks). The third condition is the staleness guard: when an upstream cost-accounting refresh is in flight and the in-memory `totalTokens` is known-stale, `totalTokensFresh: false` short-circuits the pre-fire check rather than firing on a stale ratio. If any of the three is unavailable or stale—typically during the first completed turn before session-cost accounting has landed, or when an in-flight refresh has marked the count stale—the pressure check is a no-op for that turn, and the next turn picks it up once accounting is populated and fresh. **Post-compaction events fire regardless as part of the compaction lifecycle hook**: the `postCompaction` flag bypasses the staleness guard entirely (post-compaction always fires once even on stale-count), since the post-compaction event is informational about the lifecycle event rather than threshold-band-driven. Operators investigating a "no band≥1 fires observed" pattern in a deployed fleet should first check whether `totalTokens` is populated AND `totalTokensFresh !== false` at the call site for the session class in question; a silent short-circuit here is distinguishable from a threshold-configuration issue only via the `[context-pressure:noop]` debug breadcrumbs (§6.1) or instrumentation at the call site.
 
 ### 4.3 `request_compaction()` in the compaction lifecycle
 
@@ -1531,7 +1531,11 @@ The pre-run inclusion path can be summarized as follows:
 
 ```typescript
 const threshold = cfg.agents?.defaults?.continuation?.contextPressureThreshold;
-if (threshold && sessionEntry.totalTokens && sessionEntry.totalTokensFresh) {
+if (
+  threshold &&
+  sessionEntry.totalTokens &&
+  sessionEntry.totalTokensFresh !== false
+) {
   const contextWindow = resolveMemoryFlushContextWindowTokens({
     modelId,
     agentCfgContextTokens: agentCfg?.contextTokens,
@@ -1547,6 +1551,8 @@ if (threshold && sessionEntry.totalTokens && sessionEntry.totalTokensFresh) {
   }
 }
 ```
+
+The `totalTokensFresh !== false` check is the staleness guard: only an explicit `false` blocks the fire (undefined or `true` both pass through). The post-compaction lifecycle event bypasses this guard entirely (§4.2 precondition note).
 
 The key property is **pre-run inclusion**: the event is enqueued and then drained into the same upcoming system prompt.
 
