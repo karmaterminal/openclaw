@@ -1,30 +1,76 @@
-# rfc-apply journal — copilot lane
+# RFC apply journal: continue-work-signal-v2
 
-| Field              | Value                                                                                 |
-| ------------------ | ------------------------------------------------------------------------------------- |
-| Worktree           | `/home/figs/flesh_beast_best_beast/openclaw-wt-rfc-apply-20260503`                    |
-| Branch             | `frond-scribe/20260503/rfc-apply-copilot`                                             |
-| Base               | `frond-scribe/20260429/v3-cohort-fixes` @ `55df7162c0` (v29-base anchored)            |
-| Spec input         | `docs/design/544-rfc-scientific-literature-review-20260502.md` (455 lines, on branch) |
-| Apply target       | `docs/design/continue-work-signal-v2.md` (1450 lines)                                 |
-| Workorder          | `/home/figs/flesh_beast_best_beast/WORKORDER-rfc-apply-20260503.md`                   |
-| Tracking           | karmaterminal/openclaw#547                                                            |
-| Reviewer-elect     | 🌊 Ronan (RFC primary author; `continue_work` re-purposed → review-pass)              |
-| Model              | github-copilot/gpt-5.5 with `--reasoning-effort xhigh`                                |
-| Outer budget       | 444m                                                                                  |
-| Webhook resolve    | `gh variable get WEBHOOK_SCRIBE_NOTIFY -R karmaterminal/frond-scribe`                 |
-| Heartbeat username | `frond-scribe-rfc-apply-hook`                                                         |
-| Discord posture    | webhook heartbeats ONLY (no free-form chat)                                           |
-| Started            | (filled by agent at first §1 entry)                                                   |
+Tracking issue: karmaterminal/openclaw#547  
+Lane: `frond-scribe/rfc-apply-copilot`  
+Branch: `frond-scribe/20260503/rfc-apply-copilot`
 
-## §0 — guardrails acknowledged
+## §1 closeout - required reads
 
-- Operate only inside this worktree
-- Never read/write/list/shell into `/home/figs/flesh_beast_tmp/`
-- Push to `frond-scribe/20260503/rfc-apply-copilot` only
-- ALLOWED to modify `docs/design/continue-work-signal-v2.md` (this is the apply lane; review lane was forbidden)
-- DELETE `docs/design/544-rfc-scientific-literature-review-20260502.md` in §4 after apply complete
-- One commit per major change-set (atomic for reviewer)
-- Webhook heartbeats only at every axis-apply complete + on DESIGN-BREAK + on declare-done
+Status: complete as of 2026-05-02T19:23:13-07:00.
 
-(Agent fills §1 onward in-flight.)
+Read pass:
+
+- Full spec read: `docs/design/544-rfc-scientific-literature-review-20260502.md` (455 lines).
+- Full artifact read: `docs/design/continue-work-signal-v2.md` (1400 lines).
+- Docs rules read: `docs/AGENTS.md`; `pnpm docs:list` run and relevant `design/` entries checked.
+- Code/test verification read across the current continuation paths: `src/auto-reply/continuation/{signal,tokens via ../tokens,types,config,context-pressure,delegate-store,delegate-dispatch}.ts`, compatibility shims, `src/auto-reply/reply/{agent-runner,followup-runner,post-compaction-context,post-compaction-delegate-dispatch}.ts`, `src/agents/tools/{continue-delegate-tool,request-compaction-tool}.ts`, `src/config/zod-schema.continuation.test.ts`, `src/infra/{continuation-tracer,session-delivery-queue-storage}.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts`, and `src/gateway/server-restart-sentinel.ts`.
+- Stale/moved required-read paths: `docs/design/541-v29-uptake-journal.md`, `src/auto-reply/continuation-delegate-store-taskflow.ts`, `src/auto-reply/continuation-delegate-store-taskflow.test.ts`, `src/auto-reply/reply/continuation-runtime.ts`, and `src/auto-reply/reply/context-pressure.ts` are not present in this checkout. Current-path replacements were found and read where possible.
+
+Total time: about 4 minutes wall-clock from dispatch to closeout. The file set was already localized by the review, so most time went to confirming current-code lineages rather than discovery.
+
+Top 3 surprises about the spec-vs-artifact gap:
+
+1. The review's highest-risk public-surface corrections are real in current bytes: `continue_delegate()` does not advertise `targetSessionKey`, `earlyWarningBand` is a shipped/defaulted config field, and the RFC span table still names old spans.
+2. The RFC still describes `session-delivery-queue` as if it carries ordinary `continue_delegate()` work. Current code is more precise: tool delegates sit in TaskFlow, unmatured tool delegates are filter-at-consume plus a process hedge timer, bracket delayed reservations are process-scoped, and the session-delivery queue carries restart/system-event/agent-turn/post-compaction delivery.
+3. The artifact has strong substrate language, but the shipped/future/historical boundaries are not stable enough for cold pickup: `targetSessionKey`, the substrate-adoption lint claim, the provider/model bug history, and the `/new` delayed-work survival claim all need tightening or relocation.
+
+Initial rewrite estimate:
+
+- Major rewrites: 6 sections (`§2.3`, `§2.5-§2.6`, `§3.2/§3.6`, `§4.1/§4.4/§4.6`, `§5.1/§5.4`, `§6.6`).
+- Minor edits: 8 sections (`§1`, `§2.2/§2.4/§2.7`, `§4.2/§4.3`, `§6.3/§6.4/§6.5`, `§7.2`, `§8`, `§9.5`, `§10.1/§10.2`, appendices).
+- Structural apply: add a terminology/scope subsection and explicit shipped/future/non-goal markers while preserving the existing top-level order. Full top-level renumber/reorder is deferred because the workorder also asks to preserve the RFC's existing structure where possible, and the review's concrete fixes can be applied without moving the whole document.
+
+## §2 plan - apply axes
+
+### §2.A - TOC byte-accuracy
+
+- Apply: keep TOC byte-accurate after adding a new early terminology/scope subsection and renumbering the §2 subsections around it.
+- Cross-check: run a heading/TOC slug comparison after edits.
+- Defer: none expected.
+
+### §2.B - Structural rewrite proposal
+
+- Apply: introduce `Terminology and scope`; separate shipped behavior, implementation notes, future seams, and non-goals inside the existing section order; narrow substrate claims into a matrix; keep detailed validation evidence in/testing appendices rather than letting it define the main contract.
+- Defer: wholesale top-level restructure into the review's proposed 11-section outline. Reason: high review cost and unnecessary churn for a docs apply lane when the concrete findings map cleanly onto the current RFC structure.
+- Cross-check: every shipped/future distinction around `targetSessionKey`, multi-recipient return, substrate adoption, and trace schema.
+
+### §2.C - Narrative flow
+
+- Apply: add successor-turn authority language in §1 and close; define terms before use; remove forward references that require cohort memory; turn §4.1 into causes plus emission surfaces; compress provider/model history into a normative active-session requirement with appendix evidence.
+- Defer: none beyond top-level reorder.
+- Cross-check: `§2.3`, `§4.3`, `§6.4`, `§9.5`, and `§10.2`.
+
+### §3 - Claims validation
+
+- Apply missing claims: bracket-vs-tool precedence, last text payload, fallback grammar constraints, TaskFlow filter-at-consume, hedge timer, corrupt TaskFlow payload failure, runtime `mode` as canonical, follow-up delegate drain, request-compaction success-only cooldown/failure event/TTL, post-compaction TTL/budget/queue-first semantics, post-compaction context boundary/time shaping.
+- Fix stale/contradicted claims: remove shipped `targetSessionKey`, add `earlyWarningBand`, replace span schema, delete/update `/new` survival claim, remove nonexistent `pnpm lint:substrate-adoption` script claim.
+- Cross-check: current files named in §1, especially `src/agents/tools/continue-delegate-tool.ts`, `src/auto-reply/continuation/delegate-store.ts`, `src/auto-reply/continuation/delegate-dispatch.ts`, `src/agents/tools/request-compaction-tool.ts`, `src/infra/continuation-tracer.ts`, and `src/auto-reply/reply/post-compaction-delegate-dispatch.ts`.
+
+### §4 - Depth and Mermaid
+
+- Apply: replace the existing §2.6 Mermaid with the capability decision tree; add diagrams for delegate dispatch, trigger taxonomy, post-compaction lifecycle, gateway broker, and trace/chain correlation.
+- Apply depth changes: expand under-depth substrate and post-compaction sections; trim or relocate over-depth canary/history claims.
+- Defer: no diagram for full top-level document outline.
+- Cross-check: mermaid syntax by inspection plus formatter/docs checks.
+
+### §5 - Register pass
+
+- Apply: replace marketing/adjectival phrasing with falsifiable contract language; normalize `TaskFlow`; define human-user/operator roles; add shipped/future/status markers; add code/test pins where load-bearing claims remain.
+- Defer: exhaustive line-by-line literary rewrite outside changed surfaces.
+- Cross-check: `rg` for stale terms (`targetSessionKey`, old span names, `Task Flow`, `lint:substrate-adoption`, `/new` survival claim).
+
+### §5.special - substrate-dignity language
+
+- Apply: inline the review's language into §1, primitive semantics, applicability, and the final discussion.
+- Defer: none.
+- Cross-check: closing returns to bounded successor-turn provision rather than ending as a backlog list.
