@@ -1,10 +1,22 @@
 # RFC review: continue-work-signal-v2 - scientific-literature audit
 
-> WIP checkpoint. This document is the deliverable for issue #544. Sections below will be filled as the audit passes close.
-
 ## Summary
 
-WIP after §1 read pass.
+Overall assessment: **pass-with-fixes**. The RFC describes a real, implemented, load-bearing substrate with strong raw material: agent-elected continuation, delegated future work, volitional compaction, post-compaction recovery, and traceable bounded execution. It does not yet read like cold-pickup scientific literature because shipped contract, future seams, implementation history, and validation evidence are interleaved; several public-surface claims are stale or contradicted by current code.
+
+Top 5 highest-leverage edits:
+
+- Correct the contradicted public contract surfaces: remove `targetSessionKey` from shipped `continue_delegate()` semantics, add `earlyWarningBand` to shipped config, replace §6.6 span names with current tracer names, and delete/update the stale `/new` delayed-work survival claim.
+- Add an early terminology/scope section and split shipped behavior from implementation notes, historical notes, future seams, and non-goals.
+- Replace broad `session-delivery-queue` substrate language with a path-specific substrate matrix: process timers/reservations, TaskFlow pending delegates, and session-delivery queue delivery.
+- Move canary/test history into validation appendices; keep only falsifiable contract/evidence conclusions in the main body.
+- Redraw the §2.6 diagram as a decision tree and add diagrams for delegate dispatch, trigger taxonomy, post-compaction lifecycle, gateway broker boundaries, and OTel chain correlation.
+
+Top 3 places where stakes/register need louder language:
+
+- §1 should state that continuation is bounded authority for an agent to make provisions for successor turns across time and lifecycle boundaries.
+- §2 primitive semantics should frame `continue_work()`, `continue_delegate()`, and `request_compaction()` as distinct forms of future-turn arrangement, not merely useful tools.
+- §10 should close by returning to the central substrate promise: volition in one turn becoming auditable, bounded structure for another.
 
 ## Compliance scorecard
 
@@ -383,11 +395,61 @@ Suggested final closing paragraph:
 
 ## Appendix A: code walked
 
-Initial §1 codewalk complete; final appendix will be normalized after §3.
+| File                                                                           | Note                                                                                            |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `docs/design/continue-work-signal-v2.md`                                       | Primary RFC under review; full read.                                                            |
+| `docs/design/332-item-b-post-compaction-release-audit.md`                      | Adjacent post-compaction substrate adoption lineage.                                            |
+| `docs/design/334-slice2-chunk5b-delegate-fire-memo.md`                         | Delegate fire/span lineage.                                                                     |
+| `docs/design/334-slice2-chunk6c-followup-memo.md`                              | Follow-up/compaction trace hardening lineage.                                                   |
+| `docs/design/swim-37-classifier-span-memo.md`                                  | Adjacent trace-domain/register precedent.                                                       |
+| `src/auto-reply/continuation/types.ts`                                         | Current continuation type contracts and runtime delegate mode shape.                            |
+| `src/auto-reply/continuation/config.ts`                                        | Runtime config defaults, clamp behavior, hot-reload reads, `earlyWarningBand`.                  |
+| `src/auto-reply/continuation/signal.ts`                                        | Tool/fallback signal extraction and precedence.                                                 |
+| `src/auto-reply/continuation/delegate-store.ts`                                | TaskFlow-backed delegate queue, staged post-compaction store, volatile reservations.            |
+| `src/auto-reply/continuation/delegate-dispatch.ts`                             | Tool-delegate drain, hedge timers, chain/cost/per-turn enforcement.                             |
+| `src/auto-reply/continuation/scheduler.ts`                                     | Bracket/work scheduling, timer behavior, budget checks.                                         |
+| `src/auto-reply/continuation/state.ts`                                         | Timer registry and continuation chain state load/persist helpers.                               |
+| `src/auto-reply/continuation/context-pressure.ts`                              | Context-pressure bands, dedup, event text, post-compaction behavior.                            |
+| `src/auto-reply/continuation/post-compaction-release.ts`                       | Extracted post-compaction release helper.                                                       |
+| `src/auto-reply/continuation/lazy.runtime.ts`                                  | Lazy runtime barrel for continuation paths.                                                     |
+| `src/auto-reply/continuation-delegate-store.ts`                                | Compatibility shim and post-compaction adapters.                                                |
+| `src/auto-reply/continuation-delegate.types.ts`                                | Compatibility type re-export.                                                                   |
+| `src/auto-reply/tokens.ts`                                                     | Response-token and bracket fallback parser/stripper.                                            |
+| `src/auto-reply/reply/agent-runner.ts`                                         | Main reply integration, scheduling, dispatch, cancellation, chain persistence.                  |
+| `src/auto-reply/reply/followup-runner.ts`                                      | Follow-up delegate drain and chain-state persistence.                                           |
+| `src/auto-reply/reply/post-compaction-delegate-dispatch.ts`                    | Session-store persistence, queue-backed post-compaction delivery, stale/overflow/drop behavior. |
+| `src/auto-reply/reply/post-compaction-context.ts`                              | AGENTS section extraction, boundary-file read, truncation, time/date injection.                 |
+| `src/agents/tools/continue-work-tool.ts`                                       | `continue_work()` schema and request callback.                                                  |
+| `src/agents/tools/continue-delegate-tool.ts`                                   | `continue_delegate()` schema, modes, TaskFlow enqueue/stage behavior.                           |
+| `src/agents/tools/request-compaction-tool.ts`                                  | `request_compaction()` schema, guards, async failure recovery, diagnostics.                     |
+| `src/agents/tools/continuation-tools-registration.test.ts`                     | Tool registration, `targetSessionKey` omission, binary-canticle description, drain predicate.   |
+| `src/agents/tools/request-compaction-tool.test.ts`                             | Request-compaction guard/failure/rate-limit evidence.                                           |
+| `src/agents/openclaw-tools.ts`                                                 | Tool visibility and continuation registration.                                                  |
+| `src/agents/pi-tools.policy.ts`                                                | Leaf/orchestrator tool-deny policy for `continue_delegate`.                                     |
+| `src/agents/subagent-announce.ts`                                              | Child delegate drain/announce/silent-wake behavior.                                             |
+| `src/agents/subagent-announce.continuation.test.ts`                            | Continuation chain-hop and silent-wake tests.                                                   |
+| `src/config/zod-schema.agent-defaults.ts`                                      | Continuation config schema, including `earlyWarningBand`.                                       |
+| `src/config/zod-schema.continuation.test.ts`                                   | Continuation config validation tests.                                                           |
+| `src/config/sessions/types.ts`                                                 | Session metadata fields, including chain and post-compaction delegate compatibility.            |
+| `src/gateway/server-restart-sentinel.ts`                                       | Restart-survival and session-delivery recovery path.                                            |
+| `src/infra/session-delivery-queue-storage.ts`                                  | Queue payloads, idempotency, enqueue/ack/fail/prune behavior.                                   |
+| `src/infra/session-delivery-queue-recovery.ts`                                 | Queue retry, backoff, recovery, retry-cap behavior.                                             |
+| `src/infra/session-delivery-queue.ts`                                          | Queue facade exports.                                                                           |
+| `src/infra/continuation-tracer.ts`                                             | Current continuation span names and attribute contract.                                         |
+| `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts`               | OTel adapter and traceparent parenting.                                                         |
+| `src/auto-reply/continuation-delegate-store.test.ts`                           | Legacy/current delegate-store compatibility tests.                                              |
+| `src/auto-reply/continuation-delegate-store.post-compaction-substrate.test.ts` | Shared staging/consume substrate test.                                                          |
+| `src/auto-reply/continuation/delegate-store.test.ts`                           | TaskFlow delegate queue behavior tests.                                                         |
+| `src/auto-reply/continuation/scheduler.test.ts`                                | Scheduler budget/timer/no-generation-guard tests.                                               |
+| `src/auto-reply/continuation/context-pressure.test.ts`                         | Context-pressure helper tests.                                                                  |
+| `src/auto-reply/reply/context-pressure.test.ts`                                | Reply-path context-pressure tests.                                                              |
+| `src/auto-reply/reply/context-pressure.integration.test.ts`                    | Context-pressure integration coverage.                                                          |
+| `src/auto-reply/reply/post-compaction-context.test.ts`                         | Post-compaction context extraction and boundary tests.                                          |
 
 ## Appendix B: tools / commands used
 
 - `pnpm docs:list`
-- `grep -nE '^(##|###) ' docs/design/continue-work-signal-v2.md`
-- `rg` symbol searches across `src`, `extensions/diagnostics-otel/src`, and `docs/design/continue-work-signal-v2.md`
+- `node --input-type=module` TOC/heading slug comparison for `docs/design/continue-work-signal-v2.md`
+- `rg` searches for `targetSessionKey`, `earlyWarningBand`, `continuation.*` span names, `session-delivery-queue`, `generationGuardTolerance`, `SUBAGENT_TOOL_DENY_LEAF`, and substrate-adoption script names
 - Line-numbered file reads with `view`
+- `git diff --check -- tmp-drop-me-rfc-review.md docs/design/544-rfc-scientific-literature-review-20260502.md`

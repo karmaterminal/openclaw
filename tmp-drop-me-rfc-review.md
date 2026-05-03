@@ -455,3 +455,10 @@ Suggested §8 / Applicability addition:
 Suggested final closing paragraph:
 
 > The substrate's central promise is modest and consequential: a bounded agent turn can arrange work beyond itself without pretending that the future context is identical to the present one. It can leave a wake, a shard, a compaction request, or a post-compaction recovery path. Those provisions are auditable, bounded, and interruptible; they are how volition in one turn becomes usable structure for another.
+
+## §6 — Review document closeout
+
+- Review document completed at `docs/design/544-rfc-scientific-literature-review-20260502.md`.
+- Final document structure matches the workorder: summary, scorecard, §2.A/B/C, §3.A/B tables, §4.A/B/C with Mermaid drafts, §5 register findings, §5.special substrate-dignity language proposals, Appendix A code walked, Appendix B commands used.
+- Scorecard outcome: overall pass-with-fixes. The RFC is substantively strong and implementable, but it needs contract corrections (`targetSessionKey`, `earlyWarningBand`, span table, delayed-reset survival), terminology/status separation, path-specific substrate durability, and a louder successor-turn-provision frame.
+- Validation for this docs-only checkpoint: `git diff --check -- tmp-drop-me-rfc-review.md docs/design/544-rfc-scientific-literature-review-20260502.md`. No source files were edited, so no source typecheck was run.
