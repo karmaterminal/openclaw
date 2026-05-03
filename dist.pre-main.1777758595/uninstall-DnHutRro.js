@@ -1,0 +1,2 @@
+import { a as formatUninstallActionLabels, l as resolveUninstallChannelConfigKeys, n as applyPluginUninstallDirectoryRemoval, o as formatUninstallSlotResetPreview, s as planPluginUninstall, t as UNINSTALL_ACTION_LABELS } from "./uninstall-C60pxqL5.js";
+export { UNINSTALL_ACTION_LABELS, applyPluginUninstallDirectoryRemoval, formatUninstallActionLabels, formatUninstallSlotResetPreview, planPluginUninstall, resolveUninstallChannelConfigKeys };

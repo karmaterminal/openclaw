@@ -1,0 +1,40 @@
+//#region src/plugins/registry-empty.ts
+function createEmptyPluginRegistry() {
+	return {
+		plugins: [],
+		tools: [],
+		hooks: [],
+		typedHooks: [],
+		channels: [],
+		channelSetups: [],
+		providers: [],
+		cliBackends: [],
+		textTransforms: [],
+		speechProviders: [],
+		realtimeTranscriptionProviders: [],
+		realtimeVoiceProviders: [],
+		mediaUnderstandingProviders: [],
+		imageGenerationProviders: [],
+		videoGenerationProviders: [],
+		musicGenerationProviders: [],
+		webFetchProviders: [],
+		webSearchProviders: [],
+		embeddedExtensionFactories: [],
+		codexAppServerExtensionFactories: [],
+		memoryEmbeddingProviders: [],
+		agentHarnesses: [],
+		gatewayHandlers: {},
+		gatewayMethodScopes: {},
+		httpRoutes: [],
+		cliRegistrars: [],
+		reloads: [],
+		nodeHostCommands: [],
+		securityAuditCollectors: [],
+		services: [],
+		commands: [],
+		conversationBindingResolvedHandlers: [],
+		diagnostics: []
+	};
+}
+//#endregion
+export { createEmptyPluginRegistry as t };

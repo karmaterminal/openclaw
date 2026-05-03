@@ -1,0 +1,812 @@
+import { i as formatErrorMessage } from "./errors-CS5wW5eD.js";
+import { a as normalizeLowercaseStringOrEmpty, c as normalizeOptionalString, s as normalizeOptionalLowercaseString } from "./string-coerce-CjxCKZ6B.js";
+import { o as getResolvedLoggerSettings } from "./logger-DTX5koY3.js";
+import { n as defaultRuntime, r as writeRuntimeJson } from "./runtime-Dy0KdPiM.js";
+import { r as theme } from "./theme-BrRleVfL.js";
+import { t as danger } from "./globals-Bo8QPRgM.js";
+import { a as loadConfig, u as readConfigFileSnapshot } from "./io-CBRjt33P.js";
+import { n as normalizeAccountId } from "./account-id-BM1T6029.js";
+import { i as normalizeChannelId, r as listChannelPlugins, t as getChannelPlugin } from "./registry-CaUS2Z2d.js";
+import { b as resolveAgentWorkspaceDir, x as resolveDefaultAgentId } from "./agent-scope-D-T17Rdc.js";
+import { r as replaceConfigFile } from "./mutate-DLhVGTK-.js";
+import "./config-BjiV0z87.js";
+import "./plugins-BcqWcAy9.js";
+import "./logging-CsdNOkNt.js";
+import { c as resolveMessageActionDiscoveryForPlugin, r as createMessageActionDiscoveryContext } from "./message-action-discovery-6sG1xPgv.js";
+import { n as getChannelsCommandSecretTargetIds } from "./command-secret-targets-DM2pXoIP.js";
+import { n as resolveMessageChannelSelection } from "./channel-selection-8_D2Hsny.js";
+import { i as resolveChannelDefaultAccountId, r as parseOptionalDelimitedEntries } from "./helpers-DIuSKnxZ.js";
+import { c as moveSingleAccountChannelSectionToDefaultAccount } from "./setup-helpers-Ch6SdLT5.js";
+import { t as createClackPrompter } from "./clack-prompter-D3jkMtKX.js";
+import { t as resolveCommandConfigWithSecrets } from "./command-config-resolution-C5rpiBrn.js";
+import { n as resolveInstallableChannelPlugin } from "./channel-plugin-resolution-DbrzARDX.js";
+import { t as parseLogLine } from "./parse-log-line-CrFu8o4P.js";
+import { a as describeBinding, t as applyAgentBindings } from "./agents.bindings-BQWhXh3P.js";
+import { t as requireValidConfigFileSnapshot } from "./config-validation-DORorlvk.js";
+import { c as requireValidConfig, l as shouldUseWizard, o as channelLabel, s as formatChannelAccountLabel } from "./shared-89IQrxi2.js";
+import { t as channelsListCommand } from "./list-DWXsdZWu.js";
+import { n as formatGatewayChannelsStatusLines, t as channelsStatusCommand } from "./status-Du0vipTn.js";
+import fs from "node:fs/promises";
+//#region src/commands/channels/add-mutators.ts
+function applyAccountName(params) {
+	const accountId = normalizeAccountId(params.accountId);
+	const apply = (params.plugin ?? getChannelPlugin(params.channel))?.setup?.applyAccountName;
+	return apply ? apply({
+		cfg: params.cfg,
+		accountId,
+		name: params.name
+	}) : params.cfg;
+}
+function applyChannelAccountConfig(params) {
+	const accountId = normalizeAccountId(params.accountId);
+	const apply = (params.plugin ?? getChannelPlugin(params.channel))?.setup?.applyAccountConfig;
+	if (!apply) return params.cfg;
+	return apply({
+		cfg: params.cfg,
+		accountId,
+		input: params.input
+	});
+}
+//#endregion
+//#region src/commands/channels/add.ts
+let channelSetupPluginInstallPromise;
+let onboardChannelsPromise;
+function loadChannelSetupPluginInstall() {
+	channelSetupPluginInstallPromise ??= import("./plugin-install-uQin46Om.js");
+	return channelSetupPluginInstallPromise;
+}
+function loadOnboardChannels() {
+	onboardChannelsPromise ??= import("./onboard-channels-BCmgAoA7.js");
+	return onboardChannelsPromise;
+}
+const CHANNEL_ADD_CONTROL_OPTION_KEYS = new Set(["channel", "account"]);
+async function resolveCatalogChannelEntry(raw, cfg) {
+	const trimmed = normalizeOptionalLowercaseString(raw);
+	if (!trimmed) return;
+	const { listChannelPluginCatalogEntries } = await import("./catalog-DNcHlII8.js");
+	return listChannelPluginCatalogEntries({ workspaceDir: cfg ? resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg)) : void 0 }).find((entry) => {
+		if (normalizeOptionalLowercaseString(entry.id) === trimmed) return true;
+		return (entry.meta.aliases ?? []).some((alias) => normalizeOptionalLowercaseString(alias) === trimmed);
+	});
+}
+function parseOptionalInt(value) {
+	if (typeof value === "number") return value;
+	if (typeof value === "string" && value.trim()) return Number.parseInt(value, 10);
+}
+function parseOptionalDelimitedInput(value) {
+	if (Array.isArray(value)) return value.filter((entry) => typeof entry === "string");
+	return parseOptionalDelimitedEntries(typeof value === "string" ? value : void 0);
+}
+function buildChannelSetupInput(opts) {
+	const input = {};
+	for (const [key, value] of Object.entries(opts)) {
+		if (CHANNEL_ADD_CONTROL_OPTION_KEYS.has(key) || value === void 0) continue;
+		input[key] = value;
+	}
+	input.initialSyncLimit = parseOptionalInt(opts.initialSyncLimit);
+	input.groupChannels = parseOptionalDelimitedInput(opts.groupChannels);
+	input.dmAllowlist = parseOptionalDelimitedInput(opts.dmAllowlist);
+	return input;
+}
+async function channelsAddCommand(opts, runtime = defaultRuntime, params) {
+	const configSnapshot = await requireValidConfigFileSnapshot(runtime);
+	if (!configSnapshot) return;
+	const cfg = configSnapshot.sourceConfig ?? configSnapshot.config;
+	const baseHash = configSnapshot.hash;
+	let nextConfig = cfg;
+	if (shouldUseWizard(params)) {
+		const [{ buildAgentSummaries }, onboardChannels] = await Promise.all([import("./agents.config-BXQQY7EW.js"), loadOnboardChannels()]);
+		const prompter = createClackPrompter();
+		const postWriteHooks = onboardChannels.createChannelOnboardingPostWriteHookCollector();
+		let selection = [];
+		const accountIds = {};
+		const resolvedPlugins = /* @__PURE__ */ new Map();
+		await prompter.intro("Channel setup");
+		let nextConfig = await onboardChannels.setupChannels(cfg, runtime, prompter, {
+			allowDisable: false,
+			allowSignalInstall: true,
+			onPostWriteHook: (hook) => {
+				postWriteHooks.collect(hook);
+			},
+			promptAccountIds: true,
+			onSelection: (value) => {
+				selection = value;
+			},
+			onAccountId: (channel, accountId) => {
+				accountIds[channel] = accountId;
+			},
+			onResolvedPlugin: (channel, plugin) => {
+				resolvedPlugins.set(channel, plugin);
+			}
+		});
+		if (selection.length === 0) {
+			await prompter.outro("No channels selected.");
+			return;
+		}
+		if (await prompter.confirm({
+			message: "Add display names for these accounts? (optional)",
+			initialValue: false
+		})) for (const channel of selection) {
+			const accountId = accountIds[channel] ?? "default";
+			const plugin = resolvedPlugins.get(channel) ?? getChannelPlugin(channel);
+			const account = plugin?.config.resolveAccount(nextConfig, accountId);
+			const existingName = (plugin?.config.describeAccount?.(account, nextConfig))?.name ?? account?.name;
+			const name = await prompter.text({
+				message: `${channel} account name (${accountId})`,
+				initialValue: existingName
+			});
+			if (name?.trim()) nextConfig = applyAccountName({
+				cfg: nextConfig,
+				channel,
+				accountId,
+				name,
+				plugin
+			});
+		}
+		const bindTargets = selection.map((channel) => ({
+			channel,
+			accountId: accountIds[channel]?.trim()
+		})).filter((value) => Boolean(value.accountId));
+		if (bindTargets.length > 0) {
+			if (await prompter.confirm({
+				message: "Bind configured channel accounts to agents now?",
+				initialValue: true
+			})) {
+				const agentSummaries = buildAgentSummaries(nextConfig);
+				const defaultAgentId = resolveDefaultAgentId(nextConfig);
+				for (const target of bindTargets) {
+					const targetAgentId = await prompter.select({
+						message: `Route ${target.channel} account "${target.accountId}" to agent`,
+						options: agentSummaries.map((agent) => ({
+							value: agent.id,
+							label: agent.isDefault ? `${agent.id} (default)` : agent.id
+						})),
+						initialValue: defaultAgentId
+					});
+					const bindingResult = applyAgentBindings(nextConfig, [{
+						agentId: targetAgentId,
+						match: {
+							channel: target.channel,
+							accountId: target.accountId
+						}
+					}]);
+					nextConfig = bindingResult.config;
+					if (bindingResult.added.length > 0 || bindingResult.updated.length > 0) await prompter.note([...bindingResult.added.map((binding) => `Added: ${describeBinding(binding)}`), ...bindingResult.updated.map((binding) => `Updated: ${describeBinding(binding)}`)].join("\n"), "Routing bindings");
+					if (bindingResult.conflicts.length > 0) await prompter.note(["Skipped bindings already claimed by another agent:", ...bindingResult.conflicts.map((conflict) => `- ${describeBinding(conflict.binding)} (agent=${conflict.existingAgentId})`)].join("\n"), "Routing bindings");
+				}
+			}
+		}
+		await replaceConfigFile({
+			nextConfig,
+			...baseHash !== void 0 ? { baseHash } : {}
+		});
+		await onboardChannels.runCollectedChannelOnboardingPostWriteHooks({
+			hooks: postWriteHooks.drain(),
+			cfg: nextConfig,
+			runtime
+		});
+		await prompter.outro("Channels updated.");
+		return;
+	}
+	const rawChannel = opts.channel ?? "";
+	let channel = normalizeChannelId(rawChannel);
+	let catalogEntry = channel ? void 0 : await resolveCatalogChannelEntry(rawChannel, nextConfig);
+	const resolveWorkspaceDir = () => resolveAgentWorkspaceDir(nextConfig, resolveDefaultAgentId(nextConfig));
+	const loadScopedPlugin = async (channelId, pluginId) => {
+		const existing = getChannelPlugin(channelId);
+		if (existing) return existing;
+		const { loadChannelSetupPluginRegistrySnapshotForChannel } = await loadChannelSetupPluginInstall();
+		const snapshot = loadChannelSetupPluginRegistrySnapshotForChannel({
+			cfg: nextConfig,
+			runtime,
+			channel: channelId,
+			...pluginId ? { pluginId } : {},
+			workspaceDir: resolveWorkspaceDir()
+		});
+		return snapshot.channels.find((entry) => entry.plugin.id === channelId)?.plugin ?? snapshot.channelSetups.find((entry) => entry.plugin.id === channelId)?.plugin;
+	};
+	if (!channel && catalogEntry) {
+		const workspaceDir = resolveWorkspaceDir();
+		const { isCatalogChannelInstalled } = await import("./discovery-Djg2UibA.js");
+		if (!isCatalogChannelInstalled({
+			cfg: nextConfig,
+			entry: catalogEntry,
+			workspaceDir
+		})) {
+			const { ensureChannelSetupPluginInstalled } = await loadChannelSetupPluginInstall();
+			const prompter = createClackPrompter();
+			const result = await ensureChannelSetupPluginInstalled({
+				cfg: nextConfig,
+				entry: catalogEntry,
+				prompter,
+				runtime,
+				workspaceDir
+			});
+			nextConfig = result.cfg;
+			if (!result.installed) return;
+			catalogEntry = {
+				...catalogEntry,
+				...result.pluginId ? { pluginId: result.pluginId } : {}
+			};
+		}
+		channel = normalizeChannelId(catalogEntry.id) ?? catalogEntry.id;
+	}
+	if (!channel) {
+		const hint = catalogEntry ? `Plugin ${catalogEntry.meta.label} could not be loaded after install.` : `Unknown channel: ${rawChannel}`;
+		runtime.error(hint);
+		runtime.exit(1);
+		return;
+	}
+	const plugin = await loadScopedPlugin(channel, catalogEntry?.pluginId);
+	if (!plugin?.setup?.applyAccountConfig) {
+		runtime.error(`Channel ${channel} does not support add.`);
+		runtime.exit(1);
+		return;
+	}
+	const input = buildChannelSetupInput(opts);
+	const accountId = plugin.setup.resolveAccountId?.({
+		cfg: nextConfig,
+		accountId: opts.account,
+		input
+	}) ?? normalizeAccountId(opts.account);
+	const validationError = plugin.setup.validateInput?.({
+		cfg: nextConfig,
+		accountId,
+		input
+	});
+	if (validationError) {
+		runtime.error(validationError);
+		runtime.exit(1);
+		return;
+	}
+	const prevConfig = nextConfig;
+	if (accountId !== "default") nextConfig = moveSingleAccountChannelSectionToDefaultAccount({
+		cfg: nextConfig,
+		channelKey: channel
+	});
+	nextConfig = applyChannelAccountConfig({
+		cfg: nextConfig,
+		channel,
+		accountId,
+		input,
+		plugin
+	});
+	await plugin.lifecycle?.onAccountConfigChanged?.({
+		prevCfg: prevConfig,
+		nextCfg: nextConfig,
+		accountId,
+		runtime
+	});
+	await replaceConfigFile({
+		nextConfig,
+		...baseHash !== void 0 ? { baseHash } : {}
+	});
+	runtime.log(`Added ${channelLabel(channel)} account "${accountId}".`);
+	const afterAccountConfigWritten = plugin.setup?.afterAccountConfigWritten;
+	if (afterAccountConfigWritten) {
+		const { runCollectedChannelOnboardingPostWriteHooks } = await loadOnboardChannels();
+		await runCollectedChannelOnboardingPostWriteHooks({
+			hooks: [{
+				channel,
+				accountId,
+				run: async ({ cfg: writtenCfg, runtime: hookRuntime }) => await afterAccountConfigWritten({
+					previousCfg: cfg,
+					cfg: writtenCfg,
+					accountId,
+					input,
+					runtime: hookRuntime
+				})
+			}],
+			cfg: nextConfig,
+			runtime
+		});
+	}
+}
+//#endregion
+//#region src/commands/channels/capabilities.ts
+function normalizeTimeout(raw, fallback = 1e4) {
+	const value = typeof raw === "string" ? Number(raw) : Number(raw);
+	if (!Number.isFinite(value) || value <= 0) return fallback;
+	return value;
+}
+function formatSupport(capabilities) {
+	if (!capabilities) return "unknown";
+	const bits = [];
+	if (capabilities.chatTypes?.length) bits.push(`chatTypes=${capabilities.chatTypes.join(",")}`);
+	if (capabilities.polls) bits.push("polls");
+	if (capabilities.reactions) bits.push("reactions");
+	if (capabilities.edit) bits.push("edit");
+	if (capabilities.unsend) bits.push("unsend");
+	if (capabilities.reply) bits.push("reply");
+	if (capabilities.effects) bits.push("effects");
+	if (capabilities.groupManagement) bits.push("groupManagement");
+	if (capabilities.threads) bits.push("threads");
+	if (capabilities.media) bits.push("media");
+	if (capabilities.nativeCommands) bits.push("nativeCommands");
+	if (capabilities.blockStreaming) bits.push("blockStreaming");
+	return bits.length ? bits.join(" ") : "none";
+}
+function formatGenericProbeLines(probe) {
+	if (!probe || typeof probe !== "object") return [];
+	const probeObj = probe;
+	const ok = typeof probeObj.ok === "boolean" ? probeObj.ok : void 0;
+	if (ok === true) return [{ text: "Probe: ok" }];
+	if (ok === false) return [{
+		text: `Probe: failed${typeof probeObj.error === "string" && probeObj.error ? ` (${probeObj.error})` : ""}`,
+		tone: "error"
+	}];
+	return [];
+}
+function renderDisplayLine(line) {
+	switch (line.tone) {
+		case "muted": return theme.muted(line.text);
+		case "success": return theme.success(line.text);
+		case "warn": return theme.warn(line.text);
+		case "error": return theme.error(line.text);
+		default: return line.text;
+	}
+}
+async function resolveChannelReports(params) {
+	const { plugin, cfg, timeoutMs } = params;
+	const accountIds = params.accountOverride ? [params.accountOverride] : (() => {
+		const ids = plugin.config.listAccountIds(cfg);
+		return ids.length > 0 ? ids : [resolveChannelDefaultAccountId({
+			plugin,
+			cfg,
+			accountIds: ids
+		})];
+	})();
+	const reports = [];
+	for (const accountId of accountIds) {
+		const resolvedAccount = plugin.config.resolveAccount(cfg, accountId);
+		const configured = plugin.config.isConfigured ? await plugin.config.isConfigured(resolvedAccount, cfg) : Boolean(resolvedAccount);
+		const enabled = plugin.config.isEnabled ? plugin.config.isEnabled(resolvedAccount, cfg) : resolvedAccount.enabled !== false;
+		let probe;
+		if (configured && enabled && plugin.status?.probeAccount) try {
+			probe = await plugin.status.probeAccount({
+				account: resolvedAccount,
+				timeoutMs,
+				cfg
+			});
+		} catch (err) {
+			probe = {
+				ok: false,
+				error: formatErrorMessage(err)
+			};
+		}
+		const diagnostics = configured && enabled ? await plugin.status?.buildCapabilitiesDiagnostics?.({
+			account: resolvedAccount,
+			timeoutMs,
+			cfg,
+			probe,
+			target: params.target
+		}) : void 0;
+		const discoveredActions = resolveMessageActionDiscoveryForPlugin({
+			pluginId: plugin.id,
+			actions: plugin.actions,
+			context: createMessageActionDiscoveryContext({
+				cfg,
+				accountId
+			}),
+			includeActions: true
+		}).actions;
+		const actions = Array.from(new Set([
+			"send",
+			"broadcast",
+			...discoveredActions.map((action) => action)
+		]));
+		reports.push({
+			plugin,
+			channel: plugin.id,
+			accountId,
+			accountName: typeof resolvedAccount.name === "string" ? normalizeOptionalString(resolvedAccount.name) : void 0,
+			configured,
+			enabled,
+			support: plugin.capabilities,
+			probe,
+			actions,
+			diagnostics
+		});
+	}
+	return reports;
+}
+async function channelsCapabilitiesCommand(opts, runtime = defaultRuntime) {
+	const sourceSnapshotPromise = readConfigFileSnapshot().catch(() => null);
+	const loadedCfg = await requireValidConfig(runtime);
+	if (!loadedCfg) return;
+	let cfg = loadedCfg;
+	const timeoutMs = normalizeTimeout(opts.timeout, 1e4);
+	const rawChannel = normalizeLowercaseStringOrEmpty(opts.channel);
+	const rawTarget = normalizeOptionalString(opts.target) ?? "";
+	if (opts.account && (!rawChannel || rawChannel === "all")) {
+		runtime.error(danger("--account requires a specific --channel."));
+		runtime.exit(1);
+		return;
+	}
+	if (rawTarget && (!rawChannel || rawChannel === "all")) {
+		runtime.error(danger("--target requires a specific --channel."));
+		runtime.exit(1);
+		return;
+	}
+	const plugins = listChannelPlugins();
+	const selected = !rawChannel || rawChannel === "all" ? plugins : await (async () => {
+		const resolved = await resolveInstallableChannelPlugin({
+			cfg,
+			runtime,
+			rawChannel,
+			allowInstall: true
+		});
+		if (resolved.configChanged) {
+			cfg = resolved.cfg;
+			await replaceConfigFile({
+				nextConfig: cfg,
+				baseHash: (await sourceSnapshotPromise)?.hash
+			});
+		}
+		return resolved.plugin ? [resolved.plugin] : null;
+	})();
+	if (!selected || selected.length === 0) {
+		runtime.error(danger(`Unknown channel "${rawChannel}".`));
+		runtime.exit(1);
+		return;
+	}
+	const reports = [];
+	for (const plugin of selected) {
+		const accountOverride = normalizeOptionalString(opts.account);
+		reports.push(...await resolveChannelReports({
+			plugin,
+			cfg,
+			timeoutMs,
+			accountOverride,
+			target: rawTarget || void 0
+		}));
+	}
+	if (opts.json) {
+		writeRuntimeJson(runtime, { channels: reports });
+		return;
+	}
+	const lines = [];
+	for (const report of reports) {
+		const label = formatChannelAccountLabel({
+			channel: report.channel,
+			accountId: report.accountId,
+			name: report.accountName,
+			channelStyle: theme.accent,
+			accountStyle: theme.heading
+		});
+		lines.push(theme.heading(label));
+		lines.push(`Support: ${formatSupport(report.support)}`);
+		if (report.actions && report.actions.length > 0) lines.push(`Actions: ${report.actions.join(", ")}`);
+		if (report.configured === false || report.enabled === false) {
+			const configuredLabel = report.configured === false ? "not configured" : "configured";
+			const enabledLabel = report.enabled === false ? "disabled" : "enabled";
+			lines.push(`Status: ${configuredLabel}, ${enabledLabel}`);
+		}
+		const probeLines = report.plugin.status?.formatCapabilitiesProbe?.({ probe: report.probe }) ?? formatGenericProbeLines(report.probe);
+		if (probeLines.length > 0) lines.push(...probeLines.map(renderDisplayLine));
+		else if (report.configured && report.enabled) lines.push(theme.muted("Probe: unavailable"));
+		if (report.diagnostics?.lines?.length) lines.push(...report.diagnostics.lines.map(renderDisplayLine));
+		lines.push("");
+	}
+	runtime.log(lines.join("\n").trimEnd());
+}
+//#endregion
+//#region src/commands/channels/logs.ts
+const DEFAULT_LIMIT = 200;
+const MAX_BYTES = 1e6;
+const getChannelSet = () => new Set([...listChannelPlugins().map((plugin) => plugin.id), "all"]);
+function parseChannelFilter(raw) {
+	const trimmed = normalizeLowercaseStringOrEmpty(raw);
+	if (!trimmed) return "all";
+	return getChannelSet().has(trimmed) ? trimmed : "all";
+}
+function matchesChannel(line, channel) {
+	if (channel === "all") return true;
+	const needle = `gateway/channels/${channel}`;
+	if (line.subsystem?.includes(needle)) return true;
+	if (line.module?.includes(channel)) return true;
+	return false;
+}
+async function readTailLines(file, limit) {
+	const stat = await fs.stat(file).catch(() => null);
+	if (!stat) return [];
+	const size = stat.size;
+	const start = Math.max(0, size - MAX_BYTES);
+	const handle = await fs.open(file, "r");
+	try {
+		const length = Math.max(0, size - start);
+		if (length === 0) return [];
+		const buffer = Buffer.alloc(length);
+		const readResult = await handle.read(buffer, 0, length, start);
+		let lines = buffer.toString("utf8", 0, readResult.bytesRead).split("\n");
+		if (start > 0) lines = lines.slice(1);
+		if (lines.length && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
+		if (lines.length > limit) lines = lines.slice(lines.length - limit);
+		return lines;
+	} finally {
+		await handle.close();
+	}
+}
+async function channelsLogsCommand(opts, runtime = defaultRuntime) {
+	const channel = parseChannelFilter(opts.channel);
+	const limitRaw = typeof opts.lines === "string" ? Number(opts.lines) : opts.lines;
+	const limit = typeof limitRaw === "number" && Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : DEFAULT_LIMIT;
+	const file = getResolvedLoggerSettings().file;
+	const filtered = (await readTailLines(file, limit * 4)).map(parseLogLine).filter((line) => Boolean(line)).filter((line) => matchesChannel(line, channel));
+	const lines = filtered.slice(Math.max(0, filtered.length - limit));
+	if (opts.json) {
+		writeRuntimeJson(runtime, {
+			file,
+			channel,
+			lines
+		});
+		return;
+	}
+	runtime.log(theme.info(`Log file: ${file}`));
+	if (channel !== "all") runtime.log(theme.info(`Channel: ${channel}`));
+	if (lines.length === 0) {
+		runtime.log(theme.muted("No matching log lines."));
+		return;
+	}
+	for (const line of lines) {
+		const ts = line.time ? `${line.time} ` : "";
+		const level = line.level ? `${normalizeLowercaseStringOrEmpty(line.level)} ` : "";
+		runtime.log(`${ts}${level}${line.message}`.trim());
+	}
+}
+//#endregion
+//#region src/commands/channels/remove.ts
+function listAccountIds(cfg, channel) {
+	const plugin = getChannelPlugin(channel);
+	if (!plugin) return [];
+	return plugin.config.listAccountIds(cfg);
+}
+async function channelsRemoveCommand(opts, runtime = defaultRuntime, params) {
+	const configSnapshot = await requireValidConfigFileSnapshot(runtime);
+	if (!configSnapshot) return;
+	const baseHash = configSnapshot.hash;
+	let cfg = configSnapshot.sourceConfig ?? configSnapshot.config;
+	const useWizard = shouldUseWizard(params);
+	const prompter = useWizard ? createClackPrompter() : null;
+	const rawChannel = normalizeOptionalString(opts.channel) ?? "";
+	let channel = normalizeChannelId(rawChannel);
+	let accountId = normalizeAccountId(opts.account);
+	const deleteConfig = Boolean(opts.delete);
+	if (useWizard && prompter) {
+		await prompter.intro("Remove channel account");
+		const selectedChannel = await prompter.select({
+			message: "Channel",
+			options: listChannelPlugins().map((plugin) => ({
+				value: plugin.id,
+				label: plugin.meta.label
+			}))
+		});
+		channel = selectedChannel;
+		accountId = await (async () => {
+			const ids = listAccountIds(cfg, selectedChannel);
+			return normalizeAccountId(await prompter.select({
+				message: "Account",
+				options: ids.map((id) => ({
+					value: id,
+					label: id === "default" ? "default (primary)" : id
+				})),
+				initialValue: ids[0] ?? "default"
+			}));
+		})();
+		if (!await prompter.confirm({
+			message: `Disable ${channelLabel(selectedChannel)} account "${accountId}"? (keeps config)`,
+			initialValue: true
+		})) {
+			await prompter.outro("Cancelled.");
+			return;
+		}
+	} else {
+		if (!rawChannel) {
+			runtime.error("Channel is required. Use --channel <name>.");
+			runtime.exit(1);
+			return;
+		}
+		if (!deleteConfig) {
+			const confirm = createClackPrompter();
+			const channelPromptLabel = channel ? channelLabel(channel) : rawChannel;
+			if (!await confirm.confirm({
+				message: `Disable ${channelPromptLabel} account "${accountId}"? (keeps config)`,
+				initialValue: true
+			})) return;
+		}
+	}
+	const resolvedPluginState = !useWizard && rawChannel && (!channel || !getChannelPlugin(channel)) ? await (async () => {
+		const { resolveInstallableChannelPlugin } = await import("./channel-plugin-resolution-iaO0T_XC.js");
+		return await resolveInstallableChannelPlugin({
+			cfg,
+			runtime,
+			rawChannel,
+			allowInstall: true
+		});
+	})() : null;
+	if (resolvedPluginState?.configChanged) cfg = resolvedPluginState.cfg;
+	const resolvedChannel = resolvedPluginState?.channelId ?? channel;
+	if (!resolvedChannel) {
+		runtime.error(`Unknown channel: ${rawChannel}`);
+		runtime.exit(1);
+		return;
+	}
+	channel = resolvedChannel;
+	const plugin = resolvedPluginState?.plugin ?? getChannelPlugin(resolvedChannel);
+	if (!plugin) {
+		runtime.error(`Unknown channel: ${resolvedChannel}`);
+		runtime.exit(1);
+		return;
+	}
+	const resolvedChannelId = resolvedChannel;
+	const resolvedAccountId = normalizeAccountId(accountId) ?? resolveChannelDefaultAccountId({
+		plugin,
+		cfg
+	});
+	const accountKey = resolvedAccountId || "default";
+	let next = { ...cfg };
+	const prevCfg = cfg;
+	if (deleteConfig) {
+		if (!plugin.config.deleteAccount) {
+			runtime.error(`Channel ${channel} does not support delete.`);
+			runtime.exit(1);
+			return;
+		}
+		next = plugin.config.deleteAccount({
+			cfg: next,
+			accountId: resolvedAccountId
+		});
+		await plugin.lifecycle?.onAccountRemoved?.({
+			prevCfg,
+			accountId: resolvedAccountId,
+			runtime
+		});
+	} else {
+		if (!plugin.config.setAccountEnabled) {
+			runtime.error(`Channel ${channel} does not support disable.`);
+			runtime.exit(1);
+			return;
+		}
+		next = plugin.config.setAccountEnabled({
+			cfg: next,
+			accountId: resolvedAccountId,
+			enabled: false
+		});
+		await plugin.lifecycle?.onAccountConfigChanged?.({
+			prevCfg,
+			nextCfg: next,
+			accountId: resolvedAccountId,
+			runtime
+		});
+	}
+	await replaceConfigFile({
+		nextConfig: next,
+		...baseHash !== void 0 ? { baseHash } : {}
+	});
+	if (useWizard && prompter) await prompter.outro(deleteConfig ? `Deleted ${channelLabel(resolvedChannelId)} account "${accountKey}".` : `Disabled ${channelLabel(resolvedChannelId)} account "${accountKey}".`);
+	else runtime.log(deleteConfig ? `Deleted ${channelLabel(resolvedChannelId)} account "${accountKey}".` : `Disabled ${channelLabel(resolvedChannelId)} account "${accountKey}".`);
+}
+//#endregion
+//#region src/commands/channels/resolve.ts
+function resolvePreferredKind(kind) {
+	if (!kind || kind === "auto") return;
+	if (kind === "user") return "user";
+	return "group";
+}
+function detectAutoKind(input) {
+	const trimmed = input.trim();
+	if (!trimmed) return "group";
+	if (trimmed.startsWith("@")) return "user";
+	if (/^<@!?/.test(trimmed)) return "user";
+	if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "user";
+	if (/^user:/i.test(trimmed)) return "user";
+	return "group";
+}
+function detectAutoKindForPlugin(input, plugin) {
+	const generic = detectAutoKind(input);
+	if (generic === "user" || !plugin) return generic;
+	const lowered = normalizeLowercaseStringOrEmpty(input.trim());
+	const prefixes = [plugin.id, ...plugin.meta?.aliases ?? []].map((entry) => normalizeOptionalLowercaseString(entry)).filter((entry) => Boolean(entry));
+	for (const prefix of prefixes) {
+		if (!lowered.startsWith(`${prefix}:`)) continue;
+		const remainder = lowered.slice(prefix.length + 1);
+		if (remainder.startsWith("group:") || remainder.startsWith("channel:") || remainder.startsWith("room:") || remainder.startsWith("conversation:") || remainder.startsWith("spaces/") || remainder.startsWith("channels/")) return "group";
+		return "user";
+	}
+	return generic;
+}
+function formatResolveResult(result) {
+	if (!result.resolved || !result.id) return `${result.input} -> unresolved`;
+	const name = result.name ? ` (${result.name})` : "";
+	const note = result.note ? ` [${result.note}]` : "";
+	return `${result.input} -> ${result.id}${name}${note}`;
+}
+async function channelsResolveCommand(opts, runtime) {
+	const sourceSnapshotPromise = readConfigFileSnapshot().catch(() => null);
+	let { effectiveConfig: cfg } = await resolveCommandConfigWithSecrets({
+		config: loadConfig(),
+		commandName: "channels resolve",
+		targetIds: getChannelsCommandSecretTargetIds(),
+		mode: "read_only_operational",
+		runtime,
+		autoEnable: true
+	});
+	const entries = (opts.entries ?? []).map((entry) => entry.trim()).filter(Boolean);
+	if (entries.length === 0) throw new Error("At least one entry is required.");
+	const explicitChannel = opts.channel?.trim();
+	const resolvedExplicit = explicitChannel ? await resolveInstallableChannelPlugin({
+		cfg,
+		runtime,
+		rawChannel: explicitChannel,
+		allowInstall: true,
+		supports: (plugin) => Boolean(plugin.resolver?.resolveTargets)
+	}) : null;
+	if (resolvedExplicit?.configChanged) {
+		cfg = resolvedExplicit.cfg;
+		await replaceConfigFile({
+			nextConfig: cfg,
+			baseHash: (await sourceSnapshotPromise)?.hash
+		});
+	}
+	const selection = explicitChannel ? { channel: resolvedExplicit?.channelId } : await resolveMessageChannelSelection({
+		cfg,
+		channel: opts.channel ?? null
+	});
+	const plugin = (explicitChannel ? resolvedExplicit?.plugin : void 0) ?? (selection.channel ? getChannelPlugin(selection.channel) : void 0);
+	if (!plugin?.resolver?.resolveTargets) {
+		const channelText = selection.channel ?? explicitChannel ?? "";
+		throw new Error(`Channel ${channelText} does not support resolve.`);
+	}
+	const preferredKind = resolvePreferredKind(opts.kind);
+	let results = [];
+	if (preferredKind) results = (await plugin.resolver.resolveTargets({
+		cfg,
+		accountId: opts.account ?? null,
+		inputs: entries,
+		kind: preferredKind,
+		runtime
+	})).map((entry) => ({
+		input: entry.input,
+		resolved: entry.resolved,
+		id: entry.id,
+		name: entry.name,
+		note: entry.note
+	}));
+	else {
+		const byKind = /* @__PURE__ */ new Map();
+		for (const entry of entries) {
+			const kind = detectAutoKindForPlugin(entry, plugin);
+			byKind.set(kind, [...byKind.get(kind) ?? [], entry]);
+		}
+		const resolved = [];
+		for (const [kind, inputs] of byKind.entries()) {
+			const batch = await plugin.resolver.resolveTargets({
+				cfg,
+				accountId: opts.account ?? null,
+				inputs,
+				kind,
+				runtime
+			});
+			resolved.push(...batch);
+		}
+		const byInput = new Map(resolved.map((entry) => [entry.input, entry]));
+		results = entries.map((input) => {
+			const entry = byInput.get(input);
+			return {
+				input,
+				resolved: entry?.resolved ?? false,
+				id: entry?.id,
+				name: entry?.name,
+				note: entry?.note
+			};
+		});
+	}
+	if (opts.json) {
+		writeRuntimeJson(runtime, results);
+		return;
+	}
+	for (const result of results) if (result.resolved && result.id) runtime.log(formatResolveResult(result));
+	else runtime.error(danger(`${result.input} -> unresolved${result.error ? ` (${result.error})` : result.note ? ` (${result.note})` : ""}`));
+}
+//#endregion
+export { channelsAddCommand, channelsCapabilitiesCommand, channelsListCommand, channelsLogsCommand, channelsRemoveCommand, channelsResolveCommand, channelsStatusCommand, formatGatewayChannelsStatusLines };

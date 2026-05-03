@@ -1,0 +1,27 @@
+import "./globals-d3aR1MYC.js";
+import "./paths-BMo6kTge.js";
+import "./subsystem-Cfn2Pryx.js";
+import "./boolean-DtWR5bt3.js";
+import "./auth-profiles-g_IwaokD.js";
+import "./agent-scope-C5bklqr1.js";
+import "./utils-cwpAMi-t.js";
+import "./openclaw-root-BFfBQ6FD.js";
+import "./logger-DB-PHqB2.js";
+import "./exec-B45rafWZ.js";
+import "./registry-BrR1Dq5T.js";
+import "./github-copilot-token-Byc_YVYE.js";
+import "./host-env-security-lcjXF83D.js";
+import "./version-DdJhsIqk.js";
+import "./env-vars-mSSOl7Rv.js";
+import "./manifest-registry-OQDPluXW.js";
+import "./dock-BaM5oTqE.js";
+import "./plugins-B4AetCpQ.js";
+import "./accounts-CucAhPu5.js";
+import "./accounts-DarjcXFz.js";
+import "./logging-CcxUDNcI.js";
+import "./accounts-DjUjM_0M.js";
+import "./thinking-CrcT589P.js";
+import "./commands-CP-eujrx.js";
+import { f as resolveCommandArgMenu, n as findCommandByNativeName, s as listNativeCommandSpecsForConfig, t as buildCommandTextFromArgs, u as parseCommandArgs } from "./commands-registry-Dv9wtUA6.js";
+
+export { buildCommandTextFromArgs, findCommandByNativeName, listNativeCommandSpecsForConfig, parseCommandArgs, resolveCommandArgMenu };

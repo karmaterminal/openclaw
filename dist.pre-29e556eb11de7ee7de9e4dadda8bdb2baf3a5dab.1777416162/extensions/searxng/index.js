@@ -1,0 +1,13 @@
+import { t as definePluginEntry } from "../../plugin-entry-BDOZ5Arw.js";
+import { t as createSearxngWebSearchProvider } from "../../searxng-search-provider-Cb95pKHx.js";
+//#region extensions/searxng/index.ts
+var searxng_default = definePluginEntry({
+	id: "searxng",
+	name: "SearXNG Plugin",
+	description: "Bundled SearXNG web search plugin",
+	register(api) {
+		api.registerWebSearchProvider(createSearxngWebSearchProvider());
+	}
+});
+//#endregion
+export { searxng_default as default };

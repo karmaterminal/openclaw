@@ -1,0 +1,15 @@
+type ContinuationTimerHandle = ReturnType<typeof setTimeout>;
+export declare function setDelegatePending(sessionKey: string): void;
+export declare function hasDelegatePending(sessionKey: string): boolean;
+export declare function clearDelegatePending(sessionKey: string): void;
+export declare function clearDelegatePendingIfNoDelayedReservations(sessionKey: string): void;
+export declare function currentContinuationGeneration(sessionKey: string): number;
+export declare function bumpContinuationGeneration(sessionKey: string): number;
+export declare function hasLiveContinuationTimerRefs(sessionKey: string): boolean;
+export declare function maybeDropContinuationGeneration(sessionKey: string): void;
+export declare function retainContinuationTimerRef(sessionKey: string): void;
+export declare function releaseContinuationTimerRef(sessionKey: string): void;
+export declare function registerContinuationTimerHandle(sessionKey: string, handle: ContinuationTimerHandle): void;
+export declare function unregisterContinuationTimerHandle(sessionKey: string, handle: ContinuationTimerHandle): boolean;
+export declare function clearTrackedContinuationTimers(sessionKey: string): void;
+export {};

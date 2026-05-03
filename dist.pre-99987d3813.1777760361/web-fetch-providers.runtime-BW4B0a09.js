@@ -1,0 +1,32 @@
+import { a as sortWebFetchProviders, c as resolveManifestDeclaredWebProviderCandidatePluginIds, i as resolveBundledWebFetchResolutionConfig, s as mapRegistryProviders } from "./web-search-providers.shared-zhqFD2SR.js";
+import { t as resolveBundledWebFetchProvidersFromPublicArtifacts } from "./web-provider-public-artifacts-Cg2hwL4K.js";
+import { t as resolvePluginWebProviders } from "./web-provider-runtime-shared-B3c26yDW.js";
+//#region src/plugins/web-fetch-providers.runtime.ts
+function resolveWebFetchCandidatePluginIds(params) {
+	return resolveManifestDeclaredWebProviderCandidatePluginIds({
+		contract: "webFetchProviders",
+		configKey: "webFetch",
+		config: params.config,
+		workspaceDir: params.workspaceDir,
+		env: params.env,
+		onlyPluginIds: params.onlyPluginIds,
+		origin: params.origin
+	});
+}
+function mapRegistryWebFetchProviders(params) {
+	return mapRegistryProviders({
+		entries: params.registry.webFetchProviders,
+		onlyPluginIds: params.onlyPluginIds,
+		sortProviders: sortWebFetchProviders
+	});
+}
+function resolvePluginWebFetchProviders(params) {
+	return resolvePluginWebProviders(params, {
+		resolveBundledResolutionConfig: resolveBundledWebFetchResolutionConfig,
+		resolveCandidatePluginIds: resolveWebFetchCandidatePluginIds,
+		mapRegistryProviders: mapRegistryWebFetchProviders,
+		resolveBundledPublicArtifactProviders: resolveBundledWebFetchProvidersFromPublicArtifacts
+	});
+}
+//#endregion
+export { resolvePluginWebFetchProviders as t };

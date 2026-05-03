@@ -1,0 +1,11 @@
+import { t as DEFAULT_CONTEXT_TOKENS } from "../../defaults-BofKZKJ4.js";
+import { i as isProxyReasoningUnsupported, n as createOpenRouterSystemCacheWrapper, r as createOpenRouterWrapper } from "../../proxy-stream-wrappers-D9R4HswP.js";
+import { a as buildProviderReplayFamilyHooks } from "../../provider-model-shared-BPfrxqlL.js";
+import { t as createProviderApiKeyAuthMethod } from "../../provider-api-key-auth-D7SXhgzu.js";
+import "../../provider-auth-api-key-Bc15aMiy.js";
+import { c as buildProviderStreamFamilyHooks, l as getOpenRouterModelCapabilities, u as loadOpenRouterModelCapabilities } from "../../provider-stream-C0yLKu5j.js";
+import "../../provider-stream-family-B6RLt2jG.js";
+import { t as openrouterMediaUnderstandingProvider } from "../../media-understanding-provider-qPlRFagh.js";
+import { n as applyOpenrouterConfig, t as OPENROUTER_DEFAULT_MODEL_REF } from "../../onboard-CAVLPmFJ.js";
+import { n as buildOpenrouterProvider } from "../../provider-catalog-2nCNgoou.js";
+export { DEFAULT_CONTEXT_TOKENS, OPENROUTER_DEFAULT_MODEL_REF, applyOpenrouterConfig, buildOpenrouterProvider, buildProviderReplayFamilyHooks, buildProviderStreamFamilyHooks, createOpenRouterSystemCacheWrapper, createOpenRouterWrapper, createProviderApiKeyAuthMethod, getOpenRouterModelCapabilities, isProxyReasoningUnsupported, loadOpenRouterModelCapabilities, openrouterMediaUnderstandingProvider };

@@ -1,0 +1,12 @@
+import { t as DEFAULT_CONTEXT_TOKENS } from "../../defaults-DM8yIn8C.js";
+import { i as isProxyReasoningUnsupported, n as createOpenRouterSystemCacheWrapper, r as createOpenRouterWrapper } from "../../proxy-stream-wrappers-7FHiy56D.js";
+import { a as buildProviderReplayFamilyHooks } from "../../provider-model-shared-CIbJhChi.js";
+import { t as createProviderApiKeyAuthMethod } from "../../provider-api-key-auth-oL5wP46r.js";
+import "../../provider-auth-api-key-BLYtC64S.js";
+import { c as buildProviderStreamFamilyHooks, l as getOpenRouterModelCapabilities, u as loadOpenRouterModelCapabilities } from "../../provider-stream-BJcf8GqE.js";
+import "../../provider-stream-family-URpkrPQx.js";
+import { n as buildOpenrouterProvider } from "../../provider-catalog-v59BpdVl.js";
+import { t as openrouterMediaUnderstandingProvider } from "../../media-understanding-provider-C-uNPvkH.js";
+import { n as applyOpenrouterConfig, t as OPENROUTER_DEFAULT_MODEL_REF } from "../../onboard-BYi89GaV.js";
+import { t as buildOpenRouterSpeechProvider } from "../../speech-provider-DM-UEjRI.js";
+export { DEFAULT_CONTEXT_TOKENS, OPENROUTER_DEFAULT_MODEL_REF, applyOpenrouterConfig, buildOpenRouterSpeechProvider, buildOpenrouterProvider, buildProviderReplayFamilyHooks, buildProviderStreamFamilyHooks, createOpenRouterSystemCacheWrapper, createOpenRouterWrapper, createProviderApiKeyAuthMethod, getOpenRouterModelCapabilities, isProxyReasoningUnsupported, loadOpenRouterModelCapabilities, openrouterMediaUnderstandingProvider };

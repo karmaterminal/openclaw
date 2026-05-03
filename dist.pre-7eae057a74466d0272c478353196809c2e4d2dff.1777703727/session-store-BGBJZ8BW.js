@@ -1,0 +1,137 @@
+import { c as normalizeOptionalString } from "./string-coerce-C1IzJjqi.js";
+import "./defaults-CV5sAt-u.js";
+import { t as isCliProvider } from "./model-selection-cli-DFsd-GLS.js";
+import "./model-selection-DwvfvFe2.js";
+import { n as mergeSessionEntry, u as setSessionRuntimeModel } from "./types-D3wf7T-9.js";
+import { c as updateSessionStore, f as resolveSessionStoreEntry } from "./store-Cf_mjUkP.js";
+import "./sessions-CTeI8wwA.js";
+import { n as deriveSessionTotalTokens, r as hasNonzeroUsage } from "./usage-DDq4LR8h.js";
+import { c as setCliSessionId, n as clearCliSession, s as setCliSessionBinding } from "./cli-session-nB35x0Ak.js";
+//#region src/agents/command/session-store.ts
+let usageFormatModulePromise;
+let contextModulePromise;
+async function getUsageFormatModule() {
+	usageFormatModulePromise ??= import("./usage-format-D5-ENZ2H.js");
+	return await usageFormatModulePromise;
+}
+async function getContextModule() {
+	contextModulePromise ??= import("./context-5VkEro8Y.js");
+	return await contextModulePromise;
+}
+function resolveNonNegativeNumber(value) {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : void 0;
+}
+function resolvePositiveInteger(value) {
+	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return;
+	return Math.floor(value);
+}
+async function updateSessionStoreAfterAgentRun(params) {
+	const { cfg, sessionId, sessionKey, storePath, sessionStore, defaultProvider, defaultModel, fallbackProvider, fallbackModel, result } = params;
+	const usage = result.meta.agentMeta?.usage;
+	const promptTokens = result.meta.agentMeta?.promptTokens;
+	const compactionsThisRun = Math.max(0, result.meta.agentMeta?.compactionCount ?? 0);
+	const modelUsed = result.meta.agentMeta?.model ?? fallbackModel ?? defaultModel;
+	const providerUsed = result.meta.agentMeta?.provider ?? fallbackProvider ?? defaultProvider;
+	const agentHarnessId = normalizeOptionalString(result.meta.agentMeta?.agentHarnessId);
+	const runtimeContextTokens = resolvePositiveInteger(result.meta.agentMeta?.contextTokens);
+	const contextTokens = runtimeContextTokens !== void 0 ? runtimeContextTokens : typeof params.contextTokensOverride === "number" && params.contextTokensOverride > 0 ? params.contextTokensOverride : (await getContextModule()).resolveContextTokensForModel({
+		cfg,
+		provider: providerUsed,
+		model: modelUsed,
+		fallbackContextTokens: 2e5,
+		allowAsyncLoad: false
+	}) ?? 2e5;
+	const memResolved = resolveSessionStoreEntry({
+		store: sessionStore,
+		sessionKey
+	});
+	const entry = memResolved.existing ?? {
+		sessionId,
+		updatedAt: Date.now()
+	};
+	const next = {
+		...entry,
+		sessionId,
+		updatedAt: Date.now(),
+		contextTokens
+	};
+	setSessionRuntimeModel(next, {
+		provider: providerUsed,
+		model: modelUsed
+	});
+	if (agentHarnessId) next.agentHarnessId = agentHarnessId;
+	else if (result.meta.executionTrace?.runner === "cli") next.agentHarnessId = void 0;
+	if (isCliProvider(providerUsed, cfg)) {
+		const cliSessionBinding = result.meta.agentMeta?.cliSessionBinding;
+		if (cliSessionBinding?.sessionId?.trim()) setCliSessionBinding(next, providerUsed, cliSessionBinding);
+		else {
+			const cliSessionId = result.meta.agentMeta?.sessionId?.trim();
+			if (cliSessionId) setCliSessionId(next, providerUsed, cliSessionId);
+		}
+	}
+	next.abortedLastRun = result.meta.aborted ?? false;
+	if (result.meta.systemPromptReport) next.systemPromptReport = result.meta.systemPromptReport;
+	if (hasNonzeroUsage(usage)) {
+		const { estimateUsageCost, resolveModelCostConfig } = await getUsageFormatModule();
+		const input = usage.input ?? 0;
+		const output = usage.output ?? 0;
+		const totalTokens = deriveSessionTotalTokens({
+			usage: promptTokens ? void 0 : usage,
+			contextTokens,
+			promptTokens
+		});
+		const runEstimatedCostUsd = resolveNonNegativeNumber(estimateUsageCost({
+			usage,
+			cost: resolveModelCostConfig({
+				provider: providerUsed,
+				model: modelUsed,
+				config: cfg
+			})
+		}));
+		next.inputTokens = input;
+		next.outputTokens = output;
+		if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
+			next.totalTokens = totalTokens;
+			next.totalTokensFresh = true;
+		} else {
+			next.totalTokens = void 0;
+			next.totalTokensFresh = false;
+		}
+		next.cacheRead = usage.cacheRead ?? 0;
+		next.cacheWrite = usage.cacheWrite ?? 0;
+		if (runEstimatedCostUsd !== void 0) next.estimatedCostUsd = runEstimatedCostUsd;
+	} else if (typeof entry.totalTokens === "number" && Number.isFinite(entry.totalTokens) && entry.totalTokens > 0) {
+		next.totalTokens = entry.totalTokens;
+		next.totalTokensFresh = false;
+	}
+	if (compactionsThisRun > 0) next.compactionCount = (entry.compactionCount ?? 0) + compactionsThisRun;
+	const persisted = await updateSessionStore(storePath, (store) => {
+		const resolved = resolveSessionStoreEntry({
+			store,
+			sessionKey
+		});
+		const merged = mergeSessionEntry(resolved.existing, next);
+		store[resolved.normalizedKey] = merged;
+		for (const legacyKey of resolved.legacyKeys) delete store[legacyKey];
+		return merged;
+	});
+	sessionStore[memResolved.normalizedKey] = persisted;
+	for (const legacyKey of memResolved.legacyKeys) delete sessionStore[legacyKey];
+}
+async function clearCliSessionInStore(params) {
+	const { provider, sessionKey, sessionStore, storePath } = params;
+	const entry = sessionStore[sessionKey];
+	if (!entry) return;
+	const next = { ...entry };
+	clearCliSession(next, provider);
+	next.updatedAt = Date.now();
+	const persisted = await updateSessionStore(storePath, (store) => {
+		const merged = mergeSessionEntry(store[sessionKey], next);
+		store[sessionKey] = merged;
+		return merged;
+	});
+	sessionStore[sessionKey] = persisted;
+	return persisted;
+}
+//#endregion
+export { updateSessionStoreAfterAgentRun as n, clearCliSessionInStore as t };

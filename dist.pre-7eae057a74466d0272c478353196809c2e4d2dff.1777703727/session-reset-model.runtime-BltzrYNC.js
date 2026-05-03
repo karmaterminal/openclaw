@@ -1,0 +1,145 @@
+import { c as normalizeOptionalString } from "./string-coerce-C1IzJjqi.js";
+import { r as normalizeProviderId } from "./provider-id-B5Rvwwf4.js";
+import { t as resolveAgentModelFallbackValues } from "./model-input-Lqm5A3qq.js";
+import { h as resolveModelRefFromString, t as buildAllowedModelSetWithFallbacks, y as modelKey } from "./model-selection-shared-3Ltfz4Ls.js";
+import { c as updateSessionStore, f as resolveSessionStoreEntry } from "./store-Cf_mjUkP.js";
+import "./sessions-CTeI8wwA.js";
+import { t as applyModelOverrideToSessionEntry } from "./model-overrides-Cb1Aup79.js";
+import { t as resolveModelDirectiveSelection } from "./model-selection-directive-BV8SvtHR.js";
+//#region src/auto-reply/reply/session-reset-model.ts
+function splitBody(body) {
+	const tokens = body.split(/\s+/).filter(Boolean);
+	return {
+		tokens,
+		first: tokens[0],
+		second: tokens[1],
+		rest: tokens.slice(2)
+	};
+}
+async function loadResetModelCatalog(cfg) {
+	const { loadModelCatalog } = await import("./model-catalog-Dtu2SNkr.js");
+	return loadModelCatalog({ config: cfg });
+}
+async function resolveResetFallbackModels(params) {
+	if (params.agentId) {
+		const { resolveAgentModelFallbacksOverride } = await import("./agent-scope-B2NWfkWd.js");
+		const override = resolveAgentModelFallbacksOverride(params.cfg, params.agentId);
+		if (override !== void 0) return override;
+	}
+	return resolveAgentModelFallbackValues(params.cfg.agents?.defaults?.model);
+}
+function buildSelectionFromExplicit(params) {
+	const resolved = resolveModelRefFromString({
+		raw: params.raw,
+		defaultProvider: params.defaultProvider,
+		aliasIndex: params.aliasIndex
+	});
+	if (!resolved) return;
+	const key = modelKey(resolved.ref.provider, resolved.ref.model);
+	if (params.allowedModelKeys.size > 0 && !params.allowedModelKeys.has(key)) return;
+	const isDefault = resolved.ref.provider === params.defaultProvider && resolved.ref.model === params.defaultModel;
+	return {
+		provider: resolved.ref.provider,
+		model: resolved.ref.model,
+		isDefault,
+		...resolved.alias ? { alias: resolved.alias } : void 0
+	};
+}
+function applySelectionToSession(params) {
+	const { selection, sessionEntry, sessionStore, sessionKey, storePath } = params;
+	if (!sessionEntry || !sessionStore || !sessionKey) return;
+	const { updated } = applyModelOverrideToSessionEntry({
+		entry: sessionEntry,
+		selection
+	});
+	if (!updated) return;
+	const memResolved = resolveSessionStoreEntry({
+		store: sessionStore,
+		sessionKey
+	});
+	sessionStore[memResolved.normalizedKey] = sessionEntry;
+	for (const legacyKey of memResolved.legacyKeys) delete sessionStore[legacyKey];
+	if (storePath) updateSessionStore(storePath, (store) => {
+		const resolved = resolveSessionStoreEntry({
+			store,
+			sessionKey
+		});
+		store[resolved.normalizedKey] = sessionEntry;
+		for (const legacyKey of resolved.legacyKeys) delete store[legacyKey];
+	}).catch(() => {});
+}
+async function applyResetModelOverride(params) {
+	if (!params.resetTriggered) return {};
+	const rawBody = normalizeOptionalString(params.bodyStripped);
+	if (!rawBody) return {};
+	const { tokens, first, second } = splitBody(rawBody);
+	if (!first) return {};
+	const catalog = params.modelCatalog ?? await loadResetModelCatalog(params.cfg);
+	const allowedModelKeys = buildAllowedModelSetWithFallbacks({
+		cfg: params.cfg,
+		catalog,
+		defaultProvider: params.defaultProvider,
+		defaultModel: params.defaultModel,
+		fallbackModels: await resolveResetFallbackModels({
+			cfg: params.cfg,
+			agentId: params.agentId
+		})
+	}).allowedKeys;
+	if (allowedModelKeys.size === 0) return {};
+	const providers = /* @__PURE__ */ new Set();
+	for (const key of allowedModelKeys) {
+		const slash = key.indexOf("/");
+		if (slash <= 0) continue;
+		providers.add(normalizeProviderId(key.slice(0, slash)));
+	}
+	const resolveSelection = (raw) => resolveModelDirectiveSelection({
+		raw,
+		defaultProvider: params.defaultProvider,
+		defaultModel: params.defaultModel,
+		aliasIndex: params.aliasIndex,
+		allowedModelKeys
+	});
+	let selection;
+	let consumed = 0;
+	if (providers.has(normalizeProviderId(first)) && second) {
+		const resolved = resolveSelection(`${normalizeProviderId(first)}/${second}`);
+		if (resolved.selection) {
+			selection = resolved.selection;
+			consumed = 2;
+		}
+	}
+	if (!selection) {
+		selection = buildSelectionFromExplicit({
+			raw: first,
+			defaultProvider: params.defaultProvider,
+			defaultModel: params.defaultModel,
+			aliasIndex: params.aliasIndex,
+			allowedModelKeys
+		});
+		if (selection) consumed = 1;
+	}
+	if (!selection) {
+		const resolved = resolveSelection(first);
+		if (providers.has(normalizeProviderId(first)) || first.trim().length >= 6) {
+			selection = resolved.selection;
+			if (selection) consumed = 1;
+		}
+	}
+	if (!selection) return {};
+	const cleanedBody = tokens.slice(consumed).join(" ").trim();
+	params.sessionCtx.BodyStripped = cleanedBody;
+	params.sessionCtx.BodyForCommands = cleanedBody;
+	applySelectionToSession({
+		selection,
+		sessionEntry: params.sessionEntry,
+		sessionStore: params.sessionStore,
+		sessionKey: params.sessionKey,
+		storePath: params.storePath
+	});
+	return {
+		selection,
+		cleanedBody
+	};
+}
+//#endregion
+export { applyResetModelOverride };

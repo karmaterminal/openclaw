@@ -1,0 +1,2 @@
+export declare const describeImageWithModel: (params: import("openclaw/plugin-sdk/media-understanding").ImageDescriptionRequest) => Promise<import("openclaw/plugin-sdk/media-understanding").ImageDescriptionResult>;
+export declare const describeImagesWithModel: (params: import("openclaw/plugin-sdk/media-understanding").ImagesDescriptionRequest) => Promise<import("openclaw/plugin-sdk/media-understanding").ImagesDescriptionResult>;
