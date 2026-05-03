@@ -320,8 +320,12 @@ export async function incrementCompactionCount(params: {
         }
       },
       // activeSessionKey opt protects this entry from enforce-mode pruning /
-      // disk-budget cleanup that runs inside the same lock window.
-      { activeSessionKey: normalizeStoreSessionKey(sessionKey) },
+      // disk-budget cleanup that runs inside the same lock window. Must trim
+      // before normalize: resolveSessionStoreEntry computes its normalizedKey
+      // as normalize(trim(sessionKey)), so an untrimmed normalize here would
+      // mismatch any whitespace-padded sessionKey and silently miss the
+      // preserve guard.
+      { activeSessionKey: normalizeStoreSessionKey(sessionKey.trim()) },
     );
   }
   if ((sessionIdChanged || sessionFileChanged) && cfg) {
