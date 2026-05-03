@@ -85,6 +85,7 @@ import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
 import type { ReplyMediaContext } from "./reply-media-paths.js";
 import { createReplyMediaContext } from "./reply-media-paths.runtime.js";
 import type { ReplyOperation } from "./reply-run-registry.js";
+import { resolveReplyRunFireReason } from "./run-provenance.js";
 import type { TypingSignaler } from "./typing-mode.js";
 
 type EmbeddedPiAgentRunResult = Awaited<
@@ -1473,6 +1474,12 @@ export async function runAgentTurnWithFallback(params: {
                 ...embeddedContext,
                 allowGatewaySubagentBinding: true,
                 trigger: params.isHeartbeat ? "heartbeat" : "user",
+                fireReason: resolveReplyRunFireReason({
+                  opts: params.opts,
+                  drainsContinuationDelegateQueue:
+                    effectiveRun.drainsContinuationDelegateQueue === true,
+                }),
+                parentRunId: params.opts?.parentRunId,
                 groupId: resolveGroupSessionKey(params.sessionCtx)?.id,
                 groupChannel:
                   normalizeOptionalString(params.sessionCtx.GroupChannel) ??

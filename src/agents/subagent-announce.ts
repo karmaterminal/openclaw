@@ -1185,7 +1185,11 @@ export async function runSubagentAnnounceFlow(params: {
 
       if (params.wakeOnReturn) {
         const { requestHeartbeatNow } = await import("../infra/heartbeat-wake.js");
-        requestHeartbeatNow({ sessionKey: targetRequesterSessionKey, reason: "continuation" });
+        requestHeartbeatNow({
+          sessionKey: targetRequesterSessionKey,
+          reason: "silent-wake-enrichment",
+          parentRunId: params.childRunId,
+        });
       }
 
       didAnnounce = true;

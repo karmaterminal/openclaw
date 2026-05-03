@@ -1052,6 +1052,7 @@ export async function runHeartbeatOnce(opts: {
   source?: HeartbeatWakeSource;
   intent?: HeartbeatWakeIntent;
   reason?: string;
+  parentRunId?: string;
   deps?: HeartbeatDeps;
 }): Promise<HeartbeatRunResult> {
   const cfg = opts.cfg ?? getRuntimeConfig();
@@ -1488,6 +1489,7 @@ export async function runHeartbeatOnce(opts: {
       bootstrapContextMode,
       onModelSelected: replyPrefix.onModelSelected,
       continuationTrigger,
+      parentRunId: opts.parentRunId,
     };
     const getReplyFromConfig =
       opts.deps?.getReplyFromConfig ?? (await loadHeartbeatRunnerRuntime()).getReplyFromConfig;
@@ -2068,6 +2070,7 @@ export function startHeartbeatRunner(opts: {
             intent,
             reason,
             sessionKey: requestedSessionKey,
+            parentRunId: params.parentRunId,
             deps: { runtime: state.runtime },
           });
           if (res.status === "skipped" && isRetryableHeartbeatBusySkipReason(res.reason)) {
@@ -2114,6 +2117,7 @@ export function startHeartbeatRunner(opts: {
             source: params.source,
             intent,
             reason,
+            parentRunId: params.parentRunId,
             deps: { runtime: state.runtime },
           });
         } catch (err) {
@@ -2207,6 +2211,7 @@ export function startHeartbeatRunner(opts: {
       reason: params.reason,
       agentId: params.agentId,
       sessionKey: params.sessionKey,
+      parentRunId: params.parentRunId,
       heartbeat: params.heartbeat,
       source: params.source,
       intent: params.intent,
