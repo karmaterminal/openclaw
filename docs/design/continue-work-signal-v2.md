@@ -1090,14 +1090,19 @@ sequenceDiagram
     participant Parent as parent turn
     participant Tracer as continuation-tracer facade
     participant Queue as system-event / delivery queue
+    participant Metrics as continuation queue metrics provider
+    participant Diag as diagnostic event stream
     participant Adapter as diagnostics-otel adapter
     participant Child as child or successor turn
 
     Parent->>Tracer: continuation.work / delegate.dispatch
+    Parent->>Diag: run.started fireReason=external-trigger / timer / continuation-chain
     Tracer->>Adapter: startSpan(name, attrs, traceparent?)
     Parent->>Queue: enqueue event or delivery payload with traceparent when available
+    Metrics-->>Diag: diagnostic.continuation_queue.sample(depths, rates, history)
     Queue-->>Child: drain/recover payload
     Child->>Tracer: continuation.work.fire / delegate.fire / queue.drain / compaction.released
+    Child->>Diag: run.started / run.completed fireReason + parentRunId
     Tracer->>Adapter: parse traceparent and set remote parent context
     Adapter-->>Adapter: emit span under openclaw.continuation
 ```
