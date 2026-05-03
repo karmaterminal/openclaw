@@ -1,0 +1,1 @@
+- 2026-05-03T20:23:40+00:00: workorder authored; dispatch starting; figs caveats embedded re sampling-reality + W3C best-practices + zero-overhead + bracket-parity
