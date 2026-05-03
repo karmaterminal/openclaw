@@ -2,10 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../config/config.js", () => ({
   getRuntimeConfig: vi.fn(() => ({})),
+  getRuntimeConfigSnapshot: vi.fn(() => null),
 }));
 
-import { clampDelayMs, resolveContinuationRuntimeConfig } from "./config.js";
+import { getRuntimeConfigSnapshot } from "../../config/config.js";
+import {
+  clampDelayMs,
+  resolveContinuationRuntimeConfig,
+  resolveLiveContinuationRuntimeConfig,
+} from "./config.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
+
+const getRuntimeConfigSnapshotMock = vi.mocked(getRuntimeConfigSnapshot);
 
 describe("resolveContinuationRuntimeConfig", () => {
   it("returns defaults when continuation is not configured", () => {
@@ -103,6 +111,36 @@ describe("resolveContinuationRuntimeConfig", () => {
   it("has no generationGuardTolerance field", () => {
     const config = resolveContinuationRuntimeConfig({} as never);
     expect("generationGuardTolerance" in config).toBe(false);
+  });
+
+  it("prefers the active runtime snapshot when resolving live config", () => {
+    getRuntimeConfigSnapshotMock.mockReturnValueOnce({
+      agents: { defaults: { continuation: { maxDelegatesPerTurn: 9 } } },
+    } as never);
+
+    const config = resolveLiveContinuationRuntimeConfig({
+      agents: { defaults: { continuation: { maxDelegatesPerTurn: 3 } } },
+    } as never);
+
+    expect(config.maxDelegatesPerTurn).toBe(9);
+  });
+
+  it("falls back to the provided config when no runtime snapshot is active", () => {
+    const config = resolveLiveContinuationRuntimeConfig({
+      agents: { defaults: { continuation: { maxDelegatesPerTurn: 4 } } },
+    } as never);
+
+    expect(config.maxDelegatesPerTurn).toBe(4);
+  });
+
+  it("uses active runtime snapshot defaults when continuation config was unset", () => {
+    getRuntimeConfigSnapshotMock.mockReturnValueOnce({} as never);
+
+    const config = resolveLiveContinuationRuntimeConfig({
+      agents: { defaults: { continuation: { maxDelegatesPerTurn: 6 } } },
+    } as never);
+
+    expect(config.maxDelegatesPerTurn).toBe(5);
   });
 });
 

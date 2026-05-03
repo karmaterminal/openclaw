@@ -59,7 +59,7 @@ import {
   stagedPostCompactionDelegateCount,
   takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
-import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import { checkContextPressure } from "../continuation/context-pressure.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import {
@@ -1432,7 +1432,8 @@ export async function runReplyAgent(params: {
     // crossed. Runs after setPhase("running") for state-tracking reasons,
     // but unconditionally before the actual provider request below.
     if (activeSessionEntry && sessionKey) {
-      const { contextPressureThreshold, earlyWarningBand } = resolveContinuationRuntimeConfig(cfg);
+      const { contextPressureThreshold, earlyWarningBand } =
+        resolveLiveContinuationRuntimeConfig(cfg);
       const contextWindowTokens =
         resolveContextTokensForModel({
           cfg,
@@ -2111,7 +2112,7 @@ export async function runReplyAgent(params: {
     let bracketTokensAccumulated = false;
     if (effectiveContinuationSignal && sessionKey) {
       const { maxChainLength, defaultDelayMs, minDelayMs, maxDelayMs, costCapTokens } =
-        resolveContinuationRuntimeConfig(cfg);
+        resolveLiveContinuationRuntimeConfig(cfg);
 
       {
         // continuation scheduling block
@@ -2522,7 +2523,7 @@ export async function runReplyAgent(params: {
       }
       if (toolDelegates.length > 0) {
         const { maxChainLength, minDelayMs, maxDelayMs, costCapTokens, maxDelegatesPerTurn } =
-          resolveContinuationRuntimeConfig(cfg);
+          resolveLiveContinuationRuntimeConfig(cfg);
         // If a bracket-signal delegate was already spawned this turn, count it
         // against the per-turn cap so mixed-signal turns cannot exceed the limit.
         const bracketDelegateCount = effectiveContinuationSignal?.kind === "delegate" ? 1 : 0;
@@ -2885,7 +2886,7 @@ export async function runReplyAgent(params: {
           agentTo: followupRun.originatingTo ?? undefined,
           agentThreadId: followupRun.originatingThreadId ?? undefined,
         },
-        maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
+        maxChainLength: resolveLiveContinuationRuntimeConfig(cfg).maxChainLength,
         // Pass a fresh-loader so the hedge timer re-loads the
         // chain state from the persisted session entry at fire time rather
         // than re-using the snapshot captured at arm time.
