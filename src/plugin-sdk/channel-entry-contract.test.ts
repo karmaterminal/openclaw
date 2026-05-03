@@ -218,14 +218,10 @@ async function expectBuiltArtifactNodeRequireFastPath(
     fs.writeFileSync(sidecarPath, "module.exports = { sentinel: 7 };\n", "utf8");
 
     expect(
-      channelEntryContract.loadBundledEntryExportSync<number>(
-        pathToFileURL(importerPath).href,
-        {
-          specifier: "./fast-path-sidecar.cjs",
-          exportName: "sentinel",
-        },
-        { installRuntimeDeps: false },
-      ),
+      channelEntryContract.loadBundledEntryExportSync<number>(pathToFileURL(importerPath).href, {
+        specifier: "./fast-path-sidecar.cjs",
+        exportName: "sentinel",
+      }),
     ).toBe(7);
 
     const profileLine = errorSpy.mock.calls

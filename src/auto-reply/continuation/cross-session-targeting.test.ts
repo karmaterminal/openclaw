@@ -6,6 +6,8 @@ import {
 } from "./targeting.js";
 
 describe("continuation cross-session targeting", () => {
+  type EnqueueSystemEvent = typeof import("../../infra/system-events.js").enqueueSystemEvent;
+
   it("defaults returns to the dispatching session", () => {
     expect(
       resolveContinuationReturnTargetSessionKeys({
@@ -54,14 +56,15 @@ describe("continuation cross-session targeting", () => {
 
   it("queues byte-identical return payloads for each target session", async () => {
     const enqueued: QueuedSessionDeliveryPayload[] = [];
-    const systemEvents: Array<{ text: string; sessionKey?: string }> = [];
+    const systemEvents: Array<{ text: string; sessionKey: string }> = [];
     const enqueueSessionDelivery = vi.fn(async (payload: QueuedSessionDeliveryPayload) => {
       enqueued.push(payload);
       return `delivery-${enqueued.length}`;
     });
     const ackSessionDelivery = vi.fn(async () => undefined);
-    const enqueueSystemEvent = vi.fn((text: string, opts?: { sessionKey?: string }) => {
-      systemEvents.push({ text, sessionKey: opts?.sessionKey });
+    const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>((text, opts) => {
+      systemEvents.push({ text, sessionKey: opts.sessionKey });
+      return true;
     });
     const requestHeartbeatNow = vi.fn();
 
