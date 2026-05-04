@@ -556,13 +556,24 @@ describe("subagent-announce continuation drain (F7)", () => {
     );
   });
 
-  // Regression test for karmaterminal/openclaw#578 (cohort fire-1 scenario):
+  // Regression test for karmaterminal/openclaw#580 (cohort fire-1 scenario;
+  // #578 substrate-evidence anchor, #579 closed dupe):
   // continue_delegate({ targetSessionKey: "agent:main:main", mode: "silent-wake" })
   // must route the return to the named single target, not to the dispatcher.
-  // The cohort 5-seat byte-pin showed the singular `continuationTargetSessionKey`
-  // form was silently retargeting back to the dispatcher despite tool-surface
-  // acceptance + state_json preservation. Plural form is exercised above; this
-  // test pins the singular form's path through the same announce-return seam.
+  // Plural `continuationTargetSessionKeys` form is exercised above; this test
+  // pins the singular form's path through the same announce-return seam.
+  //
+  // Cohort 3-host convergent refinement (~02:37Z 2026-05-04): branch-entry IS
+  // honored at this layer (the test passes); the substrate-finding has narrowed
+  // to the durable-store step inside `enqueueSessionDelivery` /
+  // `ackSessionDelivery` ordering — file substrate at
+  // `<state-dir>/session-delivery-queue/` stays empty for named recipients
+  // because `targeting.ts:114` immediately acks the file after the in-memory
+  // `enqueueSystemEvent` delivery. Whether durable-write should persist for
+  // non-attached recipients is an open semantic question for figs.
+  // This test pins the branch-entry contract; the I/O-level enqueue-vs-ack
+  // contract is pinned by `cross-session-targeting.test.ts` against the real
+  // `enqueueContinuationReturnDeliveries` with mocked deps.
   it("routes singular continuationTargetSessionKey to the named recipient (not dispatcher)", async () => {
     loadSessionStoreMock.mockImplementation(
       () =>
