@@ -634,6 +634,16 @@ describe("subagent-announce continuation drain (F7)", () => {
     expect((enqueueCall as { targetSessionKeys: string[] })?.targetSessionKeys).not.toContain(
       "agent:main:discord:channel:1466192485440164011",
     );
+    // Idempotency-key shape carries an index + sessionKey suffix per RFC §6.7
+    // so the durable session-delivery-queue file under the recipient's key
+    // resolves to a stable hash that the recovery loop can replay
+    // post-restart (the durable-write contract that #578/#580 was filed
+    // against). The actual file-write + ack-skip behavior is exercised
+    // against the real `enqueueContinuationReturnDeliveries` in
+    // `cross-session-targeting.test.ts`.
+    expect((enqueueCall as { idempotencyKeyBase: string })?.idempotencyKeyBase).toMatch(
+      /^continuation-return:/,
+    );
   });
 
   it("fanoutMode=all spends one chain step per completion, not per recipient", async () => {

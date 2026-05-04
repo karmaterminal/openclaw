@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resetContinuationTracer,
@@ -7,7 +9,15 @@ import {
   type StartSpanOptions,
   type Tracer,
 } from "../../infra/continuation-tracer.js";
-import type { QueuedSessionDeliveryPayload } from "../../infra/session-delivery-queue-storage.js";
+import type {
+  QueuedSessionDelivery,
+  QueuedSessionDeliveryPayload,
+} from "../../infra/session-delivery-queue-storage.js";
+import {
+  ackSessionDelivery as realAckSessionDelivery,
+  enqueueSessionDelivery as realEnqueueSessionDelivery,
+} from "../../infra/session-delivery-queue-storage.js";
+import { withTempDir } from "../../test-helpers/temp-dir.js";
 import {
   enqueueContinuationReturnDeliveries,
   resolveContinuationReturnTargetSessionKeys,
@@ -121,7 +131,13 @@ describe("continuation cross-session targeting", () => {
       },
     ]);
     expect(requestHeartbeatNow).toHaveBeenCalledTimes(2);
-    expect(ackSessionDelivery).toHaveBeenCalledTimes(2);
+    // Per #578/#580 fix: do NOT immediately ack the durable file. The
+    // in-memory enqueueSystemEvent call above is process-local; non-attached
+    // recipients (different process / pre-restart) cannot see it. The durable
+    // queue file must persist until the recipient consumes it via the recovery
+    // loop. Acking here would destroy the only durable channel and leave
+    // targeted recipients silently unreached.
+    expect(ackSessionDelivery).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -277,5 +293,101 @@ describe("continuation cross-session targeting", () => {
     expect(attrs["fanout.delivered_count"]).toBe(50);
     expect(attrs["fanout.recipient.outcomes"]).toEqual(targetSessionKeys.map(() => "delivered"));
     expect(attrs["chain.step.remaining"]).toBe(9);
+  });
+
+  // Real-chain regression for karmaterminal/openclaw#578/#580.
+  // Cohort verdict (Cael nonce-test 02:46Z 2026-05-04): explicit-targeted
+  // deliveries do NOT reach the named recipient at runtime — 0 nonce-hits in
+  // #heartbeat for three probes despite tool-surface accepting the param.
+  // Bug-shape: targeting.ts called `ackSessionDelivery` immediately after
+  // `enqueueSessionDelivery` + `enqueueSystemEvent`. The ack renamed the
+  // queue file to `.delivered` and unlinked it (storage.ts:326-340), leaving
+  // ZERO durable record for non-attached recipients (different process
+  // and/or pre-restart) to pick up. This test exercises the REAL
+  // `enqueueSessionDelivery` + `ackSessionDelivery` chain (no I/O mocking
+  // for the queue layer per figs's directive) and asserts the queue file
+  // PERSISTS in the flat `<state-dir>/session-delivery-queue/<id>.json`
+  // location until the recovery loop drains it post-restart.
+  it("persists the durable queue file for non-attached recipients (no immediate ack)", async () => {
+    await withTempDir({ prefix: "openclaw-targeting-durable-" }, async (stateDir) => {
+      const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
+      const requestHeartbeatNow = vi.fn();
+
+      const result = await enqueueContinuationReturnDeliveries(
+        {
+          targetSessionKeys: ["agent:main:other"],
+          text: "[continuation:enrichment-return] non-attached recipient",
+          idempotencyKeyBase: "continuation-return:durable-test",
+          stateDir,
+          wakeRecipients: true,
+          childRunId: "run-durable",
+        },
+        {
+          enqueueSessionDelivery: realEnqueueSessionDelivery,
+          ackSessionDelivery: realAckSessionDelivery,
+          enqueueSystemEvent,
+          requestHeartbeatNow,
+        },
+      );
+
+      expect(result).toMatchObject({ enqueued: 1, delivered: 1 });
+
+      const queueDir = path.join(stateDir, "session-delivery-queue");
+      const entries = await fs.readdir(queueDir);
+      const jsonFiles = entries.filter((entry) => entry.endsWith(".json"));
+      const deliveredMarkers = entries.filter((entry) => entry.endsWith(".delivered"));
+
+      // Per #578/#580 fix: durable queue file must persist (NOT renamed to
+      // .delivered, NOT unlinked). The recovery loop on next gateway
+      // restart picks it up via `recoverPendingRestartContinuationDeliveries`.
+      expect(jsonFiles).toHaveLength(1);
+      expect(deliveredMarkers).toHaveLength(0);
+
+      const persistedPath = path.join(queueDir, jsonFiles[0]);
+      const persisted = JSON.parse(
+        await fs.readFile(persistedPath, "utf-8"),
+      ) as QueuedSessionDelivery;
+      expect(persisted.kind).toBe("systemEvent");
+      expect(persisted.sessionKey).toBe("agent:main:other");
+      expect(persisted.idempotencyKey).toBe("continuation-return:durable-test:0:agent:main:other");
+    });
+  });
+
+  it("persists one durable queue file per recipient on multi-target fanout", async () => {
+    await withTempDir({ prefix: "openclaw-targeting-fanout-durable-" }, async (stateDir) => {
+      await enqueueContinuationReturnDeliveries(
+        {
+          targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+          text: "[continuation:enrichment-return] fanout durable",
+          idempotencyKeyBase: "continuation-return:fanout-durable",
+          stateDir,
+          wakeRecipients: false,
+        },
+        {
+          enqueueSessionDelivery: realEnqueueSessionDelivery,
+          ackSessionDelivery: realAckSessionDelivery,
+          enqueueSystemEvent: vi.fn<EnqueueSystemEvent>(() => true),
+          requestHeartbeatNow: vi.fn(),
+        },
+      );
+
+      const queueDir = path.join(stateDir, "session-delivery-queue");
+      const entries = await fs.readdir(queueDir);
+      const jsonFiles = entries.filter((entry) => entry.endsWith(".json"));
+
+      expect(jsonFiles).toHaveLength(2);
+      const persisted: QueuedSessionDelivery[] = [];
+      for (const file of jsonFiles) {
+        persisted.push(
+          JSON.parse(
+            await fs.readFile(path.join(queueDir, file), "utf-8"),
+          ) as QueuedSessionDelivery,
+        );
+      }
+      expect(persisted.map((entry) => entry.sessionKey).toSorted()).toEqual([
+        "agent:main:root",
+        "agent:main:sibling",
+      ]);
+    });
   });
 });
