@@ -556,6 +556,75 @@ describe("subagent-announce continuation drain (F7)", () => {
     );
   });
 
+  // Regression test for karmaterminal/openclaw#578 (cohort fire-1 scenario):
+  // continue_delegate({ targetSessionKey: "agent:main:main", mode: "silent-wake" })
+  // must route the return to the named single target, not to the dispatcher.
+  // The cohort 5-seat byte-pin showed the singular `continuationTargetSessionKey`
+  // form was silently retargeting back to the dispatcher despite tool-surface
+  // acceptance + state_json preservation. Plural form is exercised above; this
+  // test pins the singular form's path through the same announce-return seam.
+  it("routes singular continuationTargetSessionKey to the named recipient (not dispatcher)", async () => {
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        ({
+          "agent:main:subagent:test": {
+            sessionId: "session-child",
+            updatedAt: Date.now(),
+          },
+          "agent:main:discord:channel:1466192485440164011": {
+            sessionId: "session-dispatcher",
+            updatedAt: Date.now(),
+          },
+          "agent:main:main": {
+            sessionId: "session-target",
+            updatedAt: Date.now(),
+          },
+        }) as Record<string, unknown>,
+    );
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-singular-targeted",
+      requesterSessionKey: "agent:main:discord:channel:1466192485440164011",
+      requesterDisplayKey: "discord-channel",
+      task: "[continuation:chain-hop:1] OV-1 fire-1 reproduction",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "received delegate at agent:main:main",
+      silentAnnounce: true,
+      wakeOnReturn: true,
+      continuationTargetSessionKey: "agent:main:main",
+    });
+
+    // The resolver must see the singular targetSessionKey (not the
+    // dispatcher's session) and the dispatcher only as the fallback default.
+    expect(
+      continuationTargetingMock.resolveContinuationReturnTargetSessionKeys,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultSessionKey: "agent:main:discord:channel:1466192485440164011",
+        targetSessionKey: "agent:main:main",
+      }),
+    );
+    // The enqueue must target the named recipient ONLY — not the dispatcher.
+    expect(continuationTargetingMock.enqueueContinuationReturnDeliveries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetSessionKeys: ["agent:main:main"],
+        wakeRecipients: true,
+        childRunId: "run-singular-targeted",
+      }),
+    );
+    const enqueueCall =
+      continuationTargetingMock.enqueueContinuationReturnDeliveries.mock.calls[0]?.[0];
+    expect((enqueueCall as { targetSessionKeys: string[] })?.targetSessionKeys).not.toContain(
+      "agent:main:discord:channel:1466192485440164011",
+    );
+  });
+
   it("fanoutMode=all spends one chain step per completion, not per recipient", async () => {
     const knownSessionKeys = [
       "agent:main:main",
