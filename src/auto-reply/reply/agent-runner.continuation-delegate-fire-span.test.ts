@@ -473,3 +473,149 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// #580 Finding 3 (runtime-path-divergence): the runner-seat tool-delegate
+// dispatch closure (`doToolSpawn` in `agent-runner.ts`) must propagate
+// `continuationTargetSessionKey` / `continuationTargetSessionKeys` /
+// `continuationFanoutMode` through to `spawnSubagentDirect`. Without these,
+// the call-site at `subagent-announce.ts:1216` evaluates `hasContinuationTargeting`
+// to false even when the tool was invoked with `targetSessionKey=...`, and
+// completion routes to the dispatcher instead of the named recipient(s).
+//
+// Path B (`dispatchToolDelegates` in `delegate-dispatch.ts:255-267`) was given
+// targeting in PR #551; Path A in `agent-runner.ts:2643-2670` was missed.
+// Path A drains the queue first (immediate-due delegates), so the bug only
+// surfaces in production runs where Path A is the live dispatcher.
+// ---------------------------------------------------------------------------
+describe("runReplyAgent :: tool-delegate targeting routes through hasContinuationTargeting branch", () => {
+  it("singular targetSessionKey: tool delegate threads continuationTargetSessionKey to spawnSubagentDirect", async () => {
+    const sessionKey = "continuation-delegate-targeting-singular";
+    const targetSessionKey = "agent:main:discord:channel:1466192485440164011";
+    const run = createContinuationRun({ sessionKey });
+    runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      enqueuePendingDelegate(sessionKey, {
+        task: "targeted ambient probe",
+        mode: "silent-wake",
+        targetSessionKey,
+      });
+      return {
+        payloads: [{ text: "Spawning a targeted delegate." }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      };
+    });
+
+    await runDelegateTurn(run, { [sessionKey]: run.sessionEntry });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      continuationTargetSessionKey: targetSessionKey,
+      silentAnnounce: true,
+      wakeOnReturn: true,
+    });
+  });
+
+  it("plural targetSessionKeys: tool delegate threads continuationTargetSessionKeys array to spawnSubagentDirect", async () => {
+    const sessionKey = "continuation-delegate-targeting-plural";
+    const targetSessionKeys = ["agent:main:discord:channel:a", "agent:main:discord:channel:b"];
+    const run = createContinuationRun({ sessionKey });
+    runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      enqueuePendingDelegate(sessionKey, {
+        task: "byte-identical fan-out probe",
+        targetSessionKeys,
+      });
+      return {
+        payloads: [{ text: "Fanning out." }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      };
+    });
+
+    await runDelegateTurn(run, { [sessionKey]: run.sessionEntry });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      continuationTargetSessionKeys: targetSessionKeys,
+    });
+  });
+
+  it("fanoutMode='tree': tool delegate threads continuationFanoutMode to spawnSubagentDirect", async () => {
+    const sessionKey = "continuation-delegate-targeting-fanout-tree";
+    const run = createContinuationRun({ sessionKey });
+    runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      enqueuePendingDelegate(sessionKey, {
+        task: "tree fan-out",
+        fanoutMode: "tree",
+      });
+      return {
+        payloads: [{ text: "Walking the tree." }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      };
+    });
+
+    await runDelegateTurn(run, { [sessionKey]: run.sessionEntry });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      continuationFanoutMode: "tree",
+    });
+  });
+
+  it("timer-deferred dispatch preserves targetSessionKey across the setTimeout boundary via DelayedContinuationReservation", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "continuation-delegate-targeting-deferred";
+    const targetSessionKey = "agent:main:discord:channel:future";
+    const run = createContinuationRun({ sessionKey });
+    runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      enqueuePendingDelegate(sessionKey, {
+        task: "deferred targeted probe",
+        delayMs: 1_000,
+        mode: "silent-wake",
+        targetSessionKey,
+      });
+      return {
+        payloads: [{ text: "Deferred dispatch." }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      };
+    });
+
+    await runDelegateTurn(run, { [sessionKey]: run.sessionEntry });
+
+    // Pre-fire: the reservation is armed, no spawn yet.
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      continuationTargetSessionKey: targetSessionKey,
+      silentAnnounce: true,
+      wakeOnReturn: true,
+    });
+  });
+
+  it("default routing (no target): tool delegate spawn omits continuationTarget* fields, regression guard for return-to-dispatcher", async () => {
+    const sessionKey = "continuation-delegate-targeting-default";
+    const run = createContinuationRun({ sessionKey });
+    runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      enqueuePendingDelegate(sessionKey, {
+        task: "default-routing probe",
+        mode: "silent",
+      });
+      return {
+        payloads: [{ text: "Default routing." }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      };
+    });
+
+    await runDelegateTurn(run, { [sessionKey]: run.sessionEntry });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    const spawnArgs = spawnSubagentDirectMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(spawnArgs.continuationTargetSessionKey).toBeUndefined();
+    expect(spawnArgs.continuationTargetSessionKeys).toBeUndefined();
+    expect(spawnArgs.continuationFanoutMode).toBeUndefined();
+    // Silent mode still flows through, no regression.
+    expect(spawnArgs.silentAnnounce).toBe(true);
+    expect(spawnArgs.wakeOnReturn).toBeUndefined();
+  });
+});

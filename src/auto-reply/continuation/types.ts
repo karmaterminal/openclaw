@@ -75,6 +75,11 @@ export type PendingContinuationDelegate = {
 /**
  * A delayed delegate reservation tracked between scheduling and spawn.
  * Timers are volatile (in-memory only) unless TaskFlow backing is enabled.
+ *
+ * Targeting fields (`targetSessionKey` / `targetSessionKeys` / `fanoutMode`)
+ * preserve `continue_delegate(targetSessionKey=...)` routing across the
+ * `setTimeout` boundary so timer-deferred targeted delegates reach the
+ * `hasContinuationTargeting` branch in `subagent-announce.ts`.
  */
 export type DelayedContinuationReservation = {
   id: string;
@@ -86,6 +91,9 @@ export type DelayedContinuationReservation = {
   silent?: boolean;
   silentWake?: boolean;
   traceparent?: string;
+  targetSessionKey?: string;
+  targetSessionKeys?: string[];
+  fanoutMode?: "tree" | "all";
 };
 
 // ---------------------------------------------------------------------------
