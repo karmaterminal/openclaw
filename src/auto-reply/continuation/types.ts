@@ -63,6 +63,13 @@ export type PendingContinuationDelegate = {
   targetSessionKeys?: string[];
   fanoutMode?: ContinuationDelegateFanoutMode;
   traceparent?: string;
+  /**
+   * Internal TaskFlow metadata carried from consume → dispatch so downstream
+   * spawn/release failures can flip the row from succeeded → failed without
+   * re-querying or guessing revision state.
+   */
+  flowId?: string;
+  expectedRevision?: number;
 };
 
 /**

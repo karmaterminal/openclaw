@@ -16,6 +16,7 @@ import { spawnSubagentDirect } from "../../agents/subagent-spawn.js";
 import type { SpawnSubagentContext } from "../../agents/subagent-spawn.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { failFlow } from "../../tasks/task-flow-registry.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
 import { consumePendingDelegates, peekSoonestUnmaturedDelegateDueAt } from "./delegate-store.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
@@ -141,6 +142,22 @@ export type DelegateDispatchContext = {
  * Called by agent-runner.ts after the response finalizes.
  * Each delegate goes through chain/cost enforcement and is spawned via spawnSubagentDirect.
  */
+function markDelegateFailed(
+  delegate: { flowId?: string; expectedRevision?: number; task: string },
+  summary: string,
+): void {
+  if (!delegate.flowId || delegate.expectedRevision === undefined) {
+    return;
+  }
+  failFlow({
+    flowId: delegate.flowId,
+    expectedRevision: delegate.expectedRevision,
+    currentStep: "Delegate spawn failed",
+    blockedSummary: summary,
+    updatedAt: Date.now(),
+  });
+}
+
 export async function dispatchToolDelegates(params: {
   sessionKey: string;
   chainState: ChainState;
@@ -187,13 +204,12 @@ export async function dispatchToolDelegates(params: {
   const delegatesOverLimit = toolDelegates.slice(maxDelegatesPerTurn);
 
   for (const dropped of delegatesOverLimit) {
+    const summary = `Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}).`;
     log.info(
       `[continuation:delegate-rejected] maxDelegatesPerTurn=${maxDelegatesPerTurn} task=${dropped.task.slice(0, 80)} session=${sessionKey}`,
     );
-    enqueueSystemEvent(
-      `[continuation] Tool delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}). Task: ${dropped.task}`,
-      { sessionKey },
-    );
+    markDelegateFailed(dropped, summary);
+    enqueueSystemEvent(`[continuation] ${summary} Task: ${dropped.task}`, { sessionKey });
   }
 
   let dispatched = 0;
@@ -213,13 +229,12 @@ export async function dispatchToolDelegates(params: {
     });
 
     if (budgetCheck) {
+      const summary = `Tool delegate rejected: ${budgetCheck}.`;
       log.info(
         `[continuation:delegate-rejected] ${budgetCheck} task=${delegate.task.slice(0, 80)} session=${sessionKey}`,
       );
-      enqueueSystemEvent(
-        `[continuation] Tool delegate rejected: ${budgetCheck}. Task: ${delegate.task}`,
-        { sessionKey },
-      );
+      markDelegateFailed(delegate, summary);
+      enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, { sessionKey });
       rejected++;
       continue;
     }
@@ -266,23 +281,24 @@ export async function dispatchToolDelegates(params: {
         dispatched++;
         currentChainCount = nextHop;
       } else {
+        const summary = `DELEGATE spawn ${result.status}: delegation was not accepted.`;
         log.info(
           `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
         );
-        enqueueSystemEvent(
-          `[continuation] DELEGATE spawn ${result.status}: delegation was not accepted. Task: ${delegate.task}`,
-          { sessionKey },
-        );
+        markDelegateFailed(delegate, summary);
+        enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
+          sessionKey,
+        });
         rejected++;
       }
     } catch (err) {
-      log.info(
-        `[continuation:delegate-spawn-failed] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey}`,
-      );
-      enqueueSystemEvent(
-        `[continuation] DELEGATE spawn failed: ${String(err)}. Task: ${delegate.task}`,
-        { sessionKey },
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      const summary = `DELEGATE spawn failed: ${message}`;
+      log.info(`[continuation:delegate-spawn-failed] error=${message} session=${sessionKey}`);
+      markDelegateFailed(delegate, summary);
+      enqueueSystemEvent(`[continuation] ${summary}. Task: ${delegate.task}`, {
+        sessionKey,
+      });
       rejected++;
     }
   }

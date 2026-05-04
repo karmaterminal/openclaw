@@ -382,6 +382,8 @@ function flowToDelegate(
       : {}),
     ...(state.fanoutMode ? { fanoutMode: state.fanoutMode } : {}),
     ...(state.traceparent ? { traceparent: state.traceparent } : {}),
+    flowId: flow.flowId,
+    expectedRevision: flow.revision,
   };
 }
 
@@ -465,11 +467,11 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
       currentStep: "Released to continuation scheduler",
       stateJson: { ...state, releasedAt: Date.now() },
     });
-    if (!finished.applied) {
+    if (!finished.applied || !finished.flow) {
       continue;
     }
 
-    delegates.push(flowToDelegate(flow, state));
+    delegates.push(flowToDelegate(finished.flow, state));
   }
 
   return delegates;
