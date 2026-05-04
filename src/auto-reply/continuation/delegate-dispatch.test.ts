@@ -315,7 +315,7 @@ describe("tool delegate dispatch contract", () => {
     );
   });
 
-  it("counts spawn rejections and thrown spawn errors without aborting later delegates", async () => {
+  it("marks rejected/thrown delegates failed without aborting later delegates", async () => {
     const sessionKey = "session-delegate-spawn-failure";
     enqueuePendingDelegate(sessionKey, { task: "rejected" });
     enqueuePendingDelegate(sessionKey, { task: "throws" });
@@ -324,6 +324,10 @@ describe("tool delegate dispatch contract", () => {
       .mockResolvedValueOnce({ status: "forbidden" })
       .mockRejectedValueOnce(new Error("spawn unavailable"))
       .mockResolvedValueOnce({ status: "accepted" });
+
+    const queuedBefore = [...mockFlows.values()]
+      .filter((f) => f.ownerKey === sessionKey && f.status === "queued")
+      .map((f) => f.flowId as string);
 
     const result = await dispatchToolDelegates({
       sessionKey,
@@ -340,9 +344,32 @@ describe("tool delegate dispatch contract", () => {
       { sessionKey },
     );
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(
-      expect.stringContaining("DELEGATE spawn failed: Error: spawn unavailable"),
+      expect.stringContaining("DELEGATE spawn failed: spawn unavailable"),
       { sessionKey },
     );
+    expect(mockFlows.get(queuedBefore[0])?.status).toBe("failed");
+    expect(mockFlows.get(queuedBefore[1])?.status).toBe("failed");
+    expect(mockFlows.get(queuedBefore[2])?.status).toBe("succeeded");
+  });
+
+  it("marks over-limit delegates failed instead of leaving them as silent success", async () => {
+    const sessionKey = "session-delegate-over-limit-status";
+    for (let index = 0; index < 6; index++) {
+      enqueuePendingDelegate(sessionKey, { task: `delegate-${index}` });
+    }
+
+    const queuedBefore = [...mockFlows.values()]
+      .filter((f) => f.ownerKey === sessionKey && f.status === "queued")
+      .map((f) => f.flowId as string);
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(mockFlows.get(queuedBefore[5])?.status).toBe("failed");
   });
 });
 
@@ -370,11 +397,10 @@ describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => 
   // Pin the contract here so a refactor that introduces retry semantics
   // OR moves finishFlow to after-spawn-success will surface as a test
   // failure rather than a silent invariant change. Architectural decision
-  // (one-shot-loss vs retry vs inspection-shape via failFlow) is figs's call;
-  // this test pins the CURRENT invariant so the call lands as a deliberate
-  // change, not an inferred drift.
+  // figs's call landed on the honest branch: keep one-shot / no-retry
+  // semantics, but do not silently present spawn failure as success.
 
-  it("leaves consumed flows in succeeded status after spawn rejection", async () => {
+  it("marks consumed flows failed after spawn rejection", async () => {
     const sessionKey = "session-449-rejected";
     enqueuePendingDelegate(sessionKey, { task: "rejected-task" });
     spawnSubagentDirectMock.mockResolvedValueOnce({ status: "forbidden" });
@@ -396,18 +422,12 @@ describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => 
     expect(result.dispatched).toBe(0);
     expect(result.rejected).toBe(1);
 
-    // Substrate-state assertion: the TaskFlow record is in `succeeded` state
-    // (one-shot-loss invariant). The consumePendingDelegates call already
-    // ran finishFlow; the spawn-rejection does NOT roll the row back to
-    // queued, does NOT mark it as failed, does NOT increment a retry-count.
-    // If a future refactor moves finishFlow to after-spawn-success OR adds
-    // retry semantics, this assertion fails — and that failure is the signal
-    // that the architectural-invariant changed deliberately (or accidentally).
+    // Honest failure visibility on the same one-shot substrate.
     const finalized = mockFlows.get(flowId);
-    expect(finalized?.status).toBe("succeeded");
+    expect(finalized?.status).toBe("failed");
   });
 
-  it("leaves consumed flows in succeeded status after spawn throws", async () => {
+  it("marks consumed flows failed after spawn throws", async () => {
     const sessionKey = "session-449-thrown";
     enqueuePendingDelegate(sessionKey, { task: "throwing-task" });
     spawnSubagentDirectMock.mockRejectedValueOnce(new Error("spawn unavailable"));
@@ -428,19 +448,12 @@ describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => 
     expect(result.dispatched).toBe(0);
     expect(result.rejected).toBe(1);
 
-    // Same invariant for the throw-path: spawn throwing does NOT change
-    // the TaskFlow state from succeeded back to queued/failed. Substrate
-    // remains one-shot-loss; only the system event captures the failure.
+    // Same shape for the throw-path: no retry, but durable failed-state.
     const finalized = mockFlows.get(flowId);
-    expect(finalized?.status).toBe("succeeded");
+    expect(finalized?.status).toBe("failed");
   });
 
-  it("preserves succeeded status across mixed spawn outcomes (rejected + thrown + accepted)", async () => {
-    // Mirror of existing "counts spawn rejections and thrown spawn errors
-    // without aborting later delegates" test, but with the substrate-state
-    // assertion added. Pins that mixed outcomes don't accidentally roll any
-    // record back — every consumed delegate stays in succeeded regardless of
-    // its individual spawn outcome.
+  it("preserves per-delegate terminal truth across mixed spawn outcomes (rejected + thrown + accepted)", async () => {
     const sessionKey = "session-449-mixed";
     enqueuePendingDelegate(sessionKey, { task: "rejected" });
     enqueuePendingDelegate(sessionKey, { task: "throws" });
@@ -462,11 +475,8 @@ describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => 
       maxChainLength: 10,
     });
 
-    // All three flows reach `succeeded` status regardless of individual
-    // spawn outcome. The one-shot-loss invariant holds uniformly.
-    for (const flowId of queuedBefore) {
-      const finalized = mockFlows.get(flowId);
-      expect(finalized?.status).toBe("succeeded");
-    }
+    expect(mockFlows.get(queuedBefore[0])?.status).toBe("failed");
+    expect(mockFlows.get(queuedBefore[1])?.status).toBe("failed");
+    expect(mockFlows.get(queuedBefore[2])?.status).toBe("succeeded");
   });
 });
