@@ -11,6 +11,7 @@ Reviewed target:
 - Head: `3cac0d327e5f7300ff99215cc2a34254cf4c565a`
 - Base: upstream `v2026.5.2` tag `8b2a6e57fef6c582ec6d27b85150616f9e3a7ba4`
 - Diff shape at this HEAD: `318 files changed, 34602 insertions(+), 876 deletions(-)`
+- Follow-up issue for this REQUEST_CHANGES verdict: https://github.com/karmaterminal/openclaw/issues/594
 
 Note: the original workorder's older `351 changed files` count is stale for this REDUX head.
 
