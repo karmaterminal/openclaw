@@ -1113,7 +1113,7 @@ function classifyTarget(arg, cwd) {
   if (relative.startsWith("src/commands/")) {
     return isCommandsLightTarget(relative) ? "commandLight" : "command";
   }
-  if (relative.startsWith("src/auto-reply/")) {
+  if (relative === "src/auto-reply" || relative.startsWith("src/auto-reply/")) {
     return "autoReply";
   }
   if (relative.startsWith("src/agents/")) {
