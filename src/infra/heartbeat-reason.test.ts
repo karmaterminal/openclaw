@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeHeartbeatWakeReason } from "./heartbeat-reason.js";
+import {
+  isHeartbeatEventDrivenReason,
+  normalizeHeartbeatWakeReason,
+  resolveHeartbeatReasonKind,
+} from "./heartbeat-reason.js";
 
 describe("heartbeat-reason", () => {
   it.each([
@@ -9,4 +13,12 @@ describe("heartbeat-reason", () => {
   ])("normalizes wake reasons for %j", ({ value, expected }) => {
     expect(normalizeHeartbeatWakeReason(value)).toBe(expected);
   });
+
+  it.each(["continuation", "silent-wake-enrichment", "delegate-return"])(
+    "classifies %s as an event-driven wake",
+    (reason) => {
+      expect(resolveHeartbeatReasonKind(reason)).toBe("wake");
+      expect(isHeartbeatEventDrivenReason(reason)).toBe(true);
+    },
+  );
 });
