@@ -85,6 +85,9 @@ export type DelayedContinuationReservation = {
   plannedHop: number;
   silent?: boolean;
   silentWake?: boolean;
+  targetSessionKey?: string;
+  targetSessionKeys?: string[];
+  fanoutMode?: ContinuationDelegateFanoutMode;
   traceparent?: string;
 };
 

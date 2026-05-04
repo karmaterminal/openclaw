@@ -7,6 +7,7 @@ import {
   abortEmbeddedPiRun,
   isEmbeddedPiRunActive,
 } from "../../agents/pi-embedded-runner/runs.js";
+import { createContinueDelegateTool } from "../../agents/tools/continue-delegate-tool.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import {
@@ -415,6 +416,32 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     expect(dispatch.traceparent).toBe("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
     expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
       traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+    });
+  });
+
+  it("tool-delegate immediate dispatch preserves singular targetSessionKey into spawned continuation run", async () => {
+    const sessionKey = "continuation-delegate-targeted-tool";
+    const targetSessionKey = "agent:main:discord:channel:1466192485440164011";
+    const run = createContinuationRun({ sessionKey });
+    runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      const tool = createContinueDelegateTool({ agentSessionKey: sessionKey });
+      await tool.execute("call-targeted-delegate", {
+        task: "return this shard to the named recipient",
+        mode: "silent-wake",
+        targetSessionKey,
+      });
+      return {
+        payloads: [{ text: "Queued targeted delegate." }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      };
+    });
+
+    await runDelegateTurn(run, { [sessionKey]: run.sessionEntry });
+
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      silentAnnounce: true,
+      wakeOnReturn: true,
+      continuationTargetSessionKey: targetSessionKey,
     });
   });
 
