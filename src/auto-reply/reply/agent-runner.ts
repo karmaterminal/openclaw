@@ -2217,6 +2217,9 @@ export async function runReplyAgent(params: {
                   silent?: boolean;
                   silentWake?: boolean;
                   startedAt?: number;
+                  targetSessionKey?: string;
+                  targetSessionKeys?: string[];
+                  fanoutMode?: "tree" | "all";
                   traceparent?: string;
                 },
               ) => {
@@ -2229,6 +2232,15 @@ export async function runReplyAgent(params: {
                       ...(options?.silent ? { silentAnnounce: true } : {}),
                       ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                       drainsContinuationDelegateQueue: true,
+                      ...(options?.targetSessionKey
+                        ? { continuationTargetSessionKey: options.targetSessionKey }
+                        : {}),
+                      ...(options?.targetSessionKeys && options.targetSessionKeys.length > 0
+                        ? { continuationTargetSessionKeys: options.targetSessionKeys }
+                        : {}),
+                      ...(options?.fanoutMode
+                        ? { continuationFanoutMode: options.fanoutMode }
+                        : {}),
                       ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
                     },
                     {
@@ -2317,6 +2329,16 @@ export async function runReplyAgent(params: {
                   plannedHop: nextChainCount,
                   silent: effectiveContinuationSignal.silent,
                   silentWake: effectiveContinuationSignal.silentWake,
+                  ...(effectiveContinuationSignal.targetSessionKey
+                    ? { targetSessionKey: effectiveContinuationSignal.targetSessionKey }
+                    : {}),
+                  ...(effectiveContinuationSignal.targetSessionKeys &&
+                  effectiveContinuationSignal.targetSessionKeys.length > 0
+                    ? { targetSessionKeys: effectiveContinuationSignal.targetSessionKeys }
+                    : {}),
+                  ...(effectiveContinuationSignal.fanoutMode
+                    ? { fanoutMode: effectiveContinuationSignal.fanoutMode }
+                    : {}),
                   ...(effectiveContinuationSignal.traceparent
                     ? { traceparent: effectiveContinuationSignal.traceparent }
                     : {}),
@@ -2416,6 +2438,13 @@ export async function runReplyAgent(params: {
                       silent: reservation.silent,
                       silentWake: reservation.silentWake,
                       startedAt: reservation.createdAt,
+                      ...(reservation.targetSessionKey
+                        ? { targetSessionKey: reservation.targetSessionKey }
+                        : {}),
+                      ...(reservation.targetSessionKeys && reservation.targetSessionKeys.length > 0
+                        ? { targetSessionKeys: reservation.targetSessionKeys }
+                        : {}),
+                      ...(reservation.fanoutMode ? { fanoutMode: reservation.fanoutMode } : {}),
                       ...(reservation.traceparent ? { traceparent: reservation.traceparent } : {}),
                     });
                   } finally {
@@ -2429,6 +2458,16 @@ export async function runReplyAgent(params: {
                   silent: effectiveContinuationSignal.silent,
                   silentWake: effectiveContinuationSignal.silentWake,
                   startedAt: chainStartedAt,
+                  ...(effectiveContinuationSignal.targetSessionKey
+                    ? { targetSessionKey: effectiveContinuationSignal.targetSessionKey }
+                    : {}),
+                  ...(effectiveContinuationSignal.targetSessionKeys &&
+                  effectiveContinuationSignal.targetSessionKeys.length > 0
+                    ? { targetSessionKeys: effectiveContinuationSignal.targetSessionKeys }
+                    : {}),
+                  ...(effectiveContinuationSignal.fanoutMode
+                    ? { fanoutMode: effectiveContinuationSignal.fanoutMode }
+                    : {}),
                   ...(effectiveContinuationSignal.traceparent
                     ? { traceparent: effectiveContinuationSignal.traceparent }
                     : {}),
@@ -2648,6 +2687,9 @@ export async function runReplyAgent(params: {
               silent?: boolean;
               silentWake?: boolean;
               startedAt?: number;
+              targetSessionKey?: string;
+              targetSessionKeys?: string[];
+              fanoutMode?: "tree" | "all";
               traceparent?: string;
             },
           ) => {
@@ -2658,6 +2700,13 @@ export async function runReplyAgent(params: {
                   ...(options?.silent ? { silentAnnounce: true } : {}),
                   ...(options?.silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
                   drainsContinuationDelegateQueue: true,
+                  ...(options?.targetSessionKey
+                    ? { continuationTargetSessionKey: options.targetSessionKey }
+                    : {}),
+                  ...(options?.targetSessionKeys && options.targetSessionKeys.length > 0
+                    ? { continuationTargetSessionKeys: options.targetSessionKeys }
+                    : {}),
+                  ...(options?.fanoutMode ? { continuationFanoutMode: options.fanoutMode } : {}),
                   ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
                 },
                 {
@@ -2743,6 +2792,11 @@ export async function runReplyAgent(params: {
               plannedHop: nextChainCount,
               silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
               silentWake: delegate.mode === "silent-wake",
+              ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
+              ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
+                ? { targetSessionKeys: delegate.targetSessionKeys }
+                : {}),
+              ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
               ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
             });
             const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
@@ -2822,6 +2876,13 @@ export async function runReplyAgent(params: {
                   silent: reservation.silent,
                   silentWake: reservation.silentWake,
                   startedAt: reservation.createdAt,
+                  ...(reservation.targetSessionKey
+                    ? { targetSessionKey: reservation.targetSessionKey }
+                    : {}),
+                  ...(reservation.targetSessionKeys && reservation.targetSessionKeys.length > 0
+                    ? { targetSessionKeys: reservation.targetSessionKeys }
+                    : {}),
+                  ...(reservation.fanoutMode ? { fanoutMode: reservation.fanoutMode } : {}),
                   ...(reservation.traceparent ? { traceparent: reservation.traceparent } : {}),
                 });
               } finally {
@@ -2835,6 +2896,11 @@ export async function runReplyAgent(params: {
               silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
               silentWake: delegate.mode === "silent-wake",
               startedAt: chainStartedAt,
+              ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
+              ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
+                ? { targetSessionKeys: delegate.targetSessionKeys }
+                : {}),
+              ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
               ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
             });
           }
