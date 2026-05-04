@@ -42,6 +42,9 @@ export function resolveHeartbeatReasonKind(reason?: string): HeartbeatReasonKind
   if (trimmed === "silent-wake-enrichment") {
     return "wake";
   }
+  if (trimmed === "delegate-return") {
+    return "wake";
+  }
   if (trimmed.startsWith("acp:spawn:")) {
     return "wake";
   }

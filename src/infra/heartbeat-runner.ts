@@ -734,10 +734,19 @@ function inferHeartbeatWakeSourceFromReason(reason?: string): HeartbeatWakeSourc
   if (trimmed === "wake" || trimmed.startsWith("hook:")) {
     return "hook";
   }
+  if (isContinuationHeartbeatWakeReason(trimmed)) {
+    return "hook";
+  }
   if (trimmed.startsWith("acp:spawn:")) {
     return "acp-spawn";
   }
   return undefined;
+}
+
+function isContinuationHeartbeatWakeReason(reason: string): boolean {
+  return (
+    reason === "continuation" || reason === "silent-wake-enrichment" || reason === "delegate-return"
+  );
 }
 
 function resolveHeartbeatWakePayloadFlags(params: {
@@ -749,7 +758,11 @@ function resolveHeartbeatWakePayloadFlags(params: {
   return {
     isExecEventWake: source === "exec-event",
     isCronWake: source === "cron",
-    isWakePayload: source === "hook" || source === "acp-spawn" || reason === "wake",
+    isWakePayload:
+      source === "hook" ||
+      source === "acp-spawn" ||
+      reason === "wake" ||
+      isContinuationHeartbeatWakeReason(reason),
   };
 }
 
@@ -1472,11 +1485,11 @@ export async function runHeartbeatOnce(opts: {
     const bootstrapContextMode: "lightweight" | undefined =
       heartbeat?.lightContext === true ? "lightweight" : undefined;
     // Map heartbeat wake reason to structured continuation trigger.
-    // "continuation" = CONTINUE_WORK timer fired; "silent-wake-enrichment" = delegate returned.
+    // "continuation" = CONTINUE_WORK timer fired; delegate-return reasons = delegate completed.
     const continuationTrigger =
       opts.reason === "continuation"
         ? ("work-wake" as const)
-        : opts.reason === "silent-wake-enrichment"
+        : opts.reason === "silent-wake-enrichment" || opts.reason === "delegate-return"
           ? ("delegate-return" as const)
           : undefined;
     const replyOpts = {
