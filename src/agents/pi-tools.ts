@@ -38,6 +38,7 @@ import {
 } from "./pi-tools.policy.js";
 import {
   assertRequiredParams,
+  createHostWorkspaceAppendTool,
   createHostWorkspaceEditTool,
   createHostWorkspaceWriteTool,
   createOpenClawReadTool,
@@ -45,6 +46,7 @@ import {
   createSandboxedReadTool,
   createSandboxedWriteTool,
   getToolParamsRecord,
+  wrapToolMemoryDayFileWriteGuard,
   wrapToolMemoryFlushAppendOnlyWrite,
   wrapToolWorkspaceRootGuard,
   wrapToolWorkspaceRootGuardWithOptions,
@@ -74,6 +76,7 @@ import {
   normalizeToolName,
   resolveToolProfilePolicy,
 } from "./tool-policy.js";
+import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 function isOpenAIProvider(provider?: string) {
@@ -81,7 +84,7 @@ function isOpenAIProvider(provider?: string) {
   return normalized === "openai" || normalized === "openai-codex";
 }
 
-const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
+const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write", "append"]);
 
 type BashToolsModule = typeof import("./bash-tools.js");
 
@@ -343,6 +346,12 @@ export function createOpenClawCodingTools(options?: {
   hasRepliedRef?: { value: boolean };
   /** Allow plugin tools for this run to late-bind the gateway subagent. */
   allowGatewaySubagentBinding?: boolean;
+  /** Callback for continue_work to request a post-turn continuation. */
+  continueWorkOpts?: {
+    requestContinuation: (
+      request: import("./tools/continue-work-tool.js").ContinueWorkRequest,
+    ) => void;
+  };
   /** Runtime-scoped explicit allowlist used to materialize matching plugin tools. */
   runtimeToolAllowlist?: string[];
   /** If true, the model has native vision capability */
@@ -370,6 +379,12 @@ export function createOpenClawCodingTools(options?: {
   authProfileStore?: AuthProfileStore;
   /** Callback invoked when sessions_yield tool is called. */
   onYield?: (message: string) => Promise<void> | void;
+  /** Continuation: request_compaction tool opts (injected from execution context). */
+  requestCompactionOpts?: {
+    sessionId?: string;
+    getContextUsage: () => number | null;
+    triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
+  };
   /** Optional instrumentation callback for tool preparation stage timing. */
   recordToolPrepStage?: (name: string) => void;
 }): AnyAgentTool[] {
@@ -533,7 +548,10 @@ export function createOpenClawCodingTools(options?: {
             return [];
           }
           const wrapped = createHostWorkspaceWriteTool(workspaceRoot, { workspaceOnly });
-          return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
+          const withRootGuard = workspaceOnly
+            ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot)
+            : wrapped;
+          return [wrapToolMemoryDayFileWriteGuard(withRootGuard)];
         }
         if (tool.name === "edit") {
           if (sandboxRoot) {
@@ -676,17 +694,29 @@ export function createOpenClawCodingTools(options?: {
                   },
                 )
               : createSandboxedEditTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
-            workspaceOnly
-              ? wrapToolWorkspaceRootGuardWithOptions(
-                  createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
-                  sandboxRoot,
-                  {
-                    containerWorkdir: sandbox.containerWorkdir,
-                  },
-                )
-              : createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+            wrapToolMemoryDayFileWriteGuard(
+              workspaceOnly
+                ? wrapToolWorkspaceRootGuardWithOptions(
+                    createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+                    sandboxRoot,
+                    {
+                      containerWorkdir: sandbox.containerWorkdir,
+                    },
+                  )
+                : createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+            ),
           ]
         : []
+      : []),
+    ...(includeCoreTools && !sandboxRoot
+      ? [
+          workspaceOnly
+            ? wrapToolWorkspaceRootGuard(
+                createHostWorkspaceAppendTool(workspaceRoot, { workspaceOnly }),
+                workspaceRoot,
+              )
+            : createHostWorkspaceAppendTool(workspaceRoot, { workspaceOnly }),
+        ]
       : []),
     ...(includeCoreTools && applyPatchTool ? [applyPatchTool as unknown as AnyAgentTool] : []),
     ...(execTool ? [execTool as unknown as AnyAgentTool] : []),
@@ -717,6 +747,7 @@ export function createOpenClawCodingTools(options?: {
             : undefined,
           sandboxed: !!sandbox,
           config: options?.config,
+          liveSessionToolConfig: true,
           pluginToolAllowlist,
           pluginToolDenylist,
           currentChannelId: options?.currentChannelId,
@@ -736,8 +767,11 @@ export function createOpenClawCodingTools(options?: {
           authProfileStore: options?.authProfileStore,
           senderIsOwner: options?.senderIsOwner,
           sessionId: options?.sessionId,
+          runId: options?.runId,
           onYield: options?.onYield,
           allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
+          continueWorkOpts: options?.continueWorkOpts,
+          requestCompactionOpts: options?.requestCompactionOpts,
           recordToolPrepStage: options?.recordToolPrepStage,
         })
       : pluginToolsOnly),
