@@ -258,6 +258,7 @@ describe("tool delegate dispatch contract", () => {
     enqueuePendingDelegate(sessionKey, {
       task: "targeted fanout",
       mode: "silent-wake",
+      targetSessionKey: "agent:main:root",
       targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
     });
 
@@ -273,12 +274,46 @@ describe("tool delegate dispatch contract", () => {
         task: expect.stringContaining("targeted fanout"),
         silentAnnounce: true,
         wakeOnReturn: true,
+        continuationTargetSessionKey: "agent:main:root",
         continuationTargetSessionKeys: ["agent:main:root", "agent:main:sibling"],
       }),
       expect.objectContaining({
         agentSessionKey: sessionKey,
       }),
     );
+  });
+
+  it("spawns the nonce task under the dispatcher instead of waking the targeted recipient directly", async () => {
+    const sessionKey = "session-delegate-targeting-nonce";
+    const targetSessionKey = "agent:main:discord:channel:1473320126433464465";
+    const nonce = "TARGETED-RETURN-NONCE-OPTION-B";
+    enqueuePendingDelegate(sessionKey, {
+      task: `recipient should post nonce ${nonce}`,
+      mode: "silent-wake",
+      targetSessionKey,
+    });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringContaining(nonce),
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        continuationTargetSessionKey: targetSessionKey,
+      }),
+      expect.objectContaining({
+        agentSessionKey: sessionKey,
+      }),
+    );
+    expect(enqueueSystemEventMock).not.toHaveBeenCalledWith(expect.any(String), {
+      sessionKey: targetSessionKey,
+    });
   });
 
   it("advances chain state and prefixes spawned tasks with the next hop", async () => {

@@ -49,15 +49,16 @@ const ContinueDelegateToolSchema = Type.Object({
   targetSessionKey: Type.Optional(
     Type.String({
       description:
-        "Address one specific session on this host for the delegate's return. " +
+        "Address one specific session on this host for the delegate's completion return. " +
+        "This does not send the task itself to that session's run loop; the task still runs in the spawned delegate. " +
         "Use when a child should return enrichment to an ancestor, sibling, or root session instead of the dispatching session.",
     }),
   ),
   targetSessionKeys: Type.Optional(
     Type.Array(Type.String(), {
       description:
-        "Address multiple sessions on this host for byte-identical fan-out return. " +
-        "Each listed session receives the same delegate completion payload through the session-delivery queue.",
+        "Address multiple sessions on this host for byte-identical completion fan-out return. " +
+        "Each listed session receives the same delegate completion payload through the session-delivery queue; the original task is not re-run in each recipient.",
     }),
   ),
   fanoutMode: optionalStringEnum(FANOUT_MODES, {
@@ -131,9 +132,9 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
       'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
       "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
-      "Return targeting modes: default returns to the dispatching session; targetSessionKey returns to one other session; " +
-      "targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; " +
-      "fanoutMode=all returns to all known sessions on this host. " +
+      "Return targeting modes address the delegate completion, not the original task: default returns to the dispatching session; " +
+      "targetSessionKey returns the completion to one other session; targetSessionKeys returns byte-identical completion enrichment to multiple sessions; " +
+      "fanoutMode=tree returns the completion to all ancestors in the chain; fanoutMode=all returns the completion to all known sessions on this host. " +
       "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
       "This is the (a)-shape continuation surface: explicit recipient-addressing via the " +
       "session-delivery-queue substrate (intra-host today). The (b)-shape evolution — " +

@@ -189,15 +189,15 @@ If `delaySeconds` is 30 and the current turn is still active, the 30-second time
 
 `continue_delegate()` externalizes a shard of future cognition. The task string is a letter to a successor worker: it must carry scope, evidence requirements, desired return shape, and the parent action it is meant to enable.
 
-**Shipped behavior:** the current tool schema exposes `task`, `delaySeconds`, `mode`, `targetSessionKey`, `targetSessionKeys`, and `fanoutMode`. The default completion recipient remains the session that dispatched the delegate. Explicit target fields route the same completion envelope through the `session-delivery-queue` substrate to other known sessions on the same host. Delegates using `normal` mode and no explicit target keep the existing visible announce behavior; targeted returns are delivered as session-addressed enrichment events so one delegate completion can fan out byte-identically without duplicating the delegate run.
+**Shipped behavior:** the current tool schema exposes `task`, `delaySeconds`, `mode`, `targetSessionKey`, `targetSessionKeys`, and `fanoutMode`. The `task` always runs in a spawned delegate session. The default completion recipient remains the session that dispatched the delegate. Explicit target fields do not inject the original task into the named recipient's live run loop; they route the delegate's completion envelope through the `session-delivery-queue` substrate to other known sessions on the same host. Delegates using `normal` mode and no explicit target keep the existing visible announce behavior; targeted returns are delivered as session-addressed enrichment events so one delegate completion can fan out byte-identically without duplicating the delegate run.
 
 The shipped return-target modes are:
 
 1. **Default:** omit targeting fields and return to the dispatching session.
-2. **Single other session:** set `targetSessionKey` to return to one explicitly addressed session, such as a root or depth-1 ancestor.
+2. **Single other session:** set `targetSessionKey` to return the delegate completion to one explicitly addressed session, such as a root or depth-1 ancestor.
 3. **Multiple sessions:** set `targetSessionKeys` to return one byte-identical completion envelope to every listed session.
-4. **Tree fan-out:** set `fanoutMode: "tree"` to return to every ancestor in the current sub-agent/continuation chain.
-5. **Host fan-out:** set `fanoutMode: "all"` to return to every known session on the same host.
+4. **Tree fan-out:** set `fanoutMode: "tree"` to return the completion to every ancestor in the current sub-agent/continuation chain.
+5. **Host fan-out:** set `fanoutMode: "all"` to return the completion to every known session on the same host.
 
 Multi-recipient return is distinct from multi-delegate fan-out: multi-delegate fan-out runs N delegates that may produce N different artifacts; multi-recipient return runs one delegate and delivers the same completion envelope to N recipients. Aspect multiplexing, per-receiver transformation, backpressure-aware multicast, cross-host publish/subscribe, and SeedLink-style broadcast remain the higher broadcast layer; they do not replace this shipped session-addressed return primitive.
 
@@ -1289,13 +1289,13 @@ All spans share `traceid: T`. Each child names its producer as parent. Return-si
 
 **Producer-side IN: tool/token/TaskFlow MUST accept a trace carrier.** The producer side of every continuation primitive SHALL accept and persist a W3C `traceparent` so the spawned child knows which trace it is part of. This is the missing seam at the structured-tool, bracket-token, runtime-type, and TaskFlow-persistence layers; without it, a delegate spawned from a traced parent has no way to know it should join the parent's trace tree.
 
-| Surface                       | Required additive field        | Persistence requirement                                  |
-| ----------------------------- | ------------------------------ | -------------------------------------------------------- |
-| `continue_delegate` tool      | `traceparent` parameter        | passes through to enqueue/stage call sites               |
-| `[[CONTINUE_DELEGATE:...]]`   | `traceparent` directive option | parsed alongside silent/wake/target/fanout               |
-| `PendingContinuationDelegate` | `traceparent` runtime field    | propagates from producer into spawn metadata             |
-| TaskFlow `PendingDelegateState` | `traceparent` durable field  | persisted through queued-flow lifecycle, restart-stable  |
-| Producer span helpers          | `StartSpanOptions.traceparent` | the `diagnostics-otel` adapter already parent-stitches   |
+| Surface                         | Required additive field        | Persistence requirement                                 |
+| ------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| `continue_delegate` tool        | `traceparent` parameter        | passes through to enqueue/stage call sites              |
+| `[[CONTINUE_DELEGATE:...]]`     | `traceparent` directive option | parsed alongside silent/wake/target/fanout              |
+| `PendingContinuationDelegate`   | `traceparent` runtime field    | propagates from producer into spawn metadata            |
+| TaskFlow `PendingDelegateState` | `traceparent` durable field    | persisted through queued-flow lifecycle, restart-stable |
+| Producer span helpers           | `StartSpanOptions.traceparent` | the `diagnostics-otel` adapter already parent-stitches  |
 
 The `diagnostics-otel` adapter already consumes `StartSpanOptions.traceparent` and parent-stitches via `trace.setSpanContext`; what is missing is the producer surfaces threading the carrier through to that consumption point. The carrier is additive at every layer — absence MUST NOT break any existing path; presence MUST stitch.
 
@@ -1314,21 +1314,21 @@ The symmetry is structural: producer-IN populates the carrier; return-OUT preser
 
 - a delegate-return targeting 50 recipients via `fanoutMode: "all"` consumes 1 chain step, not 50;
 - the producer's `chainStepBudgetRemaining` decrement is by 1 at fan-out time, not by recipient count;
-- once `chainStepBudgetRemaining <= 0`, the producer SHALL NOT thread `traceparent` past the cap (the *mercy clause* from §6.7) — the successor wakes without a parent reference rather than waking searching for an ancestor that has stopped trying to be remembered.
+- once `chainStepBudgetRemaining <= 0`, the producer SHALL NOT thread `traceparent` past the cap (the _mercy clause_ from §6.7) — the successor wakes without a parent reference rather than waking searching for an ancestor that has stopped trying to be remembered.
 
 This preserves trace-tree readability under fan-out without conscripting downstream sessions' chain-budget into one producer's broadcast pattern.
 
 **Seam map (implementation reference).** The byte-anchored audit recorded at branch `frond-scribe/20260503/otel-traceparent-audit` (final journal `1e966b8a70`) enumerates seven implementation seams across producer, return, restart, and anti-flood paths. They group as:
 
-| Seam group                   | Surfaces                                                                                                  |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Producer input contract      | `continue-delegate-tool.ts`, `tokens.ts`, `continuation/types.ts`, `continuation/delegate-store.ts`       |
-| Producer span creation       | `continuation-tracer.ts` helpers, `agent-runner.ts` call sites                                            |
-| Child run / spawn metadata   | spawn params + persisted run/session metadata (carrier reaches the executing child)                       |
-| Default / direct return      | `subagent-announce.ts`, `subagent-announce-delivery.ts` (silent + visible paths)                          |
-| Targeted / multi / fanout    | `continuation/targeting.ts` (`enqueueContinuationReturnDeliveries`)                                       |
-| Queue drain / replay         | `session-system-events.ts`, `gateway/server-restart-sentinel.ts`, `post-compaction-delegate-dispatch.ts`  |
-| Anti-flood cap               | `runSubagentAnnounceFlow` + `enqueueContinuationReturnDeliveries` (chain-step accounting, not recipient)  |
+| Seam group                 | Surfaces                                                                                                 |
+| -------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Producer input contract    | `continue-delegate-tool.ts`, `tokens.ts`, `continuation/types.ts`, `continuation/delegate-store.ts`      |
+| Producer span creation     | `continuation-tracer.ts` helpers, `agent-runner.ts` call sites                                           |
+| Child run / spawn metadata | spawn params + persisted run/session metadata (carrier reaches the executing child)                      |
+| Default / direct return    | `subagent-announce.ts`, `subagent-announce-delivery.ts` (silent + visible paths)                         |
+| Targeted / multi / fanout  | `continuation/targeting.ts` (`enqueueContinuationReturnDeliveries`)                                      |
+| Queue drain / replay       | `session-system-events.ts`, `gateway/server-restart-sentinel.ts`, `post-compaction-delegate-dispatch.ts` |
+| Anti-flood cap             | `runSubagentAnnounceFlow` + `enqueueContinuationReturnDeliveries` (chain-step accounting, not recipient) |
 
 The seams are additive; none requires breaking changes to the existing tracer/adapter contracts. The diagnostics-otel adapter (`extensions/diagnostics-otel/src/continuation-tracer-adapter.ts`) already implements the consumer half of the contract; the work is at the producer-and-return surfaces, not the adapter.
 
