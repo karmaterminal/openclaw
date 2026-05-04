@@ -146,7 +146,9 @@ describe("subagent announce targeted continuation return integration", () => {
       const persisted = JSON.parse(
         await fs.readFile(path.join(queueDir, jsonFiles[0]), "utf-8"),
       ) as QueuedSessionDelivery;
-      expect(persisted.kind).toBe("systemEvent");
+      if (persisted.kind !== "systemEvent") {
+        throw new Error(`expected systemEvent delivery, received ${persisted.kind}`);
+      }
       expect(persisted.sessionKey).toBe(targetSessionKey);
       expect(persisted.text).toContain(nonce);
 
