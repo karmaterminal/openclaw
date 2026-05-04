@@ -98,6 +98,7 @@ export type FollowupRun = {
     skipProviderRuntimeHints?: boolean;
     silentExpected?: boolean;
     allowEmptyAssistantReplyAsSilent?: boolean;
+    drainsContinuationDelegateQueue?: boolean;
   };
 };
 
