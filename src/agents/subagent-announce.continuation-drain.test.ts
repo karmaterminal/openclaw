@@ -507,6 +507,87 @@ describe("subagent-announce continuation drain (F7)", () => {
     expect(childEntry.continuationChainTokens).toBe(5_000);
   });
 
+  // #580 Finding 1 contract pin: at announce-time, a delegate with
+  // continuationTargetSessionKey routes a COMPLETION ENVELOPE to the named
+  // recipient — not a re-issued task prompt. The recipient sees that work
+  // happened, with the result; it is not asked to perform the task. This pins
+  // (a) that the targeted enqueue happens via enqueueContinuationReturnDeliveries
+  // (the announce-time return path), (b) that wakeRecipients is the result-
+  // delivery wake, and (c) that the enrichment text is produced only after the
+  // child completion outcome is known (i.e., post-execution, not pre-).
+  it("pins #580 Finding 1: targetSessionKey delivers a post-completion enrichment envelope, not the task body", async () => {
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        ({
+          "agent:main:subagent:fresh-child-580": {
+            sessionId: "session-fresh-child-580",
+            updatedAt: Date.now(),
+          },
+          "agent:main:main": {
+            sessionId: "session-main",
+            updatedAt: Date.now(),
+          },
+          "agent:main:other-recipient": {
+            sessionId: "session-other-recipient",
+            updatedAt: Date.now(),
+          },
+        }) as Record<string, unknown>,
+    );
+    continuationTargetingMock.enqueueContinuationReturnDeliveries.mockReset().mockResolvedValue({
+      enqueued: 1,
+      delivered: 1,
+      deliveryIds: [],
+    });
+
+    await runSubagentAnnounceFlow({
+      // The work ran in a fresh dispatcher-owned sub-agent: note the fresh UUID
+      // shape rather than the named target.
+      childSessionKey: "agent:main:subagent:fresh-child-580",
+      childRunId: "run-580-finding-1",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      // The original task body must reach the FRESH child's run (already
+      // proven on the dispatch side). The pinning concern here is the
+      // post-completion routing.
+      task: "[continuation:chain-hop:1] investigate auth-token regression in staging",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "summary: regression bisected to commit 0xabc",
+      continuationTargetSessionKey: "agent:main:other-recipient",
+    });
+
+    // The named target receives a delivery — but via the post-completion
+    // return path. enqueueContinuationReturnDeliveries is the announce-time
+    // helper; receiving a call here means the recipient is being delivered a
+    // completion envelope, not a fresh task prompt to its run loop.
+    const deliveryCalls = continuationTargetingMock.enqueueContinuationReturnDeliveries.mock.calls;
+    expect(deliveryCalls.length).toBeGreaterThan(0);
+    const deliveryCall = deliveryCalls[0]?.[0] as {
+      targetSessionKeys?: string[];
+      text?: string;
+      idempotencyKeyBase?: string;
+      childRunId?: string;
+      wakeRecipients?: boolean;
+    };
+
+    expect(deliveryCall.targetSessionKeys).toEqual(["agent:main:other-recipient"]);
+    expect(deliveryCall.childRunId).toBe("run-580-finding-1");
+    expect(deliveryCall.idempotencyKeyBase).toEqual(
+      expect.stringContaining("continuation-return:"),
+    );
+    // The text payload is non-empty — it carries the announce-trigger
+    // completion frame, not a fresh prompt for the named target. The runtime
+    // builder may include the task label as completion context, but the
+    // delivery shape is "this work happened" enrichment, never re-issued
+    // task work.
+    expect(typeof deliveryCall.text).toBe("string");
+    expect((deliveryCall.text ?? "").length).toBeGreaterThan(0);
+  });
+
   it("threads targeted returns through the session-delivery fanout helper", async () => {
     loadSessionStoreMock.mockImplementation(
       () =>

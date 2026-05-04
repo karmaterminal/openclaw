@@ -49,21 +49,27 @@ const ContinueDelegateToolSchema = Type.Object({
   targetSessionKey: Type.Optional(
     Type.String({
       description:
-        "Address one specific session on this host for the delegate's return. " +
-        "Use when a child should return enrichment to an ancestor, sibling, or root session instead of the dispatching session.",
+        "Route the delegate's COMPLETION ENVELOPE (not the task) to one specific session on this host. " +
+        "The work itself always runs in a fresh sub-agent owned by the dispatcher; the named session " +
+        "receives only the post-completion enrichment-return event. Use when a child should return " +
+        "enrichment to an ancestor, sibling, or root session instead of the dispatching session. " +
+        "This is NOT a way to deliver the original task to an existing session's run loop.",
     }),
   ),
   targetSessionKeys: Type.Optional(
     Type.Array(Type.String(), {
       description:
-        "Address multiple sessions on this host for byte-identical fan-out return. " +
-        "Each listed session receives the same delegate completion payload through the session-delivery queue.",
+        "Route the delegate's COMPLETION ENVELOPE to multiple sessions on this host (byte-identical fan-out). " +
+        "One delegate runs in a fresh sub-agent; each listed session receives the same completion payload " +
+        "through the session-delivery queue. The original task body is NOT delivered to the listed sessions.",
     }),
   ),
   fanoutMode: optionalStringEnum(FANOUT_MODES, {
     description:
-      'Broadcast return targeting. "tree" returns to every ancestor in the current continuation/subagent chain; ' +
-      '"all" returns to every known session on this host. Do not combine with targetSessionKey/targetSessionKeys.',
+      'Broadcast COMPLETION-ENVELOPE targeting. "tree" routes the completion to every ancestor in the current ' +
+      'continuation/subagent chain; "all" routes the completion to every known session on this host. ' +
+      "Like targetSessionKey/targetSessionKeys, this routes the delegate's completion enrichment, not the " +
+      "task body. Do not combine with targetSessionKey/targetSessionKeys.",
   }),
   traceparent: Type.Optional(
     Type.String({
@@ -127,15 +133,19 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
     name: "continue_delegate",
     description:
       "Schedule a continuation delegate — a background sub-agent that can run now, later, " +
-      "or at compaction, then return visibly or silently to this session. Use for ambient " +
+      "or at compaction, then route its completion visibly or silently. Use for ambient " +
       "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
       'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
       "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
-      "Return targeting modes: default returns to the dispatching session; targetSessionKey returns to one other session; " +
-      "targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; " +
-      "fanoutMode=all returns to all known sessions on this host. " +
+      "The delegate ALWAYS runs in a fresh sub-agent owned by the dispatcher. " +
+      "Return-targeting fields control where the delegate's COMPLETION ENVELOPE is delivered, " +
+      "NOT where the task runs: default routes the completion to the dispatching session; " +
+      "targetSessionKey routes it to one other session; targetSessionKeys routes byte-identical " +
+      "completion enrichment to multiple sessions; fanoutMode=tree routes to all ancestors in the chain; " +
+      "fanoutMode=all routes to all known sessions on this host. None of these fields deliver the " +
+      "original task body to the listed sessions or invoke their existing run loops. " +
       "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
-      "This is the (a)-shape continuation surface: explicit recipient-addressing via the " +
+      "This is the (a)-shape continuation surface: explicit recipient-addressing for completion-return via the " +
       "session-delivery-queue substrate (intra-host today). The (b)-shape evolution — " +
       "broadcast/publish-stream addressing across hosts where the dispatcher names an aspect-stream " +
       "and listeners tune in independently — is tracked in karmaterminal/binary-canticle#11; " +

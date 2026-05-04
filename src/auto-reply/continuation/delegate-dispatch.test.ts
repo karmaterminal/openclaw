@@ -281,6 +281,50 @@ describe("tool delegate dispatch contract", () => {
     );
   });
 
+  // #580 Finding 1 contract pin: targetSessionKey routes the COMPLETION envelope,
+  // not the task body. The cohort's nonce-test methodology assumed
+  // continue_delegate(targetSessionKey=X) would deliver the task into X's run
+  // loop. The shipped contract spawns a fresh sub-agent owned by the dispatcher
+  // and threads X only into the return-routing slot. This test pins both
+  // halves of that contract so a future refactor can't silently re-route the
+  // task body into the named target's session.
+  it("pins #580 Finding 1: targetSessionKey is return-routing only; task threads into a fresh dispatcher-owned spawn", async () => {
+    const dispatcherKey = "session-dispatcher-580";
+    const namedTargetKey = "agent:main:other-recipient";
+    const taskBody = "investigate auth-token regression in staging";
+
+    enqueuePendingDelegate(dispatcherKey, {
+      task: taskBody,
+      targetSessionKey: namedTargetKey,
+    });
+
+    await dispatchToolDelegates({
+      sessionKey: dispatcherKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey: dispatcherKey },
+      maxChainLength: 10,
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    const [spawnParams, spawnCtx] = spawnSubagentDirectMock.mock.calls[0] as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+
+    // Half 1: the task body threads into the FRESH spawn's task field.
+    expect(spawnParams.task).toEqual(expect.stringContaining(taskBody));
+
+    // Half 2: the named target appears ONLY as a return-routing field on the run
+    // record. It must not be promoted to the spawn's session identity.
+    expect(spawnParams.continuationTargetSessionKey).toBe(namedTargetKey);
+    expect(spawnCtx.agentSessionKey).toBe(dispatcherKey);
+    expect(spawnCtx.agentSessionKey).not.toBe(namedTargetKey);
+
+    // The targeting field must not be confused with a spawn-target hint.
+    expect(spawnParams).not.toHaveProperty("targetAgentId", namedTargetKey);
+    expect(spawnParams).not.toHaveProperty("requesterSessionKey", namedTargetKey);
+  });
+
   it("advances chain state and prefixes spawned tasks with the next hop", async () => {
     const sessionKey = "session-delegate-chain";
     enqueuePendingDelegate(sessionKey, { task: "inspect logs" });
