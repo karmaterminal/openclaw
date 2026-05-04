@@ -62,27 +62,27 @@ describe("subagent-announce continuation runtime entry", () => {
     expect(typeof continuationRuntime.dispatchToolDelegates).toBe("function");
   });
 
-  it("exports loadContinuationChainState from the continuation runtime (#454)", () => {
+  it("exports loadContinuationChainState from the continuation runtime", () => {
     expect(typeof continuationRuntime.loadContinuationChainState).toBe("function");
   });
 
-  it("exports persistContinuationChainState from the continuation runtime (#454)", () => {
+  it("exports persistContinuationChainState from the continuation runtime", () => {
     expect(typeof continuationRuntime.persistContinuationChainState).toBe("function");
   });
 
-  it("exports updateSessionStore from the continuation runtime (#454)", () => {
+  it("exports updateSessionStore from the continuation runtime", () => {
     expect(typeof continuationRuntime.updateSessionStore).toBe("function");
   });
 
-  it("exports resolveStorePath from the continuation runtime (#454)", () => {
+  it("exports resolveStorePath from the continuation runtime", () => {
     expect(typeof continuationRuntime.resolveStorePath).toBe("function");
   });
 
-  it("exports resolveAgentIdFromSessionKey from the continuation runtime (#454)", () => {
+  it("exports resolveAgentIdFromSessionKey from the continuation runtime", () => {
     expect(typeof continuationRuntime.resolveAgentIdFromSessionKey).toBe("function");
   });
 
-  it("exports every symbol destructured by subagent-announce runtime imports (#454)", () => {
+  it("exports every symbol destructured by subagent-announce runtime imports", () => {
     // Per-symbol assertions above pin individual exports. This test pins the
     // FULL set in one place so a refactor that adds a new destructured symbol
     // to subagent-announce.ts (without adding the corresponding export here)
@@ -115,7 +115,7 @@ describe("subagent-announce continuation runtime entry", () => {
     }
   });
 
-  it("subagent-announce.ts destructures EVERY runtime export via the canonical entry path (#454)", () => {
+  it("subagent-announce.ts destructures EVERY runtime export via the canonical entry path", () => {
     // Guards against drift where subagent-announce.ts adds a new module-shape
     // type but the destructure points at a source-tree path instead of the
     // co-located runtime entry. All three module-shape importRuntimeModule

@@ -1,10 +1,10 @@
-import { normalizeDiagnosticTraceparent } from "../infra/diagnostic-trace-context.js";
+import { normalizeDiagnosticTraceparent } from "../infra/diagnostic-trace-context-pure.js";
 import { escapeRegExp } from "../shared/regexp.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
   normalizeContinuationTargetKey,
   normalizeContinuationTargetKeys,
-} from "./continuation/targeting.js";
+} from "./continuation/targeting-pure.js";
 import type { ContinuationSignal } from "./continuation/types.js";
 
 export const HEARTBEAT_TOKEN = "HEARTBEAT_OK";

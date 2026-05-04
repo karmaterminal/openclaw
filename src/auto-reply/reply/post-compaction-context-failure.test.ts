@@ -1,5 +1,5 @@
 /**
- * Tests for post-compaction context read failure logging (issue #204).
+ * Tests for post-compaction context read failure logging.
  *
  * The catch handler in agent-runner.ts (lines ~1607-1615) should log a warn-level
  * breadcrumb when readPostCompactionContext rejects, instead of silently swallowing
@@ -30,7 +30,7 @@ vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEvent: vi.fn(),
 }));
 
-describe("post-compaction context failure logging (#204)", () => {
+describe("post-compaction context failure logging", () => {
   beforeEach(() => {
     mockWarn.mockClear();
     mockReadPostCompactionContext.mockReset();

@@ -1,6 +1,5 @@
 /**
- * Trap test for karmaterminal/openclaw#438:
- * Pin mode-only PendingContinuationDelegate at compat boundary.
+ * Trap test for the PendingContinuationDelegate mode-only compat boundary.
  *
  * Bug-shape / risk:
  *   The canonical runtime delegate shape is `PendingContinuationDelegate.mode`,
@@ -19,12 +18,6 @@
  *      legacy boolean flags (`silent`, `silentWake`, `postCompaction`). This is
  *      a positive assertion — the disk shape stays back-compat for historical
  *      rows — and is what justifies the runtime/disk encoding split.
- *
- * Provenance:
- *   - canonical2 file: `src/auto-reply/continuation/types.ts` @ `cf7830ffb3`
- *   - canonical2 file: `src/auto-reply/continuation/delegate-store.ts` @ `cf7830ffb3`
- *   - relevant issue: #433 (the broken push that reintroduced double-encoding
- *     this trap defends against), #227 (mode-only ADR)
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -97,7 +90,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("[#438] keeps PendingContinuationDelegate mode-only at runtime boundaries", () => {
+describe("keeps PendingContinuationDelegate mode-only at runtime boundaries", () => {
   describe("runtime objects from consumePendingDelegates", () => {
     it.each([
       ["normal", { mode: undefined as PendingContinuationDelegate["mode"] }],
@@ -176,7 +169,7 @@ describe("[#438] keeps PendingContinuationDelegate mode-only at runtime boundari
   });
 });
 
-describe("[#438] continue_delegate tool descriptor exposes mode enum, not boolean flags", () => {
+describe("continue_delegate tool descriptor exposes mode enum, not boolean flags", () => {
   it("descriptor advertises mode as enum with the four canonical values and no silent/silentWake parameters", async () => {
     // Stub config used by createContinueDelegateTool's resolveMaxDelegatesPerTurn.
     const tool = (

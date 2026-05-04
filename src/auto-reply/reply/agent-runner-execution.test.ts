@@ -663,7 +663,7 @@ describe("runAgentTurnWithFallback", () => {
     }
   });
 
-  it("prefixes outbound error payloads with a blocked-session marker when livenessState is blocked (#475)", async () => {
+  it("prefixes outbound error payloads with a blocked-session marker when livenessState is blocked", async () => {
     state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [
         {
@@ -694,7 +694,7 @@ describe("runAgentTurnWithFallback", () => {
     }
   });
 
-  it("does not double-prefix the blocked-session marker on subsequent passes (#475)", async () => {
+  it("does not double-prefix the blocked-session marker on subsequent passes", async () => {
     state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [
         {
@@ -721,7 +721,7 @@ describe("runAgentTurnWithFallback", () => {
     }
   });
 
-  it("leaves non-error payloads unchanged when livenessState is blocked (#475)", async () => {
+  it("leaves non-error payloads unchanged when livenessState is blocked", async () => {
     state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "normal assistant text" }, { text: "some error", isError: true }],
       meta: {
@@ -741,7 +741,7 @@ describe("runAgentTurnWithFallback", () => {
     }
   });
 
-  it("does not prefix payloads when livenessState is working (#475)", async () => {
+  it("does not prefix payloads when livenessState is working", async () => {
     state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "a normal error", isError: true }],
       meta: {
@@ -758,7 +758,7 @@ describe("runAgentTurnWithFallback", () => {
     }
   });
 
-  it("surfaces a standalone blocked-liveness notice when livenessState is blocked and no error payload is present (#475+#487)", async () => {
+  it("surfaces a standalone blocked-liveness notice when livenessState is blocked and no error payload is present", async () => {
     state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [],
       meta: {
@@ -780,7 +780,7 @@ describe("runAgentTurnWithFallback", () => {
     }
   });
 
-  it("does not prepend the standalone blocked-liveness notice when an error payload is already present (#475+#487)", async () => {
+  it("does not prepend the standalone blocked-liveness notice when an error payload is already present", async () => {
     state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [
         {

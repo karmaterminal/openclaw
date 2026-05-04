@@ -5,8 +5,6 @@
  * maxChainLength is N.
  *
  * Coverage gap from CODEWALK.md: "No existing test for announce-side chain guard"
- *
- * @author Elliott 🌻
  */
 import fs from "node:fs";
 import path from "node:path";

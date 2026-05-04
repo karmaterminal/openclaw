@@ -38,7 +38,7 @@ describe("classifyCompactionReason", () => {
   });
 
   it('classifies "no real conversation messages" as a skip-like reason', () => {
-    // shape #214: this code is added to keep the existing-substring-match behavior
+    // Closed-union shape: this code keeps the existing-substring-match behavior
     // of isLegitSkipReason / isCompactionSkipReason covered by the closed union.
     expect(classifyCompactionReason("No real conversation messages to compact")).toBe(
       "no_real_conversation_messages",
@@ -69,7 +69,7 @@ describe("classifyCompactionReason", () => {
     expect(classifyCompactionReason("")).toBe("unknown");
   });
 
-  it("return type is the closed CompactionReasonCode union (#214)", () => {
+  it("return type is the closed CompactionReasonCode union", () => {
     // Compile-time: assigning to CompactionReasonCode forces the union shape.
     const code: CompactionReasonCode = classifyCompactionReason("nothing to compact");
     expect(code).toBe("no_compactable_entries");
@@ -98,7 +98,7 @@ describe("formatUnknownCompactionReasonDetail", () => {
   });
 });
 
-describe("isCompactionSkipCode (#214)", () => {
+describe("isCompactionSkipCode", () => {
   const ALL_CODES: ReadonlyArray<CompactionReasonCode> = [
     "unknown",
     "no_compactable_entries",

@@ -40,7 +40,7 @@ vi.mock("./model-selection.js", async () => {
 vi.mock("../config/sessions/store.js", () => ({
   loadSessionStore: (...args: unknown[]) => state.loadSessionStoreMock(...args),
   updateSessionStore: (...args: unknown[]) => state.updateSessionStoreMock(...args),
-  // Stubbed for swim-35/A1: identity-style resolver. The real impl applies
+  // Stubbed identity-style resolver. The real impl applies
   // session-key normalization; tests don't exercise the legacy-key cleanup paths.
   resolveSessionStoreEntry: ({
     store,
@@ -59,7 +59,7 @@ vi.mock("../config/sessions.js", () => ({
   loadSessionStore: (...args: unknown[]) => state.loadSessionStoreMock(...args),
   resolveStorePath: (...args: unknown[]) => state.resolveStorePathMock(...args),
   updateSessionStore: (...args: unknown[]) => state.updateSessionStoreMock(...args),
-  // Stubbed for swim-35/A1: identity-style resolver. See store.js mock above.
+  // Stubbed identity-style resolver. See store.js mock above.
   resolveSessionStoreEntry: ({
     store,
     sessionKey,

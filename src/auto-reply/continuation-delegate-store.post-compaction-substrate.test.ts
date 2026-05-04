@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
-// Gate 2 receipt for PR #423 (post-compaction tool-path lane).
+// Gate receipt for the post-compaction tool path.
 //
 // Tool-side staging and agent-runner-side consume must resolve to the SAME
 // module instance, so a delegate staged via `continue_delegate(mode:
 // "post-compaction")` is not stranded on a different in-memory Map / TaskFlow
 // controller than the runner reads from.
 //
-// On the full-revert tip (off canonical2 baseline), all callers route through
+// On the full-revert tip, all callers route through
 // LEGACY `continuation-delegate-store.ts`. This test red-flags any future
 // regression that routes the tool path through NEW `continuation/delegate-
 // store.ts` while runner consume stays legacy (or vice versa).
@@ -19,7 +19,7 @@ import {
 import * as toolStoreImport from "./continuation-delegate-store.js";
 import * as runnerStoreImport from "./continuation-delegate-store.js";
 
-describe("PR #423 gate 2 :: post-compaction substrate :: tool-stage and runner-consume share store", () => {
+describe("post-compaction substrate :: tool-stage and runner-consume share store", () => {
   const sessionKey = "post-compaction-substrate-test";
 
   beforeEach(() => {
