@@ -556,6 +556,61 @@ describe("subagent-announce continuation drain (F7)", () => {
     );
   });
 
+  // Issue #580 Finding 1 discriminator (silas-seat 🌫️): mirror of the plural
+  // test above for the singular-API call shape. The `hasContinuationTargeting`
+  // predicate at subagent-announce.ts:1216-1219 OR-checks all three axes;
+  // this test pins that the singular axis is reached and routed correctly so
+  // a future refactor that silently strips the singular branch from the
+  // announce flow flips to a test failure rather than a substrate-walk burden.
+  it("threads singular continuationTargetSessionKey through the resolver and fanout helper", async () => {
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        ({
+          "agent:main:subagent:test": {
+            sessionId: "session-child",
+            updatedAt: Date.now(),
+          },
+          "agent:main:main": {
+            sessionId: "session-main",
+            updatedAt: Date.now(),
+          },
+        }) as Record<string, unknown>,
+    );
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-targeted-singular",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "[continuation:chain-hop:1] singular targeted task",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "singular result",
+      continuationTargetSessionKey: "agent:main:recipient",
+    });
+
+    expect(
+      continuationTargetingMock.resolveContinuationReturnTargetSessionKeys,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultSessionKey: "agent:main:main",
+        targetSessionKey: "agent:main:recipient",
+      }),
+    );
+    expect(continuationTargetingMock.enqueueContinuationReturnDeliveries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetSessionKeys: ["agent:main:recipient"],
+        idempotencyKeyBase: expect.stringContaining("continuation-return:"),
+        wakeRecipients: true,
+        childRunId: "run-targeted-singular",
+      }),
+    );
+  });
+
   it("fanoutMode=all spends one chain step per completion, not per recipient", async () => {
     const knownSessionKeys = [
       "agent:main:main",

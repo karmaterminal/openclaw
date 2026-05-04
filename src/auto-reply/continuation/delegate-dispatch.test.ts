@@ -281,6 +281,48 @@ describe("tool delegate dispatch contract", () => {
     );
   });
 
+  // Issue #580 Finding 1 discriminator (silas-seat 🌫️): mirror of the plural
+  // case above for the singular-API call shape. Cohort byte-pin reported 0
+  // `[continuation:targeted-return]` log lines on 4 hosts for
+  // `continue_delegate({ targetSessionKey: "X", mode: "silent-wake" })`.
+  // The static call-graph walk on canonical f39b8c9751 showed singular and
+  // plural fields are propagated symmetrically through every layer; this test
+  // pins the dispatch-layer half of that parity so the cohort's (A) reading
+  // (singular field dropped at register/read boundary) becomes a regression
+  // signal rather than a recurring substrate-walk burden.
+  it("threads singular targetSessionKey into spawned continuation run as continuationTargetSessionKey", async () => {
+    const sessionKey = "session-delegate-targeting-singular";
+    enqueuePendingDelegate(sessionKey, {
+      task: "targeted singular probe",
+      mode: "silent-wake",
+      targetSessionKey: "agent:main:recipient",
+    });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringContaining("targeted singular probe"),
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        continuationTargetSessionKey: "agent:main:recipient",
+      }),
+      expect.objectContaining({
+        agentSessionKey: sessionKey,
+      }),
+    );
+    // Negative pin: singular MUST NOT be silently rewritten into plural at
+    // the dispatch boundary. Both shapes coexist all the way to the announce
+    // resolver, where they unify in resolveContinuationReturnTargetSessionKeys.
+    const spawnCall = spawnSubagentDirectMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(spawnCall).not.toHaveProperty("continuationTargetSessionKeys");
+  });
+
   it("advances chain state and prefixes spawned tasks with the next hop", async () => {
     const sessionKey = "session-delegate-chain";
     enqueuePendingDelegate(sessionKey, { task: "inspect logs" });
