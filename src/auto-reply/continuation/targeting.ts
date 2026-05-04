@@ -111,7 +111,14 @@ export async function enqueueContinuationReturnDeliveries(
         parentRunId: params.childRunId,
       });
     }
-    await deps.ackSessionDelivery(deliveryId, params.stateDir);
+    // Do NOT ack the durable file here. enqueueSystemEvent above is in-memory
+    // (process-local globalThis Map) — non-attached recipients (different
+    // process / restart-pending) cannot see it. The durable file must persist
+    // until recipient consumption so the recovery loop can replay on next
+    // gateway restart. Per figs 2026-05-04 (c)-discriminator decision: durable
+    // write IS expected for non-attached recipients per RFC §2.4. Acking
+    // immediately destroyed the only durable channel and left targeted
+    // recipients silently unreached. karmaterminal/openclaw#578 / #580.
     delivered += 1;
   }
 

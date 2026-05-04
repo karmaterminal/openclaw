@@ -556,6 +556,96 @@ describe("subagent-announce continuation drain (F7)", () => {
     );
   });
 
+  // Regression test for karmaterminal/openclaw#580 (cohort fire-1 scenario;
+  // #578 substrate-evidence anchor, #579 closed dupe):
+  // continue_delegate({ targetSessionKey: "agent:main:main", mode: "silent-wake" })
+  // must route the return to the named single target, not to the dispatcher.
+  // Plural `continuationTargetSessionKeys` form is exercised above; this test
+  // pins the singular form's path through the same announce-return seam.
+  //
+  // Cohort 3-host convergent refinement (~02:37Z 2026-05-04): branch-entry IS
+  // honored at this layer (the test passes); the substrate-finding has narrowed
+  // to the durable-store step inside `enqueueSessionDelivery` /
+  // `ackSessionDelivery` ordering — file substrate at
+  // `<state-dir>/session-delivery-queue/` stays empty for named recipients
+  // because `targeting.ts:114` immediately acks the file after the in-memory
+  // `enqueueSystemEvent` delivery. Whether durable-write should persist for
+  // non-attached recipients is an open semantic question for figs.
+  // This test pins the branch-entry contract; the I/O-level enqueue-vs-ack
+  // contract is pinned by `cross-session-targeting.test.ts` against the real
+  // `enqueueContinuationReturnDeliveries` with mocked deps.
+  it("routes singular continuationTargetSessionKey to the named recipient (not dispatcher)", async () => {
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        ({
+          "agent:main:subagent:test": {
+            sessionId: "session-child",
+            updatedAt: Date.now(),
+          },
+          "agent:main:discord:channel:1466192485440164011": {
+            sessionId: "session-dispatcher",
+            updatedAt: Date.now(),
+          },
+          "agent:main:main": {
+            sessionId: "session-target",
+            updatedAt: Date.now(),
+          },
+        }) as Record<string, unknown>,
+    );
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-singular-targeted",
+      requesterSessionKey: "agent:main:discord:channel:1466192485440164011",
+      requesterDisplayKey: "discord-channel",
+      task: "[continuation:chain-hop:1] OV-1 fire-1 reproduction",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "received delegate at agent:main:main",
+      silentAnnounce: true,
+      wakeOnReturn: true,
+      continuationTargetSessionKey: "agent:main:main",
+    });
+
+    // The resolver must see the singular targetSessionKey (not the
+    // dispatcher's session) and the dispatcher only as the fallback default.
+    expect(
+      continuationTargetingMock.resolveContinuationReturnTargetSessionKeys,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultSessionKey: "agent:main:discord:channel:1466192485440164011",
+        targetSessionKey: "agent:main:main",
+      }),
+    );
+    // The enqueue must target the named recipient ONLY — not the dispatcher.
+    expect(continuationTargetingMock.enqueueContinuationReturnDeliveries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetSessionKeys: ["agent:main:main"],
+        wakeRecipients: true,
+        childRunId: "run-singular-targeted",
+      }),
+    );
+    const enqueueCall =
+      continuationTargetingMock.enqueueContinuationReturnDeliveries.mock.calls[0]?.[0];
+    expect((enqueueCall as { targetSessionKeys: string[] })?.targetSessionKeys).not.toContain(
+      "agent:main:discord:channel:1466192485440164011",
+    );
+    // Idempotency-key shape carries an index + sessionKey suffix per RFC §6.7
+    // so the durable session-delivery-queue file under the recipient's key
+    // resolves to a stable hash that the recovery loop can replay
+    // post-restart (the durable-write contract that #578/#580 was filed
+    // against). The actual file-write + ack-skip behavior is exercised
+    // against the real `enqueueContinuationReturnDeliveries` in
+    // `cross-session-targeting.test.ts`.
+    expect((enqueueCall as { idempotencyKeyBase: string })?.idempotencyKeyBase).toMatch(
+      /^continuation-return:/,
+    );
+  });
+
   it("fanoutMode=all spends one chain step per completion, not per recipient", async () => {
     const knownSessionKeys = [
       "agent:main:main",
