@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
   runEmbeddedPiAgentMock: vi.fn(),
   runCliAgentMock: vi.fn(),
   runWithModelFallbackMock: vi.fn(),
+  compactEmbeddedPiSessionMock: vi.fn(),
   isCliProviderMock: vi.fn((_: unknown) => false),
   isInternalMessageChannelMock: vi.fn((_: unknown) => false),
   createBlockReplyDeliveryHandlerMock: vi.fn(),
@@ -45,6 +46,10 @@ vi.mock("../../agents/pi-embedded.js", () => ({
 
 vi.mock("../../agents/cli-runner.js", () => ({
   runCliAgent: (params: unknown) => state.runCliAgentMock(params),
+}));
+
+vi.mock("../../agents/pi-embedded-runner/compact.queued.js", () => ({
+  compactEmbeddedPiSession: (params: unknown) => state.compactEmbeddedPiSessionMock(params),
 }));
 
 vi.mock("../../agents/model-fallback.js", () => ({
@@ -393,6 +398,7 @@ describe("runAgentTurnWithFallback", () => {
     state.runEmbeddedPiAgentMock.mockReset();
     state.runCliAgentMock.mockReset();
     state.runWithModelFallbackMock.mockReset();
+    state.compactEmbeddedPiSessionMock.mockReset();
     state.isCliProviderMock.mockReset();
     state.isCliProviderMock.mockReturnValue(false);
     state.isInternalMessageChannelMock.mockReset();
@@ -3228,6 +3234,179 @@ describe("runAgentTurnWithFallback", () => {
     expect(sessionEntry.providerOverride).toBe("anthropic");
     expect(sessionEntry.modelOverride).toBe("claude-opus-4-6");
     expect(sessionEntry.modelOverrideSource).toBe("user");
+  });
+
+  it("threads fallback-selected provider/model into request_compaction and drops primary auth profile on provider change", async () => {
+    state.runWithModelFallbackMock.mockImplementationOnce(async (params: FallbackRunnerParams) => ({
+      result: await params.run("openai", "gpt-5.4"),
+      provider: "openai",
+      model: "gpt-5.4",
+      attempts: [],
+    }));
+    state.compactEmbeddedPiSessionMock.mockResolvedValueOnce({
+      ok: true,
+      compacted: true,
+      result: { summary: "done", firstKeptEntryId: "entry-1", tokensBefore: 10 },
+    });
+    state.runEmbeddedPiAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+      const triggerCompaction = (
+        params as EmbeddedAgentParams & {
+          requestCompactionOpts?: {
+            triggerCompaction?: (request: {
+              runId?: string;
+              trigger: string;
+              diagId?: string;
+            }) => Promise<unknown>;
+          };
+        }
+      ).requestCompactionOpts?.triggerCompaction;
+      expect(triggerCompaction).toBeTypeOf("function");
+      await triggerCompaction?.({
+        runId: "tool-run-1",
+        trigger: "context_pressure",
+        diagId: "diag-1",
+      });
+      return { payloads: [{ text: "final" }], meta: {} };
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const followupRun = createFollowupRun();
+    followupRun.run.provider = "anthropic";
+    followupRun.run.model = "claude-opus-4-7";
+    followupRun.run.authProfileId = "anthropic:openclaw";
+    followupRun.run.config = {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: true,
+          },
+        },
+      },
+    };
+
+    const result = await runAgentTurnWithFallback({
+      commandBody: "hello",
+      followupRun,
+      sessionCtx: {
+        Provider: "whatsapp",
+        MessageSid: "msg",
+      } as unknown as TemplateContext,
+      opts: {},
+      typingSignals: createMockTypingSignaler(),
+      blockReplyPipeline: null,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      applyReplyToMode: (payload) => payload,
+      shouldEmitToolResult: () => true,
+      shouldEmitToolOutput: () => false,
+      pendingToolTasks: new Set(),
+      resetSessionAfterCompactionFailure: async () => false,
+      resetSessionAfterRoleOrderingConflict: async () => false,
+      isHeartbeat: false,
+      sessionKey: "main",
+      getActiveSessionEntry: () => undefined,
+      resolvedVerboseLevel: "off",
+    });
+
+    expect(["final", "success"]).toContain(result.kind);
+    expect(state.compactEmbeddedPiSessionMock).toHaveBeenCalledOnce();
+    expect(state.compactEmbeddedPiSessionMock.mock.calls[0]?.[0]).toMatchObject({
+      sessionId: "session",
+      sessionKey: "main",
+      sessionFile: "/tmp/session.jsonl",
+      workspaceDir: "/tmp",
+      messageProvider: "whatsapp",
+      provider: "openai",
+      model: "gpt-5.4",
+      authProfileId: undefined,
+      trigger: "context_pressure",
+      diagId: "diag-1",
+      runId: "tool-run-1",
+    });
+  });
+
+  it("preserves the primary auth profile for request_compaction when fallback stays on the same provider", async () => {
+    state.runWithModelFallbackMock.mockImplementationOnce(async (params: FallbackRunnerParams) => ({
+      result: await params.run("anthropic", "claude-sonnet-4-5"),
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      attempts: [],
+    }));
+    state.compactEmbeddedPiSessionMock.mockResolvedValueOnce({
+      ok: true,
+      compacted: true,
+      result: { summary: "done", firstKeptEntryId: "entry-1", tokensBefore: 10 },
+    });
+    state.runEmbeddedPiAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+      const triggerCompaction = (
+        params as EmbeddedAgentParams & {
+          requestCompactionOpts?: {
+            triggerCompaction?: (request: {
+              runId?: string;
+              trigger: string;
+              diagId?: string;
+            }) => Promise<unknown>;
+          };
+        }
+      ).requestCompactionOpts?.triggerCompaction;
+      expect(triggerCompaction).toBeTypeOf("function");
+      await triggerCompaction?.({
+        runId: "tool-run-2",
+        trigger: "manual",
+        diagId: "diag-2",
+      });
+      return { payloads: [{ text: "final" }], meta: {} };
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const followupRun = createFollowupRun();
+    followupRun.run.provider = "anthropic";
+    followupRun.run.model = "claude-opus-4-7";
+    followupRun.run.authProfileId = "anthropic:openclaw";
+    followupRun.run.config = {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: true,
+          },
+        },
+      },
+    };
+
+    const result = await runAgentTurnWithFallback({
+      commandBody: "hello",
+      followupRun,
+      sessionCtx: {
+        Provider: "whatsapp",
+        MessageSid: "msg",
+      } as unknown as TemplateContext,
+      opts: {},
+      typingSignals: createMockTypingSignaler(),
+      blockReplyPipeline: null,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      applyReplyToMode: (payload) => payload,
+      shouldEmitToolResult: () => true,
+      shouldEmitToolOutput: () => false,
+      pendingToolTasks: new Set(),
+      resetSessionAfterCompactionFailure: async () => false,
+      resetSessionAfterRoleOrderingConflict: async () => false,
+      isHeartbeat: false,
+      sessionKey: "main",
+      getActiveSessionEntry: () => undefined,
+      resolvedVerboseLevel: "off",
+    });
+
+    expect(["final", "success"]).toContain(result.kind);
+    expect(state.compactEmbeddedPiSessionMock).toHaveBeenCalledOnce();
+    expect(state.compactEmbeddedPiSessionMock.mock.calls[0]?.[0]).toMatchObject({
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      authProfileId: "anthropic:openclaw",
+      trigger: "manual",
+      diagId: "diag-2",
+      runId: "tool-run-2",
+    });
   });
 
   it("keeps same-provider auth profile when fallback only changes model", async () => {
