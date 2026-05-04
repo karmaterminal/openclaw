@@ -17,6 +17,7 @@ import {
   abortEmbeddedPiRun,
   isEmbeddedPiRunActive,
 } from "../../agents/pi-embedded-runner/runs.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import {
   resetContinuationTracer,
@@ -227,6 +228,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
   replyRunRegistryTesting.resetReplyRunRegistry();
   embeddedRunTesting.resetActiveEmbeddedRuns();
@@ -304,6 +306,7 @@ async function runWorkTurn(
   sessionStore: Record<string, SessionEntry>,
   _payloadText: string,
 ): Promise<unknown> {
+  setRuntimeConfigSnapshot(run.followupRun.run.config);
   return runReplyAgent({
     commandBody: "hello",
     followupRun: run.followupRun,

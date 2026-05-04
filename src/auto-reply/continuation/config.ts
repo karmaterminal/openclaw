@@ -8,7 +8,7 @@
  * RFC: docs/design/continue-work-signal-v2.md §5
  */
 
-import { getRuntimeConfig } from "../../config/config.js";
+import { getRuntimeConfig, getRuntimeConfigSnapshot } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
 
@@ -95,6 +95,24 @@ export function resolveContinuationRuntimeConfig(
     contextPressureThreshold: clampOptionalUnitInterval(continuation?.contextPressureThreshold),
     earlyWarningBand: clampEarlyWarningBand(continuation?.earlyWarningBand),
   };
+}
+
+/**
+ * Resolve continuation runtime config preferring the active runtime snapshot.
+ *
+ * `resolveContinuationRuntimeConfig` accepts whatever cfg the caller passes,
+ * which is usually a snapshot captured at run construction. That captured
+ * snapshot is stale across hot-reloads: a `gateway/reload config change applied`
+ * will update the runtime snapshot but the followup-turn already holds the old
+ * cfg. Using this helper at per-turn enforcement points (chain caps, cost caps,
+ * pressure thresholds, schedule-time delay reads) lets reloaded values take
+ * effect at the next decision-point without invalidating already-armed timers
+ * or queued retries (RFC §6.5 in-flight-state invariant).
+ */
+export function resolveLiveContinuationRuntimeConfig(
+  fallbackCfg: OpenClawConfig,
+): ContinuationRuntimeConfig {
+  return resolveContinuationRuntimeConfig(getRuntimeConfigSnapshot() ?? fallbackCfg);
 }
 
 /**
