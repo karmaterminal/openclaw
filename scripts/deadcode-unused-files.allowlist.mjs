@@ -5,7 +5,10 @@ export const KNIP_UNUSED_FILE_ALLOWLIST = [
   "extensions/diffs/src/viewer-client.ts",
   "extensions/diffs/src/viewer-payload.ts",
   "extensions/memory-core/src/memory-tool-manager-mock.ts",
+  "src/agents/subagent-announce.continuation.runtime.ts",
   "src/agents/subagent-registry.runtime.ts",
+  "src/auto-reply/continuation-delegate.types.ts",
+  "src/auto-reply/continuation/post-compaction-release.ts",
   "src/auto-reply/inbound.group-require-mention-test-plugins.ts",
   "src/auto-reply/reply/get-reply.test-loader.ts",
   "src/cli/daemon-cli-compat.ts",
@@ -15,7 +18,9 @@ export const KNIP_UNUSED_FILE_ALLOWLIST = [
   "src/gateway/gateway-cli-backend.live-helpers.ts",
   "src/gateway/gateway-cli-backend.live-probe-helpers.ts",
   "src/gateway/gateway-codex-harness.live-helpers.ts",
+  "src/infra/chain-budget.ts",
   "src/infra/changelog-unreleased.ts",
+  "src/infra/substrate-capability-registry.ts",
   "src/mcp/openclaw-tools-serve.ts",
   "src/mcp/plugin-tools-handlers.ts",
   "src/mcp/plugin-tools-serve.ts",
@@ -25,6 +30,7 @@ export const KNIP_UNUSED_FILE_ALLOWLIST = [
   "src/plugins/contracts/rootdir-boundary-canary.ts",
   "src/plugins/contracts/tts-contract-suites.ts",
   "src/plugins/runtime-sidecar-paths-baseline.ts",
+  "src/rebase/tracer.ts",
   "src/tasks/task-registry-control.runtime.ts",
 ];
 

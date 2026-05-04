@@ -110,6 +110,27 @@ struct ExecAllowlistTests {
         #expect(match?.pattern == entry.pattern)
     }
 
+    // Regression: issue #340. Bare "*" must match any command (back-compat with
+    // pre-basename-matching allowlists). The basename-matching branch previously
+    // excluded "*" with no fallback, dropping all matches silently at runtime.
+    @Test func `match treats bare star as match-all`() {
+        let entry = ExecAllowlistEntry(pattern: "*")
+        let pathResolution = Self.homebrewRGResolution()
+        let basenameResolution = ExecCommandResolution(
+            rawExecutable: "rg",
+            resolvedPath: nil,
+            executableName: "rg",
+            cwd: nil)
+        let relativeResolution = ExecCommandResolution(
+            rawExecutable: "./echo",
+            resolvedPath: "/tmp/oc-basename/echo",
+            executableName: "echo",
+            cwd: "/tmp/oc-basename")
+        #expect(ExecAllowlistMatcher.match(entries: [entry], resolution: pathResolution)?.pattern == "*")
+        #expect(ExecAllowlistMatcher.match(entries: [entry], resolution: basenameResolution)?.pattern == "*")
+        #expect(ExecAllowlistMatcher.match(entries: [entry], resolution: relativeResolution)?.pattern == "*")
+    }
+
     @Test func `resolve for allowlist splits shell chains`() {
         let command = ["/bin/sh", "-lc", "echo allowlisted && /usr/bin/touch /tmp/openclaw-allowlist-test"]
         let resolutions = ExecCommandResolution.resolveForAllowlist(

@@ -14,6 +14,7 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
+- Agents/continuation: let `continue_delegate()` return to one target session, multiple target sessions, all ancestors with `fanoutMode: "tree"`, or every known host session with `fanoutMode: "all"`, and teach the bracket fallback the matching `target=`, `targets=`, and `fanout=` syntax. (#550)
 - Gateway/startup and restart: skip plugin-backed auth-profile overlays during startup secrets preflight, reducing gateway readiness latency while keeping reload and OAuth recovery paths overlay-capable; add `openclaw gateway restart --force` and `--wait <duration>`, log active task run IDs before restart deferral timers, and report timeout restarts as explicit forced restarts. (#68327) Thanks @JIRBOY.
 - Plugins/ClawHub: make diagnostics, onboarding, doctor repair, and channel setup carry ClawPack metadata through install records while keeping explicit `clawhub:` installs on ClawHub and bare package installs on npm for the launch cutover. Thanks @vincentkoc.
 - Plugins/CLI: include package dependency install state in `openclaw plugins list --json` so scripts can spot missing plugin dependencies without runtime-loading plugins.
@@ -54,6 +55,8 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Agents/continuation: classify targeted delegate-return heartbeats as continuation wakes and document/cover next-turn system-event drains for single and multi-recipient returns, so dormant recipient sessions consume completion enrichment instead of relying on channel nonce echoes. Fixes #580. Thanks @karmafeast.
+- Agents/continuation: route actual runtime `continue_delegate(targetSessionKey=...)` dispatches through targeted subagent returns, so same-host recipient sessions get the durable completion event, targeted-return log, and next-turn System context. Fixes #580.
 - Agents/OpenAI: default GPT-5 API-key sessions to the SSE Responses transport unless WebSocket is explicitly selected, restoring replies in fresh Control UI and WebChat beta installs where the auto WebSocket path connected but produced no model events.
 - Agents/sessions: preserve terminal lifecycle state when final run metadata persists from a stale in-memory snapshot, preventing sessions from staying stuck as running after completed or timed-out turns.
 - Gateway/CLI/status: make `openclaw gateway start` repair stale managed service definitions that point at old OpenClaw versions, missing binaries, or temporary installer paths before starting; add concrete service, config, listener-owner, and log collection next steps when gateway probes fail and Bonjour finds no local gateway; avoid repeated plugin tool descriptor config hashing so large runtime configs do not block reply startup and trigger reconnect/timeouts. Refs #49012. (#75944) Thanks @vincentkoc and @joshavant.

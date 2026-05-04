@@ -16,6 +16,7 @@ const targets = [
   "docs",
   "qa",
   "security",
+  "studies",
   "test",
   "openclaw.mjs",
   "knip.config.ts",

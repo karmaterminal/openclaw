@@ -1,4 +1,7 @@
-export const autoReplyCoreTestInclude = ["src/auto-reply/*.test.ts"];
+export const autoReplyCoreTestInclude = [
+  "src/auto-reply/*.test.ts",
+  "src/auto-reply/continuation/**/*.test.ts",
+];
 
 export const autoReplyCoreTestExclude = ["src/auto-reply/reply*.test.ts"];
 
@@ -70,6 +73,8 @@ export const fullSuiteVitestShards = [
       "test/vitest/vitest.shared-core.config.ts",
       "test/vitest/vitest.tasks.config.ts",
       "test/vitest/vitest.tui.config.ts",
+      "test/vitest/vitest.swim-37.config.ts",
+      "test/vitest/vitest.continuation-durability.config.ts",
       "test/vitest/vitest.ui.config.ts",
       "test/vitest/vitest.utils.config.ts",
       "test/vitest/vitest.wizard.config.ts",

@@ -484,6 +484,39 @@ describe("RequestClient", () => {
     });
   });
 
+  it("adds request metadata to Discord REST abort errors", async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) =>
+        await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("This operation was aborted", "AbortError"));
+          });
+        }),
+    );
+    const client = new RequestClient("test-token", {
+      queueRequests: false,
+      timeout: 5,
+      fetch: fetchSpy,
+    });
+
+    const request = client
+      .post("/interactions/interaction-1/sensitive-token/callback", {
+        body: { type: 5 },
+      })
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(5);
+
+    const error = await request;
+    expect(error).toBeInstanceOf(DOMException);
+    expect(String(error)).toContain(
+      "Discord REST request aborted: method=POST path=/interactions/interaction-1/<token>/callback",
+    );
+    expect(String(error)).toContain("timeoutMs=5");
+    expect(String(error)).toContain("timedOut=true");
+    expect(String(error)).not.toContain("sensitive-token");
+  });
+
   it("parses HTTP-date Retry-After headers on rate limit errors", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));

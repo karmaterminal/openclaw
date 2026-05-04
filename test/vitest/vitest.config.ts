@@ -49,6 +49,8 @@ export const rootVitestProjects = [
   "test/vitest/vitest.shared-core.config.ts",
   "test/vitest/vitest.tasks.config.ts",
   "test/vitest/vitest.tooling.config.ts",
+  "test/vitest/vitest.swim-37.config.ts",
+  "test/vitest/vitest.continuation-durability.config.ts",
   "test/vitest/vitest.tui.config.ts",
   "test/vitest/vitest.ui.config.ts",
   "test/vitest/vitest.utils.config.ts",

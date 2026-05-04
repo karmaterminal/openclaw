@@ -614,6 +614,7 @@ public struct AgentParams: Codable, Sendable {
     public let cleanupbundlemcponrunend: Bool?
     public let modelrun: Bool?
     public let promptmode: AnyCodable?
+    public let continuationtrigger: String?
     public let extrasystemprompt: String?
     public let bootstrapcontextmode: AnyCodable?
     public let bootstrapcontextrunkind: AnyCodable?
@@ -623,6 +624,7 @@ public struct AgentParams: Codable, Sendable {
     public let voicewaketrigger: String?
     public let idempotencykey: String
     public let label: String?
+    public let drainscontinuationdelegatequeue: Bool?
 
     public init(
         message: String,
@@ -650,6 +652,7 @@ public struct AgentParams: Codable, Sendable {
         cleanupbundlemcponrunend: Bool?,
         modelrun: Bool?,
         promptmode: AnyCodable?,
+        continuationtrigger: String?,
         extrasystemprompt: String?,
         bootstrapcontextmode: AnyCodable?,
         bootstrapcontextrunkind: AnyCodable?,
@@ -658,7 +661,8 @@ public struct AgentParams: Codable, Sendable {
         inputprovenance: [String: AnyCodable]?,
         voicewaketrigger: String?,
         idempotencykey: String,
-        label: String?)
+        label: String?,
+        drainscontinuationdelegatequeue: Bool?)
     {
         self.message = message
         self.agentid = agentid
@@ -685,6 +689,7 @@ public struct AgentParams: Codable, Sendable {
         self.cleanupbundlemcponrunend = cleanupbundlemcponrunend
         self.modelrun = modelrun
         self.promptmode = promptmode
+        self.continuationtrigger = continuationtrigger
         self.extrasystemprompt = extrasystemprompt
         self.bootstrapcontextmode = bootstrapcontextmode
         self.bootstrapcontextrunkind = bootstrapcontextrunkind
@@ -694,6 +699,7 @@ public struct AgentParams: Codable, Sendable {
         self.voicewaketrigger = voicewaketrigger
         self.idempotencykey = idempotencykey
         self.label = label
+        self.drainscontinuationdelegatequeue = drainscontinuationdelegatequeue
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -722,6 +728,7 @@ public struct AgentParams: Codable, Sendable {
         case cleanupbundlemcponrunend = "cleanupBundleMcpOnRunEnd"
         case modelrun = "modelRun"
         case promptmode = "promptMode"
+        case continuationtrigger = "continuationTrigger"
         case extrasystemprompt = "extraSystemPrompt"
         case bootstrapcontextmode = "bootstrapContextMode"
         case bootstrapcontextrunkind = "bootstrapContextRunKind"
@@ -731,6 +738,7 @@ public struct AgentParams: Codable, Sendable {
         case voicewaketrigger = "voiceWakeTrigger"
         case idempotencykey = "idempotencyKey"
         case label
+        case drainscontinuationdelegatequeue = "drainsContinuationDelegateQueue"
     }
 }
 
