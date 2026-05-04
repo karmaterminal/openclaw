@@ -9,13 +9,15 @@ enum ExecAllowlistMatcher {
         for entry in entries {
             switch ExecApprovalHelpers.validateAllowlistPattern(entry.pattern) {
             case let .valid(pattern):
-                if ExecApprovalHelpers.patternHasPathSelector(pattern) {
+                if pattern == "*" {
+                    // Bare "*" is a match-all wildcard preserved for back-compat with
+                    // pre-basename-matching allowlists. See issue #340.
+                    return entry
+                } else if ExecApprovalHelpers.patternHasPathSelector(pattern) {
                     let target = resolvedPath ?? rawExecutable
                     if self.matches(pattern: pattern, target: target) { return entry }
-                } else if pattern != "*",
-                          !ExecApprovalHelpers.patternHasPathSelector(rawExecutable),
-                          self.matchesExecutableBasename(pattern: pattern, resolution: resolution)
-                {
+                } else if !ExecApprovalHelpers.patternHasPathSelector(rawExecutable),
+                           self.matchesExecutableBasename(pattern: pattern, resolution: resolution) {
                     return entry
                 }
             case .invalid:

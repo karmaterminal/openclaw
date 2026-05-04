@@ -107,6 +107,7 @@ export function createSessionsSendTool(opts?: {
   agentChannel?: GatewayMessageChannel;
   sandboxed?: boolean;
   config?: OpenClawConfig;
+  getConfig?: () => OpenClawConfig;
   callGateway?: GatewayCaller;
 }): AnyAgentTool {
   return {
