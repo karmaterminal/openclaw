@@ -95,7 +95,19 @@ describe("continuation-delegate-store", () => {
 
     const delegates = consumePendingDelegates("test-session");
     expect(delegates).toHaveLength(1);
-    expect(delegates[0]).toEqual({ task: "minimal task" });
+    // `flowId` + `expectedRevision` are carried through from the consumed
+    // TaskFlow row so dispatch-time spawn failures can mark the row failed
+    // without re-querying. The minimal-fields test only cares that no
+    // optional caller-set fields leak through, so assert on `task` and
+    // check the carry-through metadata shape separately.
+    expect(delegates[0].task).toBe("minimal task");
+    expect(typeof delegates[0].flowId).toBe("string");
+    expect(delegates[0].expectedRevision).toBe(1);
+    expect(delegates[0].delayMs).toBeUndefined();
+    expect(delegates[0].mode).toBeUndefined();
+    expect(delegates[0].targetSessionKey).toBeUndefined();
+    expect(delegates[0].targetSessionKeys).toBeUndefined();
+    expect(delegates[0].fanoutMode).toBeUndefined();
   });
 
   it("handles zero delay (immediate dispatch)", () => {
