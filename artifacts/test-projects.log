@@ -1,0 +1,15 @@
+
+> openclaw@2026.5.4 test /home/figs/flesh_beast_best_beast/openclaw-wt-v54-rebase-20260505
+> node scripts/test-projects.mjs test/scripts/test-projects.test.ts
+
+[test] starting test/vitest/vitest.tooling.config.ts
+
+ RUN  v4.1.5 /home/figs/flesh_beast_best_beast/openclaw-wt-v54-rebase-20260505
+
+
+ Test Files  1 passed (1)
+      Tests  84 passed (84)
+   Start at  15:16:10
+   Duration  3.70s (transform 1.18s, setup 567ms, import 138ms, tests 2.88s, environment 0ms)
+
+[test] passed 1 Vitest shard in 5.77s

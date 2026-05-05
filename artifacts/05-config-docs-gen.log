@@ -1,0 +1,9 @@
+
+> openclaw@2026.5.4 config:docs:gen /home/figs/flesh_beast_best_beast/openclaw-wt-v54-rebase-20260505
+> node --import tsx scripts/generate-config-doc-baseline.ts --write
+
+Wrote docs/.generated/config-baseline.sha256
+Wrote docs/.generated/config-baseline.json (gitignored, local only)
+Wrote docs/.generated/config-baseline.core.json (gitignored, local only)
+Wrote docs/.generated/config-baseline.channel.json (gitignored, local only)
+Wrote docs/.generated/config-baseline.plugin.json (gitignored, local only)

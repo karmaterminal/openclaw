@@ -1,0 +1,4 @@
+
+> openclaw@2026.5.4 tsgo:core /home/figs/flesh_beast_best_beast/openclaw-wt-v54-rebase-20260505
+> node scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo
+

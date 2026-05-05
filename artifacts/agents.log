@@ -1,0 +1,15 @@
+
+> openclaw@2026.5.4 test /home/figs/flesh_beast_best_beast/openclaw-wt-v54-rebase-20260505
+> node scripts/test-projects.mjs src/agents
+
+[test] starting test/vitest/vitest.agents.config.ts
+
+ RUN  v4.1.5 /home/figs/flesh_beast_best_beast/openclaw-wt-v54-rebase-20260505
+
+
+ Test Files  457 passed (457)
+      Tests  5798 passed | 4 skipped (5802)
+   Start at  15:16:16
+   Duration  68.98s (transform 6.78s, setup 3.99s, import 58.03s, tests 226.22s, environment 19ms)
+
+[test] passed 1 Vitest shard in 71.21s

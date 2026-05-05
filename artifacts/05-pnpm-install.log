@@ -1,0 +1,22 @@
+Scope: all 125 workspace projects
+Lockfile is up to date, resolution step is skipped
+Packages: +1291
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 0, reused 1, downloaded 0, added 0
+Progress: resolved 0, reused 1212, downloaded 30, added 1289
+Progress: resolved 0, reused 1212, downloaded 31, added 1289
+Progress: resolved 0, reused 1212, downloaded 32, added 1291, done
+node_modules/@google/genai preinstall$ echo 'preinstall: no-op'
+node_modules/@google/genai preinstall: preinstall: no-op
+node_modules/@google/genai preinstall: Done
+node_modules/@whiskeysockets/baileys preinstall$ node ./engine-requirements.js
+node_modules/@whiskeysockets/baileys preinstall: Done
+
+. preinstall$ node scripts/preinstall-package-manager-warning.mjs
+. preinstall: Done
+. postinstall$ node scripts/postinstall-bundled-plugins.mjs
+. postinstall: [postinstall] could not prune OpenClaw compile cache: Error: EACCES, Permission denied: /tmp/node-compile-cache/v22.22.2-arm64-2b4477fa-0 '/tmp/node-compile-cache/v22.22.2-arm64-2b4477fa-0'
+. postinstall: Done
+. prepare$ command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath git-hooks || exit 0
+. prepare: Done
+Done in 3.7s using pnpm v10.33.2
