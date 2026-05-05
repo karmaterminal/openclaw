@@ -1,0 +1,2 @@
+docs/.generated/config-baseline.sha256
+docs/.generated/plugin-sdk-api-baseline.sha256

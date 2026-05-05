@@ -1,0 +1,2 @@
+config:docs:gen EXIT=0
+plugin-sdk:api:gen EXIT=0

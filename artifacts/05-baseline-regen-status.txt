@@ -1,0 +1,9 @@
+git status after pnpm gen:baselines:
+?? WORKORDER.md
+?? artifacts/05-baseline-regen-status.txt
+?? artifacts/05-baseline-shape-summary.txt
+?? artifacts/05-generated-baseline-diff-names.txt
+?? artifacts/05-scripts-package-log.full.txt
+?? artifacts/05-scripts-package-log.txt
+
+changed generated baseline files:

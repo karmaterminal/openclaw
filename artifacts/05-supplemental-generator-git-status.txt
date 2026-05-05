@@ -1,0 +1,14 @@
+git status after supplemental baseline generators:
+?? WORKORDER.md
+?? artifacts/05-baseline-regen-status.txt
+?? artifacts/05-baseline-regen.diff
+?? artifacts/05-baseline-shape-summary.txt
+?? artifacts/05-current-generated-scripts.txt
+?? artifacts/05-generated-baseline-diff-names.txt
+?? artifacts/05-scripts-package-log.full.txt
+?? artifacts/05-scripts-package-log.txt
+?? artifacts/05-supplemental-generator-git-status.txt
+?? artifacts/05-supplemental-generator-status.txt
+?? artifacts/05-v54-generated-scripts.txt
+
+changed docs generated files:

@@ -1,0 +1,21 @@
+config:channels:gen=node --import tsx scripts/generate-bundled-channel-config-metadata.ts --write
+config:docs:check=node --import tsx scripts/generate-config-doc-baseline.ts --check
+config:docs:gen=node --import tsx scripts/generate-config-doc-baseline.ts --write
+config:schema:gen=node --import tsx scripts/generate-base-config-schema.ts --write
+format:swift=swiftformat --lint --config config/swiftformat --exclude '**/apps/swabble,**/apps/android,**/apps/ios,**/apps/shared,**/OpenClawProtocol,**/HostEnvSecurityPolicy.generated.swift' apps/macos/Sources apps/ios/Sources apps/shared/OpenClawKit/Sources
+gen:host-env-policy:swift=node scripts/generate-host-env-security-policy-swift.mjs --write
+ios:gen=bash -lc './scripts/ios-configure-signing.sh && ./scripts/ios-write-version-xcconfig.sh && cd apps/ios && xcodegen generate'
+lint:agent:ingress-owner=node scripts/check-ingress-agent-owner-context.mjs
+plugin-sdk:api:check=node --max-old-space-size=4096 --import tsx scripts/generate-plugin-sdk-api-baseline.ts --check
+plugin-sdk:api:gen=node --max-old-space-size=4096 --import tsx scripts/generate-plugin-sdk-api-baseline.ts --write
+plugins:inventory:gen=node scripts/generate-plugin-inventory-doc.mjs --write
+prompt:snapshots:gen=node --import tsx scripts/generate-prompt-snapshots.ts --write
+protocol:gen=node --import tsx scripts/protocol-gen.ts
+protocol:gen:swift=node --import tsx scripts/protocol-gen-swift.ts
+release:check=pnpm deps:root-ownership:check && pnpm package:exclusions:check && pnpm plugins:inventory:check && pnpm release:plugins:npm:runtime:check && pnpm check:base-config-schema && pnpm check:bundled-channel-config-metadata && pnpm config:docs:check && pnpm plugin-sdk:check-exports && pnpm plugin-sdk:api:check && node --import tsx scripts/release-check.ts
+runtime-sidecars:check=node --import tsx scripts/generate-runtime-sidecar-paths-baseline.ts --check
+runtime-sidecars:gen=node --import tsx scripts/generate-runtime-sidecar-paths-baseline.ts --write
+test:auth:compat=node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway.config.ts src/gateway/server.auth.compat-baseline.test.ts src/gateway/client.test.ts src/gateway/reconnect-gating.test.ts src/gateway/protocol/connect-error-details.test.ts
+test:docker:agents-delete-shared-workspace=bash scripts/e2e/agents-delete-shared-workspace-docker.sh
+test:docker:npm-onboard-channel-agent=bash scripts/e2e/npm-onboard-channel-agent-docker.sh
+test:docker:npm-onboard-discord-channel-agent=OPENCLAW_NPM_ONBOARD_CHANNEL=discord bash scripts/e2e/npm-onboard-channel-agent-docker.sh

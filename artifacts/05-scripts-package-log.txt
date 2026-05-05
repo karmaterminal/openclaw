@@ -1,0 +1,20 @@
+325df3efef chore(release): bump to 2026.5.4
+5fcdeae80c chore(release): bump to 2026.5.4-beta.3
+9f15c29397 fix: explain missing git during plugin install
+e0002c4b5b chore(release): prepare 2026.5.4 beta 2
+c84b7cbffc ci(release): speed up focused release reruns
+47411f7c52 build: bump axios override
+2f3a9629d8 test: use latest kitchen sink canary
+44a10ceea2 test(live): run cache probe with node
+da0a977678 test(plugins): refresh kitchen sink docker fixture
+a491090b48 fix(release): refresh plugin sdk api gate
+cb9824d6b4 test: add slack onboarding channel smoke (#77575)
+cf1bd30509 test(plugins): add kitchen sink rpc walk
+d522a18971 fix: sync Codex app-server protocol (#77578)
+9eed48fde5 test(docker): align published upgrade timeout
+a167acee67 fix(gateway): route watch trace spam to artifacts
+f8e080386d fix(gateway): quiet benchmark watch output
+d6917edc53 fix: preserve gateway watch trace overrides
+35e48a049b fix: enable sync io tracing in gateway watch
+e84d4b27f4 feat: add gateway stall diagnostics
+ac3cd1a0ca Harden Codex harness control surfaces (#77459)

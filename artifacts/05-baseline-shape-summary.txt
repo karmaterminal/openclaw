@@ -1,0 +1,11 @@
+Baseline file stats by tag:
+v2026.5.3: 2
+v2026.5.4: 2
+
+v2026.5.3 baseline files:
+docs/.generated/config-baseline.sha256
+docs/.generated/plugin-sdk-api-baseline.sha256
+
+v2026.5.4 baseline files:
+docs/.generated/config-baseline.sha256
+docs/.generated/plugin-sdk-api-baseline.sha256

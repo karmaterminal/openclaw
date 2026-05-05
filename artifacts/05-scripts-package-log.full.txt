@@ -1,0 +1,55 @@
+325df3efef chore(release): bump to 2026.5.4
+5fcdeae80c chore(release): bump to 2026.5.4-beta.3
+9f15c29397 fix: explain missing git during plugin install
+e0002c4b5b chore(release): prepare 2026.5.4 beta 2
+c84b7cbffc ci(release): speed up focused release reruns
+47411f7c52 build: bump axios override
+2f3a9629d8 test: use latest kitchen sink canary
+44a10ceea2 test(live): run cache probe with node
+da0a977678 test(plugins): refresh kitchen sink docker fixture
+a491090b48 fix(release): refresh plugin sdk api gate
+cb9824d6b4 test: add slack onboarding channel smoke (#77575)
+cf1bd30509 test(plugins): add kitchen sink rpc walk
+d522a18971 fix: sync Codex app-server protocol (#77578)
+9eed48fde5 test(docker): align published upgrade timeout
+a167acee67 fix(gateway): route watch trace spam to artifacts
+f8e080386d fix(gateway): quiet benchmark watch output
+d6917edc53 fix: preserve gateway watch trace overrides
+35e48a049b fix: enable sync io tracing in gateway watch
+e84d4b27f4 feat: add gateway stall diagnostics
+ac3cd1a0ca Harden Codex harness control surfaces (#77459)
+7e229f0d3d fix(docker): prune external plugin dist (#77547)
+8ee08b2b77 chore: update dependencies
+ed1089f822 test(plugins): source Testbox auth for kitchen sink live
+e2eb8e3cfe test(plugins): harden kitchen sink live gauntlet
+0fc8afeac9 test(package): cover stale source plugin shadows
+112924b113 fix(update): keep plugin install runtime aliases stable
+021373a454 ci(release): recover Windows packaged update no-restart timeout
+94f8f1914e test(release): match versioned Windows upgrade tarballs
+2e399e6f1a test(release): recover known Windows packaged upgrade timeout
+2511be5244 test(release): skip restart in package upgrade lane
+14f756c05b test(release): leave Windows updater timeout headroom
+d5b0083300 fix: proxy direct APNs HTTP2 sessions (#74905)
+05d6c62152 fix(release): reject blank plugin runtime entries
+5397667272 chore(release): prepare 2026.5.4
+b37fba7c07 ci(release): harden clawhub plugin publish
+5b528f4dfe docs: add plugin install example
+9b95e477be test(e2e): run crestodian planner harness without tsx
+a1304c92c6 Fix Control UI i18n tooltip placeholders
+f0537e93fb fix(ci): plan openwebui functional image
+7129db1960 perf: lighten gateway watch startup
+585ce38015 fix(telegram): stabilize topic dispatch runtime
+0f7cd6d905 perf: overlap gateway watch startup
+a5dcf3d300 fix(control-ui): filter archived sessions (#77132)
+f29aaa2e04 fix(release): resolve beta smoke workflow run
+d8da04e58e chore: improve beta smoke release tooling
+21ac476904 fix(telegram): stabilize reply dispatch runtime
+ea04e019ac test: restore jiti override seams for loader tests
+bc0b54e844 fix: keep gateway shutdown runtime stable across updates
+705bde4594 perf(gateway): avoid jiti on native plugin loads
+a8b38bb742 test: improve Parallels beta validation
+bc924889be fix(test): keep Open WebUI live lane image-free
+0b6db06d7d fix(test): skip Open WebUI in no-live Docker plans
+50da306c0a fix(telemetry): bound message diagnostics labels
+857580108d fix(ci): continue Windows upgrade fallback checks
+c1db7df2ea fix(ci): run cross-os checks on Windows
