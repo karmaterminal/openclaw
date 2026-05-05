@@ -7,6 +7,7 @@ import { openBoundaryFile } from "../../infra/boundary-file-read.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { isAbortError } from "../../infra/unhandled-rejections.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { buildCopilotIdeHeaders } from "../../plugin-sdk/provider-auth.js";
 import {
   getCompactionProvider,
   type CompactionProvider,
@@ -266,7 +267,11 @@ async function resolveModelAuth(
       reason: `Compaction safeguard could not resolve request credentials for ${model.provider}/${model.id}.`,
     };
   }
-  return { ok: true, apiKey: requestAuth.apiKey, headers: requestAuth.headers };
+  const headers =
+    model.provider === "github-copilot"
+      ? { ...buildCopilotIdeHeaders(), ...requestAuth.headers }
+      : requestAuth.headers;
+  return { ok: true, apiKey: requestAuth.apiKey, headers };
 }
 
 function buildCompactionSummaryHeaders(params: {
