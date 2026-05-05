@@ -1,0 +1,3 @@
+undefined
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command "gen:baselines" not found
+EXIT=254

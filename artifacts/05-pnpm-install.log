@@ -1,0 +1,15 @@
+Scope: all 125 workspace projects
+Lockfile is up to date, resolution step is skipped
+Packages: +1290
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 0, reused 1, downloaded 0, added 0
+Progress: resolved 0, reused 1243, downloaded 0, added 1290, done
+
+. preinstall$ node scripts/preinstall-package-manager-warning.mjs
+. preinstall: Done
+. postinstall$ node scripts/postinstall-bundled-plugins.mjs
+. postinstall: [postinstall] could not prune OpenClaw compile cache: Error: EACCES, Permission denied: /tmp/node-compile-cache/v22.22.2-arm64-2b4477fa-0 '/tmp/node-compile-cache/v22.22.2-arm64-2b4477fa-0'
+. postinstall: Done
+. prepare$ command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath git-hooks || exit 0
+. prepare: Done
+Done in 1.5s using pnpm v10.33.2

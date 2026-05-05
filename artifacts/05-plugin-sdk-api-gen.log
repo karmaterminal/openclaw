@@ -1,0 +1,7 @@
+
+> openclaw@2026.5.3 plugin-sdk:api:gen /home/figs/flesh_beast_best_beast/openclaw-wt-v54-scout-20260505
+> node --max-old-space-size=4096 --import tsx scripts/generate-plugin-sdk-api-baseline.ts --write
+
+Wrote docs/.generated/plugin-sdk-api-baseline.sha256
+Wrote docs/.generated/plugin-sdk-api-baseline.json (gitignored, local only)
+Wrote docs/.generated/plugin-sdk-api-baseline.jsonl (gitignored, local only)
