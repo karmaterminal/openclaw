@@ -1,0 +1,168 @@
+v5.4 guard-related commits and files
+b73317c217 fix(sandbox): support Windows drive-letter bind sources
+8f6bf65162 fix(agents): enforce exact skill path from <available_skills> [AI-assisted] (#74161)
+25b30c9520 fix: honor embedded runtime tool allowlists (#77609)
+7168896fdf fix(agents): abort post-compaction loops out-of-band
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+5dfaed1846 refactor(agents): use loop detection switch for post-compaction guard
+src/agents/pi-embedded-runner/post-compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+ed4b223cf2 fix(agents): honor scoped post-compaction guard config
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+1af6855bb0 refactor(agents): thread post-compaction guard observer
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+e0fafdcc1d fix(agents): observe post-compaction guard live
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+0d3b74e45a test(agents): avoid redundant guard scope spread
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+3ba0f588ad fix(agents): observe matched post-compaction tool outcomes
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+4c4825679b fix(agents): make post-compaction guard config valid + observation trim-resilient
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+2a702f927f feat(agents): wire post-compaction loop guard into pi-embedded-runner
+src/agents/pi-embedded-runner/post-compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+5b863c719e fix(agents): address review feedback on post-compaction loop guard
+src/agents/pi-embedded-runner/post-compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+96e7461c81 feat(agents): add post-compaction loop guard module + config
+src/agents/pi-embedded-runner/post-compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+7295f19fbc test(live): use low reasoning for cache probes
+3e4f076723 fix(lsp): resolve Windows .cmd shims (#75343)
+b378a91257 test(live): retry cache probe text misses
+2d8fa23447 fix(agents): mediate async media completions
+48ff390953 perf(plugins): reuse compatible metadata snapshots
+306a582294 test(agents): remove redundant payload casts
+d253392ea2 fix(plugins): keep explicit web providers on fast path
+6dae3c273d fix: keep runtime prompt context out of system prompt (#77521)
+15d3fd83bb fix(openai-codex): match codex replay identity
+27e467ad23 fix(openai-codex): avoid stale Responses replay state
+d362879282 fix(plugins): normalize compat allowlist aliases
+40e0844133 fix(plugins): preserve bundled allowlist edges
+b2096d19ec fix(plugins): default bundled discovery to allowlist
+41257a5f6f fix(plugins): rename bundled allowlist discovery policy
+f738663c79 fix(plugins): add bundledMode to gate runtime provider discovery by allowlist
+ac3cd1a0ca Harden Codex harness control surfaces (#77459)
+a7263de258 fix(agents): preserve workspace metadata reuse
+src/agents/pi-embedded-runner/compact.ts
+src/agents/pi-embedded-runner/run.ts
+8ee08b2b77 chore: update dependencies
+14b5f73e2a fix(agents): avoid duplicate generated media attachments
+be8b4dc845 fix(agents): honor hook bootstrap content (#77501)
+de4903ec7a fix(agents): refresh deferred subagent delivery text
+74ab62c6a2 fix: pass claude cli thinking effort (#77410)
+c240e718e9 Feat/main session durable delivery pr (#75280)
+1df2ac442a fix #77296: [Bug]: Plugin manifest `skills` field not published to agent skill discovery paths (#77328)
+cb38535875 [plugin sdk] Project session extension slots (#75609)
+8afc9ef73c [plugin sdk] Harden finalize retry and run context cleanup (#75600)
+626e078863 fix: refresh stale codex auth profile routing
+24ec2aebe8 test(agents): update model auth fixture shape
+3434cfa381 test: speed up import-heavy suites
+dade5f9133 fix(web-fetch): scope fallback cache by provider
+304fa098f2 fix(web-search): honor late-bound disabled config
+474bea162b fix: bound trajectory runtime flush (#77154)
+23950b5664 test(agents): align slack target normalization assertion
+585ce38015 fix(telegram): stabilize topic dispatch runtime
+a5dcf3d300 fix(control-ui): filter archived sessions (#77132)
+fbf9132b32 fix(web-fetch): late-bind runtime config
+128cc2c84b refactor(web-tools): share runtime provider context
+fa689295c6 fix: resolve small triage issues
+92d33e4de8 fix(agents): sanitize presentation reasoning
+ab24e93573 fix(web-search): preserve runtime auto-detect fallback
+c76d8f5a7c fix(web-search): keep first-class web_search runtime providers visible
+21ac476904 fix(telegram): stabilize reply dispatch runtime
+b6f9b5f21e fix(agents): keep grouped subagent completions
+e80de466e5 fix(agents): preserve full subagent announce output
+1d935cce51 fix(agents): suppress mid-turn continuation prompts
+src/agents/pi-embedded-runner/run.overflow-compaction.loop.test.ts
+src/agents/pi-embedded-runner/run.ts
+66267b5435 docs: clarify Pi transcript ownership
+src/agents/pi-embedded-runner/run.ts
+0fcf2c64c0 fix: prevent persisted turn replay
+src/agents/pi-embedded-runner/run.overflow-compaction.loop.test.ts
+src/agents/pi-embedded-runner/run.ts
+117364e2b9 fix: unwrap env path carrier commands
+cf1991d27d fix: harden sudo command carrier parsing
+5eac4686aa fix: preserve env split-string payloads
+1a573d33bc fix: parse attached carrier option values
+71c7232764 fix(agents): keep current status on run session
+3f732aee83 fix: session_status 'current' resolves to live run session instead of stale sandbox key (#76708) (#76995)
+src/agents/pi-embedded-runner/compact.ts
+571d75aab3 fix(plugins): honor plugin tool denylists
+7e296aef4b fix(cli-runner): drop stale claude-cli sessionId when transcript missing (#77011)
+36f8a8603d fix(agents): gate optional media factories by tool policy
+5be66ca648 fix(agents): avoid secrets snapshot clones in plugin tool prep
+c151573f4c test(agents): align thinking default policy coverage
+786fdeb366 refactor: centralize bootstrap system prompt assembly
+eb66def656 fix: scope messaging tool final reply dedupe
+5d09b4b92c feat(agents): add tool progress detail modes
+src/agents/pi-embedded-runner/run.ts
+0fa70f5a47 fix: keep bootstrap context in system prompt
+f1340be051 feat(openrouter): expand app attribution categories
+src/agents/pi-embedded-runner/proxy-stream-wrappers.test.ts
+34b3471f85 feat(openrouter): add opt-in response caching
+src/agents/pi-embedded-runner/proxy-stream-wrappers.test.ts
+src/agents/pi-embedded-runner/proxy-stream-wrappers.ts
+
+Feature continuation commits/files
+e84fa88cbe feat(continuation): context-pressure and targeted returns
+src/agents/pi-embedded-subscribe.handlers.compaction.runtime.ts
+src/agents/pi-embedded-subscribe.handlers.compaction.test.ts
+src/agents/pi-embedded-subscribe.handlers.compaction.ts
+src/agents/subagent-announce-delivery.test.ts
+src/agents/subagent-announce-delivery.ts
+src/agents/subagent-announce-queue.ts
+src/agents/subagent-announce.chain-guard.test.ts
+src/agents/subagent-announce.continuation-drain.test.ts
+src/agents/subagent-announce.continuation.runtime.test.ts
+src/agents/subagent-announce.continuation.runtime.ts
+src/agents/subagent-announce.continuation.test.ts
+src/agents/subagent-announce.format.e2e.test.ts
+src/agents/subagent-announce.registry.runtime.ts
+src/agents/subagent-announce.runtime.ts
+src/agents/subagent-announce.silent-wake.test.ts
+src/agents/subagent-announce.targeted-return.integration.test.ts
+src/agents/subagent-announce.test.ts
+src/agents/subagent-announce.timeout.test.ts
+src/agents/subagent-announce.ts
+src/agents/tools/continue-delegate-tool.ts
+src/agents/tools/request-compaction-tool.ts
+src/auto-reply/continuation/config.test.ts
+src/auto-reply/continuation/config.ts
+src/auto-reply/continuation/context-pressure.test.ts
+src/auto-reply/continuation/context-pressure.ts
+src/auto-reply/continuation/cross-session-targeting.test.ts
+src/auto-reply/continuation/delegate-dispatch-post-compaction.test.ts
+src/auto-reply/continuation/delegate-dispatch.test.ts
+src/auto-reply/continuation/delegate-dispatch.ts
+src/auto-reply/continuation/delegate-store.test.ts
+src/auto-reply/continuation/delegate-store.ts
+src/auto-reply/continuation/lazy.runtime.ts
+src/auto-reply/continuation/post-compaction-release.test.ts
+src/auto-reply/continuation/post-compaction-release.ts
+src/auto-reply/continuation/scheduler.test.ts
+src/auto-reply/continuation/scheduler.ts
+src/auto-reply/continuation/signal.test.ts
+src/auto-reply/continuation/signal.ts
+src/auto-reply/continuation/state.test.ts
+src/auto-reply/continuation/state.ts
+src/auto-reply/continuation/targeting-pure.ts
+src/auto-reply/continuation/targeting.ts
+src/auto-reply/continuation/trace-context-propagation.integration.test.ts
+src/auto-reply/continuation/types.mode-shape.test.ts
+src/auto-reply/continuation/types.ts
+src/auto-reply/continuation/volatile-map-allowlist.test.ts
+src/auto-reply/reply/post-compaction-context-failure.test.ts
+src/auto-reply/reply/post-compaction-delegate-dispatch.test.ts
+src/auto-reply/reply/post-compaction-delegate-dispatch.ts

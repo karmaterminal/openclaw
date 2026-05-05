@@ -1,0 +1,24 @@
+# Phase D: post-compaction loop guard interaction analysis
+
+Verified refs:
+- new base: v2026.5.4 (325df3efefe9)
+- feature/source: origin/cael/20260504/v2026.5.3-rebase (e84fa88cbe83)
+
+v5.4 guard surface:
+- 96e7461c81 adds src/agents/pi-embedded-runner/post-compaction-loop-guard.ts and test coverage.
+- Follow-ups 5b863c719e, 2a702f927f, 4c4825679b, 3ba0f588ad, e0fafdcc1d, 1af6855bb0, ed4b223cf2, 5dfaed1846, and 7168896fdf wire/harden the guard in src/agents/pi-embedded-runner/run.ts and src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts.
+- The guard observes post-compaction tool calls as { toolName, argsHash, resultHash } after run.ts arms it on timeout compaction, overflow compaction, or compacted-transcript continuation retry.
+- The guard aborts only when the same tool repeats identical arguments and identical results within the configured post-compaction window; config is under tools.loopDetection.postCompactionGuard.windowSize.
+
+Feature continuation surface:
+- e84fa88cbe adds context-pressure and targeted-return continuation behavior.
+- src/auto-reply/continuation/context-pressure.ts emits early-warning/context-pressure bands and post-compaction pressure events.
+- src/auto-reply/continuation/post-compaction-release.ts clears pressure dedup state, fires post-compaction context-pressure, and releases staged post-compaction delegates.
+- src/agents/tools/continue-delegate-tool.ts adds mode "post-compaction" for delegates that fire when compaction happens.
+- src/agents/tools/request-compaction-tool.ts lets an agent request compaction after evacuating state, guarded by pending-dedup, >=70% context usage, and rate limiting.
+
+Interaction read:
+- There is a shared seam around compaction/post-compaction lifecycle and context-pressure messages, but the guard and continuation substrate do not decide from the same exact observable.
+- The v5.4 guard is tool-loop persistence detection after compaction; continuation is context-pressure detection plus staged delegate release at compaction boundaries.
+- Relationship looks cooperative/orthogonal: continuation can intentionally stage work across compaction, while the guard only aborts repeated identical tool outcomes after compaction fails to break a loop.
+- No new continuation-specific guard config appears required for the rebase. The driver still needs a three-way merge on run.ts/attempt.ts/openclaw-tools.ts and diagnostic.ts, because those files show textual overlap, but this is merge wiring, not product-design integration.

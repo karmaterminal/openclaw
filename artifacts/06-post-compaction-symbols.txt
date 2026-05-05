@@ -1,0 +1,427 @@
+v5.4 post-compaction-loop-guard symbols
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:1:import type { ToolLoopPostCompactionGuardConfig } from "../../config/types.tools.js";
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:4:const log = createSubsystemLogger("agents/post-compaction-guard");
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:8:export type PostCompactionGuardObservation = {
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:9:  toolName: string;
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:14:export type PostCompactionGuardVerdict =
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:20:      detector: "compaction_loop_persisted";
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:22:      toolName: string;
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:26:export type PostCompactionLoopGuard = {
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:27:  armPostCompaction: () => void;
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:28:  observe: (call: PostCompactionGuardObservation) => PostCompactionGuardVerdict;
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:36:  history: PostCompactionGuardObservation[];
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:46:export function createPostCompactionLoopGuard(
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:47:  config?: ToolLoopPostCompactionGuardConfig,
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:49:): PostCompactionLoopGuard {
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:57:  const armPostCompaction = (): void => {
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:61:      log.info(`post-compaction guard armed for ${state.windowSize} attempts`);
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:65:  const observe = (call: PostCompactionGuardObservation): PostCompactionGuardVerdict => {
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:78:        entry.toolName === call.toolName &&
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:85:        `post-compaction loop persisted: tool=${call.toolName} repeated ${matches.length} times with identical args+result post-compaction`,
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:91:        detector: "compaction_loop_persisted",
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:93:        toolName: call.toolName,
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:94:        message: `CRITICAL: tool ${call.toolName} repeated ${matches.length} times with identical arguments and identical results within ${state.windowSize} attempts after auto-compaction. The compaction did not break the loop. Aborting to prevent runaway resource use.`,
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:106:  return { armPostCompaction, observe, snapshot };
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:109:export class PostCompactionLoopPersistedError extends Error {
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:110:  readonly detector: "compaction_loop_persisted";
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:112:  readonly toolName: string;
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:117:      detector: "compaction_loop_persisted";
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:119:      toolName: string;
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:123:    this.name = "PostCompactionLoopPersistedError";
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:124:    this.detector = details.detector;
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:126:    this.toolName = details.toolName;
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:130:    verdict: Extract<PostCompactionGuardVerdict, { shouldAbort: true }>,
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:131:  ): PostCompactionLoopPersistedError {
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:132:    return new PostCompactionLoopPersistedError(verdict.message, {
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:133:      detector: verdict.detector,
+v2026.5.4:src/agents/pi-embedded-runner/post-compaction-loop-guard.ts:135:      toolName: verdict.toolName,
+
+v5.4 run.ts guard integration
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:88:import { runPostCompactionSideEffects } from "./compaction-hooks.js";
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:89:import { buildEmbeddedCompactionRuntimeContext } from "./compaction-runtime-context.js";
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:100:} from "./post-compaction-loop-guard.js";
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:181:  "The previous attempt compacted the conversation context before producing a final user-visible answer. Continue from the compacted transcript and produce the final answer now. Do not restart from scratch, do not repeat completed work, and do not rerun tools unless the transcript clearly lacks required evidence.";
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:329:  // Resolve sessionKey early so all downstream consumers (hooks, LCM, compaction)
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:766:      const MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:768:      let overflowCompactionAttempts = 0;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:782:      let compactionContinuationRetryAttempts = 0;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:791:      // Post-compaction loop guard for #77474. Armed at each compaction-success
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:793:      // while the post-compaction prompt is still running.
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:798:      const postCompactionGuard = createPostCompactionLoopGuard(
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:799:        resolvedLoopDetectionConfig?.postCompactionGuard,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:802:      let postCompactionAbortController: AbortController | undefined;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:803:      let postCompactionAbortError: PostCompactionLoopPersistedError | undefined;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:807:        const verdict = postCompactionGuard.observe(observation);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:809:          postCompactionAbortError ??= PostCompactionLoopPersistedError.fromVerdict(verdict);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:810:          postCompactionAbortController?.abort(postCompactionAbortError);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:817:      let compactionContinuationRetryInstruction: string | null = null;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:840:      // replaying the same inbound channel message after overflow compaction.
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:939:          compactResult: Awaited<ReturnType<typeof contextEngine.compact>>,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:941:          const nextSessionId = compactResult.result?.sessionId;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:942:          const nextSessionFile = compactResult.result?.sessionFile;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:959:            stream: "compaction",
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:968:        // When the engine owns compaction, compactEmbeddedPiSessionDirect is
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:974:            !hookRunner?.hasHooks("before_compaction")
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:984:            log.warn(`before_compaction hook failed during ${reason}: ${String(hookErr)}`);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:989:          compactResult: Awaited<ReturnType<typeof contextEngine.compact>>,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:993:            !compactResult.ok ||
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:994:            !compactResult.compacted ||
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:995:            !hookRunner?.hasHooks("after_compaction")
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1003:                compactedCount: -1,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1004:                tokenCount: compactResult.result?.tokensAfter,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1005:                sessionFile: compactResult.result?.sessionFile ?? activeSessionFile,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1010:            log.warn(`after_compaction hook failed during ${reason}: ${String(hookErr)}`);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1067:            compactionContinuationRetryInstruction,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1106:          postCompactionAbortController = attemptAbortController;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1235:              throw postCompactionAbortError ?? err;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1239:              if (postCompactionAbortController === attemptAbortController) {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1240:                postCompactionAbortController = undefined;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1243:          if (postCompactionAbortError) {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1244:            throw postCompactionAbortError;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1335:          const attemptCompactionCount = Math.max(0, attempt.compactionCount ?? 0);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1338:            typeof attempt.compactionTokensAfter === "number" &&
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1339:            Number.isFinite(attempt.compactionTokensAfter) &&
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1340:            attempt.compactionTokensAfter > 0
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1342:            lastCompactionTokensAfter = Math.floor(attempt.compactionTokensAfter);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1383:              `[context-overflow-precheck] early recovery route=${preflightRecovery.route} ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1414:          // ── Timeout-triggered compaction ──────────────────────────────────
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1415:          // When the LLM times out with high context usage, compact before
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1428:                `[timeout-compaction] already attempted timeout compaction ${timeoutCompactionAttempts} time(s); falling through to failover rotation`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1434:                `[timeout-compaction] LLM timed out with high prompt token usage (${Math.round(tokenUsedRatio * 100)}%); ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1435:                  `attempting compaction before retry (attempt ${timeoutCompactionAttempts}/${MAX_TIMEOUT_COMPACTION_ATTEMPTS}) diagId=${timeoutDiagId}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1437:              let timeoutCompactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1474:                timeoutCompactResult = await contextEngine.compact({
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1480:                  compactionTarget: "budget",
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1483:              } catch (compactErr) {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1485:                  `[timeout-compaction] contextEngine.compact() threw during timeout recovery for ${provider}/${modelId}: ${String(compactErr)}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1489:                  compacted: false,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1490:                  reason: String(compactErr),
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1493:              if (timeoutCompactResult.compacted) {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1497:              if (timeoutCompactResult.compacted) {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1514:                  `[timeout-compaction] compaction succeeded for ${provider}/${modelId}; retrying prompt`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1516:                postCompactionGuard.armPostCompaction();
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1520:                  `[timeout-compaction] compaction did not reduce context for ${provider}/${modelId}; falling through to normal handling`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1533:                  // Prompt submission failed with a non-overflow error. Do not
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1548:            const overflowDiagId = createCompactionDiagId();
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1553:              `[context-overflow-diag] sessionKey=${params.sessionKey ?? params.sessionId} ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1556:                `diagId=${overflowDiagId} compactionAttempts=${overflowCompactionAttempts} ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1562:            // If this attempt already compacted (SDK auto-compaction), avoid immediately
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1563:            // running another explicit compaction for the same overflow trigger.
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1567:              overflowCompactionAttempts < MAX_OVERFLOW_COMPACTION_ATTEMPTS
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1569:              overflowCompactionAttempts++;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1571:                `context overflow persisted after in-attempt compaction (attempt ${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}); retrying prompt without additional compaction for ${provider}/${modelId}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1578:            // Attempt explicit overflow compaction only when this attempt did not
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1579:            // already auto-compact.
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1583:              overflowCompactionAttempts < MAX_OVERFLOW_COMPACTION_ATTEMPTS
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1587:                  `[compaction-diag] decision diagId=${overflowDiagId} branch=compact ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1589:                    `attempt=${overflowCompactionAttempts + 1} maxAttempts=${MAX_OVERFLOW_COMPACTION_ATTEMPTS}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1592:              overflowCompactionAttempts++;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1594:                `context overflow detected (attempt ${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}); attempting auto-compaction for ${provider}/${modelId}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1596:              let compactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1597:              await runOwnsCompactionBeforeHook("overflow recovery");
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1599:                const overflowCompactionRuntimeContext = {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1627:                  trigger: "overflow",
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1631:                  diagId: overflowDiagId,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1632:                  attempt: overflowCompactionAttempts,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1633:                  maxAttempts: MAX_OVERFLOW_COMPACTION_ATTEMPTS,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1635:                compactResult = await contextEngine.compact({
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1644:                  compactionTarget: "budget",
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1645:                  runtimeContext: overflowCompactionRuntimeContext,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1647:                if (compactResult.ok && compactResult.compacted) {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1648:                  adoptCompactionTranscript(compactResult);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1654:                    reason: "compaction",
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1655:                    runtimeContext: overflowCompactionRuntimeContext,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1659:              } catch (compactErr) {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1661:                  `contextEngine.compact() threw during overflow recovery for ${provider}/${modelId}: ${String(compactErr)}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1663:                compactResult = {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1665:                  compacted: false,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1666:                  reason: String(compactErr),
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1669:              await runOwnsCompactionAfterHook("overflow recovery", compactResult);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1670:              if (compactResult.compacted) {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1671:                adoptCompactionTranscript(compactResult);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1673:                  typeof compactResult.result?.tokensAfter === "number" &&
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1674:                  Number.isFinite(compactResult.result.tokensAfter) &&
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1675:                  compactResult.result.tokensAfter > 0
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1677:                  lastCompactionTokensAfter = Math.floor(compactResult.result.tokensAfter);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1679:                if (preflightRecovery?.route === "compact_then_truncate") {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1694:                      `[context-overflow-precheck] post-compaction tool-result truncation succeeded for ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1699:                      `[context-overflow-precheck] post-compaction tool-result truncation did not help for ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1705:                log.info(`auto-compaction succeeded for ${provider}/${modelId}; retrying prompt`);
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1706:                postCompactionGuard.armPostCompaction();
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1715:                  // compacted transcript and suppress the next user append.
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1722:                `auto-compaction failed for ${provider}/${modelId}: ${compactResult.reason ?? "nothing to compact"}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1743:                  `[context-overflow-recovery] Attempting tool result truncation for ${provider}/${modelId} ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1756:                    `[context-overflow-recovery] Truncated ${truncResult.truncatedCount} tool result(s); retrying prompt`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1764:                  `[context-overflow-recovery] Tool result truncation did not help: ${truncResult.reason ?? "unknown"}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1770:                overflowCompactionAttempts >= MAX_OVERFLOW_COMPACTION_ATTEMPTS) &&
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1774:                `[compaction-diag] decision diagId=${overflowDiagId} branch=give_up ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1776:                  `attempt=${overflowCompactionAttempts} maxAttempts=${MAX_OVERFLOW_COMPACTION_ATTEMPTS}`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1779:            const kind = isCompactionFailure ? "compaction_failure" : "context_overflow";
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1788:                    "Context overflow: prompt too large for the model. " +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1814:          if (promptError && !aborted && promptErrorSource !== "compaction") {
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1818:            // promptErrorSource === "compaction" means the model call already completed and the
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:1819:            // abort happened only while waiting for compaction/retry cleanup. Retrying from here
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2224:            compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2225:            compactionTokensAfter: lastCompactionTokensAfter,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2474:            compactionContinuationRetryAttempts < 1
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2476:            compactionContinuationRetryAttempts += 1;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2477:            compactionContinuationRetryInstruction = COMPACTION_CONTINUATION_RETRY_INSTRUCTION;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2479:              `compaction interrupted visible final answer: runId=${params.runId} sessionId=${params.sessionId} ` +
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2480:                `compactions=${attemptCompactionCount} — retrying ${compactionContinuationRetryAttempts}/1 with compacted-transcript continuation`,
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2482:            postCompactionGuard.armPostCompaction();
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2485:          compactionContinuationRetryInstruction = null;
+v2026.5.4:src/agents/pi-embedded-runner/run.ts:2502:            // error, compaction timeout, aborted-with-no-payloads). Match
+
+v5.4 proxy wrappers guard observations
+
+feature continuation context-pressure files
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:7:} from "../../auto-reply/continuation/delegate-store.js";
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:22:const log = createSubsystemLogger("continuation/delegate-tool");
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:24:const DELEGATE_MODES = ["normal", "silent", "silent-wake", "post-compaction"] as const;
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:30:      "The delegated sub-agent's task. Treat this like a letter to your future self: include scope, chunk/range, desired return shape, and what the parent should do with the result.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:37:        "Seconds to wait before spawning the delegate. 0 or omitted = immediate. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:46:      '"post-compaction" = silent-wake delegate that fires when compaction happens, not on a timer. ' +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:47:      "Use for context evacuation: the shard starts at the moment of compaction and returns to the post-compaction session.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:52:        "Address one specific session on this host for the delegate's return. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:60:        "Each listed session receives the same delegate completion payload through the session-delivery queue.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:72:        "the delegate and return path can stitch continuation spans into the same trace tree.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:103: * Creates the `continue_delegate` tool.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:105: * This tool dispatches a sub-agent as a continuation delegate — tracked by the
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:109: *   1. Tool writes to the module-level pending-delegate store during execution.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:111: *      store and feeds delegates into the same scheduler that bracket-parsed
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:116: * The tool can be called multiple times per turn (multi-delegate fan-out).
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:119: * No generation guard — delayed delegates survive channel noise (RFC
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:123:  let delegatesThisTurn = 0;
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:127:    name: "continue_delegate",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:129:      "Schedule a continuation delegate — a background sub-agent that can run now, later, " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:130:      "or at compaction, then return visibly or silently to this session. Use for ambient " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:131:      "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:137:      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:148:          "continue_delegate requires an active session. Not available in sessionless contexts.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:154:        throw new ToolInputError("task must be a non-empty string describing the delegated work.");
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:167:      const isPostCompaction = mode === "post-compaction";
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:195:      // Check per-turn delegate limit. Durable queued depth is reported for
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:198:      if (delegatesThisTurn >= maxPerTurn) {
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:202:          reason: `maxDelegatesPerTurn exceeded (${maxPerTurn}). Cannot schedule more delegates in this turn.`,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:203:          delegatesThisTurn,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:220:        delegatesThisTurn += 1;
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:223:          status: "queued-for-compaction",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:224:          mode: "post-compaction",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:225:          delegateIndex: delegatesThisTurn,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:226:          delegatesThisTurn,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:230:            "Delegate will fire when compaction occurs, not on a timer. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:231:            "The shard starts at the moment of compaction and returns to the post-compaction session. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:237:        `[continue_delegate:enqueue] session=${sessionKey} mode=${mode} delayMs=${delayMs} fanoutMode=${fanoutMode ?? "none"} targets=${targetSessionKeys?.length ?? (targetSessionKey ? 1 : 0)} task=${task.slice(0, 80)}`,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:247:      delegatesThisTurn += 1;
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:248:      const dispatchIndex = delegatesThisTurn;
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:254:        delegateIndex: dispatchIndex,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/continue-delegate-tool.ts:255:        delegatesThisTurn: dispatchIndex,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:8:} from "../compaction-attribution.js";
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:16:const log = createSubsystemLogger("continuation/request-compaction");
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:22:/** Minimum context usage (0-1) before the tool will accept a compaction request. */
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:25:/** Minimum milliseconds between compaction requests per session. */
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:28:/** Volitional compaction counts are status-only diagnostics, not durable state. */
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:34: * Module-level map — same volatility contract as continuation-delegate-store.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:49: * Tracks sessions that have a compaction request in-flight.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:50: * Used to dedup — if the agent calls request_compaction twice before the
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:62:      "Why the agent is requesting compaction now. Logged for diagnostics. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:63:      "Example: 'context pressure at 92%, working state evacuated to memory files and 2 post-compaction delegates staged.'",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:86:   * Async function that triggers compaction. Injected so the tool does not
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:87:   * import the heavy compaction module directly. The caller provides a
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:111:      `[system:compaction-failed] Volitional compaction request ${params.diagId} failed (code=${params.code}, reason=${params.reason}). Your evacuated state was NOT compacted. Staged post-compaction delegates remain pending. Either re-call request_compaction (rate limit allowing) or yield with the evacuation as-is.`,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:116:      `[request_compaction:failure-event-error] session=${params.sessionKey} runId=${params.runId ?? params.sessionId} ` +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:127: * Creates the `request_compaction` tool.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:129: * This tool allows the agent to **request** compaction after it has prepared —
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:130: * evacuated working state to memory files, staged post-compaction delegates,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:133: * The tool is ASYNC: it enqueues compaction and returns immediately. The
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:134: * compaction runs between turns via the lane queue, not during the tool call.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:136: * Guards (all checked before compaction is enqueued):
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:137: *   - **Dedup:** a compaction request is not already pending for this session.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:138: *   - **Context threshold:** context usage must be >= 70%.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:139: *   - **Rate limit:** at most one compaction per 5 minutes per session.
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:141: * (The earlier "generation guard" was removed 2026-04-15 by RFC: compaction
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:143: * already serializes compaction relative to subsequent messages.)
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:148:    name: "request_compaction",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:150:      "Request compaction of the current session to reclaim context window space. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:151:      "Call this AFTER you have evacuated working state (memory files, post-compaction delegates, RESUMPTION.md). " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:152:      "Guards: context must be >= 70% full, and rate-limited to once per 5 minutes per session. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:154:      "Prefer this over waiting for automatic compaction when you have context-pressure awareness and want " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:163:          "request_compaction requires an active session. Not available in sessionless contexts.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:169:          "request_compaction requires a sessionId. Session may not be fully initialized.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:175:      // ----- Guard 0: Dedup — compaction already pending -----
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:177:        log.debug(`[request_compaction:already-pending] session=${sessionKey}`);
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:180:          reason: "A compaction request is already in-flight for this session.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:184:      // ----- Guard 1: Context threshold -----
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:187:        log.debug(`[request_compaction:context-unknown] session=${sessionKey}`);
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:190:          guard: "context_threshold",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:191:          reason: `Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.`,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:196:          `[request_compaction:below-threshold] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}%`,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:200:          guard: "context_threshold",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:202:          threshold: Math.round(MIN_CONTEXT_THRESHOLD * 100),
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:203:          reason: `Context usage (${Math.round(contextUsage * 100)}%) is below the minimum threshold (${Math.round(MIN_CONTEXT_THRESHOLD * 100)}%). Compaction is not needed yet.`,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:215:          `[request_compaction:rate-limited] session=${sessionKey} remainingSec=${remainingSec}`,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:221:          reason: `Rate limited. Next compaction request allowed in ${remainingSec}s.`,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:225:      // ----- All guards passed — enqueue compaction -----
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:226:      // No generation guard (removed 2026-04-15 RFC): compaction is not blocked
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:229:        `[request_compaction:enqueuing] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:233:      // Fire-and-forget: compaction runs via the lane queue after the current
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:266:                `[request_compaction:resolved-success] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:276:                `[request_compaction:resolved-skip] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:282:              `[request_compaction:resolved-failure] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:291:              `[request_compaction:background-error] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:302:        status: "compaction_requested",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:303:        compactionRequestId: diagId,
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:309:          "Post-compaction context (AGENTS.md, SOUL.md) will be injected on the next turn. " +
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:310:          "Any staged post-compaction delegates will be dispatched.",
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:317:// Volitional compaction counter (module-level, survives compaction)
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:324:/** Increment the volitional compaction counter for a session. */
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:329:/** Get the volitional compaction count for a session. */
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:349:/** Mark a session as having a pending compaction. Exported for tests only. */
+origin/cael/20260504/v2026.5.3-rebase:src/agents/tools/request-compaction-tool.ts:354:/** Reset volitional compaction counters. Exported for tests only. */
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:6: * advance warning to evacuate working state before compaction.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:8: * Post-compaction: fires regardless of context level to inform the session
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:9: * that compaction occurred. The session learns this cycle behaviorally.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:12: * but a new band (including a lower band after compaction) always fires.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:24:const log = createSubsystemLogger("continuation/context-pressure");
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:33: * Reset when a new lifecycle begins (e.g., after compaction).
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:46:  threshold: number,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:49:  if (!Number.isFinite(ratio) || ratio < 0 || !Number.isFinite(threshold) || threshold <= 0) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:52:  const thresholdPct = Math.round(threshold * 100);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:56:      ? threshold * earlyWarningMultiplier
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:60:      ? [{ threshold: earlyWarningThreshold, band: Math.round(earlyWarningThreshold * 100) }]
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:62:    { threshold, band: thresholdPct },
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:63:    ...(threshold < 0.9 ? [{ threshold: 0.9, band: 90 }] : []),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:64:    ...(Math.max(threshold, 0.9) < 0.95 ? [{ threshold: 0.95, band: 95 }] : []),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:68:    if (ratio >= candidate.threshold) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:88:  threshold: number;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:107:      `[system:context-pressure] Post-compaction: ${params.percentUsed}% context consumed ` +
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:121:    `[system:context-pressure] ${params.percentUsed}% of context window consumed ` +
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:137:  const threshold =
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:141:    threshold == null ||
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:142:    threshold <= 0 ||
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:154:  const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:155:  if (!postCompaction && band === 0 && ratio < threshold) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:158:        `[context-pressure:noop] reason=below-threshold ratio=${Math.round(ratio * 100)}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:168:        `[context-pressure:noop] reason=band-dedup band=${band} previous=${previous} ratio=${Math.round(ratio * 100)}% session=${sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:185:  const logMessage = `[context-pressure:fire]${postCompaction ? " post-compaction" : ""} band=${band} previous=${previous ?? "none"} ratio=${percentUsed}% tokens=${tokensK}k/${windowK}k session=${sessionKey}`;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:202:    threshold,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:210:        `[context-pressure:noop] reason=window-zero contextWindow=${contextWindow} session=${sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:220:    const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:230:      `[context-pressure:fire] post-compaction band=${band} ratio=${percentUsed}% session=${sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:235:  const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:237:  if (band === 0 && ratio < threshold) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:240:        `[context-pressure:noop] reason=below-threshold ratio=${percentUsed}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:251:        `[context-pressure:noop] reason=band-dedup band=${band} previous=${previous} ratio=${percentUsed}% session=${sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:267:    `[context-pressure:fire] band=${band} previous=${previous ?? "none"} ratio=${percentUsed}% session=${sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:274: * Check whether a context-pressure event should fire for the given session.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:293: * Clear pressure dedup state for a session. Call after compaction completes
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/context-pressure.ts:294: * so the post-compaction lifecycle can fire fresh bands.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:2: * Post-compaction continuation lifecycle release (RFC §4.4).
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:9: *   1. Clear pressure dedup state so post-compaction bands can fire fresh.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:10: *   2. Fire context-pressure event (postCompaction: true) when totals are known.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:11: *   3. Consume staged post-compaction delegates and dispatch them with
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:14: * Lazy imports for `lazy.runtime` and `delegate-dispatch` are preserved here:
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:16: * imported anywhere in src/ (boundary rule); delegate-dispatch is heavy and
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:17: * is loaded only when delegates are actually staged.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:49:  delegatesDispatched: number;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:53: * Run the post-compaction lifecycle release. Caller is responsible for
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:65:  // 1. Clear pressure dedup so post-compaction lifecycle can fire fresh bands.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:68:  // 2. Fire context-pressure unconditionally after compaction (when totals
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:70:  //    rehydration via delegates.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:80:      threshold: pressureConfig.contextPressureThreshold ?? 0.8,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:90:  // 3. Release staged post-compaction delegates with the canonical flag set.
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:92:  let delegatesDispatched = 0;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:94:    const { dispatchStagedPostCompactionDelegates } = await import("./delegate-dispatch.js");
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:102:    delegatesDispatched = result.dispatched;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/continuation/post-compaction-release.ts:105:  return { pressureFired, delegatesDispatched };
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:26:import { consumeStagedPostCompactionDelegates } from "../continuation-delegate-store.js";
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:30:import { readPostCompactionContext } from "./post-compaction-context.js";
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:64:    delegate: SessionPostCompactionDelegate;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:66:    compactionCount?: number;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:83:  compactionCount: number | undefined;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:154:  delegates: SessionPostCompactionDelegate[] | undefined;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:157:    params.sessionEntry.pendingPostCompactionDelegates = params.delegates;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:162:      pendingPostCompactionDelegates: params.delegates,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:168:  delegate: SessionPostCompactionDelegate,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:170:  const legacySilentWake = delegate.silent == null && delegate.silentWake == null;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:171:  const silentWake = legacySilentWake ? true : delegate.silentWake === true;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:172:  const silent = legacySilentWake ? true : delegate.silent === true || silentWake;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:173:  const firstArmedAt = delegate.firstArmedAt ?? delegate.createdAt;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:176:    task: delegate.task,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:177:    createdAt: delegate.createdAt,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:179:    ...(delegate.silent != null || legacySilentWake ? { silent } : {}),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:180:    ...(delegate.silentWake != null || legacySilentWake ? { silentWake } : {}),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:181:    ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:182:    ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:183:      ? { targetSessionKeys: delegate.targetSessionKeys }
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:185:    ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:186:    ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:199:  delegates: SessionPostCompactionDelegate[];
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:201:  if (params.delegates.length === 0) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:207:  const normalizedDelegates = params.delegates.map(normalizePostCompactionDelegate);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:218:      delegates: combinedLocal,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:250:    delegates: persisted.length > 0 ? persisted : combinedLocal,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:270:      delegates: undefined,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:282:    const delegates = (current?.pendingPostCompactionDelegates ?? []).map(
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:285:    if (current && delegates.length > 0) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:294:    return delegates;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:301:    delegates: undefined,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:307:  compactionCount?: number;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:309:   * Number of delegates accepted into the persistent delivery queue this
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:327:    `[system:post-compaction] Session compacted at ${new Date().toISOString()}.`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:328:    typeof params.compactionCount === "number"
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:329:      ? `Compaction count: ${params.compactionCount}.`
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:331:    `Queued ${params.queuedDelegates} post-compaction delegate(s) for delivery into the fresh session.`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:333:      ? `${params.droppedDelegates} delegate(s) were not released into the fresh session.`
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:349:  // Mint or reuse `continuationChainId` (UUIDv7) so the post-compaction
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:352:  // before compaction. If the pre-compaction sessionEntry already had
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:353:  // a chain id, reuse it (chain survives the compaction boundary);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:406:        `Failed to persist post-compaction delegate chain state for ${params.sessionKey}: ${String(
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:414:      // is stale, allowing the next compaction-delegate to overrun
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:459:  const { maxChainLength: maxCompactionChainLength, costCapTokens: compactionCostCapTokens } =
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:462:  const compactionChainTokens = sessionEntry?.continuationChainTokens ?? 0;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:466:      `Post-compaction delegate rejected: chain length ${currentCompactionChainCount} >= ${maxCompactionChainLength} for session ${params.entry.sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:469:      `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${params.entry.task}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:478:  if (compactionCostCapTokens > 0 && compactionChainTokens > compactionCostCapTokens) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:480:      `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}) for session ${params.entry.sessionKey}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:483:      `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${params.entry.task}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:494:    `Post-compaction delegate dispatch for session ${params.entry.sessionKey}: ${params.entry.task}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:496:  const delegateWakeOnReturn = params.entry.silentWake ?? true;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:497:  const delegateSilentAnnounce = params.entry.silent ?? delegateWakeOnReturn;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:501:        `[continuation:post-compaction] ` +
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:503:        `Compaction just completed. Carry this working state to the post-compaction session: ${params.entry.task}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:504:      ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:505:      ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:525:    throw new Error(`post-compaction delegate spawn ${spawnResult.status}`);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:529:    `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${params.entry.task}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:543:    tokens: compactionChainTokens,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:556:    drainKey: `post-compaction-delegate:${params.sessionKey ?? "all"}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:557:    logLabel: "post-compaction delegate",
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:591:    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${message}`);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:594:      label: "persisted post-compaction delegate warning",
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:597:        `[system:continuation-warning] Failed to load persisted post-compaction delegates for this session: ${message}. ` +
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:598:        "Earlier turns may have staged delegates that will not fire. Re-stage critical post-compaction work.",
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:608:  for (const delegate of allCompactionDelegates) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:609:    const ageMs = now - (delegate.firstArmedAt ?? delegate.createdAt);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:613:        `Post-compaction delegate dropped as stale for ${params.sessionKey}: ageMs=${ageMs} ttlMs=${POST_COMPACTION_DELEGATE_TTL_MS} firstArmedAt=${delegate.firstArmedAt ?? delegate.createdAt} task=${formatTaskPreview(delegate.task)}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:617:    freshCompactionDelegates.push(delegate);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:620:  // Enforce maxDelegatesPerTurn budget. Account for any bracket-style delegate
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:627:  const bracketDelegateOffset = params.continuationSignalKind === "delegate" ? 1 : 0;
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:628:  const compactionBudget = Math.max(0, maxCompactionDelegates - bracketDelegateOffset);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:629:  const releasedCompactionDelegates = freshCompactionDelegates.slice(0, compactionBudget);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:636:      `Post-compaction delegates dropped for ${params.sessionKey}: ${overflowDroppedDelegates} over maxDelegatesPerTurn budget (${maxCompactionDelegates}, bracketOffset=${bracketDelegateOffset})`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:659:        `[continuation:post-compaction-context-read-failed] sessionKey=${params.sessionKey} error=${message}`,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:663:        label: "post-compaction context read failure",
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:666:          `[system:post-compaction] Context evacuation read failed: ${message}. ` +
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:667:          "The post-compaction session may be missing AGENTS.md/RESUMPTION.md content. Check workspace permissions and re-run if needed.",
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:673:    releasedCompactionDelegates.map((delegate, sequence) =>
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:676:        delegate,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:678:        compactionCount: params.compactionCount,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:692:    const delegate = releasedCompactionDelegates[index];
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:693:    if (delegate) {
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:694:      params.postCompactionDelegatesToPreserve.push(delegate);
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:697:      `Failed to enqueue post-compaction delegate for ${params.sessionKey} (re-staged): ${String(
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:710:        delegates: params.postCompactionDelegatesToPreserve,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:715:        `Failed to persist re-staged post-compaction delegates for ${params.sessionKey} (${params.postCompactionDelegatesToPreserve.length}): ${String(
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:724:      compactionCount: params.compactionCount,
+origin/cael/20260504/v2026.5.3-rebase:src/auto-reply/reply/post-compaction-delegate-dispatch.ts:746:          `Failed to drain queued post-compaction delegates for ${params.sessionKey}: ${String(
