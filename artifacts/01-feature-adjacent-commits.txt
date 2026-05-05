@@ -1,0 +1,528 @@
+303ff716d4356f6945cc2ba49077b9150a833ea6 chore(release): refresh plugin SDK API baseline
+docs/.generated/plugin-sdk-api-baseline.sha256
+
+b73317c217bb7afdc3826c602c0b40bc1f7a8d7e fix(sandbox): support Windows drive-letter bind sources
+src/agents/sandbox/host-paths.test.ts
+src/agents/sandbox/host-paths.ts
+src/agents/sandbox/validate-sandbox-security.test.ts
+src/agents/sandbox/validate-sandbox-security.ts
+
+8f6bf65162b9e5eeb67ceedcd95c0ba6e05917c3 fix(agents): enforce exact skill path from <available_skills> [AI-assisted] (#74161)
+src/agents/system-prompt.test.ts
+src/agents/system-prompt.ts
+
+25b30c95200d3af384b32878f5c9ed8cbf72fef8 fix: honor embedded runtime tool allowlists (#77609)
+src/agents/openclaw-tools.ts
+src/agents/openclaw-tools.update-plan.test.ts
+src/agents/pi-embedded-runner/run/attempt-tool-construction-plan.test.ts
+src/agents/pi-embedded-runner/run/attempt-tool-construction-plan.ts
+src/agents/pi-embedded-runner/run/attempt.test.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+src/agents/pi-tools.create-openclaw-coding-tools.test.ts
+src/agents/pi-tools.ts
+
+a78bb7832c9d1f685b2d517305be0e82f4913d09 chore(config): refresh merged baseline hash
+docs/.generated/config-baseline.sha256
+
+7168896fdfed027cdb5da995bd18c358aab39b66 fix(agents): abort post-compaction loops out-of-band
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+
+5dfaed184608e0c8a069e35f1c14fb3e222a5e55 refactor(agents): use loop detection switch for post-compaction guard
+docs/.generated/config-baseline.sha256
+src/agents/pi-embedded-runner/post-compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+
+ed4b223cf25261bbc839407c6d6d887e6fffe5af fix(agents): honor scoped post-compaction guard config
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+src/agents/pi-tools.ts
+src/agents/tool-loop-detection-config.ts
+
+1af6855bb0a6a799df1dcf2b3f342268f799e6a3 refactor(agents): thread post-compaction guard observer
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+src/agents/pi-embedded-runner/run/types.ts
+src/agents/pi-tools.before-tool-call.ts
+src/agents/pi-tools.ts
+
+e0fafdcc1d1dbb29546345d4b84d10256121cdc7 fix(agents): observe post-compaction guard live
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+src/agents/pi-tools.before-tool-call.ts
+src/agents/tool-loop-detection.test.ts
+src/agents/tool-loop-detection.ts
+
+0d3b74e45a59ac1e053102aa201c89c4a2ecd705 test(agents): avoid redundant guard scope spread
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+
+3ba0f588ad5623e8c708e7b97ded4ee36440e0fb fix(agents): observe matched post-compaction tool outcomes
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/tool-loop-detection.test.ts
+src/agents/tool-loop-detection.ts
+
+4c4825679b69ebe6c649ca0eed3ac1a610f01bf4 fix(agents): make post-compaction guard config valid + observation trim-resilient
+docs/.generated/config-baseline.sha256
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+src/agents/tool-loop-detection.ts
+
+2a702f927fb5ad6a35795f8f485a2a737df60708 feat(agents): wire post-compaction loop guard into pi-embedded-runner
+src/agents/pi-embedded-runner/post-compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/run.ts
+
+5b863c719eba7129af5c28b70dd9677493bcd9f7 fix(agents): address review feedback on post-compaction loop guard
+src/agents/pi-embedded-runner/post-compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+
+96e7461c81900acd606b8e7f35ae1f0ff058fee7 feat(agents): add post-compaction loop guard module + config
+src/agents/pi-embedded-runner/post-compaction-loop-guard.test.ts
+src/agents/pi-embedded-runner/post-compaction-loop-guard.ts
+
+7295f19fbc0fb0ba031ddf7035a74f8acd44dc14 test(live): use low reasoning for cache probes
+src/agents/live-cache-regression-runner.ts
+
+3e4f0767235b7df068836615d4755606d0ecba77 fix(lsp): resolve Windows .cmd shims (#75343)
+src/agents/pi-bundle-lsp-runtime.ts
+src/agents/pi-bundle-lsp-runtime.windows-spawn.test.ts
+
+b378a912573e1d0d32cf1e20ff51e4d425ada6d1 test(live): retry cache probe text misses
+src/agents/live-cache-regression-runner.test.ts
+src/agents/live-cache-regression-runner.ts
+
+2d8fa23447584ad50d74f69aa6d10419f84b2a46 fix(agents): mediate async media completions
+docs/.generated/config-baseline.sha256
+src/agents/subagent-announce-delivery.test.ts
+src/agents/subagent-announce-delivery.ts
+src/agents/tools/media-generate-background-shared.ts
+src/agents/tools/media-generate-background.test-support.ts
+src/agents/tools/music-generate-background.ts
+src/agents/tools/video-generate-background.test.ts
+
+48ff3909531f245afe15dd8093e722be7d355996 perf(plugins): reuse compatible metadata snapshots
+src/agents/model-catalog.test.ts
+src/agents/model-catalog.ts
+
+9e97cdb2138964964e5e247a38dd37286c511da4 fix(discord): fail dropped final reply delivery
+src/auto-reply/dispatch.test.ts
+src/auto-reply/dispatch.ts
+src/auto-reply/reply/dispatch-from-config.types.ts
+
+a491090b4867825d1202de27bc5722fd5c14ae00 fix(release): refresh plugin sdk api gate
+docs/.generated/config-baseline.sha256
+docs/.generated/plugin-sdk-api-baseline.sha256
+
+b2c3202a15e7a877f15740b554f348ba0ed547aa Surface Codex usage-limit reset details in chat replies (#77557)
+src/auto-reply/reply-payload.ts
+src/auto-reply/reply/agent-runner-direct-runtime-config.test.ts
+src/auto-reply/reply/agent-runner-execution.test.ts
+src/auto-reply/reply/agent-runner-execution.ts
+src/auto-reply/reply/agent-runner-payloads.test.ts
+src/auto-reply/reply/agent-runner-payloads.ts
+src/auto-reply/reply/agent-runner.ts
+src/auto-reply/reply/dispatch-from-config.test.ts
+src/auto-reply/reply/dispatch-from-config.ts
+src/auto-reply/reply/reply-delivery.ts
+src/auto-reply/reply/reply-payloads-base.ts
+src/auto-reply/reply/reply-threading.ts
+src/auto-reply/types.ts
+
+306a5822947d8f611259b9b674eae9ee703123f6 test(agents): remove redundant payload casts
+src/agents/openai-transport-stream.test.ts
+
+d253392ea2a30d3245164693c2e943daa53ad6c3 fix(plugins): keep explicit web providers on fast path
+src/agents/openai-transport-stream.test.ts
+
+6dae3c273de6b31b591b7981a6687249d39e24b4 fix: keep runtime prompt context out of system prompt (#77521)
+src/agents/internal-runtime-context.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.context-engine.test.ts
+src/agents/pi-embedded-runner/run/attempt.test.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+
+15d3fd83bb78df15bfb5b3423744545dce2e1ac7 fix(openai-codex): match codex replay identity
+src/agents/openai-transport-stream.test.ts
+src/agents/openai-transport-stream.ts
+
+27e467ad230ffa5ad4dad6f15b68f2b5bd53c0b1 fix(openai-codex): avoid stale Responses replay state
+src/agents/openai-transport-stream.test.ts
+src/agents/openai-transport-stream.ts
+
+d3628792825956702be7a6253061b96d976c623d fix(plugins): normalize compat allowlist aliases
+src/agents/models-config.providers.plugin-allowlist-compat.test.ts
+
+40e0844133e0dd0e3b26d3b84bf6124e87e3165a fix(plugins): preserve bundled allowlist edges
+docs/.generated/config-baseline.sha256
+src/agents/models-config.providers.plugin-allowlist-compat.test.ts
+
+b2096d19ecde18efe98715e8c091e3d665ef508e fix(plugins): default bundled discovery to allowlist
+docs/.generated/config-baseline.sha256
+src/agents/models-config.providers.plugin-allowlist-compat.test.ts
+
+55df2d4598b1acac7136897b75d1a4b13d666364 docs(config): refresh bundled discovery baseline
+docs/.generated/config-baseline.sha256
+
+41257a5f6fdf9412bd490a3db2f12657fa9b965e fix(plugins): rename bundled allowlist discovery policy
+docs/.generated/config-baseline.sha256
+src/agents/models-config.providers.plugin-allowlist-compat.test.ts
+
+3ed569ac3c7adad2ad210c5e216771ab28920d45 fix(plugins): respect allowlist for web provider fallback
+docs/.generated/config-baseline.sha256
+
+f738663c7967841caa2f5e3c9b53250e3ac938b9 fix(plugins): add bundledMode to gate runtime provider discovery by allowlist
+src/agents/models-config.providers.plugin-allowlist-compat.test.ts
+
+ce8bc1a3e39b92e8803f01967c6a3531a5ad3708 fix(lint): cover diagnostic phase events
+src/logging/diagnostic.test.ts
+
+e84d4b27f44ce4c1bca63f9d85c2a65f2ad7f688 feat: add gateway stall diagnostics
+src/logging/diagnostic.test.ts
+src/logging/diagnostic.ts
+
+ac3cd1a0ca8c65a0a576c7f04072a63dd4912a95 Harden Codex harness control surfaces (#77459)
+src/agents/agent-command.ts
+src/auto-reply/reply/agent-runner-execution.test.ts
+src/auto-reply/reply/agent-runner-execution.ts
+src/auto-reply/reply/followup-runner.ts
+
+e091d912ceb245b41f6b55499baf0504056d8338 fix(model): guide runtime allowlist repairs
+src/auto-reply/reply/directive-handling.model-selection.ts
+src/auto-reply/reply/directive-handling.model.test.ts
+src/auto-reply/reply/directive-handling.model.ts
+src/auto-reply/reply/model-selection-directive.ts
+
+a7263de2584e1e9434e707843b815627649f53af fix(agents): preserve workspace metadata reuse
+src/agents/btw.test.ts
+src/agents/btw.ts
+src/agents/pi-embedded-runner/compact.ts
+src/agents/pi-embedded-runner/run.ts
+src/agents/tools/pdf-tool.test.ts
+src/agents/tools/pdf-tool.ts
+
+8ee08b2b77a5b1436542966a93f4fd89f2c1a9f5 chore: update dependencies
+src/agents/pi-embedded-subscribe.handlers.tools.test.ts
+src/agents/pi-embedded-subscribe.handlers.tools.ts
+
+0909df1a4f3d092dba9fc551e105a0564ff4cdd2 refactor: centralize reply followup drain lifecycle
+src/auto-reply/reply/agent-runner-execution.test.ts
+src/auto-reply/reply/agent-runner.ts
+src/auto-reply/reply/reply-run-registry.test.ts
+src/auto-reply/reply/reply-run-registry.ts
+
+14b5f73e2a5e57925e53465d6b0bee856697f6dd fix(agents): avoid duplicate generated media attachments
+src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.subscribeembeddedpisession.test.ts
+src/agents/pi-embedded-subscribe.ts
+
+a9817a5f97bd68680b009f40bb63401859fb00b9 fix(gateway): clear reply run before followup drain
+src/auto-reply/reply/agent-runner-helpers.test.ts
+src/auto-reply/reply/agent-runner-helpers.ts
+src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts
+src/auto-reply/reply/agent-runner.ts
+
+be8b4dc845146a93e47b64ad9abe962bb3216366 fix(agents): honor hook bootstrap content (#77501)
+src/agents/bootstrap-files.ts
+src/agents/pi-embedded-runner/run/attempt-bootstrap-routing.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.bootstrap-routing.test.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.context-engine.test.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.test-support.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+
+7b86481c9467003106893005ee85106ca0e1b7c8 fix(plugins): trust chat catalog installs
+src/auto-reply/reply/commands-plugins.install.test.ts
+src/auto-reply/reply/commands-plugins.ts
+
+de4903ec7a830b34ef2f5c10cf6f29bdb7005598 fix(agents): refresh deferred subagent delivery text
+src/agents/subagent-registry-lifecycle.ts
+
+74ab62c6a297e2f92607c7f165a82598516f7fbb fix: pass claude cli thinking effort (#77410)
+docs/.generated/plugin-sdk-api-baseline.sha256
+src/agents/cli-backends.test.ts
+src/agents/cli-backends.ts
+src/agents/cli-runner.spawn.test.ts
+src/agents/cli-runner/execute.ts
+
+c240e718e91e8ddb2590c25cb6cf9b815cfaf6fe Feat/main session durable delivery pr (#75280)
+src/agents/agent-command.ts
+src/agents/command/delivery.test.ts
+src/agents/command/delivery.ts
+src/agents/main-session-restart-recovery.test.ts
+src/agents/main-session-restart-recovery.ts
+src/agents/subagent-registry-lifecycle.ts
+src/agents/subagent-registry.types.ts
+src/auto-reply/reply/agent-runner.runreplyagent.e2e.test.ts
+src/auto-reply/reply/agent-runner.ts
+src/auto-reply/reply/dispatch-from-config.reply-dispatch.test.ts
+src/auto-reply/reply/dispatch-from-config.runtime.ts
+src/auto-reply/reply/dispatch-from-config.shared.test-harness.ts
+src/auto-reply/reply/dispatch-from-config.test.ts
+src/auto-reply/reply/dispatch-from-config.ts
+src/auto-reply/reply/get-reply.ts
+
+1df2ac442a75b5bd4fbfdc84a34ca69bd5121b38 fix #77296: [Bug]: Plugin manifest `skills` field not published to agent skill discovery paths (#77328)
+src/agents/skills.loadworkspaceskillentries.test.ts
+src/agents/skills/plugin-skills.test.ts
+src/agents/skills/plugin-skills.ts
+src/agents/skills/workspace.ts
+
+cb3853587576999f19a943011d59231e8649730f [plugin sdk] Project session extension slots (#75609)
+docs/.generated/plugin-sdk-api-baseline.sha256
+src/agents/harness/native-hook-relay.test.ts
+src/agents/harness/native-hook-relay.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+src/agents/pi-tools.before-tool-call.integration.e2e.test.ts
+src/agents/pi-tools.before-tool-call.ts
+src/agents/pi-tools.ts
+
+8afc9ef73cb5ad1353151d04ef2d6191219c8f53 [plugin sdk] Harden finalize retry and run context cleanup (#75600)
+docs/.generated/plugin-sdk-api-baseline.sha256
+src/agents/harness/lifecycle-hook-helpers.test.ts
+src/agents/harness/lifecycle-hook-helpers.ts
+
+626e07886383992a2b8edcde96306a53671a9972 fix: refresh stale codex auth profile routing
+src/agents/auth-profiles.ensureauthprofilestore.test.ts
+src/agents/auth-profiles/persisted.ts
+src/agents/auth-profiles/profiles.test.ts
+src/agents/auth-profiles/profiles.ts
+src/agents/auth-profiles/session-override.test.ts
+src/agents/auth-profiles/session-override.ts
+
+24ec2aebe8bec0d4f5a57a9ff69f8bf4b50bb221 test(agents): update model auth fixture shape
+src/agents/model-auth.profiles.test.ts
+
+feb9a5af6a41c336df05ef051e99113275a42be5 fix(plugins): scope commands to channels
+src/auto-reply/reply/commands-plugin.ts
+
+3434cfa381027d67b566fd1ec44fa8a7dfd73db9 test: speed up import-heavy suites
+src/agents/model-auth.profiles.test.ts
+src/agents/model-provider-auth.test.ts
+src/agents/pi-embedded-runner/run/attempt-system-prompt.test.ts
+src/agents/pi-embedded-runner/run/attempt-system-prompt.ts
+src/agents/pi-embedded-runner/run/attempt.test.ts
+src/agents/pi-embedded-runner/run/attempt.tools-allow-regression.test.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+
+dade5f913342a27f7bd8e7145256c3eb239863a8 fix(web-fetch): scope fallback cache by provider
+src/agents/tools/web-fetch.provider-fallback.test.ts
+src/agents/tools/web-fetch.ts
+
+304fa098f2aa738911d00ad50d5111d2ecf02f97 fix(web-search): honor late-bound disabled config
+src/agents/tools/web-search.late-bind.test.ts
+src/agents/tools/web-search.ts
+
+474bea162b4d64a7295e851adf0ce99dcdd88d35 fix: bound trajectory runtime flush (#77154)
+src/agents/queued-file-writer.test.ts
+src/agents/queued-file-writer.ts
+src/auto-reply/reply/followup-delivery.test.ts
+
+23950b5664d5245a9cbef5738defe17cc2c3a918 test(agents): align slack target normalization assertion
+src/agents/pi-embedded-subscribe.tools.extract.test.ts
+
+585ce38015ef2145974f0ee12d5c02594796f29d fix(telegram): stabilize topic dispatch runtime
+src/agents/tools/message-tool.test.ts
+src/auto-reply/reply/provider-dispatcher.runtime.ts
+
+a5dcf3d30059149393c343d8dc16725a4d1bc86c fix(control-ui): filter archived sessions (#77132)
+src/agents/agent-command.ts
+
+fbf9132b32dad759fe8af0f0286db34fc70f0376 fix(web-fetch): late-bind runtime config
+src/agents/openclaw-tools.ts
+src/agents/tools/web-fetch.provider-fallback.test.ts
+src/agents/tools/web-fetch.ts
+
+128cc2c84b6eec9d7ac98f4da72a01738a2db7d0 refactor(web-tools): share runtime provider context
+src/agents/tools/web-fetch.ts
+src/agents/tools/web-search.ts
+src/agents/tools/web-tool-runtime-context.test.ts
+src/agents/tools/web-tool-runtime-context.ts
+
+fa689295c6497d97d93092fad033c3e0a418ac8d fix: resolve small triage issues
+docs/.generated/config-baseline.sha256
+src/agents/cli-runner.reliability.test.ts
+src/agents/cli-runner/execute.ts
+src/agents/cli-runner/reliability.ts
+src/agents/pi-embedded-runner/run/llm-idle-timeout.test.ts
+src/agents/pi-embedded-runner/run/llm-idle-timeout.ts
+
+92d33e4de85a5ff5c439aaa57577f0c56931f8cb fix(agents): sanitize presentation reasoning
+src/agents/tools/message-tool.test.ts
+src/agents/tools/message-tool.ts
+
+ab24e93573749d5551b1e85667e1ca2e5236c4a7 fix(web-search): preserve runtime auto-detect fallback
+src/agents/tools/web-search.late-bind.test.ts
+src/agents/tools/web-search.ts
+
+c76d8f5a7c3b93f8543b532b506e221e56c806b6 fix(web-search): keep first-class web_search runtime providers visible
+src/agents/tools/web-search.late-bind.test.ts
+src/agents/tools/web-search.ts
+
+21ac4769042808ec9afe605eb28a874ca1428c5b fix(telegram): stabilize reply dispatch runtime
+src/agents/tools/message-tool.test.ts
+src/agents/tools/message-tool.ts
+
+b6f9b5f21e849af5f39cdc0133d488ab8bba9c49 fix(agents): keep grouped subagent completions
+src/agents/subagent-announce-delivery.test.ts
+src/agents/subagent-announce-delivery.ts
+
+e80de466e5e150b7ecf070954f151d96164fa440 fix(agents): preserve full subagent announce output
+src/agents/subagent-announce-delivery.test.ts
+src/agents/subagent-announce-delivery.ts
+
+1d935cce5155b61bd27dc7b00a9ea424d186c0de fix(agents): suppress mid-turn continuation prompts
+src/agents/pi-embedded-runner/run.overflow-compaction.loop.test.ts
+src/agents/pi-embedded-runner/run.ts
+
+66267b5435b4edef975d21616925193ccceb4ec8 docs: clarify Pi transcript ownership
+src/agents/pi-embedded-runner/run.ts
+
+a6d67ccf2949e2cdb94678d95d2caacef0cc2dce fix: log google meet realtime models
+docs/.generated/plugin-sdk-api-baseline.sha256
+
+0fcf2c64c06a7296b97fb112c209339df4841025 fix: prevent persisted turn replay
+src/agents/pi-embedded-runner/run.overflow-compaction.loop.test.ts
+src/agents/pi-embedded-runner/run.ts
+
+117364e2b96a2b1884638d884935b6d4a8e2a052 fix: unwrap env path carrier commands
+src/agents/bash-tools.exec.path.test.ts
+
+cf1991d27deb2099e54bff506dd241011904ff16 fix: harden sudo command carrier parsing
+src/agents/bash-tools.exec.path.test.ts
+
+5eac4686aae954d4409d4d3593fb47ba800f6634 fix: preserve env split-string payloads
+src/agents/bash-tools.exec.path.test.ts
+src/agents/bash-tools.exec.script-preflight.test.ts
+
+1a573d33bc7806994a537ab1506a92bfb28cb8e6 fix: parse attached carrier option values
+src/agents/bash-tools.exec.path.test.ts
+
+65f2c2a0db7cd996ef6a197972a28d77344f1143 fix: enrich stalled session recovery logs
+src/logging/diagnostic.test.ts
+src/logging/diagnostic.ts
+
+b5d408cd690f0ddb38cefcd1510104a7e3c78380 feat: add rich Slack progress drafts
+docs/.generated/config-baseline.sha256
+docs/.generated/plugin-sdk-api-baseline.sha256
+
+71c7232764db20e242b2298a624acbab79ac0d4d fix(agents): keep current status on run session
+src/agents/openclaw-tools.session-status.test.ts
+src/agents/tools/session-status-tool.ts
+
+3f732aee83d542a5ca8d69d37b47156ad0324cfe fix: session_status 'current' resolves to live run session instead of stale sandbox key (#76708) (#76995)
+src/agents/openclaw-tools.session-status.test.ts
+src/agents/openclaw-tools.ts
+src/agents/pi-embedded-runner/compact.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+src/agents/pi-tools.ts
+src/agents/tools/session-status-tool.ts
+
+a3c36a09312934610f623ce42de7567230e2d898 fix: compact progress draft lines
+docs/.generated/config-baseline.sha256
+docs/.generated/plugin-sdk-api-baseline.sha256
+
+571d75aab351e8938f6deebbccf94367a44c0e62 fix(plugins): honor plugin tool denylists
+src/agents/openclaw-plugin-tools.ts
+src/agents/openclaw-tools.browser-plugin.integration.test.ts
+src/agents/pi-tools.ts
+
+7e296aef4b5c7eb482e42aa8fcf75b518196e3a9 fix(cli-runner): drop stale claude-cli sessionId when transcript missing (#77011)
+src/agents/cli-runner/prepare.test.ts
+src/agents/cli-runner/prepare.ts
+src/agents/cli-runner/types.ts
+
+36f8a8603d95d2447456b90c851d073888137e47 fix(agents): gate optional media factories by tool policy
+src/agents/openclaw-tools.media-factory-plan.test.ts
+src/agents/openclaw-tools.ts
+
+5be66ca648e1b695387ff1993b6f10722a5874eb fix(agents): avoid secrets snapshot clones in plugin tool prep
+src/agents/openclaw-plugin-tools.ts
+src/agents/openclaw-tools.browser-plugin.integration.test.ts
+
+c979ed3a3a8746607b974a6290dce9496b20d770 fix(channels): pass raw progress detail to drafts
+src/auto-reply/get-reply-options.types.ts
+src/auto-reply/reply/agent-runner-execution.test.ts
+src/auto-reply/reply/agent-runner-execution.ts
+
+642e1dfcdfb1298bfdf9dcb37d0e2dd2213e031f fix(agents): preserve messaging dedupe thread ids
+src/auto-reply/reply/reply-payloads-dedupe.ts
+src/auto-reply/reply/reply-payloads.test.ts
+
+c151573f4c28da5894910a0ed7d13d65a805477b test(agents): align thinking default policy coverage
+src/agents/model-selection.test.ts
+
+b0f947f61c158ddc2277de459e70b557ff6dc7a4 fix(whatsapp): honor group visible reply mode (#76973)
+src/auto-reply/reply/dispatch-from-config.test.ts
+
+786fdeb3663145c520e84a77fb05eb767fdc5669 refactor: centralize bootstrap system prompt assembly
+src/agents/pi-embedded-runner/run/attempt-bootstrap-routing.ts
+src/agents/pi-embedded-runner/run/attempt-system-prompt.test.ts
+src/agents/pi-embedded-runner/run/attempt-system-prompt.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.bootstrap-routing.test.ts
+src/agents/pi-embedded-runner/run/attempt.test.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+src/agents/system-prompt.test.ts
+src/agents/system-prompt.ts
+
+eb66def65604f7dffce25d3a07142bf8e2abfdd0 fix: scope messaging tool final reply dedupe
+src/agents/openclaw-owned-tool-runtime-contract.test.ts
+src/agents/pi-embedded-helpers.sanitizeuserfacingtext.test.ts
+src/agents/pi-embedded-helpers/messaging-dedupe.ts
+src/agents/pi-embedded-messaging.types.ts
+src/agents/pi-embedded-subscribe.handlers.tools.test.ts
+src/agents/pi-embedded-subscribe.handlers.tools.ts
+src/auto-reply/reply/agent-runner-payloads.test.ts
+src/auto-reply/reply/agent-runner-payloads.ts
+src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts
+src/auto-reply/reply/followup-delivery.test.ts
+src/auto-reply/reply/followup-delivery.ts
+src/auto-reply/reply/followup-runner.test.ts
+src/auto-reply/reply/reply-payloads-dedupe.runtime.ts
+src/auto-reply/reply/reply-payloads-dedupe.ts
+src/auto-reply/reply/reply-payloads.test.ts
+src/auto-reply/reply/reply-payloads.ts
+
+5d09b4b92c4d1d03455a6de3e8eb5555eb25755d feat(agents): add tool progress detail modes
+docs/.generated/config-baseline.sha256
+src/agents/pi-embedded-runner/run.ts
+src/agents/pi-embedded-runner/run/params.ts
+src/agents/pi-embedded-subscribe.handlers.tools.ts
+src/agents/pi-embedded-subscribe.handlers.types.ts
+src/agents/pi-embedded-subscribe.shared-types.ts
+src/agents/pi-embedded-subscribe.types.ts
+src/agents/pi-embedded-utils.ts
+src/agents/tool-display-common.ts
+src/agents/tool-display-exec.ts
+src/agents/tool-display.test.ts
+src/agents/tool-display.ts
+src/auto-reply/reply/agent-runner-execution.ts
+src/auto-reply/reply/agent-runner.ts
+src/auto-reply/reply/get-reply-run.ts
+
+0fa70f5a47f89e201ec8a35e214f42b0eb452899 fix: keep bootstrap context in system prompt
+src/agents/bootstrap-budget.test.ts
+src/agents/bootstrap-budget.ts
+src/agents/pi-embedded-runner/run/attempt-bootstrap-routing.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.bootstrap-routing.test.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.bootstrap-warning.test.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.context-engine.test.ts
+src/agents/pi-embedded-runner/run/attempt.spawn-workspace.test-support.ts
+src/agents/pi-embedded-runner/run/attempt.test.ts
+src/agents/pi-embedded-runner/run/attempt.ts
+src/agents/pi-embedded-runner/system-prompt.ts
+src/agents/system-prompt.test.ts
+src/agents/system-prompt.ts
+
+f1340be051500867bb34895a4c2c4d29f9b31a48 feat(openrouter): expand app attribution categories
+src/agents/pi-embedded-runner/proxy-stream-wrappers.test.ts
+src/agents/provider-attribution.test.ts
+src/agents/provider-attribution.ts
+src/agents/provider-request-config.test.ts
+
+34b3471f85539bcd937e8d3896cf3e01c0c7fe12 feat(openrouter): add opt-in response caching
+src/agents/pi-embedded-runner-extraparams-openrouter.test.ts
+src/agents/pi-embedded-runner/extra-params.ts
+src/agents/pi-embedded-runner/proxy-stream-wrappers.test.ts
+src/agents/pi-embedded-runner/proxy-stream-wrappers.ts
