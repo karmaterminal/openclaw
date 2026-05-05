@@ -2853,7 +2853,7 @@ export async function runReplyAgent(params: {
 
     // Silent continuations should produce no user-visible output.
     if (wasSilentContinuation) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return returnWithQueuedFollowupDrain(undefined);
     }
 
     // Consume and dispatch tool-dispatched delegates (continue_delegate tool).
@@ -2915,7 +2915,7 @@ export async function runReplyAgent(params: {
     }
 
     if (finalPayloads.length === 0 && effectiveContinuationSignal) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return returnWithQueuedFollowupDrain(undefined);
     }
 
     // Capture only policy-visible final payloads in session store to support

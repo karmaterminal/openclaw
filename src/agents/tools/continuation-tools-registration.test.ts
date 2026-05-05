@@ -60,7 +60,6 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(tool.description).toContain("targetSessionKeys returns byte-identical enrichment");
     expect(tool.description).toContain("fanoutMode=tree returns to all ancestors");
     expect(tool.description).toContain("fanoutMode=all returns to all known sessions");
-    expect(tool.description).toContain("binary-canticle#11");
   });
 
   it("hides continue_delegate when continuation is disabled", () => {

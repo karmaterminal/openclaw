@@ -60,12 +60,7 @@ describe("createOpenClawTools — continuation-tool registration visibility", ()
       config: { session: { mainKey: "main", scope: "per-sender" } } as never,
     });
     expect(continuationToolNames(tools)).toEqual([]);
-  }, // createOpenClawTools + transitive imports (compaction-attribution, // First test in this file pays the cold module-load cost for
-  // pi-embedded-*, plugins/tools, config/config). Quiet-box cost ≈ 95s;
-  // CI noise pushes it past vitest's 120s default and produces a flaky
-  // timeout shared across unrelated PRs. Tests 2–7 reuse the warm cache
-  // (~360ms each).
-  240_000);
+  }, 240_000); // (~360ms each). // timeout shared across unrelated PRs. Tests 2–7 reuse the warm cache // CI noise pushes it past vitest's 120s default and produces a flaky // pi-embedded-*, plugins/tools, config/config). Quiet-box cost ≈ 95s; // createOpenClawTools + transitive imports (compaction-attribution, // First test in this file pays the cold module-load cost for
 
   it("registers no continuation tools when continuation.enabled is explicitly false", () => {
     const tools = createOpenClawTools({

@@ -292,6 +292,19 @@ describe("scripts/test-projects changed-target routing", () => {
     ]);
   });
 
+  it("routes the agents directory root to the agents shard", () => {
+    const plans = buildVitestRunPlans(["src/agents"], process.cwd());
+
+    expect(plans).toEqual([
+      {
+        config: "test/vitest/vitest.agents.config.ts",
+        forwardedArgs: [],
+        includePatterns: ["src/agents/**/*.test.ts"],
+        watchMode: false,
+      },
+    ]);
+  });
+
   it("routes browser extension changes to the browser extension lane", () => {
     const plans = buildVitestRunPlans(["--changed", "origin/main"], process.cwd(), () => [
       "extensions/browser/src/browser/cdp.helpers.ts",

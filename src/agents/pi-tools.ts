@@ -338,6 +338,8 @@ export function createOpenClawCodingTools(options?: {
   hasRepliedRef?: { value: boolean };
   /** Allow plugin tools for this run to late-bind the gateway subagent. */
   allowGatewaySubagentBinding?: boolean;
+  /** Whether this run consumes the continue_delegate staging queue. */
+  drainsContinuationDelegateQueue?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */
   continueWorkOpts?: {
     requestContinuation: (
@@ -781,6 +783,7 @@ export function createOpenClawCodingTools(options?: {
           runId: options?.runId,
           onYield: options?.onYield,
           allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
+          drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
           continueWorkOpts: options?.continueWorkOpts,
           requestCompactionOpts: options?.requestCompactionOpts,
           recordToolPrepStage: options?.recordToolPrepStage,
