@@ -1,0 +1,54 @@
+# Virtual 3-way seam artifact: src/auto-reply/types.ts
+
+- base: v2026.5.3 (06d46f7cf638)
+- upstream: v2026.5.4 (325df3efefe9)
+- feature: origin/cael/20260504/v2026.5.3-rebase (e84fa88cbe83)
+- merge-file status: 0
+
+## Upstream delta (base -> v2026.5.4)
+
+diff --git a/src/auto-reply/types.ts b/src/auto-reply/types.ts
+index 5aa2119caa..711e7b5d50 100644
+--- a/src/auto-reply/types.ts
++++ b/src/auto-reply/types.ts
+@@ -4,5 +4,9 @@ export type {
+   ReplyThreadingPolicy,
+   TypingPolicy,
+ } from "./get-reply-options.types.js";
+-export { setReplyPayloadMetadata } from "./reply-payload.js";
++export {
++  copyReplyPayloadMetadata,
++  markReplyPayloadForSourceSuppressionDelivery,
++  setReplyPayloadMetadata,
++} from "./reply-payload.js";
+ export type { ReplyPayload } from "./reply-payload.js";
+
+## Feature delta (base -> source branch)
+
+diff --git a/src/auto-reply/types.ts b/src/auto-reply/types.ts
+index 5aa2119caa..7be28e51f7 100644
+--- a/src/auto-reply/types.ts
++++ b/src/auto-reply/types.ts
+@@ -1,5 +1,6 @@
+ export type {
+   BlockReplyContext,
++  ContinuationTrigger,
+   GetReplyOptions,
+   ReplyThreadingPolicy,
+   TypingPolicy,
+
+## merge-file result
+
+export type {
+  BlockReplyContext,
+  ContinuationTrigger,
+  GetReplyOptions,
+  ReplyThreadingPolicy,
+  TypingPolicy,
+} from "./get-reply-options.types.js";
+export {
+  copyReplyPayloadMetadata,
+  markReplyPayloadForSourceSuppressionDelivery,
+  setReplyPayloadMetadata,
+} from "./reply-payload.js";
+export type { ReplyPayload } from "./reply-payload.js";

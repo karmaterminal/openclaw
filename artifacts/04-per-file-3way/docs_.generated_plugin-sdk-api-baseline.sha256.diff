@@ -1,0 +1,43 @@
+# Virtual 3-way seam artifact: docs/.generated/plugin-sdk-api-baseline.sha256
+
+- base: v2026.5.3 (06d46f7cf638)
+- upstream: v2026.5.4 (325df3efefe9)
+- feature: origin/cael/20260504/v2026.5.3-rebase (e84fa88cbe83)
+- merge-file status: 1
+
+## Upstream delta (base -> v2026.5.4)
+
+diff --git a/docs/.generated/plugin-sdk-api-baseline.sha256 b/docs/.generated/plugin-sdk-api-baseline.sha256
+index 0cb3073087..4d5030e839 100644
+--- a/docs/.generated/plugin-sdk-api-baseline.sha256
++++ b/docs/.generated/plugin-sdk-api-baseline.sha256
+@@ -1,2 +1,2 @@
+-701356478634a8f3e71f941ed21a00e0456d947d287edcafb56231013b27a057  plugin-sdk-api-baseline.json
+-ed17426dd5e9db4b83db77162e7490eee3c0439170c1a9d1e84c01d7027d580c  plugin-sdk-api-baseline.jsonl
++50bd395c818460886af1fd545da4e3ace0fc7f7c36a43abd58f0a8cf76659f09  plugin-sdk-api-baseline.json
++bc609d44abbd58515f69ec88c947531c679f7f7910208c0761f52fda4481fa6e  plugin-sdk-api-baseline.jsonl
+
+## Feature delta (base -> source branch)
+
+diff --git a/docs/.generated/plugin-sdk-api-baseline.sha256 b/docs/.generated/plugin-sdk-api-baseline.sha256
+index 0cb3073087..af2706909e 100644
+--- a/docs/.generated/plugin-sdk-api-baseline.sha256
++++ b/docs/.generated/plugin-sdk-api-baseline.sha256
+@@ -1,2 +1,2 @@
+-701356478634a8f3e71f941ed21a00e0456d947d287edcafb56231013b27a057  plugin-sdk-api-baseline.json
+-ed17426dd5e9db4b83db77162e7490eee3c0439170c1a9d1e84c01d7027d580c  plugin-sdk-api-baseline.jsonl
++4dfd2f15e5700d8be878935c816350517d6fa2bbf3b18b249d8dddb9e556a345  plugin-sdk-api-baseline.json
++80c7f09eea670fb966f8a0cd11acd69e79150402212ab6f36fe1ebd68b35347a  plugin-sdk-api-baseline.jsonl
+
+## merge-file result
+
+<<<<<<< /tmp/tmp.gwnf4w9D3v/upstream
+50bd395c818460886af1fd545da4e3ace0fc7f7c36a43abd58f0a8cf76659f09  plugin-sdk-api-baseline.json
+bc609d44abbd58515f69ec88c947531c679f7f7910208c0761f52fda4481fa6e  plugin-sdk-api-baseline.jsonl
+||||||| /tmp/tmp.gwnf4w9D3v/base
+701356478634a8f3e71f941ed21a00e0456d947d287edcafb56231013b27a057  plugin-sdk-api-baseline.json
+ed17426dd5e9db4b83db77162e7490eee3c0439170c1a9d1e84c01d7027d580c  plugin-sdk-api-baseline.jsonl
+=======
+4dfd2f15e5700d8be878935c816350517d6fa2bbf3b18b249d8dddb9e556a345  plugin-sdk-api-baseline.json
+80c7f09eea670fb966f8a0cd11acd69e79150402212ab6f36fe1ebd68b35347a  plugin-sdk-api-baseline.jsonl
+>>>>>>> /tmp/tmp.gwnf4w9D3v/feature

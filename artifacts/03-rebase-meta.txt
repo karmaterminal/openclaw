@@ -1,0 +1,3 @@
+
+REBASE_EXIT=1
+SCRATCH_BRANCH=scout/v54-dry-rebase
