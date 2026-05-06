@@ -1,3 +1,4 @@
+import type { ContinuationTrigger } from "../auto-reply/get-reply-options.types.js";
 import { normalizeChatType } from "../channels/chat-type.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ConversationRef } from "../infra/outbound/session-binding-service.js";
@@ -425,6 +426,8 @@ async function sendAnnounce(item: AnnounceQueueItem) {
         sourceChannel: item.sourceChannel ?? INTERNAL_MESSAGE_CHANNEL,
         sourceTool: item.sourceTool ?? "subagent_announce",
       },
+      continuationTrigger: item.continuationTriggerOverride,
+      ...(item.traceparent ? { traceparent: item.traceparent } : {}),
       idempotencyKey,
     },
     timeoutMs: announceTimeoutMs,
@@ -468,6 +471,8 @@ async function maybeQueueSubagentAnnounce(params: {
   sourceChannel?: string;
   sourceTool?: string;
   internalEvents?: AgentInternalEvent[];
+  continuationTriggerOverride?: ContinuationTrigger;
+  traceparent?: string;
   signal?: AbortSignal;
 }): Promise<"steered" | "queued" | "none" | "dropped"> {
   if (params.signal?.aborted) {
@@ -515,6 +520,7 @@ async function maybeQueueSubagentAnnounce(params: {
       key: buildAnnounceQueueKey(canonicalKey, origin),
       item: {
         announceId: params.announceId,
+        continuationTriggerOverride: params.continuationTriggerOverride,
         prompt: params.triggerMessage,
         summaryLine: params.summaryLine,
         internalEvents: params.internalEvents,
@@ -524,6 +530,7 @@ async function maybeQueueSubagentAnnounce(params: {
         sourceSessionKey: params.sourceSessionKey,
         sourceChannel: params.sourceChannel,
         sourceTool: params.sourceTool,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
       },
       settings: queueSettings,
       send: sendAnnounce,
@@ -620,6 +627,52 @@ function completionRequiresMessageToolDelivery(params: {
   return params.cfg.messages?.visibleReplies === "message_tool";
 }
 
+async function sendCompletionFallback(params: {
+  cfg: OpenClawConfig;
+  channel?: string;
+  to?: string;
+  accountId?: string;
+  threadId?: string;
+  content: string;
+  requesterSessionKey: string;
+  bestEffortDeliver?: boolean;
+  idempotencyKey: string;
+  traceparent?: string;
+  signal?: AbortSignal;
+}): Promise<boolean> {
+  const channel = params.channel?.trim();
+  const to = params.to?.trim();
+  const content = params.content.trim();
+  if (!channel || !to || !content) {
+    return false;
+  }
+  await runAnnounceDeliveryWithRetry({
+    operation: params.threadId
+      ? "completion direct thread fallback send"
+      : "completion direct fallback send",
+    signal: params.signal,
+    run: async () =>
+      await subagentAnnounceDeliveryDeps.sendMessage({
+        cfg: params.cfg,
+        channel,
+        to,
+        accountId: params.accountId,
+        threadId: params.threadId,
+        content,
+        requesterSessionKey: params.requesterSessionKey,
+        bestEffort: params.bestEffortDeliver,
+        idempotencyKey: params.idempotencyKey,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+        abortSignal: params.signal,
+      }),
+  });
+  return true;
+}
+
+function resolveCompletionFallbackPath(threadId: string | undefined) {
+  return threadId ? ("direct-thread-fallback" as const) : ("direct-fallback" as const);
+}
+
 function stripNonDeliverableChannelForCompletionOrigin(
   context?: DeliveryContext,
 ): DeliveryContext | undefined {
@@ -650,6 +703,8 @@ async function sendSubagentAnnounceDirectly(params: {
   sourceChannel?: string;
   sourceTool?: string;
   requesterIsSubagent: boolean;
+  continuationTriggerOverride?: ContinuationTrigger;
+  traceparent?: string;
   signal?: AbortSignal;
 }): Promise<SubagentAnnounceDeliveryResult> {
   if (params.signal?.aborted) {
@@ -747,9 +802,40 @@ async function sendSubagentAnnounceDirectly(params: {
         };
       }
       if (requesterActivity.isActive) {
-        // Active requester sessions should receive completion data through their
-        // running agent turn. If wake fails, let the dispatch layer queue/retry;
-        // do not bypass the requester agent with raw child output.
+        if (agentMediatedCompletion) {
+          return {
+            delivered: false,
+            path: "direct",
+            error: "active requester session could not be woken",
+          };
+        }
+        try {
+          const didFallback = await sendCompletionFallback({
+            cfg,
+            channel: deliveryTarget.channel,
+            to: deliveryTarget.to,
+            accountId: deliveryTarget.accountId,
+            threadId: deliveryTarget.threadId,
+            content: completionFallbackText,
+            requesterSessionKey: canonicalRequesterSessionKey,
+            bestEffortDeliver: params.bestEffortDeliver,
+            idempotencyKey: params.directIdempotencyKey,
+            ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+            signal: params.signal,
+          });
+          if (didFallback) {
+            return {
+              delivered: true,
+              path: resolveCompletionFallbackPath(deliveryTarget.threadId),
+            };
+          }
+        } catch (err) {
+          return {
+            delivered: false,
+            path: "direct",
+            error: `active requester session could not be woken; fallback send failed: ${summarizeDeliveryError(err)}`,
+          };
+        }
         return {
           delivered: false,
           path: "direct",
@@ -801,6 +887,8 @@ async function sendSubagentAnnounceDirectly(params: {
                 sourceChannel: params.sourceChannel ?? INTERNAL_MESSAGE_CHANNEL,
                 sourceTool: params.sourceTool ?? "subagent_announce",
               },
+              continuationTrigger: params.continuationTriggerOverride,
+              ...(params.traceparent ? { traceparent: params.traceparent } : {}),
               idempotencyKey: params.directIdempotencyKey,
             },
             expectFinal: true,
@@ -811,18 +899,59 @@ async function sendSubagentAnnounceDirectly(params: {
       if (isPermanentAnnounceDeliveryError(err)) {
         throw err;
       }
-      // The requester-agent handoff is the delivery contract for background
-      // completions. A failed handoff should retry/queue/fail visibly instead
-      // of sending the child result directly to the external channel.
+      if (agentMediatedCompletion) {
+        throw err;
+      }
+      let didFallback = false;
+      try {
+        didFallback = await sendCompletionFallback({
+          cfg,
+          channel: deliveryTarget.channel,
+          to: deliveryTarget.to,
+          accountId: deliveryTarget.accountId,
+          threadId: deliveryTarget.threadId,
+          content: completionFallbackText,
+          requesterSessionKey: canonicalRequesterSessionKey,
+          bestEffortDeliver: params.bestEffortDeliver,
+          idempotencyKey: params.directIdempotencyKey,
+          ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+          signal: params.signal,
+        });
+      } catch (fallbackErr) {
+        throw new Error(
+          `${summarizeDeliveryError(err)}; fallback send failed: ${summarizeDeliveryError(fallbackErr)}`,
+          { cause: fallbackErr },
+        );
+      }
+      if (didFallback) {
+        return {
+          delivered: true,
+          path: resolveCompletionFallbackPath(deliveryTarget.threadId),
+        };
+      }
       throw err;
     }
 
-    const directAnnounceStillPending = isGatewayAgentRunPending(directAnnounceResponse);
-    if (directAnnounceStillPending) {
-      return {
-        delivered: true,
-        path: "direct",
-      };
+    if (shouldSendCompletionFallback(directAnnounceResponse, completionFallbackText)) {
+      const didFallback = await sendCompletionFallback({
+        cfg,
+        channel: deliveryTarget.channel,
+        to: deliveryTarget.to,
+        accountId: deliveryTarget.accountId,
+        threadId: deliveryTarget.threadId,
+        content: completionFallbackText,
+        requesterSessionKey: canonicalRequesterSessionKey,
+        bestEffortDeliver: params.bestEffortDeliver,
+        idempotencyKey: params.directIdempotencyKey,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+        signal: params.signal,
+      });
+      if (didFallback) {
+        return {
+          delivered: true,
+          path: resolveCompletionFallbackPath(deliveryTarget.threadId),
+        };
+      }
     }
 
     if (
@@ -880,6 +1009,10 @@ export async function deliverSubagentAnnouncement(params: {
   bestEffortDeliver?: boolean;
   directIdempotencyKey: string;
   signal?: AbortSignal;
+  silentEnrichment?: boolean;
+  silentWakeEnrichment?: boolean;
+  continuationTriggerOverride?: ContinuationTrigger;
+  traceparent?: string;
 }): Promise<SubagentAnnounceDeliveryResult> {
   return await runSubagentAnnounceDispatch({
     expectsCompletionMessage: params.expectsCompletionMessage,
@@ -896,6 +1029,8 @@ export async function deliverSubagentAnnouncement(params: {
         sourceChannel: params.sourceChannel,
         sourceTool: params.sourceTool,
         internalEvents: params.internalEvents,
+        continuationTriggerOverride: params.continuationTriggerOverride,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
         signal: params.signal,
       }),
     direct: async () =>
@@ -913,6 +1048,8 @@ export async function deliverSubagentAnnouncement(params: {
         sourceTool: params.sourceTool,
         requesterIsSubagent: params.requesterIsSubagent,
         expectsCompletionMessage: params.expectsCompletionMessage,
+        continuationTriggerOverride: params.continuationTriggerOverride,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
         signal: params.signal,
         bestEffortDeliver: params.bestEffortDeliver,
       }),
