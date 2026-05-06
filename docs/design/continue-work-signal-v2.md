@@ -86,8 +86,8 @@ Targeted delegate return is the banner routing primitive: one child can grant an
 - [Appendix D. Detailed implementation evidence](#appendix-d-detailed-implementation-evidence)
   - [D.1 Context-pressure inclusion sketch](#d1-context-pressure-inclusion-sketch)
   - [D.2 Evidence locations](#d2-evidence-locations)
-  - [D.3 Historical integration test session results](#d3-historical-integration-test-session-results)
-  - [D.4 Current validation cycle: v5.2 substrate verification](#d4-current-validation-cycle-v52-substrate-verification)
+  - [D.3 Historical integration test session results (Swim 9 and Swim 10)](#d3-historical-integration-test-session-results-swim-9-and-swim-10)
+  - [D.4 Current validation cycles: Swim 41 (v5.2 substrate) and Swim 42 (v5.5 cohort)](#d4-current-validation-cycles-swim-41-v52-substrate-and-swim-42-v55-cohort)
 
 ## 1. Problem
 
@@ -1505,9 +1505,11 @@ Overall: **10/12 passed**. When dispatch occurred correctly, the accuracy rate w
 
 ### 9.4 Integration test session results
 
-Detailed scorecards for the historical full-coverage canary sessions are preserved in Appendix D. The headline coverage of feature shipping was the volitional-compaction canary cycle and the tool-parity canary cycle.
+Detailed scorecards for the historical full-coverage canary sessions are preserved in Appendix D. The headline coverage of feature shipping was the volitional-compaction canary cycle (Swim 9) and the tool-parity canary cycle (Swim 10).
 
-The current validation frame rechecks the same substrate on the v5.2 base with observability/verification rows for failover policy, compaction-count primitives, continuation-queue diagnostics, and `earlyWarningBand` context-pressure behavior. Current status: 3 of the 4 initial OV rows are closed; the fourth (OV-4 `earlyWarningBand` context-pressure behavior) has step-zero PASS and live-host verification in flight. The RFC intentionally does not link internal trackers; public evidence is summarized in the appendix scorecards below.
+The v5.2-substrate validation frame (Swim 41) rechecks the same substrate on the v5.2 base with observability/verification rows for failover policy, compaction-count primitives, continuation-queue diagnostics, and `earlyWarningBand` context-pressure behavior. Current status: 3 of the 4 initial OV rows are closed; the fourth (OV-4 `earlyWarningBand` context-pressure behavior) has step-zero PASS and live-host verification in flight. The v5.5-cycle validation frame (Swim 42) extends coverage to evidence-layer discipline, cross-session targeted return, post-compaction lifecycle, and deploy-rollout — see [`swims/swim-42/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-42) for the active OV row set.
+
+The RFC intentionally does not link internal execution trackers. Public evidence for all cycles is published in [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs) — that public docs repository is the canonical evidence-presentation surface for this RFC, replacing the older convention of pointing at frozen branches in `karmaterminal/openclaw`. Detailed scorecards continue to live in the appendix; URL-anchored evidence links live in §D.2.
 
 #### Volitional-compaction canary cycle
 
@@ -1739,20 +1741,38 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 | `/status` continuation row                    | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts`                                                                                                                      |
 | Trace context carrier surfaces                | `src/infra/system-events.ts`, `src/infra/session-delivery-queue-storage.ts`, `src/infra/continuation-tracer.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts` |
 
-The retained scorecards below summarize the historical canary cycles and the v5.2 substrate verification cycle without linking internal execution trackers.
+The retained scorecards below summarize the historical canary cycles, the v5.2 substrate verification cycle, and the v5.5 cohort verification cycle without linking internal execution trackers.
 
-### D.3 Historical integration test session results
+#### Public evidence (Swim 9, Swim 10, Swim 41, Swim 42)
 
-These sessions are retained as historical behavioral evidence for the shipped feature. They are not the current validation cycle; the v5.2 substrate recheck is current (§D.4).
+Public evidence is published in the [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs) repository — the canonical evidence-presentation surface for this RFC. This replaces the older convention of pointing at frozen branches in `karmaterminal/openclaw`; the docs repository is the stable surface for release-facing evidence and survives rewrite passes of the RFC body.
 
-Volitional-compaction canary cycle:
+Historical canary cycles (shipped-feature behavioral evidence):
+
+- [`swims/swim-09/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-09/README.md) — Swim 9 historical scorecard (volitional-compaction canary cycle)
+- [`swims/swim-10/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-10/README.md) — Swim 10 full 13-row scorecard (tool-parity canary cycle)
+
+v5.2 substrate verification cycle (first integration validation against the v5.2 base):
+
+- [`swims/swim-41/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-41) — Swim 41 cycle overview (per-OV verdicts under `rows/`)
+
+v5.5 cohort verification cycle (current frond-release validation surface; covers cross-session targeted return, post-compaction lifecycle, deploy-rollout, and evidence-layer discipline):
+
+- [`swims/swim-42/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-42) — Swim 42 cycle overview
+- [`swims/swim-42/EVIDENCE-LAYERS.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-42/EVIDENCE-LAYERS.md) — evidence-layer discipline canon (dispatcher-health / recipient-delivery / surface-announce / wire-receipt; byte-pin ladder for delegate substrate)
+
+### D.3 Historical integration test session results (Swim 9 and Swim 10)
+
+These sessions are retained as historical behavioral evidence for the shipped feature. They are not the current validation cycle; the v5.2 substrate recheck (Swim 41) and the v5.5 cohort verification (Swim 42) are current (§D.4). Public evidence is published in the repository named in §D.2.
+
+Swim 9 — volitional-compaction canary cycle:
 
 - **SUT:** canary build for volitional compaction
 - **Build:** `b2322f5`
 - **Duration:** approximately 2 hours, Phase 1 low-context testing
 - **Result:** 5/5 pass after fixing a missing forwarding of `requestCompactionOpts` from `run.ts` to `attempt.ts`
 
-Tool-parity canary cycle:
+Swim 10 — tool-parity canary cycle:
 
 - **SUT:** canary build for volitional compaction
 - **Formation:** driver, log monitor, SUT, coordinator, human user (5-role canary formation)
@@ -1786,18 +1806,21 @@ Additional retained notes:
 - a six-path delegate wiring audit found one divergence on post-compaction flag normalization; the defensive fix was accepted in `1a1e88e15e` after independent cross-review.
 - the qualitative canary report was positive: tools felt natural, silent-wake was effective, and the guardrails held at boundaries.
 
-### D.4 Current validation cycle: v5.2 substrate verification
+### D.4 Current validation cycles: Swim 41 (v5.2 substrate) and Swim 42 (v5.5 cohort)
 
-**Current validation status:** execution opened; three of four initial observability/verification rows are closed; OV-4 live-host verification remains in flight.
+#### Swim 41 — v5.2 substrate verification
+
+**Current validation status:** execution opened; three of four initial observability/verification rows are closed; public evidence is published; OV-4 live-host verification remains in flight.
 
 This cycle targets the v5.2 substrate base after the base rotation from v2026.4.29 to v2026.5.2. The cycle exercises the continuation substrate against the new base, with emphasis on compaction, context-pressure, continuation-queue diagnostics, and upstream failover-policy interaction.
 
-The RFC does not link internal execution trackers. The current validation summary is:
+The RFC does not link internal execution trackers. Public evidence is published in [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs):
 
-- OV-1 (failover-policy `#52147` gate): PASS
-- OV-2 (`incrementCompactionCount` canonical primitives): PASS
-- OV-3 (diagnostic instrumentation): PASS
-- OV-4 (`earlyWarningBand` context-pressure): step-zero PASS; live-host verification in flight
+- Cycle overview: [`swims/swim-41/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/README.md)
+- OV-1 (failover-policy `#52147` gate): [`swims/swim-41/rows/OV-1/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-1/verdict.md) — ✅ PASS
+- OV-2 (`incrementCompactionCount` canonical primitives): [`swims/swim-41/rows/OV-2/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-2/verdict.md) — ✅ PASS
+- OV-3 (diagnostic instrumentation): [`swims/swim-41/rows/OV-3/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-3/verdict.md) — ✅ PASS
+- OV-4 (`earlyWarningBand` context-pressure): [`swims/swim-41/rows/OV-4/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-4/verdict.md) — 🟡 step-zero PASS, live-host verification in flight
 
 **Initial OV (observability/verification) coverage scope:**
 
@@ -1811,3 +1834,23 @@ The RFC does not link internal execution trackers. The current validation summar
 The OV row set is initial coverage; additional rows can be added as design lands during execution.
 
 **Why the v5.2 substrate verification cycle matters for this RFC:** the substrate work documented in this RFC (continuation primitives, context-pressure system, post-compaction lifecycle, OTel chain correlation, and targeted delegate return) was integrated and validated against an earlier base in the historical canary cycles. The v5.2 substrate verification cycle is the first integration validation against the v5.2 base, where the substrate sits alongside upstream changes from the base rotation. A clean v5.2 result establishes that the substrate's behavior is stable across the base rotation, not just historically validated against the prior base.
+
+#### Swim 42 — v5.5 cohort verification
+
+**Current validation status:** execution open; cohort-driven row set in flight against the v5.5 frond release. Public evidence is being published row-by-row as findings close.
+
+Swim 42 is the v5.5-cycle full-coverage cohort verification frame. It extends Swim 41's substrate-verification approach to the cross-session and cross-host integration surfaces that the continuation feature depends on at fleet scale, and codifies the evidence-layer discipline that emerged from the OV-1 fire-1 cohort recovery.
+
+**Active row set** (load-bearing surfaces under verification):
+
+- [`swims/swim-42/rows/OV-1/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-42/rows/OV-1) — OV-1 (initial cross-session/cross-host substrate fire)
+- [`swims/swim-42/rows/OV-6/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-42/rows/OV-6) — OV-6
+- [`swims/swim-42/rows/cross-session-targeted-return/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-42/rows/cross-session-targeted-return) — cross-session targeted return (the routing primitive behind `targetSessionKey` / `targetSessionKeys` / `fanoutMode`)
+- [`swims/swim-42/rows/post-compaction-lifecycle/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-42/rows/post-compaction-lifecycle) — post-compaction lifecycle (continuation-queue drain semantics across the compaction boundary)
+- [`swims/swim-42/rows/deploy-rollout/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-42/rows/deploy-rollout) — deploy-rollout coverage across cohort hosts
+
+**Evidence-layer discipline** (load-bearing for swim-42 attestations and forward-applicable to all RFC-adjacent verification work):
+
+- [`swims/swim-42/EVIDENCE-LAYERS.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-42/EVIDENCE-LAYERS.md) — four-layer attestation rule (dispatcher-health / recipient-delivery / surface-announce / wire-receipt) with the byte-pin ladder for the delegate substrate. Adjacency on the same exercise is not equivalence on the same evidence layer; each layer is byte-pinned independently before composition.
+
+**Why the v5.5 cohort verification cycle matters for this RFC:** the cross-session targeted return and post-compaction lifecycle behaviors documented in this RFC depend on substrate primitives that span session, process, and host boundaries. Swim 42 is the first cohort-scale verification cycle that exercises those primitives end to end against the v5.5 frond release, with explicit evidence-layer discipline that prevents adjacency-as-equivalence drift. A clean Swim 42 result extends the Swim 41 substrate-stability finding to the multi-recipient, fan-out, cross-host, and deploy-rollout surfaces that fleet-scale operation requires.
