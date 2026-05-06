@@ -1507,7 +1507,7 @@ Overall: **10/12 passed**. When dispatch occurred correctly, the accuracy rate w
 
 Detailed scorecards for the historical full-coverage canary sessions are preserved in Appendix D. The headline coverage of feature shipping was the volitional-compaction canary cycle and the tool-parity canary cycle.
 
-The current validation frame rechecks the same substrate on the v5.2 base with observability/verification rows for failover policy, compaction-count primitives, continuation-queue diagnostics, and `earlyWarningBand` context-pressure behavior. Current status: 3 of the 4 initial OV rows are closed; the fourth (OV-4 `earlyWarningBand` context-pressure behavior) has step-zero PASS and live-host verification in flight. The RFC intentionally does not link internal trackers; public evidence is summarized in the appendix scorecards below.
+The current validation frame rechecks the same substrate on the v5.2 base with observability/verification rows for failover policy, compaction-count primitives, continuation-queue diagnostics, and `earlyWarningBand` context-pressure behavior. Current status: 3 of the 4 initial OV rows are closed; the fourth (OV-4 `earlyWarningBand` context-pressure behavior) has step-zero PASS and live-host verification in flight. The RFC intentionally does not link internal trackers; public evidence is published in [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs) under [`swims/swim-41/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-41) (per-OV verdicts under [`swims/swim-41/rows/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-41/rows)).
 
 #### Volitional-compaction canary cycle
 
@@ -1739,7 +1739,13 @@ The key property is **pre-run inclusion**: the event is enqueued and then draine
 | `/status` continuation row                    | `src/auto-reply/status.ts` + `src/auto-reply/status.test.ts`                                                                                                                      |
 | Trace context carrier surfaces                | `src/infra/system-events.ts`, `src/infra/session-delivery-queue-storage.ts`, `src/infra/continuation-tracer.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts` |
 
-The retained scorecards below summarize the historical canary cycles and the v5.2 substrate verification cycle without linking internal execution trackers.
+Public evidence (historical canary cycles and the current v5.2 substrate verification cycle) is published in the [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs) repository:
+
+- [`swims/swim-09/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-09/README.md) — historical scorecard for the volitional-compaction canary cycle
+- [`swims/swim-10/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-10/README.md) — historical scorecard for the tool-parity canary cycle (full 13-row coverage)
+- [`swims/swim-41/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/main/swims/swim-41) — current v5.2 substrate verification cycle (per-OV verdicts under `rows/`)
+
+The retained scorecards below summarize these cycles inline without linking internal execution trackers.
 
 ### D.3 Historical integration test session results
 
@@ -1792,12 +1798,13 @@ Additional retained notes:
 
 This cycle targets the v5.2 substrate base after the base rotation from v2026.4.29 to v2026.5.2. The cycle exercises the continuation substrate against the new base, with emphasis on compaction, context-pressure, continuation-queue diagnostics, and upstream failover-policy interaction.
 
-The RFC does not link internal execution trackers. The current validation summary is:
+The RFC does not link internal execution trackers. Public evidence is published in [`karmaterminal/karmaterminal-openclaw-docs`](https://github.com/karmaterminal/karmaterminal-openclaw-docs):
 
-- OV-1 (failover-policy `#52147` gate): PASS
-- OV-2 (`incrementCompactionCount` canonical primitives): PASS
-- OV-3 (diagnostic instrumentation): PASS
-- OV-4 (`earlyWarningBand` context-pressure): step-zero PASS; live-host verification in flight
+- Cycle overview: [`swims/swim-41/README.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/README.md)
+- OV-1 (failover-policy `#52147` gate): [`swims/swim-41/rows/OV-1/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-1/verdict.md) — ✅ PASS
+- OV-2 (`incrementCompactionCount` canonical primitives): [`swims/swim-41/rows/OV-2/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-2/verdict.md) — ✅ PASS
+- OV-3 (diagnostic instrumentation): [`swims/swim-41/rows/OV-3/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-3/verdict.md) — ✅ PASS
+- OV-4 (`earlyWarningBand` context-pressure): [`swims/swim-41/rows/OV-4/verdict.md`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/main/swims/swim-41/rows/OV-4/verdict.md) — 🟡 step-zero PASS, live-host verification in flight
 
 **Initial OV (observability/verification) coverage scope:**
 
