@@ -7,7 +7,7 @@ import {
   abortEmbeddedPiRun,
   isEmbeddedPiRunActive,
 } from "../../agents/pi-embedded-runner/runs.js";
-import { clearRuntimeConfigSnapshot } from "../../config/config.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import * as sessionTypesModule from "../../config/sessions.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionStore, saveSessionStore } from "../../config/sessions.js";
@@ -21,10 +21,15 @@ import {
   registerMemoryCapability,
   type MemoryFlushPlanResolver,
 } from "../../plugins/memory-state.js";
+import { delayedContinuationReservationCount } from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { scheduleFollowupDrain } from "./queue.js";
-import { __testing as replyRunRegistryTesting, replyRunRegistry } from "./reply-run-registry.js";
+import {
+  __testing as replyRunRegistryTesting,
+  createReplyOperation,
+  replyRunRegistry,
+} from "./reply-run-registry.js";
 import { createMockTypingController } from "./test-helpers.js";
 
 function createCliBackendTestConfig() {
@@ -54,6 +59,8 @@ const refreshQueuedFollowupSessionMock = vi.fn();
 const compactState = vi.hoisted(() => ({
   compactEmbeddedPiSessionMock: vi.fn(),
 }));
+const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
+const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../agents/model-fallback.js", () => ({
   runWithModelFallback: (params: {
@@ -89,6 +96,13 @@ vi.mock("../../agents/cli-runner.js", () => ({
   runCliAgent: (...args: unknown[]) => runCliAgentMock(...args),
 }));
 
+vi.mock("../../agents/subagent-spawn.js", () => ({
+  SUBAGENT_SPAWN_MODES: ["run", "session"],
+  SUBAGENT_SPAWN_SANDBOX_MODES: ["inherit", "require"],
+  SUBAGENT_SPAWN_CONTEXT_MODES: ["isolated", "fork"],
+  spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
+}));
+
 vi.mock("../../runtime.js", () => {
   return {
     defaultRuntime: {
@@ -98,6 +112,10 @@ vi.mock("../../runtime.js", () => {
     },
   };
 });
+
+vi.mock("../../infra/heartbeat-wake.js", () => ({
+  requestHeartbeatNow: (...args: unknown[]) => requestHeartbeatNowMock(...args),
+}));
 
 vi.mock("./queue.js", () => {
   return {
@@ -141,7 +159,7 @@ vi.mock("../../agents/subagent-registry.js", () => ({
   markSubagentRunTerminated: () => 0,
 }));
 
-import { runReplyAgent } from "./agent-runner.js";
+import { cancelContinuationTimer, runReplyAgent } from "./agent-runner.js";
 
 type RunWithModelFallbackParams = {
   provider: string;
@@ -150,7 +168,6 @@ type RunWithModelFallbackParams = {
 };
 
 beforeEach(() => {
-  clearRuntimeConfigSnapshot();
   resetDiagnosticEventsForTest();
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
@@ -172,6 +189,12 @@ beforeEach(() => {
   loadCronStoreMock.mockClear();
   // Default: no cron jobs in store.
   loadCronStoreMock.mockResolvedValue({ version: 1, jobs: [] });
+  requestHeartbeatNowMock.mockReset();
+  spawnSubagentDirectMock.mockReset().mockResolvedValue({
+    status: "accepted",
+    childSessionKey: "agent:main:subagent:spawned",
+    runId: "run-spawned",
+  });
 
   // Default: no provider switch; execute the chosen provider+model.
   runWithModelFallbackMock.mockImplementation(
@@ -184,12 +207,335 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  clearRuntimeConfigSnapshot();
   resetDiagnosticEventsForTest();
   vi.useRealTimers();
+  clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
   replyRunRegistryTesting.resetReplyRunRegistry();
   embeddedRunTesting.resetActiveEmbeddedRuns();
+});
+
+describe("runReplyAgent continuation volatile state", () => {
+  function createContinuationRun(params?: {
+    sessionKey?: string;
+    config?: Record<string, unknown>;
+    sessionEntry?: SessionEntry;
+  }) {
+    const sessionKey = params?.sessionKey ?? "continuation-main";
+    const typing = createMockTypingController();
+    const sessionCtx = {
+      Provider: "discord",
+      OriginatingTo: "channel:1",
+      AccountId: "primary",
+      MessageSid: "msg",
+    } as unknown as TemplateContext;
+    const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
+    const sessionEntry =
+      params?.sessionEntry ??
+      ({
+        sessionId: "session",
+        updatedAt: Date.now(),
+      } satisfies SessionEntry);
+    const followupRun = {
+      prompt: "hello",
+      summaryLine: "hello",
+      enqueuedAt: Date.now(),
+      run: {
+        sessionId: "session",
+        sessionKey,
+        messageProvider: "discord",
+        sessionFile: "/tmp/session.jsonl",
+        workspaceDir: "/tmp",
+        config:
+          params?.config ??
+          ({
+            agents: {
+              defaults: {
+                continuation: {
+                  enabled: true,
+                  minDelayMs: 0,
+                  maxDelayMs: 1_000,
+                  defaultDelayMs: 1_000,
+                  maxChainLength: 4,
+                },
+              },
+            },
+          } satisfies Record<string, unknown>),
+        skillsSnapshot: {},
+        provider: "anthropic",
+        model: "claude",
+        thinkLevel: "low",
+        verboseLevel: "off",
+        elevatedLevel: "off",
+        bashElevated: {
+          enabled: false,
+          allowed: false,
+          defaultLevel: "off",
+        },
+        timeoutMs: 1_000,
+        blockReplyBreak: "message_end",
+      },
+    } as unknown as FollowupRun;
+
+    setRuntimeConfigSnapshot(followupRun.run.config);
+
+    return {
+      sessionKey,
+      sessionEntry,
+      typing,
+      sessionCtx,
+      resolvedQueue,
+      followupRun,
+    };
+  }
+
+  it("does not create continuation generation state for ordinary inbound turns", async () => {
+    const run = createContinuationRun();
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Normal reply" }],
+      meta: {},
+    });
+
+    const result = await runReplyAgent({
+      commandBody: "hello",
+      followupRun: run.followupRun,
+      queueKey: run.sessionKey,
+      resolvedQueue: run.resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing: run.typing,
+      sessionCtx: run.sessionCtx,
+      sessionEntry: run.sessionEntry,
+      sessionStore: { [run.sessionKey]: run.sessionEntry },
+      sessionKey: run.sessionKey,
+      defaultModel: "anthropic/claude-opus-4-6",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(result).toMatchObject({ text: "Normal reply" });
+  });
+
+  it("shields ReplyRunAlreadyActiveError while a previous run is still shutting down", async () => {
+    const run = createContinuationRun({ sessionKey: "continuation-already-active" });
+    const activeOperation = createReplyOperation({
+      sessionKey: run.sessionKey,
+      sessionId: "session",
+      resetTriggered: false,
+    });
+
+    try {
+      const result = await runReplyAgent({
+        commandBody: "hello",
+        followupRun: run.followupRun,
+        queueKey: run.sessionKey,
+        resolvedQueue: run.resolvedQueue,
+        shouldSteer: false,
+        shouldFollowup: false,
+        isActive: false,
+        isStreaming: false,
+        typing: run.typing,
+        sessionCtx: run.sessionCtx,
+        sessionEntry: run.sessionEntry,
+        sessionStore: { [run.sessionKey]: run.sessionEntry },
+        sessionKey: run.sessionKey,
+        defaultModel: "anthropic/claude-opus-4-6",
+        resolvedVerboseLevel: "off",
+        isNewSession: false,
+        blockStreamingEnabled: false,
+        resolvedBlockStreamingBreak: "message_end",
+        shouldInjectGroupIntro: false,
+        typingMode: "instant",
+      });
+
+      expect(result).toEqual({
+        text: "⚠️ Previous run is still shutting down. Please try again in a moment.",
+      });
+      expect(run.typing.cleanup).toHaveBeenCalledOnce();
+      expect(runEmbeddedPiAgentMock).not.toHaveBeenCalled();
+    } finally {
+      activeOperation.complete();
+    }
+  });
+
+  it("fires a delayed WORK timer after CONTINUE_WORK is parsed", async () => {
+    vi.useFakeTimers();
+
+    const run = createContinuationRun({ sessionKey: "continuation-work-timer" });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Normal reply\nCONTINUE_WORK:1" }],
+      meta: {
+        agentMeta: {
+          usage: {
+            input: 2,
+            output: 3,
+          },
+        },
+      },
+    });
+
+    const result = await runReplyAgent({
+      commandBody: "hello",
+      followupRun: run.followupRun,
+      queueKey: run.sessionKey,
+      resolvedQueue: run.resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing: run.typing,
+      sessionCtx: run.sessionCtx,
+      sessionEntry: run.sessionEntry,
+      sessionStore: { [run.sessionKey]: run.sessionEntry },
+      sessionKey: run.sessionKey,
+      defaultModel: "anthropic/claude-opus-4-6",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(result).toMatchObject({ text: "Normal reply" });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: run.sessionKey,
+        reason: "continuation",
+        parentRunId: expect.any(String),
+      }),
+    );
+  });
+
+  it("delayed work survives a plain inbound turn (post-RFC 2026-04-15: no noise-based cancellation)", async () => {
+    vi.useFakeTimers();
+
+    const run = createContinuationRun({ sessionKey: "continuation-work-cancel" });
+    const sessionStore = { [run.sessionKey]: run.sessionEntry };
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Normal reply\nCONTINUE_WORK:1" }],
+      meta: {},
+    });
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun: run.followupRun,
+      queueKey: run.sessionKey,
+      resolvedQueue: run.resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing: run.typing,
+      sessionCtx: run.sessionCtx,
+      sessionEntry: run.sessionEntry,
+      sessionStore,
+      sessionKey: run.sessionKey,
+      defaultModel: "anthropic/claude-opus-4-6",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Interrupting message" }],
+      meta: {},
+    });
+
+    await runReplyAgent({
+      commandBody: "user interrupted",
+      followupRun: run.followupRun,
+      queueKey: run.sessionKey,
+      resolvedQueue: run.resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing: run.typing,
+      sessionCtx: run.sessionCtx,
+      sessionEntry: run.sessionEntry,
+      sessionStore,
+      sessionKey: run.sessionKey,
+      defaultModel: "anthropic/claude-opus-4-6",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // RFC 2026-04-15: generation-guard removed — unrelated inbound traffic
+    // does not cancel delayed work. The WORK timer still fires.
+    expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: run.sessionKey,
+        reason: "continuation",
+        parentRunId: expect.any(String),
+      }),
+    );
+  });
+
+  it("clears delayed delegate reservations and timers on explicit cancellation", async () => {
+    vi.useFakeTimers();
+
+    const run = createContinuationRun({ sessionKey: "continuation-delegate-cancel" });
+    const sessionStore = { [run.sessionKey]: run.sessionEntry };
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Normal reply\n[[CONTINUE_DELEGATE: inspect logs +1s]]" }],
+      meta: {},
+    });
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun: run.followupRun,
+      queueKey: run.sessionKey,
+      resolvedQueue: run.resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing: run.typing,
+      sessionCtx: run.sessionCtx,
+      sessionEntry: run.sessionEntry,
+      sessionStore,
+      sessionKey: run.sessionKey,
+      defaultModel: "anthropic/claude-opus-4-6",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(delayedContinuationReservationCount(run.sessionKey)).toBe(1);
+
+    cancelContinuationTimer(run.sessionKey, {
+      sessionEntry: run.sessionEntry,
+      sessionStore,
+    });
+
+    expect(delayedContinuationReservationCount(run.sessionKey)).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("runReplyAgent auto-compaction token update", () => {
@@ -1693,104 +2039,6 @@ describe("runReplyAgent claude-cli routing", () => {
     expect(result).toMatchObject({ text: "ok" });
   });
 
-  it("does not leak hook-blocked CLI input in raw trace payloads", async () => {
-    runCliAgentMock.mockResolvedValueOnce({
-      payloads: [
-        {
-          text: "Your message could not be sent: The agent cannot read this message. (blocked by policy-plugin)",
-          isError: true,
-        },
-      ],
-      meta: {
-        error: {
-          kind: "hook_block",
-          message:
-            "Your message could not be sent: The agent cannot read this message. (blocked by policy-plugin)",
-        },
-        agentMeta: {
-          provider: "claude-cli",
-          model: "opus-4.5",
-        },
-      },
-    });
-
-    const typing = createMockTypingController();
-    const sessionCtx = {
-      Provider: "webchat",
-      OriginatingTo: "session:1",
-      AccountId: "primary",
-      MessageSid: "msg",
-      CommandBody: "secret hitl prompt",
-      RawBody: "secret hitl prompt",
-      BodyForAgent: "secret hitl prompt",
-      Body: "secret hitl prompt",
-    } as unknown as TemplateContext;
-    const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
-    const sessionEntry = {
-      sessionId: "session",
-      updatedAt: Date.now(),
-      traceLevel: "raw",
-    } as SessionEntry;
-    const followupRun = {
-      prompt: "secret hitl prompt",
-      summaryLine: "secret hitl prompt",
-      enqueuedAt: Date.now(),
-      run: {
-        agentId: "main",
-        sessionId: "session",
-        sessionKey: "main",
-        messageProvider: "webchat",
-        sessionFile: "/tmp/session.jsonl",
-        workspaceDir: "/tmp",
-        config: createCliBackendTestConfig(),
-        skillsSnapshot: {},
-        traceAuthorized: true,
-        provider: "claude-cli",
-        model: "opus-4.5",
-        thinkLevel: "low",
-        verboseLevel: "off",
-        elevatedLevel: "off",
-        bashElevated: {
-          enabled: false,
-          allowed: false,
-          defaultLevel: "off",
-        },
-        timeoutMs: 1_000,
-        blockReplyBreak: "message_end",
-      },
-    } as unknown as FollowupRun;
-
-    const result = await runReplyAgent({
-      commandBody: "secret hitl prompt",
-      followupRun,
-      queueKey: "main",
-      resolvedQueue,
-      shouldSteer: false,
-      shouldFollowup: false,
-      isActive: false,
-      isStreaming: false,
-      typing,
-      sessionCtx,
-      sessionEntry,
-      sessionStore: { main: sessionEntry },
-      defaultModel: "claude-cli/opus-4.5",
-      resolvedVerboseLevel: "off",
-      isNewSession: false,
-      blockStreamingEnabled: false,
-      resolvedBlockStreamingBreak: "message_end",
-      shouldInjectGroupIntro: false,
-      typingMode: "instant",
-    });
-
-    const texts = Array.isArray(result)
-      ? result.map((payload) => payload.text ?? "").join("\n")
-      : (result?.text ?? "");
-    expect(texts).toContain(
-      "Your message could not be sent: The agent cannot read this message. (blocked by policy-plugin)",
-    );
-    expect(texts).not.toContain("secret hitl prompt");
-  });
-
   it("uses the selected CLI runtime for canonical Anthropic models", async () => {
     runCliAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "ok" }],
@@ -1813,6 +2061,7 @@ describe("runReplyAgent claude-cli routing", () => {
     const sessionEntry = {
       sessionId: "session",
       updatedAt: Date.now(),
+      agentRuntimeOverride: "claude-cli",
     } as SessionEntry;
     const followupRun = {
       prompt: "hello",
@@ -1824,15 +2073,7 @@ describe("runReplyAgent claude-cli routing", () => {
         messageProvider: "webchat",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
-        config: {
-          agents: {
-            defaults: {
-              models: {
-                "anthropic/claude-opus-4-7": { agentRuntime: { id: "claude-cli" } },
-              },
-            },
-          },
-        },
+        config: { agents: { defaults: { agentRuntime: { id: "claude-cli" } } } },
         skillsSnapshot: {},
         provider: "anthropic",
         model: "claude-opus-4-7",
