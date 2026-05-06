@@ -2780,130 +2780,23 @@ export async function runReplyAgent(params: {
             }
           };
 
-          if (delegate.delayMs && delegate.delayMs > 0) {
-            const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegate.delayMs));
-            const reservationId = generateSecureUuid();
-            addDelayedContinuationReservation(sessionKey, {
-              id: reservationId,
-              source: "tool",
-              task: delegate.task,
-              createdAt: chainStartedAt,
-              fireAt: Date.now() + clampedDelay,
-              plannedHop: nextChainCount,
-              silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
-              silentWake: delegate.mode === "silent-wake",
-              ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
-              ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
-                ? { targetSessionKeys: delegate.targetSessionKeys }
-                : {}),
-              ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
-              ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
-            });
-            const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
-              count: currentChainCount,
-              startedAt: chainStartedAt,
-              tokens: accumulatedChainTokens,
-            });
-            // Emit `continuation.delegate.dispatch` at the timer-deferred
-            // enqueue seam (tool-side, after
-            // persist, before `setTimeout` arms). Same enqueue-time
-            // semantic anchor as the bracket-timer site above.
-            {
-              // Post-compaction path is a sibling, not handled here.
-              const delegateMode = delegate.mode ?? "normal";
-              emitContinuationDelegateSpan({
-                chainId: persistedChainIdForTimer,
-                chainStepRemaining: maxChainLength - nextChainCount,
-                delayMs: clampedDelay,
-                delivery: "timer",
-                delegateMode,
-                traceparent: delegate.traceparent,
-                log: (message) => defaultRuntime.log(message),
-              });
-            }
-            // Fire-span snapshots for the tool-delegate timer callback.
-            // Same enclosure discipline as the bracket-delegate
-            // site: `delegateMode` and `chainStepRemainingAtDispatch` are
-            // dispatch-time captures, NOT fire-time recomputes; `armedAt` is
-            // captured immediately before `setTimeout` so wall-clock drift
-            // measurement starts at arming.
-            const fireDelegateMode: "normal" | "silent" | "silent-wake" =
-              (delegate.mode as "normal" | "silent" | "silent-wake") ?? "normal";
-            const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
-            retainContinuationTimerRef(sessionKey);
-            const armedAt = Date.now();
-            const timerHandle = setTimeout(() => {
-              // Fire-span emits first, before reservation lookup. Wall-clock
-              // truth: timer did fire; what
-              // happens next (spawn or reservation-missing) is a separate
-              // sibling event.
-              const fireDeferredMs = Date.now() - armedAt;
-              emitContinuationDelegateFireSpan({
-                // Invariant: persistedChainIdForTimer is always a string
-                // here — `persistContinuationChainState` only returns
-                // undefined when `sessionKey` is falsy, but this branch
-                // is gated on `sessionKey` being truthy.
-                // Helper's defense-in-depth no-ops if undefined slips.
-                chainId: persistedChainIdForTimer as string,
-                chainStepRemainingAtDispatch,
-                delegateMode: fireDelegateMode,
-                delayMs: clampedDelay,
-                fireDeferredMs,
-                log: (message) => defaultRuntime.log(message),
-              });
-              try {
-                const reservation = takeDelayedContinuationReservation(sessionKey, reservationId);
-                if (!reservation) {
-                  defaultRuntime.log(
-                    `Tool DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
-                  );
-                  // Sibling `continuation.disabled` for the existing
-                  // log-and-return divergence; same chain.id
-                  // as the fire span so consumers can pair them.
-                  emitContinuationDisabledSpan({
-                    chainId: persistedChainIdForTimer,
-                    chainStepRemaining: chainStepRemainingAtDispatch,
-                    disabledReason: "reservation.missing",
-                    signalKind: "tool-delegate",
-                    delegateDelivery: "timer",
-                    delegateMode: fireDelegateMode,
-                    log: (message) => defaultRuntime.log(message),
-                  });
-                  return;
-                }
-                void doToolSpawn(reservation.plannedHop, reservation.task, {
-                  timerTriggered: true,
-                  silent: reservation.silent,
-                  silentWake: reservation.silentWake,
-                  startedAt: reservation.createdAt,
-                  ...(reservation.targetSessionKey
-                    ? { targetSessionKey: reservation.targetSessionKey }
-                    : {}),
-                  ...(reservation.targetSessionKeys && reservation.targetSessionKeys.length > 0
-                    ? { targetSessionKeys: reservation.targetSessionKeys }
-                    : {}),
-                  ...(reservation.fanoutMode ? { fanoutMode: reservation.fanoutMode } : {}),
-                  ...(reservation.traceparent ? { traceparent: reservation.traceparent } : {}),
-                });
-              } finally {
-                unregisterContinuationTimerHandle(sessionKey, timerHandle);
-              }
-            }, clampedDelay);
-            registerContinuationTimerHandle(sessionKey, timerHandle);
-            timerHandle.unref();
-          } else {
-            await doToolSpawn(nextChainCount, delegate.task, {
-              silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
-              silentWake: delegate.mode === "silent-wake",
-              startedAt: chainStartedAt,
-              ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
-              ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
-                ? { targetSessionKeys: delegate.targetSessionKeys }
-                : {}),
-              ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
-              ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
-            });
-          }
+          // `delegate.delayMs` here is historical metadata, NOT a fresh
+          // scheduling instruction: `consumePendingDelegates` only releases
+          // already-matured delegates (`now >= createdAt + delayMs`).
+          // Spawning immediately preserves the maturity contract; re-arming
+          // a fresh timer would charge the wait twice and drift recipient
+          // drains by approximately the original delay.
+          await doToolSpawn(nextChainCount, delegate.task, {
+            silent: delegate.mode === "silent" || delegate.mode === "silent-wake",
+            silentWake: delegate.mode === "silent-wake",
+            startedAt: chainStartedAt,
+            ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
+            ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
+              ? { targetSessionKeys: delegate.targetSessionKeys }
+              : {}),
+            ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
+            ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
+          });
         }
       }
     }

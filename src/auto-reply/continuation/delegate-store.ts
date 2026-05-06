@@ -429,6 +429,13 @@ export function enqueuePendingDelegate(
  * Callers that need to know when to retry the consume cycle in a quiet channel
  * should call `peekSoonestUnmaturedDelegateDueAt(sessionKey)` immediately after
  * this returns. Pairing avoids a separate query path.
+ *
+ * Maturity contract for downstream callers: each returned delegate has
+ * already passed its `createdAt + delayMs` horizon. The `delayMs` field on
+ * the returned object is historical metadata — useful for telemetry
+ * discriminators — and MUST NOT be used as a fresh scheduling instruction.
+ * Re-arming a `setTimeout(delayMs)` against a consumed delegate charges the
+ * wait twice and drifts recipient drains by approximately the original delay.
  */
 export function consumePendingDelegates(sessionKey: string): PendingContinuationDelegate[] {
   const delegates: PendingContinuationDelegate[] = [];

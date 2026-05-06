@@ -421,7 +421,7 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
 
   it("tool-delegate immediate dispatch preserves singular targetSessionKey into spawned continuation run", async () => {
     const sessionKey = "continuation-delegate-targeted-tool";
-    const targetSessionKey = "agent:main:discord:channel:1466192485440164011";
+    const targetSessionKey = "agent:main:test:channel:CHANNEL_A";
     const run = createContinuationRun({ sessionKey });
     runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
       const tool = createContinueDelegateTool({ agentSessionKey: sessionKey });
@@ -498,5 +498,50 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     // are `doSpawn` (bracket) → `spawnSubagentDirect`. Neither runs after
     // a cleared reservation.
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+  });
+});
+
+// Pins the maturity contract on the tool-delegate consume path: a delegate
+// returned from `consumePendingDelegates` has already passed its
+// `flow.createdAt + delayMs` horizon, so the dispatch site must spawn it
+// immediately. Re-arming a fresh `setTimeout(delayMs)` against the historical
+// metadata charges the wait twice and drifts recipient drains by the original
+// delay (e.g., `delaySeconds: 30` would fire at ~60s instead of ~30s).
+describe("runReplyAgent :: matured consumed delegate spawns immediately", () => {
+  it("matured consumed delegate fires on next dispatch without second full-delay wait", async () => {
+    vi.useFakeTimers();
+    const sessionKey = "continuation-delegate-matured-consumed-rearm";
+    const run = createContinuationRun({ sessionKey });
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "ack" }],
+      meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+    });
+
+    // Stage a delegate as if a prior turn had enqueued it via
+    // `continue_delegate({ delaySeconds: 3 })`, then advance fake time past
+    // its dueAt so `consumePendingDelegates` returns it as matured. The
+    // delegate object carries `delayMs: 3_000` as historical metadata.
+    enqueuePendingDelegate(sessionKey, {
+      task: "matured-task",
+      mode: "silent-wake",
+      delayMs: 3_000,
+    });
+    await vi.advanceTimersByTimeAsync(3_001);
+
+    await runDelegateTurn(run, { [run.sessionKey]: run.sessionEntry });
+
+    // Without further timer advance: spawn must have already fired. Under
+    // the buggy re-arm path, the consume site armed a fresh
+    // `setTimeout(3_000)` and `spawnSubagentDirect` would still be pending,
+    // making this assertion observe 0 calls.
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    const spawnArgs = spawnSubagentDirectMock.mock.calls[0]?.[0] as {
+      task?: string;
+      silentAnnounce?: boolean;
+      wakeOnReturn?: boolean;
+    };
+    expect(spawnArgs?.task).toContain("matured-task");
+    expect(spawnArgs?.silentAnnounce).toBe(true);
+    expect(spawnArgs?.wakeOnReturn).toBe(true);
   });
 });
