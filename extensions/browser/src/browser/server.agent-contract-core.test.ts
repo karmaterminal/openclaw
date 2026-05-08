@@ -170,7 +170,7 @@ describe("browser control server", () => {
                 {
                   id: "fresh5678",
                   title: "Submitted",
-                  url: "https://submitted.example",
+                  url: "http://127.0.0.1/submitted",
                   webSocketDebuggerUrl: "ws://127.0.0.1/devtools/page/fresh5678",
                   type: "page",
                 },
