@@ -2591,7 +2591,7 @@ export async function runReplyAgent(params: {
         );
       }
       if (toolDelegates.length > 0) {
-        const { maxChainLength, minDelayMs, maxDelayMs, costCapTokens, maxDelegatesPerTurn } =
+        const { maxChainLength, costCapTokens, maxDelegatesPerTurn } =
           resolveLiveContinuationRuntimeConfig(cfg);
         // If a bracket-signal delegate was already spawned this turn, count it
         // against the per-turn cap so mixed-signal turns cannot exceed the limit.
