@@ -2907,7 +2907,7 @@ export async function runReplyAgent(params: {
       | { dispatched: number; rejected: number; chainState: ChainState }
       | undefined;
     if (continuationFeatureEnabled && sessionKey) {
-      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const turnTokens = bracketTokensAccumulated ? 0 : (usage?.input ?? 0) + (usage?.output ?? 0);
       const { dispatchToolDelegates, loadContinuationChainState } =
         await import("../continuation/lazy.runtime.js");
       const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
@@ -2926,6 +2926,13 @@ export async function runReplyAgent(params: {
         // chain state from the persisted session entry at fire time rather
         // than re-using the snapshot captured at arm time.
         loadFreshChainState: () => loadContinuationChainState(activeSessionEntry, 0),
+        persistChainState: async (state) => {
+          await persistContinuationChainState({
+            count: state.currentChainCount,
+            startedAt: state.chainStartedAt,
+            tokens: state.accumulatedChainTokens,
+          });
+        },
       });
     }
 

@@ -182,6 +182,81 @@ describe("hasDelegatePending", () => {
   });
 });
 
+describe("co-fire double-count guard (Block A persist + Block B load)", () => {
+  it("double-counts when Block B re-loads with turnTokens after Block A already persisted them", () => {
+    const T_prev = 5_000;
+    const T_turn = 2_000;
+    const sessionEntry: Record<string, unknown> = {
+      continuationChainCount: 1,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: T_prev,
+    };
+
+    // Block A: bracket-signal accept seam persists T_prev + T_turn
+    persistContinuationChainState({
+      sessionEntry,
+      count: 2,
+      startedAt: 1_700_000_000_000,
+      tokens: T_prev + T_turn,
+    });
+    expect(sessionEntry.continuationChainTokens).toBe(T_prev + T_turn);
+
+    // Block B (UNFIXED): re-loads with turnTokens > 0 → double-count
+    const doubleCountState = loadContinuationChainState(sessionEntry, T_turn);
+    expect(doubleCountState.accumulatedChainTokens).toBe(T_prev + 2 * T_turn);
+  });
+
+  it("avoids double-count when Block B passes turnTokens=0 after bracket path accumulated", () => {
+    const T_prev = 5_000;
+    const T_turn = 2_000;
+    const sessionEntry: Record<string, unknown> = {
+      continuationChainCount: 1,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: T_prev,
+    };
+
+    // Block A: bracket-signal accept seam persists T_prev + T_turn
+    persistContinuationChainState({
+      sessionEntry,
+      count: 2,
+      startedAt: 1_700_000_000_000,
+      tokens: T_prev + T_turn,
+    });
+
+    // Block B (FIXED): passes 0 when bracketTokensAccumulated is true
+    const correctState = loadContinuationChainState(sessionEntry, 0);
+    expect(correctState.accumulatedChainTokens).toBe(T_prev + T_turn);
+  });
+
+  it("cost-cap budget check sees correct accumulated value after co-fire", () => {
+    const T_prev = 90_000;
+    const T_turn = 15_000;
+    const costCap = 110_000;
+    const sessionEntry: Record<string, unknown> = {
+      continuationChainCount: 3,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: T_prev,
+    };
+
+    persistContinuationChainState({
+      sessionEntry,
+      count: 4,
+      startedAt: 1_700_000_000_000,
+      tokens: T_prev + T_turn,
+    });
+
+    // Fixed path: Block B loads with 0
+    const state = loadContinuationChainState(sessionEntry, 0);
+    expect(state.accumulatedChainTokens).toBe(105_000);
+    expect(state.accumulatedChainTokens).toBeLessThan(costCap);
+
+    // Unfixed path would yield 120_000 > costCap, falsely rejecting
+    const unfixedState = loadContinuationChainState(sessionEntry, T_turn);
+    expect(unfixedState.accumulatedChainTokens).toBe(120_000);
+    expect(unfixedState.accumulatedChainTokens).toBeGreaterThan(costCap);
+  });
+});
+
 describe("persistContinuationChainState", () => {
   it("writes continuation chain metadata onto the session entry", () => {
     const sessionEntry = { sessionId: "session", updatedAt: 1 };
