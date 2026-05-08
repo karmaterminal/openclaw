@@ -2907,7 +2907,7 @@ export async function runReplyAgent(params: {
       | { dispatched: number; rejected: number; chainState: ChainState }
       | undefined;
     if (continuationFeatureEnabled && sessionKey) {
-      const turnTokens = (usage?.input ?? 0) + (usage?.output ?? 0);
+      const turnTokens = bracketTokensAccumulated ? 0 : (usage?.input ?? 0) + (usage?.output ?? 0);
       const { dispatchToolDelegates, loadContinuationChainState } =
         await import("../continuation/lazy.runtime.js");
       const dispatchChainState = loadContinuationChainState(activeSessionEntry, turnTokens);
