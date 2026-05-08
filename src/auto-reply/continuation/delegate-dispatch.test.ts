@@ -255,10 +255,17 @@ describe("tool delegate dispatch contract", () => {
 
   it("threads cross-session targeting metadata into spawned continuation runs", async () => {
     const sessionKey = "session-delegate-targeting";
+    const attachment = {
+      name: "handoff.txt",
+      content: "fanout payload",
+      encoding: "utf8" as const,
+    };
     enqueuePendingDelegate(sessionKey, {
       task: "targeted fanout",
       mode: "silent-wake",
       targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+      attachments: [attachment],
+      attachAs: { mountPath: "/workspace/fanout" },
     });
 
     await dispatchToolDelegates({
@@ -274,10 +281,37 @@ describe("tool delegate dispatch contract", () => {
         silentAnnounce: true,
         wakeOnReturn: true,
         continuationTargetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+        attachments: [attachment],
+        attachMountPath: "/workspace/fanout",
       }),
       expect.objectContaining({
         agentSessionKey: sessionKey,
       }),
+    );
+  });
+
+  it("surfaces malformed attachment spawn errors clearly", async () => {
+    const sessionKey = "session-delegate-bad-attachment";
+    enqueuePendingDelegate(sessionKey, {
+      task: "bad attachment",
+      attachments: [{ name: "../secret.txt", content: "nope" }],
+    });
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "error",
+      error: "attachments_invalid_name (../secret.txt)",
+    });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.rejected).toBe(1);
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining("attachments_invalid_name (../secret.txt)"),
+      { sessionKey },
     );
   });
 

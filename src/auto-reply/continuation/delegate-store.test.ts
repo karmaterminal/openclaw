@@ -244,6 +244,26 @@ describe("delegate store — TaskFlow-backed", () => {
     });
   });
 
+  it("preserves inline attachments through TaskFlow round-trip", () => {
+    const attachment = {
+      name: "handoff.txt",
+      content: "delegate state",
+      encoding: "utf8" as const,
+      mimeType: "text/plain",
+    };
+    enqueuePendingDelegate("session-1", {
+      task: "attached task",
+      attachments: [attachment],
+      attachAs: { mountPath: "/workspace/input" },
+    });
+
+    expect(consumePendingDelegates("session-1")[0]).toMatchObject({
+      task: "attached task",
+      attachments: [attachment],
+      attachAs: { mountPath: "/workspace/input" },
+    });
+  });
+
   it("omits traceparent when the TaskFlow row has no carrier", () => {
     enqueuePendingDelegate("session-1", { task: "untraced task" });
 
@@ -419,6 +439,27 @@ describe("post-compaction delegate staging", () => {
       task: "traced compaction shard",
       mode: "post-compaction",
       traceparent: VALID_TRACEPARENT,
+    });
+  });
+
+  it("preserves attachments across post-compaction TaskFlow storage", () => {
+    const attachment = {
+      name: "state.json",
+      content: '{"ok":true}',
+      mimeType: "application/json",
+    };
+    stagePostCompactionDelegate("session-1", {
+      task: "attached compaction shard",
+      stagedAt: 20_000,
+      attachments: [attachment],
+      attachAs: { mountPath: "/workspace/state" },
+    });
+
+    expect(consumeStagedPostCompactionDelegates("session-1")[0]).toMatchObject({
+      task: "attached compaction shard",
+      mode: "post-compaction",
+      attachments: [attachment],
+      attachAs: { mountPath: "/workspace/state" },
     });
   });
 

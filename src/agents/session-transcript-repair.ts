@@ -9,6 +9,7 @@ import {
   REDACTED_SESSIONS_SPAWN_ATTACHMENT_CONTENT,
   SESSIONS_SPAWN_ATTACHMENT_METADATA_KEYS,
   isAllowedToolCallName,
+  isRedactableInlineAttachmentToolName,
   isRedactedSessionsSpawnAttachment,
   normalizeAllowedToolNames,
 } from "./tool-call-shared.js";
@@ -142,19 +143,22 @@ function sanitizeToolCallBlock(block: RawToolCallBlock): RawToolCallBlock {
   const normalizedName = hasTrimmedName ? trimmedName : undefined;
   const nameChanged = hasTrimmedName && rawName !== trimmedName;
 
-  const isSessionsSpawn = normalizeLowercaseStringOrEmpty(normalizedName) === "sessions_spawn";
+  const normalizedToolName = normalizeLowercaseStringOrEmpty(normalizedName);
+  const isSessionsSpawn = normalizedToolName === "sessions_spawn";
+  const hasRedactableInlineAttachments = isRedactableInlineAttachmentToolName(normalizedName);
 
-  if (!isSessionsSpawn) {
+  if (!hasRedactableInlineAttachments) {
     if (!nameChanged) {
       return block;
     }
     return { ...(block as Record<string, unknown>), name: normalizedName } as RawToolCallBlock;
   }
 
-  // Redact sensitive sessions_spawn payload fields from persisted transcripts.
+  // Redact sensitive inline attachment payload fields from persisted transcripts.
   // Apply redaction to both `.arguments` and `.input` properties since block structures can vary.
-  const nextArgs = redactSessionsSpawnArgs(block.arguments);
-  const nextInput = redactSessionsSpawnArgs(block.input);
+  const redactArgs = isSessionsSpawn ? redactSessionsSpawnArgs : redactSessionsSpawnAttachmentsArgs;
+  const nextArgs = redactArgs(block.arguments);
+  const nextInput = redactArgs(block.input);
   if (nextArgs === block.arguments && nextInput === block.input && !nameChanged) {
     return block;
   }
@@ -369,13 +373,13 @@ function repairToolCallInputs(
       }
       if (isRawToolCallBlock(block)) {
         if (RAW_TOOL_CALL_BLOCK_TYPES.has((block as { type?: string }).type ?? "")) {
-          // Only sanitize (redact) sessions_spawn blocks; all others are passed through
+          // Only sanitize inline-attachment tool blocks; all others are passed through
           // unchanged to preserve provider-specific shapes (e.g. toolUse.input for Anthropic).
           const blockName =
             typeof (block as { name?: unknown }).name === "string"
               ? (block as { name: string }).name.trim()
               : undefined;
-          if (normalizeLowercaseStringOrEmpty(blockName) === "sessions_spawn") {
+          if (isRedactableInlineAttachmentToolName(blockName)) {
             const sanitized = sanitizeToolCallBlock(block);
             if (sanitized !== block) {
               changed = true;

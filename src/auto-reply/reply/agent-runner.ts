@@ -69,7 +69,11 @@ import {
   retainContinuationTimerRef,
   unregisterContinuationTimerHandle,
 } from "../continuation/state.js";
-import type { ChainState } from "../continuation/types.js";
+import type {
+  ChainState,
+  ContinuationDelegateAttachAs,
+  ContinuationDelegateAttachment,
+} from "../continuation/types.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
@@ -2251,6 +2255,8 @@ export async function runReplyAgent(params: {
                   targetSessionKeys?: string[];
                   fanoutMode?: "tree" | "all";
                   traceparent?: string;
+                  attachments?: ContinuationDelegateAttachment[];
+                  attachAs?: ContinuationDelegateAttachAs;
                 },
               ) => {
                 try {
@@ -2272,6 +2278,12 @@ export async function runReplyAgent(params: {
                         ? { continuationFanoutMode: options.fanoutMode }
                         : {}),
                       ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
+                      ...(options?.attachments && options.attachments.length > 0
+                        ? { attachments: options.attachments }
+                        : {}),
+                      ...(options?.attachAs?.mountPath
+                        ? { attachMountPath: options.attachAs.mountPath }
+                        : {}),
                     },
                     {
                       agentSessionKey: sessionKey,
@@ -2328,10 +2340,12 @@ export async function runReplyAgent(params: {
                   defaultRuntime.log(
                     `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
                   );
-                  enqueueSystemEvent(
-                    `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${task}`,
-                    { sessionKey },
-                  );
+                  const rejectionSummary = spawnResult.error
+                    ? `DELEGATE spawn ${spawnResult.status}: ${spawnResult.error}`
+                    : `DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually`;
+                  enqueueSystemEvent(`[continuation] ${rejectionSummary}. Original task: ${task}`, {
+                    sessionKey,
+                  });
                   return false;
                 } catch (err) {
                   defaultRuntime.log(
@@ -2371,6 +2385,13 @@ export async function runReplyAgent(params: {
                     : {}),
                   ...(effectiveContinuationSignal.traceparent
                     ? { traceparent: effectiveContinuationSignal.traceparent }
+                    : {}),
+                  ...(effectiveContinuationSignal.attachments &&
+                  effectiveContinuationSignal.attachments.length > 0
+                    ? { attachments: effectiveContinuationSignal.attachments }
+                    : {}),
+                  ...(effectiveContinuationSignal.attachAs
+                    ? { attachAs: effectiveContinuationSignal.attachAs }
                     : {}),
                 });
                 const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
@@ -2476,6 +2497,10 @@ export async function runReplyAgent(params: {
                         : {}),
                       ...(reservation.fanoutMode ? { fanoutMode: reservation.fanoutMode } : {}),
                       ...(reservation.traceparent ? { traceparent: reservation.traceparent } : {}),
+                      ...(reservation.attachments && reservation.attachments.length > 0
+                        ? { attachments: reservation.attachments }
+                        : {}),
+                      ...(reservation.attachAs ? { attachAs: reservation.attachAs } : {}),
                     });
                   } finally {
                     unregisterContinuationTimerHandle(sessionKey, timerHandle);
@@ -2500,6 +2525,13 @@ export async function runReplyAgent(params: {
                     : {}),
                   ...(effectiveContinuationSignal.traceparent
                     ? { traceparent: effectiveContinuationSignal.traceparent }
+                    : {}),
+                  ...(effectiveContinuationSignal.attachments &&
+                  effectiveContinuationSignal.attachments.length > 0
+                    ? { attachments: effectiveContinuationSignal.attachments }
+                    : {}),
+                  ...(effectiveContinuationSignal.attachAs
+                    ? { attachAs: effectiveContinuationSignal.attachAs }
                     : {}),
                 });
               }
@@ -2721,6 +2753,8 @@ export async function runReplyAgent(params: {
               targetSessionKeys?: string[];
               fanoutMode?: "tree" | "all";
               traceparent?: string;
+              attachments?: typeof delegate.attachments;
+              attachAs?: typeof delegate.attachAs;
             },
           ) => {
             try {
@@ -2738,6 +2772,12 @@ export async function runReplyAgent(params: {
                     : {}),
                   ...(options?.fanoutMode ? { continuationFanoutMode: options.fanoutMode } : {}),
                   ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
+                  ...(options?.attachments && options.attachments.length > 0
+                    ? { attachments: options.attachments }
+                    : {}),
+                  ...(options?.attachAs?.mountPath
+                    ? { attachMountPath: options.attachAs.mountPath }
+                    : {}),
                 },
                 {
                   agentSessionKey: sessionKey,
@@ -2793,10 +2833,12 @@ export async function runReplyAgent(params: {
               defaultRuntime.log(
                 `Tool DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
               );
-              enqueueSystemEvent(
-                `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${task}`,
-                { sessionKey },
-              );
+              const rejectionSummary = spawnResult.error
+                ? `Tool DELEGATE spawn ${spawnResult.status}: ${spawnResult.error}`
+                : `Tool DELEGATE spawn ${spawnResult.status}`;
+              enqueueSystemEvent(`[continuation] ${rejectionSummary}. Task: ${task}`, {
+                sessionKey,
+              });
               return false;
             } catch (err) {
               defaultRuntime.log(
@@ -2826,6 +2868,10 @@ export async function runReplyAgent(params: {
               : {}),
             ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
             ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
+            ...(delegate.attachments && delegate.attachments.length > 0
+              ? { attachments: delegate.attachments }
+              : {}),
+            ...(delegate.attachAs ? { attachAs: delegate.attachAs } : {}),
           });
         }
       }

@@ -10,6 +10,7 @@ import { stringifyRouteThreadId } from "../plugin-sdk/channel-route.js";
 import { listRegisteredPluginAgentPromptGuidance } from "../plugins/command-registry-state.js";
 import type { SubagentLifecycleHookRunner } from "../plugins/hooks.js";
 import { isValidAgentId, normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
+import type { InlineAttachment } from "../shared/inline-attachments.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { resolveAgentDir } from "./agent-scope-config.js";
@@ -133,12 +134,7 @@ export type SpawnSubagentParams = {
   context?: SpawnSubagentContextMode;
   lightContext?: boolean;
   expectsCompletionMessage?: boolean;
-  attachments?: Array<{
-    name: string;
-    content: string;
-    encoding?: "utf8" | "base64";
-    mimeType?: string;
-  }>;
+  attachments?: InlineAttachment[];
   attachMountPath?: string;
   /** When true, sub-agent completion is delivered as a silent system event
    *  instead of a visible channel message. Used for ambient enrichment shards. */

@@ -45,9 +45,10 @@ export {
 //
 // Downstream callers (agent-runner persist path, delivery queue) speak
 // SessionPostCompactionDelegate { task, createdAt, firstArmedAt?, silent?,
-// silentWake?, targetSessionKey?, targetSessionKeys?, fanoutMode?, traceparent? }.
-// The canonical store speaks StagedPostCompactionDelegate { task, stagedAt, firstArmedAt? }
-// and returns PendingContinuationDelegate { task, mode?, firstArmedAt? }.
+// silentWake?, targetSessionKey?, targetSessionKeys?, fanoutMode?, traceparent?,
+// attachments?, attachAs? }. The canonical store speaks
+// StagedPostCompactionDelegate { task, stagedAt, firstArmedAt? } and returns
+// PendingContinuationDelegate { task, mode?, firstArmedAt? }.
 // ---------------------------------------------------------------------------
 
 export function stagePostCompactionDelegate(
@@ -63,6 +64,8 @@ export function stagePostCompactionDelegate(
     ...(delegate.targetSessionKeys ? { targetSessionKeys: delegate.targetSessionKeys } : {}),
     ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
     ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
+    ...(delegate.attachments ? { attachments: delegate.attachments } : {}),
+    ...(delegate.attachAs ? { attachAs: delegate.attachAs } : {}),
   });
 }
 
@@ -90,6 +93,12 @@ export function consumeStagedPostCompactionDelegates(
     }
     if (d.traceparent) {
       delegate.traceparent = d.traceparent;
+    }
+    if (d.attachments) {
+      delegate.attachments = d.attachments;
+    }
+    if (d.attachAs) {
+      delegate.attachAs = d.attachAs;
     }
     return delegate;
   });

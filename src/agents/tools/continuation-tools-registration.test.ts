@@ -28,7 +28,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(tools.some((tool) => tool.name === "continue_delegate")).toBe(true);
   });
 
-  it("exposes cross-session targeting fields on the continue_delegate schema descriptor", () => {
+  it("exposes cross-session targeting and attachment fields on the continue_delegate schema descriptor", () => {
     const tools = createOpenClawTools({
       config,
       agentSessionKey: "main",
@@ -43,6 +43,8 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(params.properties).toHaveProperty("targetSessionKey");
     expect(params.properties).toHaveProperty("targetSessionKeys");
     expect(params.properties).toHaveProperty("fanoutMode");
+    expect(params.properties).toHaveProperty("attachments");
+    expect(params.properties).toHaveProperty("attachAs");
   });
 
   it("description documents the five continuation return targeting modes", () => {
@@ -127,7 +129,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   //   AND that boolean `silent`/`silentWake` are absent. This test extends
   //   that surface with the COMPLEMENTARY pin: the EXACT set of advertised
   //   parameter keys on the tool descriptor. A refactor that adds a new
-  //   model-facing parameter (cross-session addressing, trace context, retry knobs, priority)
+  //   model-facing parameter (cross-session addressing, trace context, attachments, retry knobs, priority)
   //   without an ADR would slip past the mode-only trap because it only checks
   //   what MUST be absent (silent/silentWake) and what MUST be present (mode
   //   enum). This trap pins the closed set, including the resurrected
@@ -141,6 +143,8 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
   //   - targetSessionKeys (optional)
   //   - fanoutMode        (optional, enum)
   //   - traceparent       (optional, W3C trace-context carrier)
+  //   - attachments       (optional, inline files materialized into delegate workspace)
+  //   - attachAs          (optional, mount-point hint for attachments)
   //
   // Extension to the mode-only trap, not duplication: it lives in
   // `src/auto-reply/continuation/types.mode-shape.test.ts` and asserts
@@ -173,11 +177,13 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
       "targetSessionKeys",
       "fanoutMode",
       "traceparent",
+      "attachments",
+      "attachAs",
     ].toSorted();
     const actualKeys = Object.keys(properties).toSorted();
     expect(
       actualKeys,
-      `continue_delegate descriptor must advertise exactly [task, delaySeconds, mode, targetSessionKey, targetSessionKeys, fanoutMode, traceparent]; got [${actualKeys.join(", ")}]`,
+      `continue_delegate descriptor must advertise exactly [task, delaySeconds, mode, targetSessionKey, targetSessionKeys, fanoutMode, traceparent, attachments, attachAs]; got [${actualKeys.join(", ")}]`,
     ).toEqual(expectedKeys);
 
     // task is required (model-facing contract).
@@ -254,6 +260,8 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     expect(properties).toHaveProperty("targetSessionKey");
     expect(properties).toHaveProperty("targetSessionKeys");
     expect(properties).toHaveProperty("fanoutMode");
+    expect(properties).toHaveProperty("attachments");
+    expect(properties).toHaveProperty("attachAs");
   });
 
   // Truth-table coverage for request_compaction registration. Pins the

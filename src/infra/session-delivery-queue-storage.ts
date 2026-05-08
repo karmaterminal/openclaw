@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ChatType } from "../channels/chat-type.js";
 import { resolveStateDir } from "../config/paths.js";
 import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
+import type { InlineAttachment, InlineAttachmentMount } from "../shared/inline-attachments.js";
 import { generateSecureUuid } from "./secure-random.js";
 
 const QUEUE_DIRNAME = "session-delivery-queue";
@@ -61,7 +62,7 @@ type QueuedSessionDeliveryPayloadMetadata = {
    * This is the address-recipient shape; broadcast mode uses the same substrate
    * with a different verb set.
    */
-  attachments?: AttachmentRef[];
+  attachments?: AttachmentRef[] | InlineAttachment[];
 };
 
 export type QueuedSessionDeliveryPayload = (
@@ -92,6 +93,8 @@ export type QueuedSessionDeliveryPayload = (
       targetSessionKey?: string;
       targetSessionKeys?: string[];
       fanoutMode?: "tree" | "all";
+      attachments?: InlineAttachment[];
+      attachAs?: InlineAttachmentMount;
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
     }
@@ -166,6 +169,10 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
       ? { targetSessionKeys: params.delegate.targetSessionKeys }
       : {}),
     ...(params.delegate.fanoutMode ? { fanoutMode: params.delegate.fanoutMode } : {}),
+    ...(params.delegate.attachments && params.delegate.attachments.length > 0
+      ? { attachments: params.delegate.attachments }
+      : {}),
+    ...(params.delegate.attachAs ? { attachAs: params.delegate.attachAs } : {}),
     ...(params.delegate.traceparent ? { traceparent: params.delegate.traceparent } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
     idempotencyKey:

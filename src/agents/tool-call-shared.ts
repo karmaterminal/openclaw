@@ -5,6 +5,7 @@ const TOOL_CALL_NAME_RE = /^[A-Za-z0-9_:.-]+$/;
 
 export const REDACTED_SESSIONS_SPAWN_ATTACHMENT_CONTENT = "__OPENCLAW_REDACTED__";
 export const SESSIONS_SPAWN_ATTACHMENT_METADATA_KEYS = ["name", "encoding", "mimeType"] as const;
+const REDACTABLE_INLINE_ATTACHMENT_TOOL_NAMES = new Set(["sessions_spawn", "continue_delegate"]);
 
 export function normalizeAllowedToolNames(allowedToolNames?: Iterable<string>): Set<string> | null {
   if (!allowedToolNames) {
@@ -66,6 +67,11 @@ export function isRedactedSessionsSpawnAttachment(item: unknown): boolean {
   return true;
 }
 
+export function isRedactableInlineAttachmentToolName(name: unknown): boolean {
+  const rawName = typeof name === "string" ? name.trim() : "";
+  return REDACTABLE_INLINE_ATTACHMENT_TOOL_NAMES.has(normalizeLowercaseStringOrEmpty(rawName));
+}
+
 type SessionsSpawnAttachmentToolCallBlock = {
   name?: unknown;
   input?: unknown;
@@ -75,8 +81,7 @@ type SessionsSpawnAttachmentToolCallBlock = {
 export function hasUnredactedSessionsSpawnAttachments(
   block: SessionsSpawnAttachmentToolCallBlock,
 ): boolean {
-  const rawName = typeof block.name === "string" ? block.name.trim() : "";
-  if (normalizeLowercaseStringOrEmpty(rawName) !== "sessions_spawn") {
+  if (!isRedactableInlineAttachmentToolName(block.name)) {
     return false;
   }
   for (const payload of [block.arguments, block.input]) {

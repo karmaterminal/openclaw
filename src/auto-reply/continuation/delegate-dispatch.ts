@@ -16,6 +16,7 @@ import { spawnSubagentDirect } from "../../agents/subagent-spawn.js";
 import type { SpawnSubagentContext } from "../../agents/subagent-spawn.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
 import { failFlow } from "../../tasks/task-flow-registry.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
 import { consumePendingDelegates, peekSoonestUnmaturedDelegateDueAt } from "./delegate-store.js";
@@ -265,6 +266,10 @@ export async function dispatchToolDelegates(params: {
             ? { continuationTargetSessionKeys: delegate.targetSessionKeys }
             : {}),
           ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
+          ...(delegate.attachments && delegate.attachments.length > 0
+            ? { attachments: delegate.attachments }
+            : {}),
+          ...(delegate.attachAs?.mountPath ? { attachMountPath: delegate.attachAs.mountPath } : {}),
         },
         spawnCtx,
       );
@@ -281,7 +286,9 @@ export async function dispatchToolDelegates(params: {
         dispatched++;
         currentChainCount = nextHop;
       } else {
-        const summary = `DELEGATE spawn ${result.status}: delegation was not accepted.`;
+        const summary = result.error
+          ? `DELEGATE spawn ${result.status}: ${result.error}`
+          : `DELEGATE spawn ${result.status}: delegation was not accepted.`;
         log.info(
           `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
         );
@@ -345,6 +352,8 @@ export async function dispatchStagedPostCompactionDelegates(
     targetSessionKey?: string;
     targetSessionKeys?: string[];
     fanoutMode?: "tree" | "all";
+    attachments?: InlineAttachment[];
+    attachAs?: InlineAttachmentMount;
   }>,
   sessionKey: string,
   spawnCtx: PostCompactionSpawnContext,
@@ -371,6 +380,10 @@ export async function dispatchStagedPostCompactionDelegates(
             ? { continuationTargetSessionKeys: delegate.targetSessionKeys }
             : {}),
           ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
+          ...(delegate.attachments && delegate.attachments.length > 0
+            ? { attachments: delegate.attachments }
+            : {}),
+          ...(delegate.attachAs?.mountPath ? { attachMountPath: delegate.attachAs.mountPath } : {}),
         },
         spawnCtx,
       );
@@ -378,13 +391,15 @@ export async function dispatchStagedPostCompactionDelegates(
         dispatched++;
         continue;
       }
+      const rejectionSummary = spawnResult.error
+        ? `Post-compaction delegate spawn ${spawnResult.status}: ${spawnResult.error}`
+        : `Post-compaction delegate spawn ${spawnResult.status}: delegation was not accepted.`;
       postCompactionLog.warn(
         `[continuation:post-compaction-spawn-rejected] status=${spawnResult.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
       );
-      enqueueSystemEvent(
-        `[continuation] Post-compaction delegate spawn ${spawnResult.status}: delegation was not accepted. Task: ${delegate.task}`,
-        { sessionKey },
-      );
+      enqueueSystemEvent(`[continuation] ${rejectionSummary}. Task: ${delegate.task}`, {
+        sessionKey,
+      });
       failed++;
     } catch (err) {
       postCompactionLog.warn(

@@ -980,6 +980,12 @@ export async function runSubagentAnnounceFlow(params: {
                   ...(chainSignal.fanoutMode
                     ? { continuationFanoutMode: chainSignal.fanoutMode }
                     : {}),
+                  ...(chainSignal.attachments && chainSignal.attachments.length > 0
+                    ? { attachments: chainSignal.attachments }
+                    : {}),
+                  ...(chainSignal.attachAs?.mountPath
+                    ? { attachMountPath: chainSignal.attachAs.mountPath }
+                    : {}),
                   drainsContinuationDelegateQueue: true,
                 },
                 {
@@ -1108,6 +1114,12 @@ export async function runSubagentAnnounceFlow(params: {
                     : {}),
                   ...(toolDelegate.fanoutMode
                     ? { continuationFanoutMode: toolDelegate.fanoutMode }
+                    : {}),
+                  ...(toolDelegate.attachments && toolDelegate.attachments.length > 0
+                    ? { attachments: toolDelegate.attachments }
+                    : {}),
+                  ...(toolDelegate.attachAs?.mountPath
+                    ? { attachMountPath: toolDelegate.attachAs.mountPath }
                     : {}),
                   drainsContinuationDelegateQueue: true,
                 },

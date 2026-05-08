@@ -184,6 +184,10 @@ export function normalizePostCompactionDelegate(
       : {}),
     ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
     ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
+    ...(delegate.attachments && delegate.attachments.length > 0
+      ? { attachments: delegate.attachments }
+      : {}),
+    ...(delegate.attachAs ? { attachAs: delegate.attachAs } : {}),
   };
 }
 
@@ -512,6 +516,12 @@ export async function deliverQueuedPostCompactionDelegate(
       ...(params.entry.fanoutMode ? { continuationFanoutMode: params.entry.fanoutMode } : {}),
       drainsContinuationDelegateQueue: true,
       ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),
+      ...(params.entry.attachments && params.entry.attachments.length > 0
+        ? { attachments: params.entry.attachments }
+        : {}),
+      ...(params.entry.attachAs?.mountPath
+        ? { attachMountPath: params.entry.attachAs.mountPath }
+        : {}),
     },
     {
       agentSessionKey: params.entry.sessionKey,
@@ -522,7 +532,11 @@ export async function deliverQueuedPostCompactionDelegate(
     },
   );
   if (spawnResult.status !== "accepted") {
-    throw new Error(`post-compaction delegate spawn ${spawnResult.status}`);
+    throw new Error(
+      spawnResult.error
+        ? `post-compaction delegate spawn ${spawnResult.status}: ${spawnResult.error}`
+        : `post-compaction delegate spawn ${spawnResult.status}`,
+    );
   }
 
   deps.enqueueSystemEvent(

@@ -42,6 +42,11 @@ function delegate(
     ...(overrides?.silent != null ? { silent: overrides.silent } : {}),
     ...(overrides?.silentWake != null ? { silentWake: overrides.silentWake } : {}),
     ...(overrides?.traceparent ? { traceparent: overrides.traceparent } : {}),
+    ...(overrides?.targetSessionKey ? { targetSessionKey: overrides.targetSessionKey } : {}),
+    ...(overrides?.targetSessionKeys ? { targetSessionKeys: overrides.targetSessionKeys } : {}),
+    ...(overrides?.fanoutMode ? { fanoutMode: overrides.fanoutMode } : {}),
+    ...(overrides?.attachments ? { attachments: overrides.attachments } : {}),
+    ...(overrides?.attachAs ? { attachAs: overrides.attachAs } : {}),
   };
 }
 
@@ -260,6 +265,34 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(persisted.map((item) => item.task)).toEqual(["existing", "new"]);
     expect(sessionEntry.pendingPostCompactionDelegates).toEqual(persisted);
     expect(sessionStore.main.pendingPostCompactionDelegates).toEqual(persisted);
+  });
+
+  it("preserves attachments when normalizing and persisting post-compaction delegates", async () => {
+    const attachment = {
+      name: "state.json",
+      content: '{"ok":true}',
+      mimeType: "application/json",
+    };
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const stored = await persistPendingPostCompactionDelegates({
+      sessionEntry,
+      sessionKey: "main",
+      delegates: [
+        delegate("attached", {
+          attachments: [attachment],
+          attachAs: { mountPath: "/workspace/state" },
+          targetSessionKey: "agent:main:recipient",
+        }),
+      ],
+    });
+
+    expect(stored[0]).toMatchObject({
+      task: "attached",
+      attachments: [attachment],
+      attachAs: { mountPath: "/workspace/state" },
+      targetSessionKey: "agent:main:recipient",
+    });
+    expect(sessionEntry.pendingPostCompactionDelegates?.[0]).toMatchObject(stored[0]);
   });
 
   it("takes and clears pending delegates from the session store path", async () => {
@@ -672,6 +705,37 @@ describe("post-compaction delegate dispatch extraction", () => {
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
         { sessionKey: "main" },
+      );
+    });
+  });
+
+  it("passes queued post-compaction attachments and mount hints to spawned children", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      const attachment = { name: "state.txt", content: "post-compaction state" };
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: Date.now() } }, null, 2),
+        "utf-8",
+      );
+      const { deps, spawnSubagentDirect } = createDeliveryDeps({ storePath });
+
+      await deliverQueuedPostCompactionDelegate(
+        {
+          entry: createQueuedEntry({
+            attachments: [attachment],
+            attachAs: { mountPath: "/workspace/state" },
+          }),
+        },
+        deps,
+      );
+
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [attachment],
+          attachMountPath: "/workspace/state",
+        }),
+        expect.any(Object),
       );
     });
   });

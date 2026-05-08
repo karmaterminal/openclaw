@@ -244,6 +244,36 @@ describe("continue_delegate tool", () => {
     ]);
   });
 
+  it("accepts inline attachments and mount hints without echoing attachment contents", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+    const attachment = {
+      name: "handoff.txt",
+      content: "restore native handoff",
+      encoding: "utf8" as const,
+      mimeType: "text/plain",
+    };
+
+    const result = await executeTool(tool, 0, {
+      task: "continue with file",
+      attachments: [attachment],
+      attachAs: { mountPath: "/workspace/input" },
+    });
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      attachmentCount: 1,
+      attachAs: { mountPath: "/workspace/input" },
+    });
+    expect(JSON.stringify(result)).not.toContain("restore native handoff");
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "continue with file",
+        attachments: [attachment],
+        attachAs: { mountPath: "/workspace/input" },
+      }),
+    ]);
+  });
+
   it("persists a valid optional traceparent carrier", async () => {
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
@@ -350,6 +380,35 @@ describe("continue_delegate tool", () => {
       expect.objectContaining({
         task: "carry traced compacted working state forward",
         traceparent: VALID_TRACEPARENT,
+      }),
+    ]);
+  });
+
+  it("threads attachments into staged post-compaction delegates", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+    const attachment = {
+      name: "state.json",
+      content: '{"ok":true}',
+      mimeType: "application/json",
+    };
+
+    const result = await executeTool(tool, 0, {
+      task: "carry attached state after compaction",
+      mode: "post-compaction",
+      attachments: [attachment],
+      attach_as: { mount_path: "/workspace/state" },
+    });
+
+    expect(result).toMatchObject({
+      status: "queued-for-compaction",
+      attachmentCount: 1,
+      attachAs: { mountPath: "/workspace/state" },
+    });
+    expect(consumeStagedPostCompactionDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "carry attached state after compaction",
+        attachments: [attachment],
+        attachAs: { mountPath: "/workspace/state" },
       }),
     ]);
   });

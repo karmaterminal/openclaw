@@ -22,7 +22,13 @@ import {
   retainContinuationTimerRef,
   unregisterContinuationTimerHandle,
 } from "./state.js";
-import type { ChainState, ContinuationRuntimeConfig, ContinuationSignal } from "./types.js";
+import type {
+  ChainState,
+  ContinuationDelegateAttachAs,
+  ContinuationDelegateAttachment,
+  ContinuationRuntimeConfig,
+  ContinuationSignal,
+} from "./types.js";
 
 const log = createSubsystemLogger("continuation/scheduler");
 
@@ -157,7 +163,17 @@ export function scheduleDelegateContinuation(params: {
   onImmediateSpawn: (
     plannedHop: number,
     task: string,
-    options?: { silent?: boolean; silentWake?: boolean; startedAt?: number },
+    options?: {
+      silent?: boolean;
+      silentWake?: boolean;
+      startedAt?: number;
+      targetSessionKey?: string;
+      targetSessionKeys?: string[];
+      fanoutMode?: "tree" | "all";
+      traceparent?: string;
+      attachments?: ContinuationDelegateAttachment[];
+      attachAs?: ContinuationDelegateAttachAs;
+    },
   ) => Promise<boolean>;
   onDelayedSpawn: (reservation: {
     plannedHop: number;
@@ -165,6 +181,12 @@ export function scheduleDelegateContinuation(params: {
     silent?: boolean;
     silentWake?: boolean;
     startedAt?: number;
+    targetSessionKey?: string;
+    targetSessionKeys?: string[];
+    fanoutMode?: "tree" | "all";
+    traceparent?: string;
+    attachments?: ContinuationDelegateAttachment[];
+    attachAs?: ContinuationDelegateAttachAs;
   }) => Promise<boolean>;
 }): ScheduleDelegateResult {
   const { signal, chainState, config, sessionKey } = params;
@@ -196,6 +218,16 @@ export function scheduleDelegateContinuation(params: {
       plannedHop: nextChainCount,
       silent: signal.silent,
       silentWake: signal.silentWake,
+      ...(signal.targetSessionKey ? { targetSessionKey: signal.targetSessionKey } : {}),
+      ...(signal.targetSessionKeys && signal.targetSessionKeys.length > 0
+        ? { targetSessionKeys: signal.targetSessionKeys }
+        : {}),
+      ...(signal.fanoutMode ? { fanoutMode: signal.fanoutMode } : {}),
+      ...(signal.traceparent ? { traceparent: signal.traceparent } : {}),
+      ...(signal.attachments && signal.attachments.length > 0
+        ? { attachments: signal.attachments }
+        : {}),
+      ...(signal.attachAs ? { attachAs: signal.attachAs } : {}),
     });
 
     log.info(
@@ -218,6 +250,16 @@ export function scheduleDelegateContinuation(params: {
             silent: signal.silent,
             silentWake: signal.silentWake,
             startedAt: chainState.chainStartedAt,
+            ...(signal.targetSessionKey ? { targetSessionKey: signal.targetSessionKey } : {}),
+            ...(signal.targetSessionKeys && signal.targetSessionKeys.length > 0
+              ? { targetSessionKeys: signal.targetSessionKeys }
+              : {}),
+            ...(signal.fanoutMode ? { fanoutMode: signal.fanoutMode } : {}),
+            ...(signal.traceparent ? { traceparent: signal.traceparent } : {}),
+            ...(signal.attachments && signal.attachments.length > 0
+              ? { attachments: signal.attachments }
+              : {}),
+            ...(signal.attachAs ? { attachAs: signal.attachAs } : {}),
           })
           .catch((err) => {
             log.warn(
@@ -245,6 +287,16 @@ export function scheduleDelegateContinuation(params: {
       silent: signal.silent,
       silentWake: signal.silentWake,
       startedAt: chainState.chainStartedAt,
+      ...(signal.targetSessionKey ? { targetSessionKey: signal.targetSessionKey } : {}),
+      ...(signal.targetSessionKeys && signal.targetSessionKeys.length > 0
+        ? { targetSessionKeys: signal.targetSessionKeys }
+        : {}),
+      ...(signal.fanoutMode ? { fanoutMode: signal.fanoutMode } : {}),
+      ...(signal.traceparent ? { traceparent: signal.traceparent } : {}),
+      ...(signal.attachments && signal.attachments.length > 0
+        ? { attachments: signal.attachments }
+        : {}),
+      ...(signal.attachAs ? { attachAs: signal.attachAs } : {}),
     })
     .catch((err) => {
       log.warn(

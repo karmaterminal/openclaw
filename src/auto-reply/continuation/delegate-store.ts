@@ -69,6 +69,17 @@ const TraceparentStateSchema = z
   )
   .optional();
 
+const InlineAttachmentStateSchema = z.object({
+  name: z.string(),
+  content: z.string(),
+  encoding: z.enum(["utf8", "base64"]).optional(),
+  mimeType: z.string().optional(),
+});
+
+const AttachAsStateSchema = z.object({
+  mountPath: z.string().optional(),
+});
+
 const PendingDelegateStateSchema = z
   .object({
     kind: z.literal("continuation_delegate"),
@@ -82,6 +93,8 @@ const PendingDelegateStateSchema = z
     targetSessionKeys: z.array(z.string().min(1)).optional(),
     fanoutMode: z.enum(CONTINUATION_DELEGATE_FANOUT_MODES).optional(),
     traceparent: TraceparentStateSchema,
+    attachments: z.array(InlineAttachmentStateSchema).max(50).optional(),
+    attachAs: AttachAsStateSchema.optional(),
   })
   .superRefine((state, ctx) => {
     const hasSilent = state.silent === true;
@@ -146,6 +159,13 @@ function buildDelegateState(delegate: PendingContinuationDelegate): PendingDeleg
   const targetSessionKey = normalizeContinuationTargetKey(delegate.targetSessionKey);
   const targetSessionKeys = normalizeContinuationTargetKeys(delegate.targetSessionKeys);
   const traceparent = normalizeDiagnosticTraceparent(delegate.traceparent);
+  const attachments =
+    Array.isArray(delegate.attachments) && delegate.attachments.length > 0
+      ? delegate.attachments
+      : undefined;
+  const attachAs = delegate.attachAs?.mountPath
+    ? { mountPath: delegate.attachAs.mountPath }
+    : undefined;
   return {
     kind: "continuation_delegate",
     task: delegate.task,
@@ -158,6 +178,8 @@ function buildDelegateState(delegate: PendingContinuationDelegate): PendingDeleg
     ...(targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
     ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
     ...(traceparent ? { traceparent } : {}),
+    ...(attachments ? { attachments } : {}),
+    ...(attachAs ? { attachAs } : {}),
   };
 }
 
@@ -382,6 +404,10 @@ function flowToDelegate(
       : {}),
     ...(state.fanoutMode ? { fanoutMode: state.fanoutMode } : {}),
     ...(state.traceparent ? { traceparent: state.traceparent } : {}),
+    ...(state.attachments && state.attachments.length > 0
+      ? { attachments: state.attachments }
+      : {}),
+    ...(state.attachAs ? { attachAs: state.attachAs } : {}),
     flowId: flow.flowId,
     expectedRevision: flow.revision,
   };
@@ -571,6 +597,8 @@ export function stagePostCompactionDelegate(
     ...(delegate.targetSessionKeys ? { targetSessionKeys: delegate.targetSessionKeys } : {}),
     ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
     ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
+    ...(delegate.attachments ? { attachments: delegate.attachments } : {}),
+    ...(delegate.attachAs ? { attachAs: delegate.attachAs } : {}),
   });
 }
 

@@ -8,7 +8,11 @@
  * the rest of the continuation surface is built on.
  */
 
+import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
 import type { ContinuationDelegateFanoutMode } from "./targeting.js";
+
+export type ContinuationDelegateAttachment = InlineAttachment;
+export type ContinuationDelegateAttachAs = InlineAttachmentMount;
 
 // ---------------------------------------------------------------------------
 // Continuation signals — parsed from response text or captured from tool calls
@@ -39,6 +43,8 @@ export type ContinuationSignal =
       targetSessionKeys?: string[];
       fanoutMode?: ContinuationDelegateFanoutMode;
       traceparent?: string;
+      attachments?: ContinuationDelegateAttachment[];
+      attachAs?: ContinuationDelegateAttachAs;
     };
 
 // ---------------------------------------------------------------------------
@@ -63,6 +69,8 @@ export type PendingContinuationDelegate = {
   targetSessionKeys?: string[];
   fanoutMode?: ContinuationDelegateFanoutMode;
   traceparent?: string;
+  attachments?: ContinuationDelegateAttachment[];
+  attachAs?: ContinuationDelegateAttachAs;
   /**
    * Internal TaskFlow metadata carried from consume → dispatch so downstream
    * spawn/release failures can flip the row from succeeded → failed without
@@ -89,6 +97,8 @@ export type DelayedContinuationReservation = {
   targetSessionKeys?: string[];
   fanoutMode?: ContinuationDelegateFanoutMode;
   traceparent?: string;
+  attachments?: ContinuationDelegateAttachment[];
+  attachAs?: ContinuationDelegateAttachAs;
 };
 
 // ---------------------------------------------------------------------------
@@ -134,6 +144,8 @@ export type StagedPostCompactionDelegate = {
   targetSessionKeys?: string[];
   fanoutMode?: ContinuationDelegateFanoutMode;
   traceparent?: string;
+  attachments?: ContinuationDelegateAttachment[];
+  attachAs?: ContinuationDelegateAttachAs;
 };
 
 // ---------------------------------------------------------------------------

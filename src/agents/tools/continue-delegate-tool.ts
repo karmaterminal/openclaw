@@ -15,6 +15,7 @@ import {
 } from "../../infra/diagnostic-trace-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { readSnakeCaseParamRaw } from "../../param-key.js";
+import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam, ToolInputError } from "./common.js";
@@ -73,6 +74,41 @@ const ContinueDelegateToolSchema = Type.Object({
       pattern: DIAGNOSTIC_TRACEPARENT_PATTERN,
     }),
   ),
+  attachments: Type.Optional(
+    Type.Array(
+      Type.Object({
+        name: Type.String({
+          description:
+            "Attachment filename to materialize into the spawned delegate workspace. Must be a single basename.",
+        }),
+        content: Type.String({
+          description:
+            "Inline attachment contents. Use encoding='base64' for binary data; contents are redacted from persisted transcripts.",
+        }),
+        encoding: Type.Optional(
+          optionalStringEnum(["utf8", "base64"] as const, {
+            description: "Attachment content encoding. Defaults to utf8.",
+          }),
+        ),
+        mimeType: Type.Optional(Type.String({ description: "Optional attachment media type." })),
+      }),
+      {
+        maxItems: 50,
+        description:
+          "Inline attachments to snapshot by value into the delegate workspace. Same safety limits as sessions_spawn.",
+      },
+    ),
+  ),
+  attachAs: Type.Optional(
+    Type.Object({
+      mountPath: Type.Optional(
+        Type.String({
+          description:
+            "Mount-point hint shown to the delegate. Attachments are materialized into the workspace.",
+        }),
+      ),
+    }),
+  ),
 });
 
 function readStrictStringArrayParam(
@@ -97,6 +133,31 @@ function readStrictStringArrayParam(
     values.push(entry.trim());
   }
   return normalizeContinuationTargetKeys(values);
+}
+
+function readInlineAttachmentsParam(
+  params: Record<string, unknown>,
+): InlineAttachment[] | undefined {
+  const raw = readSnakeCaseParamRaw(params, "attachments");
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(raw)) {
+    throw new ToolInputError("attachments must be an array of inline attachment objects.");
+  }
+  return raw as InlineAttachment[];
+}
+
+function readAttachAsParam(params: Record<string, unknown>): InlineAttachmentMount | undefined {
+  const raw = readSnakeCaseParamRaw(params, "attachAs");
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ToolInputError("attachAs must be an object with optional mountPath.");
+  }
+  const mountPath = readStringParam(raw as Record<string, unknown>, "mountPath");
+  return mountPath ? { mountPath } : {};
 }
 
 /**
@@ -191,6 +252,16 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
       }
       const traceContextFields = traceparent ? { traceparent } : {};
+      const attachments = readInlineAttachmentsParam(params);
+      const attachAs = readAttachAsParam(params);
+      const attachmentFields = {
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+        ...(attachAs && Object.keys(attachAs).length > 0 ? { attachAs } : {}),
+      };
+      const attachmentResultFields = {
+        ...(attachments && attachments.length > 0 ? { attachmentCount: attachments.length } : {}),
+        ...(attachAs && Object.keys(attachAs).length > 0 ? { attachAs } : {}),
+      };
 
       // Check per-turn delegate limit. Durable queued depth is reported for
       // visibility but does not consume this turn's admission budget.
@@ -216,6 +287,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           stagedAt: Date.now(),
           ...targetingFields,
           ...traceContextFields,
+          ...attachmentFields,
         });
         delegatesThisTurn += 1;
 
@@ -226,6 +298,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
           delegatesThisTurn,
           ...targetingFields,
           ...traceContextFields,
+          ...attachmentResultFields,
           note:
             "Delegate will fire when compaction occurs, not on a timer. " +
             "The shard starts at the moment of compaction and returns to the post-compaction session. " +
@@ -242,6 +315,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         ...(mode !== "normal" ? { mode } : {}),
         ...targetingFields,
         ...traceContextFields,
+        ...attachmentFields,
       });
 
       delegatesThisTurn += 1;
@@ -255,6 +329,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         delegatesThisTurn: dispatchIndex,
         ...targetingFields,
         ...traceContextFields,
+        ...attachmentResultFields,
         note:
           "Delegate will be dispatched after your response completes. " +
           "Chain tracking (cost cap, depth limit) applies.",
