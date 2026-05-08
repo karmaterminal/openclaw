@@ -1125,8 +1125,8 @@ export class MatrixClient {
     }
 
     const crypto = this.client.getCrypto() as MatrixCryptoBootstrapApi | undefined;
-    const serverVersionFallback = await this.resolveRoomKeyBackupVersion();
     if (!crypto) {
+      const serverVersionFallback = await this.resolveRoomKeyBackupVersion();
       return {
         serverVersion: serverVersionFallback,
         activeVersion: null,
@@ -1140,7 +1140,8 @@ export class MatrixClient {
 
     let { activeVersion, decryptionKeyCached } = await this.resolveRoomKeyBackupLocalState(crypto);
     let { serverVersion, trusted, matchesDecryptionKey } =
-      await this.resolveRoomKeyBackupTrustState(crypto, serverVersionFallback);
+      await this.resolveRoomKeyBackupTrustState(crypto, null);
+    serverVersion ??= await this.resolveRoomKeyBackupVersion();
     const shouldLoadBackupKey =
       Boolean(serverVersion) && (decryptionKeyCached === false || matchesDecryptionKey === false);
     const shouldActivateBackup = Boolean(serverVersion) && !activeVersion;
