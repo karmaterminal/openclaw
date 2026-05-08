@@ -106,6 +106,18 @@ describe("config presence", () => {
     ).toEqual([{ channelId: "matrix", source: "env" }]);
   });
 
+  it("ignores channel-prefixed env vars that are not declared channel credentials", () => {
+    expectPotentialConfiguredChannelCase({
+      cfg: {},
+      env: {
+        DISCORD_SPRITES_WEBHOOK: "https://discord.example.test/webhook",
+      } as NodeJS.ProcessEnv,
+      expectedIds: [],
+      expectedConfigured: false,
+      options: { includePersistedAuthState: false },
+    });
+  });
+
   it("detects persisted Matrix credentials without config or env", () => {
     const stateDir = makeTempStateDir().replace(
       "openclaw-channel-config-presence-",

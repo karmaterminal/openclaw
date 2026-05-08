@@ -27,6 +27,30 @@ function mkSessionsSpawnToolCall(content: string): AgentMessage {
   });
 }
 
+function mkContinueDelegateToolCall(content: string): AgentMessage {
+  return castAgentMessage({
+    role: "assistant",
+    content: [
+      {
+        type: "toolCall",
+        id: "call_delegate",
+        name: "continue_delegate",
+        arguments: {
+          task: "do thing with handoff",
+          attachments: [
+            {
+              name: "handoff.txt",
+              encoding: "utf8",
+              content,
+            },
+          ],
+        },
+      },
+    ],
+    timestamp: Date.now(),
+  });
+}
+
 describe("sanitizeToolCallInputs redacts sessions_spawn attachments", () => {
   it("replaces attachments[].content with __OPENCLAW_REDACTED__", () => {
     const secret = "SUPER_SECRET_SHOULD_NOT_PERSIST"; // pragma: allowlist secret
@@ -39,6 +63,22 @@ describe("sanitizeToolCallInputs redacts sessions_spawn attachments", () => {
       arguments?: { attachments?: Array<{ content?: string }> };
     } | null;
     expect(tool?.name).toBe("sessions_spawn");
+    expect(tool?.arguments?.attachments?.[0]?.content).toBe("__OPENCLAW_REDACTED__");
+    expect(JSON.stringify(out)).not.toContain(secret);
+  });
+
+  it("redacts continue_delegate attachments without redacting non-attachment fields", () => {
+    const secret = "DELEGATE_ATTACHMENT_SECRET_SHOULD_NOT_PERSIST"; // pragma: allowlist secret
+    const input = [mkContinueDelegateToolCall(secret)];
+    const out = sanitizeToolCallInputs(input);
+    const msg = out[0] as { content?: unknown[] };
+    const tool = (msg.content?.[0] ?? null) as {
+      name?: string;
+      arguments?: { task?: string; attachments?: Array<{ content?: string }> };
+    } | null;
+
+    expect(tool?.name).toBe("continue_delegate");
+    expect(tool?.arguments?.task).toBe("do thing with handoff");
     expect(tool?.arguments?.attachments?.[0]?.content).toBe("__OPENCLAW_REDACTED__");
     expect(JSON.stringify(out)).not.toContain(secret);
   });
