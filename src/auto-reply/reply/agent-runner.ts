@@ -2926,6 +2926,13 @@ export async function runReplyAgent(params: {
         // chain state from the persisted session entry at fire time rather
         // than re-using the snapshot captured at arm time.
         loadFreshChainState: () => loadContinuationChainState(activeSessionEntry, 0),
+        persistChainState: async (state) => {
+          await persistContinuationChainState({
+            count: state.currentChainCount,
+            startedAt: state.chainStartedAt,
+            tokens: state.accumulatedChainTokens,
+          });
+        },
       });
     }
 

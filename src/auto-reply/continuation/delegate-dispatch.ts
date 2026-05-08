@@ -69,6 +69,7 @@ function armHedgeTimer(
     ctx: DelegateDispatchContext;
     maxChainLength: number;
     loadFreshChainState?: () => ChainState;
+    persistChainState?: (state: ChainState) => void | Promise<void>;
   },
 ): void {
   clearHedgeTimer(sessionKey);
@@ -77,7 +78,7 @@ function armHedgeTimer(
     `[continuation:delegate-hedge-armed] fireIn=${fireIn}ms fireAt=${fireAt} session=${sessionKey}`,
   );
   retainContinuationTimerRef(sessionKey);
-  const handle = setTimeout(() => {
+  const handle = setTimeout(async () => {
     hedgeTimers.delete(sessionKey);
     // Release ref + handle registration on natural fire (matches
     // clearHedgeTimer on cancel). Without this, every hedge that fires
@@ -94,13 +95,19 @@ function armHedgeTimer(
     const refreshedChainState = params.loadFreshChainState
       ? params.loadFreshChainState()
       : params.chainState;
-    void dispatchToolDelegates({
-      sessionKey,
-      chainState: refreshedChainState,
-      ctx: params.ctx,
-      maxChainLength: params.maxChainLength,
-      loadFreshChainState: params.loadFreshChainState,
-    }).catch((err) => {
+    try {
+      const result = await dispatchToolDelegates({
+        sessionKey,
+        chainState: refreshedChainState,
+        ctx: params.ctx,
+        maxChainLength: params.maxChainLength,
+        loadFreshChainState: params.loadFreshChainState,
+        persistChainState: params.persistChainState,
+      });
+      if (params.persistChainState && result.dispatched > 0) {
+        await params.persistChainState(result.chainState);
+      }
+    } catch (err) {
       const errorMessage = formatErrorMessage(err);
       log.error(`[continuation:delegate-hedge-error] error=${errorMessage} session=${sessionKey}`);
       surfaceHedgeDispatchFailure(sessionKey, errorMessage);
@@ -111,7 +118,7 @@ function armHedgeTimer(
           `[continuation:delegate-hedge-rearm-error] error=${formatErrorMessage(rearmErr)} session=${sessionKey}`,
         );
       }
-    });
+    }
   }, fireIn);
   registerContinuationTimerHandle(sessionKey, handle);
   handle.unref();
@@ -172,6 +179,13 @@ export async function dispatchToolDelegates(params: {
    * dispatch past `maxChainLength`.
    */
   loadFreshChainState?: () => ChainState;
+  /**
+   * Optional callback invoked after hedge-timer dispatch to persist the
+   * advanced chain state. Without this the hedge path's `void` discard
+   * loses currentChainCount/accumulatedChainTokens and subsequent hops
+   * bypass maxChainLength/cost-cap enforcement.
+   */
+  persistChainState?: (state: ChainState) => void | Promise<void>;
 }): Promise<{ dispatched: number; rejected: number; chainState: ChainState }> {
   const { sessionKey, chainState, ctx } = params;
   const config = resolveContinuationRuntimeConfig();
@@ -187,6 +201,7 @@ export async function dispatchToolDelegates(params: {
       ctx: params.ctx,
       maxChainLength: params.maxChainLength,
       loadFreshChainState: params.loadFreshChainState,
+      persistChainState: params.persistChainState,
     });
   } else {
     clearHedgeTimer(sessionKey);

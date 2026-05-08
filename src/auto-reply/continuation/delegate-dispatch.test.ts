@@ -407,6 +407,119 @@ describe("tool delegate dispatch contract", () => {
   });
 });
 
+describe("hedge-fire chainState persistence", () => {
+  it("persists advanced chainState via callback after hedge-timer dispatch", async () => {
+    const sessionKey = "session-hedge-persist";
+    const persistedStates: Array<{ currentChainCount: number; accumulatedChainTokens: number }> =
+      [];
+
+    // Enqueue a single delayed delegate — unmatured at arm time, matures at hedge fire
+    enqueuePendingDelegate(sessionKey, { task: "deferred work", delayMs: 30_000 });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: {
+        currentChainCount: 1,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 5_000,
+      },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+      persistChainState: async (state) => {
+        persistedStates.push({
+          currentChainCount: state.currentChainCount,
+          accumulatedChainTokens: state.accumulatedChainTokens,
+        });
+      },
+    });
+
+    // Hedge is armed but nothing persisted yet
+    expect(persistedStates).toHaveLength(0);
+
+    // Let the deferred delegate mature and the hedge fire
+    await vi.advanceTimersByTimeAsync(30_000 + 100);
+    // Drain microtasks from the async hedge callback
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The single deferred delegate spawned, advancing chain count from 1 → 2
+    expect(persistedStates).toHaveLength(1);
+    expect(persistedStates[0].currentChainCount).toBe(2);
+    expect(persistedStates[0].accumulatedChainTokens).toBe(5_000);
+  });
+
+  it("does not persist when hedge dispatch spawns zero delegates", async () => {
+    const sessionKey = "session-hedge-no-persist";
+    const persistedStates: Array<Record<string, unknown>> = [];
+
+    enqueuePendingDelegate(sessionKey, { task: "deferred work", delayMs: 30_000 });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+      persistChainState: async (state) => {
+        persistedStates.push(state);
+      },
+    });
+
+    // Cancel delegates before hedge fires — hedge re-dispatch finds empty queue
+    cancelPendingDelegates(sessionKey);
+
+    await vi.advanceTimersByTimeAsync(30_000 + 100);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+
+    expect(persistedStates).toHaveLength(0);
+  });
+
+  it("enforces max-chain budget correctly after hedge persists advanced state", async () => {
+    const sessionKey = "session-hedge-budget";
+    const maxChainLength = 3;
+    let latestPersistedCount = 0;
+    const sessionEntry = {
+      continuationChainCount: 1,
+      chainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 0,
+    };
+
+    // Single deferred delegate — will mature at hedge fire
+    enqueuePendingDelegate(sessionKey, { task: "deferred-1", delayMs: 10_000 });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: {
+        currentChainCount: 1,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 0,
+      },
+      ctx: { sessionKey },
+      maxChainLength,
+      loadFreshChainState: () => ({
+        currentChainCount: sessionEntry.continuationChainCount,
+        chainStartedAt: sessionEntry.chainStartedAt,
+        accumulatedChainTokens: sessionEntry.continuationChainTokens,
+      }),
+      persistChainState: async (state) => {
+        sessionEntry.continuationChainCount = state.currentChainCount;
+        sessionEntry.continuationChainTokens = state.accumulatedChainTokens;
+        latestPersistedCount = state.currentChainCount;
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000 + 100);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Deferred delegate matured and spawned: hop 1 → 2
+    expect(latestPersistedCount).toBe(2);
+    expect(sessionEntry.continuationChainCount).toBe(2);
+  });
+});
+
 describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => {
   // Pins the contract that the regression report called out as structurally unpinned:
   // "what is the intended TaskFlow status after spawn failure?"
