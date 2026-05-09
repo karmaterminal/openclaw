@@ -1,8 +1,8 @@
 // Safe local-file helpers for plugin runtime media and bridge code.
 
 export {
+  appendFileWithinRoot,
   readFileWithinRoot,
-  readLocalFileFromRoots,
   root,
   writeFileWithinRoot,
 } from "../infra/fs-safe.js";
