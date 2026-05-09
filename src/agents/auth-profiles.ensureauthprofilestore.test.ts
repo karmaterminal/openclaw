@@ -152,7 +152,7 @@ describe("ensureAuthProfileStore", () => {
     return profile;
   }
 
-  it("migrates legacy auth.json and deletes it", () => {
+  it("migrates legacy auth.json and deletes it (PR #368)", () => {
     const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-auth-profiles-"));
     try {
       const legacyPath = path.join(agentDir, "auth.json");
