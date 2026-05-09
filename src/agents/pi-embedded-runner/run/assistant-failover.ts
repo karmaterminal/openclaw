@@ -43,6 +43,7 @@ export async function handleAssistantFailover(params: {
   idleTimedOut: boolean;
   timedOutDuringCompaction: boolean;
   timedOutDuringToolExecution: boolean;
+  compactionFailureContext: boolean;
   allowSameModelIdleTimeoutRetry: boolean;
   assistantProfileFailureReason: AuthProfileFailureReason | null;
   lastProfileId?: string;
@@ -181,7 +182,6 @@ export async function handleAssistantFailover(params: {
 
     decision = resolveRunFailoverDecision({
       stage: "assistant",
-      allowFormatRetry: params.cloudCodeAssistFormatError,
       aborted: params.aborted,
       externalAbort: params.externalAbort,
       fallbackConfigured: params.fallbackConfigured,
@@ -190,6 +190,7 @@ export async function handleAssistantFailover(params: {
       timedOut: params.timedOut,
       timedOutDuringCompaction: params.timedOutDuringCompaction,
       timedOutDuringToolExecution: params.timedOutDuringToolExecution,
+      compactionFailureContext: params.compactionFailureContext,
       profileRotated: true,
     });
   }
