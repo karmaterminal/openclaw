@@ -15,6 +15,7 @@ const runPreflightCompactionIfNeededMock = vi.fn();
 const resolveCommandSecretRefsViaGatewayMock = vi.fn();
 const resolveQueuedReplyExecutionConfigMock = vi.fn();
 const resolveProviderFollowupFallbackRouteMock = vi.fn();
+const dispatchToolDelegatesMock = vi.fn();
 let resolveQueuedReplyExecutionConfigActual:
   | (typeof import("./agent-runner-utils.js"))["resolveQueuedReplyExecutionConfig"]
   | undefined;
@@ -318,6 +319,9 @@ async function loadFreshFollowupRunnerModuleForTest() {
       ) => resolveQueuedReplyExecutionConfigMock(...args),
     };
   });
+  vi.doMock("../continuation/delegate-dispatch.js", () => ({
+    dispatchToolDelegates: (...args: unknown[]) => dispatchToolDelegatesMock(...args),
+  }));
   vi.doMock("../../cli/command-secret-gateway.js", () => ({
     resolveCommandSecretRefsViaGateway: (...args: unknown[]) =>
       resolveCommandSecretRefsViaGatewayMock(...args),
@@ -382,6 +386,8 @@ beforeEach(() => {
   resolveQueuedReplyExecutionConfigMock.mockReset();
   resolveProviderFollowupFallbackRouteMock.mockReset();
   resolveProviderFollowupFallbackRouteMock.mockReturnValue(undefined);
+  dispatchToolDelegatesMock.mockReset();
+  dispatchToolDelegatesMock.mockResolvedValue(undefined);
   const resolveQueuedReplyExecutionConfig = resolveQueuedReplyExecutionConfigActual;
   if (!resolveQueuedReplyExecutionConfig) {
     throw new Error("resolveQueuedReplyExecutionConfig mock not initialized");
@@ -687,7 +693,7 @@ describe("createFollowupRunner compaction", () => {
       sessionStore,
       sessionKey: "main",
       storePath,
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
 
     const queued = createQueuedRun({
@@ -739,7 +745,7 @@ describe("createFollowupRunner compaction", () => {
       sessionStore,
       sessionKey: "main",
       storePath,
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
 
     const queued = createQueuedRun({
@@ -794,7 +800,7 @@ describe("createFollowupRunner compaction", () => {
       sessionStore,
       sessionKey: "main",
       storePath,
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
 
     const queuedNext = createQueuedRun({
@@ -846,7 +852,7 @@ describe("createFollowupRunner compaction", () => {
       sessionStore,
       sessionKey: "main",
       storePath,
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
 
     const queued = createQueuedRun({
@@ -991,7 +997,7 @@ describe("createFollowupRunner compaction", () => {
       sessionStore,
       sessionKey: "main",
       storePath,
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
       agentCfgContextTokens: 100_000,
     });
 
@@ -1059,7 +1065,7 @@ describe("createFollowupRunner bootstrap warning dedupe", () => {
       sessionEntry,
       sessionStore,
       sessionKey: "main",
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
 
     await runner(baseQueuedRun());
@@ -1094,7 +1100,7 @@ describe("createFollowupRunner messaging delivery and dedupe", () => {
       opts: { onBlockReply },
       typing: createMockTypingController(),
       typingMode: "instant",
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
       sessionEntry: overrides.sessionEntry,
       sessionStore: overrides.sessionStore,
       sessionKey: overrides.sessionKey,
@@ -1159,7 +1165,7 @@ describe("createFollowupRunner messaging delivery and dedupe", () => {
           agentMeta: {
             usage: { input: 1_000, output: 50 },
             lastCallUsage: { input: 400, output: 20 },
-            model: "claude-opus-4-6",
+            model: "claude-sonnet-4-6",
             provider: "anthropic",
           },
         },
@@ -1178,12 +1184,12 @@ describe("createFollowupRunner messaging delivery and dedupe", () => {
       expect.objectContaining({
         storePath,
         sessionKey,
-        modelUsed: "claude-opus-4-6",
+        modelUsed: "claude-sonnet-4-6",
         providerUsed: "anthropic",
       }),
     );
     expect(sessionStore[sessionKey]?.totalTokens).toBe(400);
-    expect(sessionStore[sessionKey]?.model).toBe("claude-opus-4-6");
+    expect(sessionStore[sessionKey]?.model).toBe("claude-sonnet-4-6");
     // Accumulated usage is still stored for usage/cost tracking.
     expect(sessionStore[sessionKey]?.inputTokens).toBe(1_000);
     expect(sessionStore[sessionKey]?.outputTokens).toBe(50);
@@ -1208,7 +1214,7 @@ describe("createFollowupRunner messaging delivery and dedupe", () => {
         agentMeta: {
           usage: { input: 10, output: 5 },
           lastCallUsage: { input: 6, output: 3 },
-          model: "claude-opus-4-6",
+          model: "claude-sonnet-4-6",
         },
       },
     });
@@ -1217,7 +1223,7 @@ describe("createFollowupRunner messaging delivery and dedupe", () => {
       opts: { onBlockReply: createAsyncReplySpy() },
       typing: createMockTypingController(),
       typingMode: "instant",
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
       sessionEntry,
       sessionStore,
       sessionKey,
@@ -1256,7 +1262,7 @@ describe("createFollowupRunner messaging delivery and dedupe", () => {
         agentMeta: {
           usage: { input: 10, output: 5 },
           lastCallUsage: { input: 6, output: 3 },
-          model: "claude-opus-4-6",
+          model: "claude-sonnet-4-6",
           provider: "anthropic",
         },
       },
@@ -1266,7 +1272,7 @@ describe("createFollowupRunner messaging delivery and dedupe", () => {
       opts: { onBlockReply: createAsyncReplySpy() },
       typing: createMockTypingController(),
       typingMode: "instant",
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
       sessionEntry,
       sessionStore,
       sessionKey,
@@ -1586,7 +1592,7 @@ describe("createFollowupRunner typing cleanup", () => {
       opts: { onBlockReply: createAsyncReplySpy() },
       typing,
       typingMode: "instant",
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
 
     await runner(baseQueuedRun());
@@ -1616,7 +1622,7 @@ describe("createFollowupRunner typing cleanup", () => {
       opts: { onBlockReply: vi.fn(async () => {}) },
       typing,
       typingMode: "instant",
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
 
     await runner(baseQueuedRun());
@@ -1636,13 +1642,135 @@ describe("createFollowupRunner typing cleanup", () => {
       opts: { onBlockReply },
       typing,
       typingMode: "instant",
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
 
     await runner(baseQueuedRun());
 
     expect(onBlockReply).toHaveBeenCalled();
     expectTypingCleanup(typing);
+  });
+});
+
+describe("createFollowupRunner continuation delegate dispatch", () => {
+  it("dispatches continue_delegate queue at end of followup turn when continuation is enabled (F-STALL)", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello" }],
+      meta: {},
+    });
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "openai/gpt-5.4",
+      sessionKey: "main",
+    });
+    const queued = createQueuedRun({
+      run: {
+        sessionKey: "main",
+        config: {
+          agents: { defaults: { continuation: { enabled: true } } },
+        } as OpenClawConfig,
+      },
+    });
+
+    await runner(queued);
+
+    expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(1);
+    const call = dispatchToolDelegatesMock.mock.calls[0]?.[0] as {
+      sessionKey?: string;
+      chainState?: { currentChainCount?: number };
+      ctx?: { sessionKey?: string };
+    };
+    expect(call?.sessionKey).toBe("main");
+    expect(call?.ctx?.sessionKey).toBe("main");
+    expect(call?.chainState?.currentChainCount).toBe(0);
+  });
+
+  it("skips dispatch when continuation is disabled", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello" }],
+      meta: {},
+    });
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "openai/gpt-5.4",
+      sessionKey: "main",
+    });
+    const queued = createQueuedRun({
+      run: { sessionKey: "main" },
+    });
+
+    await runner(queued);
+
+    expect(dispatchToolDelegatesMock).not.toHaveBeenCalled();
+  });
+
+  it("persists chain tokens even when dispatchResult.dispatched === 0", async () => {
+    // Repro: prior guard `dispatched > 0 && tailEntry` dropped chain-token
+    // persistence on followup-only chains (delayed-only delegates, all
+    // deferred, or pure continue_work turns). The chainState carries fresh
+    // accumulatedChainTokens from loadContinuationChainState(tailEntry,
+    // turnTokens) regardless of dispatched count, so we must persist it
+    // unconditionally to keep the token-budget counter advancing across hops.
+    const storePath = path.join(
+      await fs.mkdtemp(path.join(tmpdir(), "openclaw-followup-chain-tokens-")),
+      "sessions.json",
+    );
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      continuationChainCount: 2,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 100,
+    };
+    const sessionStore: Record<string, SessionEntry> = {
+      main: sessionEntry,
+    };
+    registerFollowupTestSessionStore(storePath, sessionStore);
+
+    // dispatched === 0 (no delegates spawned this turn) but chainState
+    // returned with the advanced token total.
+    dispatchToolDelegatesMock.mockResolvedValueOnce({
+      dispatched: 0,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 2,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 250,
+      },
+    });
+
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello" }],
+      meta: { agentMeta: { usage: { input: 100, output: 50 } } },
+    });
+
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "openai/gpt-5.4",
+      sessionEntry,
+      sessionStore,
+      sessionKey: "main",
+      storePath,
+    });
+    const queued = createQueuedRun({
+      run: {
+        sessionKey: "main",
+        config: {
+          agents: { defaults: { continuation: { enabled: true } } },
+        } as OpenClawConfig,
+      },
+    });
+
+    await runner(queued);
+
+    expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(1);
+    // The fix: chain tokens must advance from 100 → 250 even when
+    // dispatched === 0. Pre-fix: this stayed at 100 and the budget drifted.
+    expect(sessionStore.main.continuationChainTokens).toBe(250);
+    expect(sessionStore.main.continuationChainCount).toBe(2);
   });
 });
 
@@ -1659,7 +1787,7 @@ describe("createFollowupRunner agentDir forwarding", () => {
       opts: { onBlockReply },
       typing: createMockTypingController(),
       typingMode: "instant",
-      defaultModel: "anthropic/claude-opus-4-6",
+      defaultModel: "anthropic/claude-sonnet-4-6",
     });
     const agentDir = path.join("/tmp", "agent-dir");
     const queued = createQueuedRun();
