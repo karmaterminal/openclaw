@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { createOpenClawTools } from "../openclaw-tools.js";
-import "../test-helpers/fast-core-tools.js";
 import { createPerSenderSessionConfig } from "../test-helpers/session-config.js";
 
 // CI runners are slower than dev hardware; this test transitively loads the full

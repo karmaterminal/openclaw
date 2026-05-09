@@ -129,6 +129,7 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: false,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
         profileRotated: false,
       }),
     ).toEqual({
@@ -150,6 +151,7 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: false,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
         profileRotated: false,
       }),
     ).toEqual({
