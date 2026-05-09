@@ -137,7 +137,6 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       canShowReasoning &&
       typeof params.onReasoningStream === "function",
     deltaBuffer: "",
-    visibleAssistantBuffer: "",
     blockBuffer: "",
     // Track if a streamed chunk opened a <think> block (stateful across chunks).
     blockState: { thinking: false, final: false, inlineCode: createInlineCodeState() },
@@ -251,7 +250,6 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
 
   const resetAssistantMessageState = (nextAssistantTextBaseline: number) => {
     state.deltaBuffer = "";
-    state.visibleAssistantBuffer = "";
     state.blockBuffer = "";
     blockChunker?.reset();
     replyDirectiveAccumulator.reset();
