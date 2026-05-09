@@ -28,10 +28,35 @@ type RuntimeContextPromptParts = {
   runtimeSystemContext?: string;
 };
 
+function formatReplyContextAsText(reply: NonNullable<CurrentTurnPromptContext["reply"]>): string {
+  const lines: string[] = [];
+  if (reply.senderLabel) {
+    lines.push(
+      reply.isQuote ? `Quoting ${reply.senderLabel}:` : `Reply from ${reply.senderLabel}:`,
+    );
+  } else if (reply.isQuote) {
+    lines.push("Quoting earlier message:");
+  } else {
+    lines.push("Reply target of current user message:");
+  }
+  lines.push(reply.body);
+  return lines.join("\n");
+}
+
 export function buildCurrentTurnPromptContextPrefix(
   context: CurrentTurnPromptContext | undefined,
 ): string {
-  return context?.text.trim() ?? "";
+  if (!context) {
+    return "";
+  }
+  const fromText = context.text?.trim();
+  if (fromText) {
+    return fromText;
+  }
+  if (context.reply) {
+    return formatReplyContextAsText(context.reply).trim();
+  }
+  return "";
 }
 
 function removeLastPromptOccurrence(text: string, prompt: string): string | null {
