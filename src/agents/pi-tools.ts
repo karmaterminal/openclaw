@@ -1,5 +1,4 @@
 import { createCodingTools, createReadTool } from "@mariozechner/pi-coding-agent";
-import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import { HEARTBEAT_RESPONSE_TOOL_NAME } from "../auto-reply/heartbeat-tool-response.js";
 import type { ModelCompatConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -41,6 +40,7 @@ import {
 } from "./pi-tools.policy.js";
 import {
   assertRequiredParams,
+  createHostWorkspaceAppendTool,
   createHostWorkspaceEditTool,
   createHostWorkspaceWriteTool,
   createOpenClawReadTool,
@@ -48,6 +48,7 @@ import {
   createSandboxedReadTool,
   createSandboxedWriteTool,
   getToolParamsRecord,
+  wrapToolMemoryDayFileWriteGuard,
   wrapToolMemoryFlushAppendOnlyWrite,
   wrapToolWorkspaceRootGuard,
   wrapToolWorkspaceRootGuardWithOptions,
@@ -78,6 +79,7 @@ import {
   normalizeToolName,
   resolveToolProfilePolicy,
 } from "./tool-policy.js";
+import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 function isOpenAIProvider(provider?: string) {
@@ -85,7 +87,7 @@ function isOpenAIProvider(provider?: string) {
   return normalized === "openai" || normalized === "openai-codex";
 }
 
-const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
+const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write", "append"]);
 
 type BashToolsModule = typeof import("./bash-tools.js");
 
@@ -336,14 +338,20 @@ export function createOpenClawCodingTools(options?: {
   hasRepliedRef?: { value: boolean };
   /** Allow plugin tools for this run to late-bind the gateway subagent. */
   allowGatewaySubagentBinding?: boolean;
+  /** Whether this run consumes the continue_delegate staging queue. */
+  drainsContinuationDelegateQueue?: boolean;
+  /** Callback for continue_work to request a post-turn continuation. */
+  continueWorkOpts?: {
+    requestContinuation: (
+      request: import("./tools/continue-work-tool.js").ContinueWorkRequest,
+    ) => void;
+  };
   /** Runtime-scoped explicit allowlist used to materialize matching plugin tools. */
   runtimeToolAllowlist?: string[];
   /** If true, the model has native vision capability */
   modelHasVision?: boolean;
   /** Require explicit message targets (no implicit last-route sends). */
   requireExplicitMessageTarget?: boolean;
-  /** Visible source replies must be sent through the message tool when set to message_tool_only. */
-  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
   /** If true, omit the message tool from the tool list. */
   disableMessageTool?: boolean;
   /** Keep the message tool available even when the selected profile omits it. */
@@ -367,6 +375,12 @@ export function createOpenClawCodingTools(options?: {
   authProfileStore?: AuthProfileStore;
   /** Callback invoked when sessions_yield tool is called. */
   onYield?: (message: string) => Promise<void> | void;
+  /** Continuation: request_compaction tool opts (injected from execution context). */
+  requestCompactionOpts?: {
+    sessionId?: string;
+    getContextUsage: () => number | null;
+    triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
+  };
   /** Optional instrumentation callback for tool preparation stage timing. */
   recordToolPrepStage?: (name: string) => void;
   /** Live observer called after wrapped tool outcomes are recorded. */
@@ -511,56 +525,54 @@ export function createOpenClawCodingTools(options?: {
   const imageSanitization = resolveImageSanitizationLimits(options?.config);
   options?.recordToolPrepStage?.("workspace-policy");
 
-  const base: AnyAgentTool[] = [];
-  if (includeBaseCodingTools) {
-    for (const tool of createCodingTools(workspaceRoot) as unknown as AnyAgentTool[]) {
-      if (tool.name === "read") {
-        if (sandboxRoot) {
-          const sandboxed = createSandboxedReadTool({
-            root: sandboxRoot,
-            bridge: sandboxFsBridge!,
+  const base = includeBaseCodingTools
+    ? (createCodingTools(workspaceRoot) as unknown as AnyAgentTool[]).flatMap((tool) => {
+        if (tool.name === "read") {
+          if (sandboxRoot) {
+            const sandboxed = createSandboxedReadTool({
+              root: sandboxRoot,
+              bridge: sandboxFsBridge!,
+              modelContextWindowTokens: options?.modelContextWindowTokens,
+              imageSanitization,
+            });
+            return [
+              workspaceOnly
+                ? wrapToolWorkspaceRootGuardWithOptions(sandboxed, sandboxRoot, {
+                    containerWorkdir: sandbox.containerWorkdir,
+                  })
+                : sandboxed,
+            ];
+          }
+          const freshReadTool = createReadTool(workspaceRoot);
+          const wrapped = createOpenClawReadTool(freshReadTool, {
             modelContextWindowTokens: options?.modelContextWindowTokens,
             imageSanitization,
           });
-          base.push(
-            workspaceOnly
-              ? wrapToolWorkspaceRootGuardWithOptions(sandboxed, sandboxRoot, {
-                  containerWorkdir: sandbox.containerWorkdir,
-                })
-              : sandboxed,
-          );
-          continue;
+          return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
         }
-        const freshReadTool = createReadTool(workspaceRoot);
-        const wrapped = createOpenClawReadTool(freshReadTool, {
-          modelContextWindowTokens: options?.modelContextWindowTokens,
-          imageSanitization,
-        });
-        base.push(workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped);
-        continue;
-      }
-      if (tool.name === "bash" || tool.name === execToolName) {
-        continue;
-      }
-      if (tool.name === "write") {
-        if (sandboxRoot) {
-          continue;
+        if (tool.name === "bash" || tool.name === execToolName) {
+          return [];
         }
-        const wrapped = createHostWorkspaceWriteTool(workspaceRoot, { workspaceOnly });
-        base.push(workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped);
-        continue;
-      }
-      if (tool.name === "edit") {
-        if (sandboxRoot) {
-          continue;
+        if (tool.name === "write") {
+          if (sandboxRoot) {
+            return [];
+          }
+          const wrapped = createHostWorkspaceWriteTool(workspaceRoot, { workspaceOnly });
+          const withRootGuard = workspaceOnly
+            ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot)
+            : wrapped;
+          return [wrapToolMemoryDayFileWriteGuard(withRootGuard)];
         }
-        const wrapped = createHostWorkspaceEditTool(workspaceRoot, { workspaceOnly });
-        base.push(workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped);
-        continue;
-      }
-      base.push(tool);
-    }
-  }
+        if (tool.name === "edit") {
+          if (sandboxRoot) {
+            return [];
+          }
+          const wrapped = createHostWorkspaceEditTool(workspaceRoot, { workspaceOnly });
+          return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
+        }
+        return [tool];
+      })
+    : [];
   options?.recordToolPrepStage?.("base-coding-tools");
   const { cleanupMs: cleanupMsOverride, ...execDefaults } = options?.exec ?? {};
   const execTool = includeShellTools
@@ -693,17 +705,29 @@ export function createOpenClawCodingTools(options?: {
                   },
                 )
               : createSandboxedEditTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
-            workspaceOnly
-              ? wrapToolWorkspaceRootGuardWithOptions(
-                  createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
-                  sandboxRoot,
-                  {
-                    containerWorkdir: sandbox.containerWorkdir,
-                  },
-                )
-              : createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+            wrapToolMemoryDayFileWriteGuard(
+              workspaceOnly
+                ? wrapToolWorkspaceRootGuardWithOptions(
+                    createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+                    sandboxRoot,
+                    {
+                      containerWorkdir: sandbox.containerWorkdir,
+                    },
+                  )
+                : createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+            ),
           ]
         : []
+      : []),
+    ...(includeCoreTools && !sandboxRoot
+      ? [
+          workspaceOnly
+            ? wrapToolWorkspaceRootGuard(
+                createHostWorkspaceAppendTool(workspaceRoot, { workspaceOnly }),
+                workspaceRoot,
+              )
+            : createHostWorkspaceAppendTool(workspaceRoot, { workspaceOnly }),
+        ]
       : []),
     ...(includeShellTools && applyPatchTool ? [applyPatchTool as unknown as AnyAgentTool] : []),
     ...(execTool ? [execTool as unknown as AnyAgentTool] : []),
@@ -735,6 +759,7 @@ export function createOpenClawCodingTools(options?: {
             : undefined,
           sandboxed: !!sandbox,
           config: options?.config,
+          liveSessionToolConfig: true,
           pluginToolAllowlist,
           pluginToolDenylist,
           currentChannelId: options?.currentChannelId,
@@ -746,47 +771,48 @@ export function createOpenClawCodingTools(options?: {
           hasRepliedRef: options?.hasRepliedRef,
           modelHasVision: options?.modelHasVision,
           requireExplicitMessageTarget: options?.requireExplicitMessageTarget,
-          sourceReplyDeliveryMode: options?.sourceReplyDeliveryMode,
           disableMessageTool: options?.disableMessageTool,
           enableHeartbeatTool,
           disablePluginTools: !includePluginTools,
-          wrapBeforeToolCallHook: false,
           ...(cronSelfRemoveOnlyJobId ? { cronSelfRemoveOnlyJobId } : {}),
           requesterAgentIdOverride: agentId,
           requesterSenderId: options?.senderId,
           authProfileStore: options?.authProfileStore,
           senderIsOwner: options?.senderIsOwner,
           sessionId: options?.sessionId,
+          runId: options?.runId,
           onYield: options?.onYield,
           allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
+          drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
+          continueWorkOpts: options?.continueWorkOpts,
+          requestCompactionOpts: options?.requestCompactionOpts,
           recordToolPrepStage: options?.recordToolPrepStage,
         })
       : pluginToolsOnly),
   ];
   options?.recordToolPrepStage?.("openclaw-tools");
-  const toolsForMemoryFlush: AnyAgentTool[] = isMemoryFlushRun && memoryFlushWritePath ? [] : tools;
-  if (isMemoryFlushRun && memoryFlushWritePath) {
-    for (const tool of tools) {
-      if (!MEMORY_FLUSH_ALLOWED_TOOL_NAMES.has(tool.name)) {
-        continue;
-      }
-      if (tool.name === "write") {
-        toolsForMemoryFlush.push(
-          wrapToolMemoryFlushAppendOnlyWrite(tool, {
-            root: sandboxRoot ?? workspaceRoot,
-            relativePath: memoryFlushWritePath,
-            containerWorkdir: sandbox?.containerWorkdir,
-            sandbox:
-              sandboxRoot && sandboxFsBridge
-                ? { root: sandboxRoot, bridge: sandboxFsBridge }
-                : undefined,
-          }),
-        );
-        continue;
-      }
-      toolsForMemoryFlush.push(tool);
-    }
-  }
+  const toolsForMemoryFlush =
+    isMemoryFlushRun && memoryFlushWritePath
+      ? tools.flatMap((tool) => {
+          if (!MEMORY_FLUSH_ALLOWED_TOOL_NAMES.has(tool.name)) {
+            return [];
+          }
+          if (tool.name === "write") {
+            return [
+              wrapToolMemoryFlushAppendOnlyWrite(tool, {
+                root: sandboxRoot ?? workspaceRoot,
+                relativePath: memoryFlushWritePath,
+                containerWorkdir: sandbox?.containerWorkdir,
+                sandbox:
+                  sandboxRoot && sandboxFsBridge
+                    ? { root: sandboxRoot, bridge: sandboxFsBridge }
+                    : undefined,
+              }),
+            ];
+          }
+          return [tool];
+        })
+      : tools;
   const toolsForMessageProvider = filterToolsByMessageProvider(
     toolsForMemoryFlush,
     options?.messageProvider,
@@ -848,10 +874,6 @@ export function createOpenClawCodingTools(options?: {
     wrapToolWithBeforeToolCallHook(tool, {
       agentId,
       ...(options?.config ? { config: options.config } : {}),
-      cwd: sandboxRoot ?? workspaceRoot,
-      ...(sandboxRoot && allowWorkspaceWrites
-        ? { sandbox: { root: sandboxRoot, bridge: sandboxFsBridge! } }
-        : {}),
       sessionKey: options?.sessionKey,
       sessionId: options?.sessionId,
       runId: options?.runId,
