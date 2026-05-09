@@ -18,3 +18,12 @@
 - Historical/current continuation branch evidence (`ed117ab0332`, PR #598 lineage) shows `request_compaction` schema defines `reason` with `maxLength: 1024`, then execution slices `reason` to 1024 before logging and passing it as `RequestCompactionInvocation.reason` to `triggerCompaction`.
 - Downstream reason use observed in that implementation: info log on enqueue and diagnostic invocation metadata. The trigger closure consumes the invocation metadata; the reason is not part of `compactEmbeddedPiSessionDirect` summarization/custom instructions in the inspected runtime bridge.
 - Hypothesis: shape (a), raise the validation/retention cap, is the least invasive fix. Shape (b) would preserve the exact pre-path failure. Shape (c) adds a new persistence/file contract where downstream usage is diagnostic metadata, not LLM compaction input.
+
+## checkpoint: fix-shape implemented
+
+- 2026-05-08 20:06 PDT: implemented shape (a) in the tool-validation layer only.
+- Added `src/agents/tools/request-compaction-tool.ts` on the `main` branch surface with `REQUEST_COMPACTION_REASON_MAX_LENGTH = 8192`, matching schema and direct-execute truncation.
+- Registered `request_compaction` only when `createOpenClawTools` receives an injected `requestCompactionOpts` trigger; default tool construction still omits it.
+- Added focused tests for the 8192-character schema cap, multi-line >1024-character reason pass-through, direct-execute cap parity, and optional registration.
+- Updated `CHANGELOG.md` with a user-facing #611 fix entry.
+- Local proof: `pnpm test src/agents/tools/request-compaction-tool.test.ts src/agents/openclaw-tools.request-compaction.test.ts`, `pnpm tsgo`, `pnpm check:test-types`, targeted `run-oxlint`, targeted `oxfmt --check`, and `git diff --check`.

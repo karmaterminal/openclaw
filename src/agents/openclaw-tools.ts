@@ -43,6 +43,10 @@ import { createMessageTool } from "./tools/message-tool.js";
 import { createMusicGenerateTool } from "./tools/music-generate-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createPdfTool } from "./tools/pdf-tool.js";
+import {
+  createRequestCompactionTool,
+  type RequestCompactionToolOpts,
+} from "./tools/request-compaction-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
@@ -152,6 +156,8 @@ export function createOpenClawTools(
     onYield?: (message: string) => Promise<void> | void;
     /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
     allowGatewaySubagentBinding?: boolean;
+    /** Optional volitional compaction trigger; when absent, request_compaction is not exposed. */
+    requestCompactionOpts?: Omit<RequestCompactionToolOpts, "agentSessionKey" | "sessionId">;
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;
@@ -426,6 +432,15 @@ export function createOpenClawTools(
       activeModelProvider: options?.modelProvider,
       activeModelId: options?.modelId,
     }),
+    ...(options?.requestCompactionOpts
+      ? [
+          createRequestCompactionTool({
+            agentSessionKey: options?.agentSessionKey,
+            sessionId: options?.sessionId,
+            ...options.requestCompactionOpts,
+          }),
+        ]
+      : []),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
   ];
   options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");
