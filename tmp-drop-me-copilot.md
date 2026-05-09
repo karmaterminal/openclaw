@@ -27,3 +27,9 @@
 - Added focused tests for the 8192-character schema cap, multi-line >1024-character reason pass-through, direct-execute cap parity, and optional registration.
 - Updated `CHANGELOG.md` with a user-facing #611 fix entry.
 - Local proof: `pnpm test src/agents/tools/request-compaction-tool.test.ts src/agents/openclaw-tools.request-compaction.test.ts`, `pnpm tsgo`, `pnpm check:test-types`, targeted `run-oxlint`, targeted `oxfmt --check`, and `git diff --check`.
+
+## checkpoint: draft PR + CI
+
+- 2026-05-08 20:13 PDT: opened draft PR https://github.com/karmaterminal/openclaw/pull/613 against `main`.
+- PR body closes #611 and documents why raising the cap was chosen over documenting the old cap or adding a `notes_path` contract.
+- Dispatched bootstrap CI with `event_type=openclaw-ci` for head SHA `b94c585366d8cc1de0dc7d7ad43ce9658b107d71`.
