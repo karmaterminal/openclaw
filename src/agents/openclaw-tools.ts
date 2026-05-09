@@ -4,6 +4,7 @@ import type { AgentModelConfig } from "../config/types.agents-shared.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { callGateway } from "../gateway/call.js";
 import { isEmbeddedMode } from "../infra/embedded-mode.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   getActiveRuntimeWebToolsMetadata,
   getActiveSecretsRuntimeSnapshot,
@@ -74,6 +75,8 @@ const defaultOpenClawToolsDeps: OpenClawToolsDeps = {
 };
 
 let openClawToolsDeps: OpenClawToolsDeps = defaultOpenClawToolsDeps;
+
+const log = createSubsystemLogger("agents/openclaw-tools");
 
 export function createOpenClawTools(
   options?: {
@@ -462,6 +465,22 @@ export function createOpenClawTools(
       activeModelId: options?.modelId,
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
+    // Continuation tools (continue_work / continue_delegate / request_compaction) register
+    // asymmetrically by design:
+    //   - continue_work + request_compaction need runner-supplied callbacks (continueWorkOpts /
+    //     requestCompactionOpts) to fire back in-process during the active turn. Without those
+    //     closures they would be dead tools that error when invoked.
+    //   - continue_delegate writes the delegate request to TaskFlow (the durable queue / SQLite
+    //     seam-of-record). The fire path does not require a runner-supplied closure; TaskFlow
+    //     itself is the seam. The drainsContinuationDelegateQueue flag answers a different
+    //     question entirely ("should this run drain pending queued delegates after the current
+    //     turn?"), not "do you have the closure to fire delegates?" — so it gates as `!== false`
+    //     rather than truthy-on-explicit-opts.
+    // This asymmetry caused upstream concern (openclaw/openclaw#79925 [P2] review): a caller that
+    // sets continuation.enabled=true but omits continueWorkOpts/requestCompactionOpts gets
+    // continue_delegate alone, with no warning. The guard below surfaces that silent partial-
+    // registration so misconfiguration is observable instead of hidden.
+    // Tracking: karmaterminal/openclaw#619.
     ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
     options?.continueWorkOpts
       ? [
@@ -491,6 +510,24 @@ export function createOpenClawTools(
         ]
       : []),
   ];
+
+  if (
+    options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    !options?.continueWorkOpts &&
+    !options?.requestCompactionOpts
+  ) {
+    log.warn(
+      "continuation.enabled=true but neither continueWorkOpts nor requestCompactionOpts " +
+        "were supplied — only continue_delegate will register. Was this intentional? " +
+        "If callers expect the full continuation tool set, the runner must supply both " +
+        "callbacks. If only delegate-fan-out is intended, this warn is informational.",
+      {
+        agentSessionKey: options?.agentSessionKey,
+        runSessionKey: options?.runSessionKey,
+        drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
+      },
+    );
+  }
   options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");
   let allTools = tools;
   if (!options?.disablePluginTools) {
