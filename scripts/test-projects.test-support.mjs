@@ -1212,10 +1212,10 @@ function classifyTarget(arg, cwd) {
   if (relative.startsWith("src/commands/")) {
     return isCommandsLightTarget(relative) ? "commandLight" : "command";
   }
-  if (relative === "src/auto-reply" || relative.startsWith("src/auto-reply/")) {
+  if (relative.startsWith("src/auto-reply/")) {
     return "autoReply";
   }
-  if (relative === "src/agents" || relative.startsWith("src/agents/")) {
+  if (relative.startsWith("src/agents/")) {
     return "agent";
   }
   if (relative.startsWith("src/plugins/")) {
