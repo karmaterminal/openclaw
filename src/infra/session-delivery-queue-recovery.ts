@@ -216,7 +216,7 @@ export async function drainPendingSessionDeliveries(opts: {
         if (!currentDecision.match) {
           continue;
         }
-        if (currentEntry.retryCount >= MAX_SESSION_DELIVERY_RETRIES) {
+        if (currentEntry.retryCount >= resolveSessionDeliveryMaxRetries(currentEntry)) {
           logRetryBudgetExhausted(opts.log, currentEntry);
           try {
             await moveSessionDeliveryToFailed(currentEntry.id, opts.stateDir);

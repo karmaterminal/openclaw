@@ -1513,37 +1513,35 @@ export async function runReplyAgent(params: {
     }
 
     const runStartedAt = Date.now();
-    const runOutcome = await traceAgentPhase("reply.run_agent_turn", () =>
-      runAgentTurnWithFallback({
-        commandBody,
-        transcriptCommandBody,
-        followupRun,
-        sessionCtx,
-        replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,
-        replyOperation,
-        opts,
-        typingSignals,
-        blockReplyPipeline,
-        blockStreamingEnabled,
-        blockReplyChunking,
-        resolvedBlockStreamingBreak,
-        applyReplyToMode,
-        shouldEmitToolResult,
-        shouldEmitToolOutput,
-        pendingToolTasks,
-        resetSessionAfterCompactionFailure,
-        resetSessionAfterRoleOrderingConflict,
-        isHeartbeat,
-        sessionKey,
-        runtimePolicySessionKey,
-        getActiveSessionEntry: () => activeSessionEntry,
-        activeSessionStore,
-        storePath,
-        resolvedVerboseLevel,
-        toolProgressDetail,
-        replyMediaContext,
-      }),
-    );
+    const runOutcome = await runAgentTurnWithFallback({
+      commandBody,
+      transcriptCommandBody,
+      followupRun,
+      sessionCtx,
+      replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,
+      replyOperation,
+      opts,
+      typingSignals,
+      blockReplyPipeline,
+      blockStreamingEnabled,
+      blockReplyChunking,
+      resolvedBlockStreamingBreak,
+      applyReplyToMode,
+      shouldEmitToolResult,
+      shouldEmitToolOutput,
+      pendingToolTasks,
+      resetSessionAfterCompactionFailure,
+      resetSessionAfterRoleOrderingConflict,
+      isHeartbeat,
+      sessionKey,
+      runtimePolicySessionKey,
+      getActiveSessionEntry: () => activeSessionEntry,
+      activeSessionStore,
+      storePath,
+      resolvedVerboseLevel,
+      toolProgressDetail,
+      replyMediaContext,
+    });
 
     if (runOutcome.kind === "final") {
       if (!replyOperation.result) {
@@ -2006,14 +2004,17 @@ export async function runReplyAgent(params: {
     // CONTINUE_WORK should produce no user-visible output.
     if (!wasSilentContinuation) {
       const prefixPayloads = [...verboseNotices];
-      const rawUserText =
-        runResult.meta?.finalPromptText ??
-        sessionCtx.CommandBody ??
-        sessionCtx.RawBody ??
-        sessionCtx.BodyForAgent ??
-        sessionCtx.Body;
-      const rawAssistantText =
-        runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText;
+      const isHookBlockedRun = runResult.meta?.error?.kind === "hook_block";
+      const rawUserText = isHookBlockedRun
+        ? runResult.meta?.finalPromptText
+        : (runResult.meta?.finalPromptText ??
+          sessionCtx.CommandBody ??
+          sessionCtx.RawBody ??
+          sessionCtx.BodyForAgent ??
+          sessionCtx.Body);
+      const rawAssistantText = isHookBlockedRun
+        ? undefined
+        : (runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText);
       const traceAuthorized = followupRun.run.traceAuthorized === true;
       const executionTrace = mergeExecutionTrace({
         fallbackAttempts,
@@ -2145,6 +2146,9 @@ export async function runReplyAgent(params: {
       }
       if (responseUsageLine) {
         finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);
+      }
+      if (isHookBlockedRun) {
+        finalPayloads = markBeforeAgentRunBlockedPayloads(finalPayloads);
       }
     }
 
@@ -2928,9 +2932,6 @@ export async function runReplyAgent(params: {
 
     if (finalPayloads.length === 0 && effectiveContinuationSignal) {
       return returnWithQueuedFollowupDrain(undefined);
-    }
-    if (isHookBlockedRun) {
-      finalPayloads = markBeforeAgentRunBlockedPayloads(finalPayloads);
     }
 
     // Capture only policy-visible final payloads in session store to support

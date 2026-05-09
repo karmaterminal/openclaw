@@ -2,6 +2,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as sessionStoreModule from "../../config/sessions/store.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { withTempDir } from "../../test-helpers/temp-dir.js";
@@ -836,17 +837,18 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       const { deps, log, spawnSubagentDirect } = createDeliveryDeps({ storePath });
 
-      // Block atomic write: chmod parent dir to 0o500 so writeTextAtomic
-      // cannot create the temp file. The initial deps.loadSessionStore
-      // mock reads from disk before this is hit, so the spawn occurs and
-      // the post-spawn persist is what fails.
-      await fs.chmod(tempDir, 0o500);
+      // Force the post-spawn chain-state persist to throw by spying on
+      // updateSessionStore. The first call (from `persistPostCompactionDelegateChainState`)
+      // rejects; this is the path the test asserts the queue entry retries on.
+      const persistSpy = vi
+        .spyOn(sessionStoreModule, "updateSessionStore")
+        .mockRejectedValueOnce(new Error("persist failed"));
       try {
         await expect(
           deliverQueuedPostCompactionDelegate({ entry: createQueuedEntry() }, deps),
         ).rejects.toBeDefined();
       } finally {
-        await fs.chmod(tempDir, 0o700);
+        persistSpy.mockRestore();
       }
 
       expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);

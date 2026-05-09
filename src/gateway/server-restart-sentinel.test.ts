@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => {
 
   return {
     resolveSessionAgentId: vi.fn(() => "agent-from-key"),
+    resolveAgentConfig: vi.fn(() => undefined),
+    resolveAgentWorkspaceDir: vi.fn(() => "/tmp/agent-workspace"),
+    resolveDefaultAgentId: vi.fn(() => "main"),
+    normalizeSessionDeliveryFields: vi.fn((fields?: Record<string, unknown>) => fields),
     get queuedSessionDelivery() {
       return state.queuedSessionDelivery;
     },
@@ -978,7 +982,9 @@ describe("scheduleRestartSentinelWake", () => {
 
     await scheduleRestartSentinelWake({ deps: {} as never });
 
-    expect(mocks.queuedSessionDelivery).toEqual(expect.objectContaining({ traceparent }));
+    expect(mocks.enqueueSessionDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ traceparent }),
+    );
   });
 
   it("enqueues systemEvent continuation without stale partial delivery context", async () => {

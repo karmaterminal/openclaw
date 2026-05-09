@@ -589,15 +589,16 @@ export function createOpenClawCodingTools(options?: {
         if (sandboxRoot) {
           continue;
         }
-        if (tool.name === "write") {
-          if (sandboxRoot) {
-            return [];
-          }
-          const wrapped = createHostWorkspaceWriteTool(workspaceRoot, { workspaceOnly });
-          const withRootGuard = workspaceOnly
-            ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot)
-            : wrapped;
-          return [wrapToolMemoryDayFileWriteGuard(withRootGuard)];
+        const wrapped = createHostWorkspaceWriteTool(workspaceRoot, { workspaceOnly });
+        const withRootGuard = workspaceOnly
+          ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot)
+          : wrapped;
+        base.push(wrapToolMemoryDayFileWriteGuard(withRootGuard));
+        continue;
+      }
+      if (tool.name === "edit") {
+        if (sandboxRoot) {
+          continue;
         }
         const wrapped = createHostWorkspaceEditTool(workspaceRoot, { workspaceOnly });
         base.push(workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped);

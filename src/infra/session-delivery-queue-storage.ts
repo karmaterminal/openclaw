@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import * as fs from "node:fs";
 import path from "node:path";
 import {
   ackJsonDurableQueueEntry,
@@ -86,8 +87,8 @@ export type QueuedSessionDeliveryPayload = (
       text: string;
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
-    } & SessionDeliveryRetryPolicy)
-  | ({
+    }
+  | {
       kind: "agentTurn";
       sessionKey: string;
       message: string;
@@ -111,6 +112,7 @@ export type QueuedSessionDeliveryPayload = (
       idempotencyKey?: string;
     }
 ) &
+  SessionDeliveryRetryPolicy &
   QueuedSessionDeliveryPayloadMetadata;
 
 export type QueuedSessionDelivery = QueuedSessionDeliveryPayload & {

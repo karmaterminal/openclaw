@@ -123,7 +123,6 @@ export function buildCliAgentSystemPrompt(params: {
     userTime,
     userTimeFormat,
     contextFiles: params.contextFiles,
-    ttsHint,
     memoryCitationsMode: params.config?.memory?.citations,
     continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
   });

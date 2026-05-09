@@ -147,6 +147,27 @@ export type SubagentRecoveryState = {
   wedgedReason?: string;
 };
 
+export type LaneExecutionState =
+  | "active"
+  | "draining"
+  | "suspended"
+  | "resuming"
+  | "circuit_open"
+  | "failed_handoff";
+
+export interface QuotaSuspension {
+  schemaVersion: 1;
+  suspendedAt: number;
+  reason: "quota_exhausted" | "manual" | "circuit_open";
+  failedProvider: string;
+  failedModel: string;
+  summary?: string;
+  snapshotRef?: string;
+  laneId?: string;
+  expectedResumeBy?: number;
+  state: LaneExecutionState;
+}
+
 export type SessionPostCompactionDelegate = {
   task: string;
   createdAt: number;

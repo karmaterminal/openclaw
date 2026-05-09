@@ -1,3 +1,4 @@
+import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import { getRuntimeConfig, selectApplicableRuntimeConfig } from "../config/config.js";
 import type { AgentModelConfig } from "../config/types.agents-shared.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -132,6 +133,14 @@ export function createOpenClawTools(
     enableHeartbeatTool?: boolean;
     /** If true, skip plugin tool resolution and return only shipped core tools. */
     disablePluginTools?: boolean;
+    /**
+     * Wrap returned tools with the before_tool_call hook at construction time.
+     * Defaults to true; callers that already enforce the hook at a later shared
+     * boundary should opt out explicitly.
+     */
+    wrapBeforeToolCallHook?: boolean;
+    /** Override or extend the default hook context used by construction-time wrapping. */
+    beforeToolCallHookContext?: HookContext;
     /**
      * If true, session tools resolve config from the active runtime snapshot at
      * each execution rather than capturing the construction-time config. Lets

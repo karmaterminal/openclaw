@@ -1441,6 +1441,10 @@ export const agentHandlers: GatewayRequestHandlers = {
             acpTurnSource: request.acpTurnSource,
             internalEvents: request.internalEvents,
             inputProvenance,
+            suppressPromptPersistence: shouldSuppressAgentPromptPersistence({
+              inputProvenance,
+              internalEvents: request.internalEvents,
+            }),
             abortSignal: activeRunAbort.controller.signal,
             // Internal-only: allow workspace override for spawned subagent runs.
             workspaceDir: resolveIngressWorkspaceOverrideForSpawnedRun({

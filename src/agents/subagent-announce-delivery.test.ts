@@ -889,19 +889,7 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
       }),
     );
     expect(callGateway).toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: "slack",
-        accountId: "acct-1",
-        to: "channel:C123",
-        threadId: "171.222",
-        content: "child completion output",
-        requesterSessionKey: "agent:main:slack:channel:C123:thread:171.222",
-        bestEffort: true,
-        idempotencyKey: "announce-thread-fallback-1",
-        traceparent: validTraceparent,
-      }),
-    );
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("reports failure for Telegram DMs when announce-agent delivery fails", async () => {
