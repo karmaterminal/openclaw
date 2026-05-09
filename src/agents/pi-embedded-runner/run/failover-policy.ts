@@ -1,12 +1,5 @@
 import type { FailoverReason } from "../../pi-embedded-helpers.js";
 
-export type RunFailoverDecisionAction =
-  | "continue_normal"
-  | "rotate_profile"
-  | "fallback_model"
-  | "surface_error"
-  | "return_error_payload";
-
 export type RunFailoverDecision =
   | {
       action: "continue_normal";
@@ -46,6 +39,7 @@ type RetryLimitDecisionParams = {
 
 type PromptDecisionParams = {
   stage: "prompt";
+  allowFormatRetry?: boolean;
   aborted: boolean;
   externalAbort: boolean;
   fallbackConfigured: boolean;
@@ -56,6 +50,7 @@ type PromptDecisionParams = {
 
 type AssistantDecisionParams = {
   stage: "assistant";
+  allowFormatRetry?: boolean;
   aborted: boolean;
   externalAbort: boolean;
   fallbackConfigured: boolean;
@@ -64,7 +59,6 @@ type AssistantDecisionParams = {
   timedOut: boolean;
   timedOutDuringCompaction: boolean;
   timedOutDuringToolExecution: boolean;
-  compactionFailureContext: boolean;
   profileRotated: boolean;
 };
 
@@ -83,11 +77,25 @@ function shouldEscalateRetryLimit(reason: FailoverReason | null): boolean {
   );
 }
 
+function isTerminalFormatFailure(params: {
+  allowFormatRetry?: boolean;
+  failoverReason: FailoverReason | null;
+}): boolean {
+  return params.failoverReason === "format" && params.allowFormatRetry !== true;
+}
+
 function shouldRotatePrompt(params: PromptDecisionParams): boolean {
-  return params.failoverFailure && params.failoverReason !== "timeout";
+  return (
+    params.failoverFailure &&
+    params.failoverReason !== "timeout" &&
+    !isTerminalFormatFailure(params)
+  );
 }
 
 function shouldRotateAssistant(params: AssistantDecisionParams): boolean {
+  if (isTerminalFormatFailure(params)) {
+    return false;
+  }
   return (
     (!params.aborted && (params.failoverFailure || params.failoverReason !== null)) ||
     (params.timedOut && !params.timedOutDuringCompaction && !params.timedOutDuringToolExecution)
@@ -99,13 +107,7 @@ export function mergeRetryFailoverReason(params: {
   failoverReason: FailoverReason | null;
   timedOut?: boolean;
 }): FailoverReason | null {
-  // timedOut takes precedence — timeout must always surface as the reason
-  // to prevent session-lock deadlock (#86). A pre-existing failoverReason
-  // (e.g. "rate_limit") must not mask a timeout condition.
-  if (params.timedOut) {
-    return "timeout";
-  }
-  return params.failoverReason ?? params.previous;
+  return params.failoverReason ?? (params.timedOut ? "timeout" : null) ?? params.previous;
 }
 
 export function resolveRunFailoverDecision(
@@ -142,7 +144,7 @@ export function resolveRunFailoverDecision(params: RunFailoverDecisionParams): R
         reason: params.failoverReason,
       };
     }
-    if (params.fallbackConfigured && params.failoverFailure) {
+    if (params.fallbackConfigured && params.failoverFailure && !isTerminalFormatFailure(params)) {
       return {
         action: "fallback_model",
         reason: params.failoverReason ?? "unknown",
@@ -154,41 +156,13 @@ export function resolveRunFailoverDecision(params: RunFailoverDecisionParams): R
     };
   }
 
-  if (params.compactionFailureContext) {
-    return {
-      action: "surface_error",
-      reason: params.failoverReason,
-    };
-  }
   if (params.externalAbort) {
     return {
       action: "surface_error",
       reason: params.failoverReason,
     };
   }
-  if (
-    params.timedOut &&
-    !params.aborted &&
-    !params.timedOutDuringToolExecution &&
-    !params.timedOutDuringCompaction
-  ) {
-    // Plain LLM-phase timeout outside an in-flight abort: surface so local
-    // timeout recovery can run (#86 deadlock fix). Aborted + LLM-phase
-    // timeouts fall through to shouldRotateAssistant rotation; tool-execution
-    // + compaction timeouts fall through to continue_normal (#52147 — neither
-    // rotate nor fallback while a tool/compaction is in flight).
-    return {
-      action: "surface_error",
-      reason: params.failoverReason,
-    };
-  }
-  if (params.failoverReason === "timeout") {
-    if (params.fallbackConfigured && params.failoverFailure) {
-      return {
-        action: "fallback_model",
-        reason: "timeout",
-      };
-    }
+  if (isTerminalFormatFailure(params)) {
     return {
       action: "surface_error",
       reason: params.failoverReason,

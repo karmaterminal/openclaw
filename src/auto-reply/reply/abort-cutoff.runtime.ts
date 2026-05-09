@@ -1,4 +1,4 @@
-import { resolveSessionStoreEntry, updateSessionStore } from "../../config/sessions/store.js";
+import { updateSessionStore } from "../../config/sessions/store.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { applyAbortCutoffToSessionEntry, hasAbortCutoff } from "./abort-cutoff.js";
 
@@ -15,27 +15,17 @@ export async function clearAbortCutoffInSessionRuntime(params: {
 
   applyAbortCutoffToSessionEntry(sessionEntry, undefined);
   sessionEntry.updatedAt = Date.now();
-  {
-    const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
-    sessionStore[memResolved.normalizedKey] = sessionEntry;
-    for (const legacyKey of memResolved.legacyKeys) {
-      delete sessionStore[legacyKey];
-    }
-  }
+  sessionStore[sessionKey] = sessionEntry;
 
   if (storePath) {
     await updateSessionStore(storePath, (store) => {
-      const resolved = resolveSessionStoreEntry({ store, sessionKey });
-      const existing = resolved.existing ?? sessionEntry;
+      const existing = store[sessionKey] ?? sessionEntry;
       if (!existing) {
         return;
       }
       applyAbortCutoffToSessionEntry(existing, undefined);
       existing.updatedAt = Date.now();
-      store[resolved.normalizedKey] = existing;
-      for (const legacyKey of resolved.legacyKeys) {
-        delete store[legacyKey];
-      }
+      store[sessionKey] = existing;
     });
   }
 

@@ -12,11 +12,8 @@ import {
 import { ensureSkillsWatcher } from "../../agents/skills/refresh.js";
 import { hydrateResolvedSkills } from "../../agents/skills/snapshot-hydration.js";
 import {
-  mergeSessionEntry,
-  normalizeStoreSessionKey,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
-  resolveSessionStoreEntry,
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
@@ -44,26 +41,15 @@ async function persistSessionEntryUpdate(params: {
   if (!params.sessionStore || !params.sessionKey) {
     return;
   }
-  const sessionKey = params.sessionKey;
-  {
-    const memResolved = resolveSessionStoreEntry({ store: params.sessionStore, sessionKey });
-    params.sessionStore[memResolved.normalizedKey] = {
-      ...memResolved.existing,
-      ...params.nextEntry,
-    };
-    for (const legacyKey of memResolved.legacyKeys) {
-      delete params.sessionStore[legacyKey];
-    }
-  }
+  params.sessionStore[params.sessionKey] = {
+    ...params.sessionStore[params.sessionKey],
+    ...params.nextEntry,
+  };
   if (!params.storePath) {
     return;
   }
   await updateSessionStore(params.storePath, (store) => {
-    const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey! });
-    store[resolved.normalizedKey] = { ...resolved.existing, ...params.nextEntry };
-    for (const legacyKey of resolved.legacyKeys) {
-      delete store[legacyKey];
-    }
+    store[params.sessionKey!] = { ...store[params.sessionKey!], ...params.nextEntry };
   });
 }
 
@@ -185,7 +171,7 @@ export async function ensureSkillSnapshot(params: {
 
   if (isFirstTurnInSession && sessionStore && sessionKey) {
     const current = nextEntry ??
-      resolveSessionStoreEntry({ store: sessionStore, sessionKey }).existing ?? {
+      sessionStore[sessionKey] ?? {
         sessionId: sessionId ?? crypto.randomUUID(),
         updatedAt: Date.now(),
       };
@@ -266,8 +252,7 @@ export async function incrementCompactionCount(params: {
   if (!sessionStore || !sessionKey) {
     return undefined;
   }
-  const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
-  const entry = memResolved.existing ?? sessionEntry;
+  const entry = sessionStore[sessionKey] ?? sessionEntry;
   if (!entry) {
     return undefined;
   }
@@ -276,7 +261,6 @@ export async function incrementCompactionCount(params: {
   // Build update payload with compaction count and optionally updated token counts
   const updates: Partial<SessionEntry> = {
     compactionCount: nextCount,
-    lastContextPressureBand: undefined,
     updatedAt: now,
   };
   const explicitNewSessionFile = normalizeOptionalString(newSessionFile);
@@ -312,34 +296,17 @@ export async function incrementCompactionCount(params: {
     updates.cacheRead = undefined;
     updates.cacheWrite = undefined;
   }
-  sessionStore[memResolved.normalizedKey] = mergeSessionEntry(entry, updates);
-  for (const legacyKey of memResolved.legacyKeys) {
-    delete sessionStore[legacyKey];
-  }
+  sessionStore[sessionKey] = {
+    ...entry,
+    ...updates,
+  };
   if (storePath) {
-    await updateSessionStore(
-      storePath,
-      (store) => {
-        const resolved = resolveSessionStoreEntry({ store, sessionKey });
-        // Resolve-then-merge-or-create: when the on-disk store has no entry yet
-        // (first-turn manual /compact lands before any other persist), fall back
-        // to the active in-memory entry so the count is not silently dropped.
-        // mergeSessionEntry preserves monotonic updatedAt + sessionStartedAt
-        // rollover on sessionId change + stale-modelProvider scrub.
-        const storedEntry = resolved.existing ?? entry;
-        store[resolved.normalizedKey] = mergeSessionEntry(storedEntry, updates);
-        for (const legacyKey of resolved.legacyKeys) {
-          delete store[legacyKey];
-        }
-      },
-      // activeSessionKey opt protects this entry from enforce-mode pruning /
-      // disk-budget cleanup that runs inside the same lock window. Must trim
-      // before normalize: resolveSessionStoreEntry computes its normalizedKey
-      // as normalize(trim(sessionKey)), so an untrimmed normalize here would
-      // mismatch any whitespace-padded sessionKey and silently miss the
-      // preserve guard.
-      { activeSessionKey: normalizeStoreSessionKey(sessionKey.trim()) },
-    );
+    await updateSessionStore(storePath, (store) => {
+      store[sessionKey] = {
+        ...store[sessionKey],
+        ...updates,
+      };
+    });
   }
   if ((sessionIdChanged || sessionFileChanged) && cfg) {
     emitCompactionSessionLifecycleHooks({
@@ -347,7 +314,7 @@ export async function incrementCompactionCount(params: {
       sessionKey,
       storePath,
       previousEntry: entry,
-      nextEntry: sessionStore[memResolved.normalizedKey],
+      nextEntry: sessionStore[sessionKey],
     });
   }
   return nextCount;

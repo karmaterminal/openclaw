@@ -28,31 +28,20 @@ export async function applySessionHints(params: {
     if (params.sessionEntry && params.sessionStore && params.sessionKey) {
       params.sessionEntry.abortedLastRun = false;
       params.sessionEntry.updatedAt = Date.now();
-      const sessionKey = params.sessionKey;
-      const runtime = await loadSessionStoreRuntime();
-      const memResolved = runtime.resolveSessionStoreEntry({
-        store: params.sessionStore,
-        sessionKey,
-      });
-      params.sessionStore[memResolved.normalizedKey] = params.sessionEntry;
-      for (const legacyKey of memResolved.legacyKeys) {
-        delete params.sessionStore[legacyKey];
-      }
+      params.sessionStore[params.sessionKey] = params.sessionEntry;
       if (params.storePath) {
-        await runtime.updateSessionStore(params.storePath, (store) => {
-          const resolved = runtime.resolveSessionStoreEntry({ store, sessionKey });
-          const entry = resolved.existing ?? params.sessionEntry;
+        const sessionKey = params.sessionKey;
+        const { updateSessionStore } = await loadSessionStoreRuntime();
+        await updateSessionStore(params.storePath, (store) => {
+          const entry = store[sessionKey] ?? params.sessionEntry;
           if (!entry) {
             return;
           }
-          store[resolved.normalizedKey] = {
+          store[sessionKey] = {
             ...entry,
             abortedLastRun: false,
             updatedAt: Date.now(),
           };
-          for (const legacyKey of resolved.legacyKeys) {
-            delete store[legacyKey];
-          }
         });
       }
     } else if (params.abortKey) {

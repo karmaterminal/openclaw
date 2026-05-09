@@ -47,7 +47,6 @@ export type HeartbeatWakeRequest = {
   reason?: string;
   agentId?: string;
   sessionKey?: string;
-  parentRunId?: string;
   heartbeat?: { target?: string };
 };
 
@@ -72,7 +71,6 @@ type PendingWakeReason = {
   requestedAt: number;
   agentId?: string;
   sessionKey?: string;
-  parentRunId?: string;
   heartbeat?: { target?: string };
 };
 
@@ -137,14 +135,12 @@ function queuePendingWakeReason(params: {
   requestedAt?: number;
   agentId?: string;
   sessionKey?: string;
-  parentRunId?: string;
   heartbeat?: { target?: string };
 }) {
   const requestedAt = params.requestedAt ?? Date.now();
   const normalizedReason = normalizeWakeReason(params.reason);
   const normalizedAgentId = normalizeWakeTarget(params.agentId);
   const normalizedSessionKey = normalizeWakeTarget(params.sessionKey);
-  const normalizedParentRunId = normalizeWakeTarget(params.parentRunId);
   const wakeTargetKey = getWakeTargetKey({
     agentId: normalizedAgentId,
     sessionKey: normalizedSessionKey,
@@ -161,7 +157,6 @@ function queuePendingWakeReason(params: {
     requestedAt,
     agentId: normalizedAgentId,
     sessionKey: normalizedSessionKey,
-    parentRunId: normalizedParentRunId,
     heartbeat: params.heartbeat,
   };
   const previous = pendingWakes.get(wakeTargetKey);
@@ -170,12 +165,8 @@ function queuePendingWakeReason(params: {
     return;
   }
   const merged =
-    (next.heartbeat ?? previous.heartbeat ?? next.parentRunId)
-      ? {
-          ...next,
-          parentRunId: next.parentRunId,
-          heartbeat: next.heartbeat ?? previous.heartbeat,
-        }
+    (next.heartbeat ?? previous.heartbeat)
+      ? { ...next, heartbeat: next.heartbeat ?? previous.heartbeat }
       : next;
   if (next.priority > previous.priority) {
     pendingWakes.set(wakeTargetKey, merged);
@@ -233,7 +224,6 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
           reason: pendingWake.reason ?? undefined,
           ...(pendingWake.agentId ? { agentId: pendingWake.agentId } : {}),
           ...(pendingWake.sessionKey ? { sessionKey: pendingWake.sessionKey } : {}),
-          ...(pendingWake.parentRunId ? { parentRunId: pendingWake.parentRunId } : {}),
           ...(pendingWake.heartbeat ? { heartbeat: pendingWake.heartbeat } : {}),
         };
         const res = await active(wakeOpts);
@@ -245,7 +235,6 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
             reason: pendingWake.reason ?? "retry",
             agentId: pendingWake.agentId,
             sessionKey: pendingWake.sessionKey,
-            parentRunId: pendingWake.parentRunId,
             heartbeat: pendingWake.heartbeat,
           });
           schedule(DEFAULT_RETRY_MS, "retry");
@@ -260,7 +249,6 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
           reason: pendingWake.reason ?? "retry",
           agentId: pendingWake.agentId,
           sessionKey: pendingWake.sessionKey,
-          parentRunId: pendingWake.parentRunId,
           heartbeat: pendingWake.heartbeat,
         });
       }
@@ -324,7 +312,6 @@ export function requestHeartbeat(opts: {
   coalesceMs?: number;
   agentId?: string;
   sessionKey?: string;
-  parentRunId?: string;
   heartbeat?: { target?: string };
 }) {
   queuePendingWakeReason({
@@ -333,32 +320,9 @@ export function requestHeartbeat(opts: {
     reason: opts.reason,
     agentId: opts.agentId,
     sessionKey: opts.sessionKey,
-    parentRunId: opts.parentRunId,
     heartbeat: opts.heartbeat,
   });
   schedule(opts.coalesceMs ?? DEFAULT_COALESCE_MS, "normal");
-}
-
-export function requestHeartbeatNow(opts?: {
-  source?: HeartbeatWakeSource;
-  intent?: HeartbeatWakeIntent;
-  reason?: string;
-  coalesceMs?: number;
-  agentId?: string;
-  sessionKey?: string;
-  parentRunId?: string;
-  heartbeat?: { target?: string };
-}) {
-  requestHeartbeat({
-    source: opts?.source ?? "other",
-    intent: opts?.intent ?? "immediate",
-    reason: opts?.reason,
-    coalesceMs: opts?.coalesceMs,
-    agentId: opts?.agentId,
-    sessionKey: opts?.sessionKey,
-    parentRunId: opts?.parentRunId,
-    heartbeat: opts?.heartbeat,
-  });
 }
 
 export function hasHeartbeatWakeHandler() {

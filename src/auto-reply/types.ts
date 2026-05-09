@@ -1,6 +1,5 @@
 export type {
   BlockReplyContext,
-  ContinuationTrigger,
   GetReplyOptions,
   ReplyThreadingPolicy,
   TypingPolicy,

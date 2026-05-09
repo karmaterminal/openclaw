@@ -3,7 +3,7 @@ import { renderExecTargetLabel } from "../../agents/bash-tools.exec-runtime.js";
 import { resolveExecDefaults } from "../../agents/exec-defaults.js";
 import { resolveFastModeState } from "../../agents/fast-mode.js";
 import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
-import { resolveSessionStoreEntry, updateSessionStore } from "../../config/sessions.js";
+import { updateSessionStore } from "../../config/sessions.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { applyTraceOverride, applyVerboseOverride } from "../../sessions/level-overrides.js";
 import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
@@ -468,20 +468,10 @@ export async function handleDirectiveOnly(
       }
     }
     sessionEntry.updatedAt = Date.now();
-    {
-      const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
-      sessionStore[memResolved.normalizedKey] = sessionEntry;
-      for (const legacyKey of memResolved.legacyKeys) {
-        delete sessionStore[legacyKey];
-      }
-    }
+    sessionStore[sessionKey] = sessionEntry;
     if (storePath) {
       await updateSessionStore(storePath, (store) => {
-        const resolved = resolveSessionStoreEntry({ store, sessionKey });
-        store[resolved.normalizedKey] = sessionEntry;
-        for (const legacyKey of resolved.legacyKeys) {
-          delete store[legacyKey];
-        }
+        store[sessionKey] = sessionEntry;
       });
     }
     if (modelSelection && modelSelectionUpdated && sessionKey) {

@@ -185,7 +185,6 @@ describe("spawnSubagentDirect seam flow", () => {
       {
         task: "inspect the spawn seam",
         model: "openai-codex/gpt-5.4",
-        traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
       },
       {
         agentSessionKey: "agent:main:main",
@@ -226,7 +225,6 @@ describe("spawnSubagentDirect seam flow", () => {
         workspaceDir: "/tmp/requester-workspace",
         expectsCompletionMessage: true,
         spawnMode: "run",
-        traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
       }),
     );
     expect(hoisted.emitSessionLifecycleEventMock).toHaveBeenCalledWith({

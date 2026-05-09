@@ -206,7 +206,6 @@ export function resolveEffectiveToolInventory(
     modelId: params.modelId,
   });
 
-  const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
   const effectiveTools = createOpenClawCodingTools({
     agentId,
     sessionKey: params.sessionKey,
@@ -234,20 +233,6 @@ export function resolveEffectiveToolInventory(
     modelHasVision: params.modelHasVision,
     requireExplicitMessageTarget: params.requireExplicitMessageTarget,
     disableMessageTool: params.disableMessageTool,
-    // Inventory-only path: register request_compaction when continuation is
-    // enabled so /status and the tools-effective endpoint reflect the full
-    // RFC §2.1 tool surface. Actual compaction only runs on runtime paths.
-    requestCompactionOpts: continuationEnabled
-      ? {
-          sessionId: "<inventory-only>",
-          getContextUsage: () => null,
-          triggerCompaction: async () => ({
-            ok: false,
-            compacted: false,
-            reason: "inventory-only path",
-          }),
-        }
-      : undefined,
   });
   const effectivePolicy = resolveEffectiveToolPolicy({
     config: params.cfg,

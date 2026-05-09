@@ -803,8 +803,6 @@ export async function runEmbeddedAttempt(
       ...((params.messageChannel ?? params.messageProvider)
         ? { channel: params.messageChannel ?? params.messageProvider }
         : {}),
-      ...(params.fireReason ? { fireReason: params.fireReason } : {}),
-      ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
       trace: runTrace,
     };
     emitTrustedDiagnosticEvent({
@@ -906,9 +904,6 @@ export async function runEmbeddedAttempt(
             authProfileStore: params.authProfileStore,
             recordToolPrepStage: (name) => corePluginToolStages.mark(name),
             onToolOutcome: params.onToolOutcome,
-            continueWorkOpts: params.continueWorkOpts,
-            requestCompactionOpts: params.requestCompactionOpts,
-            drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
             onYield: (message) => {
               yieldDetected = true;
               yieldMessage = message;
@@ -1335,7 +1330,6 @@ export async function runEmbeddedAttempt(
         bootstrapTruncationNotice,
         includeMemorySection: !activeContextEngine || activeContextEngine.info.id === "legacy",
         promptContribution,
-        continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
       },
       providerTransform: {
         provider: params.provider,

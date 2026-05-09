@@ -7,7 +7,7 @@ import { resolveAgentHarnessPolicy } from "../../agents/harness/selection.js";
 import type { ModelCatalogEntry } from "../../agents/model-catalog.js";
 import { listLegacyRuntimeModelProviderAliases } from "../../agents/model-runtime-aliases.js";
 import { normalizeProviderId, type ModelAliasIndex } from "../../agents/model-selection.js";
-import { resolveSessionStoreEntry, updateSessionStore } from "../../config/sessions/store.js";
+import { updateSessionStore } from "../../config/sessions/store.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -356,18 +356,10 @@ export async function persistInlineDirectives(params: {
 
     if (updated) {
       sessionEntry.updatedAt = Date.now();
-      const memResolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
-      sessionStore[memResolved.normalizedKey] = sessionEntry;
-      for (const legacyKey of memResolved.legacyKeys) {
-        delete sessionStore[legacyKey];
-      }
+      sessionStore[sessionKey] = sessionEntry;
       if (storePath) {
         await updateSessionStore(storePath, (store) => {
-          const resolved = resolveSessionStoreEntry({ store, sessionKey });
-          store[resolved.normalizedKey] = sessionEntry;
-          for (const legacyKey of resolved.legacyKeys) {
-            delete store[legacyKey];
-          }
+          store[sessionKey] = sessionEntry;
         });
       }
       enqueueModeSwitchEvents({

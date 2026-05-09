@@ -186,19 +186,12 @@ export async function createModelSelectionState(params: {
         selection: { provider: defaultProvider, model: defaultModel, isDefault: true },
       });
       if (updated) {
-        const runtime = await loadSessionStoreRuntime();
-        const memResolved = runtime.resolveSessionStoreEntry({ store: sessionStore, sessionKey });
-        sessionStore[memResolved.normalizedKey] = sessionEntry;
-        for (const legacyKey of memResolved.legacyKeys) {
-          delete sessionStore[legacyKey];
-        }
+        sessionStore[sessionKey] = sessionEntry;
         if (storePath) {
-          await runtime.updateSessionStore(storePath, (store) => {
-            const resolved = runtime.resolveSessionStoreEntry({ store, sessionKey });
-            store[resolved.normalizedKey] = sessionEntry;
-            for (const legacyKey of resolved.legacyKeys) {
-              delete store[legacyKey];
-            }
+          await (
+            await loadSessionStoreRuntime()
+          ).updateSessionStore(storePath, (store) => {
+            store[sessionKey] = sessionEntry;
           });
         }
       }

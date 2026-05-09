@@ -365,10 +365,10 @@ export function createAcpVisibleTextAccumulator() {
       return { text: visibleText, delta: nextVisible.delta };
     },
     finalize(): string {
-      return (visibleText || pendingSilentPrefix).trim();
+      return visibleText.trim();
     },
     finalizeRaw(): string {
-      return visibleText || pendingSilentPrefix;
+      return visibleText;
     },
   };
 }

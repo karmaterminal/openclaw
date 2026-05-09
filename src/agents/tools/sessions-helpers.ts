@@ -83,9 +83,8 @@ export function resolveSessionToolContext(opts?: {
   agentSessionKey?: string;
   sandboxed?: boolean;
   config?: OpenClawConfig;
-  getConfig?: () => OpenClawConfig;
 }) {
-  const cfg = opts?.getConfig?.() ?? opts?.config ?? getRuntimeConfig();
+  const cfg = opts?.config ?? getRuntimeConfig();
   return {
     cfg,
     ...resolveSandboxedSessionToolContext({

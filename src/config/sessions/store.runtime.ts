@@ -1,1 +1,1 @@
-export { resolveSessionStoreEntry, updateSessionStore, updateSessionStoreEntry } from "./store.js";
+export { updateSessionStore, updateSessionStoreEntry } from "./store.js";

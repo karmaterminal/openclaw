@@ -10,12 +10,11 @@ import { createOpenClawCodingTools } from "../../agents/pi-tools.js";
 import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
 import { getSkillsSnapshotVersion } from "../../agents/skills/refresh-state.js";
+import { buildConfiguredAgentSystemPrompt } from "../../agents/system-prompt-config.js";
 import { buildSystemPromptParams } from "../../agents/system-prompt-params.js";
-import { buildAgentSystemPrompt } from "../../agents/system-prompt.js";
 import type { WorkspaceBootstrapFile } from "../../agents/workspace.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { listRegisteredPluginAgentPromptGuidance } from "../../plugins/command-registry-state.js";
-import { buildTtsSystemPromptHint } from "../../tts/tts.js";
 import type { HandleCommandsParams } from "./commands-types.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
 
@@ -79,7 +78,6 @@ export async function resolveCommandsSystemPromptBundle(
     }
   })();
   const skillsPrompt = skillsSnapshot.prompt ?? "";
-  const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
   const tools = (() => {
     try {
       return createOpenClawCodingTools({
@@ -100,24 +98,6 @@ export async function resolveCommandsSystemPromptBundle(
         senderIsOwner: params.command.senderIsOwner,
         modelProvider: params.provider,
         modelId: params.model,
-        // System-prompt generation path: register request_compaction in the
-        // toolNames list when continuation is enabled so the prompt reflects
-        // the full RFC §2.1 tool surface. Actual compaction only runs on
-        // runtime paths; this inventory closure is a no-op.
-        requestCompactionOpts: continuationEnabled
-          ? {
-              sessionId: targetSessionEntry?.sessionId,
-              // Inventory-only closure (no-op surface for /status & docs).
-              // Returning null is consistent with the contract; this is never
-              // actually invoked.
-              getContextUsage: () => null,
-              triggerCompaction: async () => ({
-                ok: false,
-                compacted: false,
-                reason: "system-prompt inventory path",
-              }),
-            }
-          : undefined,
       });
     } catch {
       return [];
@@ -165,9 +145,9 @@ export async function resolveCommandsSystemPromptBundle(
         },
       }
     : { enabled: false };
-  const ttsHint = params.cfg ? buildTtsSystemPromptHint(params.cfg, sessionAgentId) : undefined;
-
-  const systemPrompt = buildAgentSystemPrompt({
+  const systemPrompt = buildConfiguredAgentSystemPrompt({
+    config: params.cfg,
+    agentId: sessionAgentId,
     workspaceDir,
     defaultThinkLevel: params.resolvedThinkLevel,
     reasoningLevel: params.resolvedReasoningLevel,
@@ -175,14 +155,12 @@ export async function resolveCommandsSystemPromptBundle(
     ownerNumbers: undefined,
     reasoningTagHint: false,
     toolNames,
-    modelAliasLines: [],
     userTimezone,
     userTime,
     userTimeFormat,
     contextFiles: injectedFiles,
     skillsPrompt,
     heartbeatPrompt: undefined,
-    ttsHint,
     acpEnabled: isAcpRuntimeSpawnAvailable({
       config: params.cfg,
       sandboxed: sandboxRuntime.sandboxed,
@@ -190,8 +168,6 @@ export async function resolveCommandsSystemPromptBundle(
     nativeCommandGuidanceLines: listRegisteredPluginAgentPromptGuidance(),
     runtimeInfo,
     sandboxInfo,
-    memoryCitationsMode: params.cfg?.memory?.citations,
-    continuationEnabled: params.cfg?.agents?.defaults?.continuation?.enabled === true,
   });
 
   return { systemPrompt, tools, skillsPrompt, bootstrapFiles, injectedFiles, sandboxRuntime };

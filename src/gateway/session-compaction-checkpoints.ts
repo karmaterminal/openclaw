@@ -54,10 +54,10 @@ function sessionStoreCheckpoints(
 }
 
 export function resolveSessionCompactionCheckpointReason(params: {
-  trigger?: "budget" | "overflow" | "manual" | "volitional";
+  trigger?: "budget" | "overflow" | "manual";
   timedOut?: boolean;
 }): SessionCompactionCheckpointReason {
-  if (params.trigger === "manual" || params.trigger === "volitional") {
+  if (params.trigger === "manual") {
     return "manual";
   }
   if (params.timedOut) {

@@ -1,4 +1,3 @@
-import type { ContinuationTrigger } from "../auto-reply/get-reply-options.types.js";
 import { type QueueDropPolicy, type QueueMode } from "../auto-reply/reply/queue.js";
 import { defaultRuntime } from "../runtime.js";
 import { deliveryContextKey, normalizeDeliveryContext } from "../utils/delivery-context.shared.js";
@@ -21,7 +20,6 @@ export type AnnounceQueueItem = {
   // Stable announce identity shared by direct + queued delivery paths.
   // Optional for backward compatibility with previously queued items.
   announceId?: string;
-  continuationTriggerOverride?: ContinuationTrigger;
   prompt: string;
   summaryLine?: string;
   internalEvents?: AgentInternalEvent[];
@@ -32,7 +30,6 @@ export type AnnounceQueueItem = {
   sourceSessionKey?: string;
   sourceChannel?: string;
   sourceTool?: string;
-  traceparent?: string;
 };
 
 type AnnounceQueueSettings = {

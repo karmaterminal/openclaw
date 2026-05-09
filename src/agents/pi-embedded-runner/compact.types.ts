@@ -62,7 +62,7 @@ export type CompactEmbeddedPiSessionParams = {
   customInstructions?: string;
   tokenBudget?: number;
   force?: boolean;
-  trigger?: "budget" | "overflow" | "manual" | "volitional";
+  trigger?: "budget" | "overflow" | "manual";
   diagId?: string;
   attempt?: number;
   maxAttempts?: number;

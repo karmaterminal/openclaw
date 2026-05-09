@@ -83,10 +83,6 @@ export async function resetReplyRunSession(params: {
     fallbackNoticeSelectedModel: undefined,
     fallbackNoticeActiveModel: undefined,
     fallbackNoticeReason: undefined,
-    continuationChainCount: undefined,
-    continuationChainStartedAt: undefined,
-    continuationChainTokens: undefined,
-    continuationChainId: undefined,
   };
   const agentId = resolveAgentIdFromSessionKey(params.sessionKey);
   const nextSessionFile = resolveSessionTranscriptPath(

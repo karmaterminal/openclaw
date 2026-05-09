@@ -1,5 +1,4 @@
-export { getRuntimeConfig, loadConfig } from "../config/config.js";
-export { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
+export { getRuntimeConfig } from "../config/config.js";
 export {
   loadSessionStore,
   resolveAgentIdFromSessionKey,

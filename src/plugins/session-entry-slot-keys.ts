@@ -48,6 +48,8 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "execAsk",
   "execNode",
   "responseUsage",
+  "usageFamilyKey",
+  "usageFamilySessionIds",
   "providerOverride",
   "modelOverride",
   "agentRuntimeOverride",
@@ -73,6 +75,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "pendingFinalDeliveryLastError",
   "pendingFinalDeliveryText",
   "pendingFinalDeliveryContext",
+  "pendingFinalDeliveryIntentId",
   "totalTokensFresh",
   "estimatedCostUsd",
   "cacheRead",
@@ -84,7 +87,6 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "fallbackNoticeActiveModel",
   "fallbackNoticeReason",
   "contextTokens",
-  "lastContextPressureBand",
   "compactionCount",
   "compactionCheckpoints",
   "memoryFlushAt",
@@ -110,11 +112,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "systemPromptReport",
   "pluginDebugEntries",
   "acp",
-  "continuationChainCount",
-  "continuationChainStartedAt",
-  "continuationChainTokens",
-  "continuationChainId",
-  "pendingPostCompactionDelegates",
+  "quotaSuspension",
 ] as const satisfies ReadonlyArray<keyof SessionEntry | "__proto__" | "constructor" | "prototype">;
 
 type ReservedSessionEntrySlotKey = Extract<

@@ -20,6 +20,8 @@ import {
 } from "../../gateway/session-compaction-checkpoints.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
+import { generateSecureToken } from "../../infra/secure-random.js";
+import { getCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { extractModelCompat } from "../../plugins/provider-model-compat.js";
 import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
@@ -29,12 +31,14 @@ import {
   transformProviderSystemPrompt,
 } from "../../plugins/provider-runtime.js";
 import { isCronSessionKey, isSubagentSessionKey } from "../../routing/session-key.js";
-import { buildTtsSystemPromptHint } from "../../tts/tts.js";
 import { resolveUserPath } from "../../utils.js";
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
-import { resolveOpenClawAgentDir } from "../agent-paths.js";
-import { resolveRunModelFallbacksOverride, resolveSessionAgentIds } from "../agent-scope.js";
+import {
+  resolveAgentDir,
+  resolveRunModelFallbacksOverride,
+  resolveSessionAgentIds,
+} from "../agent-scope.js";
 import {
   makeBootstrapWarn,
   resolveBootstrapContextForRun,
@@ -45,7 +49,6 @@ import {
   resolveChannelMessageToolHints,
   resolveChannelReactionGuidance,
 } from "../channel-tools.js";
-import { createCompactionDiagId } from "../compaction-attribution.js";
 import {
   hasMeaningfulConversationContent,
   isRealConversationMessage,
@@ -65,7 +68,6 @@ import {
 import { isFallbackSummaryError, runWithModelFallback } from "../model-fallback.js";
 import { supportsModelTools } from "../model-tool-support.js";
 import { ensureOpenClawModelsJson } from "../models-config.js";
-import { resolveOwnerDisplaySetting } from "../owner-display.js";
 import { createBundleLspToolRuntime } from "../pi-bundle-lsp-runtime.js";
 import { createBundleMcpToolRuntime } from "../pi-bundle-mcp-tools.js";
 import { ensureSessionHeader } from "../pi-embedded-helpers.js";
@@ -136,14 +138,12 @@ import { log } from "./logger.js";
 import { hardenManualCompactionBoundary } from "./manual-compaction-boundary.js";
 import { buildEmbeddedMessageActionDiscoveryInput } from "./message-action-discovery-input.js";
 import { readPiModelContextTokens } from "./model-context-tokens.js";
-import { buildModelAliasLines, resolveModelAsync } from "./model.js";
+import { resolveModelAsync } from "./model.js";
 import { sanitizeSessionHistory, validateReplayTurns } from "./replay-history.js";
-import { shouldUseOpenAIWebSocketTransport } from "./run/attempt.thread-helpers.js";
 import { buildEmbeddedSandboxInfo } from "./sandbox-info.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "./session-manager-cache.js";
 import { resolveEmbeddedRunSkillEntries } from "./skills-runtime.js";
 import {
-  resolveEmbeddedAgentApiKey,
   resolveEmbeddedAgentBaseStreamFn,
   resolveEmbeddedAgentStreamFn,
 } from "./stream-resolution.js";
@@ -163,7 +163,6 @@ import type { EmbeddedPiCompactResult } from "./types.js";
 import { mapThinkingLevel } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
 export type { CompactEmbeddedPiSessionParams } from "./compact.types.js";
-export type { CompactionMessageMetrics } from "./compact.types.js";
 
 function hasRealConversationContent(
   msg: AgentMessage,
@@ -173,11 +172,13 @@ function hasRealConversationContent(
   return isRealConversationMessage(msg, messages, index);
 }
 
+function createCompactionDiagId(): string {
+  return `cmp-${Date.now().toString(36)}-${generateSecureToken(4)}`;
+}
+
 function prepareCompactionSessionAgent(params: {
   session: { agent: { streamFn?: unknown } };
   providerStreamFn: unknown;
-  shouldUseWebSocketTransport: boolean;
-  wsApiKey?: string;
   sessionId: string;
   signal: AbortSignal;
   effectiveModel: ProviderRuntimeModel;
@@ -195,8 +196,6 @@ function prepareCompactionSessionAgent(params: {
   params.session.agent.streamFn = resolveEmbeddedAgentStreamFn({
     currentStreamFn: resolveEmbeddedAgentBaseStreamFn({ session: params.session as never }),
     providerStreamFn: params.providerStreamFn as never,
-    shouldUseWebSocketTransport: params.shouldUseWebSocketTransport,
-    wsApiKey: params.wsApiKey,
     sessionId: params.sessionId,
     signal: params.signal,
     model: params.effectiveModel,
@@ -316,8 +315,32 @@ function summarizeCompactionMessages(messages: AgentMessage[]): CompactionMessag
     historyTextChars,
     toolResultChars,
     estTokens: tokenEstimationFailed ? undefined : estTokens,
-    contributors: contributors.toSorted((a, b) => b.chars - a.chars).slice(0, 3),
+    contributors: selectTopContributors(contributors),
   };
+}
+
+function selectTopContributors(
+  contributors: CompactionMessageMetrics["contributors"],
+): CompactionMessageMetrics["contributors"] {
+  const selected: CompactionMessageMetrics["contributors"] = [];
+  for (const contributor of contributors) {
+    let insertAt = selected.length;
+    for (let index = 0; index < selected.length; index += 1) {
+      if (contributor.chars > selected[index].chars) {
+        insertAt = index;
+        break;
+      }
+    }
+    if (insertAt < 3) {
+      selected.splice(insertAt, 0, contributor);
+      if (selected.length > 3) {
+        selected.pop();
+      }
+    } else if (selected.length < 3) {
+      selected.push(contributor);
+    }
+  }
+  return selected;
 }
 
 function containsRealConversationMessages(messages: AgentMessage[]): boolean {
@@ -478,7 +501,12 @@ async function compactEmbeddedPiSessionDirectOnce(
         : undefined,
     };
   };
-  const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
+  const earlyAgentIds = resolveSessionAgentIds({
+    sessionKey: params.sessionKey,
+    config: params.config,
+  });
+  const agentDir =
+    params.agentDir ?? resolveAgentDir(params.config ?? {}, earlyAgentIds.sessionAgentId);
   await ensureOpenClawModelsJson(params.config, agentDir, {
     workspaceDir: resolvedWorkspace,
   });
@@ -573,15 +601,17 @@ async function compactEmbeddedPiSessionDirectOnce(
   let checkpointSnapshot: CapturedCompactionCheckpointSnapshot | null = null;
   let checkpointSnapshotRetained = false;
   try {
+    const skillsSnapshotForRun =
+      sandbox?.enabled && sandbox.workspaceAccess !== "rw" ? undefined : params.skillsSnapshot;
     const { shouldLoadSkillEntries, skillEntries } = resolveEmbeddedRunSkillEntries({
       workspaceDir: effectiveWorkspace,
       config: params.config,
       agentId: effectiveSkillAgentId,
-      skillsSnapshot: params.skillsSnapshot,
+      skillsSnapshot: skillsSnapshotForRun,
     });
-    restoreSkillEnv = params.skillsSnapshot
+    restoreSkillEnv = skillsSnapshotForRun
       ? applySkillEnvOverridesFromSnapshot({
-          snapshot: params.skillsSnapshot,
+          snapshot: skillsSnapshotForRun,
           config: params.config,
         })
       : applySkillEnvOverrides({
@@ -589,7 +619,7 @@ async function compactEmbeddedPiSessionDirectOnce(
           config: params.config,
         });
     const skillsPrompt = resolveSkillsPromptForRun({
-      skillsSnapshot: params.skillsSnapshot,
+      skillsSnapshot: skillsSnapshotForRun,
       entries: shouldLoadSkillEntries ? skillEntries : undefined,
       config: params.config,
       workspaceDir: effectiveWorkspace,
@@ -683,6 +713,7 @@ async function compactEmbeddedPiSessionDirectOnce(
       workspaceDir: effectiveWorkspace,
       config: params.config,
       abortSignal: runAbortController.signal,
+      sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
       modelProvider: model.provider,
       modelId,
       modelCompat: extractModelCompat(effectiveModel),
@@ -826,10 +857,6 @@ async function compactEmbeddedPiSessionDirectOnce(
       cwd: effectiveWorkspace,
       moduleUrl: import.meta.url,
     });
-    const ttsHint = params.config
-      ? buildTtsSystemPromptHint(params.config, sessionAgentId)
-      : undefined;
-    const ownerDisplay = resolveOwnerDisplaySetting(params.config);
     const promptContributionContext: Parameters<
       AgentRuntimePlan["prompt"]["resolveSystemPromptContribution"]
     >[0] = {
@@ -852,13 +879,13 @@ async function compactEmbeddedPiSessionDirectOnce(
           agentId: sessionAgentId,
         }) ??
         buildEmbeddedSystemPrompt({
+          config: params.config,
+          agentId: sessionAgentId,
           workspaceDir: effectiveWorkspace,
           defaultThinkLevel,
           reasoningLevel: params.reasoningLevel ?? "off",
           extraSystemPrompt: params.extraSystemPrompt,
           ownerNumbers: params.ownerNumbers,
-          ownerDisplay: ownerDisplay.ownerDisplay,
-          ownerDisplaySecret: ownerDisplay.ownerDisplaySecret,
           reasoningTagHint,
           heartbeatPrompt: resolveHeartbeatPromptForSystemPrompt({
             config: params.config,
@@ -868,7 +895,6 @@ async function compactEmbeddedPiSessionDirectOnce(
           skillsPrompt,
           docsPath: openClawReferences.docsPath ?? undefined,
           sourcePath: openClawReferences.sourcePath ?? undefined,
-          ttsHint,
           promptMode,
           sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
           acpEnabled: isAcpRuntimeSpawnAvailable({
@@ -880,12 +906,10 @@ async function compactEmbeddedPiSessionDirectOnce(
           messageToolHints,
           sandboxInfo,
           tools: effectiveTools,
-          modelAliasLines: buildModelAliasLines(params.config),
           userTimezone,
           userTime,
           userTimeFormat,
           contextFiles,
-          memoryCitationsMode: params.config?.memory?.citations,
           promptContribution,
         });
       return createSystemPromptOverride(
@@ -894,7 +918,6 @@ async function compactEmbeddedPiSessionDirectOnce(
           config: params.config,
           workspaceDir: effectiveWorkspace,
           context: {
-            systemPrompt: builtSystemPrompt,
             config: params.config,
             agentDir,
             workspaceDir: effectiveWorkspace,
@@ -904,6 +927,7 @@ async function compactEmbeddedPiSessionDirectOnce(
             runtimeChannel,
             runtimeCapabilities,
             agentId: sessionAgentId,
+            systemPrompt: builtSystemPrompt,
           },
         }),
       );
@@ -949,6 +973,11 @@ async function compactEmbeddedPiSessionDirectOnce(
         cwd: effectiveWorkspace,
         agentDir,
         cfg: params.config,
+        pluginMetadataSnapshot: getCurrentPluginMetadataSnapshot({
+          config: params.config,
+          env: process.env,
+          workspaceDir: effectiveWorkspace,
+        }),
         contextTokenBudget: ctxInfo.tokens,
       });
       // Sets compaction/pruning runtime state and returns extension factories
@@ -1003,23 +1032,6 @@ async function compactEmbeddedPiSessionDirectOnce(
         agentDir,
         effectiveWorkspace,
       });
-      const shouldUseWebSocketTransport = shouldUseOpenAIWebSocketTransport({
-        provider,
-        modelApi: effectiveModel.api,
-        modelBaseUrl: effectiveModel.baseUrl,
-      });
-      const wsApiKey = shouldUseWebSocketTransport
-        ? await resolveEmbeddedAgentApiKey({
-            provider,
-            resolvedApiKey: hasRuntimeAuthExchange ? undefined : apiKeyInfo?.apiKey,
-            authStorage,
-          })
-        : undefined;
-      if (shouldUseWebSocketTransport && !wsApiKey) {
-        log.warn(
-          `[ws-stream] no API key for provider=${provider}; keeping compaction HTTP transport`,
-        );
-      }
       while (true) {
         // Rebuild the compaction session on retry so provider wrappers, payload
         // shaping, and the embedded system prompt all reflect the fallback level.
@@ -1047,8 +1059,6 @@ async function compactEmbeddedPiSessionDirectOnce(
           prepareCompactionSessionAgent({
             session,
             providerStreamFn,
-            shouldUseWebSocketTransport,
-            wsApiKey,
             sessionId: params.sessionId,
             signal: runAbortController.signal,
             effectiveModel,

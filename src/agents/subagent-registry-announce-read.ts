@@ -5,7 +5,6 @@ import {
   countPendingDescendantRunsExcludingRunFromRuns,
   countPendingDescendantRunsFromRuns,
   isSubagentSessionRunActiveFromRuns,
-  listAncestorSessionKeysFromRuns,
   listRunsForRequesterFromRuns,
   resolveRequesterForChildSessionFromRuns,
   shouldIgnorePostCompletionAnnounceForSessionFromRuns,
@@ -28,10 +27,6 @@ export function resolveRequesterForChildSession(childSessionKey: string): {
     requesterSessionKey: resolved.requesterSessionKey,
     requesterOrigin: normalizeDeliveryContext(resolved.requesterOrigin),
   };
-}
-
-export function listAncestorSessionKeys(sessionKey: string): string[] {
-  return listAncestorSessionKeysFromRuns(getSubagentRunsSnapshotForRead(subagentRuns), sessionKey);
 }
 
 export function isSubagentSessionRunActive(childSessionKey: string): boolean {

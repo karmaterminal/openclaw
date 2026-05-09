@@ -177,7 +177,6 @@ export function createSessionsHistoryTool(opts?: {
   agentSessionKey?: string;
   sandboxed?: boolean;
   config?: OpenClawConfig;
-  getConfig?: () => OpenClawConfig;
   callGateway?: GatewayCaller;
 }): AnyAgentTool {
   return {
@@ -192,7 +191,7 @@ export function createSessionsHistoryTool(opts?: {
       const sessionKeyParam = readStringParam(params, "sessionKey", {
         required: true,
       });
-      const cfg = opts?.getConfig?.() ?? opts?.config ?? getRuntimeConfig();
+      const cfg = opts?.config ?? getRuntimeConfig();
       const { mainKey, alias, effectiveRequesterKey, restrictToSpawned } =
         resolveSandboxedSessionToolContext({
           cfg,
