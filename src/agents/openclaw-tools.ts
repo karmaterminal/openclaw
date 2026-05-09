@@ -24,7 +24,6 @@ import type { SpawnedToolContext } from "./spawned-context.js";
 import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import { isToolAllowedByPolicyName } from "./tool-policy-match.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
-import { createCanvasTool } from "./tools/canvas-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { createContinueDelegateTool } from "./tools/continue-delegate-tool.js";
 import { createContinueWorkTool, type ContinueWorkRequest } from "./tools/continue-work-tool.js";
@@ -557,7 +556,6 @@ export function createOpenClawTools(
     ...(embedded
       ? []
       : [
-          createCanvasTool({ config: options?.config }),
           nodesTool,
           createCronTool({
             agentSessionKey: options?.agentSessionKey,

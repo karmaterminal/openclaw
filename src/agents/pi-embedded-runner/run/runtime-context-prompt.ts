@@ -31,7 +31,7 @@ type RuntimeContextPromptParts = {
 export function buildCurrentTurnPromptContextPrefix(
   context: CurrentTurnPromptContext | undefined,
 ): string {
-  return context?.text.trim() ?? "";
+  return context?.text?.trim() ?? "";
 }
 
 function removeLastPromptOccurrence(text: string, prompt: string): string | null {
