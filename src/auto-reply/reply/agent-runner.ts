@@ -75,10 +75,7 @@ import {
   buildFallbackNotice,
   resolveFallbackTransition,
 } from "../fallback-state.js";
-import {
-  markReplyPayloadForSourceSuppressionDelivery,
-  setReplyPayloadMetadata,
-} from "../reply-payload.js";
+import { markReplyPayloadForSourceSuppressionDelivery } from "../reply-payload.js";
 import type { OriginatingChannelType, TemplateContext } from "../templating.js";
 import { resolveResponseUsageMode, type VerboseLevel } from "../thinking.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
@@ -106,7 +103,6 @@ import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
 import { createFollowupRunner } from "./followup-runner.js";
-import { REPLY_RUN_STILL_SHUTTING_DOWN_TEXT } from "./get-reply-run-queue.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import { drainPendingToolTasks } from "./pending-tool-task-drain.js";
 import {
@@ -135,12 +131,6 @@ import { resolveSourceReplyVisibilityPolicy } from "./source-reply-delivery-mode
 import { createTypingSignaler } from "./typing-mode.js";
 import type { TypingController } from "./typing.js";
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
-
-function markBeforeAgentRunBlockedPayloads(payloads: ReplyPayload[]): ReplyPayload[] {
-  return payloads.map((payload) =>
-    setReplyPayloadMetadata(payload, { beforeAgentRunBlocked: true }),
-  );
-}
 
 function buildInlinePluginStatusPayload(params: {
   entry: SessionEntry | undefined;
@@ -1285,7 +1275,7 @@ export async function runReplyAgent(params: {
     if (error instanceof ReplyRunAlreadyActiveError) {
       typing.cleanup();
       return markReplyPayloadForSourceSuppressionDelivery({
-        text: REPLY_RUN_STILL_SHUTTING_DOWN_TEXT,
+        text: "⚠️ Previous run is still shutting down. Please try again in a moment.",
       });
     }
     throw error;
@@ -1513,37 +1503,35 @@ export async function runReplyAgent(params: {
     }
 
     const runStartedAt = Date.now();
-    const runOutcome = await traceAgentPhase("reply.run_agent_turn", () =>
-      runAgentTurnWithFallback({
-        commandBody,
-        transcriptCommandBody,
-        followupRun,
-        sessionCtx,
-        replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,
-        replyOperation,
-        opts,
-        typingSignals,
-        blockReplyPipeline,
-        blockStreamingEnabled,
-        blockReplyChunking,
-        resolvedBlockStreamingBreak,
-        applyReplyToMode,
-        shouldEmitToolResult,
-        shouldEmitToolOutput,
-        pendingToolTasks,
-        resetSessionAfterCompactionFailure,
-        resetSessionAfterRoleOrderingConflict,
-        isHeartbeat,
-        sessionKey,
-        runtimePolicySessionKey,
-        getActiveSessionEntry: () => activeSessionEntry,
-        activeSessionStore,
-        storePath,
-        resolvedVerboseLevel,
-        toolProgressDetail,
-        replyMediaContext,
-      }),
-    );
+    const runOutcome = await runAgentTurnWithFallback({
+      commandBody,
+      transcriptCommandBody,
+      followupRun,
+      sessionCtx,
+      replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,
+      replyOperation,
+      opts,
+      typingSignals,
+      blockReplyPipeline,
+      blockStreamingEnabled,
+      blockReplyChunking,
+      resolvedBlockStreamingBreak,
+      applyReplyToMode,
+      shouldEmitToolResult,
+      shouldEmitToolOutput,
+      pendingToolTasks,
+      resetSessionAfterCompactionFailure,
+      resetSessionAfterRoleOrderingConflict,
+      isHeartbeat,
+      sessionKey,
+      runtimePolicySessionKey,
+      getActiveSessionEntry: () => activeSessionEntry,
+      activeSessionStore,
+      storePath,
+      resolvedVerboseLevel,
+      toolProgressDetail,
+      replyMediaContext,
+    });
 
     if (runOutcome.kind === "final") {
       if (!replyOperation.result) {
@@ -2928,9 +2916,6 @@ export async function runReplyAgent(params: {
 
     if (finalPayloads.length === 0 && effectiveContinuationSignal) {
       return returnWithQueuedFollowupDrain(undefined);
-    }
-    if (isHookBlockedRun) {
-      finalPayloads = markBeforeAgentRunBlockedPayloads(finalPayloads);
     }
 
     // Capture only policy-visible final payloads in session store to support

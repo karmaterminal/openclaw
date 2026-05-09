@@ -95,7 +95,6 @@ export function resolveGatewayScopedTools(params: {
     allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
     allowMediaInvokeCommands: params.allowMediaInvokeCommands,
     disablePluginTools: params.disablePluginTools,
-    wrapBeforeToolCallHook: false,
     senderIsOwner: params.senderIsOwner,
     config: params.cfg,
     liveSessionToolConfig: true,

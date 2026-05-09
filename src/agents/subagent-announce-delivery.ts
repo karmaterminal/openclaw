@@ -7,7 +7,6 @@ import { normalizeAccountId } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
 import { deriveSessionChatTypeFromKey } from "../sessions/session-chat-type-shared.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
-import { isNonTerminalAgentRunStatus } from "../shared/agent-run-status.js";
 import { normalizeOptionalLowercaseString } from "../shared/string-coerce.js";
 import {
   mergeDeliveryContext,
@@ -44,6 +43,7 @@ import {
   resolveExternalBestEffortDeliveryTarget,
   resolveQueueSettings,
   resolveStorePath,
+  sendMessage,
 } from "./subagent-announce-delivery.runtime.js";
 import {
   runSubagentAnnounceDispatch,
@@ -57,6 +57,9 @@ import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
 
 const DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS = 120_000;
 const MAX_TIMER_SAFE_TIMEOUT_MS = 2_147_000_000;
+const MIN_COMPLETION_INTEGRITY_RESULT_LENGTH = 120;
+const MIN_COMPLETION_INTEGRITY_PREFIX_LENGTH = 24;
+const MAX_COMPLETION_INTEGRITY_PREFIX_RATIO = 0.8;
 const AGENT_MEDIATED_COMPLETION_TOOLS = new Set(["music_generate", "video_generate"]);
 
 type SubagentAnnounceDeliveryDeps = {
@@ -67,6 +70,7 @@ type SubagentAnnounceDeliveryDeps = {
     isActive: boolean;
   };
   queueEmbeddedPiMessage: typeof queueEmbeddedPiMessage;
+  sendMessage: typeof sendMessage;
 };
 
 const defaultSubagentAnnounceDeliveryDeps: SubagentAnnounceDeliveryDeps = {
@@ -82,6 +86,7 @@ const defaultSubagentAnnounceDeliveryDeps: SubagentAnnounceDeliveryDeps = {
     };
   },
   queueEmbeddedPiMessage,
+  sendMessage,
 };
 
 let subagentAnnounceDeliveryDeps: SubagentAnnounceDeliveryDeps =
@@ -202,9 +207,6 @@ const TRANSIENT_ANNOUNCE_DELIVERY_ERROR_PATTERNS: readonly RegExp[] = [
   /gateway not connected/i,
   /gateway closed \(1006/i,
   /gateway timeout/i,
-  /\ball models failed\b/i,
-  /\ball profiles unavailable\b/i,
-  /\boverloaded\b/i,
   /\b(econnreset|econnrefused|etimedout|enotfound|ehostunreach|network error)\b/i,
 ];
 
@@ -542,11 +544,141 @@ async function maybeQueueSubagentAnnounce(params: {
   return "none";
 }
 
+function extractTaskCompletionFallbackText(event: AgentInternalEvent): string {
+  const result = event.result.trim();
+  if (result) {
+    return result;
+  }
+  const statusLabel = event.statusLabel.trim();
+  const taskLabel = event.taskLabel.trim();
+  if (statusLabel && taskLabel) {
+    return `${taskLabel}: ${statusLabel}`;
+  }
+  if (statusLabel) {
+    return statusLabel;
+  }
+  if (taskLabel) {
+    return taskLabel;
+  }
+  return "";
+}
+
+function formatTaskCompletionFallbackBlock(params: {
+  event: AgentInternalEvent;
+  text: string;
+  includeTaskLabel: boolean;
+}): string {
+  const taskLabel = params.event.taskLabel.trim();
+  if (!params.includeTaskLabel || !taskLabel || params.text.startsWith(`${taskLabel}:`)) {
+    return params.text;
+  }
+  return `${taskLabel}:\n${params.text}`;
+}
+
+export function extractThreadCompletionFallbackText(internalEvents?: AgentInternalEvent[]): string {
+  if (!internalEvents || internalEvents.length === 0) {
+    return "";
+  }
+  const completions = internalEvents
+    .filter((event) => event.type === "task_completion")
+    .map((event) => ({
+      event,
+      text: extractTaskCompletionFallbackText(event),
+    }))
+    .filter((completion) => completion.text.length > 0);
+  if (completions.length === 0) {
+    return "";
+  }
+  const onlyCompletion = completions[0];
+  if (completions.length === 1 && onlyCompletion) {
+    return onlyCompletion.text;
+  }
+  return completions
+    .map((completion) =>
+      formatTaskCompletionFallbackBlock({
+        event: completion.event,
+        text: completion.text,
+        includeTaskLabel: true,
+      }),
+    )
+    .join("\n\n")
+    .trim();
+}
+
 function hasVisibleGatewayAgentPayload(response: unknown): boolean {
   const result = getGatewayAgentResult(response);
   return Boolean(
     result && (hasVisibleAgentPayload(result) || hasMessagingToolDeliveryEvidence(result)),
   );
+}
+
+function collectVisibleGatewayAgentText(response: unknown): string {
+  const result = getGatewayAgentResult(response);
+  const payloads = result?.payloads;
+  if (!Array.isArray(payloads)) {
+    return "";
+  }
+  return payloads
+    .flatMap((payload) => {
+      if (!payload || typeof payload !== "object") {
+        return [];
+      }
+      const text = (payload as { text?: unknown; isError?: unknown; isReasoning?: unknown }).text;
+      if (typeof text !== "string") {
+        return [];
+      }
+      if (
+        (payload as { isError?: unknown; isReasoning?: unknown }).isError === true ||
+        (payload as { isError?: unknown; isReasoning?: unknown }).isReasoning === true
+      ) {
+        return [];
+      }
+      const trimmed = text.trim();
+      return trimmed ? [trimmed] : [];
+    })
+    .join("\n")
+    .trim();
+}
+
+function normalizeCompletionIntegrityText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function hasCompleteCompletionSummaryBoundary(value: string): boolean {
+  const trimmed = value.replace(/[\s"')\]]+$/g, "");
+  if (!trimmed) {
+    return false;
+  }
+  return /[.!?]$/.test(trimmed);
+}
+
+function hasIncompleteCompletionPrefix(response: unknown, completionFallbackText: string): boolean {
+  const result = getGatewayAgentResult(response);
+  if (!result || hasMessagingToolDeliveryEvidence(result)) {
+    return false;
+  }
+  const expected = normalizeCompletionIntegrityText(completionFallbackText);
+  if (expected.length < MIN_COMPLETION_INTEGRITY_RESULT_LENGTH) {
+    return false;
+  }
+  const visible = normalizeCompletionIntegrityText(collectVisibleGatewayAgentText(response));
+  if (
+    visible.length < MIN_COMPLETION_INTEGRITY_PREFIX_LENGTH ||
+    visible.length >= expected.length * MAX_COMPLETION_INTEGRITY_PREFIX_RATIO
+  ) {
+    return false;
+  }
+  return expected.startsWith(visible) && !hasCompleteCompletionSummaryBoundary(visible);
+}
+
+function shouldSendCompletionFallback(response: unknown, completionFallbackText: string): boolean {
+  if (!completionFallbackText) {
+    return false;
+  }
+  if (!hasVisibleGatewayAgentPayload(response)) {
+    return true;
+  }
+  return hasIncompleteCompletionPrefix(response, completionFallbackText);
 }
 
 function requiresAgentMediatedCompletionDelivery(params: {
@@ -562,14 +694,6 @@ function requiresAgentMediatedCompletionDelivery(params: {
 function hasGatewayAgentMessagingToolDelivery(response: unknown): boolean {
   const result = getGatewayAgentResult(response);
   return Boolean(result && hasMessagingToolDeliveryEvidence(result));
-}
-
-function isGatewayAgentRunPending(response: unknown): boolean {
-  if (!response || typeof response !== "object") {
-    return false;
-  }
-  const status = (response as { status?: unknown }).status;
-  return isNonTerminalAgentRunStatus(status);
 }
 
 function inferCompletionChatType(params: {
@@ -771,6 +895,10 @@ async function sendSubagentAnnounceDirectly(params: {
         requesterSessionOrigin,
       });
     const shouldDeliverAgentFinal = deliveryTarget.deliver && !requiresMessageToolDelivery;
+    const completionFallbackText =
+      params.expectsCompletionMessage && shouldDeliverAgentFinal && !agentMediatedCompletion
+        ? extractThreadCompletionFallbackText(params.internalEvents)
+        : "";
     const requesterActivity = resolveRequesterSessionActivity(canonicalRequesterSessionKey);
     const requesterQueueSettings = resolveQueueSettings({
       cfg,
@@ -965,7 +1093,7 @@ async function sendSubagentAnnounceDirectly(params: {
       };
     }
     if (
-      params.expectsCompletionMessage &&
+      agentMediatedCompletion &&
       shouldDeliverAgentFinal &&
       !hasVisibleGatewayAgentPayload(directAnnounceResponse)
     ) {

@@ -1,16 +1,6 @@
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
-import {
-  ackJsonDurableQueueEntry,
-  ensureJsonDurableQueueDirs,
-  jsonDurableQueueEntryExists,
-  loadJsonDurableQueueEntry,
-  loadPendingJsonDurableQueueEntries,
-  moveJsonDurableQueueEntryToFailed,
-  readJsonDurableQueueEntry,
-  resolveJsonDurableQueueEntryPaths,
-  writeJsonDurableQueueEntry,
-} from "@openclaw/fs-safe/store";
 import type { ChatType } from "../channels/chat-type.js";
 import { resolveStateDir } from "../config/paths.js";
 import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
@@ -19,7 +9,6 @@ import { generateSecureUuid } from "./secure-random.js";
 const QUEUE_DIRNAME = "session-delivery-queue";
 const FAILED_DIRNAME = "failed";
 const TMP_SWEEP_MAX_AGE_MS = 5_000;
-const QUEUE_TEMP_PREFIX = ".session-delivery-queue";
 
 export const DEFAULT_FAILED_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 export const DEFAULT_QUEUE_DIR_MAX_FILES = 10_000;
@@ -43,10 +32,6 @@ export type SessionDeliveryContext = {
   to?: string;
   accountId?: string;
   threadId?: string | number;
-};
-
-type SessionDeliveryRetryPolicy = {
-  maxRetries?: number;
 };
 
 export type SessionDeliveryRoute = {
@@ -86,8 +71,8 @@ export type QueuedSessionDeliveryPayload = (
       text: string;
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
-    } & SessionDeliveryRetryPolicy)
-  | ({
+    }
+  | {
       kind: "agentTurn";
       sessionKey: string;
       message: string;
@@ -194,16 +179,38 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
   };
 }
 
+async function unlinkBestEffort(filePath: string): Promise<void> {
+  await fs.promises.unlink(filePath).catch(() => undefined);
+}
+
+async function unlinkStaleTmpBestEffort(filePath: string, now: number): Promise<void> {
+  try {
+    const stat = await fs.promises.stat(filePath);
+    if (!stat.isFile()) {
+      return;
+    }
+    if (now - stat.mtimeMs < TMP_SWEEP_MAX_AGE_MS) {
+      return;
+    }
+    await unlinkBestEffort(filePath);
+  } catch (err) {
+    if (getErrnoCode(err) !== "ENOENT") {
+      throw err;
+    }
+  }
+}
+
 async function writeQueueEntry(filePath: string, entry: QueuedSessionDelivery): Promise<void> {
-  await writeJsonDurableQueueEntry({
-    filePath,
-    entry,
-    tempPrefix: QUEUE_TEMP_PREFIX,
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  await fs.promises.writeFile(tmp, JSON.stringify(entry, null, 2), {
+    encoding: "utf-8",
+    mode: 0o600,
   });
+  await fs.promises.rename(tmp, filePath);
 }
 
 async function readQueueEntry(filePath: string): Promise<QueuedSessionDelivery> {
-  return await readJsonDurableQueueEntry<QueuedSessionDelivery>(filePath);
+  return JSON.parse(await fs.promises.readFile(filePath, "utf-8")) as QueuedSessionDelivery;
 }
 
 export function resolveSessionDeliveryQueueDir(stateDir?: string): string {
@@ -222,15 +229,17 @@ function resolveQueueEntryPaths(
   jsonPath: string;
   deliveredPath: string;
 } {
-  return resolveJsonDurableQueueEntryPaths(resolveSessionDeliveryQueueDir(stateDir), id);
+  const queueDir = resolveSessionDeliveryQueueDir(stateDir);
+  return {
+    jsonPath: path.join(queueDir, `${id}.json`),
+    deliveredPath: path.join(queueDir, `${id}.delivered`),
+  };
 }
 
 export async function ensureSessionDeliveryQueueDir(stateDir?: string): Promise<string> {
   const queueDir = resolveSessionDeliveryQueueDir(stateDir);
-  await ensureJsonDurableQueueDirs({
-    queueDir,
-    failedDir: resolveFailedDir(stateDir),
-  });
+  await fs.promises.mkdir(queueDir, { recursive: true, mode: 0o700 });
+  await fs.promises.mkdir(resolveFailedDir(stateDir), { recursive: true, mode: 0o700 });
   return queueDir;
 }
 
@@ -263,8 +272,15 @@ export async function enqueueSessionDelivery(
   const filePath = path.join(queueDir, `${id}.json`);
 
   if (params.idempotencyKey) {
-    if (await jsonDurableQueueEntryExists(filePath)) {
-      return id;
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (stat.isFile()) {
+        return id;
+      }
+    } catch (err) {
+      if (getErrnoCode(err) !== "ENOENT") {
+        throw err;
+      }
     }
   }
 
@@ -308,7 +324,18 @@ export async function enqueuePostCompactionDelegateDelivery(
 }
 
 export async function ackSessionDelivery(id: string, stateDir?: string): Promise<void> {
-  await ackJsonDurableQueueEntry(resolveQueueEntryPaths(id, stateDir));
+  const { jsonPath, deliveredPath } = resolveQueueEntryPaths(id, stateDir);
+  try {
+    await fs.promises.rename(jsonPath, deliveredPath);
+  } catch (err) {
+    const code = getErrnoCode(err);
+    if (code === "ENOENT") {
+      await unlinkBestEffort(deliveredPath);
+      return;
+    }
+    throw err;
+  }
+  await unlinkBestEffort(deliveredPath);
 }
 
 export async function failSessionDelivery(
@@ -328,28 +355,68 @@ export async function loadPendingSessionDelivery(
   id: string,
   stateDir?: string,
 ): Promise<QueuedSessionDelivery | null> {
-  return await loadJsonDurableQueueEntry({
-    paths: resolveQueueEntryPaths(id, stateDir),
-    tempPrefix: QUEUE_TEMP_PREFIX,
-  });
+  const { jsonPath } = resolveQueueEntryPaths(id, stateDir);
+  try {
+    const stat = await fs.promises.stat(jsonPath);
+    if (!stat.isFile()) {
+      return null;
+    }
+    return await readQueueEntry(jsonPath);
+  } catch (err) {
+    if (getErrnoCode(err) === "ENOENT") {
+      return null;
+    }
+    throw err;
+  }
 }
 
 export async function loadPendingSessionDeliveries(
   stateDir?: string,
 ): Promise<QueuedSessionDelivery[]> {
-  return await loadPendingJsonDurableQueueEntries({
-    queueDir: resolveSessionDeliveryQueueDir(stateDir),
-    tempPrefix: QUEUE_TEMP_PREFIX,
-    cleanupTmpMaxAgeMs: TMP_SWEEP_MAX_AGE_MS,
-  });
+  const queueDir = resolveSessionDeliveryQueueDir(stateDir);
+  let files: string[];
+  try {
+    files = await fs.promises.readdir(queueDir);
+  } catch (err) {
+    if (getErrnoCode(err) === "ENOENT") {
+      return [];
+    }
+    throw err;
+  }
+
+  const now = Date.now();
+  for (const file of files) {
+    if (file.endsWith(".delivered")) {
+      await unlinkBestEffort(path.join(queueDir, file));
+    } else if (file.endsWith(".tmp")) {
+      await unlinkStaleTmpBestEffort(path.join(queueDir, file), now);
+    }
+  }
+
+  const entries: QueuedSessionDelivery[] = [];
+  for (const file of files) {
+    if (!file.endsWith(".json")) {
+      continue;
+    }
+    const filePath = path.join(queueDir, file);
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (!stat.isFile()) {
+        continue;
+      }
+      entries.push(await readQueueEntry(filePath));
+    } catch {
+      continue;
+    }
+  }
+  return entries;
 }
 
 export async function moveSessionDeliveryToFailed(id: string, stateDir?: string): Promise<void> {
-  await moveJsonDurableQueueEntryToFailed({
-    queueDir: resolveSessionDeliveryQueueDir(stateDir),
-    failedDir: resolveFailedDir(stateDir),
-    id,
-  });
+  const queueDir = resolveSessionDeliveryQueueDir(stateDir);
+  const failedDir = resolveFailedDir(stateDir);
+  await fs.promises.mkdir(failedDir, { recursive: true, mode: 0o700 });
+  await fs.promises.rename(path.join(queueDir, `${id}.json`), path.join(failedDir, `${id}.json`));
 }
 
 export async function pruneFailedOlderThan(

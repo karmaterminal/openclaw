@@ -209,14 +209,8 @@ export type SessionEntry = {
   abortedLastRun?: boolean;
   /** Durable guard state for automatic subagent orphan recovery. */
   subagentRecovery?: SubagentRecoveryState;
-  /** Quota cascade protection and state-aware failover status. */
-  quotaSuspension?: QuotaSuspension;
   /** Timestamp (ms) when the current sessionId first became active. */
   sessionStartedAt?: number;
-  /** Stable usage lineage key for transcript-backed rollups across sessionId rotations. */
-  usageFamilyKey?: string;
-  /** Session ids known to belong to this usage lineage, including archived predecessors. */
-  usageFamilySessionIds?: string[];
   /** Timestamp (ms) of the last user/channel interaction that should extend idle lifetime. */
   lastInteractionAt?: number;
   /** Stable first-run start time for subagent sessions, persisted after completion. */
@@ -300,8 +294,6 @@ export type SessionEntry = {
   pendingFinalDeliveryText?: string | null;
   /** Original delivery context (channel, recipient, etc). */
   pendingFinalDeliveryContext?: DeliveryContext;
-  /** Durable send intent backing pending final delivery, when already created. */
-  pendingFinalDeliveryIntentId?: string | null;
   /**
    * Whether totalTokens reflects a fresh context snapshot for the latest run.
    * Undefined means legacy/unknown freshness; false forces consumers to treat
