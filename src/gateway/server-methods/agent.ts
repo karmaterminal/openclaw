@@ -9,7 +9,6 @@ import {
   resolveAgentAvatar,
   resolvePublicAgentAvatarSource,
 } from "../../agents/identity-avatar.js";
-import { AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION } from "../../agents/internal-event-contract.js";
 import type { AgentInternalEvent } from "../../agents/internal-events.js";
 import { resolveTrustedGroupId } from "../../agents/pi-tools.policy.js";
 import { resolveSandboxConfigForAgent } from "../../agents/sandbox/config.js";
@@ -512,24 +511,6 @@ function dispatchAgentRunFromGateway(params: {
     });
 }
 
-function shouldSuppressAgentPromptPersistence(params: {
-  inputProvenance?: InputProvenance;
-  internalEvents?: AgentInternalEvent[];
-}): boolean {
-  if (
-    params.inputProvenance?.kind !== "inter_session" ||
-    params.inputProvenance.sourceTool !== "subagent_announce"
-  ) {
-    return false;
-  }
-  return (
-    params.internalEvents?.some(
-      (event) =>
-        event.type === AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION && event.source === "subagent",
-    ) === true
-  );
-}
-
 function yieldAfterAgentAcceptedAck(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 10);
@@ -576,6 +557,10 @@ export const agentHandlers: GatewayRequestHandlers = {
       groupChannel?: string;
       groupSpace?: string;
       lane?: string;
+      continuationTrigger?: "work-wake" | "delegate-return";
+      /** When true, the run drains the continuation delegate queue after completion.
+       *  Set by continuation delegate spawns so sub-agents can use the continue_delegate tool. */
+      drainsContinuationDelegateQueue?: boolean;
       extraSystemPrompt?: string;
       modelRun?: boolean;
       promptMode?: "full" | "minimal" | "none";
@@ -649,8 +634,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       let baseModel: string | undefined;
       if (requestedSessionKeyRaw) {
         const { cfg: sessCfg, entry: sessEntry } = loadSessionEntry(requestedSessionKeyRaw);
-        const sessionAgentId = resolveAgentIdFromSessionKey(requestedSessionKeyRaw);
-        const modelRef = resolveSessionModelRef(sessCfg, sessEntry, sessionAgentId);
+        const modelRef = resolveSessionModelRef(sessCfg, sessEntry, undefined);
         baseProvider = modelRef.provider;
         baseModel = modelRef.model;
       }
@@ -1084,8 +1068,6 @@ export const agentHandlers: GatewayRequestHandlers = {
         groupChannel: resolvedGroupChannel,
         space: resolvedGroupSpace,
         ...(pluginOwnerId ? { pluginOwnerId } : {}),
-        sessionFile:
-          entry?.sessionId && entry.sessionId !== sessionId ? undefined : entry?.sessionFile,
         cliSessionIds: entry?.cliSessionIds,
         cliSessionBindings: entry?.cliSessionBindings,
         claudeCliSessionId: entry?.claudeCliSessionId,
@@ -1304,13 +1286,6 @@ export const agentHandlers: GatewayRequestHandlers = {
         typeof client?.connect?.device?.id === "string" ? client.connect.device.id : undefined,
       kind: "agent",
     });
-    if (!activeRunAbort.registered && context.chatAbortControllers.has(runId)) {
-      respond(true, { runId, status: "in_flight" as const }, undefined, {
-        cached: true,
-        runId,
-      });
-      return;
-    }
 
     const accepted = {
       runId,
@@ -1426,6 +1401,9 @@ export const agentHandlers: GatewayRequestHandlers = {
             messageChannel: originMessageChannel,
             runId,
             lane: request.lane,
+            cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd === true,
+            continuationTrigger: request.continuationTrigger,
+            drainsContinuationDelegateQueue: request.drainsContinuationDelegateQueue,
             modelRun: request.modelRun === true,
             promptMode: request.promptMode,
             extraSystemPrompt: request.extraSystemPrompt,
@@ -1434,11 +1412,6 @@ export const agentHandlers: GatewayRequestHandlers = {
             acpTurnSource: request.acpTurnSource,
             internalEvents: request.internalEvents,
             inputProvenance,
-            suppressPromptPersistence: shouldSuppressAgentPromptPersistence({
-              inputProvenance,
-              internalEvents: request.internalEvents,
-            }),
-            cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd,
             abortSignal: activeRunAbort.controller.signal,
             // Internal-only: allow workspace override for spawned subagent runs.
             workspaceDir: resolveIngressWorkspaceOverrideForSpawnedRun({
