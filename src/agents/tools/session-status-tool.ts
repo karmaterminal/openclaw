@@ -327,7 +327,6 @@ export function createSessionStatusTool(opts?: {
    */
   runSessionKey?: string;
   config?: OpenClawConfig;
-  getConfig?: () => OpenClawConfig;
   sandboxed?: boolean;
   activeModelProvider?: string;
   activeModelId?: string;
@@ -340,7 +339,7 @@ export function createSessionStatusTool(opts?: {
     parameters: SessionStatusToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
-      const cfg = opts?.getConfig?.() ?? opts?.config ?? getRuntimeConfig();
+      const cfg = opts?.config ?? getRuntimeConfig();
       const { mainKey, alias, effectiveRequesterKey } = resolveSandboxedSessionToolContext({
         cfg,
         agentSessionKey: opts?.agentSessionKey,
