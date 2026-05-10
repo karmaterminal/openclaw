@@ -48,3 +48,9 @@ Lane dispatched at 2026-05-10 by frond-scribe seat per figs's directive 15031265
 - Header merge shape is `{ ...buildCopilotIdeHeaders(), "Copilot-Integration-Id": COPILOT_INTEGRATION_ID, ...model.headers }`, so explicit model headers override defaults while missing IDE defaults are filled.
 - Added `extensions/github-copilot/models.test.ts` coverage for exact custom `claude-opus-4.7` headers, user override preservation, dynamic model compatibility, and non-Copilot no-op behavior.
 - Smoke gate: `pnpm test --run extensions/github-copilot/` passed after `pnpm install` restored missing `node_modules`; 9 test files, 80 tests passed.
+
+### 2026-05-10T20:23Z acceptance gate checkpoint
+
+- `pnpm test --run extensions/github-copilot/` passed: 9 files, 80 tests.
+- `pnpm tsgo:core` passed.
+- `pnpm lint` passed: oxlint core/extensions/scripts found 0 warnings and 0 errors.
