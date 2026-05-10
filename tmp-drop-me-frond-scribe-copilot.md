@@ -41,3 +41,10 @@ Lane dispatched at 2026-05-10 by frond-scribe seat per figs's directive 15031265
   - `extensions/github-copilot/models.test.ts`: add regression tests for exact custom model headers, explicit user header overrides, dynamic path still resolving, and non-Copilot model unaffected.
   - `tmp-drop-me-frond-scribe-copilot.md`: checkpoint journal per workorder.
 - Test gates before declare-done: `pnpm test --run extensions/github-copilot/`, `pnpm tsgo:core`, and `pnpm lint`; root-cause any failures instead of papering over them.
+
+### 2026-05-10T20:22Z implementation checkpoint
+
+- Added `normalizeCopilotResolvedModelHeaders` in `extensions/github-copilot/models.ts`, registered it as the provider `normalizeResolvedModel` hook, and guarded it so only `github-copilot` resolved models receive headers.
+- Header merge shape is `{ ...buildCopilotIdeHeaders(), "Copilot-Integration-Id": COPILOT_INTEGRATION_ID, ...model.headers }`, so explicit model headers override defaults while missing IDE defaults are filled.
+- Added `extensions/github-copilot/models.test.ts` coverage for exact custom `claude-opus-4.7` headers, user override preservation, dynamic model compatibility, and non-Copilot no-op behavior.
+- Smoke gate: `pnpm test --run extensions/github-copilot/` passed after `pnpm install` restored missing `node_modules`; 9 test files, 80 tests passed.

@@ -38,7 +38,15 @@ vi.mock("openclaw/plugin-sdk/state-paths", () => ({
 }));
 
 import type { ProviderResolveDynamicModelContext } from "openclaw/plugin-sdk/core";
-import { fetchCopilotModelCatalog, resolveCopilotForwardCompatModel } from "./models.js";
+import type {
+  ProviderNormalizeResolvedModelContext,
+  ProviderRuntimeModel,
+} from "openclaw/plugin-sdk/plugin-entry";
+import {
+  fetchCopilotModelCatalog,
+  normalizeCopilotResolvedModelHeaders,
+  resolveCopilotForwardCompatModel,
+} from "./models.js";
 
 afterAll(() => {
   vi.doUnmock("@mariozechner/pi-ai/oauth");
@@ -71,6 +79,30 @@ function requireResolvedModel(ctx: ProviderResolveDynamicModelContext) {
     throw new Error(`expected model ${ctx.modelId} to resolve`);
   }
   return result;
+}
+
+function createRuntimeModel(
+  model: Partial<ProviderRuntimeModel> &
+    Pick<ProviderRuntimeModel, "id" | "name" | "provider" | "api">,
+): ProviderRuntimeModel {
+  return {
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 1_000_000,
+    maxTokens: 8192,
+    ...model,
+  };
+}
+
+function normalizeHeadersForModel(
+  model: ProviderRuntimeModel,
+  provider = model.provider,
+): ProviderRuntimeModel | undefined {
+  return normalizeCopilotResolvedModelHeaders({
+    provider,
+    modelId: model.id,
+    model,
+  } as ProviderNormalizeResolvedModelContext);
 }
 
 describe("github-copilot model defaults", () => {
@@ -261,6 +293,68 @@ describe("resolveCopilotForwardCompatModel", () => {
       const result = requireResolvedModel(ctx);
       expect((result as unknown as Record<string, unknown>).reasoning).toBe(false);
     }
+  });
+});
+
+describe("normalizeCopilotResolvedModelHeaders", () => {
+  it("adds IDE headers to exact custom claude-opus-4.7 model rows", () => {
+    const result = normalizeHeadersForModel(
+      createRuntimeModel({
+        id: "claude-opus-4.7",
+        name: "Claude Opus 4.7",
+        provider: "github-copilot",
+        api: "anthropic-messages",
+        baseUrl: "https://api.enterprise.githubcopilot.com",
+      }),
+    );
+
+    expect(result?.headers).toMatchObject({
+      "Editor-Version": expect.any(String),
+      "Editor-Plugin-Version": expect.any(String),
+      "User-Agent": expect.any(String),
+      "Copilot-Integration-Id": expect.any(String),
+    });
+  });
+
+  it("preserves exact custom model header overrides while filling missing IDE defaults", () => {
+    const result = normalizeHeadersForModel(
+      createRuntimeModel({
+        id: "claude-opus-4.7",
+        name: "Claude Opus 4.7",
+        provider: "github-copilot",
+        api: "anthropic-messages",
+        headers: {
+          "Editor-Version": "custom-ide/9.9.9",
+          "X-User-Custom": "foo",
+        },
+      }),
+    );
+
+    expect(result?.headers?.["Editor-Version"]).toBe("custom-ide/9.9.9");
+    expect(result?.headers?.["X-User-Custom"]).toBe("foo");
+    expect(result?.headers?.["Editor-Plugin-Version"]).toEqual(expect.any(String));
+    expect(result?.headers?.["User-Agent"]).toEqual(expect.any(String));
+    expect(result?.headers?.["Copilot-Integration-Id"]).toEqual(expect.any(String));
+  });
+
+  it("keeps dynamic model resolution compatible with header normalization", () => {
+    const dynamic = requireResolvedModel(createMockCtx("gpt-5.4-mini"));
+    const result = normalizeHeadersForModel(dynamic);
+
+    expect(dynamic.id).toBe("gpt-5.4-mini");
+    expect(result?.headers?.["Editor-Version"]).toEqual(expect.any(String));
+    expect(result?.headers?.["Copilot-Integration-Id"]).toEqual(expect.any(String));
+  });
+
+  it("does not add headers to non-Copilot models", () => {
+    const model = createRuntimeModel({
+      id: "claude-opus-4.7",
+      name: "Claude Opus 4.7",
+      provider: "anthropic",
+      api: "anthropic-messages",
+    });
+
+    expect(normalizeHeadersForModel(model, "anthropic")).toBeUndefined();
   });
 });
 
