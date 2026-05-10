@@ -24,6 +24,7 @@ import {
 import { buildAnnounceIdempotencyKey, resolveQueueAnnounceId } from "./announce-idempotency.js";
 import type { AgentInternalEvent } from "./internal-events.js";
 import {
+  getAgentCommandDeliveryFailure,
   getGatewayAgentResult,
   hasMessagingToolDeliveryEvidence,
   hasVisibleAgentPayload,
@@ -625,6 +626,11 @@ function isGatewayAgentRunPending(response: unknown): boolean {
   return isNonTerminalAgentRunStatus(status);
 }
 
+function getGatewayAgentDeliveryFailure(response: unknown): string | undefined {
+  const result = getGatewayAgentResult(response);
+  return result ? getAgentCommandDeliveryFailure(result) : undefined;
+}
+
 function collectVisibleGatewayAgentText(response: unknown): string {
   const result = getGatewayAgentResult(response);
   const payloads = result?.payloads;
@@ -709,6 +715,10 @@ function hasGatewayAgentMessagingToolDelivery(response: unknown): boolean {
   return Boolean(result && hasMessagingToolDeliveryEvidence(result));
 }
 
+function deriveCompletionLegacySessionChatType(scopedSessionKey: string): "group" | undefined {
+  return scopedSessionKey.includes("@g.us") ? "group" : undefined;
+}
+
 function inferCompletionChatType(params: {
   requesterSessionKey: string;
   targetRequesterSessionKey: string;
@@ -726,7 +736,7 @@ function inferCompletionChatType(params: {
     return explicit;
   }
   for (const key of [params.targetRequesterSessionKey, params.requesterSessionKey]) {
-    const derived = deriveSessionChatTypeFromKey(key);
+    const derived = deriveSessionChatTypeFromKey(key, [deriveCompletionLegacySessionChatType]);
     if (derived !== "unknown") {
       return derived;
     }
@@ -1021,6 +1031,15 @@ async function sendSubagentAnnounceDirectly(params: {
       return {
         delivered: true,
         path: "direct",
+      };
+    }
+
+    const deliveryFailure = getGatewayAgentDeliveryFailure(directAnnounceResponse);
+    if (deliveryFailure) {
+      return {
+        delivered: false,
+        path: "direct",
+        error: deliveryFailure,
       };
     }
 
