@@ -36,7 +36,8 @@ import {
   getRuntimeConfig,
   isSteeringQueueMode,
   loadSessionStore,
-  queueEmbeddedPiMessage,
+  formatEmbeddedPiQueueFailureSummary,
+  queueEmbeddedPiMessageWithOutcome,
   resolvePiSteeringModeForQueueMode,
   resolveActiveEmbeddedRunSessionId,
   resolveAgentIdFromSessionKey,
@@ -70,7 +71,7 @@ type SubagentAnnounceDeliveryDeps = {
     sessionId?: string;
     isActive: boolean;
   };
-  queueEmbeddedPiMessage: typeof queueEmbeddedPiMessage;
+  queueEmbeddedPiMessageWithOutcome: typeof queueEmbeddedPiMessageWithOutcome;
   sendMessage: typeof sendMessage;
 };
 
@@ -86,7 +87,7 @@ const defaultSubagentAnnounceDeliveryDeps: SubagentAnnounceDeliveryDeps = {
       isActive: Boolean(sessionId && isEmbeddedPiRunActive(sessionId)),
     };
   },
-  queueEmbeddedPiMessage,
+  queueEmbeddedPiMessageWithOutcome,
   sendMessage,
 };
 
@@ -499,7 +500,7 @@ async function maybeQueueSubagentAnnounce(params: {
 
   const shouldSteer = isSteeringQueueMode(queueSettings.mode);
   if (shouldSteer) {
-    const steered = subagentAnnounceDeliveryDeps.queueEmbeddedPiMessage(
+    const queueOutcome = subagentAnnounceDeliveryDeps.queueEmbeddedPiMessageWithOutcome(
       sessionId,
       params.steerMessage,
       {
@@ -507,7 +508,7 @@ async function maybeQueueSubagentAnnounce(params: {
         ...(queueSettings.debounceMs !== undefined ? { debounceMs: queueSettings.debounceMs } : {}),
       },
     );
-    if (steered) {
+    if (queueOutcome.queued) {
       return "steered";
     }
   }
@@ -923,32 +924,33 @@ async function sendSubagentAnnounceDirectly(params: {
       sessionEntry: requesterEntry,
     });
     if (params.expectsCompletionMessage && requesterActivity.sessionId) {
-      const woke = requesterActivity.sessionId
-        ? subagentAnnounceDeliveryDeps.queueEmbeddedPiMessage(
-            requesterActivity.sessionId,
-            params.triggerMessage,
-            {
-              steeringMode: "all",
-              ...(requesterQueueSettings.debounceMs !== undefined
-                ? { debounceMs: requesterQueueSettings.debounceMs }
-                : {}),
-            },
-          )
-        : false;
-      if (woke) {
+      const wakeOutcome = subagentAnnounceDeliveryDeps.queueEmbeddedPiMessageWithOutcome(
+        requesterActivity.sessionId,
+        params.triggerMessage,
+        {
+          steeringMode: "all",
+          ...(requesterQueueSettings.debounceMs !== undefined
+            ? { debounceMs: requesterQueueSettings.debounceMs }
+            : {}),
+        },
+      );
+      if (wakeOutcome.queued) {
         return {
           delivered: true,
           path: "steered",
         };
       }
       if (requesterActivity.isActive) {
+        const queueFailureSummary = formatEmbeddedPiQueueFailureSummary(wakeOutcome);
         // Active requester sessions should receive completion data through their
         // running agent turn. If wake fails, let the dispatch layer queue/retry;
         // do not bypass the requester agent with raw child output.
         return {
           delivered: false,
           path: "direct",
-          error: "active requester session could not be woken",
+          error: queueFailureSummary
+            ? `active requester session could not be woken: ${queueFailureSummary}`
+            : "active requester session could not be woken",
         };
       }
     }
