@@ -9,6 +9,7 @@ export type RequestCompactionInvocation = {
   reason: string;
   contextUsage: number;
   requestedAtMs: number;
+  traceparent?: string;
 };
 
 export type CompactionCounterAttribution = {

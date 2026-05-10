@@ -28,6 +28,7 @@ export type ContinuationSignal =
   | {
       kind: "work";
       delayMs?: number;
+      traceparent?: string;
     }
   | {
       kind: "delegate";
@@ -151,6 +152,7 @@ export type StagedPostCompactionDelegate = {
 export type ContinueWorkRequest = {
   reason: string;
   delaySeconds: number;
+  traceparent?: string;
 };
 
 // ---------------------------------------------------------------------------

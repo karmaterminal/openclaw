@@ -1686,7 +1686,13 @@ export async function runReplyAgent(params: {
     const continuationExtraction = extractContinuationSignal({
       payloads: payloadArray,
       continueWorkRequest: continueWorkRequest
-        ? { reason: continueWorkRequest.reason, delaySeconds: continueWorkRequest.delaySeconds }
+        ? {
+            reason: continueWorkRequest.reason,
+            delaySeconds: continueWorkRequest.delaySeconds,
+            ...(continueWorkRequest.traceparent
+              ? { traceparent: continueWorkRequest.traceparent }
+              : {}),
+          }
         : undefined,
       enabled: continuationFeatureEnabled,
       sessionKey,
@@ -2066,6 +2072,7 @@ export async function runReplyAgent(params: {
         emitContinuationCompactionReleasedSpan({
           releasedCount,
           compactionId: count,
+          traceparent: runOutcome.compactionTraceparent,
           log: (message) => defaultRuntime.log(message),
         });
       }
@@ -2615,6 +2622,7 @@ export async function runReplyAgent(params: {
                 chainStepRemaining: maxChainLength - nextChainCount,
                 delayMs: clampedDelay,
                 reason: continuationWorkReason,
+                traceparent: effectiveContinuationSignal.traceparent,
                 log: (message) => defaultRuntime.log(message),
               });
 

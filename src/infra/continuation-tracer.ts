@@ -380,6 +380,7 @@ export function emitContinuationWorkSpan(args: {
   chainStepRemaining: number;
   delayMs: number;
   reason?: string | undefined;
+  traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
   try {
@@ -394,7 +395,10 @@ export function emitContinuationWorkSpan(args: {
       ...(args.chainId !== undefined && { "chain.id": args.chainId }),
       ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
     };
-    const span = activeTracer.startSpan("continuation.work", { attributes: attrs });
+    const span = activeTracer.startSpan("continuation.work", {
+      attributes: attrs,
+      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
+    });
     span.setStatus("OK");
     span.end();
   } catch (err) {
@@ -804,6 +808,7 @@ export function emitContinuationFanoutSpan(args: {
 export function emitContinuationCompactionReleasedSpan(args: {
   releasedCount: number;
   compactionId?: number;
+  traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
   try {
@@ -833,6 +838,7 @@ export function emitContinuationCompactionReleasedSpan(args: {
 
     const span = activeTracer.startSpan("continuation.compaction.released", {
       attributes: attrs,
+      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
     span.end();

@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  emitContinuationCompactionReleasedSpan,
+  resetContinuationTracer,
+  setContinuationTracer,
+  type Span,
+  type SpanAttributes,
+  type SpanStatus,
+  type StartSpanOptions,
+  type Tracer,
+} from "../../infra/continuation-tracer.js";
+import {
   createRequestCompactionTool,
   _resetGuardState,
   _resetVolitionalCounts,
@@ -9,6 +19,41 @@ import {
   incrementVolitionalCompactionCount,
   type RequestCompactionToolOpts,
 } from "./request-compaction-tool.js";
+
+const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+type RecordedSpan = {
+  name: string;
+  options?: StartSpanOptions;
+  statusCalls: Array<{ status: SpanStatus; message?: string }>;
+  ended: boolean;
+};
+
+function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+  const spans: RecordedSpan[] = [];
+  const tracer: Tracer = {
+    startSpan(name: string, options?: StartSpanOptions): Span {
+      const span: RecordedSpan = {
+        name,
+        options,
+        statusCalls: [],
+        ended: false,
+      };
+      spans.push(span);
+      return {
+        setAttributes(_attrs: SpanAttributes): void {},
+        setStatus(status: SpanStatus, message?: string): void {
+          span.statusCalls.push({ status, message });
+        },
+        recordException(): void {},
+        end(): void {
+          span.ended = true;
+        },
+      };
+    },
+  };
+  return { tracer, spans };
+}
 
 describe("request_compaction tool", () => {
   const SESSION_KEY = "test-session";
@@ -69,6 +114,7 @@ describe("request_compaction tool", () => {
     await flushBackgroundCompaction();
     _resetGuardState();
     _resetVolitionalCounts();
+    resetContinuationTracer();
     vi.restoreAllMocks();
   });
 
@@ -291,6 +337,57 @@ describe("request_compaction tool", () => {
       status: "compaction_requested",
       reason: "thermal evacuation complete",
     });
+  });
+
+  it("threads a valid optional traceparent carrier into the compaction span", async () => {
+    const { tracer, spans } = createRecordingTracer();
+    setContinuationTracer(tracer);
+    mockTriggerCompaction.mockImplementation(async (request) => {
+      emitContinuationCompactionReleasedSpan({
+        releasedCount: 0,
+        compactionId: 0,
+        traceparent: request.traceparent,
+      });
+      return { ok: true, compacted: true };
+    });
+    const tool = makeTool();
+
+    const result = await executeTool(tool, {
+      reason: "thermal evacuation complete",
+      traceparent: VALID_TRACEPARENT,
+    });
+    await flushBackgroundCompaction();
+
+    expect(mockTriggerCompaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "thermal evacuation complete",
+        traceparent: VALID_TRACEPARENT,
+      }),
+    );
+    expect(result).toMatchObject({
+      status: "compaction_requested",
+      trigger: "volitional",
+      traceparent: VALID_TRACEPARENT,
+    });
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({
+      name: "continuation.compaction.released",
+      options: { traceparent: VALID_TRACEPARENT },
+      statusCalls: [{ status: "OK", message: undefined }],
+      ended: true,
+    });
+  });
+
+  it("rejects malformed traceparent carriers", async () => {
+    const tool = makeTool();
+
+    await expect(
+      tool.execute("call-bad-traceparent", {
+        reason: "thermal evacuation complete",
+        traceparent: "not-a-traceparent",
+      }),
+    ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
+    expect(mockTriggerCompaction).not.toHaveBeenCalled();
   });
 
   it("truncates long reasons to 1024 characters", async () => {

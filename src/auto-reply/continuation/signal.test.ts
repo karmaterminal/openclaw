@@ -44,6 +44,19 @@ describe("extractContinuationSignal", () => {
     expect(result.workReason).toBe("more to do");
   });
 
+  it("preserves tool-call traceparent on continue_work signals", () => {
+    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const result = extractContinuationSignal({
+      payloads: [{ text: "Normal reply." }],
+      continueWorkRequest: { reason: "more to do", delaySeconds: 15, traceparent },
+      enabled: true,
+    });
+
+    expect(result.signal).toEqual({ kind: "work", delayMs: 15_000, traceparent });
+    expect(result.fromBracket).toBe(false);
+    expect(result.workReason).toBe("more to do");
+  });
+
   it("bracket signal takes precedence over tool-call request", () => {
     const payloads = [{ text: "reply\nCONTINUE_WORK:5" }];
     const result = extractContinuationSignal({

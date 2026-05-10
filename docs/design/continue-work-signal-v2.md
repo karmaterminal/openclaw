@@ -2,7 +2,7 @@
 
 **Status:** Implemented
 **Authors:** OpenClaw maintainers
-**Date:** March–April 2026
+**Date:** March–May 2026
 
 This RFC documents a continuation system for persistent OpenClaw sessions. It introduces self-elected turn continuation, delegated follow-up work, same-host targeted delegate returns, context-pressure awareness, and agent-initiated compaction. The implementation is bounded, observable, interruptible, and opt-in.
 
