@@ -7,3 +7,4 @@
 - 2026-05-10T16:52Z: Refreshed OpenClaw dependencies with `pnpm install --frozen-lockfile` after the focused trace propagation test reported missing `@openclaw/fs-safe/config`.
 - 2026-05-10T16:53Z: Generated final carrier-only Jaeger exports for A1, A0.2, B3, post-compaction-shard, and negative-control. Positive carrier rows prove the supplied trace-id reaches dispatch/work/compaction/drain spans. A1/A0.2 fire spans remain off-trace because `emitContinuationDelegateFireSpan` and `emitContinuationWorkFireSpan` do not accept `traceparent`.
 - 2026-05-10T16:54Z: Wired bootstrap SWIM harness templates to accept optional `traceparent`, inject it into structured tool args with `jq`, and set `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` for local fire steps. Added B3 and post-compaction-shard harness configs.
+- 2026-05-10T16:56Z: Opened OpenClaw PR https://github.com/karmaterminal/openclaw/pull/628 targeting `frond-scribe-copilot/20260510/otel-traceparent-surface`.
