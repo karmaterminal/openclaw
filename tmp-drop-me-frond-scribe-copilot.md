@@ -54,3 +54,12 @@ Lane dispatched at 2026-05-10 by frond-scribe seat per figs's directive 15031265
 - `pnpm test --run extensions/github-copilot/` passed: 9 files, 80 tests.
 - `pnpm tsgo:core` passed.
 - `pnpm lint` passed: oxlint core/extensions/scripts found 0 warnings and 0 errors.
+
+### 2026-05-10T20:31Z declare-done checkpoint
+
+- Draft PR opened: https://github.com/karmaterminal/openclaw/pull/630 targeting `frond-scribe-claude/20260509/narrow-surgery-tight`.
+- Cross-repo `openclaw-ci` dispatch was sent once for implementation head `e985336bcd1ddba06532d75cead1d97edabb8cb6`; bootstrap run: https://github.com/karmaterminal/openclaw-bootstrap/actions/runs/25638891220.
+- PR body was updated with copied terminal proof after the real-behavior-proof check requested inline after-fix evidence.
+- ClawSweeper review requested with `@clawsweeper review`.
+- Project metadata check returned no project items for #629, so no `prince_review` project status could be applied.
+- This declare-done journal checkpoint will be committed and pushed, then `openclaw-ci` will be re-dispatched for the final branch SHA.
