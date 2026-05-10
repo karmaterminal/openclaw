@@ -56,7 +56,7 @@ Heartbeat after:
 
 Read in this order:
 
-1. **`report.md`** at this branch tip (the whole file). It is the root-cause analysis. Especially absorb:
+1. **`REPORT-573-from-PR612.md`** at this worktree root (synced from PR #612 branch) (the whole file). It is the root-cause analysis. Especially absorb:
    - "Root cause" section
    - "Fix candidates" section #1 (RECOMMENDED) — your implementation target
    - "Substrate verification" table — confirms versions
