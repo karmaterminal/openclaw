@@ -64,6 +64,7 @@ export type CompactEmbeddedPiSessionParams = {
   force?: boolean;
   trigger?: "budget" | "overflow" | "manual" | "volitional";
   diagId?: string;
+  traceparent?: string;
   attempt?: number;
   maxAttempts?: number;
   lane?: string;

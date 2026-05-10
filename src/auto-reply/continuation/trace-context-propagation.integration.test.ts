@@ -99,7 +99,9 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
 import { createContinueDelegateTool } from "../../agents/tools/continue-delegate-tool.js";
 import {
   emitContinuationDelegateSpan,
+  emitContinuationCompactionReleasedSpan,
   emitContinuationQueueDrainSpan,
+  emitContinuationWorkSpan,
   getContinuationTracer,
   resetContinuationTracer,
   setContinuationTracer,
@@ -207,10 +209,22 @@ describe("continuation trace-context propagation integration", () => {
     resetContinuationTracer();
   });
 
-  it("carries one optional traceparent through delegate, targeted, fanout, and restart replay seams", async () => {
+  it("carries one optional traceparent through work, delegate, compaction, targeted, fanout, and restart replay seams", async () => {
     const { spans } = installRecordingTracer();
     const sessionKey = "agent:main:root";
     let carriedTraceparent = rootTraceparent;
+
+    emitContinuationWorkSpan({
+      chainId: "chain-integration",
+      chainStepRemaining: 10,
+      delayMs: 0,
+      reason: "continue traced work",
+      traceparent: carriedTraceparent,
+    });
+    const workSpan = spans.at(-1)!;
+    expect(workSpan.name).toBe("continuation.work");
+    expect(workSpan.inputTraceparent).toBe(carriedTraceparent);
+    expect(workSpan.traceId).toBe(rootTraceId);
 
     for (let hop = 1; hop <= 3; hop += 1) {
       const tool = createContinueDelegateTool({ agentSessionKey: sessionKey });
@@ -248,6 +262,15 @@ describe("continuation trace-context propagation integration", () => {
       // traceparentFromSpan(dispatchSpan) without changing the queue contract.
       carriedTraceparent = delegate?.traceparent ?? traceparentFromSpan(dispatchSpan);
     }
+    emitContinuationCompactionReleasedSpan({
+      releasedCount: 1,
+      compactionId: 1,
+      traceparent: carriedTraceparent,
+    });
+    const compactionReleaseSpan = spans.at(-1)!;
+    expect(compactionReleaseSpan.name).toBe("continuation.compaction.released");
+    expect(compactionReleaseSpan.inputTraceparent).toBe(carriedTraceparent);
+    expect(compactionReleaseSpan.traceId).toBe(rootTraceId);
 
     const enqueuedTargeted: QueuedSessionDeliveryPayload[] = [];
     const targetedSystemEvents: Array<{ sessionKey: string; traceparent?: string }> = [];
