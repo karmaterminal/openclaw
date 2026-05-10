@@ -1,5 +1,9 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
+import {
+  DIAGNOSTIC_TRACEPARENT_PATTERN,
+  normalizeDiagnosticTraceparent,
+} from "../../infra/diagnostic-trace-context.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -63,6 +67,14 @@ const RequestCompactionToolSchema = Type.Object({
       "Example: 'context pressure at 92%, working state evacuated to memory files and 2 post-compaction delegates staged.'",
     maxLength: 1024,
   }),
+  traceparent: Type.Optional(
+    Type.String({
+      description:
+        "Optional W3C traceparent carrier. When supplied by an instrumented upstream caller, " +
+        "the delegate and return path can stitch continuation spans into the same trace tree.",
+      pattern: DIAGNOSTIC_TRACEPARENT_PATTERN,
+    }),
+  ),
 });
 
 // ---------------------------------------------------------------------------
@@ -171,6 +183,13 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       }
 
       const reason = readStringParam(params, "reason", { required: true }).slice(0, 1024);
+      const traceparentRaw = readStringParam(params, "traceparent");
+      const traceparent =
+        traceparentRaw !== undefined ? normalizeDiagnosticTraceparent(traceparentRaw) : undefined;
+      if (traceparentRaw !== undefined && !traceparent) {
+        throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
+      }
+      const traceContextFields = traceparent ? { traceparent } : {};
 
       // ----- Guard 0: Dedup — compaction already pending -----
       if (pendingCompactionSessions.has(sessionKey)) {
@@ -243,6 +262,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         reason,
         contextUsage,
         requestedAtMs: now,
+        ...traceContextFields,
       };
       const notifyFailure = (code: string, reason: string) =>
         notifyCompactionFailure({
@@ -304,6 +324,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         trigger: "volitional",
         contextUsage: Math.round(contextUsage * 100),
         reason,
+        ...traceContextFields,
         note:
           "Compaction has been enqueued and will run after your turn completes. " +
           "Post-compaction context (AGENTS.md, SOUL.md) will be injected on the next turn. " +

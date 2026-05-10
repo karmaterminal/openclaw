@@ -100,9 +100,11 @@ async function runEmbeddedPiAgentDefault(
 }
 
 /** Type guard for wrapped continuation run results. */
-function isContinuationWrappedRunResult(
-  result: unknown,
-): result is { result: EmbeddedPiAgentRunResult; continueWorkRequest?: ContinueWorkRequest } {
+function isContinuationWrappedRunResult(result: unknown): result is {
+  result: EmbeddedPiAgentRunResult;
+  continueWorkRequest?: ContinueWorkRequest;
+  compactionTraceparent?: string;
+} {
   return (
     typeof result === "object" &&
     result !== null &&
@@ -146,6 +148,7 @@ export type AgentRunLoopResult =
       fallbackAttempts: RuntimeFallbackAttempt[];
       didLogHeartbeatStrip: boolean;
       autoCompactionCount: number;
+      compactionTraceparent?: string;
       /** Payload keys sent directly (not via pipeline) during tool flush. */
       continueWorkRequest?: import("../../agents/tools/continue-work-tool.js").ContinueWorkRequest;
       directlySentBlockKeys?: Set<string>;
@@ -1214,6 +1217,7 @@ export async function runAgentTurnWithFallback(params: {
   let fallbackModel = params.followupRun.run.model;
   let fallbackAttempts: RuntimeFallbackAttempt[] = [];
   let continueWorkRequest: ContinueWorkRequest | undefined;
+  let compactionTraceparent: string | undefined;
   let didResetAfterCompactionFailure = false;
   let didRetryTransientHttpError = false;
   let liveModelSwitchRetries = 0;
@@ -1436,7 +1440,11 @@ export async function runAgentTurnWithFallback(params: {
       const runLane = CommandLane.Main;
       const fallbackResult = await runWithModelFallback<
         | EmbeddedPiAgentRunResult
-        | { result: EmbeddedPiAgentRunResult; continueWorkRequest?: ContinueWorkRequest }
+        | {
+            result: EmbeddedPiAgentRunResult;
+            continueWorkRequest?: ContinueWorkRequest;
+            compactionTraceparent?: string;
+          }
       >({
         ...resolveModelFallbackOptions(effectiveRun, runtimeConfig),
         runId,
@@ -1712,6 +1720,7 @@ export async function runAgentTurnWithFallback(params: {
           });
           return (async () => {
             let attemptCompactionCount = 0;
+            let attemptCompactionTraceparent: string | undefined;
             const lifecycleBackstop = createEmbeddedLifecycleTerminalBackstop({
               runId,
               sessionKey: params.sessionKey,
@@ -1791,6 +1800,7 @@ export async function runAgentTurnWithFallback(params: {
                           return contextWindow > 0 ? totalTokens / contextWindow : 0;
                         },
                         triggerCompaction: async (request) => {
+                          attemptCompactionTraceparent = request.traceparent;
                           try {
                             const { compactEmbeddedPiSession } =
                               await import("../../agents/pi-embedded-runner/compact.queued.js");
@@ -1822,6 +1832,7 @@ export async function runAgentTurnWithFallback(params: {
                               authProfileId: compactionAuthProfileId,
                               trigger: request.trigger,
                               diagId: request.diagId,
+                              traceparent: request.traceparent,
                             });
                             // Honor the real result instead of unconditionally claiming
                             // success; otherwise compaction telemetry lies and the
@@ -2104,6 +2115,7 @@ export async function runAgentTurnWithFallback(params: {
               return {
                 result,
                 continueWorkRequest: attemptContinueWorkRequest,
+                compactionTraceparent: attemptCompactionTraceparent,
               };
             } catch (err) {
               if (rollbackFallbackCandidateSelection) {
@@ -2126,13 +2138,19 @@ export async function runAgentTurnWithFallback(params: {
       });
       const fallbackRunResult = fallbackResult.result as
         | EmbeddedPiAgentRunResult
-        | { result: EmbeddedPiAgentRunResult; continueWorkRequest?: ContinueWorkRequest };
+        | {
+            result: EmbeddedPiAgentRunResult;
+            continueWorkRequest?: ContinueWorkRequest;
+            compactionTraceparent?: string;
+          };
       if (isContinuationWrappedRunResult(fallbackRunResult)) {
         runResult = fallbackRunResult.result;
         continueWorkRequest = fallbackRunResult.continueWorkRequest;
+        compactionTraceparent = fallbackRunResult.compactionTraceparent;
       } else {
         runResult = fallbackRunResult;
         continueWorkRequest = undefined;
+        compactionTraceparent = undefined;
       }
       fallbackProvider = fallbackResult.provider;
       fallbackModel = fallbackResult.model;
@@ -2585,6 +2603,7 @@ export async function runAgentTurnWithFallback(params: {
     fallbackAttempts,
     didLogHeartbeatStrip,
     autoCompactionCount,
+    compactionTraceparent,
     directlySentBlockKeys: directlySentBlockKeys.size > 0 ? directlySentBlockKeys : undefined,
     continueWorkRequest,
   };

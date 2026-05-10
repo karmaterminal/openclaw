@@ -321,6 +321,22 @@ describe("continuation-tracer :: emitContinuationWorkSpan helper", () => {
     expect(span.ended).toBe(true);
   });
 
+  it("parents continuation.work spans to a supplied traceparent", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    setContinuationTracer(tracer);
+    emitContinuationWorkSpan({
+      chainId: "019dcf57-b536-77cc-834b-b803d9262032",
+      chainStepRemaining: 7,
+      delayMs: 30000,
+      reason: "more work to do",
+      traceparent,
+    });
+
+    expect(spans).toHaveLength(1);
+    expect(spans[0].options?.traceparent).toBe(traceparent);
+  });
+
   it("omits chain.id and reason.preview when not provided", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
@@ -1351,6 +1367,16 @@ describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper",
     });
     expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
     expect(span.ended).toBe(true);
+  });
+
+  it("parents continuation.compaction.released spans to a supplied traceparent", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    setContinuationTracer(tracer);
+    emitContinuationCompactionReleasedSpan({ releasedCount: 3, compactionId: 1, traceparent });
+
+    expect(spans).toHaveLength(1);
+    expect(spans[0].options?.traceparent).toBe(traceparent);
   });
 
   it("emits span with compaction.released: 0 on zero-release (compaction event still recorded)", () => {

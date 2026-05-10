@@ -378,6 +378,7 @@ export function createFollowupRunner(params: {
                               authProfileId: compactionAuthProfileId,
                               trigger: request.trigger,
                               diagId: request.diagId,
+                              traceparent: request.traceparent,
                             });
                             // Honor the real result instead of unconditionally
                             // claiming success; otherwise compaction telemetry lies
