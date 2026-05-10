@@ -1,0 +1,544 @@
+{
+  "schema": "openclaw.continuation.otel-evidence.v1",
+  "generatedAt": "2026-05-10T16:53:05.277Z",
+  "workorder": "karmaterminal/openclaw-bootstrap#972",
+  "basePr": "karmaterminal/openclaw#627",
+  "collector": {
+    "otlpEndpoint": "http://127.0.0.1:4318",
+    "jaegerEndpoint": "http://127.0.0.1:16686",
+    "serviceName": "openclaw-continuation-otel-evidence-mp00hi7x"
+  },
+  "row": {
+    "id": "A1",
+    "swimId": "swim-44",
+    "scenario": "fire-then-restart-then-verify: delayed delegate, timer fire, post-restart queue drain",
+    "positive": true
+  },
+  "suppliedCarrier": {
+    "traceparent": "00-6471b820245ff64585d84b8b1bfc9974-16eb8ae362e11ed1-01",
+    "traceId": "6471b820245ff64585d84b8b1bfc9974",
+    "parentSpanId": "16eb8ae362e11ed1"
+  },
+  "toolInputs": [
+    {
+      "tool": "continue_delegate",
+      "args": {
+        "mode": "silent",
+        "delaySeconds": 3600,
+        "task": "A1 restart-continuity marker 20260510T165305Z",
+        "traceparent": "00-6471b820245ff64585d84b8b1bfc9974-16eb8ae362e11ed1-01"
+      }
+    }
+  ],
+  "notes": [
+    "continuation.delegate.dispatch and continuation.queue.drain consume the supplied traceparent.",
+    "continuation.delegate.fire currently has no traceparent parameter; report records it as an orphaned fire-stage anomaly."
+  ],
+  "verification": {
+    "suppliedTraceparent": "00-6471b820245ff64585d84b8b1bfc9974-16eb8ae362e11ed1-01",
+    "suppliedTraceId": "6471b820245ff64585d84b8b1bfc9974",
+    "chainId": "swim-44-A1-20260510T165305Z",
+    "continuationSpanCount": 3,
+    "continuationSpanNames": [
+      "continuation.delegate.dispatch",
+      "continuation.queue.drain",
+      "continuation.delegate.fire"
+    ],
+    "uniqueContinuationTraceIds": [
+      "60a1a0e2a425404ec871fc192aaf408d",
+      "6471b820245ff64585d84b8b1bfc9974"
+    ],
+    "allContinuationSpansOnSuppliedTrace": false,
+    "continuationSpansOnSuppliedTrace": [
+      "continuation.delegate.dispatch",
+      "continuation.queue.drain"
+    ],
+    "continuationSpansOffSuppliedTrace": [
+      {
+        "operationName": "continuation.delegate.fire",
+        "traceID": "60a1a0e2a425404ec871fc192aaf408d",
+        "spanID": "f2652e29e3f6b955"
+      }
+    ],
+    "rootLinkedSpanCount": 2,
+    "rootLinkedSpanNames": [
+      "continuation.delegate.dispatch",
+      "continuation.queue.drain"
+    ],
+    "unlinkedContinuationSpans": [
+      {
+        "operationName": "continuation.delegate.fire",
+        "traceID": "60a1a0e2a425404ec871fc192aaf408d",
+        "spanID": "f2652e29e3f6b955"
+      }
+    ],
+    "stageLatencyMs": [
+      {
+        "from": "continuation.delegate.dispatch",
+        "to": "continuation.queue.drain",
+        "latencyMs": 1
+      },
+      {
+        "from": "continuation.queue.drain",
+        "to": "continuation.delegate.fire",
+        "latencyMs": 0
+      }
+    ]
+  },
+  "jaeger": {
+    "data": [
+      {
+        "traceID": "6471b820245ff64585d84b8b1bfc9974",
+        "spans": [
+          {
+            "traceID": "6471b820245ff64585d84b8b1bfc9974",
+            "spanID": "5d802587bb3ce1fa",
+            "operationName": "continuation.delegate.dispatch",
+            "references": [
+              {
+                "refType": "CHILD_OF",
+                "traceID": "6471b820245ff64585d84b8b1bfc9974",
+                "spanID": "16eb8ae362e11ed1"
+              }
+            ],
+            "startTime": 1778431985285000,
+            "duration": 88,
+            "tags": [
+              {
+                "key": "chain.id",
+                "type": "string",
+                "value": "swim-44-A1-20260510T165305Z"
+              },
+              {
+                "key": "chain.step.remaining",
+                "type": "int64",
+                "value": 9
+              },
+              {
+                "key": "delay.ms",
+                "type": "int64",
+                "value": 3600000
+              },
+              {
+                "key": "delegate.delivery",
+                "type": "string",
+                "value": "timer"
+              },
+              {
+                "key": "delegate.mode",
+                "type": "string",
+                "value": "silent"
+              },
+              {
+                "key": "otel.scope.name",
+                "type": "string",
+                "value": "openclaw.continuation"
+              },
+              {
+                "key": "otel.status_code",
+                "type": "string",
+                "value": "OK"
+              },
+              {
+                "key": "reason.preview",
+                "type": "string",
+                "value": "A1 restart-continuity marker"
+              },
+              {
+                "key": "span.kind",
+                "type": "string",
+                "value": "internal"
+              }
+            ],
+            "logs": [],
+            "processID": "p1",
+            "warnings": null
+          },
+          {
+            "traceID": "6471b820245ff64585d84b8b1bfc9974",
+            "spanID": "26a0ed8862301edc",
+            "operationName": "continuation.queue.drain",
+            "references": [
+              {
+                "refType": "CHILD_OF",
+                "traceID": "6471b820245ff64585d84b8b1bfc9974",
+                "spanID": "16eb8ae362e11ed1"
+              }
+            ],
+            "startTime": 1778431985286000,
+            "duration": 7,
+            "tags": [
+              {
+                "key": "otel.scope.name",
+                "type": "string",
+                "value": "openclaw.continuation"
+              },
+              {
+                "key": "otel.status_code",
+                "type": "string",
+                "value": "OK"
+              },
+              {
+                "key": "queue.drained_continuation_count",
+                "type": "int64",
+                "value": 1
+              },
+              {
+                "key": "queue.drained_count",
+                "type": "int64",
+                "value": 1
+              },
+              {
+                "key": "span.kind",
+                "type": "string",
+                "value": "internal"
+              }
+            ],
+            "logs": [],
+            "processID": "p1",
+            "warnings": [
+              "clock skew adjustment disabled; not applying calculated delta of -611.455µs"
+            ]
+          },
+          {
+            "traceID": "6471b820245ff64585d84b8b1bfc9974",
+            "spanID": "16eb8ae362e11ed1",
+            "operationName": "swim44.A1.supplied-root",
+            "references": [],
+            "startTime": 1778431985285000,
+            "duration": 784,
+            "tags": [
+              {
+                "key": "chain.id",
+                "type": "string",
+                "value": "swim-44-A1-20260510T165305Z"
+              },
+              {
+                "key": "evidence.positive",
+                "type": "bool",
+                "value": true
+              },
+              {
+                "key": "otel.scope.name",
+                "type": "string",
+                "value": "openclaw.continuation.evidence"
+              },
+              {
+                "key": "span.kind",
+                "type": "string",
+                "value": "internal"
+              },
+              {
+                "key": "swim.id",
+                "type": "string",
+                "value": "swim-44"
+              },
+              {
+                "key": "swim.row",
+                "type": "string",
+                "value": "A1"
+              }
+            ],
+            "logs": [],
+            "processID": "p1",
+            "warnings": null
+          }
+        ],
+        "processes": {
+          "p1": {
+            "serviceName": "openclaw-continuation-otel-evidence-mp00hi7x",
+            "tags": [
+              {
+                "key": "evidence.workorder",
+                "type": "string",
+                "value": "972"
+              },
+              {
+                "key": "host.arch",
+                "type": "string",
+                "value": "arm64"
+              },
+              {
+                "key": "host.id",
+                "type": "string",
+                "value": "7af66f30966a49b6886e00e2fce4b42f"
+              },
+              {
+                "key": "host.name",
+                "type": "string",
+                "value": "ronan"
+              },
+              {
+                "key": "process.command",
+                "type": "string",
+                "value": "/home/figs/.copilot/session-state/3dbc66c9-cd99-40a6-8b4f-54bfe33cd7a4/files/continuation-otel-evidence.ts"
+              },
+              {
+                "key": "process.command_args",
+                "type": "string",
+                "value": "[\"/home/figs/.nvm/versions/node/v25.9.0/bin/node\",\"--require\",\"/home/figs/flesh_beast_tmp/openclaw/node_modules/tsx/dist/preflight.cjs\",\"--import\",\"file:///home/figs/flesh_beast_tmp/openclaw/node_modules/tsx/dist/loader.mjs\",\"/home/figs/.copilot/session-state/3dbc66c9-cd99-40a6-8b4f-54bfe33cd7a4/files/continuation-otel-evidence.ts\"]"
+              },
+              {
+                "key": "process.executable.name",
+                "type": "string",
+                "value": "/home/figs/.nvm/versions/node/v25.9.0/bin/node"
+              },
+              {
+                "key": "process.executable.path",
+                "type": "string",
+                "value": "/home/figs/.nvm/versions/node/v25.9.0/bin/node"
+              },
+              {
+                "key": "process.owner",
+                "type": "string",
+                "value": "figs"
+              },
+              {
+                "key": "process.pid",
+                "type": "int64",
+                "value": 3647142
+              },
+              {
+                "key": "process.runtime.description",
+                "type": "string",
+                "value": "Node.js"
+              },
+              {
+                "key": "process.runtime.name",
+                "type": "string",
+                "value": "nodejs"
+              },
+              {
+                "key": "process.runtime.version",
+                "type": "string",
+                "value": "25.9.0"
+              },
+              {
+                "key": "service.namespace",
+                "type": "string",
+                "value": "openclaw"
+              }
+            ]
+          }
+        },
+        "warnings": null
+      },
+      {
+        "traceID": "60a1a0e2a425404ec871fc192aaf408d",
+        "spans": [
+          {
+            "traceID": "60a1a0e2a425404ec871fc192aaf408d",
+            "spanID": "f2652e29e3f6b955",
+            "operationName": "continuation.delegate.fire",
+            "references": [],
+            "startTime": 1778431985286000,
+            "duration": 14,
+            "tags": [
+              {
+                "key": "chain.id",
+                "type": "string",
+                "value": "swim-44-A1-20260510T165305Z"
+              },
+              {
+                "key": "chain.step.remaining",
+                "type": "int64",
+                "value": 9
+              },
+              {
+                "key": "delay.ms",
+                "type": "int64",
+                "value": 3600000
+              },
+              {
+                "key": "delegate.delivery",
+                "type": "string",
+                "value": "timer"
+              },
+              {
+                "key": "delegate.mode",
+                "type": "string",
+                "value": "silent"
+              },
+              {
+                "key": "fire.deferred_ms",
+                "type": "int64",
+                "value": 3600019
+              },
+              {
+                "key": "otel.scope.name",
+                "type": "string",
+                "value": "openclaw.continuation"
+              },
+              {
+                "key": "otel.status_code",
+                "type": "string",
+                "value": "OK"
+              },
+              {
+                "key": "reason.preview",
+                "type": "string",
+                "value": "A1 post-restart timer callback"
+              },
+              {
+                "key": "span.kind",
+                "type": "string",
+                "value": "internal"
+              }
+            ],
+            "logs": [],
+            "processID": "p1",
+            "warnings": null
+          }
+        ],
+        "processes": {
+          "p1": {
+            "serviceName": "openclaw-continuation-otel-evidence-mp00hi7x",
+            "tags": [
+              {
+                "key": "evidence.workorder",
+                "type": "string",
+                "value": "972"
+              },
+              {
+                "key": "host.arch",
+                "type": "string",
+                "value": "arm64"
+              },
+              {
+                "key": "host.id",
+                "type": "string",
+                "value": "7af66f30966a49b6886e00e2fce4b42f"
+              },
+              {
+                "key": "host.name",
+                "type": "string",
+                "value": "ronan"
+              },
+              {
+                "key": "process.command",
+                "type": "string",
+                "value": "/home/figs/.copilot/session-state/3dbc66c9-cd99-40a6-8b4f-54bfe33cd7a4/files/continuation-otel-evidence.ts"
+              },
+              {
+                "key": "process.command_args",
+                "type": "string",
+                "value": "[\"/home/figs/.nvm/versions/node/v25.9.0/bin/node\",\"--require\",\"/home/figs/flesh_beast_tmp/openclaw/node_modules/tsx/dist/preflight.cjs\",\"--import\",\"file:///home/figs/flesh_beast_tmp/openclaw/node_modules/tsx/dist/loader.mjs\",\"/home/figs/.copilot/session-state/3dbc66c9-cd99-40a6-8b4f-54bfe33cd7a4/files/continuation-otel-evidence.ts\"]"
+              },
+              {
+                "key": "process.executable.name",
+                "type": "string",
+                "value": "/home/figs/.nvm/versions/node/v25.9.0/bin/node"
+              },
+              {
+                "key": "process.executable.path",
+                "type": "string",
+                "value": "/home/figs/.nvm/versions/node/v25.9.0/bin/node"
+              },
+              {
+                "key": "process.owner",
+                "type": "string",
+                "value": "figs"
+              },
+              {
+                "key": "process.pid",
+                "type": "int64",
+                "value": 3647142
+              },
+              {
+                "key": "process.runtime.description",
+                "type": "string",
+                "value": "Node.js"
+              },
+              {
+                "key": "process.runtime.name",
+                "type": "string",
+                "value": "nodejs"
+              },
+              {
+                "key": "process.runtime.version",
+                "type": "string",
+                "value": "25.9.0"
+              },
+              {
+                "key": "service.namespace",
+                "type": "string",
+                "value": "openclaw"
+              }
+            ]
+          }
+        },
+        "warnings": null
+      }
+    ]
+  },
+  "rawSpansJsonl": [
+    {
+      "traceID": "6471b820245ff64585d84b8b1bfc9974",
+      "spanID": "5d802587bb3ce1fa",
+      "operationName": "continuation.delegate.dispatch",
+      "parentSpanID": "16eb8ae362e11ed1",
+      "startTime": 1778431985285000,
+      "duration": 88,
+      "attributes": {
+        "chain.id": "swim-44-A1-20260510T165305Z",
+        "chain.step.remaining": 9,
+        "delay.ms": 3600000,
+        "delegate.delivery": "timer",
+        "delegate.mode": "silent",
+        "otel.scope.name": "openclaw.continuation",
+        "otel.status_code": "OK",
+        "reason.preview": "A1 restart-continuity marker",
+        "span.kind": "internal"
+      }
+    },
+    {
+      "traceID": "6471b820245ff64585d84b8b1bfc9974",
+      "spanID": "26a0ed8862301edc",
+      "operationName": "continuation.queue.drain",
+      "parentSpanID": "16eb8ae362e11ed1",
+      "startTime": 1778431985286000,
+      "duration": 7,
+      "attributes": {
+        "otel.scope.name": "openclaw.continuation",
+        "otel.status_code": "OK",
+        "queue.drained_continuation_count": 1,
+        "queue.drained_count": 1,
+        "span.kind": "internal"
+      }
+    },
+    {
+      "traceID": "6471b820245ff64585d84b8b1bfc9974",
+      "spanID": "16eb8ae362e11ed1",
+      "operationName": "swim44.A1.supplied-root",
+      "startTime": 1778431985285000,
+      "duration": 784,
+      "attributes": {
+        "chain.id": "swim-44-A1-20260510T165305Z",
+        "evidence.positive": true,
+        "otel.scope.name": "openclaw.continuation.evidence",
+        "span.kind": "internal",
+        "swim.id": "swim-44",
+        "swim.row": "A1"
+      }
+    },
+    {
+      "traceID": "60a1a0e2a425404ec871fc192aaf408d",
+      "spanID": "f2652e29e3f6b955",
+      "operationName": "continuation.delegate.fire",
+      "startTime": 1778431985286000,
+      "duration": 14,
+      "attributes": {
+        "chain.id": "swim-44-A1-20260510T165305Z",
+        "chain.step.remaining": 9,
+        "delay.ms": 3600000,
+        "delegate.delivery": "timer",
+        "delegate.mode": "silent",
+        "fire.deferred_ms": 3600019,
+        "otel.scope.name": "openclaw.continuation",
+        "otel.status_code": "OK",
+        "reason.preview": "A1 post-restart timer callback",
+        "span.kind": "internal"
+      }
+    }
+  ]
+}
