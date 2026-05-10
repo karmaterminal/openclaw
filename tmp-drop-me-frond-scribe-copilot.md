@@ -20,3 +20,24 @@ Lane dispatched at 2026-05-10 by frond-scribe seat per figs's directive 15031265
 
 (Copilot agent will append as it works.)
 
+### 2026-05-10T20:18Z substrate read checkpoint
+
+- Worktree branch: `frond-scribe-copilot/20260510/573-header-fix`, current head at read time `97c3c0d78e366d61e599b9e15e056cbcf81f7290`.
+- Required root `report.md` is missing from this branch tip. I posted a DESIGN-BREAK heartbeat/comment and reconstructed the required report from PR #612 head `4d415bba6ebfc942f0c473d1b538e5137481a4cb:report.md` plus tracking issue #629.
+- Root cause absorbed: exact configured `github-copilot/claude-opus-4.7` model rows can lack `model.headers`; simple summarization paths that bypass the GitHub Copilot stream wrapper then reach pi-ai without `Editor-Version` and fail with Copilot's missing IDE auth header 400.
+- Current compaction safeguard source already merges `{ ...buildCopilotIdeHeaders(), ...requestAuth.headers }` for `github-copilot` in `src/agents/pi-hooks/compaction-safeguard.ts`; this lane will not edit it.
+- `extensions/github-copilot/index.ts` currently registers `resolveDynamicModel: (ctx) => resolveCopilotForwardCompatModel(ctx)` but no `normalizeResolvedModel` hook.
+- `extensions/github-copilot/models.ts` dynamic resolver builds synthetic/forward-compatible models without static headers; exact configured models bypass that resolver.
+- SDK surface already has `ProviderPlugin.normalizeResolvedModel` and `ProviderNormalizeResolvedModelContext`; core calls it for resolved inline/configured, built-in, and dynamic models before runner use.
+- Extension boundary prohibits importing from core `src/agents/**`; the same IDE header builder is publicly exported from `openclaw/plugin-sdk/provider-auth`, which `extensions/github-copilot/index.ts` already uses for auth helpers. I will use that SDK path rather than the core-local `../copilot-dynamic-headers.js` path from compaction-safeguard.
+- `extensions/github-copilot/models.test.ts` already covers default model metadata, forward-compatible dynamic resolution, usage, token, and catalog mapping. The regression belongs next to `resolveCopilotForwardCompatModel` tests as a new `normalizeCopilotResolvedModelHeaders` suite.
+
+### 2026-05-10T20:18Z implementation plan
+
+- Hook surface chosen: existing `normalizeResolvedModel` provider hook. This is the narrowest candidate #1 implementation because it applies after exact configured model resolution and before downstream runner/simple callers use `model.headers`, without expanding SDK or changing core.
+- Files to touch:
+  - `extensions/github-copilot/models.ts`: add `normalizeCopilotResolvedModelHeaders(ctx)` that returns `{ ...model, headers: { ...buildCopilotIdeHeaders(), "Copilot-Integration-Id": COPILOT_INTEGRATION_ID, ...model.headers } }` only for GitHub Copilot provider/model.
+  - `extensions/github-copilot/index.ts`: register `normalizeResolvedModel: (ctx) => normalizeCopilotResolvedModelHeaders(ctx)`.
+  - `extensions/github-copilot/models.test.ts`: add regression tests for exact custom model headers, explicit user header overrides, dynamic path still resolving, and non-Copilot model unaffected.
+  - `tmp-drop-me-frond-scribe-copilot.md`: checkpoint journal per workorder.
+- Test gates before declare-done: `pnpm test --run extensions/github-copilot/`, `pnpm tsgo:core`, and `pnpm lint`; root-cause any failures instead of papering over them.
