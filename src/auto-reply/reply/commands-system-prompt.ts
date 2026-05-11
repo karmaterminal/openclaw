@@ -9,7 +9,10 @@ import { resolveEmbeddedFullAccessState } from "../../agents/pi-embedded-runner/
 import { createOpenClawCodingTools } from "../../agents/pi-tools.js";
 import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
-import { getSkillsSnapshotVersion } from "../../agents/skills/refresh-state.js";
+import {
+  getSkillsSnapshotVersion,
+  shouldRefreshSnapshotForVersion,
+} from "../../agents/skills/refresh-state.js";
 import { buildConfiguredAgentSystemPrompt } from "../../agents/system-prompt-config.js";
 import { buildSystemPromptParams } from "../../agents/system-prompt-params.js";
 import type { WorkspaceBootstrapFile } from "../../agents/workspace.js";
@@ -17,6 +20,12 @@ import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { listRegisteredPluginAgentPromptGuidance } from "../../plugins/command-registry-state.js";
 import type { HandleCommandsParams } from "./commands-types.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
+
+/** Process-level cache: avoids re-materializing skill snapshots every prompt turn when nothing changed. */
+const commandPromptSkillCache = new Map<
+  string,
+  { version: number; snapshot: ReturnType<typeof buildWorkspaceSkillSnapshot> }
+>();
 
 export type CommandsSystemPromptBundle = {
   systemPrompt: string;
@@ -58,7 +67,13 @@ export async function resolveCommandsSystemPromptBundle(
   });
   const skillsSnapshot = (() => {
     try {
-      return buildWorkspaceSkillSnapshot(workspaceDir, {
+      const snapshotVersion = getSkillsSnapshotVersion(workspaceDir);
+      const cacheKey = `${workspaceDir}\0${sessionAgentId ?? ""}`;
+      const cached = commandPromptSkillCache.get(cacheKey);
+      if (cached && !shouldRefreshSnapshotForVersion(cached.version, snapshotVersion)) {
+        return cached.snapshot;
+      }
+      const snapshot = buildWorkspaceSkillSnapshot(workspaceDir, {
         config: params.cfg,
         agentId: sessionAgentId,
         eligibility: {
@@ -71,8 +86,10 @@ export async function resolveCommandsSystemPromptBundle(
             }),
           }),
         },
-        snapshotVersion: getSkillsSnapshotVersion(workspaceDir),
+        snapshotVersion,
       });
+      commandPromptSkillCache.set(cacheKey, { version: snapshotVersion, snapshot });
+      return snapshot;
     } catch {
       return { prompt: "", skills: [], resolvedSkills: [] };
     }
