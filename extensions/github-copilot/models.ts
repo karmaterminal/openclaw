@@ -1,7 +1,9 @@
 import type {
+  ProviderNormalizeResolvedModelContext,
   ProviderResolveDynamicModelContext,
   ProviderRuntimeModel,
 } from "openclaw/plugin-sdk/core";
+import { COPILOT_INTEGRATION_ID, buildCopilotIdeHeaders } from "openclaw/plugin-sdk/provider-auth";
 import type { ModelDefinitionConfig } from "openclaw/plugin-sdk/provider-model-shared";
 import { normalizeModelCompat } from "openclaw/plugin-sdk/provider-model-shared";
 import { normalizeOptionalLowercaseString } from "openclaw/plugin-sdk/text-runtime";
@@ -15,6 +17,24 @@ const CODEX_TEMPLATE_MODEL_IDS = ["gpt-5.3-codex", "gpt-5.2-codex"] as const;
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 8192;
+
+export function normalizeCopilotResolvedModelHeaders(
+  ctx: ProviderNormalizeResolvedModelContext,
+): ProviderRuntimeModel | undefined {
+  const contextProvider = normalizeOptionalLowercaseString(ctx.provider);
+  const modelProvider = normalizeOptionalLowercaseString(ctx.model.provider);
+  if (contextProvider !== PROVIDER_ID || modelProvider !== PROVIDER_ID) {
+    return undefined;
+  }
+  return {
+    ...ctx.model,
+    headers: {
+      ...buildCopilotIdeHeaders(),
+      "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
+      ...ctx.model.headers,
+    },
+  };
+}
 
 function isCopilotCodexModelId(modelId: string): boolean {
   return /(?:^|[-_.])codex(?:$|[-_.])/.test(modelId);

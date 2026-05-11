@@ -26,6 +26,7 @@ import { githubCopilotMemoryEmbeddingProviderAdapter } from "./embeddings.js";
 import {
   PROVIDER_ID,
   fetchCopilotModelCatalog,
+  normalizeCopilotResolvedModelHeaders,
   resolveCopilotForwardCompatModel,
 } from "./models.js";
 import { buildGithubCopilotReplayPolicy } from "./replay-policy.js";
@@ -449,6 +450,7 @@ export default definePluginEntry({
         run: runGithubCopilotCatalog,
       },
       resolveDynamicModel: (ctx) => resolveCopilotForwardCompatModel(ctx),
+      normalizeResolvedModel: (ctx) => normalizeCopilotResolvedModelHeaders(ctx),
       wrapStreamFn: wrapCopilotProviderStream,
       buildReplayPolicy: ({ modelId }) => buildGithubCopilotReplayPolicy(modelId),
       resolveThinkingProfile: ({ modelId }) => ({
