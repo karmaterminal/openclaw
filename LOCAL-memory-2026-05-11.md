@@ -4451,3 +4451,47 @@ I was queueing diagnostic lane for AFTER cherry-pick-prep completes. That's WRON
 **Worth keeping for the 5th prince:** when applying runbook canon, byte-check whether your "discipline" is actually the runbook's discipline OR a self-imposed bottleneck. "Don't pile on" applies to channel-burn; doesn't apply to parallel lane dispatch. Multiple lanes = navigator-posture; sequential lanes-after-completion = self-bottleneck dressed as discipline.
 
 cherry-pick-prep PID 1165845 + elliott-oom-diagnostic PID 1215251. Both lanes healthy. Cohort substrate. Holding for both lanes' completion + figs's bridge-shape decision on PR #642.
+
+## 🚨 09:42 PDT — 🌻 elliott-side byte-walk answers figs's 4 questions (LANE: fold these into hypothesis)
+
+🌻 at msg `1503405184` provided byte-evidence answers to figs's 4 questions:
+
+**Q4: Watchdog vs OOM:** load-bearing cause is V8-OOM, NOT watchdog
+
+- 9× node::OOMErrorHandler + code=dumped/status=6/ABRT today (V8 internal OOM-abort)
+- 111× SIGTERM-received PRE-watchdog-disable (separate cascade)
+- 0× kernel oom_kill events
+- Watchdog disabled at 06:34 PDT (marker at ~/.openclaw/WATCHDOG-DISABLED-LOCAL.md)
+- V8-OOM cascade CONTINUED after watchdog disabled = watchdog wasn't the cause of recent OOMs
+
+**Q3: What's special about elliott config:**
+
+- continuation: contextPressureThreshold=0.4, maxChainLength=200, costCapTokens=50M, maxDelegatesPerTurn=500 (seat-specific override)
+- NODE_OPTIONS=--require=/home/figs/.openclaw/usr2-trap.js (SIGUSR1 trap custom require)
+- 🚨 **NO --max-old-space-size flag → V8 default heap ~4GB on Node 25 → 9 OOMs all hit 4GB ceiling**
+- model: copilot opus-4.7 thinking=medium; fallback opus-4.6 → gpt-5.4 → openai-codex/gpt-5.4
+
+**Q2 (partial — truncated mid-message):**
+
+- gcore <PID> for live core-dump (18GB sparse / 556MB on-disk, no process disruption — confirmed by my morning capture)
+- node --inspect=0.0.0.0:9229 for V8 inspector → heap-snapshot via Chrome DevTools (BLOCKED by SIGUSR1 conflict, issue #639)
+- (more answer pending in followup message — truncation 7th instance)
+
+**Q1 (pending follow-up message):** root-cause hypothesis with byte-evidence
+
+**🚨 CRITICAL FINDING for lane investigation:**
+The "no --max-old-space-size flag" finding is the SHARP answer. The simple fix may be as straightforward as adding `--max-old-space-size=8192` (or higher) to elliott's gateway invocation. This raises the V8 ceiling above the producer-2 retention rate's heap-fill ceiling. Validate by:
+
+- Compare cohort: do cael/silas/ronan also lack the flag? Or is elliott special?
+- If all lack it: producer-2 rate just exceeds 4GB on elliott specifically (different workload)
+- If only elliott lacks it: config-difference identified
+
+This DOESN'T fix producer-2 (the leak still exists) but BUYS TIME between OOM-aborts.
+
+**Cohort cross-fleet evidence-substrate now COMPLETE for figs's 4 questions:**
+
+- 🌻 elliott-side: 4-question byte-evidence answers
+- 🩸 cael-seat: cache-invalidation cascade + FailoverError mechanism
+- 🌊 ronan-side: 3-sec event-loop blip during clean compact + heap-dump from baseline pre-#633
+
+elliott-oom-diagnostic lane (PID 1215251) should fold these findings into §2.6 synthesis. Particularly the --max-old-space-size missing-flag discovery — that's the actionable mitigation candidate.
