@@ -61,6 +61,15 @@
             "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
           },
           {
+            "id": "claude-opus-4.7-1m-internal",
+            "name": "Claude Opus 4.7 (1M Internal)",
+            "api": "anthropic-messages",
+            "input": ["text", "image"],
+            "contextWindow": 1000000,
+            "maxTokens": 128000,
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+          },
+          {
             "id": "claude-sonnet-4",
             "name": "Claude Sonnet 4",
             "api": "anthropic-messages",
