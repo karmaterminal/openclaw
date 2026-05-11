@@ -92,9 +92,8 @@ export function resolveRuntimeContextPromptParts(params: {
   }
 
   const prompt = transcriptPrompt.trim();
-  const runtimeContext =
-    removeLastPromptOccurrence(params.effectivePrompt, transcriptPrompt)?.trim() ||
-    params.effectivePrompt.trim();
+  const extracted = removeLastPromptOccurrence(params.effectivePrompt, transcriptPrompt)?.trim();
+  const runtimeContext = extracted || undefined;
   if (!prompt) {
     return runtimeContext
       ? {
