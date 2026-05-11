@@ -369,9 +369,7 @@ describe("Session Store Cache", () => {
 
     // The cache should detect the size change and reload from disk
     const loaded2 = loadSessionStore(storePath);
-    expect(loaded2).toMatchObject({
-      "session:2": { displayName: "Added" },
-    });
+    expect(loaded2["session:2"]?.displayName).toBe("Added");
   });
 
   it("expires serialized write-through cache on the same TTL as the object cache", async () => {

@@ -21,6 +21,7 @@ import { createTestRegistry } from "../test-utils/channel-plugins.js";
 import {
   buildGatewayReloadPlan,
   diffConfigPaths,
+  type GatewayReloadPlan,
   listPluginInstallTimestampMetadataPaths,
   listPluginInstallWholeRecordPaths,
   resolveGatewayReloadSettings,
@@ -260,9 +261,7 @@ describe("buildGatewayReloadPlan", () => {
     ]);
     expect(plan.restartGateway).toBe(false);
     expect(plan.restartHeartbeat).toBe(true);
-    expect(plan.hotReasons).toEqual(
-      expect.arrayContaining(["models.providers.openai.models", "agents.defaults.model"]),
-    );
+    expect(plan.hotReasons).toEqual(["models.providers.openai.models", "agents.defaults.model"]);
   });
 
   it("requires restart when model pricing bootstrap changes", () => {
@@ -601,8 +600,8 @@ function createReloaderHarness(
 ) {
   const watcher = createWatcherMock();
   vi.spyOn(chokidar, "watch").mockReturnValue(watcher as unknown as never);
-  const onHotReload = vi.fn(async () => {});
-  const onRestart = vi.fn();
+  const onHotReload = vi.fn(async (_plan: GatewayReloadPlan, _nextConfig: OpenClawConfig) => {});
+  const onRestart = vi.fn((_plan: GatewayReloadPlan, _nextConfig: OpenClawConfig) => {});
   let writeListener: ((event: ConfigWriteNotification) => void) | null = null;
   const subscribeToWrites = vi.fn((listener: (event: ConfigWriteNotification) => void) => {
     writeListener = listener;
@@ -641,6 +640,26 @@ function createReloaderHarness(
       writeListener?.(event);
     },
   };
+}
+
+type ReloaderHarness = ReturnType<typeof createReloaderHarness>;
+
+function getOnlyRestartCall(harness: ReloaderHarness): [GatewayReloadPlan, OpenClawConfig] {
+  expect(harness.onRestart).toHaveBeenCalledTimes(1);
+  const call = harness.onRestart.mock.calls[0];
+  if (!call) {
+    throw new Error("expected one restart call");
+  }
+  return call;
+}
+
+function getOnlyHotReloadCall(harness: ReloaderHarness): [GatewayReloadPlan, OpenClawConfig] {
+  expect(harness.onHotReload).toHaveBeenCalledTimes(1);
+  const call = harness.onHotReload.mock.calls[0];
+  if (!call) {
+    throw new Error("expected one hot reload call");
+  }
+  return call;
 }
 
 describe("startGatewayConfigReloader", () => {
@@ -757,7 +776,7 @@ describe("startGatewayConfigReloader", () => {
         hash: "bad-1",
       }),
     );
-    const promoteSnapshot = vi.fn(async () => true);
+    const promoteSnapshot = vi.fn(async (_snapshot: ConfigFileSnapshot, _reason: string) => true);
     const { watcher, onHotReload, onRestart, log, reloader } = createReloaderHarness(readSnapshot, {
       promoteSnapshot,
     });
@@ -807,7 +826,7 @@ describe("startGatewayConfigReloader", () => {
     const readSnapshot = vi
       .fn<() => Promise<ConfigFileSnapshot>>()
       .mockResolvedValueOnce(invalidSnapshot);
-    const promoteSnapshot = vi.fn(async () => true);
+    const promoteSnapshot = vi.fn(async (_snapshot: ConfigFileSnapshot, _reason: string) => true);
     const previousConfig: OpenClawConfig = {
       ...activeConfig,
       plugins: {
@@ -831,11 +850,13 @@ describe("startGatewayConfigReloader", () => {
     expect(onRestart).not.toHaveBeenCalled();
     expect(onHotReload).not.toHaveBeenCalled();
     expect(promoteSnapshot).not.toHaveBeenCalled();
-    expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "config reload skipped (invalid config): plugins.entries.lossless-claw.config.cacheAwareCompaction:",
+    expect(
+      log.warn.mock.calls.some(([message]) =>
+        message.includes(
+          "config reload skipped (invalid config): plugins.entries.lossless-claw.config.cacheAwareCompaction:",
+        ),
       ),
-    );
+    ).toBe(true);
 
     await reloader.stop();
   });
@@ -851,7 +872,7 @@ describe("startGatewayConfigReloader", () => {
     const readSnapshot = vi
       .fn<() => Promise<ConfigFileSnapshot>>()
       .mockResolvedValueOnce(acceptedSnapshot);
-    const promoteSnapshot = vi.fn(async () => true);
+    const promoteSnapshot = vi.fn(async (_snapshot: ConfigFileSnapshot, _reason: string) => true);
     const { watcher, onHotReload, reloader } = createReloaderHarness(readSnapshot, {
       promoteSnapshot,
     });
@@ -876,7 +897,7 @@ describe("startGatewayConfigReloader", () => {
     const readSnapshot = vi
       .fn<() => Promise<ConfigFileSnapshot>>()
       .mockResolvedValueOnce(acceptedSnapshot);
-    const promoteSnapshot = vi.fn(async () => true);
+    const promoteSnapshot = vi.fn(async (_snapshot: ConfigFileSnapshot, _reason: string) => true);
     const { watcher, onHotReload, log, reloader } = createReloaderHarness(readSnapshot, {
       promoteSnapshot,
     });
@@ -941,7 +962,7 @@ describe("startGatewayConfigReloader", () => {
           hash: "external-1",
         }),
       );
-    const promoteSnapshot = vi.fn(async () => true);
+    const promoteSnapshot = vi.fn(async (_snapshot: ConfigFileSnapshot, _reason: string) => true);
     const harness = createReloaderHarness(readSnapshot, { promoteSnapshot });
 
     harness.emitWrite(makeZeroDebounceHookWrite("internal-1"));
@@ -949,10 +970,9 @@ describe("startGatewayConfigReloader", () => {
 
     expect(readSnapshot).toHaveBeenCalledTimes(1);
     expect(harness.onHotReload).toHaveBeenCalledTimes(1);
-    expect(promoteSnapshot).toHaveBeenCalledWith(
-      expect.objectContaining({ hash: "internal-1" }),
-      "in-process-write",
-    );
+    const [promotedSnapshot, promotionReason] = promoteSnapshot.mock.calls[0] ?? [];
+    expect(promotedSnapshot?.hash).toBe("internal-1");
+    expect(promotionReason).toBe("in-process-write");
 
     harness.watcher.emit("change");
     harness.watcher.emit("change");
@@ -975,7 +995,7 @@ describe("startGatewayConfigReloader", () => {
     const readSnapshot = vi
       .fn<() => Promise<ConfigFileSnapshot>>()
       .mockResolvedValueOnce(makeZeroDebounceHookSnapshot("internal-none"));
-    const promoteSnapshot = vi.fn(async () => true);
+    const promoteSnapshot = vi.fn(async (_snapshot: ConfigFileSnapshot, _reason: string) => true);
     const harness = createReloaderHarness(readSnapshot, { promoteSnapshot });
 
     harness.emitWrite({
@@ -989,10 +1009,9 @@ describe("startGatewayConfigReloader", () => {
     expect(harness.log.info).toHaveBeenCalledWith(
       "config reload skipped by writer intent (caller handles follow-up)",
     );
-    expect(promoteSnapshot).toHaveBeenCalledWith(
-      expect.objectContaining({ hash: "internal-none" }),
-      "in-process-write",
-    );
+    const [promotedSnapshot, promotionReason] = promoteSnapshot.mock.calls[0] ?? [];
+    expect(promotedSnapshot?.hash).toBe("internal-none");
+    expect(promotionReason).toBe("in-process-write");
 
     await harness.reloader.stop();
   });
@@ -1010,14 +1029,13 @@ describe("startGatewayConfigReloader", () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(harness.onHotReload).not.toHaveBeenCalled();
-    expect(harness.onRestart).toHaveBeenCalledTimes(1);
-    expect(harness.onRestart).toHaveBeenCalledWith(
-      expect.objectContaining({
-        restartGateway: true,
-        restartReasons: expect.arrayContaining(["plugin runtime contract changed"]),
-      }),
-      expect.any(Object),
-    );
+    const [plan, nextConfig] = getOnlyRestartCall(harness);
+    expect(plan.restartGateway).toBe(true);
+    expect(plan.restartReasons).toEqual(["plugin runtime contract changed"]);
+    expect(nextConfig).toEqual({
+      gateway: { reload: { debounceMs: 0 } },
+      hooks: { enabled: true },
+    });
 
     await harness.reloader.stop();
   });
@@ -1102,9 +1120,9 @@ describe("startGatewayConfigReloader", () => {
 
     expect(harness.onHotReload).not.toHaveBeenCalled();
     expect(harness.onRestart).not.toHaveBeenCalled();
-    expect(harness.log.info).not.toHaveBeenCalledWith(
-      expect.stringContaining("gateway.auth.token"),
-    );
+    expect(
+      harness.log.info.mock.calls.some(([message]) => message.includes("gateway.auth.token")),
+    ).toBe(false);
 
     await harness.reloader.stop();
   });
@@ -1158,29 +1176,17 @@ describe("startGatewayConfigReloader", () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(harness.onHotReload).not.toHaveBeenCalled();
-    expect(harness.onRestart).toHaveBeenCalledTimes(1);
-    expect(harness.onRestart).toHaveBeenCalledWith(
-      expect.objectContaining({
-        changedPaths: [
-          "plugins.installs.lossless.resolvedAt",
-          "plugins.installs.lossless.resolvedAt",
-        ],
-        restartGateway: true,
-        restartReasons: [
-          "plugins.installs.lossless.resolvedAt",
-          "plugins.installs.lossless.resolvedAt",
-        ],
-      }),
-      expect.objectContaining({
-        plugins: expect.objectContaining({
-          installs: expect.objectContaining({
-            "lossless.resolvedAt": expect.objectContaining({
-              source: "npm",
-            }),
-          }),
-        }),
-      }),
-    );
+    const [plan, nextConfig] = getOnlyRestartCall(harness);
+    expect(plan.changedPaths).toEqual([
+      "plugins.installs.lossless.resolvedAt",
+      "plugins.installs.lossless.resolvedAt",
+    ]);
+    expect(plan.restartGateway).toBe(true);
+    expect(plan.restartReasons).toEqual([
+      "plugins.installs.lossless.resolvedAt",
+      "plugins.installs.lossless.resolvedAt",
+    ]);
+    expect(nextConfig.plugins?.installs?.["lossless.resolvedAt"]?.source).toBe("npm");
 
     await harness.reloader.stop();
   });
@@ -1221,15 +1227,11 @@ describe("startGatewayConfigReloader", () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(harness.onHotReload).not.toHaveBeenCalled();
-    expect(harness.onRestart).toHaveBeenCalledTimes(1);
-    expect(harness.onRestart).toHaveBeenCalledWith(
-      expect.objectContaining({
-        changedPaths: ["plugins.installs.lossless-claw"],
-        restartGateway: true,
-        restartReasons: ["plugins.installs.lossless-claw"],
-      }),
-      activeConfig,
-    );
+    const [plan, nextConfig] = getOnlyRestartCall(harness);
+    expect(plan.changedPaths).toEqual(["plugins.installs.lossless-claw"]);
+    expect(plan.restartGateway).toBe(true);
+    expect(plan.restartReasons).toEqual(["plugins.installs.lossless-claw"]);
+    expect(nextConfig).toBe(activeConfig);
 
     await harness.reloader.stop();
   });
@@ -1277,16 +1279,12 @@ describe("startGatewayConfigReloader", () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(harness.onRestart).not.toHaveBeenCalled();
-    expect(harness.onHotReload).toHaveBeenCalledTimes(1);
-    expect(harness.onHotReload).toHaveBeenCalledWith(
-      expect.objectContaining({
-        changedPaths: ["plugins.entries.telegram.enabled"],
-        restartGateway: false,
-        reloadPlugins: true,
-        hotReasons: ["plugins.entries.telegram.enabled"],
-      }),
-      nextConfig,
-    );
+    const [plan, hotConfig] = getOnlyHotReloadCall(harness);
+    expect(plan.changedPaths).toEqual(["plugins.entries.telegram.enabled"]);
+    expect(plan.restartGateway).toBe(false);
+    expect(plan.reloadPlugins).toBe(true);
+    expect(plan.hotReasons).toEqual(["plugins.entries.telegram.enabled"]);
+    expect(hotConfig).toBe(nextConfig);
 
     await harness.reloader.stop();
   });
@@ -1333,15 +1331,11 @@ describe("startGatewayConfigReloader", () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(harness.onHotReload).not.toHaveBeenCalled();
-    expect(harness.onRestart).toHaveBeenCalledTimes(1);
-    expect(harness.onRestart).toHaveBeenCalledWith(
-      expect.objectContaining({
-        changedPaths: ["plugins.entries", "plugins.installs.lossless-claw"],
-        restartGateway: true,
-        restartReasons: ["plugins.installs.lossless-claw"],
-      }),
-      nextConfig,
-    );
+    const [plan, restartedConfig] = getOnlyRestartCall(harness);
+    expect(plan.changedPaths).toEqual(["plugins.entries", "plugins.installs.lossless-claw"]);
+    expect(plan.restartGateway).toBe(true);
+    expect(plan.restartReasons).toEqual(["plugins.installs.lossless-claw"]);
+    expect(restartedConfig).toBe(nextConfig);
 
     await harness.reloader.stop();
   });
@@ -1508,9 +1502,7 @@ describe("startGatewayConfigReloader skills invalidation", () => {
 
     const after = getSkillsSnapshotVersion();
     expect(after).toBeGreaterThan(before);
-    expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining("skills snapshot invalidated by config change"),
-    );
+    expect(log.info).toHaveBeenCalledWith("skills snapshot invalidated by config change (skills)");
 
     await reloader.stop();
   });

@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHostWorkspaceAppendTool, wrapToolWorkspaceRootGuard } from "./pi-tools.read.js";
 
-vi.mock("@mariozechner/pi-ai", async () => {
+vi.mock("@earendil-works/pi-ai", async () => {
   const original =
-    await vi.importActual<typeof import("@mariozechner/pi-ai")>("@mariozechner/pi-ai");
+    await vi.importActual<typeof import("@earendil-works/pi-ai")>("@earendil-works/pi-ai");
   return { ...original };
 });
 
-vi.mock("@mariozechner/pi-ai/oauth", async () => {
-  const actual = await vi.importActual<typeof import("@mariozechner/pi-ai/oauth")>(
-    "@mariozechner/pi-ai/oauth",
+vi.mock("@earendil-works/pi-ai/oauth", async () => {
+  const actual = await vi.importActual<typeof import("@earendil-works/pi-ai/oauth")>(
+    "@earendil-works/pi-ai/oauth",
   );
   return {
     ...actual,

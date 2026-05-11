@@ -103,8 +103,22 @@ vi.mock("./subagent-announce-delivery.runtime.js", () =>
     resolveMainSessionKey: (cfg: unknown) => resolveMainSessionKeyMock(cfg),
     resolveStorePath: (store: unknown, options: unknown) => resolveStorePathMock(store, options),
     isEmbeddedPiRunActive: (sessionId: string) => isEmbeddedPiRunActiveMock(sessionId),
-    queueEmbeddedPiMessage: (sessionId: string, text: string) =>
-      queueEmbeddedPiMessageMock(sessionId, text),
+    queueEmbeddedPiMessageWithOutcome: (sessionId: string, text: string) => {
+      const queued = queueEmbeddedPiMessageMock(sessionId, text);
+      return queued
+        ? {
+            queued: true as const,
+            sessionId,
+            target: "reply_run" as const,
+            gatewayHealth: "live" as const,
+          }
+        : {
+            queued: false as const,
+            sessionId,
+            reason: "no_active_run" as const,
+            gatewayHealth: "live" as const,
+          };
+    },
   }),
 );
 

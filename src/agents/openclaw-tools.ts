@@ -1,6 +1,5 @@
 import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import { getRuntimeConfig, selectApplicableRuntimeConfig } from "../config/config.js";
-import type { AgentModelConfig } from "../config/types.agents-shared.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { callGateway } from "../gateway/call.js";
 import { isEmbeddedMode } from "../infra/embedded-mode.js";
@@ -317,6 +316,7 @@ export function createOpenClawTools(
     : createMessageTool({
         agentAccountId: options?.agentAccountId,
         agentSessionKey: options?.agentSessionKey,
+        agentId: sessionAgentId,
         sessionId: options?.sessionId,
         config: options?.config,
         currentChannelId: options?.currentChannelId,

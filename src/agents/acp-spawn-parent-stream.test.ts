@@ -51,7 +51,9 @@ let resolveAcpSpawnStreamLogPath: typeof import("./acp-spawn-parent-stream.js").
 let startAcpSpawnParentStreamRelay: typeof import("./acp-spawn-parent-stream.js").startAcpSpawnParentStreamRelay;
 
 function collectedTexts() {
-  return enqueueSystemEventMock.mock.calls.map((call) => String(call[0] ?? ""));
+  return enqueueSystemEventMock.mock.calls.map((call) =>
+    typeof call[0] === "string" ? call[0] : (JSON.stringify(call[0]) ?? ""),
+  );
 }
 
 function expectTextWithFragment(texts: string[], fragment: string): void {
@@ -149,6 +151,45 @@ describe("startAcpSpawnParentStreamRelay", () => {
           options.reason === "acp:spawn:stream" && options.sessionKey === "agent:main:main",
       ),
     ).toBe(true);
+    relay.dispose();
+  });
+
+  it("remaps cron-run parent session keys while relaying stream events", () => {
+    const relay = startAcpSpawnParentStreamRelay({
+      runId: "run-cron",
+      parentSessionKey: "agent:ops:cron:nightly:run:run-1:subagent:worker",
+      childSessionKey: "agent:codex:acp:child-cron",
+      agentId: "codex",
+      mainKey: "primary",
+      sessionScope: "global",
+      streamFlushMs: 10,
+      noOutputNoticeMs: 120_000,
+    });
+
+    emitAgentEvent({
+      runId: "run-cron",
+      stream: "assistant",
+      data: {
+        delta: "hello from child",
+      },
+    });
+    vi.advanceTimersByTime(15);
+
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining("codex: hello from child"),
+      expect.objectContaining({
+        contextKey: "acp-spawn:run-cron:progress",
+        sessionKey: "global",
+        trusted: false,
+      }),
+    );
+    expect(requestHeartbeatMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "ops",
+        reason: "acp:spawn:stream",
+      }),
+    );
+    expect(requestHeartbeatMock.mock.calls[0]?.[0]).not.toHaveProperty("sessionKey");
     relay.dispose();
   });
 
