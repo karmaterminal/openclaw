@@ -13,6 +13,7 @@ import {
   getSkillsSnapshotVersion,
   shouldRefreshSnapshotForVersion,
 } from "../../agents/skills/refresh-state.js";
+import { ensureSkillsWatcher } from "../../agents/skills/refresh.js";
 import { buildConfiguredAgentSystemPrompt } from "../../agents/system-prompt-config.js";
 import { buildSystemPromptParams } from "../../agents/system-prompt-params.js";
 import type { WorkspaceBootstrapFile } from "../../agents/workspace.js";
@@ -67,6 +68,12 @@ export async function resolveCommandsSystemPromptBundle(
   });
   const skillsSnapshot = (() => {
     try {
+      // Ensure the skills-file watcher is running so getSkillsSnapshotVersion()
+      // returns a meaningful version. Without this, this code path can run
+      // before session-updates.ts started the watcher (e.g., fresh process,
+      // first-turn prompt construction), causing the cache to never invalidate
+      // when skill files change on disk.
+      ensureSkillsWatcher({ workspaceDir, config: params.cfg });
       const snapshotVersion = getSkillsSnapshotVersion(workspaceDir);
       const remoteEligibility = getRemoteSkillEligibility({
         advertiseExecNode: canExecRequestNode({
