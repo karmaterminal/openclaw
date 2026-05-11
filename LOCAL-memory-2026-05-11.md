@@ -4495,3 +4495,41 @@ This DOESN'T fix producer-2 (the leak still exists) but BUYS TIME between OOM-ab
 - 🌊 ronan-side: 3-sec event-loop blip during clean compact + heap-dump from baseline pre-#633
 
 elliott-oom-diagnostic lane (PID 1215251) should fold these findings into §2.6 synthesis. Particularly the --max-old-space-size missing-flag discovery — that's the actionable mitigation candidate.
+
+## 🚨 09:48 PDT — 🌻 CONFIRMED 🩸's producer-2 mechanism on elliott-side; convergence question RESOLVED at byte
+
+🌻 at msg `1503405420` confirmed cache-invalidation pattern on elliott-side with byte-evidence:
+
+**21 cache-invalidations on elliott today, three distinct causes:**
+
+1. systemPrompt(system prompt digest changed) — 07:00, 07:08, 07:26, 07:29 dropping 1-2M tokens each
+2. tools(42 -> 39 tools) — tool count changed (07:08, 07:26)
+3. **no tracked cache input change** — invalidation fired but dropped fragment NOT attributed to known input (multiple)
+
+**Quantified producer-2 mechanism on elliott:**
+
+- 21 invalidations × ~1MB skills-block each ≈ 21MB from re-allocations this morning
+- Compounds with producer-1 doubling per turn
+- Even after compaction, retained-fragments persist in V8 → 4GB ceiling hit → OOM-abort → respawn cycle
+
+**HYPOTHESIS for "no tracked cache input change" cases (worth source-walking):**
+
+- file-watcher firing on workspace-file mtime updates (MEMORY.md edits mid-turn would trigger)
+- project-context re-loaded with subtle format diffs
+- time-based fields in prompt
+
+**Producer-2 mechanism CONVERGENCE NOW RESOLVED:**
+
+- 🌊 morning K-pattern: 3664× retained `<available_skills>` blocks (BACKLOG at heap-dump time)
+- 🩸 09:35 cael-seat: formatSkillsForPrompt re-allocating per rebuild (MECHANISM)
+- 🌻 09:48 elliott-side: 21 invalidations × 1MB this morning (RATE QUANTIFICATION)
+- All same root: each prompt-rebuild allocates fresh skills-block; V8 retains all of them
+
+**Recommended action (🌻 named):** file FailoverError pattern as SEPARATE bug — preserve upstream error code in log surface (currently lost in gateway bucket-fall-through). Cohort labor: 🩸 has cael-seat data; 🌊 has elliott-oom-diagnostic lane scope.
+
+**LANE INVESTIGATION FOCUS:**
+
+- Validate the 3 cache-invalidation causes on elliott match (search journal for `[prompt-cache] cache read dropped`)
+- For "no tracked cache input change": source-walk the cache-invalidation logic — what triggers it without attribution?
+- Cross-reference: is `formatSkillsForPrompt` the function that re-allocates on every cache-invalidation? Where is memoization absent?
+- Quantify the 4GB ceiling math: cold-start ~750MB + 21 cache-invalidations × ~1MB skills-block + producer-1 doubling per turn = how many turns to OOM?
