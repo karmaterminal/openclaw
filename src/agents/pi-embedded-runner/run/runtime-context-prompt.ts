@@ -77,9 +77,19 @@ export function resolveRuntimeContextPromptParts(params: {
   if (!prompt && params.emptyTranscriptMode === "model-prompt") {
     return { prompt: params.effectivePrompt };
   }
+
+  // removeLastPromptOccurrence returns null when transcriptPrompt is NOT a
+  // substring of effectivePrompt (e.g. media replies where prelude composes
+  // a non-contiguous prompt — see prompt-prelude.ts). Distinguish that case
+  // from "substring found but nothing extra to extract" (returns ""):
+  //   - null  → preserve fallback to whole effectivePrompt (old behavior)
+  //   - empty → undefined (no duplicate of prompt body — fix for #640)
+  //   - non-empty → use as runtime context
+  const extractionResult = removeLastPromptOccurrence(params.effectivePrompt, transcriptPrompt);
   const runtimeContext =
-    removeLastPromptOccurrence(params.effectivePrompt, transcriptPrompt)?.trim() ||
-    params.effectivePrompt.trim();
+    extractionResult === null
+      ? params.effectivePrompt.trim() || undefined
+      : extractionResult.trim() || undefined;
   if (!prompt) {
     return runtimeContext
       ? {
