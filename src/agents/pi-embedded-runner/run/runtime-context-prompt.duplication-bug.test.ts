@@ -75,15 +75,15 @@ describe("runtime context prompt — body-duplication bug (substrate-leak)", () 
     // to params.effectivePrompt.trim() to preserve the media-reply-hint as
     // runtime context. The naive fix would drop that. The proper fix
     // distinguishes null (not-found) from empty (found-but-empty).
-    const transcriptPrompt = ["media note", "transcript body"].join("\n\n");
-    const effectivePrompt = ["media note", "media reply hint", "transcript body"].join("\n\n");
+    const transcriptPrompt = ["media note", "transcript body"].join("\n");
+    const effectivePrompt = ["media note", "media reply hint", "transcript body"].join("\n");
 
     const result = resolveRuntimeContextPromptParts({
       effectivePrompt,
       transcriptPrompt,
     });
 
-    expect(result.prompt).toBe("media note\n\ntranscript body");
+    expect(result.prompt).toBe("media note\ntranscript body");
     // The fallback is preserved when transcript is not a substring — the
     // model still receives the media-reply-hint substrate as runtime context.
     expect(result.runtimeContext).toBeDefined();
