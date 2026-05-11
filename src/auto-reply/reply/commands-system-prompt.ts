@@ -68,7 +68,20 @@ export async function resolveCommandsSystemPromptBundle(
   const skillsSnapshot = (() => {
     try {
       const snapshotVersion = getSkillsSnapshotVersion(workspaceDir);
-      const cacheKey = `${workspaceDir}\0${sessionAgentId ?? ""}`;
+      const remoteEligibility = getRemoteSkillEligibility({
+        advertiseExecNode: canExecRequestNode({
+          cfg: params.cfg,
+          sessionEntry: targetSessionEntry,
+          sessionKey: params.sessionKey,
+          agentId: sessionAgentId,
+        }),
+      });
+      // Include eligibility shape in cache key: snapshot.prompt + skill list both depend on
+      // remote-skill eligibility from current session state (not just from config+agentId).
+      // Without this, a session whose exec-node availability changed between turns would
+      // receive a stale tool/skill surface from the cached snapshot.
+      const eligibilityKey = JSON.stringify(remoteEligibility);
+      const cacheKey = `${workspaceDir}\0${sessionAgentId ?? ""}\0${eligibilityKey}`;
       const cached = commandPromptSkillCache.get(cacheKey);
       if (cached && !shouldRefreshSnapshotForVersion(cached.version, snapshotVersion)) {
         return cached.snapshot;
@@ -76,16 +89,7 @@ export async function resolveCommandsSystemPromptBundle(
       const snapshot = buildWorkspaceSkillSnapshot(workspaceDir, {
         config: params.cfg,
         agentId: sessionAgentId,
-        eligibility: {
-          remote: getRemoteSkillEligibility({
-            advertiseExecNode: canExecRequestNode({
-              cfg: params.cfg,
-              sessionEntry: targetSessionEntry,
-              sessionKey: params.sessionKey,
-              agentId: sessionAgentId,
-            }),
-          }),
-        },
+        eligibility: { remote: remoteEligibility },
         snapshotVersion,
       });
       commandPromptSkillCache.set(cacheKey, { version: snapshotVersion, snapshot });
