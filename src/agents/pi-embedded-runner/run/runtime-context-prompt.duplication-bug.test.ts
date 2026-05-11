@@ -89,4 +89,26 @@ describe("runtime context prompt — body-duplication bug (substrate-leak)", () 
     expect(result.runtimeContext).toBeDefined();
     expect(result.runtimeContext).toContain("media reply hint");
   });
+
+  it("PRESERVES fallback when transcriptPrompt has trailing whitespace not in effectivePrompt (cohort byte-walk by 🌊)", () => {
+    // Minimal-repro of the null-substring branch: prompt-with-trailing-space
+    // is NOT a substring of the shorter effective text. removeLastPromptOccurrence
+    // returns null — NOT empty — so the three-way distinction at
+    // runtime-context-prompt.ts:102-106 must hit the null-fallback branch and
+    // return effectivePrompt.trim(), not undefined.
+    //
+    // 🌊 Ronan flagged at #sprites-of-thornfield 07:35 PDT that PR #641's
+    // closed-branch test 4 had encoded `expect undefined` for this shape —
+    // wrong-direction post-#642-fix. Locking the correct contract here.
+    const result = resolveRuntimeContextPromptParts({
+      effectivePrompt: "abc",
+      transcriptPrompt: "abc ",
+    });
+
+    expect(result.prompt).toBe("abc");
+    // null branch: removeLastPromptOccurrence returned null → fallback to
+    // effectivePrompt.trim() = "abc". NOT undefined (which would be the
+    // empty-extracted branch behavior).
+    expect(result.runtimeContext).toBe("abc");
+  });
 });
