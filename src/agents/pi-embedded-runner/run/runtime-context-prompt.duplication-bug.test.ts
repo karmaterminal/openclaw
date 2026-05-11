@@ -64,4 +64,29 @@ describe("runtime context prompt — body-duplication bug (substrate-leak)", () 
     expect(result.prompt).toBe("visible ask");
     expect(result.runtimeContext).toBeUndefined();
   });
+
+  it("PRESERVES fallback when transcriptPrompt is NOT a substring of effectivePrompt (codex P2 catch on #642)", () => {
+    // Real-world shape from src/auto-reply/reply/prompt-prelude.ts:38-47:
+    //   queued effectivePrompt = [mediaNote, mediaReplyHint, queueBodyBase].join("\n\n")
+    //   transcriptPrompt        = [mediaNote, transcriptBody].join("\n\n")
+    // transcriptPrompt is NOT a contiguous substring of effectivePrompt because
+    // mediaReplyHint sits between mediaNote and the body in the queued shape.
+    // removeLastPromptOccurrence returns null. Old code (pre-#640-fix) fell back
+    // to params.effectivePrompt.trim() to preserve the media-reply-hint as
+    // runtime context. The naive fix would drop that. The proper fix
+    // distinguishes null (not-found) from empty (found-but-empty).
+    const transcriptPrompt = ["media note", "transcript body"].join("\n\n");
+    const effectivePrompt = ["media note", "media reply hint", "transcript body"].join("\n\n");
+
+    const result = resolveRuntimeContextPromptParts({
+      effectivePrompt,
+      transcriptPrompt,
+    });
+
+    expect(result.prompt).toBe("media note\n\ntranscript body");
+    // The fallback is preserved when transcript is not a substring — the
+    // model still receives the media-reply-hint substrate as runtime context.
+    expect(result.runtimeContext).toBeDefined();
+    expect(result.runtimeContext).toContain("media reply hint");
+  });
 });
