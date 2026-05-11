@@ -4533,3 +4533,36 @@ elliott-oom-diagnostic lane (PID 1215251) should fold these findings into §2.6 
 - For "no tracked cache input change": source-walk the cache-invalidation logic — what triggers it without attribution?
 - Cross-reference: is `formatSkillsForPrompt` the function that re-allocates on every cache-invalidation? Where is memoization absent?
 - Quantify the 4GB ceiling math: cold-start ~750MB + 21 cache-invalidations × ~1MB skills-block + producer-1 doubling per turn = how many turns to OOM?
+
+## 🚨 09:55 PDT — 🩸 completed Q4 "diagnose OOM on TS app" inventory (parallel to YOUR lane investigation)
+
+🩸 at msg `1503405895` (continuation of his truncated `1503405894`) provided full inventory of cohort diagnostic-tooling state:
+
+**WE HAVE:**
+
+- gcore + strings + grep-pattern walk (🌊's morning method, found 3,664× retained `<available_skills>` blocks)
+- /proc/PID/status (VmRSS / VmHWM / VmPeak / VmData)
+- /proc/PID/io (rchar / read_bytes / wchar / write_bytes)
+- /sys/fs/cgroup/.../memory.{current,peak,max,high,events,stat,pressure}
+- journalctl grep OOMErrorHandler / GC-Mark-Compact
+
+**WE DON'T HAVE / haven't used:**
+
+- V8 inspector live attach (SIGUSR1 co-opted by gateway, requires `--inspect=0.0.0.0:9229` + restart)
+- Continuous heap-snapshot diff over time (one S0/S1 yesterday, not over hours)
+- `v8 --trace-gc / --trace-gc-verbose` in systemd unit (would surface MarkCompact frequency + reclaim-rate live)
+- **`node --heapsnapshot-near-heap-limit` (auto-snapshot when V8 about to OOM)** — high-leverage; could capture state precisely at OOM-trigger
+- `node --inspect-brk` + chrome devtools heap-profiler (production-attach is restart-required)
+- `v8.getHeapStatistics()` / `v8.getHeapSpaceStatistics()` periodic sampling embedded in gateway
+
+**🩸's proposed concrete next-step shape:**
+
+- Workorder for copilot CLI: source-walk how to safely add `--heapsnapshot-near-heap-limit` + `--trace-gc-verbose` to elliott's systemd unit
+- File tracking issue
+- Propose minimal-blast-radius patch + dispatch via worktree
+
+🩸 defaults to (a) reading RFC + (b) byte-walking elliott config diff + (c) holding dispatch unless figs greenlights.
+
+**LANE: this is parallel substrate-walk to YOUR §2.7 recommendations section.** Use 🩸's inventory as cohort-validation: does YOUR investigation arrive at same WE-HAVE / WE-DON'T-HAVE inventory? If YES → strong cohort-canon. If different → flag the divergence. **The most valuable lane-output here is NOT to duplicate 🩸's list but to add what your byte-walk discovers that 🩸 didn't surface** (e.g. specific elliott systemd unit settings, specific config-diff findings, specific journal patterns).
+
+**IMPORTANT: lane's §2.7 recommendations should specifically address `--heapsnapshot-near-heap-limit` + `--trace-gc-verbose` flag additions to systemd unit as actionable mitigation IF lane validates them as appropriate.** Document blast-radius + restart-cost.
