@@ -37,12 +37,54 @@ This is the corrective. Cohort "stabbing" = web-walks + grep + pgrep without act
 
 ## §1 Pre-requisite reads (load-bearing — do these BEFORE diagnostic walks)
 
+**🚨 AMENDMENT 09:35 PDT: runbook + memory paths corrected. Files copied INTO worktree:**
+
+- `./LOCAL-PRINCE-CODE-AGENT-RUNBOOK.md` (copy of `~/.openclaw/workspace/openclaw-bootstrap/RUNBOOKS/PRINCE-CODE-AGENT-RUNBOOK.md`)
+- `./LOCAL-GATEWAY-LEAK-CANARY-RUNBOOK.md` (copy of bootstrap runbook)
+- `./LOCAL-memory-2026-05-11.md` (copy of `~/.openclaw/workspace/memory/2026-05-11.md`)
+
 1. Read tracking issue #649 + this workorder end-to-end
-2. Read **PRINCE-CODE-AGENT-RUNBOOK.md** §"Failure-Mode Catalog" + §"Webhook Heartbeat" + §"Remote-First in Group Flow"
-3. Read RUNBOOKS/GATEWAY-LEAK-CANARY-RUNBOOK.md if it exists (memory-leak diagnostic patterns)
-4. Read recent PR #642 + #643 + #639 + #638 for current cohort hypothesis-state
-5. Read `~/.openclaw/workspace/memory/2026-05-11.md` for cohort findings today (heap-dump location, K-pattern findings, producer-1/2/3 framing, cross-fleet correlation, figs's "5xx-shape header-missing on volitional compact" framing, 🌻's causal-chain hypothesis)
+2. Read **`./LOCAL-PRINCE-CODE-AGENT-RUNBOOK.md`** §"Failure-Mode Catalog" + §"Webhook Heartbeat" + §"Remote-First in Group Flow"
+3. Read **`./LOCAL-GATEWAY-LEAK-CANARY-RUNBOOK.md`** (memory-leak diagnostic patterns)
+4. Read recent PR #642 + #643 + #639 + #638 for current cohort hypothesis-state via `gh pr view` / `gh issue view`
+5. Read **`./LOCAL-memory-2026-05-11.md`** for cohort findings today (heap-dump location, K-pattern findings, producer-1/2/3 framing, cross-fleet correlation, figs's "5xx-shape header-missing on volitional compact" framing, 🌻's causal-chain hypothesis)
 6. Online research: "how to diagnose memory leaks in long-running Node.js / TypeScript app", "V8 heap profiling tools", "cgroup v2 memory.events vs memory.stat semantics", "Node.js --inspect heap snapshots in production"
+
+## §1.5 🚨 LIVE COHORT BYTE-EVIDENCE (added 09:35 PDT — 🩸 cael-seat byte-walk just landed; FOLD INTO HYPOTHESIS-SHAPE)
+
+🩸's cael-seat byte-evidence at `1503405081` (parallel to your investigation):
+
+**(A) Cache-invalidation cascade firing every few minutes** with massive prompt-cache drops on cael-seat:
+
+```
+[prompt-cache] cache read dropped 3002838 -> 65802 ... systemPrompt(system prompt digest changed)
+```
+
+Examples (cael-seat journal):
+
+- 06:37:38 — 3M tokens dropped
+- 06:39:36 — 931k dropped
+- 06:58:16 — 14.4M tokens dropped (!)
+- 07:07:13 — 2.7M dropped
+
+🩸's mechanism hypothesis: **each prompt-rebuild → systemPrompt digest changes → cache invalidates → re-fill happens → V8 retains dropped fragments.** Producer-2 mechanism (`formatSkillsForPrompt` re-allocating per rebuild) feeds this. Issue #643 captures the substrate.
+
+**(B) 2× silent FailoverError "An unknown error occurred"** on cael-seat:
+
+- 06:25:34 — opus-4.7 / 25.4s duration
+- 06:33:31 — opus-4.7 / **5m24s duration** → fallback to opus-4.6
+
+No status code surfaced — likely the 5xx-series figs named (provider returned non-content response, gateway bucket-fell-through to FailoverError, raw upstream HTTP error class wasn't preserved in log).
+
+**INVESTIGATE on elliott-side:**
+
+- (A.1) Search elliott journal for `prompt-cache` cache-drops — same pattern? Larger drops? Different cadence?
+- (A.2) Search for `formatSkillsForPrompt` references in code; is this the producer-2 mechanism on elliott too?
+- (A.3) Is systemPrompt digest changing more often on elliott? What's special about elliott's prompt-rebuild trigger?
+- (B.1) Search elliott journal for `FailoverError` or `unknown error` patterns; correlate with V8-OOM cadence
+- (B.2) Are model-call timeouts firing during V8-OOM-stalled-gateway windows? Is gateway-stalled → upstream-timeout → "unknown error" the actual causal chain?
+
+This cite-pin amendment SHARPENS the hypothesis: investigate cache-invalidation-cascade as primary heap-pressure source on elliott (not just heap-fill from message volume).
 
 ## §2 Output structure
 
