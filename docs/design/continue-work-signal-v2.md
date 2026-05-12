@@ -900,6 +900,7 @@ agents:
       maxDelayMs: 300000
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
+      crossSessionTargeting: disabled
       contextPressureThreshold: 0.8 # optional; omit to disable ordinary pre-run pressure events
       earlyWarningBand: 0.3125 # multiplier against contextPressureThreshold; 0 disables early warning
 ```
@@ -909,6 +910,7 @@ Operational notes:
 - `enabled: false` means explicit opt-in is required in `openclaw.json`.
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
+- `crossSessionTargeting: disabled` is the default-deny gate for explicit cross-session delegate return targeting.
 - `contextPressureThreshold` is optional and must be `> 0` and `<= 1` when configured.
 - `earlyWarningBand` is shipped, defaults to `0.3125`, accepts `0` as opt-out, and is schema-validated as a unit-interval value.
 - There is no `generationGuardTolerance` setting. Delayed work is not cancelled by unrelated channel noise.
@@ -927,6 +929,7 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 5
       costCapTokens: 500000
+      crossSessionTargeting: disabled
       contextPressureThreshold: 0.8
       earlyWarningBand: 0.3125
       minDelayMs: 5000
@@ -945,6 +948,7 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 20
       costCapTokens: 1000000
+      crossSessionTargeting: enabled
       defaultDelayMs: 15000
       minDelayMs: 5000
       maxDelayMs: 300000
@@ -1001,6 +1005,17 @@ targeted return:
 ```
 
 This is the **mast-cell pattern**: many quiet leaves watch local surfaces, but a small number of higher-level sessions control whether a finding becomes local enrichment, a wake for the responsible session, or a host-wide "there is a fire" signal. `silent` mode makes the return ambient context; `silent-wake` makes it an immediate turn grant; `fanoutMode` decides whether the signal stays in the branch, climbs the tree, or reaches the host. The gateway remains the broker: sessions express intent, and the substrate performs bounded delivery.
+
+#### Cross-session targeting policy
+
+Explicit cross-session delegate targeting — `targetSessionKey`, `targetSessionKeys`, and `fanoutMode: "all"` — is gated by `agents.defaults.continuation.crossSessionTargeting`.
+
+| Value                  | Behavior                                                                                                                                                                                                                                                                   |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"disabled"` (default) | Delegates can return to the dispatching session or use `fanoutMode: "tree"` for lineage-only routing. Explicit cross-session targeting (`targetSessionKey` to a non-self session, `targetSessionKeys`, `fanoutMode: "all"`) is rejected. Self-targeting is always allowed. |
+| `"enabled"`            | All targeting modes are available, including same-host `targetSessionKey`, `targetSessionKeys`, and `fanoutMode: "all"`.                                                                                                                                                   |
+
+The gate addresses the model-controlled cross-session context-injection surface: without it, a continuation-enabled session can affect unrelated sessions on the same host. With the gate default-deny, operators explicitly opt in to cross-session targeting when their deployment model requires it. Enforcement is live-read at tool validation, TaskFlow delegate dispatch, post-compaction delegate release, and bracket-syntax spawn, so a config reload changes the next enforcement point without restarting the gateway.
 
 ### 5.4 TaskFlow backing and durable delegate queues
 
@@ -1383,8 +1398,6 @@ Threat model:
 For single-human-user deployments, this usually aligns with the existing trust boundary. For stricter environments, the recommended first mitigation is an audit trail with payload hashing: compute a digest over task text and attachments at dispatch time, store it alongside delegate metadata, and verify it on return.
 
 Stronger options include HMAC signing, encrypted attachments, and signed announce payloads. None are required by the current implementation, but all are compatible with the present architecture.
-
-Operational failure modes and inherited behavioral limitations are documented in [Appendix C](#appendix-c-failure-modes-and-behavioral-limitations).
 
 ## 8. Applicability Statement and Production Use Cases
 

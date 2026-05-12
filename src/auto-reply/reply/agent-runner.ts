@@ -73,6 +73,7 @@ import {
   retainContinuationTimerRef,
   unregisterContinuationTimerHandle,
 } from "../continuation/state.js";
+import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
 import type { ChainState } from "../continuation/types.js";
 import {
   buildFallbackClearedNotice,
@@ -2239,8 +2240,14 @@ export async function runReplyAgent(params: {
     // structured continue_work tool request captured during the run.
     let bracketTokensAccumulated = false;
     if (effectiveContinuationSignal && sessionKey) {
-      const { maxChainLength, defaultDelayMs, minDelayMs, maxDelayMs, costCapTokens } =
-        resolveLiveContinuationRuntimeConfig(cfg);
+      const {
+        maxChainLength,
+        defaultDelayMs,
+        minDelayMs,
+        maxDelayMs,
+        costCapTokens,
+        crossSessionTargeting,
+      } = resolveLiveContinuationRuntimeConfig(cfg);
 
       {
         // continuation scheduling block
@@ -2337,6 +2344,51 @@ export async function runReplyAgent(params: {
             if (effectiveContinuationSignal.kind === "delegate") {
               const delegateTask = effectiveContinuationSignal.task;
               const delegateDelayMs = effectiveContinuationSignal.delayMs;
+              const rejectCrossSessionTargeting = (
+                targeting: {
+                  targetSessionKey?: string;
+                  targetSessionKeys?: readonly string[];
+                  fanoutMode?: "tree" | "all";
+                },
+                details: {
+                  plannedHop: number;
+                  task: string;
+                  delegateDelivery: "immediate" | "timer";
+                  silent?: boolean;
+                  silentWake?: boolean;
+                },
+              ): boolean => {
+                if (
+                  crossSessionTargeting === "enabled" ||
+                  !hasCrossSessionDelegateTargeting(targeting, sessionKey)
+                ) {
+                  return false;
+                }
+                defaultRuntime.log(
+                  `[continuation] Cross-session targeting rejected by policy for session ${sessionKey}`,
+                );
+                enqueueSystemEvent(
+                  "[continuation] Delegate rejected: cross-session targeting is disabled by policy. " +
+                    'Use the default return target, targetSessionKey set to this session, or fanoutMode="tree".',
+                  { sessionKey, trusted: true },
+                );
+                emitContinuationDisabledSpan({
+                  chainId: activeSessionEntry?.continuationChainId,
+                  chainStepRemaining: Math.max(0, maxChainLength - details.plannedHop),
+                  disabledReason: "policy.cross_session_targeting",
+                  signalKind: "bracket-delegate",
+                  delegateDelivery: details.delegateDelivery,
+                  delegateMode: details.silentWake
+                    ? "silent-wake"
+                    : details.silent
+                      ? "silent"
+                      : "normal",
+                  reason: details.task,
+                  log: (message) => defaultRuntime.log(message),
+                });
+                bracketTokensAccumulated = false;
+                return true;
+              };
               const doSpawn = async (
                 plannedHop: number,
                 task: string,
@@ -2352,6 +2404,28 @@ export async function runReplyAgent(params: {
                 },
               ) => {
                 try {
+                  if (
+                    rejectCrossSessionTargeting(
+                      {
+                        ...(options?.targetSessionKey
+                          ? { targetSessionKey: options.targetSessionKey }
+                          : {}),
+                        ...(options?.targetSessionKeys && options.targetSessionKeys.length > 0
+                          ? { targetSessionKeys: options.targetSessionKeys }
+                          : {}),
+                        ...(options?.fanoutMode ? { fanoutMode: options.fanoutMode } : {}),
+                      },
+                      {
+                        plannedHop,
+                        task,
+                        delegateDelivery: options?.timerTriggered ? "timer" : "immediate",
+                        ...(options?.silent ? { silent: options.silent } : {}),
+                        ...(options?.silentWake ? { silentWake: options.silentWake } : {}),
+                      },
+                    )
+                  ) {
+                    return false;
+                  }
                   const spawnResult = await spawnSubagentDirect(
                     {
                       // The spawned child carries its current chain position in-band.
@@ -2444,143 +2518,175 @@ export async function runReplyAgent(params: {
               };
 
               if (delegateDelayMs && delegateDelayMs > 0) {
-                // Timed dispatch: spawn after delay. Timer does not survive
-                // gateway restart; durable timers are handled by a separate path.
-                const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
-                const reservationId = generateSecureUuid();
-                addDelayedContinuationReservation(sessionKey, {
-                  id: reservationId,
-                  source: "bracket",
-                  task: delegateTask,
-                  createdAt: chainStartedAt,
-                  fireAt: Date.now() + clampedDelay,
-                  plannedHop: nextChainCount,
-                  silent: effectiveContinuationSignal.silent,
-                  silentWake: effectiveContinuationSignal.silentWake,
-                  ...(effectiveContinuationSignal.targetSessionKey
-                    ? { targetSessionKey: effectiveContinuationSignal.targetSessionKey }
-                    : {}),
-                  ...(effectiveContinuationSignal.targetSessionKeys &&
-                  effectiveContinuationSignal.targetSessionKeys.length > 0
-                    ? { targetSessionKeys: effectiveContinuationSignal.targetSessionKeys }
-                    : {}),
-                  ...(effectiveContinuationSignal.fanoutMode
-                    ? { fanoutMode: effectiveContinuationSignal.fanoutMode }
-                    : {}),
-                  ...(effectiveContinuationSignal.traceparent
-                    ? { traceparent: effectiveContinuationSignal.traceparent }
-                    : {}),
-                });
-                const { chainId: persistedChainIdForTimer } = await persistContinuationChainState({
-                  count: currentChainCount,
-                  startedAt: chainStartedAt,
-                  tokens: accumulatedChainTokens,
-                });
-                // Emit `continuation.delegate.dispatch` at the timer-deferred
-                // enqueue seam (after persist,
-                // before `setTimeout` arms). The chain-step is committed
-                // here, not at fire-time — cancelled-but-accepted dispatches
-                // (compaction, reset, gateway shutdown) still count as
-                // accepted and must not be silently underreported.
-                {
-                  // Post-compaction dispatches travel a separate persist path.
-                  const delegateMode = effectiveContinuationSignal.silentWake
-                    ? "silent-wake"
-                    : effectiveContinuationSignal.silent
-                      ? "silent"
-                      : "normal";
-                  emitContinuationDelegateSpan({
-                    chainId: persistedChainIdForTimer,
-                    chainStepRemaining: maxChainLength - nextChainCount,
-                    delayMs: clampedDelay,
-                    delivery: "timer",
-                    delegateMode,
-                    traceparent: effectiveContinuationSignal.traceparent,
-                    log: (message) => defaultRuntime.log(message),
+                const rejectedDelayedTarget = rejectCrossSessionTargeting(
+                  {
+                    ...(effectiveContinuationSignal.targetSessionKey
+                      ? { targetSessionKey: effectiveContinuationSignal.targetSessionKey }
+                      : {}),
+                    ...(effectiveContinuationSignal.targetSessionKeys &&
+                    effectiveContinuationSignal.targetSessionKeys.length > 0
+                      ? { targetSessionKeys: effectiveContinuationSignal.targetSessionKeys }
+                      : {}),
+                    ...(effectiveContinuationSignal.fanoutMode
+                      ? { fanoutMode: effectiveContinuationSignal.fanoutMode }
+                      : {}),
+                  },
+                  {
+                    plannedHop: nextChainCount,
+                    task: delegateTask,
+                    delegateDelivery: "timer",
+                    ...(effectiveContinuationSignal.silent
+                      ? { silent: effectiveContinuationSignal.silent }
+                      : {}),
+                    ...(effectiveContinuationSignal.silentWake
+                      ? { silentWake: effectiveContinuationSignal.silentWake }
+                      : {}),
+                  },
+                );
+                if (!rejectedDelayedTarget) {
+                  // Timed dispatch: spawn after delay. Timer does not survive
+                  // gateway restart; durable timers are handled by a separate path.
+                  const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
+                  const reservationId = generateSecureUuid();
+                  addDelayedContinuationReservation(sessionKey, {
+                    id: reservationId,
+                    source: "bracket",
+                    task: delegateTask,
+                    createdAt: chainStartedAt,
+                    fireAt: Date.now() + clampedDelay,
+                    plannedHop: nextChainCount,
+                    silent: effectiveContinuationSignal.silent,
+                    silentWake: effectiveContinuationSignal.silentWake,
+                    ...(effectiveContinuationSignal.targetSessionKey
+                      ? { targetSessionKey: effectiveContinuationSignal.targetSessionKey }
+                      : {}),
+                    ...(effectiveContinuationSignal.targetSessionKeys &&
+                    effectiveContinuationSignal.targetSessionKeys.length > 0
+                      ? { targetSessionKeys: effectiveContinuationSignal.targetSessionKeys }
+                      : {}),
+                    ...(effectiveContinuationSignal.fanoutMode
+                      ? { fanoutMode: effectiveContinuationSignal.fanoutMode }
+                      : {}),
+                    ...(effectiveContinuationSignal.traceparent
+                      ? { traceparent: effectiveContinuationSignal.traceparent }
+                      : {}),
                   });
-                }
-                // Snapshot dispatch-time inputs for the fire-span emission
-                // inside the timer callback. `armedAt`
-                // captured immediately before `setTimeout` so
-                // `fireDeferredMs = Date.now() - armedAt` measures wall-clock
-                // drift between arming and callback execution.
-                // `chainStepRemainingAtDispatch` is a snapshot, NOT a
-                // fire-time recompute — keeps the dispatch/fire trace pair
-                // coherent (same `chain.id`, same step counter).
-                const fireDelegateMode: "normal" | "silent" | "silent-wake" =
-                  effectiveContinuationSignal.silentWake
-                    ? "silent-wake"
-                    : effectiveContinuationSignal.silent
-                      ? "silent"
-                      : "normal";
-                const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
-                retainContinuationTimerRef(sessionKey);
-                const armedAt = Date.now();
-                const timerHandle = setTimeout(() => {
-                  // Emit `continuation.delegate.fire` first, before reservation
-                  // lookup. The fire event is
-                  // wall-clock truth ("the timer fired"); whatever happens
-                  // next (spawn, reservation-missing log-and-return) is a
-                  // separate concern. 5b is instrumentation-of-status-quo
-                  // only; no fire-time cap rechecks.
-                  const fireDeferredMs = Date.now() - armedAt;
-                  emitContinuationDelegateFireSpan({
-                    // Invariant: persistedChainIdForTimer is always a string
-                    // here — `persistContinuationChainState` only returns
-                    // undefined when `sessionKey` is falsy, but this branch
-                    // is gated on `sessionKey` being truthy.
-                    // Helper's defense-in-depth no-ops if undefined slips.
-                    chainId: persistedChainIdForTimer as string,
-                    chainStepRemainingAtDispatch,
-                    delegateMode: fireDelegateMode,
-                    delayMs: clampedDelay,
-                    fireDeferredMs,
-                    log: (message) => defaultRuntime.log(message),
-                  });
-                  try {
-                    const reservation = takeDelayedContinuationReservation(
-                      sessionKey,
-                      reservationId,
-                    );
-                    if (!reservation) {
-                      defaultRuntime.log(
-                        `DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
-                      );
-                      // Fire-time reservation-missing is the only current
-                      // fire-time divergence. Sibling span
-                      // sharing chain.id so consumers can pair fire+disabled
-                      // events on a single trace.
-                      emitContinuationDisabledSpan({
-                        chainId: persistedChainIdForTimer,
-                        chainStepRemaining: chainStepRemainingAtDispatch,
-                        disabledReason: "reservation.missing",
-                        signalKind: "bracket-delegate",
-                        delegateDelivery: "timer",
-                        delegateMode: fireDelegateMode,
-                        log: (message) => defaultRuntime.log(message),
-                      });
-                      return;
-                    }
-                    void doSpawn(reservation.plannedHop, reservation.task, {
-                      timerTriggered: true,
-                      silent: reservation.silent,
-                      silentWake: reservation.silentWake,
-                      startedAt: reservation.createdAt,
-                      ...(reservation.targetSessionKey
-                        ? { targetSessionKey: reservation.targetSessionKey }
-                        : {}),
-                      ...(reservation.targetSessionKeys && reservation.targetSessionKeys.length > 0
-                        ? { targetSessionKeys: reservation.targetSessionKeys }
-                        : {}),
-                      ...(reservation.fanoutMode ? { fanoutMode: reservation.fanoutMode } : {}),
-                      ...(reservation.traceparent ? { traceparent: reservation.traceparent } : {}),
+                  const { chainId: persistedChainIdForTimer } = await persistContinuationChainState(
+                    {
+                      count: currentChainCount,
+                      startedAt: chainStartedAt,
+                      tokens: accumulatedChainTokens,
+                    },
+                  );
+                  // Emit `continuation.delegate.dispatch` at the timer-deferred
+                  // enqueue seam (after persist,
+                  // before `setTimeout` arms). The chain-step is committed
+                  // here, not at fire-time — cancelled-but-accepted dispatches
+                  // (compaction, reset, gateway shutdown) still count as
+                  // accepted and must not be silently underreported.
+                  {
+                    // Post-compaction dispatches travel a separate persist path.
+                    const delegateMode = effectiveContinuationSignal.silentWake
+                      ? "silent-wake"
+                      : effectiveContinuationSignal.silent
+                        ? "silent"
+                        : "normal";
+                    emitContinuationDelegateSpan({
+                      chainId: persistedChainIdForTimer,
+                      chainStepRemaining: maxChainLength - nextChainCount,
+                      delayMs: clampedDelay,
+                      delivery: "timer",
+                      delegateMode,
+                      traceparent: effectiveContinuationSignal.traceparent,
+                      log: (message) => defaultRuntime.log(message),
                     });
-                  } finally {
-                    unregisterContinuationTimerHandle(sessionKey, timerHandle);
                   }
-                }, clampedDelay);
-                registerContinuationTimerHandle(sessionKey, timerHandle);
-                timerHandle.unref();
+                  // Snapshot dispatch-time inputs for the fire-span emission
+                  // inside the timer callback. `armedAt`
+                  // captured immediately before `setTimeout` so
+                  // `fireDeferredMs = Date.now() - armedAt` measures wall-clock
+                  // drift between arming and callback execution.
+                  // `chainStepRemainingAtDispatch` is a snapshot, NOT a
+                  // fire-time recompute — keeps the dispatch/fire trace pair
+                  // coherent (same `chain.id`, same step counter).
+                  const fireDelegateMode: "normal" | "silent" | "silent-wake" =
+                    effectiveContinuationSignal.silentWake
+                      ? "silent-wake"
+                      : effectiveContinuationSignal.silent
+                        ? "silent"
+                        : "normal";
+                  const chainStepRemainingAtDispatch = maxChainLength - nextChainCount;
+                  retainContinuationTimerRef(sessionKey);
+                  const armedAt = Date.now();
+                  const timerHandle = setTimeout(() => {
+                    // Emit `continuation.delegate.fire` first, before reservation
+                    // lookup. The fire event is
+                    // wall-clock truth ("the timer fired"); whatever happens
+                    // next (spawn, reservation-missing log-and-return) is a
+                    // separate concern. 5b is instrumentation-of-status-quo
+                    // only; no fire-time cap rechecks.
+                    const fireDeferredMs = Date.now() - armedAt;
+                    emitContinuationDelegateFireSpan({
+                      // Invariant: persistedChainIdForTimer is always a string
+                      // here — `persistContinuationChainState` only returns
+                      // undefined when `sessionKey` is falsy, but this branch
+                      // is gated on `sessionKey` being truthy.
+                      // Helper's defense-in-depth no-ops if undefined slips.
+                      chainId: persistedChainIdForTimer as string,
+                      chainStepRemainingAtDispatch,
+                      delegateMode: fireDelegateMode,
+                      delayMs: clampedDelay,
+                      fireDeferredMs,
+                      log: (message) => defaultRuntime.log(message),
+                    });
+                    try {
+                      const reservation = takeDelayedContinuationReservation(
+                        sessionKey,
+                        reservationId,
+                      );
+                      if (!reservation) {
+                        defaultRuntime.log(
+                          `DELEGATE timer fired but reservation already cleared for session ${sessionKey}`,
+                        );
+                        // Fire-time reservation-missing is the only current
+                        // fire-time divergence. Sibling span
+                        // sharing chain.id so consumers can pair fire+disabled
+                        // events on a single trace.
+                        emitContinuationDisabledSpan({
+                          chainId: persistedChainIdForTimer,
+                          chainStepRemaining: chainStepRemainingAtDispatch,
+                          disabledReason: "reservation.missing",
+                          signalKind: "bracket-delegate",
+                          delegateDelivery: "timer",
+                          delegateMode: fireDelegateMode,
+                          log: (message) => defaultRuntime.log(message),
+                        });
+                        return;
+                      }
+                      void doSpawn(reservation.plannedHop, reservation.task, {
+                        timerTriggered: true,
+                        silent: reservation.silent,
+                        silentWake: reservation.silentWake,
+                        startedAt: reservation.createdAt,
+                        ...(reservation.targetSessionKey
+                          ? { targetSessionKey: reservation.targetSessionKey }
+                          : {}),
+                        ...(reservation.targetSessionKeys &&
+                        reservation.targetSessionKeys.length > 0
+                          ? { targetSessionKeys: reservation.targetSessionKeys }
+                          : {}),
+                        ...(reservation.fanoutMode ? { fanoutMode: reservation.fanoutMode } : {}),
+                        ...(reservation.traceparent
+                          ? { traceparent: reservation.traceparent }
+                          : {}),
+                      });
+                    } finally {
+                      unregisterContinuationTimerHandle(sessionKey, timerHandle);
+                    }
+                  }, clampedDelay);
+                  registerContinuationTimerHandle(sessionKey, timerHandle);
+                  timerHandle.unref();
+                }
               } else {
                 await doSpawn(nextChainCount, delegateTask, {
                   silent: effectiveContinuationSignal.silent,
@@ -2690,7 +2796,7 @@ export async function runReplyAgent(params: {
         );
       }
       if (toolDelegates.length > 0) {
-        const { maxChainLength, costCapTokens, maxDelegatesPerTurn } =
+        const { maxChainLength, costCapTokens, maxDelegatesPerTurn, crossSessionTargeting } =
           resolveLiveContinuationRuntimeConfig(cfg);
         // If a bracket-signal delegate was already spawned this turn, count it
         // against the per-turn cap so mixed-signal turns cannot exceed the limit.
@@ -2749,6 +2855,34 @@ export async function runReplyAgent(params: {
             currentChainCount,
             highestDelayedContinuationReservationHop(sessionKey),
           );
+          if (
+            crossSessionTargeting === "disabled" &&
+            hasCrossSessionDelegateTargeting(delegate, sessionKey)
+          ) {
+            const delegateMode = delegate.mode ?? "normal";
+            const delegateDelivery: "immediate" | "timer" =
+              delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
+            defaultRuntime.log(
+              `[continuation] Cross-session targeting rejected by policy for tool delegate in session ${sessionKey}`,
+            );
+            enqueueSystemEvent(
+              "[continuation] Tool delegate rejected: cross-session targeting is disabled by policy. " +
+                'Use the default return target, targetSessionKey set to this session, or fanoutMode="tree". ' +
+                `Task: ${delegate.task}`,
+              { sessionKey, trusted: true },
+            );
+            emitContinuationDisabledSpan({
+              chainId: activeSessionEntry?.continuationChainId,
+              chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
+              disabledReason: "policy.cross_session_targeting",
+              signalKind: "tool-delegate",
+              delegateDelivery,
+              delegateMode,
+              reason: delegate.task,
+              log: defaultRuntime.log,
+            });
+            continue;
+          }
           if (allocatedChainHop >= maxChainLength) {
             defaultRuntime.log(
               `Continuation chain capped at ${maxChainLength} for tool delegate in session ${sessionKey}`,

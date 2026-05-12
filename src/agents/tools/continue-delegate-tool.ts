@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { resolveMaxDelegatesPerTurn } from "../../auto-reply/continuation/config.js";
+import { resolveContinuationRuntimeConfig } from "../../auto-reply/continuation/config.js";
 import {
   enqueuePendingDelegate,
   getContinuationDelegateQueueDepths,
@@ -7,6 +7,7 @@ import {
 } from "../../auto-reply/continuation/delegate-store.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
+  hasCrossSessionDelegateTargeting,
   normalizeContinuationTargetKeys,
 } from "../../auto-reply/continuation/targeting.js";
 import {
@@ -192,9 +193,20 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       }
       const traceContextFields = traceparent ? { traceparent } : {};
 
+      const continuationConfig = resolveContinuationRuntimeConfig();
+      if (
+        continuationConfig.crossSessionTargeting === "disabled" &&
+        hasCrossSessionDelegateTargeting(targetingFields, sessionKey)
+      ) {
+        throw new ToolInputError(
+          "cross-session continuation targeting is disabled by agents.defaults.continuation.crossSessionTargeting. " +
+            'Use the default return target, targetSessionKey set to this session, or fanoutMode="tree".',
+        );
+      }
+
       // Check per-turn delegate limit. Durable queued depth is reported for
       // visibility but does not consume this turn's admission budget.
-      const maxPerTurn = resolveMaxDelegatesPerTurn();
+      const maxPerTurn = continuationConfig.maxDelegatesPerTurn;
       if (delegatesThisTurn >= maxPerTurn) {
         const queueDepths = getContinuationDelegateQueueDepths(sessionKey);
         return jsonResult({
