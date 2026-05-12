@@ -6,6 +6,10 @@ import {
   installSessionStoreCaptureMock,
   loadSubagentSpawnModuleForTest,
 } from "./subagent-spawn.test-helpers.js";
+import {
+  consumeSubagentTraceparentHandoff,
+  resetSubagentTraceparentHandoffsForTests,
+} from "./subagent-traceparent-handoff.js";
 import { installAcceptedSubagentGatewayMock } from "./test-helpers/subagent-gateway.js";
 
 const hoisted = vi.hoisted(() => ({
@@ -85,6 +89,7 @@ describe("spawnSubagentDirect seam flow", () => {
     );
     hoisted.configOverride = createConfigOverride();
     installAcceptedSubagentGatewayMock(hoisted.callGatewayMock);
+    resetSubagentTraceparentHandoffsForTests();
 
     hoisted.updateSessionStoreMock.mockImplementation(
       async (
@@ -404,6 +409,12 @@ describe("spawnSubagentDirect seam flow", () => {
     const agentCall = calls.find((call) => call.method === "agent");
     const params = requireRecord(agentCall?.params);
     expect(params.traceparent).toBe(traceparent);
+    expect(
+      consumeSubagentTraceparentHandoff({
+        idempotencyKey: params.idempotencyKey as string,
+        sessionKey: params.sessionKey as string,
+      })?.traceparent,
+    ).toBe(traceparent);
     const registerInput = requireRecord(hoisted.registerSubagentRunMock.mock.calls[0]?.[0]);
     expect(registerInput.traceparent).toBe(traceparent);
   });

@@ -21,6 +21,7 @@ import {
   normalizeSpawnedRunMetadata,
   resolveIngressWorkspaceOverrideForSpawnedRun,
 } from "../../agents/spawned-context.js";
+import { consumeSubagentTraceparentHandoff } from "../../agents/subagent-traceparent-handoff.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import {
   resolveBareResetBootstrapFileAccess,
@@ -1449,6 +1450,12 @@ export const agentHandlers: GatewayRequestHandlers = {
         }
         const execApprovalFollowupElevatedDefaults =
           execApprovalFollowupRuntimeHandoff?.bashElevated;
+        const inheritedTraceparent =
+          request.traceparent ??
+          consumeSubagentTraceparentHandoff({
+            idempotencyKey: idem,
+            sessionKey: resolvedSessionKey,
+          })?.traceparent;
 
         dispatchAgentRunFromGateway({
           ingressOpts: {
@@ -1490,7 +1497,7 @@ export const agentHandlers: GatewayRequestHandlers = {
             cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd === true,
             continuationTrigger: request.continuationTrigger,
             drainsContinuationDelegateQueue: request.drainsContinuationDelegateQueue,
-            traceparent: request.traceparent,
+            traceparent: inheritedTraceparent,
             modelRun: request.modelRun === true,
             promptMode: request.promptMode,
             extraSystemPrompt: request.extraSystemPrompt,

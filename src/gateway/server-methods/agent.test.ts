@@ -4,6 +4,10 @@ import {
   registerExecApprovalFollowupRuntimeHandoff,
   resetExecApprovalFollowupRuntimeHandoffsForTests,
 } from "../../agents/bash-tools.exec-approval-followup-state.js";
+import {
+  registerSubagentTraceparentHandoff,
+  resetSubagentTraceparentHandoffsForTests,
+} from "../../agents/subagent-traceparent-handoff.js";
 import { BARE_SESSION_RESET_PROMPT } from "../../auto-reply/reply/session-reset-prompt.js";
 import {
   getDetachedTaskLifecycleRuntime,
@@ -486,6 +490,51 @@ describe("gateway agent handler", () => {
     dateOnlyFakeClockActive = false;
     vi.useRealTimers();
     resetExecApprovalFollowupRuntimeHandoffsForTests();
+    resetSubagentTraceparentHandoffsForTests();
+  });
+
+  it("uses the same-process subagent traceparent handoff when the request field is missing", async () => {
+    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const sessionKey = "agent:main:subagent:child-trace";
+    const idempotencyKey = "child-trace-run";
+    registerSubagentTraceparentHandoff({
+      idempotencyKey,
+      sessionKey,
+      traceparent,
+    });
+    const existingEntry = buildExistingMainStoreEntry({
+      spawnedBy: "agent:main:main",
+    });
+    mocks.loadSessionEntry.mockReturnValue({
+      cfg: {},
+      storePath: "/tmp/sessions.json",
+      entry: existingEntry,
+      canonicalKey: sessionKey,
+    });
+    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
+      const store: Record<string, Record<string, unknown>> = {
+        [sessionKey]: { ...existingEntry },
+      };
+      const result = await updater(store);
+      return result;
+    });
+    mocks.agentCommand.mockResolvedValue({
+      payloads: [{ text: "ok" }],
+      meta: { durationMs: 100 },
+    });
+
+    await invokeAgent(
+      {
+        message: "child task",
+        agentId: "main",
+        sessionKey,
+        idempotencyKey,
+      },
+      { client: backendGatewayClient() },
+    );
+
+    const call = await waitForAgentCommandCall();
+    expect(call.traceparent).toBe(traceparent);
   });
 
   it("preserves ACP metadata from the current stored session entry", async () => {

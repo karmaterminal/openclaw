@@ -34,6 +34,7 @@ import {
 import { resolveSubagentSpawnAcceptedNote } from "./subagent-spawn-accepted-note.js";
 import { resolveSubagentTargetPolicy } from "./subagent-target-policy.js";
 import { normalizeSubagentTaskName } from "./subagent-task-name.js";
+import { registerSubagentTraceparentHandoff } from "./subagent-traceparent-handoff.js";
 export {
   SUBAGENT_SPAWN_ACCEPTED_NOTE,
   SUBAGENT_SPAWN_SESSION_ACCEPTED_NOTE,
@@ -1158,6 +1159,11 @@ export async function spawnSubagentDirect(
       workspaceDir: _workspaceDir,
       ...publicSpawnedMetadata
     } = spawnedMetadata;
+    registerSubagentTraceparentHandoff({
+      idempotencyKey: childIdem,
+      sessionKey: childSessionKey,
+      traceparent: params.traceparent,
+    });
     const response = await callSubagentGateway({
       method: "agent",
       params: {
