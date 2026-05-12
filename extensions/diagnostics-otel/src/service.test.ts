@@ -2712,7 +2712,7 @@ describe("diagnostics-otel service", () => {
       await service.stop?.(ctx);
     });
 
-    test("parents carried logical traceparents to the registered run context", async () => {
+    test("parents carried logical contexts to the registered run context", async () => {
       const service = createDiagnosticsOtelService();
       const ctx = createTraceOnlyContext(OTEL_TEST_ENDPOINT);
       await service.start(ctx);
@@ -2744,7 +2744,6 @@ describe("diagnostics-otel service", () => {
           traceId: TRACE_ID,
           spanId: TOOL_SPAN_ID,
           parentSpanId: SPAN_ID,
-          parentSpanIdSource: "remote",
           traceFlags: "01",
         },
       });
@@ -2763,6 +2762,61 @@ describe("diagnostics-otel service", () => {
           spanContext: expect.objectContaining({
             traceId: TRACE_ID,
             spanId: runSpanId,
+          }),
+        }),
+      );
+
+      await service.stop?.(ctx);
+    });
+
+    test("prefers carried remote traceparent span ids over logical trace fallback", async () => {
+      const service = createDiagnosticsOtelService();
+      const ctx = createTraceOnlyContext(OTEL_TEST_ENDPOINT);
+      await service.start(ctx);
+
+      emitTrustedDiagnosticEvent({
+        type: "run.started",
+        runId: "run-logical-parent-before-remote",
+        provider: "openai",
+        model: "gpt-5.5",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: CHILD_SPAN_ID,
+          traceFlags: "01",
+        },
+      });
+      await flushDiagnosticEvents();
+      telemetryState.tracer.startSpan.mockClear();
+      telemetryState.tracer.setSpanContext.mockClear();
+
+      emitTrustedDiagnosticEvent({
+        type: "run.started",
+        runId: "run-remote-child",
+        provider: "openai",
+        model: "gpt-5.5",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: TOOL_SPAN_ID,
+          parentSpanId: SPAN_ID,
+          parentSpanIdSource: "remote",
+          traceFlags: "01",
+        },
+      });
+      await flushDiagnosticEvents();
+
+      expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          traceId: TRACE_ID,
+          spanId: SPAN_ID,
+        }),
+      );
+      const runStart = startedSpanCall("openclaw.run");
+      expect(runStart?.[2]).toEqual(
+        expect.objectContaining({
+          spanContext: expect.objectContaining({
+            traceId: TRACE_ID,
+            spanId: SPAN_ID,
           }),
         }),
       );

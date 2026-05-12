@@ -1183,16 +1183,16 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => {
         const traceContext = trustedTraceContext(evt, metadata);
         const parentSpanId = traceContext?.parentSpanId;
+        if (traceContext && parentSpanId && traceContext.parentSpanIdSource === "remote") {
+          return contextForTraceContext({
+            traceId: traceContext.traceId,
+            spanId: parentSpanId,
+            traceFlags: traceContext.traceFlags,
+          });
+        }
         return (
           otelContextForTrustedSpanId(parentSpanId) ??
-          contextForSpanContext(trustedRunSpanContextForLogicalTraceId(traceContext?.traceId)) ??
-          (traceContext && parentSpanId && traceContext.parentSpanIdSource === "remote"
-            ? contextForTraceContext({
-                traceId: traceContext.traceId,
-                spanId: parentSpanId,
-                traceFlags: traceContext.traceFlags,
-              })
-            : undefined)
+          contextForSpanContext(trustedRunSpanContextForLogicalTraceId(traceContext?.traceId))
         );
       };
       const trackTrustedSpan = (

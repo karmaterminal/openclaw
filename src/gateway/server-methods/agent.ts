@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   listAgentIds,
   resolveDefaultAgentId,
@@ -145,10 +145,6 @@ import type {
 } from "./types.js";
 
 const RESET_COMMAND_RE = /^\/(new|reset)(?:\s+([\s\S]*))?$/i;
-
-function traceparentFingerprint(traceparent: string | undefined): string {
-  return traceparent ? createHash("sha256").update(traceparent).digest("hex").slice(0, 12) : "none";
-}
 
 function formatAttachmentFailureForLog(err: unknown): string {
   const primary = formatUncaughtError(err);
@@ -1460,42 +1456,13 @@ export const agentHandlers: GatewayRequestHandlers = {
         }
         const execApprovalFollowupElevatedDefaults =
           execApprovalFollowupRuntimeHandoff?.bashElevated;
-        const requestTraceparent = normalizeDiagnosticTraceparent(request.traceparent);
-        const handoffTraceparent = consumeSubagentTraceparentHandoff({
-          idempotencyKey: idem,
-          sessionKey: resolvedSessionKey,
-        })?.traceparent;
         const inheritedTraceparent =
-          requestTraceparent ?? handoffTraceparent ?? sessionContinuationTraceparent;
-        if (
-          request.drainsContinuationDelegateQueue === true ||
-          requestTraceparent ||
-          handoffTraceparent ||
-          sessionContinuationTraceparent
-        ) {
-          const source = requestTraceparent
-            ? "request"
-            : handoffTraceparent
-              ? "handoff"
-              : sessionContinuationTraceparent
-                ? "session"
-                : "none";
-          context.logGateway.info(
-            `[continuation:traceparent-ingress] source=${source} inherited=${traceparentFingerprint(
-              inheritedTraceparent,
-            )} request=${traceparentFingerprint(requestTraceparent)} handoff=${traceparentFingerprint(
-              handoffTraceparent,
-            )} session=${traceparentFingerprint(sessionContinuationTraceparent)} idem=${createHash(
-              "sha256",
-            )
-              .update(idem)
-              .digest("hex")
-              .slice(0, 12)} sessionKey=${createHash("sha256")
-              .update(resolvedSessionKey)
-              .digest("hex")
-              .slice(0, 12)}`,
-          );
-        }
+          request.traceparent ??
+          consumeSubagentTraceparentHandoff({
+            idempotencyKey: idem,
+            sessionKey: resolvedSessionKey,
+          })?.traceparent ??
+          sessionContinuationTraceparent;
 
         dispatchAgentRunFromGateway({
           ingressOpts: {
