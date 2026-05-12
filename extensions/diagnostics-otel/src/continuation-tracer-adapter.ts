@@ -28,6 +28,7 @@ import {
   type Attributes as OtelAttributes,
   type AttributeValue as OtelAttributeValue,
   type Span as OtelSpan,
+  type SpanContext,
   type SpanOptions as OtelSpanOptions,
 } from "@opentelemetry/api";
 import {
@@ -53,11 +54,16 @@ export const CONTINUATION_OTEL_TRACER_NAME = "openclaw.continuation";
 
 export type ContinuationOtelTracerAdapterOptions = {
   resolveParentContext?: (traceContext: DiagnosticTraceContext) => Context | undefined;
+  resolveSpanContext?: (traceContext: DiagnosticTraceContext) => SpanContext | undefined;
 };
 
 function diagnosticTraceFlagsToOtel(flags: string | undefined): TraceFlags {
   const parsed = Number.parseInt(flags ?? "00", 16);
   return (parsed & TraceFlags.SAMPLED) !== 0 ? TraceFlags.SAMPLED : TraceFlags.NONE;
+}
+
+function otelTraceFlagsToDiagnostic(flags: TraceFlags | undefined): string {
+  return ((flags ?? TraceFlags.NONE) & TraceFlags.SAMPLED) !== 0 ? "01" : "00";
 }
 
 function continuationStatusToOtel(status: ContinuationSpanStatus): SpanStatusCode {
@@ -140,6 +146,15 @@ export function createContinuationOtelTracerAdapter(
 ): ContinuationTracer {
   const otelTracer = trace.getTracer(CONTINUATION_OTEL_TRACER_NAME);
   return {
+    formatTraceparent(traceContext: DiagnosticTraceContext): string | undefined {
+      const spanContext = adapterOptions.resolveSpanContext?.(traceContext);
+      if (!spanContext) {
+        return undefined;
+      }
+      return `00-${spanContext.traceId}-${spanContext.spanId}-${otelTraceFlagsToDiagnostic(
+        spanContext.traceFlags,
+      )}`;
+    },
     startSpan(name: string, options?: ContinuationStartSpanOptions): ContinuationSpan {
       const otelOpts: OtelSpanOptions = {};
       const mappedAttrs = spanAttributesToOtel(options?.attributes);
@@ -154,8 +169,12 @@ export function createContinuationOtelTracerAdapter(
           options.traceparent,
         );
         if (parsed?.spanId && parsed.traceId) {
+          const resolvedSpanContext = adapterOptions.resolveSpanContext?.(parsed);
           const parentCtx =
             adapterOptions.resolveParentContext?.(parsed) ??
+            (resolvedSpanContext
+              ? trace.setSpanContext(otelContextApi.active(), resolvedSpanContext)
+              : undefined) ??
             trace.setSpanContext(otelContextApi.active(), {
               traceId: parsed.traceId,
               spanId: parsed.spanId,

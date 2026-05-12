@@ -443,11 +443,19 @@ function normalizeTraceContext(value: unknown): DiagnosticTraceContext | undefin
   if (candidate.traceFlags !== undefined && !isValidDiagnosticTraceFlags(candidate.traceFlags)) {
     return undefined;
   }
+  if (candidate.spanIdSource !== undefined && candidate.spanIdSource !== "remote") {
+    return undefined;
+  }
+  if (candidate.parentSpanIdSource !== undefined && candidate.parentSpanIdSource !== "remote") {
+    return undefined;
+  }
   return {
     traceId: candidate.traceId,
     ...(candidate.spanId ? { spanId: candidate.spanId } : {}),
     ...(candidate.parentSpanId ? { parentSpanId: candidate.parentSpanId } : {}),
     ...(candidate.traceFlags ? { traceFlags: candidate.traceFlags } : {}),
+    ...(candidate.spanIdSource ? { spanIdSource: candidate.spanIdSource } : {}),
+    ...(candidate.parentSpanIdSource ? { parentSpanIdSource: candidate.parentSpanIdSource } : {}),
   };
 }
 
@@ -777,6 +785,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           createContinuationOtelTracerAdapter({
             resolveParentContext: (traceContext) =>
               otelContextForTrustedSpanId(traceContext.spanId),
+            resolveSpanContext: (traceContext) =>
+              trustedSpanContextForLogicalId(traceContext.spanId),
           }),
         );
       }
@@ -1144,8 +1154,18 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         evt: DiagnosticEventPayload,
         metadata: DiagnosticEventMetadata,
       ) => {
-        const parentSpanId = trustedTraceContext(evt, metadata)?.parentSpanId;
-        return otelContextForTrustedSpanId(parentSpanId);
+        const traceContext = trustedTraceContext(evt, metadata);
+        const parentSpanId = traceContext?.parentSpanId;
+        return (
+          otelContextForTrustedSpanId(parentSpanId) ??
+          (traceContext && parentSpanId && traceContext.parentSpanIdSource === "remote"
+            ? contextForTraceContext({
+                traceId: traceContext.traceId,
+                spanId: parentSpanId,
+                traceFlags: traceContext.traceFlags,
+              })
+            : undefined)
+        );
       };
       const trackTrustedSpan = (
         evt: DiagnosticEventPayload,

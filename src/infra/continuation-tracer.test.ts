@@ -8,6 +8,7 @@ import {
   emitContinuationFanoutSpan,
   emitContinuationQueueDrainSpan,
   emitContinuationWorkSpan,
+  formatContinuationTraceparent,
   getContinuationTracer,
   noopTracer,
   resetContinuationTracer,
@@ -123,6 +124,36 @@ describe("continuation-tracer :: registry (set/get/reset)", () => {
 
     resetContinuationTracer();
     expect(getContinuationTracer()).toBe(noopTracer);
+  });
+
+  it("formats traceparents through the active tracer when available", () => {
+    const context = {
+      traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+      spanId: "00f067aa0ba902b7",
+      traceFlags: "01",
+    };
+    const exportedTraceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+    const customTracer: Tracer = {
+      startSpan: () => noopTracer.startSpan("x"),
+      formatTraceparent: (traceContext) =>
+        traceContext.spanId === context.spanId ? exportedTraceparent : undefined,
+    };
+    setContinuationTracer(customTracer);
+
+    expect(formatContinuationTraceparent(context)).toBe(exportedTraceparent);
+  });
+
+  it("falls back to the diagnostic traceparent when no tracer formatter resolves", () => {
+    const context = {
+      traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+      spanId: "00f067aa0ba902b7",
+      traceFlags: "01",
+    };
+    setContinuationTracer({ startSpan: () => noopTracer.startSpan("x") });
+
+    expect(formatContinuationTraceparent(context)).toBe(
+      "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    );
   });
 });
 

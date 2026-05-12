@@ -114,13 +114,21 @@ export function createDiagnosticTraceContext(
 ): DiagnosticTraceContext {
   const parsed = parseDiagnosticTraceparent(input.traceparent);
   const traceId = normalizeTraceId(input.traceId) ?? parsed?.traceId ?? randomTraceId();
-  const spanId = normalizeSpanId(input.spanId) ?? parsed?.spanId ?? randomSpanId();
+  const explicitSpanId = normalizeSpanId(input.spanId);
+  const spanId = explicitSpanId ?? parsed?.spanId ?? randomSpanId();
   const parentSpanId = normalizeSpanId(input.parentSpanId);
+  const spanIdSource =
+    input.spanIdSource === "remote" || (!explicitSpanId && parsed?.spanId) ? "remote" : undefined;
+  const parentSpanIdSource = input.parentSpanIdSource === "remote" ? "remote" : undefined;
   return {
     traceId,
     spanId,
     ...(parentSpanId && parentSpanId !== spanId ? { parentSpanId } : {}),
     traceFlags: normalizeTraceFlags(input.traceFlags) ?? parsed?.traceFlags ?? DEFAULT_TRACE_FLAGS,
+    ...(spanIdSource ? { spanIdSource } : {}),
+    ...(parentSpanIdSource && parentSpanId && parentSpanId !== spanId
+      ? { parentSpanIdSource }
+      : {}),
   };
 }
 
@@ -134,6 +142,7 @@ export function createChildDiagnosticTraceContext(
     spanId: input.spanId,
     parentSpanId,
     traceFlags: input.traceFlags ?? parent.traceFlags,
+    parentSpanIdSource: input.parentSpanIdSource ?? parent.spanIdSource,
   });
 }
 
@@ -155,6 +164,8 @@ export function freezeDiagnosticTraceContext(
     ...(context.spanId ? { spanId: context.spanId } : {}),
     ...(context.parentSpanId ? { parentSpanId: context.parentSpanId } : {}),
     ...(context.traceFlags ? { traceFlags: context.traceFlags } : {}),
+    ...(context.spanIdSource ? { spanIdSource: context.spanIdSource } : {}),
+    ...(context.parentSpanIdSource ? { parentSpanIdSource: context.parentSpanIdSource } : {}),
   });
 }
 

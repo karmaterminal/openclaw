@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
+import { formatActiveContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import {
   DIAGNOSTIC_TRACEPARENT_PATTERN,
-  formatActiveDiagnosticTraceparent,
   normalizeDiagnosticTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -73,7 +73,7 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       if (traceparentRaw !== undefined && !explicitTraceparent) {
         throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
       }
-      const traceparent = explicitTraceparent ?? formatActiveDiagnosticTraceparent();
+      const traceparent = explicitTraceparent ?? formatActiveContinuationTraceparent();
       const traceContextFields = traceparent ? { traceparent } : {};
 
       log.debug(

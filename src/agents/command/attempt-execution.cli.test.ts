@@ -925,7 +925,10 @@ describe("CLI attempt execution", () => {
       updatedAt: Date.now(),
     };
     const sessionStore: Record<string, SessionEntry> = { [sessionKey]: sessionEntry };
-    const inheritedTrace = parseDiagnosticTraceparent(INHERITED_TRACEPARENT);
+    const parsedInheritedTrace = parseDiagnosticTraceparent(INHERITED_TRACEPARENT);
+    const inheritedTrace = parsedInheritedTrace
+      ? { ...parsedInheritedTrace, spanIdSource: "remote" as const }
+      : undefined;
     let activeTraceBeforeAwait: unknown;
     let activeTraceAfterAwait: unknown;
     const diagnosticEvents: DiagnosticEventPayload[] = [];

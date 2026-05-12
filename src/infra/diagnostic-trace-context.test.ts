@@ -94,6 +94,7 @@ describe("diagnostic-trace-context", () => {
       traceId: TRACE_ID,
       spanId: SPAN_ID,
       traceFlags: "01",
+      spanIdSource: "remote",
     });
   });
 
@@ -123,6 +124,20 @@ describe("diagnostic-trace-context", () => {
     expect(
       createChildDiagnosticTraceContext(parent, { spanId: SPAN_ID }).parentSpanId,
     ).toBeUndefined();
+  });
+
+  it("marks child parent ids inherited from remote traceparents", () => {
+    const parent = createDiagnosticTraceContext({
+      traceparent: `00-${TRACE_ID}-${SPAN_ID}-01`,
+    });
+
+    expect(createChildDiagnosticTraceContext(parent, { spanId: CHILD_SPAN_ID })).toEqual({
+      traceId: TRACE_ID,
+      spanId: CHILD_SPAN_ID,
+      parentSpanId: SPAN_ID,
+      traceFlags: "01",
+      parentSpanIdSource: "remote",
+    });
   });
 
   it("freezes a defensive trace context copy", () => {
@@ -215,6 +230,7 @@ describe("diagnostic-trace-context", () => {
         traceId: TRACE_ID,
         spanId: SPAN_ID,
         traceFlags: "00",
+        spanIdSource: "remote",
       });
       await Promise.resolve();
       expect(formatActiveDiagnosticTraceparent()).toBe(traceparent);

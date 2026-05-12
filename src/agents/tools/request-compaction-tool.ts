@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
+import { formatActiveContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import {
   DIAGNOSTIC_TRACEPARENT_PATTERN,
-  formatActiveDiagnosticTraceparent,
   normalizeDiagnosticTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -191,7 +191,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       if (traceparentRaw !== undefined && !explicitTraceparent) {
         throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
       }
-      const traceparent = explicitTraceparent ?? formatActiveDiagnosticTraceparent();
+      const traceparent = explicitTraceparent ?? formatActiveContinuationTraceparent();
       const traceContextFields = traceparent ? { traceparent } : {};
 
       // ----- Guard 0: Dedup — compaction already pending -----

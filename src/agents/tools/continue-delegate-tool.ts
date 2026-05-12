@@ -10,9 +10,9 @@ import {
   hasCrossSessionDelegateTargeting,
   normalizeContinuationTargetKeys,
 } from "../../auto-reply/continuation/targeting.js";
+import { formatActiveContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import {
   DIAGNOSTIC_TRACEPARENT_PATTERN,
-  formatActiveDiagnosticTraceparent,
   normalizeDiagnosticTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -193,7 +193,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       if (traceparentRaw !== undefined && !explicitTraceparent) {
         throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
       }
-      const traceparent = explicitTraceparent ?? formatActiveDiagnosticTraceparent();
+      const traceparent = explicitTraceparent ?? formatActiveContinuationTraceparent();
       const traceContextFields = traceparent ? { traceparent } : {};
 
       const continuationConfig = resolveContinuationRuntimeConfig();

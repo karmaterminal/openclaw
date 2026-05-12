@@ -16,6 +16,10 @@ export type DiagnosticTraceContext = {
   readonly parentSpanId?: string;
   /** W3C trace flags, 2 lowercase hex chars. Defaults to sampled. */
   readonly traceFlags?: string;
+  /** Marks a current span id parsed from a remote W3C traceparent. */
+  readonly spanIdSource?: "remote";
+  /** Marks a parent span id inherited from a remote W3C traceparent. */
+  readonly parentSpanIdSource?: "remote";
 };
 
 function isNonZeroHex(value: string): boolean {

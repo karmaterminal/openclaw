@@ -2617,6 +2617,13 @@ describe("diagnostics-otel service", () => {
 
       const runSpanId = telemetryState.spans.find((span) => span.name === "openclaw.run")
         ?.spanContext.mock.results[0]?.value?.spanId;
+      expect(
+        getContinuationTracer().formatTraceparent?.({
+          traceId: TRACE_ID,
+          spanId: CHILD_SPAN_ID,
+          traceFlags: "01",
+        }),
+      ).toBe(`00-${TRACE_ID}-${runSpanId}-01`);
       telemetryState.tracer.startSpan.mockClear();
       telemetryState.tracer.setSpanContext.mockClear();
 
@@ -2640,6 +2647,46 @@ describe("diagnostics-otel service", () => {
       expect(continuationParent?.spanContext?.spanId).not.toBe(CHILD_SPAN_ID);
       await service.stop?.(ctx);
       expect(getContinuationTracer()).toBe(noopTracer);
+    });
+
+    test("parents trusted spans to carried traceparent span ids when no logical mapping exists", async () => {
+      const service = createDiagnosticsOtelService();
+      const ctx = createTraceOnlyContext(OTEL_TEST_ENDPOINT);
+      await service.start(ctx);
+
+      emitTrustedDiagnosticEvent({
+        type: "run.started",
+        runId: "run-carried-parent",
+        provider: "openai",
+        model: "gpt-5.5",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: CHILD_SPAN_ID,
+          parentSpanId: SPAN_ID,
+          parentSpanIdSource: "remote",
+          traceFlags: "01",
+        },
+      });
+      await flushDiagnosticEvents();
+
+      expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          traceId: TRACE_ID,
+          spanId: SPAN_ID,
+        }),
+      );
+      const runStart = startedSpanCall("openclaw.run");
+      expect(runStart?.[2]).toEqual(
+        expect.objectContaining({
+          spanContext: expect.objectContaining({
+            traceId: TRACE_ID,
+            spanId: SPAN_ID,
+          }),
+        }),
+      );
+
+      await service.stop?.(ctx);
     });
 
     test("does not install the adapter when traces are disabled (continuation-tracer stays noop)", async () => {

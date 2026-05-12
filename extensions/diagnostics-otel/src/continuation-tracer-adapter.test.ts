@@ -148,6 +148,38 @@ describe("continuation-tracer adapter :: startSpan with traceparent (parent stit
     expect(trace.setSpanContext).not.toHaveBeenCalled();
   });
 
+  it("can stitch and format using a resolved exported span context", () => {
+    const resolveSpanContext = vi.fn(() => ({
+      traceId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      spanId: "bbbbbbbbbbbbbbbb",
+      traceFlags: 1,
+    }));
+    const adapter = createContinuationOtelTracerAdapter({ resolveSpanContext });
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+    expect(
+      adapter.formatTraceparent?.({
+        traceId: "0af7651916cd43dd8448eb211c80319c",
+        spanId: "b7ad6b7169203331",
+        traceFlags: "01",
+      }),
+    ).toBe("00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01");
+    adapter.startSpan("continuation.delegate.dispatch", { traceparent });
+
+    expect(resolveSpanContext).toHaveBeenCalledWith({
+      traceId: "0af7651916cd43dd8448eb211c80319c",
+      spanId: "b7ad6b7169203331",
+      traceFlags: "01",
+    });
+    expect(startSpanCalls).toHaveLength(1);
+    const parentCtx = startSpanCalls[0]?.parentCtx as {
+      __tag: string;
+      sc: Record<string, unknown>;
+    };
+    expect(parentCtx?.sc?.traceId).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(parentCtx?.sc?.spanId).toBe("bbbbbbbbbbbbbbbb");
+  });
+
   it("falls back to root span when traceparent is malformed", () => {
     const adapter = createContinuationOtelTracerAdapter();
     adapter.startSpan("continuation.work", { traceparent: "not-a-valid-traceparent" });

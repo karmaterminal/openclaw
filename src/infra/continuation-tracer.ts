@@ -5,6 +5,12 @@
 // concrete exporter without changing continuation call sites.
 
 import { createHash, randomUUID } from "node:crypto";
+import {
+  formatDiagnosticTraceparent,
+  getActiveDiagnosticTraceContext,
+  normalizeDiagnosticTraceparent,
+  type DiagnosticTraceContext,
+} from "./diagnostic-trace-context.js";
 
 /**
  * Span attribute values mirror the OTEL semantic-conventions primitive set:
@@ -300,6 +306,12 @@ export type Tracer = {
    * arbitrary names; tests pin the canonical set.
    */
   startSpan(name: string, options?: StartSpanOptions): Span;
+  /**
+   * Optional exporter-owned traceparent formatter. Continuation tools call this
+   * with OpenClaw's active DiagnosticTraceContext; adapters may translate that
+   * logical context to the concrete exported span context for cross-process hops.
+   */
+  formatTraceparent?: (context: DiagnosticTraceContext) => string | undefined;
 };
 
 const noopSpan: Span = Object.freeze({
@@ -361,6 +373,20 @@ export function setContinuationTracer(tracer: Tracer | null | undefined): void {
  */
 export function resetContinuationTracer(): void {
   activeTracer = noopTracer;
+}
+
+export function formatContinuationTraceparent(
+  context: DiagnosticTraceContext | undefined,
+): string | undefined {
+  if (!context) {
+    return undefined;
+  }
+  const resolved = activeTracer.formatTraceparent?.(context);
+  return normalizeDiagnosticTraceparent(resolved) ?? formatDiagnosticTraceparent(context);
+}
+
+export function formatActiveContinuationTraceparent(): string | undefined {
+  return formatContinuationTraceparent(getActiveDiagnosticTraceContext());
 }
 
 /**
