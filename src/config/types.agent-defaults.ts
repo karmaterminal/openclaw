@@ -472,9 +472,9 @@ export type AgentDefaultsConfig = {
     earlyWarningBand?: number;
     /**
      * Cross-session delegate targeting policy.
-     * - `"disabled"` (default): delegates can only return to the dispatching session
-     *   or its lineage (tree/ancestor). Explicit `targetSessionKey`, `targetSessionKeys`,
-     *   and `fanoutMode: "all"` are rejected with a tool error.
+     * - `"disabled"` (default): delegates can return to the dispatching session or
+     *   use `fanoutMode: "tree"` for lineage-only routing. Non-self `targetSessionKey`,
+     *   any `targetSessionKeys`, and `fanoutMode: "all"` are rejected with a tool error.
      * - `"enabled"`: all targeting modes are available, including cross-session
      *   `targetSessionKey`, `targetSessionKeys`, and `fanoutMode: "all"`.
      *
