@@ -257,6 +257,13 @@ export type Span = {
    */
   recordException(err: unknown): void;
   /**
+   * Return a W3C traceparent for the concrete span when the installed exporter
+   * can expose it. Cross-process continuation dispatch uses this after starting
+   * the dispatch span so child runs attach to exported trace bytes, not
+   * process-local logical ids.
+   */
+  traceparent?(): string | undefined;
+  /**
    * End the span. Idempotent: subsequent calls are no-ops. Matches OTEL.
    */
   end(): void;
@@ -324,6 +331,9 @@ const noopSpan: Span = Object.freeze({
   },
   recordException(_err: unknown): void {
     /* no-op */
+  },
+  traceparent(): string | undefined {
+    return undefined;
   },
   end(): void {
     /* no-op */
@@ -396,6 +406,48 @@ export function resolveContinuationTraceparent(
   const normalized = normalizeDiagnosticTraceparent(traceparent);
   const parsed = parseDiagnosticTraceparent(normalized);
   return parsed ? formatContinuationTraceparent(parsed) : undefined;
+}
+
+export type ContinuationDelegateSpanArgs = {
+  chainId: string | undefined;
+  chainStepRemaining: number;
+  delayMs: number;
+  delivery: "immediate" | "timer";
+  delegateMode?: string | undefined;
+  reason?: string | undefined;
+  traceparent?: string | undefined;
+  log?: (message: string) => void;
+};
+
+function continuationDelegateSpanAttributes(
+  args: ContinuationDelegateSpanArgs,
+): ContinuationSpanAttrs {
+  const reasonPreview = args.reason
+    ? args.reason.length > 80
+      ? args.reason.slice(0, 80)
+      : args.reason
+    : undefined;
+  return {
+    "delay.ms": Math.round(args.delayMs),
+    "chain.step.remaining": Math.max(0, args.chainStepRemaining),
+    "delegate.delivery": args.delivery,
+    ...(args.chainId !== undefined && { "chain.id": args.chainId }),
+    ...(args.delegateMode !== undefined && { "delegate.mode": args.delegateMode }),
+    ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
+  };
+}
+
+export function startContinuationDelegateSpan(args: ContinuationDelegateSpanArgs): Span {
+  try {
+    const span = activeTracer.startSpan("continuation.delegate.dispatch", {
+      attributes: continuationDelegateSpanAttributes(args),
+      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
+    });
+    return span;
+  } catch (err) {
+    args.log?.(`Failed to start continuation.delegate.dispatch span: ${String(err)}`);
+    return noopSpan;
+  }
 }
 
 /**
@@ -480,23 +532,7 @@ export function emitContinuationDelegateSpan(args: {
   log?: (message: string) => void;
 }): void {
   try {
-    const reasonPreview = args.reason
-      ? args.reason.length > 80
-        ? args.reason.slice(0, 80)
-        : args.reason
-      : undefined;
-    const attrs: ContinuationSpanAttrs = {
-      "delay.ms": Math.round(args.delayMs),
-      "chain.step.remaining": Math.max(0, args.chainStepRemaining),
-      "delegate.delivery": args.delivery,
-      ...(args.chainId !== undefined && { "chain.id": args.chainId }),
-      ...(args.delegateMode !== undefined && { "delegate.mode": args.delegateMode }),
-      ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
-    };
-    const span = activeTracer.startSpan("continuation.delegate.dispatch", {
-      attributes: attrs,
-      ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
-    });
+    const span = startContinuationDelegateSpan(args);
     span.setStatus("OK");
     span.end();
   } catch (err) {

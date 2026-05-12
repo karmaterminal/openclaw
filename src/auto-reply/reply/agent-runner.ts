@@ -34,6 +34,7 @@ import {
   emitContinuationWorkSpan,
   emitContinuationWorkFireSpan,
   resolveContinuationTraceparent,
+  startContinuationDelegateSpan,
 } from "../../infra/continuation-tracer.js";
 import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
@@ -2407,6 +2408,7 @@ export async function runReplyAgent(params: {
                   traceparent?: string;
                 },
               ) => {
+                let dispatchSpan: ReturnType<typeof startContinuationDelegateSpan> | undefined;
                 try {
                   if (
                     rejectCrossSessionTargeting(
@@ -2431,6 +2433,23 @@ export async function runReplyAgent(params: {
                     return false;
                   }
                   const outboundTraceparent = resolveContinuationTraceparent(options?.traceparent);
+                  const delegateMode = options?.silentWake
+                    ? "silent-wake"
+                    : options?.silent
+                      ? "silent"
+                      : "normal";
+                  if (!options?.timerTriggered) {
+                    dispatchSpan = startContinuationDelegateSpan({
+                      chainId: undefined,
+                      chainStepRemaining: maxChainLength - plannedHop,
+                      delayMs: 0,
+                      delivery: "immediate",
+                      delegateMode,
+                      traceparent: outboundTraceparent,
+                      log: (message) => defaultRuntime.log(message),
+                    });
+                  }
+                  const spawnTraceparent = dispatchSpan?.traceparent?.() ?? outboundTraceparent;
                   const spawnResult = await spawnSubagentDirect(
                     {
                       // The spawned child carries its current chain position in-band.
@@ -2448,7 +2467,7 @@ export async function runReplyAgent(params: {
                       ...(options?.fanoutMode
                         ? { continuationFanoutMode: options.fanoutMode }
                         : {}),
-                      ...(outboundTraceparent ? { traceparent: outboundTraceparent } : {}),
+                      ...(spawnTraceparent ? { traceparent: spawnTraceparent } : {}),
                     },
                     {
                       agentSessionKey: sessionKey,
@@ -2472,29 +2491,11 @@ export async function runReplyAgent(params: {
                         activeSessionEntry?.continuationChainTokens ?? 0,
                       ),
                     });
-                    // Emit `continuation.delegate.dispatch` at the immediate
-                    // accept seam. Timer-deferred dispatches
-                    // already emitted at enqueue-time (before setTimeout); skip
-                    // re-emission when `timerTriggered` to preserve
-                    // exactly-one-span-per-accepted-dispatch.
-                    if (!options?.timerTriggered) {
-                      // Bracket/tool delegate seams do not carry a
-                      // `post-compaction` discriminator; that path is emitted
-                      // from a sibling persist site.
-                      const delegateMode = options?.silentWake
-                        ? "silent-wake"
-                        : options?.silent
-                          ? "silent"
-                          : "normal";
-                      emitContinuationDelegateSpan({
-                        chainId: persistedChainId,
-                        chainStepRemaining: maxChainLength - plannedHop,
-                        delayMs: 0,
-                        delivery: "immediate",
-                        delegateMode,
-                        traceparent: outboundTraceparent,
-                        log: (message) => defaultRuntime.log(message),
-                      });
+                    if (dispatchSpan) {
+                      if (persistedChainId !== undefined) {
+                        dispatchSpan.setAttributes({ "chain.id": persistedChainId });
+                      }
+                      dispatchSpan.setStatus("OK");
                     }
                     enqueueSystemEvent(
                       `[continuation:delegate-spawned] Spawned turn ${plannedHop}/${maxChainLength}: ${task}`,
@@ -2505,12 +2506,15 @@ export async function runReplyAgent(params: {
                   defaultRuntime.log(
                     `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
                   );
+                  dispatchSpan?.setStatus("ERROR", spawnResult.status);
                   enqueueSystemEvent(
                     `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${task}`,
                     { sessionKey, trusted: true },
                   );
                   return false;
                 } catch (err) {
+                  dispatchSpan?.recordException(err);
+                  dispatchSpan?.setStatus("ERROR", String(err));
                   defaultRuntime.log(
                     `DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
                   );
@@ -2519,6 +2523,8 @@ export async function runReplyAgent(params: {
                     { sessionKey, trusted: true },
                   );
                   return false;
+                } finally {
+                  dispatchSpan?.end();
                 }
               };
 
@@ -2962,8 +2968,26 @@ export async function runReplyAgent(params: {
               traceparent?: string;
             },
           ) => {
+            let dispatchSpan: ReturnType<typeof startContinuationDelegateSpan> | undefined;
             try {
               const outboundTraceparent = resolveContinuationTraceparent(options?.traceparent);
+              const delegateMode = options?.silentWake
+                ? "silent-wake"
+                : options?.silent
+                  ? "silent"
+                  : "normal";
+              if (!options?.timerTriggered) {
+                dispatchSpan = startContinuationDelegateSpan({
+                  chainId: undefined,
+                  chainStepRemaining: maxChainLength - plannedHop,
+                  delayMs: 0,
+                  delivery: "immediate",
+                  delegateMode,
+                  traceparent: outboundTraceparent,
+                  log: (message) => defaultRuntime.log(message),
+                });
+              }
+              const spawnTraceparent = dispatchSpan?.traceparent?.() ?? outboundTraceparent;
               const spawnResult = await spawnSubagentDirect(
                 {
                   task: `[continuation:chain-hop:${plannedHop}] Delegated task (turn ${plannedHop}/${maxChainLength}): ${task}`,
@@ -2977,7 +3001,7 @@ export async function runReplyAgent(params: {
                     ? { continuationTargetSessionKeys: options.targetSessionKeys }
                     : {}),
                   ...(options?.fanoutMode ? { continuationFanoutMode: options.fanoutMode } : {}),
-                  ...(outboundTraceparent ? { traceparent: outboundTraceparent } : {}),
+                  ...(spawnTraceparent ? { traceparent: spawnTraceparent } : {}),
                 },
                 {
                   agentSessionKey: sessionKey,
@@ -3002,27 +3026,11 @@ export async function runReplyAgent(params: {
                     activeSessionEntry?.continuationChainTokens ?? 0,
                   ),
                 });
-                // Emit `continuation.delegate.dispatch` at the immediate
-                // accept seam (tool-side). Timer-deferred
-                // dispatches already emitted at enqueue-time; skip when
-                // `timerTriggered` to preserve exactly-one-span-per-accepted-dispatch.
-                if (!options?.timerTriggered) {
-                  // Tool delegate seams do not carry a `post-compaction`
-                  // discriminator; that path is emitted from a sibling persist site.
-                  const delegateMode = options?.silentWake
-                    ? "silent-wake"
-                    : options?.silent
-                      ? "silent"
-                      : "normal";
-                  emitContinuationDelegateSpan({
-                    chainId: persistedChainId,
-                    chainStepRemaining: maxChainLength - plannedHop,
-                    delayMs: 0,
-                    delivery: "immediate",
-                    delegateMode,
-                    traceparent: outboundTraceparent,
-                    log: (message) => defaultRuntime.log(message),
-                  });
+                if (dispatchSpan) {
+                  if (persistedChainId !== undefined) {
+                    dispatchSpan.setAttributes({ "chain.id": persistedChainId });
+                  }
+                  dispatchSpan.setStatus("OK");
                 }
                 enqueueSystemEvent(
                   `[continuation:delegate-spawned] Tool delegate turn ${plannedHop}/${maxChainLength}: ${task}`,
@@ -3033,12 +3041,15 @@ export async function runReplyAgent(params: {
               defaultRuntime.log(
                 `Tool DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
               );
+              dispatchSpan?.setStatus("ERROR", spawnResult.status);
               enqueueSystemEvent(
                 `[continuation] Tool DELEGATE spawn ${spawnResult.status}: ${task}`,
                 { sessionKey, trusted: true },
               );
               return false;
             } catch (err) {
+              dispatchSpan?.recordException(err);
+              dispatchSpan?.setStatus("ERROR", String(err));
               defaultRuntime.log(
                 `Tool DELEGATE spawn failed for session ${sessionKey}: ${String(err)}`,
               );
@@ -3047,6 +3058,8 @@ export async function runReplyAgent(params: {
                 { sessionKey, trusted: true },
               );
               return false;
+            } finally {
+              dispatchSpan?.end();
             }
           };
 

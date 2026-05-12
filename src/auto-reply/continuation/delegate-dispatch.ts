@@ -17,6 +17,7 @@ import type { SpawnSubagentContext } from "../../agents/subagent-spawn.js";
 import {
   emitContinuationDisabledSpan,
   resolveContinuationTraceparent,
+  startContinuationDelegateSpan,
 } from "../../infra/continuation-tracer.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -284,6 +285,7 @@ export async function dispatchToolDelegates(params: {
     const silent = delegate.mode === "silent" || delegate.mode === "silent-wake";
     const silentWake = delegate.mode === "silent-wake";
     const outboundTraceparent = resolveContinuationTraceparent(delegate.traceparent);
+    const delegateMode = silentWake ? "silent-wake" : silent ? "silent" : "normal";
 
     const spawnCtx: SpawnSubagentContext = {
       agentSessionKey: sessionKey,
@@ -293,7 +295,19 @@ export async function dispatchToolDelegates(params: {
       agentThreadId: ctx.agentThreadId,
     };
 
+    let dispatchSpan: ReturnType<typeof startContinuationDelegateSpan> | undefined;
     try {
+      dispatchSpan = startContinuationDelegateSpan({
+        chainId: undefined,
+        chainStepRemaining: maxChainLength - nextHop,
+        delayMs: 0,
+        delivery: "immediate",
+        delegateMode,
+        reason: delegate.task,
+        traceparent: outboundTraceparent,
+        log: (message) => log.info(message),
+      });
+      const spawnTraceparent = dispatchSpan.traceparent?.() ?? outboundTraceparent;
       const result = await spawnSubagentDirect(
         {
           task: `[continuation:chain-hop:${nextHop}] Delegated task (turn ${nextHop}/${maxChainLength}): ${delegate.task}`,
@@ -307,7 +321,7 @@ export async function dispatchToolDelegates(params: {
             ? { continuationTargetSessionKeys: delegate.targetSessionKeys }
             : {}),
           ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
-          ...(outboundTraceparent ? { traceparent: outboundTraceparent } : {}),
+          ...(spawnTraceparent ? { traceparent: spawnTraceparent } : {}),
         },
         spawnCtx,
       );
@@ -321,6 +335,7 @@ export async function dispatchToolDelegates(params: {
           `[continuation:delegate-spawned] Spawned turn ${nextHop}/${maxChainLength}: ${delegate.task}`,
           { sessionKey, trusted: true },
         );
+        dispatchSpan.setStatus("OK");
         dispatched++;
         currentChainCount = nextHop;
       } else {
@@ -329,6 +344,7 @@ export async function dispatchToolDelegates(params: {
           `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
         );
         markDelegateFailed(delegate, summary);
+        dispatchSpan.setStatus("ERROR", result.status);
         enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
           sessionKey,
           trusted: true,
@@ -338,6 +354,8 @@ export async function dispatchToolDelegates(params: {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const summary = `DELEGATE spawn failed: ${message}`;
+      dispatchSpan?.recordException(err);
+      dispatchSpan?.setStatus("ERROR", message);
       log.info(`[continuation:delegate-spawn-failed] error=${message} session=${sessionKey}`);
       markDelegateFailed(delegate, summary);
       enqueueSystemEvent(`[continuation] ${summary}. Task: ${delegate.task}`, {
@@ -345,6 +363,8 @@ export async function dispatchToolDelegates(params: {
         trusted: true,
       });
       rejected++;
+    } finally {
+      dispatchSpan?.end();
     }
   }
 

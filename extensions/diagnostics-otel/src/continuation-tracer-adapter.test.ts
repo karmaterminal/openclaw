@@ -17,6 +17,13 @@ const startSpanCalls: Array<{
 const recordedOnSpan: Array<{ method: string; args: unknown[] }> = [];
 
 const recordingSpan = {
+  spanContext() {
+    return {
+      traceId: "cccccccccccccccccccccccccccccccc",
+      spanId: "dddddddddddddddd",
+      traceFlags: 1,
+    };
+  },
   setAttributes(attrs: unknown) {
     recordedOnSpan.push({ method: "setAttributes", args: [attrs] });
   },
@@ -232,6 +239,13 @@ describe("continuation-tracer adapter :: returned Span behavior", () => {
       name: "ContinuationException",
       message: "string-only-failure",
     });
+  });
+
+  it("traceparent returns the underlying exported OTEL span context", () => {
+    const adapter = createContinuationOtelTracerAdapter();
+    const span = adapter.startSpan("continuation.delegate.dispatch");
+
+    expect(span.traceparent?.()).toBe("00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01");
   });
 
   it("end is idempotent — only the first call reaches the underlying span", () => {

@@ -352,6 +352,53 @@ describe("tool delegate dispatch contract", () => {
     );
   });
 
+  it("carries the exported dispatch span traceparent into spawned continuation runs", async () => {
+    const sessionKey = "session-delegate-dispatch-carrier";
+    const persistedTraceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const dispatchTraceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+    const dispatchSpan = {
+      setAttributes: vi.fn(),
+      setStatus: vi.fn(),
+      recordException: vi.fn(),
+      traceparent: vi.fn(() => dispatchTraceparent),
+      end: vi.fn(),
+    };
+    const startSpan = vi.fn(() => dispatchSpan);
+    setContinuationTracer({
+      startSpan,
+      formatTraceparent: () => undefined,
+    });
+    enqueuePendingDelegate(sessionKey, {
+      task: "continue traced work from dispatch",
+      traceparent: persistedTraceparent,
+    });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(startSpan).toHaveBeenCalledWith(
+      "continuation.delegate.dispatch",
+      expect.objectContaining({
+        traceparent: persistedTraceparent,
+      }),
+    );
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringContaining("continue traced work from dispatch"),
+        traceparent: dispatchTraceparent,
+      }),
+      expect.objectContaining({
+        agentSessionKey: sessionKey,
+      }),
+    );
+    expect(dispatchSpan.setStatus).toHaveBeenCalledWith("OK");
+    expect(dispatchSpan.end).toHaveBeenCalledTimes(1);
+  });
+
   it("advances chain state and prefixes spawned tasks with the next hop", async () => {
     const sessionKey = "session-delegate-chain";
     enqueuePendingDelegate(sessionKey, { task: "inspect logs" });

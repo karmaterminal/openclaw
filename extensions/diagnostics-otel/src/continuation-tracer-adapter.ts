@@ -121,6 +121,12 @@ function wrapOtelSpan(otelSpan: OtelSpan): ContinuationSpan {
         message: typeof err === "string" ? err : String(err),
       });
     },
+    traceparent(): string | undefined {
+      const spanContext = otelSpan.spanContext();
+      return `00-${spanContext.traceId}-${spanContext.spanId}-${otelTraceFlagsToDiagnostic(
+        spanContext.traceFlags,
+      )}`;
+    },
     end(): void {
       // Idempotent end matches the continuation `Span` contract:
       //   "End the span. Idempotent: subsequent calls are no-ops."
