@@ -43,7 +43,8 @@ Targeted delegate return is the banner routing primitive: one child can grant an
   - [5.1 Core configuration surface](#51-core-configuration-surface)
   - [5.2 Human-user profiles](#52-human-user-profiles)
   - [5.3 Wide fan-out patterns](#53-wide-fan-out-patterns)
-  - [5.4 TaskFlow backing and durable delegate queues](#54-taskflow-backing-and-durable-delegate-queues)
+  - [5.4 Cross-session targeting policy gate](#54-cross-session-targeting-policy-gate)
+  - [5.5 TaskFlow backing and durable delegate queues](#55-taskflow-backing-and-durable-delegate-queues)
 - [6. Observability](#6-observability)
   - [6.1 Diagnostic log anchors](#61-diagnostic-log-anchors)
   - [6.2 Lifecycle traces](#62-lifecycle-traces)
@@ -900,6 +901,7 @@ agents:
       maxDelayMs: 300000
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
+      crossSessionTargeting: disabled
       contextPressureThreshold: 0.8 # optional; omit to disable ordinary pre-run pressure events
       earlyWarningBand: 0.3125 # multiplier against contextPressureThreshold; 0 disables early warning
 ```
@@ -911,6 +913,7 @@ Operational notes:
 - `costCapTokens` is a per-chain budget leash.
 - `contextPressureThreshold` is optional and must be `> 0` and `<= 1` when configured.
 - `earlyWarningBand` is shipped, defaults to `0.3125`, accepts `0` as opt-out, and is schema-validated as a unit-interval value.
+- `crossSessionTargeting` defaults to `"disabled"`; see §5.4 for the same-session/lineage-tree versus cross-session policy split.
 - There is no `generationGuardTolerance` setting. Delayed work is not cancelled by unrelated channel noise.
 - tool-path delegate durability is unconditional; there is no delegate-store switch.
 - all shipped continuation runtime values are read at use time; changes take effect at the next enforcement point.
@@ -927,6 +930,7 @@ agents:
       maxChainLength: 10
       maxDelegatesPerTurn: 5
       costCapTokens: 500000
+      crossSessionTargeting: disabled
       contextPressureThreshold: 0.8
       earlyWarningBand: 0.3125
       minDelayMs: 5000
@@ -948,6 +952,7 @@ agents:
       defaultDelayMs: 15000
       minDelayMs: 5000
       maxDelayMs: 300000
+      crossSessionTargeting: enabled
       contextPressureThreshold: 0.8
       earlyWarningBand: 0.3125
 ```
@@ -955,6 +960,7 @@ agents:
 This profile is suitable for multiple persistent agents in shared channels. In that environment:
 
 - `maxDelegatesPerTurn: 20` enables wide fan-out;
+- `crossSessionTargeting: enabled` permits explicit cross-session return targets and host-wide fan-out;
 - `costCapTokens: 1000000` preserves a budget ceiling while permitting broad but shallow work.
 
 Adjust fan-out and budget based on the activity level and agent count in the target channel.
@@ -1002,7 +1008,36 @@ targeted return:
 
 This is the **mast-cell pattern**: many quiet leaves watch local surfaces, but a small number of higher-level sessions control whether a finding becomes local enrichment, a wake for the responsible session, or a host-wide "there is a fire" signal. `silent` mode makes the return ambient context; `silent-wake` makes it an immediate turn grant; `fanoutMode` decides whether the signal stays in the branch, climbs the tree, or reaches the host. The gateway remains the broker: sessions express intent, and the substrate performs bounded delivery.
 
-### 5.4 TaskFlow backing and durable delegate queues
+### 5.4 Cross-session targeting policy gate
+
+The `agents.continuation.crossSessionTargeting` setting controls whether `continue_delegate()` accepts targeting modes that direct delegate returns to sessions outside the lineage-tree of the dispatching session.
+
+**Values:**
+
+- `"disabled"` (default): only same-session and lineage-tree targets are accepted. Cross-session targeting parameters (`targetSessionKey` pointing to a non-lineage session, `targetSessionKeys` with any non-lineage entry, or `fanoutMode: "all"`) cause the call to be rejected at policy-check time.
+- `"enabled"`: all return-targeting modes are accepted, including cross-session recipients and host-wide fan-out.
+
+**Always allowed regardless of setting:**
+
+- `continue_delegate()` with no targeting, which returns to the dispatching session;
+- `fanoutMode: "tree"`, the canonical lineage-tree fan-out shape;
+- `targetSessionKey` pointing to the dispatching session itself;
+- `targetSessionKey` pointing to an ancestor or descendant in the dispatching session's lineage.
+
+This split preserves the canonical continuation shape from §2.4 and §5.3: same-session return and lineage-tree fan-out are ordinary continuation mechanics, while cross-session return and `fanoutMode: "all"` are same-host broadcast mechanics that require an operator policy decision.
+
+**Error shape when policy is violated:**
+
+- Tool-call path: the tool returns `{ ok: false, error: ToolInputError("...cross-session targeting disabled...") }` to the invoking session.
+- Bracket-syntax path: the continuation tracer emits a `continuation.disabled` span, and the session receives a system event describing the rejected targeting attempt.
+
+**Implementation seam:** enforcement happens at `doSpawn()` in `src/agents/subagent-announce.ts`. Both the tool-call path and the bracket-syntax path converge there before queueing a delegate return, so one policy check covers both surfaces.
+
+**Relationship to trust-marking:** this gate is orthogonal to the existing `trusted: true` semantics on delegate-return events. The gate controls which sessions may receive returns; trust-marking controls how returns are rendered in the receiving session's context. Both apply independently.
+
+**Motivation:** clawsweeper review of openclaw/openclaw#79925 identified `continue_delegate()` exposure of cross-session targeting in the tool schema as a P1 security concern. The default-deny gate addresses that concern while preserving the dandelion-cult cohort's pre-existing fleet behavior through a per-operator `"enabled"` override.
+
+### 5.5 TaskFlow backing and durable delegate queues
 
 Tool-path pending delegates are backed by TaskFlow (SQLite persistence) unconditionally. There is no opt-out. Response-token delayed reservations and concrete timer handles remain process-scoped, as described in §3.2.
 
