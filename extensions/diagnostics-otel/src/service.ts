@@ -505,6 +505,10 @@ function contextForTraceContext(traceContext: DiagnosticTraceContext | undefined
   });
 }
 
+function contextForSpanContext(spanContext: SpanContext | undefined) {
+  return spanContext ? trace.setSpanContext(otelContextApi.active(), spanContext) : undefined;
+}
+
 function contextForTrustedTraceContext(
   evt: DiagnosticEventPayload,
   metadata: DiagnosticEventMetadata,
@@ -1181,6 +1185,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const parentSpanId = traceContext?.parentSpanId;
         return (
           otelContextForTrustedSpanId(parentSpanId) ??
+          contextForSpanContext(trustedRunSpanContextForLogicalTraceId(traceContext?.traceId)) ??
           (traceContext && parentSpanId && traceContext.parentSpanIdSource === "remote"
             ? contextForTraceContext({
                 traceId: traceContext.traceId,

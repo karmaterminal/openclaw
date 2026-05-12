@@ -2712,6 +2712,64 @@ describe("diagnostics-otel service", () => {
       await service.stop?.(ctx);
     });
 
+    test("parents carried logical traceparents to the registered run context", async () => {
+      const service = createDiagnosticsOtelService();
+      const ctx = createTraceOnlyContext(OTEL_TEST_ENDPOINT);
+      await service.start(ctx);
+
+      emitTrustedDiagnosticEvent({
+        type: "run.started",
+        runId: "run-logical-parent",
+        provider: "openai",
+        model: "gpt-5.5",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: CHILD_SPAN_ID,
+          traceFlags: "01",
+        },
+      });
+      await flushDiagnosticEvents();
+
+      const runSpanId = telemetryState.spans.find((span) => span.name === "openclaw.run")
+        ?.spanContext.mock.results[0]?.value?.spanId;
+      telemetryState.tracer.startSpan.mockClear();
+      telemetryState.tracer.setSpanContext.mockClear();
+
+      emitTrustedDiagnosticEvent({
+        type: "run.started",
+        runId: "run-logical-child",
+        provider: "openai",
+        model: "gpt-5.5",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: TOOL_SPAN_ID,
+          parentSpanId: SPAN_ID,
+          parentSpanIdSource: "remote",
+          traceFlags: "01",
+        },
+      });
+      await flushDiagnosticEvents();
+
+      expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          traceId: TRACE_ID,
+          spanId: runSpanId,
+        }),
+      );
+      const runStart = startedSpanCall("openclaw.run");
+      expect(runStart?.[2]).toEqual(
+        expect.objectContaining({
+          spanContext: expect.objectContaining({
+            traceId: TRACE_ID,
+            spanId: runSpanId,
+          }),
+        }),
+      );
+
+      await service.stop?.(ctx);
+    });
+
     test("parents trusted spans to carried traceparent span ids when no logical mapping exists", async () => {
       const service = createDiagnosticsOtelService();
       const ctx = createTraceOnlyContext(OTEL_TEST_ENDPOINT);
