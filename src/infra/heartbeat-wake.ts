@@ -353,7 +353,7 @@ export function requestHeartbeatNow(opts?: {
   agentId?: string;
   sessionKey?: string;
   parentRunId?: string;
-  heartbeat?: { target?: string };
+  heartbeat?: HeartbeatWakeOverride;
 }) {
   requestHeartbeat({
     source: opts?.source ?? "other",
