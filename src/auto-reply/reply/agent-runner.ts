@@ -2264,12 +2264,16 @@ export async function runReplyAgent(params: {
                   // Tool-path has its own gate at param-validation time;
                   // this catches bracket-syntax delegates that parsed targeting
                   // from [[CONTINUE_DELEGATE: task | target=X | fanout=all]].
+                  // Trim + normalize before checking: whitespace-padded self-keys are NOT cross-session.
+                  const trimmedSpawnTargetKey = options?.targetSessionKey?.trim();
+                  const normalizedSpawnTargetKeys = options?.targetSessionKeys
+                    ?.map((k) => k.trim())
+                    .filter((k) => k.length > 0 && k !== sessionKey);
                   const hasCrossSessionTarget =
                     options?.fanoutMode === "all" ||
-                    (options?.targetSessionKey !== undefined &&
-                      options.targetSessionKey !== sessionKey) ||
-                    (options?.targetSessionKeys !== undefined &&
-                      options.targetSessionKeys.length > 0);
+                    (trimmedSpawnTargetKey !== undefined && trimmedSpawnTargetKey !== sessionKey) ||
+                    (normalizedSpawnTargetKeys !== undefined &&
+                      normalizedSpawnTargetKeys.length > 0);
                   if (hasCrossSessionTarget) {
                     const { crossSessionTargeting } = resolveLiveContinuationRuntimeConfig(cfg);
                     if (crossSessionTargeting === "disabled") {

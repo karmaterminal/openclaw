@@ -268,10 +268,15 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
 
       // Cross-session targeting policy gate. Read live config (hot-reloadable).
       // Tree routing + self-targeting are always allowed.
+      // Trim + normalize before checking: whitespace-padded self-keys are NOT cross-session.
+      const trimmedTargetKey = targetSessionKey?.trim();
+      const normalizedTargetKeys = targetSessionKeys
+        ?.map((k) => k.trim())
+        .filter((k) => k.length > 0 && k !== sessionKey);
       const hasCrossSessionTargeting =
         fanoutMode === "all" ||
-        (targetSessionKey !== undefined && targetSessionKey !== sessionKey) ||
-        (targetSessionKeys !== undefined && targetSessionKeys.length > 0);
+        (trimmedTargetKey !== undefined && trimmedTargetKey !== sessionKey) ||
+        (normalizedTargetKeys !== undefined && normalizedTargetKeys.length > 0);
       if (hasCrossSessionTargeting) {
         const continuationConfig = resolveContinuationRuntimeConfig();
         if (continuationConfig.crossSessionTargeting === "disabled") {
@@ -303,6 +308,19 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       }
 
       if (isPostCompaction) {
+        // Cross-session targeting policy gate for post-compaction path.
+        // This bypasses doSpawn() so needs its own check.
+        if (hasCrossSessionTargeting) {
+          const continuationConfig = resolveContinuationRuntimeConfig();
+          if (continuationConfig.crossSessionTargeting === "disabled") {
+            throw new ToolInputError(
+              "Cross-session delegate targeting is disabled by policy. " +
+                "Only tree/lineage routing and self-targeting are allowed. " +
+                'Set agents.continuation.crossSessionTargeting to "enabled" to allow ' +
+                'targetSessionKey, targetSessionKeys, and fanoutMode="all".',
+            );
+          }
+        }
         stagePostCompactionDelegate(sessionKey, {
           task,
           stagedAt: Date.now(),
