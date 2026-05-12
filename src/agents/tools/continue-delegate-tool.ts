@@ -1,5 +1,8 @@
 import { Type } from "typebox";
-import { resolveMaxDelegatesPerTurn } from "../../auto-reply/continuation/config.js";
+import {
+  resolveMaxDelegatesPerTurn,
+  resolveContinuationRuntimeConfig,
+} from "../../auto-reply/continuation/config.js";
 import {
   enqueuePendingDelegate,
   getContinuationDelegateQueueDepths,
@@ -191,6 +194,24 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
       }
       const traceContextFields = traceparent ? { traceparent } : {};
+
+      // Cross-session targeting policy gate. Read live config (hot-reloadable).
+      // Tree routing + self-targeting are always allowed.
+      const hasCrossSessionTargeting =
+        fanoutMode === "all" ||
+        (targetSessionKey !== undefined && targetSessionKey !== sessionKey) ||
+        (targetSessionKeys !== undefined && targetSessionKeys.length > 0);
+      if (hasCrossSessionTargeting) {
+        const continuationConfig = resolveContinuationRuntimeConfig();
+        if (continuationConfig.crossSessionTargeting === "disabled") {
+          throw new ToolInputError(
+            "Cross-session delegate targeting is disabled by policy. " +
+              "Only tree/lineage routing and self-targeting are allowed. " +
+              'Set agents.continuation.crossSessionTargeting to "enabled" to allow ' +
+              'targetSessionKey, targetSessionKeys, and fanoutMode="all".',
+          );
+        }
+      }
 
       // Check per-turn delegate limit. Durable queued depth is reported for
       // visibility but does not consume this turn's admission budget.

@@ -307,6 +307,7 @@ export const AgentDefaultsSchema = z
           .max(1)
           .optional(),
         earlyWarningBand: z.number().min(0).max(1).default(0.3125),
+        crossSessionTargeting: z.enum(["disabled", "enabled"]).optional(),
       })
       .strict()
       .refine(

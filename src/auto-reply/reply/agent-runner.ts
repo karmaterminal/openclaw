@@ -2352,6 +2352,44 @@ export async function runReplyAgent(params: {
                 },
               ) => {
                 try {
+                  // Cross-session targeting policy gate (bracket-syntax path).
+                  // Tool-path has its own gate at param-validation time;
+                  // this catches bracket-syntax delegates that parsed targeting
+                  // from [[CONTINUE_DELEGATE: task | target=X | fanout=all]].
+                  const hasCrossSessionTarget =
+                    options?.fanoutMode === "all" ||
+                    (options?.targetSessionKey !== undefined &&
+                      options.targetSessionKey !== sessionKey) ||
+                    (options?.targetSessionKeys !== undefined &&
+                      options.targetSessionKeys.length > 0);
+                  if (hasCrossSessionTarget) {
+                    const { crossSessionTargeting } = resolveLiveContinuationRuntimeConfig(cfg);
+                    if (crossSessionTargeting === "disabled") {
+                      defaultRuntime.log(
+                        `[continuation] Cross-session targeting rejected by policy for session ${sessionKey}`,
+                      );
+                      enqueueSystemEvent(
+                        "[continuation] Delegate rejected: cross-session targeting is disabled by policy. " +
+                          'Set agents.continuation.crossSessionTargeting to "enabled" to allow ' +
+                          'targetSessionKey, targetSessionKeys, and fanoutMode="all".',
+                        { sessionKey, trusted: true },
+                      );
+                      emitContinuationDisabledSpan({
+                        chainId: activeSessionEntry?.continuationChainId,
+                        chainStepRemaining: Math.max(0, maxChainLength - plannedHop),
+                        disabledReason: "policy.crossSessionTargeting",
+                        signalKind: "bracket-delegate",
+                        delegateDelivery: options?.timerTriggered ? "timer" : "immediate",
+                        delegateMode: options?.silentWake
+                          ? "silent-wake"
+                          : options?.silent
+                            ? "silent"
+                            : "normal",
+                        log: (message) => defaultRuntime.log(message),
+                      });
+                      return;
+                    }
+                  }
                   const spawnResult = await spawnSubagentDirect(
                     {
                       // The spawned child carries its current chain position in-band.

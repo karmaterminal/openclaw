@@ -94,6 +94,8 @@ export function resolveContinuationRuntimeConfig(
     ),
     contextPressureThreshold: clampOptionalUnitInterval(continuation?.contextPressureThreshold),
     earlyWarningBand: clampEarlyWarningBand(continuation?.earlyWarningBand),
+    crossSessionTargeting:
+      continuation?.crossSessionTargeting === "enabled" ? "enabled" : "disabled",
   };
 }
 
