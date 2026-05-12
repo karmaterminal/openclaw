@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
 import {
-  deriveTraceparentFromActiveSpan,
   DIAGNOSTIC_TRACEPARENT_PATTERN,
+  formatActiveDiagnosticTraceparent,
   normalizeDiagnosticTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -30,8 +30,9 @@ const ContinueWorkToolSchema = Type.Object({
   traceparent: Type.Optional(
     Type.String({
       description:
-        "Optional W3C traceparent override. When omitted, the tool automatically reuses " +
-        "the active OpenTelemetry span context if one is available.",
+        "Optional W3C traceparent override. When omitted, the tool derives the parent " +
+        "context from the openclaw runtime's active trace scope (set at gateway entry points). " +
+        "Supply this only when injecting cross-process trace context.",
       pattern: DIAGNOSTIC_TRACEPARENT_PATTERN,
     }),
   ),
@@ -72,7 +73,7 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       if (traceparentRaw !== undefined && !explicitTraceparent) {
         throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
       }
-      const traceparent = explicitTraceparent ?? deriveTraceparentFromActiveSpan();
+      const traceparent = explicitTraceparent ?? formatActiveDiagnosticTraceparent();
       const traceContextFields = traceparent ? { traceparent } : {};
 
       log.debug(

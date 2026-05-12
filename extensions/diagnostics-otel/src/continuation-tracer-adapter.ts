@@ -24,6 +24,7 @@ import {
   trace,
   SpanStatusCode,
   TraceFlags,
+  type Context,
   type Attributes as OtelAttributes,
   type AttributeValue as OtelAttributeValue,
   type Span as OtelSpan,
@@ -49,6 +50,10 @@ import {
  * auto-instrumentation.
  */
 export const CONTINUATION_OTEL_TRACER_NAME = "openclaw.continuation";
+
+export type ContinuationOtelTracerAdapterOptions = {
+  resolveParentContext?: (traceContext: DiagnosticTraceContext) => Context | undefined;
+};
 
 function diagnosticTraceFlagsToOtel(flags: string | undefined): TraceFlags {
   const parsed = Number.parseInt(flags ?? "00", 16);
@@ -130,7 +135,9 @@ function wrapOtelSpan(otelSpan: OtelSpan): ContinuationSpan {
  * `openclaw/plugin-sdk/diagnostic-runtime` and is suitable for
  * registering via `setContinuationTracer(...)`.
  */
-export function createContinuationOtelTracerAdapter(): ContinuationTracer {
+export function createContinuationOtelTracerAdapter(
+  adapterOptions: ContinuationOtelTracerAdapterOptions = {},
+): ContinuationTracer {
   const otelTracer = trace.getTracer(CONTINUATION_OTEL_TRACER_NAME);
   return {
     startSpan(name: string, options?: ContinuationStartSpanOptions): ContinuationSpan {
@@ -147,12 +154,14 @@ export function createContinuationOtelTracerAdapter(): ContinuationTracer {
           options.traceparent,
         );
         if (parsed?.spanId && parsed.traceId) {
-          const parentCtx = trace.setSpanContext(otelContextApi.active(), {
-            traceId: parsed.traceId,
-            spanId: parsed.spanId,
-            traceFlags: diagnosticTraceFlagsToOtel(parsed.traceFlags),
-            isRemote: true,
-          });
+          const parentCtx =
+            adapterOptions.resolveParentContext?.(parsed) ??
+            trace.setSpanContext(otelContextApi.active(), {
+              traceId: parsed.traceId,
+              spanId: parsed.spanId,
+              traceFlags: diagnosticTraceFlagsToOtel(parsed.traceFlags),
+              isRemote: true,
+            });
           return wrapOtelSpan(otelTracer.startSpan(name, otelOpts, parentCtx));
         }
       }

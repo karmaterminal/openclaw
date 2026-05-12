@@ -10,24 +10,22 @@ import {
   type OpenClawConfig,
 } from "../../config/config.js";
 import {
-  installTestOtelContextManager,
-  runWithTestActiveSpan,
-} from "../../test-helpers/otel-context.js";
+  resetDiagnosticTraceContextForTest,
+  runWithDiagnosticTraceContext,
+  type DiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
 import { createContinueDelegateTool } from "./continue-delegate-tool.js";
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
-const ACTIVE_SPAN_CONTEXT = {
+const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
   traceId: "0af7651916cd43dd8448eb211c80319c",
   spanId: "b7ad6b7169203331",
-  traceFlags: 0,
+  traceFlags: "00",
 };
 
 describe("continue_delegate tool", () => {
-  let cleanupOtelContext: (() => void) | undefined;
-
   beforeEach(() => {
-    cleanupOtelContext = installTestOtelContextManager();
     cancelPendingDelegates("test-session");
     consumePendingDelegates("test-session");
     consumeStagedPostCompactionDelegates("test-session");
@@ -37,8 +35,7 @@ describe("continue_delegate tool", () => {
   afterEach(() => {
     cancelPendingDelegates("test-session");
     clearRuntimeConfigSnapshot();
-    cleanupOtelContext?.();
-    cleanupOtelContext = undefined;
+    resetDiagnosticTraceContextForTest();
   });
 
   async function executeTool(
@@ -288,10 +285,10 @@ describe("continue_delegate tool", () => {
     ]);
   });
 
-  it("auto-picks the active OpenTelemetry span when traceparent is omitted", async () => {
+  it("auto-picks the active runtime trace context when traceparent is omitted", async () => {
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
-    const result = await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+    const result = await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
       executeTool(tool, 0, {
         task: "continue active traced chain",
       }),
@@ -309,10 +306,10 @@ describe("continue_delegate tool", () => {
     ]);
   });
 
-  it("lets an explicit traceparent override the active OpenTelemetry span", async () => {
+  it("lets an explicit traceparent override the active runtime trace context", async () => {
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
-    const result = await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+    const result = await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
       executeTool(tool, 0, {
         task: "continue explicitly traced chain",
         traceparent: VALID_TRACEPARENT,

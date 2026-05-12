@@ -18,9 +18,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  installTestOtelContextManager,
-  runWithTestActiveSpan,
-} from "../../test-helpers/otel-context.js";
+  resetDiagnosticTraceContextForTest,
+  runWithDiagnosticTraceContext,
+  type DiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
 import {
   _resetGuardState,
   _resetVolitionalCounts,
@@ -48,10 +49,10 @@ const REQUEST_COMPACTION_SESSION_ID = "request-compaction-trace-session";
 const REQUEST_COMPACTION_REASON = "context pressure at 85%, working state evacuated";
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
-const ACTIVE_SPAN_CONTEXT = {
+const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
   traceId: "0af7651916cd43dd8448eb211c80319c",
   spanId: "b7ad6b7169203331",
-  traceFlags: 0,
+  traceFlags: "00",
 };
 
 const capturedCompactCalls: CapturedCompactParams[] = [];
@@ -507,10 +508,7 @@ describe("call-site threading: error handling", () => {
 });
 
 describe("request_compaction traceparent auto-pickup", () => {
-  let cleanupOtelContext: (() => void) | undefined;
-
   beforeEach(() => {
-    cleanupOtelContext = installTestOtelContextManager();
     _resetGuardState();
     _resetVolitionalCounts();
   });
@@ -518,17 +516,16 @@ describe("request_compaction traceparent auto-pickup", () => {
   afterEach(() => {
     _resetGuardState();
     _resetVolitionalCounts();
-    cleanupOtelContext?.();
-    cleanupOtelContext = undefined;
+    resetDiagnosticTraceContextForTest();
   });
 
-  it("auto-picks the active OpenTelemetry span when traceparent is omitted", async () => {
+  it("auto-picks the active runtime trace context when traceparent is omitted", async () => {
     const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
       ok: true,
       compacted: true,
     }));
 
-    const result = await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+    const result = await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
       executeRequestCompactionTool(buildRequestCompactionOpts({ triggerCompaction })),
     );
     await drainRequestCompactionMicrotasks();
@@ -543,7 +540,7 @@ describe("request_compaction traceparent auto-pickup", () => {
     });
   });
 
-  it("keeps traceparent absent when no OpenTelemetry span is active", async () => {
+  it("keeps traceparent absent when no runtime trace context is active", async () => {
     const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
       ok: true,
       compacted: true,
@@ -559,13 +556,13 @@ describe("request_compaction traceparent auto-pickup", () => {
     expect(result).not.toHaveProperty("traceparent");
   });
 
-  it("lets an explicit traceparent override the active OpenTelemetry span", async () => {
+  it("lets an explicit traceparent override the active runtime trace context", async () => {
     const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
       ok: true,
       compacted: true,
     }));
 
-    const result = await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+    const result = await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
       executeRequestCompactionTool(buildRequestCompactionOpts({ triggerCompaction }), {
         reason: REQUEST_COMPACTION_REASON,
         traceparent: VALID_TRACEPARENT,
@@ -583,7 +580,7 @@ describe("request_compaction traceparent auto-pickup", () => {
     });
   });
 
-  it("rejects malformed explicit traceparents even when an OpenTelemetry span is active", async () => {
+  it("rejects malformed explicit traceparents even when runtime trace context is active", async () => {
     const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
       ok: true,
       compacted: true,
@@ -591,7 +588,7 @@ describe("request_compaction traceparent auto-pickup", () => {
     const tool = createRequestCompactionTool(buildRequestCompactionOpts({ triggerCompaction }));
 
     await expect(
-      runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+      runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
         tool.execute("call-bad-traceparent", {
           reason: REQUEST_COMPACTION_REASON,
           traceparent: "not-a-traceparent",

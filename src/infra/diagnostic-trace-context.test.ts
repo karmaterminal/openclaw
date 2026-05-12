@@ -1,14 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  installTestOtelContextManager,
-  runWithTestActiveSpan,
-} from "../test-helpers/otel-context.js";
-import {
   createChildDiagnosticTraceContext,
   createDiagnosticTraceContext,
   createDiagnosticTraceContextFromActiveScope,
-  deriveTraceparentFromActiveSpan,
   freezeDiagnosticTraceContext,
+  formatActiveDiagnosticTraceparent,
   formatDiagnosticTraceparent,
   getActiveDiagnosticTraceContext,
   isValidDiagnosticSpanId,
@@ -17,7 +13,7 @@ import {
   parseDiagnosticTraceparent,
   resetDiagnosticTraceContextForTest,
   runWithDiagnosticTraceContext,
-  runWithActiveOtelTraceparent,
+  runWithDiagnosticTraceparent,
 } from "./diagnostic-trace-context.js";
 
 const TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
@@ -197,45 +193,33 @@ describe("diagnostic-trace-context", () => {
     });
   });
 
-  it("derives a traceparent from the active OpenTelemetry span", () => {
-    const cleanup = installTestOtelContextManager();
-    try {
-      const traceparent = runWithTestActiveSpan(
-        {
-          traceId: TRACE_ID,
-          spanId: SPAN_ID,
-          traceFlags: 1,
-        },
-        () => deriveTraceparentFromActiveSpan(),
-      );
+  it("formats the active runtime trace context for propagation", () => {
+    const trace = createDiagnosticTraceContext({
+      traceId: TRACE_ID,
+      spanId: SPAN_ID,
+      traceFlags: "00",
+    });
 
-      expect(traceparent).toBe(`00-${TRACE_ID}-${SPAN_ID}-01`);
-    } finally {
-      cleanup();
-    }
+    runWithDiagnosticTraceContext(trace, () => {
+      expect(formatActiveDiagnosticTraceparent()).toBe(`00-${TRACE_ID}-${SPAN_ID}-00`);
+    });
+
+    expect(formatActiveDiagnosticTraceparent()).toBeUndefined();
   });
 
-  it("omits a traceparent when no OpenTelemetry span is active", () => {
-    const cleanup = installTestOtelContextManager();
-    try {
-      expect(deriveTraceparentFromActiveSpan()).toBeUndefined();
-    } finally {
-      cleanup();
-    }
-  });
-
-  it("runs callbacks with an inherited traceparent as the active OpenTelemetry context", async () => {
-    const cleanup = installTestOtelContextManager();
+  it("runs callbacks with an inherited traceparent as the active runtime context", async () => {
     const traceparent = `00-${TRACE_ID}-${SPAN_ID}-00`;
-    try {
-      await runWithActiveOtelTraceparent(traceparent, async () => {
-        expect(deriveTraceparentFromActiveSpan()).toBe(traceparent);
-        await Promise.resolve();
-        expect(deriveTraceparentFromActiveSpan()).toBe(traceparent);
+
+    await runWithDiagnosticTraceparent(traceparent, async () => {
+      expect(getActiveDiagnosticTraceContext()).toEqual({
+        traceId: TRACE_ID,
+        spanId: SPAN_ID,
+        traceFlags: "00",
       });
-      expect(deriveTraceparentFromActiveSpan()).toBeUndefined();
-    } finally {
-      cleanup();
-    }
+      await Promise.resolve();
+      expect(formatActiveDiagnosticTraceparent()).toBe(traceparent);
+    });
+
+    expect(getActiveDiagnosticTraceContext()).toBeUndefined();
   });
 });

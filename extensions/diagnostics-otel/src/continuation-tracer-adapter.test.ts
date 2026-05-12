@@ -58,7 +58,7 @@ vi.mock("@opentelemetry/api", () => {
   };
 });
 
-import { trace } from "@opentelemetry/api";
+import { trace, type Context } from "@opentelemetry/api";
 import {
   CONTINUATION_OTEL_TRACER_NAME,
   createContinuationOtelTracerAdapter,
@@ -128,6 +128,24 @@ describe("continuation-tracer adapter :: startSpan with traceparent (parent stit
     expect(parentCtx?.sc?.isRemote).toBe(true);
     // SAMPLED flag preserved (01 = sampled).
     expect(parentCtx?.sc?.traceFlags).toBe(1);
+  });
+
+  it("uses a supplied DiagnosticTraceContext parent resolver before raw traceparent fallback", () => {
+    const resolvedParent = { __tag: "resolvedParentCtx" } as unknown as Context;
+    const resolveParentContext = vi.fn(() => resolvedParent);
+    const adapter = createContinuationOtelTracerAdapter({ resolveParentContext });
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+    adapter.startSpan("continuation.delegate.dispatch", { traceparent });
+
+    expect(resolveParentContext).toHaveBeenCalledWith({
+      traceId: "0af7651916cd43dd8448eb211c80319c",
+      spanId: "b7ad6b7169203331",
+      traceFlags: "01",
+    });
+    expect(startSpanCalls).toHaveLength(1);
+    expect(startSpanCalls[0]?.parentCtx).toBe(resolvedParent);
+    expect(trace.setSpanContext).not.toHaveBeenCalled();
   });
 
   it("falls back to root span when traceparent is malformed", () => {

@@ -38,7 +38,7 @@ import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/di
 import {
   createChildDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
-  runWithActiveOtelTraceparent,
+  runWithDiagnosticTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
@@ -1586,7 +1586,7 @@ export async function runReplyAgent(params: {
     }
 
     const runStartedAt = Date.now();
-    const runOutcome = await runWithActiveOtelTraceparent(followupRun.run.traceparent, () =>
+    const runOutcome = await runWithDiagnosticTraceparent(followupRun.run.traceparent, () =>
       traceAgentPhase("reply.run_agent_turn", () =>
         runAgentTurnWithFallback({
           commandBody,

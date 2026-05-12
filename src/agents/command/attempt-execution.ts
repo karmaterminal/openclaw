@@ -10,7 +10,7 @@ import {
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
-import { runWithActiveOtelTraceparent } from "../../infra/diagnostic-trace-context.js";
+import { runWithDiagnosticTraceparent } from "../../infra/diagnostic-trace-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { annotateInterSessionPromptText } from "../../sessions/input-provenance.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
@@ -491,7 +491,7 @@ export function runAgentAttempt(params: {
       nextCliSessionId: string | undefined,
       activeCliSessionBinding = cliSessionBinding,
     ) =>
-      runWithActiveOtelTraceparent(params.opts.traceparent, () =>
+      runWithDiagnosticTraceparent(params.opts.traceparent, () =>
         runCliAgent({
           sessionId: params.sessionId,
           sessionKey: params.sessionKey,
@@ -586,7 +586,7 @@ export function runAgentAttempt(params: {
     });
   }
 
-  return runWithActiveOtelTraceparent(params.opts.traceparent, () =>
+  return runWithDiagnosticTraceparent(params.opts.traceparent, () =>
     runEmbeddedPiAgent({
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,

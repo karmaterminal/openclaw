@@ -5,6 +5,7 @@ import {
   SpanStatusCode,
   TraceFlags,
 } from "@opentelemetry/api";
+import type { SpanContext } from "@opentelemetry/api";
 import type { LogRecord, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
@@ -703,15 +704,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         ctx.logger.info("diagnostics-otel: using preloaded OpenTelemetry SDK");
       }
 
-      // Install the OTEL adapter after `sdk.start()` or after detecting a
-      // preloaded SDK so continuation span helpers emit through the OTEL SDK
-      // instead of into `noopTracer`. Reset on `stopStarted()`.
-      // Only install when traces are enabled — there's no useful target
-      // for continuation spans without the trace exporter.
-      if (tracesEnabled) {
-        setContinuationTracer(createContinuationOtelTracerAdapter());
-      }
-
       const logSeverityMap: Record<string, SeverityNumber> = {
         TRACE: 1 as SeverityNumber,
         DEBUG: 5 as SeverityNumber,
@@ -725,7 +717,39 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const tracer = trace.getTracer("openclaw");
       const activeTrustedSpans = new Map<string, ReturnType<typeof tracer.startSpan>>();
       const activeTrustedSpanAliases = new Map<string, ReturnType<typeof tracer.startSpan>>();
+      const trustedSpanContextsByLogicalId = new Map<string, SpanContext>();
       const pendingTrustedRunFinalizers = new Map<string, ReturnType<typeof setImmediate>>();
+      const rememberTrustedSpanContext = (
+        spanId: string | undefined,
+        span: ReturnType<typeof tracer.startSpan>,
+      ) => {
+        if (!spanId) {
+          return;
+        }
+        trustedSpanContextsByLogicalId.delete(spanId);
+        trustedSpanContextsByLogicalId.set(spanId, span.spanContext());
+        while (trustedSpanContextsByLogicalId.size > 8192) {
+          const oldestSpanId = trustedSpanContextsByLogicalId.keys().next().value;
+          if (!oldestSpanId) {
+            break;
+          }
+          trustedSpanContextsByLogicalId.delete(oldestSpanId);
+        }
+      };
+      const trustedSpanContextForLogicalId = (spanId: string | undefined) => {
+        if (!spanId) {
+          return undefined;
+        }
+        return (
+          activeTrustedSpans.get(spanId)?.spanContext() ??
+          activeTrustedSpanAliases.get(spanId)?.spanContext() ??
+          trustedSpanContextsByLogicalId.get(spanId)
+        );
+      };
+      const otelContextForTrustedSpanId = (spanId: string | undefined) => {
+        const spanContext = trustedSpanContextForLogicalId(spanId);
+        return spanContext ? trace.setSpanContext(otelContextApi.active(), spanContext) : undefined;
+      };
       stopActiveTrustedSpans = () => {
         const stopAt = Date.now();
         for (const handle of pendingTrustedRunFinalizers.values()) {
@@ -740,7 +764,22 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         activeTrustedSpans.clear();
         activeTrustedSpanAliases.clear();
+        trustedSpanContextsByLogicalId.clear();
       };
+
+      // Install the OTEL adapter after `sdk.start()` or after detecting a
+      // preloaded SDK so continuation span helpers emit through the OTEL SDK
+      // instead of into `noopTracer`. The adapter resolves OpenClaw's logical
+      // DiagnosticTraceContext span IDs through the trusted event registry so
+      // direct continuation spans parent to the real exported OTel span.
+      if (tracesEnabled) {
+        setContinuationTracer(
+          createContinuationOtelTracerAdapter({
+            resolveParentContext: (traceContext) =>
+              otelContextForTrustedSpanId(traceContext.spanId),
+          }),
+        );
+      }
 
       const tokensCounter = meter.createCounter("openclaw.tokens", {
         unit: "1",
@@ -1106,15 +1145,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         metadata: DiagnosticEventMetadata,
       ) => {
         const parentSpanId = trustedTraceContext(evt, metadata)?.parentSpanId;
-        if (!parentSpanId) {
-          return undefined;
-        }
-        const activeParentSpan =
-          activeTrustedSpans.get(parentSpanId) ?? activeTrustedSpanAliases.get(parentSpanId);
-        if (!activeParentSpan) {
-          return undefined;
-        }
-        return trace.setSpanContext(otelContextApi.active(), activeParentSpan.spanContext());
+        return otelContextForTrustedSpanId(parentSpanId);
       };
       const trackTrustedSpan = (
         evt: DiagnosticEventPayload,
@@ -1124,6 +1155,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const spanId = trustedTraceContext(evt, metadata)?.spanId;
         if (spanId) {
           activeTrustedSpans.set(spanId, span);
+          rememberTrustedSpanContext(spanId, span);
         }
         return span;
       };
@@ -1137,6 +1169,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const span = activeTrustedSpans.get(spanId);
         if (span) {
+          rememberTrustedSpanContext(spanId, span);
           activeTrustedSpans.delete(spanId);
         }
         return span;
@@ -1160,6 +1193,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const handle = setImmediate(() => {
           pendingTrustedRunFinalizers.delete(spanId);
           if (activeTrustedSpans.get(spanId) === span) {
+            rememberTrustedSpanContext(spanId, span);
             activeTrustedSpans.delete(spanId);
           }
           if (parentSpanId && activeTrustedSpanAliases.get(parentSpanId) === span) {
@@ -1482,7 +1516,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           }),
         );
         const parentSpanId = trustedTraceContext(evt, metadata)?.parentSpanId;
-        if (parentSpanId && !activeTrustedSpans.has(parentSpanId)) {
+        if (parentSpanId && !trustedSpanContextForLogicalId(parentSpanId)) {
           activeTrustedSpanAliases.set(parentSpanId, span);
         }
       };

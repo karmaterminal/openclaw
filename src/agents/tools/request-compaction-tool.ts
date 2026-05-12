@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import {
-  deriveTraceparentFromActiveSpan,
   DIAGNOSTIC_TRACEPARENT_PATTERN,
+  formatActiveDiagnosticTraceparent,
   normalizeDiagnosticTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -71,8 +71,9 @@ const RequestCompactionToolSchema = Type.Object({
   traceparent: Type.Optional(
     Type.String({
       description:
-        "Optional W3C traceparent override. When omitted, the tool automatically reuses " +
-        "the active OpenTelemetry span context if one is available.",
+        "Optional W3C traceparent override. When omitted, the tool derives the parent " +
+        "context from the openclaw runtime's active trace scope (set at gateway entry points). " +
+        "Supply this only when injecting cross-process trace context.",
       pattern: DIAGNOSTIC_TRACEPARENT_PATTERN,
     }),
   ),
@@ -190,7 +191,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       if (traceparentRaw !== undefined && !explicitTraceparent) {
         throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
       }
-      const traceparent = explicitTraceparent ?? deriveTraceparentFromActiveSpan();
+      const traceparent = explicitTraceparent ?? formatActiveDiagnosticTraceparent();
       const traceContextFields = traceparent ? { traceparent } : {};
 
       // ----- Guard 0: Dedup — compaction already pending -----

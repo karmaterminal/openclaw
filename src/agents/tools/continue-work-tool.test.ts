@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   emitContinuationWorkSpan,
   resetContinuationTracer,
@@ -10,17 +10,18 @@ import {
   type Tracer,
 } from "../../infra/continuation-tracer.js";
 import {
-  installTestOtelContextManager,
-  runWithTestActiveSpan,
-} from "../../test-helpers/otel-context.js";
+  resetDiagnosticTraceContextForTest,
+  runWithDiagnosticTraceContext,
+  type DiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
 import { createContinueWorkTool, type ContinueWorkRequest } from "./continue-work-tool.js";
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
-const ACTIVE_SPAN_CONTEXT = {
+const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
   traceId: "0af7651916cd43dd8448eb211c80319c",
   spanId: "b7ad6b7169203331",
-  traceFlags: 0,
+  traceFlags: "00",
 };
 
 type RecordedSpan = {
@@ -57,16 +58,9 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
 }
 
 describe("continue_work tool", () => {
-  let cleanupOtelContext: (() => void) | undefined;
-
-  beforeEach(() => {
-    cleanupOtelContext = installTestOtelContextManager();
-  });
-
   afterEach(() => {
     resetContinuationTracer();
-    cleanupOtelContext?.();
-    cleanupOtelContext = undefined;
+    resetDiagnosticTraceContextForTest();
   });
 
   function makeTool(
@@ -205,12 +199,12 @@ describe("continue_work tool", () => {
     });
   });
 
-  it("auto-picks the active OpenTelemetry span when traceparent is omitted", async () => {
+  it("auto-picks the active runtime trace context when traceparent is omitted", async () => {
     const requestContinuation = vi.fn();
     const tool = makeTool({ requestContinuation });
 
     const result = (
-      await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+      await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
         tool.execute("call-active-traceparent", {
           reason: "Continue with the active trace.",
         }),
@@ -229,12 +223,12 @@ describe("continue_work tool", () => {
     });
   });
 
-  it("lets an explicit traceparent override the active OpenTelemetry span", async () => {
+  it("lets an explicit traceparent override the active runtime trace context", async () => {
     const requestContinuation = vi.fn();
     const tool = makeTool({ requestContinuation });
 
     const result = (
-      await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+      await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
         tool.execute("call-explicit-traceparent", {
           reason: "Continue with explicit trace context.",
           traceparent: VALID_TRACEPARENT,

@@ -5,8 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import { appendSessionTranscriptMessage } from "../../config/sessions/transcript-append.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { deriveTraceparentFromActiveSpan } from "../../infra/diagnostic-trace-context.js";
-import { installTestOtelContextManager } from "../../test-helpers/otel-context.js";
+import {
+  emitTrustedDiagnosticEvent,
+  onInternalDiagnosticEvent,
+  type DiagnosticEventPayload,
+} from "../../infra/diagnostic-events.js";
+import {
+  getActiveDiagnosticTraceContext,
+  parseDiagnosticTraceparent,
+  resetDiagnosticTraceContextForTest,
+} from "../../infra/diagnostic-trace-context.js";
 import { FailoverError } from "../failover-error.js";
 import { runEmbeddedPiAgent, type EmbeddedPiRunResult } from "../pi-embedded.js";
 import { persistCliTurnTranscript, runAgentAttempt } from "./attempt-execution.js";
@@ -911,19 +919,30 @@ describe("CLI attempt execution", () => {
   });
 
   it("sets inherited traceparent active for embedded child runs", async () => {
-    const cleanupOtelContext = installTestOtelContextManager();
     const sessionKey = "agent:main:direct:traceparent";
     const sessionEntry: SessionEntry = {
       sessionId: "openclaw-session-traceparent",
       updatedAt: Date.now(),
     };
     const sessionStore: Record<string, SessionEntry> = { [sessionKey]: sessionEntry };
-    let activeTraceparentBeforeAwait: string | undefined;
-    let activeTraceparentAfterAwait: string | undefined;
+    const inheritedTrace = parseDiagnosticTraceparent(INHERITED_TRACEPARENT);
+    let activeTraceBeforeAwait: unknown;
+    let activeTraceAfterAwait: unknown;
+    const diagnosticEvents: DiagnosticEventPayload[] = [];
+    const stopDiagnosticEvents = onInternalDiagnosticEvent((evt) => {
+      if (evt.type === "log.record" && evt.message === "child diagnostic inherited trace") {
+        diagnosticEvents.push(evt);
+      }
+    });
     runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
-      activeTraceparentBeforeAwait = deriveTraceparentFromActiveSpan();
+      activeTraceBeforeAwait = getActiveDiagnosticTraceContext();
+      emitTrustedDiagnosticEvent({
+        type: "log.record",
+        level: "INFO",
+        message: "child diagnostic inherited trace",
+      });
       await Promise.resolve();
-      activeTraceparentAfterAwait = deriveTraceparentFromActiveSpan();
+      activeTraceAfterAwait = getActiveDiagnosticTraceContext();
       return { meta: { durationMs: 1 } } satisfies EmbeddedPiRunResult;
     });
 
@@ -961,10 +980,13 @@ describe("CLI attempt execution", () => {
         sessionHasHistory: true,
       });
 
-      expect(activeTraceparentBeforeAwait).toBe(INHERITED_TRACEPARENT);
-      expect(activeTraceparentAfterAwait).toBe(INHERITED_TRACEPARENT);
+      expect(activeTraceBeforeAwait).toEqual(inheritedTrace);
+      expect(activeTraceAfterAwait).toEqual(inheritedTrace);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(diagnosticEvents[0]?.trace).toEqual(inheritedTrace);
     } finally {
-      cleanupOtelContext();
+      stopDiagnosticEvents();
+      resetDiagnosticTraceContextForTest();
     }
   });
 

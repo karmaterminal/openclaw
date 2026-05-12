@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
-import { context as otelContext, trace as otelTrace } from "@opentelemetry/api";
 import {
   DIAGNOSTIC_TRACEPARENT_PATTERN,
   isValidDiagnosticSpanId,
@@ -61,14 +60,6 @@ function randomSpanId(): string {
   return spanId;
 }
 
-function formatOtelTraceFlags(traceFlags: number): string | undefined {
-  if (!Number.isFinite(traceFlags)) {
-    return undefined;
-  }
-  const traceFlagsHex = (traceFlags & 0xff).toString(16).padStart(2, "0");
-  return isValidDiagnosticTraceFlags(traceFlagsHex) ? traceFlagsHex : undefined;
-}
-
 function createDiagnosticTraceScopeState(): DiagnosticTraceScopeState {
   return {
     marker: DIAGNOSTIC_TRACE_SCOPE_STATE_KEY,
@@ -116,41 +107,6 @@ export function formatDiagnosticTraceparent(
     return undefined;
   }
   return `${TRACEPARENT_VERSION}-${traceId}-${spanId}-${traceFlags}`;
-}
-
-export function deriveTraceparentFromActiveSpan(): string | undefined {
-  const activeSpan = otelTrace.getActiveSpan();
-  const activeSpanContext = activeSpan?.spanContext();
-  if (!activeSpanContext) {
-    return undefined;
-  }
-
-  const traceId = activeSpanContext.traceId.toLowerCase();
-  const spanId = activeSpanContext.spanId.toLowerCase();
-  const traceFlags = formatOtelTraceFlags(activeSpanContext.traceFlags);
-  if (!isValidDiagnosticTraceId(traceId) || !isValidDiagnosticSpanId(spanId) || !traceFlags) {
-    return undefined;
-  }
-
-  return `${TRACEPARENT_VERSION}-${traceId}-${spanId}-${traceFlags}`;
-}
-
-export function runWithActiveOtelTraceparent<T>(
-  traceparent: string | undefined,
-  callback: () => T,
-): T {
-  const parsed = parseDiagnosticTraceparent(traceparent);
-  if (!parsed?.spanId || !parsed.traceFlags) {
-    return callback();
-  }
-  const traceFlags = Number.parseInt(parsed.traceFlags, 16) & 0xff;
-  const parentContext = otelTrace.setSpanContext(otelContext.active(), {
-    traceId: parsed.traceId,
-    spanId: parsed.spanId,
-    traceFlags,
-    isRemote: true,
-  });
-  return otelContext.with(parentContext, callback);
 }
 
 export function createDiagnosticTraceContext(
@@ -206,11 +162,26 @@ export function getActiveDiagnosticTraceContext(): DiagnosticTraceContext | unde
   return getDiagnosticTraceScopeState().storage.getStore();
 }
 
+export function formatActiveDiagnosticTraceparent(): string | undefined {
+  return formatDiagnosticTraceparent(getActiveDiagnosticTraceContext());
+}
+
 export function runWithDiagnosticTraceContext<T>(
   trace: DiagnosticTraceContext,
   callback: () => T,
 ): T {
   return getDiagnosticTraceScopeState().storage.run(freezeDiagnosticTraceContext(trace), callback);
+}
+
+export function runWithDiagnosticTraceparent<T>(
+  traceparent: string | undefined,
+  callback: () => T,
+): T {
+  const parsed = parseDiagnosticTraceparent(traceparent);
+  if (!parsed?.spanId) {
+    return callback();
+  }
+  return runWithDiagnosticTraceContext(createDiagnosticTraceContext({ traceparent }), callback);
 }
 
 export function resetDiagnosticTraceContextForTest(): void {
