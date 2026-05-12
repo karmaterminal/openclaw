@@ -154,25 +154,17 @@ export function enqueueSystemEvent(text: string, options: SystemEventOptions) {
     )
   ) {
     return false;
-<<<<<<< HEAD
   } // skip consecutive duplicates
   entry.lastText = cleaned;
   const normalizedTraceparent = normalizeTraceparent(options?.traceparent);
-=======
-  }
   applyContextKeyPolicy(entry, normalizedContextKey);
->>>>>>> upstream/main
   entry.queue.push({
     text: cleaned,
     ts: Date.now(),
     contextKey: normalizedContextKey,
     deliveryContext: normalizedDeliveryContext,
-<<<<<<< HEAD
-    trusted: options.trusted !== false,
-    ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
-=======
     trusted,
->>>>>>> upstream/main
+    ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
   });
   if (entry.queue.length > MAX_EVENTS) {
     entry.queue.shift();
