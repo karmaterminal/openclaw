@@ -110,7 +110,6 @@ export async function buildDiscordMessageProcessContext(params: {
     allowNameMatching: isDangerousNameMatchingEnabled(discordConfig),
     isGuild: isGuildMessage,
     channelTopic: channelInfo?.topic,
-    messageBody: text,
   });
   const pinnedMainDmOwner = isDirectMessage
     ? resolvePinnedMainDmOwnerFromAllowlist({
