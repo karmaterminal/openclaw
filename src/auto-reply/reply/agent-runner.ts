@@ -39,6 +39,7 @@ import {
   createChildDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
+import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { generateChainId, generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -1399,27 +1400,30 @@ export async function runReplyAgent(params: {
       (activeSessionEntry?.compactionCount ?? 0) > prePreflightCompactionCount;
 
     const visibleMemoryFlushErrorPayloads: ReplyPayload[] = [];
-    activeSessionEntry = await traceAgentPhase("reply.memory_flush", () =>
-      runMemoryFlushIfNeeded({
-        cfg: resolvedRunCfg,
-        followupRun,
-        promptForEstimate: followupRun.prompt,
-        sessionCtx,
-        opts,
-        defaultModel,
-        agentCfgContextTokens,
-        resolvedVerboseLevel,
-        sessionEntry: activeSessionEntry,
-        sessionStore: activeSessionStore,
-        sessionKey,
-        runtimePolicySessionKey,
-        storePath,
-        isHeartbeat,
-        replyOperation,
-        onVisibleErrorPayloads: (payloads) => {
-          visibleMemoryFlushErrorPayloads.push(...payloads);
-        },
-      }),
+    activeSessionEntry = await measureDiagnosticsTimelineSpan(
+      "reply.memory_flush",
+      () =>
+        runMemoryFlushIfNeeded({
+          cfg: resolvedRunCfg,
+          followupRun,
+          promptForEstimate: followupRun.prompt,
+          sessionCtx,
+          opts,
+          defaultModel,
+          agentCfgContextTokens,
+          resolvedVerboseLevel,
+          sessionEntry: activeSessionEntry,
+          sessionStore: activeSessionStore,
+          sessionKey,
+          runtimePolicySessionKey,
+          storePath,
+          isHeartbeat,
+          replyOperation,
+          onVisibleErrorPayloads: (payloads) => {
+            visibleMemoryFlushErrorPayloads.push(...payloads);
+          },
+        }),
+      { phase: "agent-turn", config: followupRun.run.config },
     );
 
     if (visibleMemoryFlushErrorPayloads.length > 0) {

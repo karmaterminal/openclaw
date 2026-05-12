@@ -155,7 +155,6 @@ export function enqueueSystemEvent(text: string, options: SystemEventOptions) {
   ) {
     return false;
   } // skip consecutive duplicates
-  entry.lastText = cleaned;
   const normalizedTraceparent = normalizeTraceparent(options?.traceparent);
   applyContextKeyPolicy(entry, normalizedContextKey);
   entry.queue.push({
@@ -306,10 +305,8 @@ export function removeSystemEvents(
   if (entry.queue.length === 0) {
     queues.delete(key);
   } else if (removed.length > 0) {
-    // Reset dedup state to reflect actual queue contents — prevents stale
-    // lastText from silently dropping future events that match removed text.
+    // Reset dedup state to reflect actual queue contents.
     const last = entry.queue[entry.queue.length - 1];
-    entry.lastText = last.text;
     entry.lastContextKey = last.contextKey ?? null;
   }
   return removed;
