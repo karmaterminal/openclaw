@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import {
   resolveMaxDelegatesPerTurn,
-  resolveContinuationRuntimeConfig,
+  resolveLiveContinuationRuntimeConfig,
 } from "../../auto-reply/continuation/config.js";
 import {
   enqueuePendingDelegate,
@@ -278,7 +278,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         (trimmedTargetKey !== undefined && trimmedTargetKey !== sessionKey) ||
         (normalizedTargetKeys !== undefined && normalizedTargetKeys.length > 0);
       if (hasCrossSessionTargeting) {
-        const continuationConfig = resolveContinuationRuntimeConfig();
+        const continuationConfig = resolveLiveContinuationRuntimeConfig({});
         if (continuationConfig.crossSessionTargeting === "disabled") {
           throw new ToolInputError(
             "Cross-session delegate targeting is disabled by policy. " +
@@ -311,7 +311,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
         // Cross-session targeting policy gate for post-compaction path.
         // This bypasses doSpawn() so needs its own check.
         if (hasCrossSessionTargeting) {
-          const continuationConfig = resolveContinuationRuntimeConfig();
+          const continuationConfig = resolveLiveContinuationRuntimeConfig({});
           if (continuationConfig.crossSessionTargeting === "disabled") {
             throw new ToolInputError(
               "Cross-session delegate targeting is disabled by policy. " +
