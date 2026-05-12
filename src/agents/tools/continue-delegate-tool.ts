@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { resolveContinuationRuntimeConfig } from "../../auto-reply/continuation/config.js";
+import { resolveLiveContinuationRuntimeConfig } from "../../auto-reply/continuation/config.js";
 import {
   enqueuePendingDelegate,
   getContinuationDelegateQueueDepths,
@@ -195,7 +195,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       const traceparent = explicitTraceparent ?? deriveTraceparentFromActiveSpan();
       const traceContextFields = traceparent ? { traceparent } : {};
 
-      const continuationConfig = resolveContinuationRuntimeConfig();
+      const continuationConfig = resolveLiveContinuationRuntimeConfig({});
       const hasCrossSessionTargeting = hasCrossSessionDelegateTargeting(
         targetingFields,
         sessionKey,
