@@ -303,6 +303,7 @@ export async function dispatchToolDelegates(params: {
             ? { continuationTargetSessionKeys: delegate.targetSessionKeys }
             : {}),
           ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
+          ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
         },
         spawnCtx,
       );
