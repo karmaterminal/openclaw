@@ -4,6 +4,7 @@ import {
   createDiagnosticTraceContext,
   createDiagnosticTraceContextFromActiveScope,
   freezeDiagnosticTraceContext,
+  formatActiveDiagnosticTraceparent,
   formatDiagnosticTraceparent,
   getActiveDiagnosticTraceContext,
   isValidDiagnosticSpanId,
@@ -12,6 +13,7 @@ import {
   parseDiagnosticTraceparent,
   resetDiagnosticTraceContextForTest,
   runWithDiagnosticTraceContext,
+  runWithDiagnosticTraceparent,
 } from "./diagnostic-trace-context.js";
 
 const TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
@@ -189,5 +191,35 @@ describe("diagnostic-trace-context", () => {
       spanId: CHILD_SPAN_ID,
       traceFlags: "01",
     });
+  });
+
+  it("formats the active runtime trace context for propagation", () => {
+    const trace = createDiagnosticTraceContext({
+      traceId: TRACE_ID,
+      spanId: SPAN_ID,
+      traceFlags: "00",
+    });
+
+    runWithDiagnosticTraceContext(trace, () => {
+      expect(formatActiveDiagnosticTraceparent()).toBe(`00-${TRACE_ID}-${SPAN_ID}-00`);
+    });
+
+    expect(formatActiveDiagnosticTraceparent()).toBeUndefined();
+  });
+
+  it("runs callbacks with an inherited traceparent as the active runtime context", async () => {
+    const traceparent = `00-${TRACE_ID}-${SPAN_ID}-00`;
+
+    await runWithDiagnosticTraceparent(traceparent, async () => {
+      expect(getActiveDiagnosticTraceContext()).toEqual({
+        traceId: TRACE_ID,
+        spanId: SPAN_ID,
+        traceFlags: "00",
+      });
+      await Promise.resolve();
+      expect(formatActiveDiagnosticTraceparent()).toBe(traceparent);
+    });
+
+    expect(getActiveDiagnosticTraceContext()).toBeUndefined();
   });
 });

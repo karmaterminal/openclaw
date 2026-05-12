@@ -195,6 +195,7 @@ describe("spawnSubagentDirect seam flow", () => {
       {
         task: "inspect the spawn seam",
         model: "openai-codex/gpt-5.4",
+        traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
       },
       {
         agentSessionKey: "agent:main:main",
@@ -231,6 +232,9 @@ describe("spawnSubagentDirect seam flow", () => {
     expect(registerInput.workspaceDir).toBe("/tmp/requester-workspace");
     expect(registerInput.expectsCompletionMessage).toBe(true);
     expect(registerInput.spawnMode).toBe("run");
+    expect(registerInput.traceparent).toBe(
+      "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+    );
     expect(hoisted.emitSessionLifecycleEventMock).toHaveBeenCalledWith({
       sessionKey: childSessionKey,
       reason: "create",
@@ -366,6 +370,42 @@ describe("spawnSubagentDirect seam flow", () => {
     const agentCall = calls.find((call) => call.method === "agent");
     const params = requireRecord(agentCall?.params);
     expect(params.thinking).toBe("high");
+  });
+
+  it("forwards inherited traceparent to the child agent run", async () => {
+    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const calls: Array<{ method?: string; params?: unknown }> = [];
+    hoisted.callGatewayMock.mockImplementation(
+      async (request: { method?: string; params?: unknown }) => {
+        calls.push(request);
+        if (request.method === "agent") {
+          return { runId: "run-traceparent", status: "accepted", acceptedAt: 1000 };
+        }
+        if (request.method?.startsWith("sessions.")) {
+          return { ok: true };
+        }
+        return {};
+      },
+    );
+    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock);
+
+    const result = await spawnSubagentDirect(
+      {
+        task: "verify traceparent forwarding",
+        traceparent,
+      },
+      {
+        agentSessionKey: "agent:main:main",
+        agentChannel: "discord",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    const agentCall = calls.find((call) => call.method === "agent");
+    const params = requireRecord(agentCall?.params);
+    expect(params.traceparent).toBe(traceparent);
+    const registerInput = requireRecord(hoisted.registerSubagentRunMock.mock.calls[0]?.[0]);
+    expect(registerInput.traceparent).toBe(traceparent);
   });
 
   it("does not duplicate long subagent task text in the initial user message (#72019)", async () => {
