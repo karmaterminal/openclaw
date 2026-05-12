@@ -27,6 +27,7 @@ describe("resolveContinuationRuntimeConfig", () => {
       maxChainLength: 10,
       costCapTokens: 500_000,
       maxDelegatesPerTurn: 5,
+      crossSessionTargeting: "disabled",
       earlyWarningBand: 0.3125,
     });
     expect(config.contextPressureThreshold).toBeUndefined();
@@ -42,6 +43,7 @@ describe("resolveContinuationRuntimeConfig", () => {
             maxChainLength: 100,
             costCapTokens: 0,
             maxDelegatesPerTurn: 20,
+            crossSessionTargeting: "enabled",
             contextPressureThreshold: 0.8,
             earlyWarningBand: 0,
             defaultDelayMs: 30_000,
@@ -57,6 +59,7 @@ describe("resolveContinuationRuntimeConfig", () => {
       maxChainLength: 100,
       costCapTokens: 0,
       maxDelegatesPerTurn: 20,
+      crossSessionTargeting: "enabled",
       contextPressureThreshold: 0.8,
       earlyWarningBand: 0,
       defaultDelayMs: 30_000,
@@ -154,6 +157,7 @@ describe("clampDelayMs", () => {
     maxChainLength: 10,
     costCapTokens: 500_000,
     maxDelegatesPerTurn: 5,
+    crossSessionTargeting: "disabled",
     earlyWarningBand: 0.3125,
   };
 

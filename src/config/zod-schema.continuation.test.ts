@@ -54,6 +54,7 @@ describe("continuation config schema validation", () => {
       return;
     }
     expect(result.data?.continuation?.earlyWarningBand).toBe(0.3125);
+    expect(result.data?.continuation?.crossSessionTargeting).toBe("disabled");
   });
 
   it("accepts earlyWarningBand = 0 as opt-out", () => {
@@ -139,6 +140,20 @@ describe("continuation config schema validation", () => {
 
   it("rejects enabled = 'yes' (string, not boolean)", () => {
     const result = parseContinuation({ enabled: "yes" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts crossSessionTargeting = enabled", () => {
+    const result = parseContinuation({ crossSessionTargeting: "enabled" });
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data?.continuation?.crossSessionTargeting).toBe("enabled");
+  });
+
+  it("rejects unknown crossSessionTargeting values", () => {
+    const result = parseContinuation({ crossSessionTargeting: "fleet" });
     expect(result.success).toBe(false);
   });
 

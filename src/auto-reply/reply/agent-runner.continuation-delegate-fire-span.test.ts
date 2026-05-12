@@ -422,7 +422,24 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
   it("tool-delegate immediate dispatch preserves singular targetSessionKey into spawned continuation run", async () => {
     const sessionKey = "continuation-delegate-targeted-tool";
     const targetSessionKey = "agent:main:test:channel:CHANNEL_A";
-    const run = createContinuationRun({ sessionKey });
+    const run = createContinuationRun({
+      sessionKey,
+      config: {
+        agents: {
+          defaults: {
+            continuation: {
+              enabled: true,
+              minDelayMs: 0,
+              maxDelayMs: 5_000,
+              defaultDelayMs: 1_000,
+              maxChainLength: 4,
+              maxDelegatesPerTurn: 4,
+              crossSessionTargeting: "enabled",
+            },
+          },
+        },
+      },
+    });
     runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
       const tool = createContinueDelegateTool({ agentSessionKey: sessionKey });
       await tool.execute("call-targeted-delegate", {

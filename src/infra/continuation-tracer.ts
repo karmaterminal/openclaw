@@ -477,7 +477,8 @@ export function emitContinuationDelegateSpan(args: {
  * three reject-specific axes:
  *
  *  - `disabled.reason` (`"cap.chain" | "cap.cost" |
- *    "cap.delegates_per_turn" | "reservation.missing"`): which gate
+ *    "cap.delegates_per_turn" | "reservation.missing" |
+ *    "policy.cross_session_targeting"`): which gate
  *    prevented follow-through. The family covers cap axes and non-cap gates
  *    such as fire-time reservation loss.
  *  - `signal.kind` ({@link ContinuationDisabledSignalKind}): the kind of
@@ -501,7 +502,12 @@ export function emitContinuationDelegateSpan(args: {
 export function emitContinuationDisabledSpan(args: {
   chainId: string | undefined;
   chainStepRemaining: number;
-  disabledReason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn" | "reservation.missing";
+  disabledReason:
+    | "cap.chain"
+    | "cap.cost"
+    | "cap.delegates_per_turn"
+    | "reservation.missing"
+    | "policy.cross_session_targeting";
   signalKind: ContinuationDisabledSignalKind;
   delegateDelivery?: "immediate" | "timer" | undefined;
   delegateMode?: string | undefined;

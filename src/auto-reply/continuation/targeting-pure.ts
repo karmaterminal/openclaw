@@ -10,6 +10,8 @@ export type ContinuationDelegateTargeting = {
   fanoutMode?: ContinuationDelegateFanoutMode;
 };
 
+export type ContinuationCrossSessionTargetingPolicy = "disabled" | "enabled";
+
 export function normalizeContinuationTargetKey(value?: string): string | undefined {
   return normalizeOptionalString(value);
 }
@@ -36,4 +38,28 @@ export function hasContinuationDelegateTargeting(
     normalizeContinuationTargetKeys(targeting.targetSessionKeys).length > 0 ||
     targeting.fanoutMode,
   );
+}
+
+export function hasCrossSessionDelegateTargeting(
+  targeting: ContinuationDelegateTargeting,
+  dispatchingSessionKey: string,
+): boolean {
+  if (targeting.fanoutMode === "all") {
+    return true;
+  }
+  const selfSessionKey = normalizeContinuationTargetKey(dispatchingSessionKey);
+  if (!selfSessionKey) {
+    return hasContinuationDelegateTargeting(targeting);
+  }
+  const targetSessionKeys = normalizeContinuationTargetKeys(targeting.targetSessionKeys).filter(
+    (targetSessionKey) => targetSessionKey !== selfSessionKey,
+  );
+  if (targetSessionKeys.length > 0) {
+    return true;
+  }
+  const targetSessionKey = normalizeContinuationTargetKey(targeting.targetSessionKey);
+  if (targetSessionKey && targetSessionKey !== selfSessionKey) {
+    return true;
+  }
+  return false;
 }

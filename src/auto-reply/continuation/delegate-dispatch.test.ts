@@ -84,6 +84,7 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
   }),
 }));
 
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { cancelPendingDelegates, enqueuePendingDelegate } from "./delegate-store.js";
 import { hasLiveContinuationTimerRefs, resetContinuationStateForTests } from "./state.js";
@@ -101,6 +102,7 @@ beforeEach(() => {
 afterEach(() => {
   resetDelegateDispatchHedgesForTests();
   resetContinuationStateForTests();
+  clearRuntimeConfigSnapshot();
   mockFlows.clear();
   listTaskFlowsShouldThrow = false;
   vi.useRealTimers();
@@ -254,6 +256,9 @@ describe("tool delegate dispatch contract", () => {
   });
 
   it("threads cross-session targeting metadata into spawned continuation runs", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
     const sessionKey = "session-delegate-targeting";
     enqueuePendingDelegate(sessionKey, {
       task: "targeted fanout",

@@ -9,10 +9,12 @@ import { enqueueSystemEvent } from "../../infra/system-events.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
   hasContinuationDelegateTargeting,
+  hasCrossSessionDelegateTargeting,
   normalizeContinuationTargetKey,
   normalizeContinuationTargetKeys,
 } from "./targeting-pure.js";
 import type {
+  ContinuationCrossSessionTargetingPolicy,
   ContinuationDelegateFanoutMode,
   ContinuationDelegateTargeting,
 } from "./targeting-pure.js";
@@ -20,10 +22,15 @@ import type {
 export {
   CONTINUATION_DELEGATE_FANOUT_MODES,
   hasContinuationDelegateTargeting,
+  hasCrossSessionDelegateTargeting,
   normalizeContinuationTargetKey,
   normalizeContinuationTargetKeys,
 };
-export type { ContinuationDelegateFanoutMode, ContinuationDelegateTargeting };
+export type {
+  ContinuationCrossSessionTargetingPolicy,
+  ContinuationDelegateFanoutMode,
+  ContinuationDelegateTargeting,
+};
 
 export function resolveContinuationReturnTargetSessionKeys(
   params: ContinuationDelegateTargeting & {
