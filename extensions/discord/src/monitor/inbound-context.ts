@@ -1,7 +1,4 @@
-import {
-  buildUntrustedChannelMetadata,
-  wrapExternalContent,
-} from "openclaw/plugin-sdk/security-runtime";
+import { buildUntrustedChannelMetadata } from "openclaw/plugin-sdk/security-runtime";
 import {
   resolveDiscordMemberAllowed,
   resolveDiscordOwnerAllowFrom,
@@ -50,23 +47,22 @@ export function buildDiscordGroupSystemPrompt(
 export function buildDiscordUntrustedContext(params: {
   isGuild: boolean;
   channelTopic?: string;
-  messageBody?: string;
 }): string[] | undefined {
   if (!params.isGuild) {
     return undefined;
   }
+  // The Discord message body itself flows through the normal user-message
+  // path; re-wrapping it as untrusted-context here previously delivered the
+  // body twice (raw + envelope-wrapped), produced the visible
+  // <<<EXTERNAL_UNTRUSTED_CONTENT>>> markers in chat-render, and inflated
+  // every guild-message turn. The channel topic stays as legitimate ambient
+  // untrusted context. See karmaterminal/openclaw-bootstrap#974.
   const entries = [
     buildUntrustedChannelMetadata({
       source: "discord",
       label: "Discord channel topic",
       entries: [params.channelTopic],
     }),
-    typeof params.messageBody === "string" && params.messageBody.trim().length > 0
-      ? wrapExternalContent(`UNTRUSTED Discord message body\n${params.messageBody.trim()}`, {
-          source: "unknown",
-          includeWarning: false,
-        })
-      : undefined,
   ].filter((entry): entry is string => Boolean(entry));
   return entries.length > 0 ? entries : undefined;
 }
@@ -82,7 +78,6 @@ export function buildDiscordInboundAccessContext(params: {
   allowNameMatching?: boolean;
   isGuild: boolean;
   channelTopic?: string;
-  messageBody?: string;
 }) {
   return {
     groupSystemPrompt: params.isGuild
@@ -91,7 +86,6 @@ export function buildDiscordInboundAccessContext(params: {
     untrustedContext: buildDiscordUntrustedContext({
       isGuild: params.isGuild,
       channelTopic: params.channelTopic,
-      messageBody: params.messageBody,
     }),
     ownerAllowFrom: resolveDiscordOwnerAllowFrom({
       channelConfig: params.channelConfig,
