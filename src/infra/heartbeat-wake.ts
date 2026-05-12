@@ -53,12 +53,8 @@ export type HeartbeatWakeRequest = {
   reason?: string;
   agentId?: string;
   sessionKey?: string;
-<<<<<<< HEAD
   parentRunId?: string;
-  heartbeat?: { target?: string };
-=======
   heartbeat?: HeartbeatWakeOverride;
->>>>>>> upstream/main
 };
 
 export type HeartbeatWakeHandler = (opts: HeartbeatWakeRequest) => Promise<HeartbeatRunResult>;
@@ -82,12 +78,8 @@ type PendingWakeReason = {
   requestedAt: number;
   agentId?: string;
   sessionKey?: string;
-<<<<<<< HEAD
   parentRunId?: string;
-  heartbeat?: { target?: string };
-=======
   heartbeat?: HeartbeatWakeOverride;
->>>>>>> upstream/main
 };
 
 let handler: HeartbeatWakeHandler | null = null;
@@ -151,12 +143,8 @@ function queuePendingWakeReason(params: {
   requestedAt?: number;
   agentId?: string;
   sessionKey?: string;
-<<<<<<< HEAD
   parentRunId?: string;
-  heartbeat?: { target?: string };
-=======
   heartbeat?: HeartbeatWakeOverride;
->>>>>>> upstream/main
 }) {
   const requestedAt = params.requestedAt ?? Date.now();
   const normalizedReason = normalizeWakeReason(params.reason);
@@ -342,12 +330,8 @@ export function requestHeartbeat(opts: {
   coalesceMs?: number;
   agentId?: string;
   sessionKey?: string;
-<<<<<<< HEAD
   parentRunId?: string;
-  heartbeat?: { target?: string };
-=======
   heartbeat?: HeartbeatWakeOverride;
->>>>>>> upstream/main
 }) {
   queuePendingWakeReason({
     source: opts.source,
