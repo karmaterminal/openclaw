@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONTINUATION_SIGNAL_KINDS,
   emitContinuationCompactionReleasedSpan,
@@ -43,6 +43,7 @@ describe("continuation-tracer :: noop default contract", () => {
     expect(() => span.setStatus("ERROR", "boom")).not.toThrow();
     expect(() => span.recordException(new Error("boom"))).not.toThrow();
     expect(() => span.recordException("plain-string")).not.toThrow();
+    expect(span.traceparent?.()).toBeUndefined();
     expect(() => span.end()).not.toThrow();
     // end() is idempotent.
     expect(() => span.end()).not.toThrow();
@@ -170,6 +171,17 @@ describe("continuation-tracer :: registry (set/get/reset)", () => {
 
     expect(resolveContinuationTraceparent(logicalTraceparent)).toBe(exportedTraceparent);
     expect(resolveContinuationTraceparent("not-a-traceparent")).toBeUndefined();
+  });
+
+  it("shares the installed tracer across module reloads", async () => {
+    const customTracer: Tracer = { startSpan: () => noopTracer.startSpan("x") };
+    setContinuationTracer(customTracer);
+
+    vi.resetModules();
+    const reloaded = await import("./continuation-tracer.js");
+
+    expect(reloaded.getContinuationTracer()).toBe(customTracer);
+    reloaded.resetContinuationTracer();
   });
 });
 

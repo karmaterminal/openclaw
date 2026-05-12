@@ -351,18 +351,35 @@ export const noopTracer: Tracer = Object.freeze({
   },
 });
 
-let activeTracer: Tracer = noopTracer;
+type ContinuationTracerState = {
+  activeTracer: Tracer;
+};
+
+const CONTINUATION_TRACER_STATE_KEY = Symbol.for("openclaw.continuationTracer.state.v1");
+
+function continuationTracerState(): ContinuationTracerState {
+  const globalState = globalThis as typeof globalThis & {
+    [key: symbol]: ContinuationTracerState | undefined;
+  };
+  const existing = globalState[CONTINUATION_TRACER_STATE_KEY];
+  if (existing) {
+    return existing;
+  }
+  const created: ContinuationTracerState = { activeTracer: noopTracer };
+  globalState[CONTINUATION_TRACER_STATE_KEY] = created;
+  return created;
+}
 
 /**
  * Get the active continuation-tracer. Defaults to the no-op tracer until
  * `setContinuationTracer` is called by the diagnostics bootstrap step.
  *
- * Hot-path callers SHOULD cache this once at module load — the indirection
- * exists so tests can swap in in-memory tracers and the diagnostics plugin can
- * install its adapter without rewriting the primitives.
+ * The registry is stored on globalThis because continuation code crosses lazy
+ * runtime and plugin-SDK module identities; every copy must see the same
+ * diagnostics-otel adapter after bootstrap.
  */
 export function getContinuationTracer(): Tracer {
-  return activeTracer;
+  return continuationTracerState().activeTracer;
 }
 
 /**
@@ -375,7 +392,7 @@ export function getContinuationTracer(): Tracer {
  * default — primarily for test teardown.
  */
 export function setContinuationTracer(tracer: Tracer | null | undefined): void {
-  activeTracer = tracer ?? noopTracer;
+  continuationTracerState().activeTracer = tracer ?? noopTracer;
 }
 
 /**
@@ -383,7 +400,7 @@ export function setContinuationTracer(tracer: Tracer | null | undefined): void {
  * provided as a clearer test-teardown affordance.
  */
 export function resetContinuationTracer(): void {
-  activeTracer = noopTracer;
+  continuationTracerState().activeTracer = noopTracer;
 }
 
 export function formatContinuationTraceparent(
@@ -392,7 +409,7 @@ export function formatContinuationTraceparent(
   if (!context) {
     return undefined;
   }
-  const resolved = activeTracer.formatTraceparent?.(context);
+  const resolved = getContinuationTracer().formatTraceparent?.(context);
   return normalizeDiagnosticTraceparent(resolved) ?? formatDiagnosticTraceparent(context);
 }
 
@@ -439,7 +456,7 @@ function continuationDelegateSpanAttributes(
 
 export function startContinuationDelegateSpan(args: ContinuationDelegateSpanArgs): Span {
   try {
-    const span = activeTracer.startSpan("continuation.delegate.dispatch", {
+    const span = getContinuationTracer().startSpan("continuation.delegate.dispatch", {
       attributes: continuationDelegateSpanAttributes(args),
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
@@ -482,7 +499,7 @@ export function emitContinuationWorkSpan(args: {
       ...(args.chainId !== undefined && { "chain.id": args.chainId }),
       ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
     };
-    const span = activeTracer.startSpan("continuation.work", {
+    const span = getContinuationTracer().startSpan("continuation.work", {
       attributes: attrs,
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
@@ -603,7 +620,7 @@ export function emitContinuationDisabledSpan(args: {
       ...(args.delegateMode !== undefined && { "delegate.mode": args.delegateMode }),
       ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
     };
-    const span = activeTracer.startSpan("continuation.disabled", {
+    const span = getContinuationTracer().startSpan("continuation.disabled", {
       attributes: attrs,
     });
     span.setStatus("OK");
@@ -696,7 +713,7 @@ export function emitContinuationDelegateFireSpan(args: {
       "delegate.mode": args.delegateMode,
       ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
     };
-    const span = activeTracer.startSpan("continuation.delegate.fire", {
+    const span = getContinuationTracer().startSpan("continuation.delegate.fire", {
       attributes: attrs,
     });
     span.setStatus("OK");
@@ -768,7 +785,7 @@ export function emitContinuationWorkFireSpan(args: {
       "fire.deferred_ms": Math.max(0, Math.floor(args.fireDeferredMs)),
       ...(reasonPreview !== undefined && { "reason.preview": reasonPreview }),
     };
-    const span = activeTracer.startSpan("continuation.work.fire", {
+    const span = getContinuationTracer().startSpan("continuation.work.fire", {
       attributes: attrs,
     });
     span.setStatus("OK");
@@ -815,7 +832,7 @@ export function emitContinuationQueueDrainSpan(args: {
       "queue.drained_count": drainedCount,
       "queue.drained_continuation_count": drainedContinuationCount,
     };
-    const span = activeTracer.startSpan("continuation.queue.drain", {
+    const span = getContinuationTracer().startSpan("continuation.queue.drain", {
       attributes: attrs,
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
@@ -856,7 +873,7 @@ export function emitContinuationFanoutSpan(args: {
         ? { "chain.step.remaining": Math.max(0, args.chainStepRemaining) }
         : {}),
     };
-    const span = activeTracer.startSpan("continuation.queue.fanout", {
+    const span = getContinuationTracer().startSpan("continuation.queue.fanout", {
       attributes: attrs,
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
@@ -913,7 +930,7 @@ export function emitContinuationCompactionReleasedSpan(args: {
       ...(compactionIdValid ? { "compaction.id": compactionId } : {}),
     };
 
-    const span = activeTracer.startSpan("continuation.compaction.released", {
+    const span = getContinuationTracer().startSpan("continuation.compaction.released", {
       attributes: attrs,
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
@@ -975,7 +992,7 @@ export function emitContinuationHeartbeatSpan(args: {
         "disabled.reason": args.disabledReason,
       }),
     };
-    const span = activeTracer.startSpan("heartbeat", { attributes: attrs });
+    const span = getContinuationTracer().startSpan("heartbeat", { attributes: attrs });
     span.setStatus("OK");
     span.end();
   } catch (err) {
