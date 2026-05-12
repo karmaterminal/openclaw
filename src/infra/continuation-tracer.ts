@@ -497,7 +497,12 @@ export function emitContinuationDelegateSpan(args: {
 export function emitContinuationDisabledSpan(args: {
   chainId: string | undefined;
   chainStepRemaining: number;
-  disabledReason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn" | "reservation.missing";
+  disabledReason:
+    | "cap.chain"
+    | "cap.cost"
+    | "cap.delegates_per_turn"
+    | "reservation.missing"
+    | "policy.crossSessionTargeting";
   signalKind: ContinuationDisabledSignalKind;
   delegateDelivery?: "immediate" | "timer" | undefined;
   delegateMode?: string | undefined;

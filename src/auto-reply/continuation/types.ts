@@ -123,6 +123,7 @@ export type ContinuationRuntimeConfig = {
   maxDelegatesPerTurn: number;
   contextPressureThreshold?: number;
   earlyWarningBand?: number;
+  crossSessionTargeting: "disabled" | "enabled";
 };
 
 // ---------------------------------------------------------------------------

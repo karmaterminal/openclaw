@@ -1384,6 +1384,36 @@ For single-human-user deployments, this usually aligns with the existing trust b
 
 Stronger options include HMAC signing, encrypted attachments, and signed announce payloads. None are required by the current implementation, but all are compatible with the present architecture.
 
+### 7.2 Cross-session targeting policy
+
+Cross-session delegate targeting — `targetSessionKey`, `targetSessionKeys`, and `fanoutMode: "all"` — is gated by a binary operator config:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "continuation": {
+        "crossSessionTargeting": "disabled"
+      }
+    }
+  }
+}
+```
+
+| Value                  | Behavior                                                                                                                                                                                                                                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"disabled"` (default) | Delegates can only return to the dispatching session or its lineage. Explicit cross-session targeting (`targetSessionKey` to a non-self/non-ancestor session, `targetSessionKeys`, `fanoutMode: "all"`) returns a tool error. `fanoutMode: "tree"` (lineage-only) and self-targeting are always allowed. |
+| `"enabled"`            | All targeting modes are available.                                                                                                                                                                                                                                                                       |
+
+The gate checks at two enforcement points:
+
+1. **Tool path:** `continue-delegate-tool.ts` rejects cross-session targeting params with a `ToolInputError` at param-validation time (fail-fast).
+2. **Bracket-syntax path:** `doSpawn()` in `agent-runner.ts` rejects cross-session targeting at spawn time, emitting a `continuation.disabled` span with `disabledReason: "policy.crossSessionTargeting"` and a system event.
+
+Both enforcement points read the config live (not cached at session-start), so hot-reload works: flipping `"disabled"` → `"enabled"` takes effect on the next delegate call without a gateway restart.
+
+The gate addresses the model-controlled cross-session context injection surface identified in code review: without it, a continuation-enabled session can affect unrelated sessions on the same host. With the gate default-deny, operators explicitly opt in to cross-session targeting when their deployment model requires it.
+
 Operational failure modes and inherited behavioral limitations are documented in [Appendix C](#appendix-c-failure-modes-and-behavioral-limitations).
 
 ## 8. Applicability Statement and Production Use Cases
