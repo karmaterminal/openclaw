@@ -4,6 +4,7 @@ import {
   AGENT_INTERNAL_EVENT_STATUSES,
   AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION,
 } from "../../../agents/internal-event-contract.js";
+import { DIAGNOSTIC_TRACEPARENT_PATTERN } from "../../../infra/diagnostic-trace-context-pure.js";
 import { InputProvenanceSchema, NonEmptyString, SessionLabelString } from "./primitives.js";
 
 const CONTINUATION_TRIGGER_VALUES = ["work-wake", "delegate-return"] as const;
@@ -206,6 +207,15 @@ export const AgentParamsSchema = Type.Object(
         Type.Boolean({
           description:
             "Internal continuation runner knob; omitted from public generated protocol artifacts.",
+        }),
+      ),
+    ),
+    traceparent: internalProtocolField(
+      Type.Optional(
+        Type.String({
+          description:
+            "Internal continuation trace context for inherited child agent runs; omitted from public generated protocol artifacts.",
+          pattern: DIAGNOSTIC_TRACEPARENT_PATTERN,
         }),
       ),
     ),

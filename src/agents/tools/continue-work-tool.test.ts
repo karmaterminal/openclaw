@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   emitContinuationWorkSpan,
   resetContinuationTracer,
@@ -9,9 +9,19 @@ import {
   type StartSpanOptions,
   type Tracer,
 } from "../../infra/continuation-tracer.js";
+import {
+  installTestOtelContextManager,
+  runWithTestActiveSpan,
+} from "../../test-helpers/otel-context.js";
 import { createContinueWorkTool, type ContinueWorkRequest } from "./continue-work-tool.js";
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
+const ACTIVE_SPAN_CONTEXT = {
+  traceId: "0af7651916cd43dd8448eb211c80319c",
+  spanId: "b7ad6b7169203331",
+  traceFlags: 0,
+};
 
 type RecordedSpan = {
   name: string;
@@ -47,8 +57,16 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
 }
 
 describe("continue_work tool", () => {
+  let cleanupOtelContext: (() => void) | undefined;
+
+  beforeEach(() => {
+    cleanupOtelContext = installTestOtelContextManager();
+  });
+
   afterEach(() => {
     resetContinuationTracer();
+    cleanupOtelContext?.();
+    cleanupOtelContext = undefined;
   });
 
   function makeTool(
@@ -184,6 +202,55 @@ describe("continue_work tool", () => {
       options: { traceparent: VALID_TRACEPARENT },
       statusCalls: [{ status: "OK", message: undefined }],
       ended: true,
+    });
+  });
+
+  it("auto-picks the active OpenTelemetry span when traceparent is omitted", async () => {
+    const requestContinuation = vi.fn();
+    const tool = makeTool({ requestContinuation });
+
+    const result = (
+      await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+        tool.execute("call-active-traceparent", {
+          reason: "Continue with the active trace.",
+        }),
+      )
+    )?.details as Record<string, unknown>;
+
+    expect(requestContinuation).toHaveBeenCalledWith({
+      reason: "Continue with the active trace.",
+      delaySeconds: 0,
+      traceparent: ACTIVE_TRACEPARENT,
+    });
+    expect(result).toMatchObject({
+      status: "scheduled",
+      delaySeconds: 0,
+      traceparent: ACTIVE_TRACEPARENT,
+    });
+  });
+
+  it("lets an explicit traceparent override the active OpenTelemetry span", async () => {
+    const requestContinuation = vi.fn();
+    const tool = makeTool({ requestContinuation });
+
+    const result = (
+      await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+        tool.execute("call-explicit-traceparent", {
+          reason: "Continue with explicit trace context.",
+          traceparent: VALID_TRACEPARENT,
+        }),
+      )
+    )?.details as Record<string, unknown>;
+
+    expect(requestContinuation).toHaveBeenCalledWith({
+      reason: "Continue with explicit trace context.",
+      delaySeconds: 0,
+      traceparent: VALID_TRACEPARENT,
+    });
+    expect(result).toMatchObject({
+      status: "scheduled",
+      delaySeconds: 0,
+      traceparent: VALID_TRACEPARENT,
     });
   });
 

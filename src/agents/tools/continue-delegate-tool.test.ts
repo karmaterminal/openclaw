@@ -9,12 +9,25 @@ import {
   clearRuntimeConfigSnapshot,
   type OpenClawConfig,
 } from "../../config/config.js";
+import {
+  installTestOtelContextManager,
+  runWithTestActiveSpan,
+} from "../../test-helpers/otel-context.js";
 import { createContinueDelegateTool } from "./continue-delegate-tool.js";
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
+const ACTIVE_SPAN_CONTEXT = {
+  traceId: "0af7651916cd43dd8448eb211c80319c",
+  spanId: "b7ad6b7169203331",
+  traceFlags: 0,
+};
 
 describe("continue_delegate tool", () => {
+  let cleanupOtelContext: (() => void) | undefined;
+
   beforeEach(() => {
+    cleanupOtelContext = installTestOtelContextManager();
     cancelPendingDelegates("test-session");
     consumePendingDelegates("test-session");
     consumeStagedPostCompactionDelegates("test-session");
@@ -24,6 +37,8 @@ describe("continue_delegate tool", () => {
   afterEach(() => {
     cancelPendingDelegates("test-session");
     clearRuntimeConfigSnapshot();
+    cleanupOtelContext?.();
+    cleanupOtelContext = undefined;
   });
 
   async function executeTool(
@@ -268,6 +283,49 @@ describe("continue_delegate tool", () => {
     expect(consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "continue traced chain",
+        traceparent: VALID_TRACEPARENT,
+      }),
+    ]);
+  });
+
+  it("auto-picks the active OpenTelemetry span when traceparent is omitted", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+      executeTool(tool, 0, {
+        task: "continue active traced chain",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      traceparent: ACTIVE_TRACEPARENT,
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "continue active traced chain",
+        traceparent: ACTIVE_TRACEPARENT,
+      }),
+    ]);
+  });
+
+  it("lets an explicit traceparent override the active OpenTelemetry span", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    const result = await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+      executeTool(tool, 0, {
+        task: "continue explicitly traced chain",
+        traceparent: VALID_TRACEPARENT,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: "scheduled",
+      traceparent: VALID_TRACEPARENT,
+    });
+    expect(consumePendingDelegates("test-session")).toEqual([
+      expect.objectContaining({
+        task: "continue explicitly traced chain",
         traceparent: VALID_TRACEPARENT,
       }),
     ]);

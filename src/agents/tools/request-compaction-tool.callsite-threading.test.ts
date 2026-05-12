@@ -17,6 +17,16 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  installTestOtelContextManager,
+  runWithTestActiveSpan,
+} from "../../test-helpers/otel-context.js";
+import {
+  _resetGuardState,
+  _resetVolitionalCounts,
+  createRequestCompactionTool,
+  type RequestCompactionToolOpts,
+} from "./request-compaction-tool.js";
 
 // ---------------------------------------------------------------------------
 // Mock setup for compactEmbeddedPiSession
@@ -33,6 +43,17 @@ interface CapturedCompactParams {
   authProfileId?: string;
 }
 
+const REQUEST_COMPACTION_SESSION_KEY = "agent:main:discord:channel:request-compaction-trace";
+const REQUEST_COMPACTION_SESSION_ID = "request-compaction-trace-session";
+const REQUEST_COMPACTION_REASON = "context pressure at 85%, working state evacuated";
+const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
+const ACTIVE_SPAN_CONTEXT = {
+  traceId: "0af7651916cd43dd8448eb211c80319c",
+  spanId: "b7ad6b7169203331",
+  traceFlags: 0,
+};
+
 const capturedCompactCalls: CapturedCompactParams[] = [];
 const compactEmbeddedPiSessionMock = vi.fn(
   async (
@@ -42,6 +63,34 @@ const compactEmbeddedPiSessionMock = vi.fn(
     return { ok: true, compacted: true, reason: undefined };
   },
 );
+
+function buildRequestCompactionOpts(
+  overrides: Partial<RequestCompactionToolOpts> = {},
+): RequestCompactionToolOpts {
+  return {
+    agentSessionKey: REQUEST_COMPACTION_SESSION_KEY,
+    sessionId: REQUEST_COMPACTION_SESSION_ID,
+    getContextUsage: () => 0.85,
+    triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })),
+    ...overrides,
+  };
+}
+
+async function executeRequestCompactionTool(
+  opts: RequestCompactionToolOpts,
+  args: Record<string, unknown> = { reason: REQUEST_COMPACTION_REASON },
+): Promise<{ status: string; [key: string]: unknown }> {
+  const tool = createRequestCompactionTool(opts);
+  const result = await tool.execute("call-id", args);
+  const content = (result as { content: Array<{ type: string; text: string }> }).content;
+  return JSON.parse(content[0]?.text ?? "{}");
+}
+
+async function drainRequestCompactionMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 vi.mock("../../agents/pi-embedded-runner/compact.queued.js", () => ({
   compactEmbeddedPiSession: (params: CapturedCompactParams) => compactEmbeddedPiSessionMock(params),
@@ -454,5 +503,101 @@ describe("call-site threading: error handling", () => {
       compacted: false,
       reason: "Nothing to compact",
     });
+  });
+});
+
+describe("request_compaction traceparent auto-pickup", () => {
+  let cleanupOtelContext: (() => void) | undefined;
+
+  beforeEach(() => {
+    cleanupOtelContext = installTestOtelContextManager();
+    _resetGuardState();
+    _resetVolitionalCounts();
+  });
+
+  afterEach(() => {
+    _resetGuardState();
+    _resetVolitionalCounts();
+    cleanupOtelContext?.();
+    cleanupOtelContext = undefined;
+  });
+
+  it("auto-picks the active OpenTelemetry span when traceparent is omitted", async () => {
+    const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
+      ok: true,
+      compacted: true,
+    }));
+
+    const result = await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+      executeRequestCompactionTool(buildRequestCompactionOpts({ triggerCompaction })),
+    );
+    await drainRequestCompactionMicrotasks();
+
+    expect(triggerCompaction).toHaveBeenCalledTimes(1);
+    expect(triggerCompaction.mock.calls[0]?.[0]).toMatchObject({
+      traceparent: ACTIVE_TRACEPARENT,
+    });
+    expect(result).toMatchObject({
+      status: "compaction_requested",
+      traceparent: ACTIVE_TRACEPARENT,
+    });
+  });
+
+  it("keeps traceparent absent when no OpenTelemetry span is active", async () => {
+    const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
+      ok: true,
+      compacted: true,
+    }));
+
+    const result = await executeRequestCompactionTool(
+      buildRequestCompactionOpts({ triggerCompaction }),
+    );
+    await drainRequestCompactionMicrotasks();
+
+    expect(triggerCompaction).toHaveBeenCalledTimes(1);
+    expect(triggerCompaction.mock.calls[0]?.[0]).not.toHaveProperty("traceparent");
+    expect(result).not.toHaveProperty("traceparent");
+  });
+
+  it("lets an explicit traceparent override the active OpenTelemetry span", async () => {
+    const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
+      ok: true,
+      compacted: true,
+    }));
+
+    const result = await runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+      executeRequestCompactionTool(buildRequestCompactionOpts({ triggerCompaction }), {
+        reason: REQUEST_COMPACTION_REASON,
+        traceparent: VALID_TRACEPARENT,
+      }),
+    );
+    await drainRequestCompactionMicrotasks();
+
+    expect(triggerCompaction).toHaveBeenCalledTimes(1);
+    expect(triggerCompaction.mock.calls[0]?.[0]).toMatchObject({
+      traceparent: VALID_TRACEPARENT,
+    });
+    expect(result).toMatchObject({
+      status: "compaction_requested",
+      traceparent: VALID_TRACEPARENT,
+    });
+  });
+
+  it("rejects malformed explicit traceparents even when an OpenTelemetry span is active", async () => {
+    const triggerCompaction = vi.fn<RequestCompactionToolOpts["triggerCompaction"]>(async () => ({
+      ok: true,
+      compacted: true,
+    }));
+    const tool = createRequestCompactionTool(buildRequestCompactionOpts({ triggerCompaction }));
+
+    await expect(
+      runWithTestActiveSpan(ACTIVE_SPAN_CONTEXT, () =>
+        tool.execute("call-bad-traceparent", {
+          reason: REQUEST_COMPACTION_REASON,
+          traceparent: "not-a-traceparent",
+        }),
+      ),
+    ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
+    expect(triggerCompaction).not.toHaveBeenCalled();
   });
 });

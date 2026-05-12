@@ -1181,6 +1181,7 @@ export async function spawnSubagentDirect(
         ...(params.drainsContinuationDelegateQueue
           ? { drainsContinuationDelegateQueue: true }
           : {}),
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
         ...(bootstrapContextMode
           ? {
               bootstrapContextMode,

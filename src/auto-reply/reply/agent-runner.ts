@@ -38,6 +38,7 @@ import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/di
 import {
   createChildDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
+  runWithActiveOtelTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
@@ -1585,36 +1586,38 @@ export async function runReplyAgent(params: {
     }
 
     const runStartedAt = Date.now();
-    const runOutcome = await traceAgentPhase("reply.run_agent_turn", () =>
-      runAgentTurnWithFallback({
-        commandBody,
-        transcriptCommandBody,
-        followupRun,
-        sessionCtx,
-        replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,
-        replyOperation,
-        opts,
-        typingSignals,
-        blockReplyPipeline,
-        blockStreamingEnabled,
-        blockReplyChunking,
-        resolvedBlockStreamingBreak,
-        applyReplyToMode,
-        shouldEmitToolResult,
-        shouldEmitToolOutput,
-        pendingToolTasks,
-        resetSessionAfterCompactionFailure,
-        resetSessionAfterRoleOrderingConflict,
-        isHeartbeat,
-        sessionKey,
-        runtimePolicySessionKey,
-        getActiveSessionEntry: () => activeSessionEntry,
-        activeSessionStore,
-        storePath,
-        resolvedVerboseLevel,
-        toolProgressDetail,
-        replyMediaContext,
-      }),
+    const runOutcome = await runWithActiveOtelTraceparent(followupRun.run.traceparent, () =>
+      traceAgentPhase("reply.run_agent_turn", () =>
+        runAgentTurnWithFallback({
+          commandBody,
+          transcriptCommandBody,
+          followupRun,
+          sessionCtx,
+          replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,
+          replyOperation,
+          opts,
+          typingSignals,
+          blockReplyPipeline,
+          blockStreamingEnabled,
+          blockReplyChunking,
+          resolvedBlockStreamingBreak,
+          applyReplyToMode,
+          shouldEmitToolResult,
+          shouldEmitToolOutput,
+          pendingToolTasks,
+          resetSessionAfterCompactionFailure,
+          resetSessionAfterRoleOrderingConflict,
+          isHeartbeat,
+          sessionKey,
+          runtimePolicySessionKey,
+          getActiveSessionEntry: () => activeSessionEntry,
+          activeSessionStore,
+          storePath,
+          resolvedVerboseLevel,
+          toolProgressDetail,
+          replyMediaContext,
+        }),
+      ),
     );
 
     if (runOutcome.kind === "final") {

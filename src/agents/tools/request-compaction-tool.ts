@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import {
+  deriveTraceparentFromActiveSpan,
   DIAGNOSTIC_TRACEPARENT_PATTERN,
   normalizeDiagnosticTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
@@ -70,8 +71,8 @@ const RequestCompactionToolSchema = Type.Object({
   traceparent: Type.Optional(
     Type.String({
       description:
-        "Optional W3C traceparent carrier. When supplied by an instrumented upstream caller, " +
-        "the delegate and return path can stitch continuation spans into the same trace tree.",
+        "Optional W3C traceparent override. When omitted, the tool automatically reuses " +
+        "the active OpenTelemetry span context if one is available.",
       pattern: DIAGNOSTIC_TRACEPARENT_PATTERN,
     }),
   ),
@@ -184,11 +185,12 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       const reason = readStringParam(params, "reason", { required: true }).slice(0, 1024);
       const traceparentRaw = readStringParam(params, "traceparent");
-      const traceparent =
+      const explicitTraceparent =
         traceparentRaw !== undefined ? normalizeDiagnosticTraceparent(traceparentRaw) : undefined;
-      if (traceparentRaw !== undefined && !traceparent) {
+      if (traceparentRaw !== undefined && !explicitTraceparent) {
         throw new ToolInputError("traceparent must be a valid W3C traceparent header.");
       }
+      const traceparent = explicitTraceparent ?? deriveTraceparentFromActiveSpan();
       const traceContextFields = traceparent ? { traceparent } : {};
 
       // ----- Guard 0: Dedup — compaction already pending -----

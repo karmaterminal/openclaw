@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  installTestOtelContextManager,
+  runWithTestActiveSpan,
+} from "../test-helpers/otel-context.js";
+import {
   createChildDiagnosticTraceContext,
   createDiagnosticTraceContext,
   createDiagnosticTraceContextFromActiveScope,
+  deriveTraceparentFromActiveSpan,
   freezeDiagnosticTraceContext,
   formatDiagnosticTraceparent,
   getActiveDiagnosticTraceContext,
@@ -12,6 +17,7 @@ import {
   parseDiagnosticTraceparent,
   resetDiagnosticTraceContextForTest,
   runWithDiagnosticTraceContext,
+  runWithActiveOtelTraceparent,
 } from "./diagnostic-trace-context.js";
 
 const TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
@@ -189,5 +195,47 @@ describe("diagnostic-trace-context", () => {
       spanId: CHILD_SPAN_ID,
       traceFlags: "01",
     });
+  });
+
+  it("derives a traceparent from the active OpenTelemetry span", () => {
+    const cleanup = installTestOtelContextManager();
+    try {
+      const traceparent = runWithTestActiveSpan(
+        {
+          traceId: TRACE_ID,
+          spanId: SPAN_ID,
+          traceFlags: 1,
+        },
+        () => deriveTraceparentFromActiveSpan(),
+      );
+
+      expect(traceparent).toBe(`00-${TRACE_ID}-${SPAN_ID}-01`);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("omits a traceparent when no OpenTelemetry span is active", () => {
+    const cleanup = installTestOtelContextManager();
+    try {
+      expect(deriveTraceparentFromActiveSpan()).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs callbacks with an inherited traceparent as the active OpenTelemetry context", async () => {
+    const cleanup = installTestOtelContextManager();
+    const traceparent = `00-${TRACE_ID}-${SPAN_ID}-00`;
+    try {
+      await runWithActiveOtelTraceparent(traceparent, async () => {
+        expect(deriveTraceparentFromActiveSpan()).toBe(traceparent);
+        await Promise.resolve();
+        expect(deriveTraceparentFromActiveSpan()).toBe(traceparent);
+      });
+      expect(deriveTraceparentFromActiveSpan()).toBeUndefined();
+    } finally {
+      cleanup();
+    }
   });
 });

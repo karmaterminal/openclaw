@@ -102,6 +102,7 @@ export type FollowupRun = {
     silentExpected?: boolean;
     allowEmptyAssistantReplyAsSilent?: boolean;
     drainsContinuationDelegateQueue?: boolean;
+    traceparent?: string;
   };
 };
 

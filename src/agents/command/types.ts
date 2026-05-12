@@ -103,6 +103,8 @@ export type AgentCommandOpts = {
   continuationTrigger?: ContinuationTrigger;
   /** When true, the run drains the pending continuation delegate queue after completion. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Inherited continuation trace context for this run. */
+  traceparent?: string;
   extraSystemPrompt?: string;
   /** Bootstrap workspace context injection mode for this run. */
   bootstrapContextMode?: "full" | "lightweight";

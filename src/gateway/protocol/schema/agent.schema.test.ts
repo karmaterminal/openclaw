@@ -11,6 +11,7 @@ describe("AgentParamsSchema", () => {
     message: "test message",
     idempotencyKey: "test-key-123",
   };
+  const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 
   it("accepts minimal valid params", () => {
     const valid = validate(baseParams);
@@ -42,6 +43,7 @@ describe("AgentParamsSchema", () => {
 
     expect(properties.cleanupBundleMcpOnRunEnd?.["x-openclaw-internal"]).toBe(true);
     expect(properties.drainsContinuationDelegateQueue?.["x-openclaw-internal"]).toBe(true);
+    expect(properties.traceparent?.["x-openclaw-internal"]).toBe(true);
   });
 
   it("accepts params without drainsContinuationDelegateQueue (optional)", () => {
@@ -64,8 +66,17 @@ describe("AgentParamsSchema", () => {
       lane: "subagent",
       drainsContinuationDelegateQueue: true,
       continuationTrigger: "delegate-return",
+      traceparent,
     });
     expect(valid).toBe(true);
     expect(validate.errors).toBeNull();
+  });
+
+  it("rejects malformed inherited traceparent values", () => {
+    const valid = validate({
+      ...baseParams,
+      traceparent: "not-a-traceparent",
+    });
+    expect(valid).toBe(false);
   });
 });

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import { appendSessionTranscriptMessage } from "../../config/sessions/transcript-append.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { deriveTraceparentFromActiveSpan } from "../../infra/diagnostic-trace-context.js";
+import { installTestOtelContextManager } from "../../test-helpers/otel-context.js";
 import { FailoverError } from "../failover-error.js";
 import { runEmbeddedPiAgent, type EmbeddedPiRunResult } from "../pi-embedded.js";
 import { persistCliTurnTranscript, runAgentAttempt } from "./attempt-execution.js";
@@ -12,6 +14,7 @@ import { persistCliTurnTranscript, runAgentAttempt } from "./attempt-execution.j
 const runCliAgentMock = vi.hoisted(() => vi.fn());
 const runEmbeddedPiAgentMock = vi.hoisted(() => vi.fn());
 const ORIGINAL_HOME = process.env.HOME;
+const INHERITED_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 
 vi.mock("../cli-runner.js", () => ({
   runCliAgent: runCliAgentMock,
@@ -905,6 +908,64 @@ describe("CLI attempt execution", () => {
     expect(runEmbeddedPiAgentMock.mock.calls[0]?.[0]?.prompt).not.toContain(
       "[Inter-session message]",
     );
+  });
+
+  it("sets inherited traceparent active for embedded child runs", async () => {
+    const cleanupOtelContext = installTestOtelContextManager();
+    const sessionKey = "agent:main:direct:traceparent";
+    const sessionEntry: SessionEntry = {
+      sessionId: "openclaw-session-traceparent",
+      updatedAt: Date.now(),
+    };
+    const sessionStore: Record<string, SessionEntry> = { [sessionKey]: sessionEntry };
+    let activeTraceparentBeforeAwait: string | undefined;
+    let activeTraceparentAfterAwait: string | undefined;
+    runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      activeTraceparentBeforeAwait = deriveTraceparentFromActiveSpan();
+      await Promise.resolve();
+      activeTraceparentAfterAwait = deriveTraceparentFromActiveSpan();
+      return { meta: { durationMs: 1 } } satisfies EmbeddedPiRunResult;
+    });
+
+    try {
+      await runAgentAttempt({
+        providerOverride: "anthropic",
+        modelOverride: "claude-opus-4-7",
+        originalProvider: "anthropic",
+        cfg: {} as OpenClawConfig,
+        sessionEntry,
+        sessionId: sessionEntry.sessionId,
+        sessionKey,
+        sessionAgentId: "main",
+        sessionFile: path.join(tmpDir, "session.jsonl"),
+        workspaceDir: tmpDir,
+        body: "trace inherited context",
+        isFallbackRetry: false,
+        resolvedThinkLevel: "medium",
+        timeoutMs: 1_000,
+        runId: "run-traceparent",
+        opts: {
+          senderIsOwner: false,
+          traceparent: INHERITED_TRACEPARENT,
+        } as Parameters<typeof runAgentAttempt>[0]["opts"],
+        runContext: {} as Parameters<typeof runAgentAttempt>[0]["runContext"],
+        spawnedBy: undefined,
+        messageChannel: "discord",
+        skillsSnapshot: undefined,
+        resolvedVerboseLevel: undefined,
+        agentDir: tmpDir,
+        onAgentEvent: vi.fn(),
+        authProfileProvider: "anthropic",
+        sessionStore,
+        storePath,
+        sessionHasHistory: true,
+      });
+
+      expect(activeTraceparentBeforeAwait).toBe(INHERITED_TRACEPARENT);
+      expect(activeTraceparentAfterAwait).toBe(INHERITED_TRACEPARENT);
+    } finally {
+      cleanupOtelContext();
+    }
   });
 
   it("forwards trusted elevated defaults to embedded agent runs", async () => {
