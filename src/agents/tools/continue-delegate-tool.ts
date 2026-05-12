@@ -1,8 +1,5 @@
 import { Type } from "typebox";
-import {
-  resolveMaxDelegatesPerTurn,
-  resolveContinuationRuntimeConfig,
-} from "../../auto-reply/continuation/config.js";
+import { resolveContinuationRuntimeConfig } from "../../auto-reply/continuation/config.js";
 import {
   enqueuePendingDelegate,
   getContinuationDelegateQueueDepths,
@@ -10,6 +7,7 @@ import {
 } from "../../auto-reply/continuation/delegate-store.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
+  hasCrossSessionDelegateTargeting,
   normalizeContinuationTargetKeys,
 } from "../../auto-reply/continuation/targeting.js";
 import {
@@ -195,27 +193,20 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       }
       const traceContextFields = traceparent ? { traceparent } : {};
 
-      // Cross-session targeting policy gate. Read live config (hot-reloadable).
-      // Tree routing + self-targeting are always allowed.
-      const hasCrossSessionTargeting =
-        fanoutMode === "all" ||
-        (targetSessionKey !== undefined && targetSessionKey !== sessionKey) ||
-        (targetSessionKeys !== undefined && targetSessionKeys.length > 0);
-      if (hasCrossSessionTargeting) {
-        const continuationConfig = resolveContinuationRuntimeConfig();
-        if (continuationConfig.crossSessionTargeting === "disabled") {
-          throw new ToolInputError(
-            "Cross-session delegate targeting is disabled by policy. " +
-              "Only tree/lineage routing and self-targeting are allowed. " +
-              'Set agents.continuation.crossSessionTargeting to "enabled" to allow ' +
-              'targetSessionKey, targetSessionKeys, and fanoutMode="all".',
-          );
-        }
+      const continuationConfig = resolveContinuationRuntimeConfig();
+      if (
+        continuationConfig.crossSessionTargeting === "disabled" &&
+        hasCrossSessionDelegateTargeting(targetingFields, sessionKey)
+      ) {
+        throw new ToolInputError(
+          "cross-session continuation targeting is disabled by agents.defaults.continuation.crossSessionTargeting. " +
+            'Use the default return target, targetSessionKey set to this session, or fanoutMode="tree".',
+        );
       }
 
       // Check per-turn delegate limit. Durable queued depth is reported for
       // visibility but does not consume this turn's admission budget.
-      const maxPerTurn = resolveMaxDelegatesPerTurn();
+      const maxPerTurn = continuationConfig.maxDelegatesPerTurn;
       if (delegatesThisTurn >= maxPerTurn) {
         const queueDepths = getContinuationDelegateQueueDepths(sessionKey);
         return jsonResult({

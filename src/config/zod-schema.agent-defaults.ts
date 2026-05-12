@@ -301,13 +301,15 @@ export const AgentDefaultsSchema = z
         maxChainLength: z.number().int().positive().optional(),
         costCapTokens: z.number().int().nonnegative().optional(),
         maxDelegatesPerTurn: z.number().int().positive().optional(),
+        crossSessionTargeting: z
+          .union([z.literal("disabled"), z.literal("enabled")])
+          .default("disabled"),
         contextPressureThreshold: z
           .number()
           .gt(0, "contextPressureThreshold must be > 0 (0 would fire on empty sessions)")
           .max(1)
           .optional(),
         earlyWarningBand: z.number().min(0).max(1).default(0.3125),
-        crossSessionTargeting: z.enum(["disabled", "enabled"]).optional(),
       })
       .strict()
       .refine(

@@ -14,6 +14,7 @@
 
 import { spawnSubagentDirect } from "../../agents/subagent-spawn.js";
 import type { SpawnSubagentContext } from "../../agents/subagent-spawn.js";
+import { emitContinuationDisabledSpan } from "../../infra/continuation-tracer.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { failFlow } from "../../tasks/task-flow-registry.js";
@@ -25,6 +26,7 @@ import {
   retainContinuationTimerRef,
   unregisterContinuationTimerHandle,
 } from "./state.js";
+import { hasCrossSessionDelegateTargeting } from "./targeting-pure.js";
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
 const HEDGE_DISPATCH_FAILURE_RETRY_MS = 30_000;
@@ -199,7 +201,7 @@ export async function dispatchToolDelegates(params: {
     `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
   );
 
-  const { maxDelegatesPerTurn, maxChainLength } = config;
+  const { maxDelegatesPerTurn, maxChainLength, crossSessionTargeting } = config;
   const delegatesWithinLimit = toolDelegates.slice(0, maxDelegatesPerTurn);
   const delegatesOverLimit = toolDelegates.slice(maxDelegatesPerTurn);
 
@@ -221,6 +223,36 @@ export async function dispatchToolDelegates(params: {
   let accumulatedTokens = chainState.accumulatedChainTokens;
 
   for (const delegate of delegatesWithinLimit) {
+    if (
+      crossSessionTargeting === "disabled" &&
+      hasCrossSessionDelegateTargeting(delegate, sessionKey)
+    ) {
+      const delegateMode = delegate.mode ?? "normal";
+      const delegateDelivery: "immediate" | "timer" =
+        delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
+      const summary = "Tool delegate rejected: cross-session targeting is disabled by policy.";
+      log.info(
+        `[continuation:delegate-rejected] policy.cross_session_targeting task=${delegate.task.slice(0, 80)} session=${sessionKey}`,
+      );
+      markDelegateFailed(delegate, summary);
+      enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
+        sessionKey,
+        trusted: true,
+      });
+      emitContinuationDisabledSpan({
+        chainId: undefined,
+        chainStepRemaining: Math.max(0, maxChainLength - currentChainCount),
+        disabledReason: "policy.cross_session_targeting",
+        signalKind: "tool-delegate",
+        delegateDelivery,
+        delegateMode,
+        reason: delegate.task,
+        log: (message) => log.info(message),
+      });
+      rejected++;
+      continue;
+    }
+
     const budgetCheck = checkContinuationBudget({
       chainState: {
         currentChainCount,
@@ -359,12 +391,38 @@ export async function dispatchStagedPostCompactionDelegates(
 ): Promise<{ dispatched: number; failed: number }> {
   let dispatched = 0;
   let failed = 0;
+  const config = resolveContinuationRuntimeConfig();
 
   postCompactionLog.info(
     `[continuation:compaction-delegate] Consuming ${delegates.length} compaction delegate(s) for session ${sessionKey}`,
   );
 
   for (const delegate of delegates) {
+    if (
+      config.crossSessionTargeting === "disabled" &&
+      hasCrossSessionDelegateTargeting(delegate, sessionKey)
+    ) {
+      postCompactionLog.warn(
+        `[continuation:post-compaction-policy-rejected] policy.cross_session_targeting session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+      );
+      enqueueSystemEvent(
+        `[continuation] Post-compaction delegate rejected: cross-session targeting is disabled by policy. Task: ${delegate.task}`,
+        { sessionKey, trusted: true },
+      );
+      emitContinuationDisabledSpan({
+        chainId: undefined,
+        chainStepRemaining: config.maxChainLength,
+        disabledReason: "policy.cross_session_targeting",
+        signalKind: "tool-delegate",
+        delegateDelivery: "immediate",
+        delegateMode: "post-compaction",
+        reason: delegate.task,
+        log: (message) => postCompactionLog.warn(message),
+      });
+      failed++;
+      continue;
+    }
+
     try {
       const spawnResult = await spawnSubagentDirect(
         {

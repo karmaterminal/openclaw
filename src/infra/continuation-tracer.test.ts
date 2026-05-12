@@ -825,6 +825,26 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper", () => {
       "continuation.disabled": true,
     });
   });
+
+  it("accepts disabledReason='policy.cross_session_targeting'", () => {
+    const { tracer, spans } = makeRecordingTracer();
+    setContinuationTracer(tracer);
+    emitContinuationDisabledSpan({
+      chainId: undefined,
+      chainStepRemaining: 9,
+      disabledReason: "policy.cross_session_targeting",
+      signalKind: "bracket-delegate",
+      delegateDelivery: "immediate",
+      delegateMode: "normal",
+    });
+    expect(spans[0].options?.attributes).toMatchObject({
+      "disabled.reason": "policy.cross_session_targeting",
+      "signal.kind": "bracket-delegate",
+      "delegate.delivery": "immediate",
+      "delegate.mode": "normal",
+      "continuation.disabled": true,
+    });
+  });
 });
 
 describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () => {

@@ -175,6 +175,9 @@ describe("continue_delegate tool", () => {
   });
 
   it("persists singular cross-session target metadata", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
     const result = await executeTool(tool, 0, {
@@ -195,6 +198,9 @@ describe("continue_delegate tool", () => {
   });
 
   it("persists multi-recipient target metadata from snake_case input", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
     const result = await executeTool(tool, 0, {
@@ -230,6 +236,9 @@ describe("continue_delegate tool", () => {
     ]);
 
     const allTool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
     const allResult = await executeTool(allTool, 0, {
       task: "return to everyone",
       fanout_mode: "ALL",

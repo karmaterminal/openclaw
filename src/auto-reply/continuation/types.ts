@@ -8,7 +8,10 @@
  * the rest of the continuation surface is built on.
  */
 
-import type { ContinuationDelegateFanoutMode } from "./targeting.js";
+import type {
+  ContinuationCrossSessionTargetingPolicy,
+  ContinuationDelegateFanoutMode,
+} from "./targeting.js";
 
 // ---------------------------------------------------------------------------
 // Continuation signals — parsed from response text or captured from tool calls
@@ -112,9 +115,9 @@ export type ContinuationRuntimeConfig = {
   maxChainLength: number;
   costCapTokens: number;
   maxDelegatesPerTurn: number;
+  crossSessionTargeting: ContinuationCrossSessionTargetingPolicy;
   contextPressureThreshold?: number;
   earlyWarningBand?: number;
-  crossSessionTargeting: "disabled" | "enabled";
 };
 
 // ---------------------------------------------------------------------------
