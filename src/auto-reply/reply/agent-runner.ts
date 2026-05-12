@@ -1398,6 +1398,7 @@ export async function runReplyAgent(params: {
     preflightCompactionApplied =
       (activeSessionEntry?.compactionCount ?? 0) > prePreflightCompactionCount;
 
+<<<<<<< HEAD
     activeSessionEntry = await runMemoryFlushIfNeeded({
       cfg: resolvedRunCfg,
       followupRun,
@@ -1415,6 +1416,68 @@ export async function runReplyAgent(params: {
       isHeartbeat,
       replyOperation,
     });
+=======
+    const visibleMemoryFlushErrorPayloads: ReplyPayload[] = [];
+    activeSessionEntry = await traceAgentPhase("reply.memory_flush", () =>
+      runMemoryFlushIfNeeded({
+        cfg,
+        followupRun,
+        promptForEstimate: followupRun.prompt,
+        sessionCtx,
+        opts,
+        defaultModel,
+        agentCfgContextTokens,
+        resolvedVerboseLevel,
+        sessionEntry: activeSessionEntry,
+        sessionStore: activeSessionStore,
+        sessionKey,
+        runtimePolicySessionKey,
+        storePath,
+        isHeartbeat,
+        replyOperation,
+        onVisibleErrorPayloads: (payloads) => {
+          visibleMemoryFlushErrorPayloads.push(...payloads);
+        },
+      }),
+    );
+>>>>>>> upstream/main
+
+    if (visibleMemoryFlushErrorPayloads.length > 0) {
+      const currentMessageId = sessionCtx.MessageSidFull ?? sessionCtx.MessageSid;
+      const payloadResult = await buildReplyPayloads({
+        payloads: visibleMemoryFlushErrorPayloads,
+        isHeartbeat,
+        didLogHeartbeatStrip: false,
+        silentExpected: true,
+        blockStreamingEnabled,
+        blockReplyPipeline,
+        replyToMode,
+        replyToChannel,
+        currentMessageId,
+        replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,
+        messageProvider: followupRun.run.messageProvider,
+        originatingChannel: sessionCtx.OriginatingChannel,
+        originatingTo: resolveOriginMessageTo({
+          originatingTo: sessionCtx.OriginatingTo,
+          to: sessionCtx.To,
+        }),
+        accountId: sessionCtx.AccountId,
+        normalizeMediaPaths: replyMediaContext.normalizePayload,
+      });
+      const replyPayloads = payloadResult.replyPayloads.map((payload) =>
+        markReplyPayloadForSourceSuppressionDelivery(payload),
+      );
+      if (replyPayloads.length > 0) {
+        replyOperation.fail(
+          "run_failed",
+          new Error("memory flush produced visible error payloads"),
+        );
+        await signalTypingIfNeeded(replyPayloads, typingSignals);
+        return returnWithQueuedFollowupDrain(
+          replyPayloads.length === 1 ? replyPayloads[0] : replyPayloads,
+        );
+      }
+    }
 
     runFollowupTurn = createFollowupRunner({
       opts,

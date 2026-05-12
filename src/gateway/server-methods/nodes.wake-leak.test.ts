@@ -58,11 +58,9 @@ describe("maybeWakeNodeWithApns — no-registration leak guard", () => {
 
     for (let i = 0; i < 50; i++) {
       const result = await maybeWakeNodeWithApns(`unregistered-node-${i}`);
-      expect(result).toMatchObject({
-        available: false,
-        throttled: false,
-        path: "no-registration",
-      });
+      expect(result.available).toBe(false);
+      expect(result.throttled).toBe(false);
+      expect(result.path).toBe("no-registration");
     }
 
     expect(wakeTesting.getNodeWakeByIdSize()).toBe(0);
