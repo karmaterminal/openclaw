@@ -89,6 +89,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "fallbackNoticeActiveModel",
   "fallbackNoticeReason",
   "contextTokens",
+  "lastContextPressureBand",
   "compactionCount",
   "compactionCheckpoints",
   "memoryFlushAt",
@@ -114,6 +115,11 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "systemPromptReport",
   "pluginDebugEntries",
   "acp",
+  "continuationChainCount",
+  "continuationChainStartedAt",
+  "continuationChainTokens",
+  "continuationChainId",
+  "pendingPostCompactionDelegates",
   "quotaSuspension",
 ] as const satisfies ReadonlyArray<keyof SessionEntry | "__proto__" | "constructor" | "prototype">;
 

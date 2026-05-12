@@ -1,3 +1,4 @@
+import type { ContinuationTrigger } from "../auto-reply/get-reply-options.types.js";
 import { completionRequiresMessageToolDelivery } from "../auto-reply/reply/completion-delivery-policy.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ConversationRef } from "../infra/outbound/session-binding-service.js";
@@ -219,10 +220,10 @@ const TRANSIENT_ANNOUNCE_DELIVERY_ERROR_PATTERNS: readonly RegExp[] = [
   /gateway not connected/i,
   /gateway closed \(1006/i,
   /gateway timeout/i,
+  /\b(econnreset|econnrefused|etimedout|enotfound|ehostunreach|network error)\b/i,
   /\ball models failed\b/i,
   /\ball profiles unavailable\b/i,
   /\boverloaded\b/i,
-  /\b(econnreset|econnrefused|etimedout|enotfound|ehostunreach|network error)\b/i,
 ];
 
 const PERMANENT_ANNOUNCE_DELIVERY_ERROR_PATTERNS: readonly RegExp[] = [
@@ -443,6 +444,8 @@ async function sendAnnounce(item: AnnounceQueueItem) {
         sourceChannel: item.sourceChannel ?? INTERNAL_MESSAGE_CHANNEL,
         sourceTool: item.sourceTool ?? "subagent_announce",
       },
+      continuationTrigger: item.continuationTriggerOverride,
+      ...(item.traceparent ? { traceparent: item.traceparent } : {}),
       idempotencyKey,
     },
     timeoutMs: announceTimeoutMs,
@@ -486,6 +489,8 @@ async function maybeQueueSubagentAnnounce(params: {
   sourceChannel?: string;
   sourceTool?: string;
   internalEvents?: AgentInternalEvent[];
+  continuationTriggerOverride?: ContinuationTrigger;
+  traceparent?: string;
   signal?: AbortSignal;
 }): Promise<"steered" | "queued" | "none" | "dropped"> {
   if (params.signal?.aborted) {
@@ -529,6 +534,7 @@ async function maybeQueueSubagentAnnounce(params: {
       key: buildAnnounceQueueKey(canonicalKey, origin),
       item: {
         announceId: params.announceId,
+        continuationTriggerOverride: params.continuationTriggerOverride,
         prompt: params.triggerMessage,
         summaryLine: params.summaryLine,
         internalEvents: params.internalEvents,
@@ -538,6 +544,7 @@ async function maybeQueueSubagentAnnounce(params: {
         sourceSessionKey: params.sourceSessionKey,
         sourceChannel: params.sourceChannel,
         sourceTool: params.sourceTool,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
       },
       settings: queueSettings,
       send: sendAnnounce,
@@ -549,11 +556,80 @@ async function maybeQueueSubagentAnnounce(params: {
   return "none";
 }
 
+function extractTaskCompletionFallbackText(event: AgentInternalEvent): string {
+  const result = event.result.trim();
+  if (result) {
+    return result;
+  }
+  const statusLabel = event.statusLabel.trim();
+  const taskLabel = event.taskLabel.trim();
+  if (statusLabel && taskLabel) {
+    return `${taskLabel}: ${statusLabel}`;
+  }
+  if (statusLabel) {
+    return statusLabel;
+  }
+  if (taskLabel) {
+    return taskLabel;
+  }
+  return "";
+}
+
+function formatTaskCompletionFallbackBlock(params: {
+  event: AgentInternalEvent;
+  text: string;
+  includeTaskLabel: boolean;
+}): string {
+  const taskLabel = params.event.taskLabel.trim();
+  if (!params.includeTaskLabel || !taskLabel || params.text.startsWith(`${taskLabel}:`)) {
+    return params.text;
+  }
+  return `${taskLabel}:\n${params.text}`;
+}
+
+export function extractThreadCompletionFallbackText(internalEvents?: AgentInternalEvent[]): string {
+  if (!internalEvents || internalEvents.length === 0) {
+    return "";
+  }
+  const completions = internalEvents
+    .filter((event) => event.type === "task_completion")
+    .map((event) => ({
+      event,
+      text: extractTaskCompletionFallbackText(event),
+    }))
+    .filter((completion) => completion.text.length > 0);
+  if (completions.length === 0) {
+    return "";
+  }
+  const onlyCompletion = completions[0];
+  if (completions.length === 1 && onlyCompletion) {
+    return onlyCompletion.text;
+  }
+  return completions
+    .map((completion) =>
+      formatTaskCompletionFallbackBlock({
+        event: completion.event,
+        text: completion.text,
+        includeTaskLabel: true,
+      }),
+    )
+    .join("\n\n")
+    .trim();
+}
+
 function hasVisibleGatewayAgentPayload(response: unknown): boolean {
   const result = getGatewayAgentResult(response);
   return Boolean(
     result && (hasVisibleAgentPayload(result) || hasMessagingToolDeliveryEvidence(result)),
   );
+}
+
+function isGatewayAgentRunPending(response: unknown): boolean {
+  if (!response || typeof response !== "object") {
+    return false;
+  }
+  const status = (response as { status?: unknown }).status;
+  return isNonTerminalAgentRunStatus(status);
 }
 
 function requiresAgentMediatedCompletionDelivery(params: {
@@ -574,14 +650,6 @@ function hasGatewayAgentMessagingToolDelivery(response: unknown): boolean {
 function getGatewayAgentCommandDeliveryFailure(response: unknown): string | undefined {
   const result = getGatewayAgentResult(response);
   return result ? getAgentCommandDeliveryFailure(result) : undefined;
-}
-
-function isGatewayAgentRunPending(response: unknown): boolean {
-  if (!response || typeof response !== "object") {
-    return false;
-  }
-  const status = (response as { status?: unknown }).status;
-  return isNonTerminalAgentRunStatus(status);
 }
 
 function stripNonDeliverableChannelForCompletionOrigin(
@@ -614,6 +682,8 @@ async function sendSubagentAnnounceDirectly(params: {
   sourceChannel?: string;
   sourceTool?: string;
   requesterIsSubagent: boolean;
+  continuationTriggerOverride?: ContinuationTrigger;
+  traceparent?: string;
   signal?: AbortSignal;
 }): Promise<SubagentAnnounceDeliveryResult> {
   if (params.signal?.aborted) {
@@ -766,6 +836,8 @@ async function sendSubagentAnnounceDirectly(params: {
                 sourceChannel: params.sourceChannel ?? INTERNAL_MESSAGE_CHANNEL,
                 sourceTool: params.sourceTool ?? "subagent_announce",
               },
+              continuationTrigger: params.continuationTriggerOverride,
+              ...(params.traceparent ? { traceparent: params.traceparent } : {}),
               idempotencyKey: params.directIdempotencyKey,
             },
             expectFinal: true,
@@ -855,6 +927,10 @@ export async function deliverSubagentAnnouncement(params: {
   bestEffortDeliver?: boolean;
   directIdempotencyKey: string;
   signal?: AbortSignal;
+  silentEnrichment?: boolean;
+  silentWakeEnrichment?: boolean;
+  continuationTriggerOverride?: ContinuationTrigger;
+  traceparent?: string;
 }): Promise<SubagentAnnounceDeliveryResult> {
   return await runSubagentAnnounceDispatch({
     expectsCompletionMessage: params.expectsCompletionMessage,
@@ -871,6 +947,8 @@ export async function deliverSubagentAnnouncement(params: {
         sourceChannel: params.sourceChannel,
         sourceTool: params.sourceTool,
         internalEvents: params.internalEvents,
+        continuationTriggerOverride: params.continuationTriggerOverride,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
         signal: params.signal,
       }),
     direct: async () =>
@@ -888,6 +966,8 @@ export async function deliverSubagentAnnouncement(params: {
         sourceTool: params.sourceTool,
         requesterIsSubagent: params.requesterIsSubagent,
         expectsCompletionMessage: params.expectsCompletionMessage,
+        continuationTriggerOverride: params.continuationTriggerOverride,
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
         signal: params.signal,
         bestEffortDeliver: params.bestEffortDeliver,
       }),
