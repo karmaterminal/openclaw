@@ -14,7 +14,10 @@
 
 import { spawnSubagentDirect } from "../../agents/subagent-spawn.js";
 import type { SpawnSubagentContext } from "../../agents/subagent-spawn.js";
-import { emitContinuationDisabledSpan } from "../../infra/continuation-tracer.js";
+import {
+  emitContinuationDisabledSpan,
+  resolveContinuationTraceparent,
+} from "../../infra/continuation-tracer.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { failFlow } from "../../tasks/task-flow-registry.js";
@@ -280,6 +283,7 @@ export async function dispatchToolDelegates(params: {
     const nextHop = currentChainCount + 1;
     const silent = delegate.mode === "silent" || delegate.mode === "silent-wake";
     const silentWake = delegate.mode === "silent-wake";
+    const outboundTraceparent = resolveContinuationTraceparent(delegate.traceparent);
 
     const spawnCtx: SpawnSubagentContext = {
       agentSessionKey: sessionKey,
@@ -303,7 +307,7 @@ export async function dispatchToolDelegates(params: {
             ? { continuationTargetSessionKeys: delegate.targetSessionKeys }
             : {}),
           ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
-          ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
+          ...(outboundTraceparent ? { traceparent: outboundTraceparent } : {}),
         },
         spawnCtx,
       );

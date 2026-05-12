@@ -9,6 +9,7 @@ import {
   formatDiagnosticTraceparent,
   getActiveDiagnosticTraceContext,
   normalizeDiagnosticTraceparent,
+  parseDiagnosticTraceparent,
   type DiagnosticTraceContext,
 } from "./diagnostic-trace-context.js";
 
@@ -387,6 +388,14 @@ export function formatContinuationTraceparent(
 
 export function formatActiveContinuationTraceparent(): string | undefined {
   return formatContinuationTraceparent(getActiveDiagnosticTraceContext());
+}
+
+export function resolveContinuationTraceparent(
+  traceparent: string | undefined,
+): string | undefined {
+  const normalized = normalizeDiagnosticTraceparent(traceparent);
+  const parsed = parseDiagnosticTraceparent(normalized);
+  return parsed ? formatContinuationTraceparent(parsed) : undefined;
 }
 
 /**

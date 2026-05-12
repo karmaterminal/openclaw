@@ -12,6 +12,7 @@ import {
   getContinuationTracer,
   noopTracer,
   resetContinuationTracer,
+  resolveContinuationTraceparent,
   setContinuationTracer,
   type ContinuationDisabledSignalKind,
   type ContinuationSignalKind,
@@ -154,6 +155,21 @@ describe("continuation-tracer :: registry (set/get/reset)", () => {
     expect(formatContinuationTraceparent(context)).toBe(
       "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
     );
+  });
+
+  it("resolves carried traceparents through the active tracer before forwarding", () => {
+    const logicalTraceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const exportedTraceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+    setContinuationTracer({
+      startSpan: () => noopTracer.startSpan("x"),
+      formatTraceparent: (traceContext) =>
+        traceContext.traceId === "4bf92f3577b34da6a3ce929d0e0e4736"
+          ? exportedTraceparent
+          : undefined,
+    });
+
+    expect(resolveContinuationTraceparent(logicalTraceparent)).toBe(exportedTraceparent);
+    expect(resolveContinuationTraceparent("not-a-traceparent")).toBeUndefined();
   });
 });
 

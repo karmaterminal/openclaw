@@ -85,6 +85,11 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
 }));
 
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
+import {
+  noopTracer,
+  resetContinuationTracer,
+  setContinuationTracer,
+} from "../../infra/continuation-tracer.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { cancelPendingDelegates, enqueuePendingDelegate } from "./delegate-store.js";
 import { hasLiveContinuationTimerRefs, resetContinuationStateForTests } from "./state.js";
@@ -102,6 +107,7 @@ beforeEach(() => {
 afterEach(() => {
   resetDelegateDispatchHedgesForTests();
   resetContinuationStateForTests();
+  resetContinuationTracer();
   clearRuntimeConfigSnapshot();
   mockFlows.clear();
   listTaskFlowsShouldThrow = false;
@@ -305,6 +311,40 @@ describe("tool delegate dispatch contract", () => {
       expect.objectContaining({
         task: expect.stringContaining("continue traced work"),
         traceparent,
+      }),
+      expect.objectContaining({
+        agentSessionKey: sessionKey,
+      }),
+    );
+  });
+
+  it("resolves persisted logical traceparents before spawning continuation runs", async () => {
+    const sessionKey = "session-delegate-exported-traceparent";
+    const logicalTraceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const exportedTraceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+    setContinuationTracer({
+      startSpan: () => noopTracer.startSpan("x"),
+      formatTraceparent: (traceContext) =>
+        traceContext.traceId === "4bf92f3577b34da6a3ce929d0e0e4736"
+          ? exportedTraceparent
+          : undefined,
+    });
+    enqueuePendingDelegate(sessionKey, {
+      task: "continue traced work",
+      traceparent: logicalTraceparent,
+    });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringContaining("continue traced work"),
+        traceparent: exportedTraceparent,
       }),
       expect.objectContaining({
         agentSessionKey: sessionKey,

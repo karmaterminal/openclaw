@@ -33,6 +33,7 @@ import {
   emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
   emitContinuationWorkFireSpan,
+  resolveContinuationTraceparent,
 } from "../../infra/continuation-tracer.js";
 import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
@@ -2429,6 +2430,7 @@ export async function runReplyAgent(params: {
                   ) {
                     return false;
                   }
+                  const outboundTraceparent = resolveContinuationTraceparent(options?.traceparent);
                   const spawnResult = await spawnSubagentDirect(
                     {
                       // The spawned child carries its current chain position in-band.
@@ -2446,7 +2448,7 @@ export async function runReplyAgent(params: {
                       ...(options?.fanoutMode
                         ? { continuationFanoutMode: options.fanoutMode }
                         : {}),
-                      ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
+                      ...(outboundTraceparent ? { traceparent: outboundTraceparent } : {}),
                     },
                     {
                       agentSessionKey: sessionKey,
@@ -2490,7 +2492,7 @@ export async function runReplyAgent(params: {
                         delayMs: 0,
                         delivery: "immediate",
                         delegateMode,
-                        traceparent: options?.traceparent,
+                        traceparent: outboundTraceparent,
                         log: (message) => defaultRuntime.log(message),
                       });
                     }
@@ -2550,6 +2552,9 @@ export async function runReplyAgent(params: {
                   // Timed dispatch: spawn after delay. Timer does not survive
                   // gateway restart; durable timers are handled by a separate path.
                   const clampedDelay = Math.max(minDelayMs, Math.min(maxDelayMs, delegateDelayMs));
+                  const outboundTraceparent = resolveContinuationTraceparent(
+                    effectiveContinuationSignal.traceparent,
+                  );
                   const reservationId = generateSecureUuid();
                   addDelayedContinuationReservation(sessionKey, {
                     id: reservationId,
@@ -2570,9 +2575,7 @@ export async function runReplyAgent(params: {
                     ...(effectiveContinuationSignal.fanoutMode
                       ? { fanoutMode: effectiveContinuationSignal.fanoutMode }
                       : {}),
-                    ...(effectiveContinuationSignal.traceparent
-                      ? { traceparent: effectiveContinuationSignal.traceparent }
-                      : {}),
+                    ...(outboundTraceparent ? { traceparent: outboundTraceparent } : {}),
                   });
                   const { chainId: persistedChainIdForTimer } = await persistContinuationChainState(
                     {
@@ -2600,7 +2603,7 @@ export async function runReplyAgent(params: {
                       delayMs: clampedDelay,
                       delivery: "timer",
                       delegateMode,
-                      traceparent: effectiveContinuationSignal.traceparent,
+                      traceparent: outboundTraceparent,
                       log: (message) => defaultRuntime.log(message),
                     });
                   }
@@ -2960,6 +2963,7 @@ export async function runReplyAgent(params: {
             },
           ) => {
             try {
+              const outboundTraceparent = resolveContinuationTraceparent(options?.traceparent);
               const spawnResult = await spawnSubagentDirect(
                 {
                   task: `[continuation:chain-hop:${plannedHop}] Delegated task (turn ${plannedHop}/${maxChainLength}): ${task}`,
@@ -2973,7 +2977,7 @@ export async function runReplyAgent(params: {
                     ? { continuationTargetSessionKeys: options.targetSessionKeys }
                     : {}),
                   ...(options?.fanoutMode ? { continuationFanoutMode: options.fanoutMode } : {}),
-                  ...(options?.traceparent ? { traceparent: options.traceparent } : {}),
+                  ...(outboundTraceparent ? { traceparent: outboundTraceparent } : {}),
                 },
                 {
                   agentSessionKey: sessionKey,
@@ -3016,7 +3020,7 @@ export async function runReplyAgent(params: {
                     delayMs: 0,
                     delivery: "immediate",
                     delegateMode,
-                    traceparent: options?.traceparent,
+                    traceparent: outboundTraceparent,
                     log: (message) => defaultRuntime.log(message),
                   });
                 }
