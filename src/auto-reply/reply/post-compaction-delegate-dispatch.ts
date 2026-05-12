@@ -84,6 +84,7 @@ export type DispatchPostCompactionDelegatesParams = {
   continuationSignalKind?: ContinuationSignal["kind"];
   followupRun: FollowupRun;
   postCompactionDelegatesToPreserve: SessionPostCompactionDelegate[];
+  releaseTraceparent?: string;
   sessionEntry?: SessionEntry;
   sessionKey: string;
   sessionStore?: Record<string, SessionEntry>;
@@ -438,6 +439,16 @@ function isPostCompactionDelegateEntry(
   return entry.kind === "postCompactionDelegate";
 }
 
+function applyReleaseTraceparent(
+  delegate: SessionPostCompactionDelegate,
+  releaseTraceparent: string | undefined,
+): SessionPostCompactionDelegate {
+  if (!releaseTraceparent || delegate.traceparent) {
+    return delegate;
+  }
+  return { ...delegate, traceparent: releaseTraceparent };
+}
+
 export async function deliverQueuedPostCompactionDelegate(
   params: {
     entry: QueuedPostCompactionDelegateDelivery;
@@ -601,7 +612,9 @@ export async function dispatchPostCompactionDelegates(
   const allCompactionDelegates = [
     ...persistedCompactionDelegates,
     ...stagedCompactionDelegates,
-  ].map(normalizePostCompactionDelegate);
+  ].map((delegate) =>
+    applyReleaseTraceparent(normalizePostCompactionDelegate(delegate), params.releaseTraceparent),
+  );
   const now = deps.now();
   const freshCompactionDelegates: SessionPostCompactionDelegate[] = [];
   let staleDroppedDelegates = 0;
@@ -725,7 +738,10 @@ export async function dispatchPostCompactionDelegates(
       queuedDelegates: queuedEntryIds.length,
       droppedDelegates: droppedCompactionDelegates,
     }),
-    { sessionKey: params.sessionKey },
+    {
+      sessionKey: params.sessionKey,
+      ...(params.releaseTraceparent ? { traceparent: params.releaseTraceparent } : {}),
+    },
   );
 
   if (queuedEntryIds.length > 0) {

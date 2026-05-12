@@ -84,6 +84,27 @@ describe("continue_work tool", () => {
     });
   });
 
+  it("keeps traceparent absent when the optional carrier is omitted", async () => {
+    const requestContinuation = vi.fn();
+    const tool = makeTool({ requestContinuation });
+
+    const result = (
+      await tool.execute("call-no-traceparent", {
+        reason: "Continue without a traced parent.",
+      })
+    )?.details as Record<string, unknown>;
+
+    expect(requestContinuation).toHaveBeenCalledWith({
+      reason: "Continue without a traced parent.",
+      delaySeconds: 0,
+    });
+    expect(result).toEqual({
+      status: "scheduled",
+      delaySeconds: 0,
+    });
+    expect(result).not.toHaveProperty("traceparent");
+  });
+
   it("honors an explicit delaySeconds value", async () => {
     const requestContinuation = vi.fn();
     const tool = makeTool({ requestContinuation });

@@ -21,6 +21,7 @@ import {
 import type { FollowupRun } from "./queue/types.js";
 
 const cfg: OpenClawConfig = {};
+const VALID_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
 const defaultRuntimeConfig: ContinuationRuntimeConfig = {
   enabled: true,
@@ -375,6 +376,89 @@ describe("post-compaction delegate dispatch extraction", () => {
       { sessionKey: "main" },
     );
     expect(preserve).toEqual([]);
+  });
+
+  it("persists request_compaction traceparent onto released queued delegates", async () => {
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      updatedAt: 1,
+      pendingPostCompactionDelegates: [delegate("persisted")],
+    };
+    const preserve: SessionPostCompactionDelegate[] = [];
+    const { deps, enqueuePostCompactionDelegateDelivery, enqueueSystemEvent } = createDispatchDeps({
+      staged: [delegate("staged")],
+    });
+
+    const result = await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 8,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: preserve,
+        releaseTraceparent: VALID_TRACEPARENT,
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+    await flushMicrotasks();
+
+    expect(result).toEqual({ queuedDelegates: 2, droppedDelegates: 0 });
+    expect(enqueuePostCompactionDelegateDelivery.mock.calls.map((call) => call[0])).toEqual([
+      {
+        sessionKey: "main",
+        delegate: {
+          ...normalizePostCompactionDelegate(delegate("persisted")),
+          traceparent: VALID_TRACEPARENT,
+        },
+        sequence: 0,
+        compactionCount: 8,
+      },
+      {
+        sessionKey: "main",
+        delegate: {
+          ...normalizePostCompactionDelegate(delegate("staged")),
+          traceparent: VALID_TRACEPARENT,
+        },
+        sequence: 1,
+        compactionCount: 8,
+      },
+    ]);
+    expect(enqueueSystemEvent).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Queued 2 post-compaction delegate(s) for delivery into the fresh session.",
+      ),
+      { sessionKey: "main", traceparent: VALID_TRACEPARENT },
+    );
+  });
+
+  it("preserves delegate-specific traceparent over request_compaction traceparent", async () => {
+    const delegateTraceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      updatedAt: 1,
+      pendingPostCompactionDelegates: [delegate("persisted", { traceparent: delegateTraceparent })],
+    };
+    const preserve: SessionPostCompactionDelegate[] = [];
+    const { deps, enqueuePostCompactionDelegateDelivery } = createDispatchDeps();
+
+    await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 9,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: preserve,
+        releaseTraceparent: VALID_TRACEPARENT,
+        sessionEntry,
+        sessionKey: "main",
+      },
+      deps,
+    );
+    await flushMicrotasks();
+
+    expect(enqueuePostCompactionDelegateDelivery.mock.calls[0]?.[0]).toMatchObject({
+      delegate: expect.objectContaining({ traceparent: delegateTraceparent }),
+    });
   });
 
   it("surfaces post-compaction context read failures to the fresh session", async () => {

@@ -15,6 +15,7 @@ import {
 import type { ChatType } from "../channels/chat-type.js";
 import { resolveStateDir } from "../config/paths.js";
 import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
+import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 import { generateSecureUuid } from "./secure-random.js";
 
 const QUEUE_DIRNAME = "session-delivery-queue";
@@ -143,6 +144,19 @@ function buildEntryId(idempotencyKey?: string): string {
   return createHash("sha256").update(canonicalizeIdempotencyKey(idempotencyKey)).digest("hex");
 }
 
+function normalizeQueuedTraceparent(
+  payload: QueuedSessionDeliveryPayload,
+): QueuedSessionDeliveryPayload {
+  const normalizedTraceparent = normalizeDiagnosticTraceparent(payload.traceparent);
+  const normalizedPayload: QueuedSessionDeliveryPayload = { ...payload };
+  if (normalizedTraceparent) {
+    normalizedPayload.traceparent = normalizedTraceparent;
+  } else {
+    delete normalizedPayload.traceparent;
+  }
+  return normalizedPayload;
+}
+
 function buildPostCompactionDelegateIdempotencyKey(params: {
   sessionKey: string;
   delegate: SessionPostCompactionDelegate;
@@ -260,11 +274,12 @@ export async function enqueueSessionDelivery(
   stateDir?: string,
   opts?: { maxQueuedFiles?: number },
 ): Promise<string> {
+  const payload = normalizeQueuedTraceparent(params);
   const queueDir = await ensureSessionDeliveryQueueDir(stateDir);
-  const id = buildEntryId(params.idempotencyKey);
+  const id = buildEntryId(payload.idempotencyKey);
   const filePath = path.join(queueDir, `${id}.json`);
 
-  if (params.idempotencyKey) {
+  if (payload.idempotencyKey) {
     if (await jsonDurableQueueEntryExists(filePath)) {
       return id;
     }
@@ -282,7 +297,7 @@ export async function enqueueSessionDelivery(
   }
 
   await writeQueueEntry(filePath, {
-    ...params,
+    ...payload,
     id,
     enqueuedAt: Date.now(),
     retryCount: 0,

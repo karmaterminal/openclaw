@@ -80,6 +80,24 @@ describe("session-delivery queue storage", () => {
     });
   });
 
+  it("drops malformed traceparent metadata at enqueue time", async () => {
+    await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      await enqueueSessionDelivery(
+        {
+          kind: "agentTurn",
+          sessionKey: "agent:main:main",
+          message: "continue after restart with malformed trace context",
+          messageId: "restart-sentinel:agent:main:main:agentTurn:bad-traceparent",
+          traceparent: "not-a-traceparent",
+        },
+        tempDir,
+      );
+
+      const [entry] = await loadPendingSessionDeliveries(tempDir);
+      expect(entry).not.toHaveProperty("traceparent");
+    });
+  });
+
   it("builds and round-trips post-compaction delegate payloads", async () => {
     await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
       const payload = buildPostCompactionDelegateDeliveryPayload({

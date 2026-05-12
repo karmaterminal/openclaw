@@ -31,6 +31,7 @@ import {
 } from "../../agents/pi-embedded-helpers.js";
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
+import type { EmbeddedPiCompactResult } from "../../agents/pi-embedded-runner/types.js";
 import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
@@ -124,6 +125,76 @@ const GPT_CHAT_BREVITY_SOFT_MAX_CHARS = 900;
 const GPT_CHAT_BREVITY_SOFT_MAX_SENTENCES = 6;
 const BLOCKED_LIVENESS_NOTICE_TEXT =
   "⚠️ Agent liveness: blocked. The run cannot make progress; try again or start a fresh conversation if this repeats.";
+
+async function releaseQueuedCompactionCompletion(params: {
+  activeSessionStore?: Record<string, SessionEntry>;
+  compactionResult: EmbeddedPiCompactResult;
+  followupRun: FollowupRun;
+  getActiveSessionEntry: () => SessionEntry | undefined;
+  sessionKey?: string;
+  storePath?: string;
+  traceparent?: string;
+}): Promise<void> {
+  if (!params.compactionResult.ok || !params.compactionResult.compacted) {
+    return;
+  }
+  if (!params.sessionKey || !params.activeSessionStore) {
+    logVerbose(
+      `[request_compaction:post-compaction-release-skipped] session=${params.sessionKey ?? "none"} reason=session-store-unavailable`,
+    );
+    return;
+  }
+
+  const sessionEntry =
+    params.getActiveSessionEntry() ?? params.activeSessionStore[params.sessionKey];
+  if (!sessionEntry) {
+    logVerbose(
+      `[request_compaction:post-compaction-release-skipped] session=${params.sessionKey} reason=session-entry-unavailable`,
+    );
+    return;
+  }
+
+  const { incrementRunCompactionCount } = await import("./session-run-accounting.js");
+  const compactionId = await incrementRunCompactionCount({
+    cfg: params.followupRun.run.config,
+    sessionEntry,
+    sessionStore: params.activeSessionStore,
+    sessionKey: params.sessionKey,
+    storePath: params.storePath,
+    amount: 1,
+    compactionTokensAfter: params.compactionResult.result?.tokensAfter,
+    newSessionId: params.compactionResult.result?.sessionId,
+    newSessionFile: params.compactionResult.result?.sessionFile,
+  });
+
+  const resolved = resolveSessionStoreEntry({
+    store: params.activeSessionStore,
+    sessionKey: params.sessionKey,
+  });
+  const refreshedSessionEntry = resolved.existing ?? sessionEntry;
+  const { dispatchPostCompactionDelegates } =
+    await import("./post-compaction-delegate-dispatch.js");
+  const dispatchResult = await dispatchPostCompactionDelegates({
+    cfg: params.followupRun.run.config,
+    compactionCount: compactionId,
+    followupRun: params.followupRun,
+    postCompactionDelegatesToPreserve: [],
+    releaseTraceparent: params.traceparent,
+    sessionEntry: refreshedSessionEntry,
+    sessionKey: params.sessionKey,
+    sessionStore: params.activeSessionStore,
+    storePath: params.storePath,
+  });
+
+  const { emitContinuationCompactionReleasedSpan } =
+    await import("../../infra/continuation-tracer.js");
+  emitContinuationCompactionReleasedSpan({
+    releasedCount: dispatchResult.queuedDelegates,
+    compactionId,
+    traceparent: params.traceparent,
+    log: (message) => logVerbose(message),
+  });
+}
 
 function readApprovalScopeValue(value: unknown): "turn" | "session" | undefined {
   return value === "turn" || value === "session" ? value : undefined;
@@ -1880,6 +1951,17 @@ export async function runAgentTurnWithFallback(params: {
                               diagId: request.diagId,
                               traceparent: request.traceparent,
                             });
+                            if (result.ok && result.compacted) {
+                              await releaseQueuedCompactionCompletion({
+                                activeSessionStore: params.activeSessionStore,
+                                compactionResult: result,
+                                followupRun: params.followupRun,
+                                getActiveSessionEntry: params.getActiveSessionEntry,
+                                sessionKey: params.sessionKey,
+                                storePath: params.storePath,
+                                traceparent: request.traceparent,
+                              });
+                            }
                             // Honor the real result instead of unconditionally claiming
                             // success; otherwise compaction telemetry lies and the
                             // failure is invisible to the caller.

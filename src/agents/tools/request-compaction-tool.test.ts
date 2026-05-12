@@ -339,6 +339,25 @@ describe("request_compaction tool", () => {
     });
   });
 
+  it("keeps traceparent absent when the optional carrier is omitted", async () => {
+    const tool = makeTool();
+
+    const result = await executeTool(tool, {
+      reason: "thermal evacuation complete",
+    });
+    await flushBackgroundCompaction();
+
+    expect(mockTriggerCompaction).toHaveBeenCalledWith(
+      expect.not.objectContaining({ traceparent: expect.any(String) }),
+    );
+    expect(result).toMatchObject({
+      status: "compaction_requested",
+      trigger: "volitional",
+      reason: "thermal evacuation complete",
+    });
+    expect(result).not.toHaveProperty("traceparent");
+  });
+
   it("threads a valid optional traceparent carrier into the compaction span", async () => {
     const { tracer, spans } = createRecordingTracer();
     setContinuationTracer(tracer);

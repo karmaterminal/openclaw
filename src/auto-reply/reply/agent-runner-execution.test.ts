@@ -23,10 +23,14 @@ const state = vi.hoisted(() => ({
   isCliProviderMock: vi.fn((_: unknown) => false),
   isInternalMessageChannelMock: vi.fn((_: unknown) => false),
   createBlockReplyDeliveryHandlerMock: vi.fn(),
+  dispatchPostCompactionDelegatesMock: vi.fn(),
+  emitContinuationCompactionReleasedSpanMock: vi.fn(),
+  incrementRunCompactionCountMock: vi.fn(),
 }));
 
 const GENERIC_RUN_FAILURE_TEXT =
   "⚠️ Something went wrong while processing your request. Please try again, or use /new to start a fresh session.";
+const VALID_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
 function makeTestModel(id: string, contextTokens: number): ModelDefinitionConfig {
   return {
@@ -102,6 +106,17 @@ vi.mock("../../agents/pi-embedded-helpers.js", () => ({
 
 vi.mock("../../config/sessions.js", () => ({
   resolveGroupSessionKey: vi.fn(() => null),
+  resolveSessionStoreEntry: ({
+    store,
+    sessionKey,
+  }: {
+    store: Record<string, SessionEntry>;
+    sessionKey: string;
+  }) => ({
+    existing: store[sessionKey],
+    legacyKeys: [],
+    normalizedKey: sessionKey,
+  }),
   resolveSessionTranscriptPath: vi.fn(),
   updateSessionStore: vi.fn(),
 }));
@@ -164,6 +179,20 @@ vi.mock("./agent-runner-utils.js", () => ({
 vi.mock("./reply-delivery.js", () => ({
   createBlockReplyDeliveryHandler: (params: unknown) =>
     state.createBlockReplyDeliveryHandlerMock(params),
+}));
+
+vi.mock("./post-compaction-delegate-dispatch.js", () => ({
+  dispatchPostCompactionDelegates: (params: unknown) =>
+    state.dispatchPostCompactionDelegatesMock(params),
+}));
+
+vi.mock("./session-run-accounting.js", () => ({
+  incrementRunCompactionCount: (params: unknown) => state.incrementRunCompactionCountMock(params),
+}));
+
+vi.mock("../../infra/continuation-tracer.js", () => ({
+  emitContinuationCompactionReleasedSpan: (params: unknown) =>
+    state.emitContinuationCompactionReleasedSpanMock(params),
 }));
 
 vi.mock("./reply-media-paths.runtime.js", () => ({
@@ -480,6 +509,14 @@ describe("runAgentTurnWithFallback", () => {
     state.isInternalMessageChannelMock.mockReturnValue(false);
     state.createBlockReplyDeliveryHandlerMock.mockReset();
     state.createBlockReplyDeliveryHandlerMock.mockReturnValue(undefined);
+    state.dispatchPostCompactionDelegatesMock.mockReset();
+    state.dispatchPostCompactionDelegatesMock.mockResolvedValue({
+      queuedDelegates: 0,
+      droppedDelegates: 0,
+    });
+    state.emitContinuationCompactionReleasedSpanMock.mockReset();
+    state.incrementRunCompactionCountMock.mockReset();
+    state.incrementRunCompactionCountMock.mockResolvedValue(1);
     state.runWithModelFallbackMock.mockImplementation(async (params: FallbackRunnerParams) => ({
       result: await params.run("anthropic", "claude"),
       provider: "anthropic",
@@ -3965,6 +4002,133 @@ describe("runAgentTurnWithFallback", () => {
       diagId: "diag-1",
       runId: "tool-run-1",
     });
+  });
+
+  it("releases queued post-compaction delegates with request_compaction traceparent after volitional compaction completes", async () => {
+    state.compactEmbeddedPiSessionMock.mockResolvedValueOnce({
+      ok: true,
+      compacted: true,
+      result: {
+        summary: "done",
+        firstKeptEntryId: "entry-1",
+        tokensBefore: 10,
+        tokensAfter: 4,
+        sessionId: "session-after",
+        sessionFile: "/tmp/session-after.jsonl",
+      },
+    });
+    state.incrementRunCompactionCountMock.mockResolvedValueOnce(6);
+    state.dispatchPostCompactionDelegatesMock.mockResolvedValueOnce({
+      queuedDelegates: 2,
+      droppedDelegates: 0,
+    });
+    state.runEmbeddedPiAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+      const triggerCompaction = (
+        params as EmbeddedAgentParams & {
+          requestCompactionOpts?: {
+            triggerCompaction?: (request: {
+              runId?: string;
+              trigger: string;
+              diagId?: string;
+              traceparent?: string;
+            }) => Promise<unknown>;
+          };
+        }
+      ).requestCompactionOpts?.triggerCompaction;
+      expect(triggerCompaction).toBeTypeOf("function");
+      await triggerCompaction?.({
+        runId: "tool-run-trace",
+        trigger: "volitional",
+        diagId: "diag-trace",
+        traceparent: VALID_TRACEPARENT,
+      });
+      return { payloads: [{ text: "final" }], meta: {} };
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const followupRun = createFollowupRun();
+    followupRun.run.config = {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: true,
+          },
+        },
+      },
+    };
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      updatedAt: 1,
+      sessionFile: "/tmp/session.jsonl",
+    };
+    const sessionStore = { main: sessionEntry };
+
+    const result = await runAgentTurnWithFallback({
+      commandBody: "hello",
+      followupRun,
+      sessionCtx: {
+        Provider: "whatsapp",
+        MessageSid: "msg",
+      } as unknown as TemplateContext,
+      opts: {},
+      typingSignals: createMockTypingSignaler(),
+      blockReplyPipeline: null,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      applyReplyToMode: (payload) => payload,
+      shouldEmitToolResult: () => true,
+      shouldEmitToolOutput: () => false,
+      pendingToolTasks: new Set(),
+      resetSessionAfterCompactionFailure: async () => false,
+      resetSessionAfterRoleOrderingConflict: async () => false,
+      isHeartbeat: false,
+      sessionKey: "main",
+      getActiveSessionEntry: () => sessionEntry,
+      activeSessionStore: sessionStore,
+      storePath: "/tmp/sessions.json",
+      resolvedVerboseLevel: "off",
+    });
+
+    expect(result.kind).toBe("success");
+    expect(state.compactEmbeddedPiSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        diagId: "diag-trace",
+        runId: "tool-run-trace",
+        sessionKey: "main",
+        traceparent: VALID_TRACEPARENT,
+        trigger: "volitional",
+      }),
+    );
+    expect(state.incrementRunCompactionCountMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 1,
+        compactionTokensAfter: 4,
+        newSessionFile: "/tmp/session-after.jsonl",
+        newSessionId: "session-after",
+        sessionEntry,
+        sessionKey: "main",
+        sessionStore,
+        storePath: "/tmp/sessions.json",
+      }),
+    );
+    expect(state.dispatchPostCompactionDelegatesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        compactionCount: 6,
+        followupRun,
+        releaseTraceparent: VALID_TRACEPARENT,
+        sessionEntry,
+        sessionKey: "main",
+        sessionStore,
+        storePath: "/tmp/sessions.json",
+      }),
+    );
+    expect(state.emitContinuationCompactionReleasedSpanMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        compactionId: 6,
+        releasedCount: 2,
+        traceparent: VALID_TRACEPARENT,
+      }),
+    );
   });
 
   it("preserves the primary auth profile for request_compaction when fallback stays on the same provider", async () => {
