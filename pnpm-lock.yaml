@@ -104,6 +104,9 @@ importers:
       '@openclaw/fs-safe':
         specifier: ^0.2.2
         version: 0.2.2
+      '@opentelemetry/api':
+        specifier: ^1.9.1
+        version: 1.9.1
       '@slack/bolt':
         specifier: ^4.7.2
         version: 4.7.2(@types/express@5.0.6)
@@ -209,6 +212,9 @@ importers:
       undici:
         specifier: 8.2.0
         version: 8.2.0
+      uuid:
+        specifier: 14.0.0
+        version: 14.0.0
       web-push:
         specifier: ^3.6.7
         version: 3.6.7

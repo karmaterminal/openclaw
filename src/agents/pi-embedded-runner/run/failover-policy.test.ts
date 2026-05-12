@@ -108,6 +108,7 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: false,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
         profileRotated: false,
       }),
     ).toEqual({
@@ -169,11 +170,54 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: false,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
         profileRotated: true,
       }),
     ).toEqual({
       action: "fallback_model",
       reason: "rate_limit",
+    });
+  });
+
+  it("surfaces timed-out assistant attempts so local timeout recovery can run", () => {
+    expect(
+      resolveRunFailoverDecision({
+        stage: "assistant",
+        aborted: false,
+        externalAbort: false,
+        fallbackConfigured: true,
+        failoverFailure: false,
+        failoverReason: null,
+        timedOut: true,
+        timedOutDuringCompaction: false,
+        timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
+        profileRotated: false,
+      }),
+    ).toEqual({
+      action: "surface_error",
+      reason: null,
+    });
+  });
+
+  it("falls back for classified assistant timeout errors when model fallbacks are configured", () => {
+    expect(
+      resolveRunFailoverDecision({
+        stage: "assistant",
+        aborted: false,
+        externalAbort: false,
+        fallbackConfigured: true,
+        failoverFailure: true,
+        failoverReason: "timeout",
+        timedOut: false,
+        timedOutDuringCompaction: false,
+        timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
+        profileRotated: false,
+      }),
+    ).toEqual({
+      action: "fallback_model",
+      reason: "timeout",
     });
   });
 
@@ -189,6 +233,7 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: false,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
         profileRotated: false,
       }),
     ).toEqual({
@@ -225,6 +270,7 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: true,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: true,
+        compactionFailureContext: false,
         profileRotated: false,
       }),
     ).toEqual({
@@ -244,6 +290,7 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: true,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: true,
+        compactionFailureContext: false,
         profileRotated: true,
       }),
     ).toEqual({
@@ -263,10 +310,32 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: true,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
         profileRotated: false,
       }),
     ).toEqual({
       action: "rotate_profile",
+      reason: null,
+    });
+  });
+
+  it("surfaces assistant timeouts after a compaction failure without rotating profiles", () => {
+    expect(
+      resolveRunFailoverDecision({
+        stage: "assistant",
+        aborted: true,
+        externalAbort: false,
+        fallbackConfigured: true,
+        failoverFailure: false,
+        failoverReason: null,
+        timedOut: true,
+        timedOutDuringCompaction: false,
+        timedOutDuringToolExecution: false,
+        compactionFailureContext: true,
+        profileRotated: false,
+      }),
+    ).toEqual({
+      action: "surface_error",
       reason: null,
     });
   });
@@ -283,6 +352,7 @@ describe("resolveRunFailoverDecision", () => {
         timedOut: true,
         timedOutDuringCompaction: false,
         timedOutDuringToolExecution: false,
+        compactionFailureContext: false,
         profileRotated: false,
       }),
     ).toEqual({
