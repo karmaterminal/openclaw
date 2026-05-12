@@ -786,7 +786,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             resolveParentContext: (traceContext) =>
               otelContextForTrustedSpanId(traceContext.spanId),
             resolveSpanContext: (traceContext) =>
-              trustedSpanContextForLogicalId(traceContext.spanId),
+              trustedSpanContextForLogicalId(traceContext.spanId) ??
+              trustedSpanContextForLogicalId(traceContext.parentSpanId),
           }),
         );
       }
