@@ -2681,6 +2681,37 @@ describe("diagnostics-otel service", () => {
       await service.stop?.(ctx);
     });
 
+    test("formats continuation traceparents from the registered run when only the logical trace id is available", async () => {
+      const service = createDiagnosticsOtelService();
+      const ctx = createTraceOnlyContext(OTEL_TEST_ENDPOINT);
+      await service.start(ctx);
+
+      emitTrustedDiagnosticEvent({
+        type: "run.started",
+        runId: "run-trace-fallback",
+        provider: "openai",
+        model: "gpt-5.5",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: CHILD_SPAN_ID,
+          traceFlags: "01",
+        },
+      });
+      await flushDiagnosticEvents();
+
+      const runSpanId = telemetryState.spans.find((span) => span.name === "openclaw.run")
+        ?.spanContext.mock.results[0]?.value?.spanId;
+      expect(
+        getContinuationTracer().formatTraceparent?.({
+          traceId: TRACE_ID,
+          spanId: TOOL_SPAN_ID,
+          traceFlags: "01",
+        }),
+      ).toBe(`00-${TRACE_ID}-${runSpanId}-01`);
+
+      await service.stop?.(ctx);
+    });
+
     test("parents trusted spans to carried traceparent span ids when no logical mapping exists", async () => {
       const service = createDiagnosticsOtelService();
       const ctx = createTraceOnlyContext(OTEL_TEST_ENDPOINT);

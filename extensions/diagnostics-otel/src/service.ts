@@ -726,6 +726,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const activeTrustedSpans = new Map<string, ReturnType<typeof tracer.startSpan>>();
       const activeTrustedSpanAliases = new Map<string, ReturnType<typeof tracer.startSpan>>();
       const trustedSpanContextsByLogicalId = new Map<string, SpanContext>();
+      const trustedRunSpanContextsByLogicalTraceId = new Map<string, SpanContext>();
       const pendingTrustedRunFinalizers = new Map<string, ReturnType<typeof setImmediate>>();
       const rememberTrustedSpanContext = (
         spanId: string | undefined,
@@ -744,6 +745,25 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           trustedSpanContextsByLogicalId.delete(oldestSpanId);
         }
       };
+      const rememberTrustedRunSpanContext = (
+        traceId: string | undefined,
+        span: ReturnType<typeof tracer.startSpan>,
+      ) => {
+        if (!traceId) {
+          return;
+        }
+        trustedRunSpanContextsByLogicalTraceId.delete(traceId);
+        trustedRunSpanContextsByLogicalTraceId.set(traceId, span.spanContext());
+        while (trustedRunSpanContextsByLogicalTraceId.size > 8192) {
+          const oldestTraceId = trustedRunSpanContextsByLogicalTraceId.keys().next().value;
+          if (!oldestTraceId) {
+            break;
+          }
+          trustedRunSpanContextsByLogicalTraceId.delete(oldestTraceId);
+        }
+      };
+      const trustedRunSpanContextForLogicalTraceId = (traceId: string | undefined) =>
+        traceId ? trustedRunSpanContextsByLogicalTraceId.get(traceId) : undefined;
       const trustedSpanContextForLogicalId = (spanId: string | undefined) => {
         if (!spanId) {
           return undefined;
@@ -773,6 +793,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         activeTrustedSpans.clear();
         activeTrustedSpanAliases.clear();
         trustedSpanContextsByLogicalId.clear();
+        trustedRunSpanContextsByLogicalTraceId.clear();
       };
 
       // Install the OTEL adapter after `sdk.start()` or after detecting a
@@ -787,7 +808,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               otelContextForTrustedSpanId(traceContext.spanId),
             resolveSpanContext: (traceContext) =>
               trustedSpanContextForLogicalId(traceContext.spanId) ??
-              trustedSpanContextForLogicalId(traceContext.parentSpanId),
+              trustedSpanContextForLogicalId(traceContext.parentSpanId) ??
+              trustedRunSpanContextForLogicalTraceId(traceContext.traceId),
           }),
         );
       }
@@ -1536,7 +1558,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             startTimeMs: evt.ts,
           }),
         );
-        const parentSpanId = trustedTraceContext(evt, metadata)?.parentSpanId;
+        const trustedTrace = trustedTraceContext(evt, metadata);
+        rememberTrustedRunSpanContext(trustedTrace?.traceId, span);
+        const parentSpanId = trustedTrace?.parentSpanId;
         if (parentSpanId && !trustedSpanContextForLogicalId(parentSpanId)) {
           activeTrustedSpanAliases.set(parentSpanId, span);
         }
