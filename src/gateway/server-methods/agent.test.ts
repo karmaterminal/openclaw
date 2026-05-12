@@ -537,6 +537,49 @@ describe("gateway agent handler", () => {
     expect(call.traceparent).toBe(traceparent);
   });
 
+  it("uses the provisional child session traceparent when the request field is missing across process", async () => {
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+    const sessionKey = "agent:main:subagent:child-session-trace";
+    const idempotencyKey = "child-session-trace-run";
+    const existingEntry = buildExistingMainStoreEntry({
+      spawnedBy: "agent:main:main",
+      continuationTraceparent: traceparent,
+    });
+    let persistedEntry: Record<string, unknown> | undefined;
+    mocks.loadSessionEntry.mockReturnValue({
+      cfg: {},
+      storePath: "/tmp/sessions.json",
+      entry: existingEntry,
+      canonicalKey: sessionKey,
+    });
+    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
+      const store: Record<string, Record<string, unknown>> = {
+        [sessionKey]: { ...existingEntry },
+      };
+      const result = await updater(store);
+      persistedEntry = result as Record<string, unknown>;
+      return result;
+    });
+    mocks.agentCommand.mockResolvedValue({
+      payloads: [{ text: "ok" }],
+      meta: { durationMs: 100 },
+    });
+
+    await invokeAgent(
+      {
+        message: "child task",
+        agentId: "main",
+        sessionKey,
+        idempotencyKey,
+      },
+      { client: backendGatewayClient() },
+    );
+
+    const call = await waitForAgentCommandCall();
+    expect(call.traceparent).toBe(traceparent);
+    expect(persistedEntry?.continuationTraceparent).toBeUndefined();
+  });
+
   it("preserves ACP metadata from the current stored session entry", async () => {
     const existingAcpMeta = {
       backend: "acpx",

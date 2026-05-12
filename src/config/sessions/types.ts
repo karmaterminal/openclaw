@@ -207,6 +207,8 @@ export type SessionEntry = {
   pluginExtensionSlotKeys?: Record<string, Record<string, string>>;
   /** Durable one-shot prompt additions drained before the next agent turn. */
   pluginNextTurnInjections?: Record<string, SessionPluginNextTurnInjection[]>;
+  /** Internal one-shot traceparent for a freshly spawned child agent run. */
+  continuationTraceparent?: string;
   sessionId: string;
   updatedAt: number;
   sessionFile?: string;

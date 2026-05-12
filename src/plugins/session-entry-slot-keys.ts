@@ -115,6 +115,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "systemPromptReport",
   "pluginDebugEntries",
   "acp",
+  "continuationTraceparent",
   "continuationChainCount",
   "continuationChainStartedAt",
   "continuationChainTokens",

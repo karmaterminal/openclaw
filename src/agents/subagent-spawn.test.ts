@@ -392,7 +392,14 @@ describe("spawnSubagentDirect seam flow", () => {
         return {};
       },
     );
-    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock);
+    let persistedTraceparent: unknown;
+    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock, {
+      onStore: (store) => {
+        persistedTraceparent ??= Object.values(store).find(
+          (entry) => entry.continuationTraceparent,
+        )?.continuationTraceparent;
+      },
+    });
 
     const result = await spawnSubagentDirect(
       {
@@ -415,6 +422,7 @@ describe("spawnSubagentDirect seam flow", () => {
         sessionKey: params.sessionKey as string,
       })?.traceparent,
     ).toBe(traceparent);
+    expect(persistedTraceparent).toBe(traceparent);
     const registerInput = requireRecord(hoisted.registerSubagentRunMock.mock.calls[0]?.[0]);
     expect(registerInput.traceparent).toBe(traceparent);
   });

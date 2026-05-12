@@ -6,6 +6,7 @@ import { resolveThreadBindingSpawnPolicy } from "../channels/thread-bindings-pol
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { SubagentSpawnPreparation } from "../context-engine/types.js";
+import { normalizeDiagnosticTraceparent } from "../infra/diagnostic-trace-context-pure.js";
 import { stringifyRouteThreadId } from "../plugin-sdk/channel-route.js";
 import { listRegisteredPluginAgentPromptGuidance } from "../plugins/command-registry-state.js";
 import type { SubagentLifecycleHookRunner } from "../plugins/hooks.js";
@@ -257,6 +258,12 @@ function buildDirectChildSessionPatch(patch: Record<string, unknown>): Partial<S
   }
   if (typeof patch.spawnedWorkspaceDir === "string" && patch.spawnedWorkspaceDir.trim()) {
     entry.spawnedWorkspaceDir = patch.spawnedWorkspaceDir.trim();
+  }
+  const continuationTraceparent = normalizeDiagnosticTraceparent(
+    typeof patch.continuationTraceparent === "string" ? patch.continuationTraceparent : undefined,
+  );
+  if (continuationTraceparent) {
+    entry.continuationTraceparent = continuationTraceparent;
   }
   if (typeof patch.thinkingLevel === "string" && patch.thinkingLevel.trim()) {
     entry.thinkingLevel = patch.thinkingLevel.trim();
@@ -928,6 +935,7 @@ export async function spawnSubagentDirect(
     subagentRole: effectiveRole === "main" ? null : effectiveRole,
     subagentControlScope: effectiveControlScope,
     ...plan.initialSessionPatch,
+    ...(params.traceparent ? { continuationTraceparent: params.traceparent } : {}),
   };
 
   const initialPatchError = await patchChildSession(initialChildSessionPatch);
