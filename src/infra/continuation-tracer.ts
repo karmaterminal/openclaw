@@ -414,7 +414,16 @@ export function formatContinuationTraceparent(
 }
 
 export function formatActiveContinuationTraceparent(): string | undefined {
-  return formatContinuationTraceparent(getActiveDiagnosticTraceContext());
+  const activeContext = getActiveDiagnosticTraceContext();
+  if (!activeContext?.parentSpanId) {
+    return formatContinuationTraceparent(activeContext);
+  }
+  return formatContinuationTraceparent({
+    traceId: activeContext.traceId,
+    spanId: activeContext.parentSpanId,
+    traceFlags: activeContext.traceFlags,
+    ...(activeContext.parentSpanIdSource === "remote" ? { spanIdSource: "remote" } : {}),
+  });
 }
 
 export function resolveContinuationTraceparent(

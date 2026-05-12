@@ -8,6 +8,7 @@ import {
   emitContinuationFanoutSpan,
   emitContinuationQueueDrainSpan,
   emitContinuationWorkSpan,
+  formatActiveContinuationTraceparent,
   formatContinuationTraceparent,
   getContinuationTracer,
   noopTracer,
@@ -24,6 +25,7 @@ import {
   type StartSpanOptions,
   type Tracer,
 } from "./continuation-tracer.js";
+import { runWithDiagnosticTraceContext } from "./diagnostic-trace-context.js";
 
 afterEach(() => {
   resetContinuationTracer();
@@ -171,6 +173,38 @@ describe("continuation-tracer :: registry (set/get/reset)", () => {
 
     expect(resolveContinuationTraceparent(logicalTraceparent)).toBe(exportedTraceparent);
     expect(resolveContinuationTraceparent("not-a-traceparent")).toBeUndefined();
+  });
+
+  it("formats active traceparents from the stable active parent when present", () => {
+    const activeToolContext = {
+      traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+      spanId: "2222222222222222",
+      parentSpanId: "1111111111111111",
+      traceFlags: "01",
+    };
+    const exportedParentTraceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+    const formattedContexts: Array<{ spanId?: string; parentSpanId?: string }> = [];
+    setContinuationTracer({
+      startSpan: () => noopTracer.startSpan("x"),
+      formatTraceparent: (traceContext) => {
+        formattedContexts.push({
+          spanId: traceContext.spanId,
+          parentSpanId: traceContext.parentSpanId,
+        });
+        return traceContext.spanId === activeToolContext.parentSpanId
+          ? exportedParentTraceparent
+          : undefined;
+      },
+    });
+
+    const result = runWithDiagnosticTraceContext(activeToolContext, () =>
+      formatActiveContinuationTraceparent(),
+    );
+
+    expect(result).toBe(exportedParentTraceparent);
+    expect(formattedContexts).toEqual([
+      { spanId: activeToolContext.parentSpanId, parentSpanId: undefined },
+    ]);
   });
 
   it("shares the installed tracer across module reloads", async () => {
