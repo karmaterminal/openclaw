@@ -25,6 +25,7 @@ import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { consumeStagedPostCompactionDelegates } from "../continuation-delegate-store.js";
 import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
 import type { ContinuationRuntimeConfig } from "../continuation/types.js";
 import type { ContinuationSignal } from "../tokens.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
@@ -467,8 +468,11 @@ export async function deliverQueuedPostCompactionDelegate(
     sessionKey: params.entry.sessionKey,
   });
   const sessionEntry = resolved.existing ?? sessionStore[params.entry.sessionKey];
-  const { maxChainLength: maxCompactionChainLength, costCapTokens: compactionCostCapTokens } =
-    deps.resolveContinuationRuntimeConfig(cfg);
+  const {
+    maxChainLength: maxCompactionChainLength,
+    costCapTokens: compactionCostCapTokens,
+    crossSessionTargeting,
+  } = deps.resolveContinuationRuntimeConfig(cfg);
   const currentCompactionChainCount = sessionEntry?.continuationChainCount ?? 0;
   const compactionChainTokens = sessionEntry?.continuationChainTokens ?? 0;
 
@@ -492,6 +496,23 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     deps.enqueueSystemEvent(
       `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${params.entry.task}`,
+      {
+        sessionKey: params.entry.sessionKey,
+        ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),
+      },
+    );
+    return;
+  }
+
+  if (
+    crossSessionTargeting === "disabled" &&
+    hasCrossSessionDelegateTargeting(params.entry, params.entry.sessionKey)
+  ) {
+    deps.log(
+      `Post-compaction delegate rejected: crossSessionTargeting=disabled at delivery time for session ${params.entry.sessionKey}`,
+    );
+    deps.enqueueSystemEvent(
+      `[continuation] Post-compaction delegate rejected: cross-session targeting was disabled at delivery time. Task: ${params.entry.task}`,
       {
         sessionKey: params.entry.sessionKey,
         ...(params.entry.traceparent ? { traceparent: params.entry.traceparent } : {}),

@@ -878,6 +878,97 @@ describe("post-compaction delegate dispatch extraction", () => {
     });
   });
 
+  it("rejects an enabled-at-stage cross-session queued delegate when disabled at delivery", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: 1 } }, null, 2),
+        "utf-8",
+      );
+      const { deps, enqueueSystemEvent, log, spawnSubagentDirect } = createDeliveryDeps({
+        storePath,
+        runtimeConfig: { crossSessionTargeting: "disabled" },
+      });
+
+      await deliverQueuedPostCompactionDelegate(
+        {
+          entry: createQueuedEntry({
+            targetSessionKey: "other",
+            traceparent: VALID_TRACEPARENT,
+          }),
+        },
+        deps,
+      );
+
+      expect(spawnSubagentDirect).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        "Post-compaction delegate rejected: crossSessionTargeting=disabled at delivery time for session main",
+      );
+      expect(enqueueSystemEvent).toHaveBeenCalledWith(
+        "[continuation] Post-compaction delegate rejected: cross-session targeting was disabled at delivery time. Task: queued delegate",
+        { sessionKey: "main", traceparent: VALID_TRACEPARENT },
+      );
+      const stored = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+        string,
+        SessionEntry
+      >;
+      expect(Object.values(stored).some((entry) => entry.continuationChainCount != null)).toBe(
+        false,
+      );
+    });
+  });
+
+  it("allows queued cross-session delivery when targeting is still enabled", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: 1 } }, null, 2),
+        "utf-8",
+      );
+      const { deps, spawnSubagentDirect } = createDeliveryDeps({
+        storePath,
+        runtimeConfig: { crossSessionTargeting: "enabled" },
+      });
+
+      await deliverQueuedPostCompactionDelegate(
+        { entry: createQueuedEntry({ targetSessionKey: "other" }) },
+        deps,
+      );
+
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({ continuationTargetSessionKey: "other" }),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it("allows queued self-targeting delivery when cross-session targeting is disabled", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: 1 } }, null, 2),
+        "utf-8",
+      );
+      const { deps, spawnSubagentDirect } = createDeliveryDeps({
+        storePath,
+        runtimeConfig: { crossSessionTargeting: "disabled" },
+      });
+
+      await deliverQueuedPostCompactionDelegate(
+        { entry: createQueuedEntry({ targetSessionKey: " main " }) },
+        deps,
+      );
+
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({ continuationTargetSessionKey: " main " }),
+        expect.any(Object),
+      );
+    });
+  });
+
   // ---- Regression tests for queue-model correctness repairs ----
 
   it("drains unfiltered for sessionKey so prior failed entries are reconsidered", async () => {
