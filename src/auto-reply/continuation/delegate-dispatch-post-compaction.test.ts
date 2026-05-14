@@ -6,6 +6,7 @@
  * as system events, matching the pattern in the regular delegate dispatch path.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 
 // Capture mock state for assertions
 const mockState = vi.hoisted(() => ({
@@ -42,6 +43,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearRuntimeConfigSnapshot();
   vi.clearAllMocks();
 });
 
@@ -68,6 +70,30 @@ describe("dispatchStagedPostCompactionDelegates error handling", () => {
       spawnCtx,
     );
     expect(mockState.enqueueSystemEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects fanoutMode=all through the post-compaction dispatch gate when disabled", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "disabled" } } },
+    });
+    const sessionKey = "session-post-compact-fanout-all";
+    const spawnCtx = { agentSessionKey: sessionKey, agentChannel: "discord" };
+
+    const result = await dispatchStagedPostCompactionDelegates(
+      [{ task: "broadcast post-compaction state", fanoutMode: "all" }],
+      sessionKey,
+      spawnCtx,
+    );
+
+    expect(result).toEqual({ dispatched: 0, failed: 1 });
+    expect(mockState.spawnSubagentDirect).not.toHaveBeenCalled();
+    expect(mockState.warnLog).toHaveBeenCalledWith(
+      expect.stringContaining("[continuation:post-compaction-policy-rejected]"),
+    );
+    expect(mockState.enqueueSystemEvent).toHaveBeenCalledWith(
+      expect.stringContaining("cross-session targeting is disabled by policy"),
+      { sessionKey, trusted: true },
+    );
   });
 
   it("logs warn + enqueues system event when spawnSubagentDirect throws", async () => {

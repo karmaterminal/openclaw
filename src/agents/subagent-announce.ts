@@ -1226,24 +1226,6 @@ export async function runSubagentAnnounceFlow(params: {
       params.continuationFanoutMode,
     );
     if (hasContinuationTargeting) {
-      const { crossSessionTargeting } = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
-      if (crossSessionTargeting === "disabled") {
-        const hasActualCrossSession =
-          params.continuationFanoutMode === "all" ||
-          params.continuationFanoutMode === "tree" ||
-          (params.continuationTargetSessionKey &&
-            params.continuationTargetSessionKey !== targetRequesterSessionKey) ||
-          (params.continuationTargetSessionKeys &&
-            params.continuationTargetSessionKeys.some((k) => k !== targetRequesterSessionKey));
-        if (hasActualCrossSession) {
-          defaultRuntime.log(
-            `[continuation:targeted-return] Rejected: crossSessionTargeting=disabled at delivery time for ${params.childSessionKey}`,
-          );
-          didAnnounce = false;
-          shouldDeleteChildSession = params.cleanup === "delete";
-          return false;
-        }
-      }
       const { enqueueContinuationReturnDeliveries, resolveContinuationReturnTargetSessionKeys } =
         await import("../auto-reply/continuation/targeting.js");
       const treeSessionKeys =

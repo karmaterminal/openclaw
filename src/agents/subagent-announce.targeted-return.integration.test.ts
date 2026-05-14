@@ -27,6 +27,7 @@ let mockConfig: OpenClawConfig = {
   agents: { defaults: { continuation: { enabled: true } } },
   session: { mainKey: "main", scope: "per-sender" },
 };
+let mockCrossSessionTargeting: "disabled" | "enabled" = "disabled";
 
 vi.mock("../runtime.js", () => ({
   defaultRuntime: {
@@ -41,6 +42,7 @@ vi.mock("../infra/heartbeat-wake.js", () => ({
 
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: vi.fn(async () => ({})),
+  dispatchGatewayMethodInProcess: vi.fn(async () => ({})),
   getRuntimeConfig: () => mockConfig,
   isEmbeddedPiRunActive: () => false,
   loadSessionStore: () => ({}),
@@ -55,6 +57,7 @@ vi.mock("./subagent-announce.runtime.js", () => ({
     costCapTokens: 500_000,
     maxDelegatesPerTurn: 5,
     contextPressureThreshold: undefined,
+    crossSessionTargeting: mockCrossSessionTargeting,
   }),
   resolveStorePath: () => "/tmp/sessions.json",
   waitForEmbeddedPiRunEnd: vi.fn(async () => true),
@@ -86,6 +89,19 @@ vi.mock("./subagent-announce.registry.runtime.js", () => registryRuntimeMock);
 
 const { runSubagentAnnounceFlow } = await import("./subagent-announce.js");
 
+async function readQueuedSystemEventDeliveries(stateDir: string): Promise<QueuedSessionDelivery[]> {
+  const queueDir = path.join(stateDir, "session-delivery-queue");
+  const entries = await fs.readdir(queueDir);
+  const jsonFiles = entries.filter((entry) => entry.endsWith(".json"));
+  return Promise.all(
+    jsonFiles.map(async (file) => {
+      return JSON.parse(
+        await fs.readFile(path.join(queueDir, file), "utf-8"),
+      ) as QueuedSessionDelivery;
+    }),
+  );
+}
+
 describe("subagent announce targeted continuation return integration", () => {
   beforeEach(() => {
     runtimeLogMock.mockReset();
@@ -96,6 +112,7 @@ describe("subagent announce targeted continuation return integration", () => {
       agents: { defaults: { continuation: { enabled: true } } },
       session: { mainKey: "main", scope: "per-sender" },
     };
+    mockCrossSessionTargeting = "disabled";
     registryRuntimeMock.shouldIgnorePostCompletionAnnounceForSession
       .mockReset()
       .mockReturnValue(false);
@@ -173,6 +190,127 @@ describe("subagent announce targeted continuation return integration", () => {
           parentRunId: "run-targeted-runtime-path",
         }),
       );
+    });
+  });
+
+  it("delivers fanoutMode=tree returns under the default disabled cross-session policy", async () => {
+    await withTempDir({ prefix: "openclaw-targeted-return-tree-" }, async (stateDir) => {
+      vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+      const nonce = "TREE-TARGETED-RETURN-NONCE-641";
+      const requesterSessionKey = "agent:main:dispatcher-tree";
+      const rootSessionKey = "agent:main:root-tree";
+      registryRuntimeMock.listAncestorSessionKeys.mockReturnValueOnce([
+        requesterSessionKey,
+        rootSessionKey,
+      ]);
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:tree-return",
+        childRunId: "run-tree-targeted-return",
+        requesterSessionKey,
+        requesterDisplayKey: "dispatcher-tree",
+        task: `[continuation:chain-hop:1] tree return ${nonce}`,
+        timeoutMs: 100,
+        cleanup: "keep",
+        waitForCompletion: false,
+        startedAt: 10,
+        endedAt: 20,
+        outcome: { status: "ok" },
+        roundOneReply: `delegate completed with ${nonce}`,
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        continuationFanoutMode: "tree",
+      });
+
+      expect(runtimeErrorMock.mock.calls).toEqual([]);
+      expect(didAnnounce).toBe(true);
+      expect(registryRuntimeMock.listAncestorSessionKeys).toHaveBeenCalledWith(requesterSessionKey);
+
+      const persisted = await readQueuedSystemEventDeliveries(stateDir);
+      expect(persisted).toHaveLength(2);
+      expect(persisted.map((entry) => entry.sessionKey).toSorted()).toEqual([
+        requesterSessionKey,
+        rootSessionKey,
+      ]);
+      for (const entry of persisted) {
+        expect(entry.kind).toBe("systemEvent");
+        if (entry.kind === "systemEvent") {
+          expect(entry.text).toContain(nonce);
+        }
+      }
+
+      for (const sessionKey of [requesterSessionKey, rootSessionKey]) {
+        expect(peekSystemEventEntries(sessionKey)).toHaveLength(1);
+        expect(peekSystemEventEntries(sessionKey)[0].text).toContain(nonce);
+      }
+      expect(requestHeartbeatNowMock).toHaveBeenCalledTimes(2);
+      expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionKey: requesterSessionKey,
+          reason: "delegate-return",
+          parentRunId: "run-tree-targeted-return",
+        }),
+      );
+      expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionKey: rootSessionKey,
+          reason: "delegate-return",
+          parentRunId: "run-tree-targeted-return",
+        }),
+      );
+      expect(runtimeLogMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `[continuation:targeted-return] Delivered to ${requesterSessionKey},${rootSessionKey}`,
+        ),
+      );
+    });
+  });
+
+  it("delivers post-compaction fanoutMode=tree returns like normal tree returns", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-tree-return-" }, async (stateDir) => {
+      vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+      const nonce = "POST-COMPACTION-TREE-RETURN-NONCE-642";
+      const requesterSessionKey = "agent:main:post-compacted";
+      const rootSessionKey = "agent:main:post-root";
+      registryRuntimeMock.listAncestorSessionKeys.mockReturnValueOnce([
+        requesterSessionKey,
+        rootSessionKey,
+      ]);
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:post-compaction-tree",
+        childRunId: "run-post-compaction-tree-return",
+        requesterSessionKey,
+        requesterDisplayKey: "post-compacted",
+        task:
+          `[continuation:post-compaction] ` +
+          `[continuation:chain-hop:1] carry compacted state ${nonce}`,
+        timeoutMs: 100,
+        cleanup: "keep",
+        waitForCompletion: false,
+        startedAt: 10,
+        endedAt: 20,
+        outcome: { status: "ok" },
+        roundOneReply: `post-compaction delegate completed with ${nonce}`,
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        continuationFanoutMode: "tree",
+      });
+
+      expect(runtimeErrorMock.mock.calls).toEqual([]);
+      expect(didAnnounce).toBe(true);
+
+      const persisted = await readQueuedSystemEventDeliveries(stateDir);
+      expect(persisted).toHaveLength(2);
+      expect(persisted.map((entry) => entry.sessionKey).toSorted()).toEqual([
+        requesterSessionKey,
+        rootSessionKey,
+      ]);
+      for (const sessionKey of [requesterSessionKey, rootSessionKey]) {
+        expect(peekSystemEventEntries(sessionKey)).toHaveLength(1);
+        expect(peekSystemEventEntries(sessionKey)[0].text).toContain(nonce);
+      }
+      expect(requestHeartbeatNowMock).toHaveBeenCalledTimes(2);
     });
   });
 });
