@@ -119,7 +119,7 @@ Create issue on `karmaterminal/openclaw` with:
 - **Tool-entry gate** at `src/agents/tools/continue-delegate-tool.ts` (line ~199)
   must remain authoritative — it already uses `hasCrossSessionDelegateTargeting`.
   Verify the gate is **exhaustive** for all dispatch shapes that reach delivery.
-- **Dispatch gate** at `src/auto-reply/reply/delegate-dispatch.ts` (and any
+- **Dispatch gate** at `src/auto-reply/continuation/delegate-dispatch.ts` (and any
   sibling dispatch entry points — find them all; do not assume only one) must
   **also** use `hasCrossSessionDelegateTargeting` for consistency.
 - After your refactor, no cross-session continuation delivery may bypass the

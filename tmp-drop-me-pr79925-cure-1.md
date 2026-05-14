@@ -43,3 +43,9 @@ Cael 🩸 mirrored Elliott 🌻's semantic-contract catch onto both lanes (his p
 - Architectural shape = contract; git mechanism = agent's call
 
 Harness is mid-§2 critique phase per console.log — has NOT started §3 refactor yet. Patch lands before harness reads §3.
+
+## 2026-05-14 07:54 PDT — workorder §3 path-fix
+
+Elliott 🌻 byte-walked WORKORDER.md and caught path error: `src/auto-reply/reply/delegate-dispatch.ts` → actual `src/auto-reply/continuation/delegate-dispatch.ts`. Verified from disk (`reply/` path doesn't exist; `continuation/` does). Patched.
+
+Harness is mid-§4 audit per console.log; if it re-reads WORKORDER.md the corrected path lands. The harness has been reading by symbol-grep (per console.log evidence) so it likely already located the right file — this fixes the workorder-as-artifact for cohort byte-walk + future-prince readability.
