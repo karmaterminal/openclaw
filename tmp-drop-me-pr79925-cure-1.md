@@ -19,6 +19,21 @@ Next: harness dispatch.
 - Branch pushed to origin (remote-first canon honored)
 - About to fire copilot harness with brief.md → WORKORDER.md pointer
 
+## 2026-05-14 08:00 PDT — Checkpoint 2: required reads complete
+
+- Read WORKORDER.md end-to-end.
+- Read PRINCE-CODE-AGENT-RUNBOOK.md end-to-end, including Pattern A, Pattern E, Pattern G, remote-first, tracking-issue, journal, and webhook cadence.
+- Read repo-root AGENTS.md and CLAUDE.md.
+- Read current cure-region files:
+  - src/agents/subagent-announce.ts targeted-return delivery region
+  - src/auto-reply/continuation/targeting-pure.ts and targeting.ts
+  - src/agents/tools/continue-delegate-tool.ts
+  - src/auto-reply/continuation/delegate-dispatch.ts
+  - src/auto-reply/reply/post-compaction-delegate-dispatch.ts
+- Read reference shape from f187917c92 via git show (no checkout).
+- Discord receipt status: local discrawl helper/database and relay helper were unavailable in this lane; WORKORDER.md contains figs's exact load-bearing quote and message IDs.
+- Audit started: enqueueContinuationReturnDeliveries is only reached from src/agents/subagent-announce.ts in production; tool-entry and dispatch gates use hasCrossSessionDelegateTargeting upstream.
+
 ## 2026-05-14 07:38 PDT — workorder §3 patched in-flight
 
 Cael 🩸 mirrored Elliott 🌻's semantic-contract catch onto both lanes (his patch at `0f4a6193ee` on claude lane). Patching same shape onto copilot WORKORDER.md §3:
