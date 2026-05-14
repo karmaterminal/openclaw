@@ -12,11 +12,54 @@
 - [x] §2 reads done
 - [x] §3 first refactor commit — `946ca2d1fa`
 - [x] §4 immaterial-gates audit — `output.md`
-- [ ] §5 tests green
-- [ ] §6 declare-done
+- [x] §5 tests green — `cf4bcd0938`
+- [x] §6 declare-done — branch tip below
       could not add label: 'in_coding_agent' not found
 
 Tracking: https://github.com/karmaterminal/openclaw/issues/685
+
+## Declare-done (§7 shape)
+
+- **Branch tip SHA**: to be filled when the journal-update commit lands; see
+  the §7 commit on this branch for the authoritative tip.
+- **Tracking issue URL**: https://github.com/karmaterminal/openclaw/issues/685
+- **Output path**: `output.md` at the worktree root (also pushed on this
+  branch).
+- **Audit table summary** (full table in `output.md`):
+  - 6 distinct code paths can reach the targeted-return delivery boundary
+    (`enqueueContinuationReturnDeliveries`).
+  - Every path is gated upstream by one of: tool-entry
+    (`continue-delegate-tool.ts:200-209`), agent-runner bracket-delegate
+    dispatch (`agent-runner.ts:2484-2511`), agent-runner tool-loop dispatch
+    (`agent-runner.ts:2997-3024`), continuation/delegate-dispatch
+    (`delegate-dispatch.ts:229-258` for regular and 425-449 for staged
+    post-compaction), or the post-compaction drain-time dispatch
+    (`reply/post-compaction-delegate-dispatch.ts:507-522`).
+  - All gates use the shared `hasCrossSessionDelegateTargeting` helper from
+    `targeting-pure.ts`. The removed gate at
+    `src/agents/subagent-announce.ts:1228-1246` was the only hand-rolled
+    divergent gate.
+  - After the cure, no delivery path bypasses tool-entry + dispatch under
+    `crossSessionTargeting: "disabled"`.
+- **Test surfaces green**:
+  - 13 files / 136 tests across `src/agents/subagent-announce*`
+  - 16 files / 213 tests across `src/auto-reply/continuation/*` +
+    `src/auto-reply/reply/post-compaction-delegate-dispatch.test.ts` +
+    `src/agents/tools/continue-delegate-tool*.test.ts`
+  - `pnpm tsgo:core` clean
+  - `pnpm tsgo:test` clean (after typing fix to `listAncestorSessionKeys`
+    mock)
+  - `pnpm build` clean, no `INEFFECTIVE_DYNAMIC_IMPORT` warnings, dist
+    artifacts present for the cure region
+- **cohort-quorum-needed**: byte-walk this branch against `446e285f7d` AND
+  against `silas/79925-pr-cure-1-copilot-candidate` (the parallel Copilot
+  lane). Convergence on the single-removal shape is expected. Named
+  divergence (different mechanism, different test scaffolding) is the
+  interesting comparison surface.
+- **Downstream — held by Cael 🩸**: force-push to
+  `frond-scribe-claude/20260509/narrow-surgery-tight` on
+  `openclaw/openclaw` only after cohort cosign 4/4. This lane STOPS here
+  per WORKORDER §6 checkpoint 6.
 
 ## §9 — mechanism rationale (per WORKORDER amendment `0f4a6193ee`)
 
