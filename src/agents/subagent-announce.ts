@@ -201,6 +201,12 @@ type ContinuationDispatchContext = {
   agentThreadId?: string | number;
 };
 
+type ContinuationDispatchTargeting = {
+  targetSessionKey?: string;
+  targetSessionKeys?: readonly string[];
+  fanoutMode?: "tree" | "all";
+};
+
 type ContinuationDispatchModule = {
   dispatchToolDelegates: (params: {
     sessionKey: string;
@@ -243,6 +249,42 @@ type SessionStoreUpdateModule = {
   resolveStorePath: (store: unknown, options: { agentId: string }) => string;
   resolveAgentIdFromSessionKey: (sessionKey: string) => string;
 };
+
+async function rejectCrossSessionTargetingForSubagentDispatch(params: {
+  crossSessionTargeting: "disabled" | "enabled";
+  dispatchingSessionKey: string;
+  eventSessionKey: string;
+  source: "bracket" | "tool";
+  targeting: ContinuationDispatchTargeting;
+  task: string;
+}): Promise<boolean> {
+  if (params.crossSessionTargeting !== "disabled") {
+    return false;
+  }
+  if (
+    !params.targeting.targetSessionKey &&
+    (!params.targeting.targetSessionKeys || params.targeting.targetSessionKeys.length === 0) &&
+    !params.targeting.fanoutMode
+  ) {
+    return false;
+  }
+  const { hasCrossSessionDelegateTargeting } =
+    await import("../auto-reply/continuation/targeting-pure.js");
+  if (!hasCrossSessionDelegateTargeting(params.targeting, params.dispatchingSessionKey)) {
+    return false;
+  }
+  const { enqueueSystemEvent } = await import("../infra/system-events.js");
+  defaultRuntime.log(
+    `[subagent-chain-hop] Cross-session targeting rejected by policy for ${params.source} delegate in session ${params.dispatchingSessionKey}`,
+  );
+  enqueueSystemEvent(
+    "[continuation] Delegate rejected: cross-session targeting is disabled by policy. " +
+      'Use the default return target, targetSessionKey set to this session, or fanoutMode="tree". ' +
+      `Task: ${params.task}`,
+    { sessionKey: params.eventSessionKey, trusted: true },
+  );
+  return true;
+}
 
 /**
  * Drain the child session's continue_delegate queue after the subagent has
@@ -917,7 +959,7 @@ export async function runSubagentAnnounceFlow(params: {
         const chainWake =
           chainSignal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
 
-        const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs } =
+        const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs, crossSessionTargeting } =
           subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
 
         const hopMatch = childTask.match(CONTINUATION_CHAIN_HOP_PATTERN);
@@ -971,6 +1013,26 @@ export async function runSubagentAnnounceFlow(params: {
 
           const doChainSpawn = async (timerTriggered = false) => {
             try {
+              const rejectedByTargetingPolicy =
+                await rejectCrossSessionTargetingForSubagentDispatch({
+                  crossSessionTargeting,
+                  dispatchingSessionKey: params.childSessionKey,
+                  eventSessionKey: targetRequesterSessionKey,
+                  source: "bracket",
+                  targeting: {
+                    ...(chainSignal.targetSessionKey
+                      ? { targetSessionKey: chainSignal.targetSessionKey }
+                      : {}),
+                    ...(chainSignal.targetSessionKeys && chainSignal.targetSessionKeys.length > 0
+                      ? { targetSessionKeys: chainSignal.targetSessionKeys }
+                      : {}),
+                    ...(chainSignal.fanoutMode ? { fanoutMode: chainSignal.fanoutMode } : {}),
+                  },
+                  task: chainTask,
+                });
+              if (rejectedByTargetingPolicy) {
+                return;
+              }
               const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
               const { spawnSubagentDirect } = await loadSubagentSpawnRuntime();
               const spawnResult = await spawnSubagentDirect(
@@ -1055,6 +1117,7 @@ export async function runSubagentAnnounceFlow(params: {
           costCapTokens: toolCostCapTokens,
           minDelayMs: toolMinDelayMs,
           maxDelayMs: toolMaxDelayMs,
+          crossSessionTargeting: toolCrossSessionTargeting,
         } = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
         const hopMatch = childTask.match(CONTINUATION_CHAIN_HOP_PATTERN);
         const childChainHop = hopMatch ? Number.parseInt(hopMatch[1], 10) : 0;
@@ -1101,6 +1164,26 @@ export async function runSubagentAnnounceFlow(params: {
           const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
           const doToolChainSpawn = async (timerTriggered = false) => {
             try {
+              const rejectedByTargetingPolicy =
+                await rejectCrossSessionTargetingForSubagentDispatch({
+                  crossSessionTargeting: toolCrossSessionTargeting,
+                  dispatchingSessionKey: params.childSessionKey,
+                  eventSessionKey: targetRequesterSessionKey,
+                  source: "tool",
+                  targeting: {
+                    ...(toolDelegate.targetSessionKey
+                      ? { targetSessionKey: toolDelegate.targetSessionKey }
+                      : {}),
+                    ...(toolDelegate.targetSessionKeys && toolDelegate.targetSessionKeys.length > 0
+                      ? { targetSessionKeys: toolDelegate.targetSessionKeys }
+                      : {}),
+                    ...(toolDelegate.fanoutMode ? { fanoutMode: toolDelegate.fanoutMode } : {}),
+                  },
+                  task: toolDelegate.task,
+                });
+              if (rejectedByTargetingPolicy) {
+                return;
+              }
               const { spawnSubagentDirect } = await loadSubagentSpawnRuntime();
               const spawnResult = await spawnSubagentDirect(
                 {

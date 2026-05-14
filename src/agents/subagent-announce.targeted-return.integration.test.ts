@@ -17,7 +17,7 @@ const registryRuntimeMock = vi.hoisted(() => ({
   countActiveDescendantRuns: vi.fn(() => 0),
   countPendingDescendantRuns: vi.fn(() => 0),
   countPendingDescendantRunsExcludingRun: vi.fn(() => 0),
-  listAncestorSessionKeys: vi.fn(() => []),
+  listAncestorSessionKeys: vi.fn((_sessionKey: string): string[] => []),
   listSubagentRunsForRequester: vi.fn(() => []),
   replaceSubagentRunAfterSteer: vi.fn(() => true),
   resolveRequesterForChildSession: vi.fn(() => null),
