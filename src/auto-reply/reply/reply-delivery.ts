@@ -133,7 +133,7 @@ export function createBlockReplyDeliveryHandler(params: {
     const blockHasNonTextContent = hasOutboundReplyContent({ ...blockPayload, text: undefined });
 
     if (blockPayload.text && hasCotFramePrefix(blockPayload.text)) {
-      if (!blockHasMedia) {
+      if (!blockHasNonTextContent) {
         return;
       }
       blockPayload = { ...blockPayload, text: undefined };

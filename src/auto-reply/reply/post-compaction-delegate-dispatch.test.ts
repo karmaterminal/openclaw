@@ -969,6 +969,31 @@ describe("post-compaction delegate dispatch extraction", () => {
     });
   });
 
+  it("allows queued fanoutMode=tree post-compaction delivery when cross-session targeting is disabled", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: 1 } }, null, 2),
+        "utf-8",
+      );
+      const { deps, spawnSubagentDirect } = createDeliveryDeps({
+        storePath,
+        runtimeConfig: { crossSessionTargeting: "disabled" },
+      });
+
+      await deliverQueuedPostCompactionDelegate(
+        { entry: createQueuedEntry({ fanoutMode: "tree" }) },
+        deps,
+      );
+
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({ continuationFanoutMode: "tree" }),
+        expect.any(Object),
+      );
+    });
+  });
+
   // ---- Regression tests for queue-model correctness repairs ----
 
   it("drains unfiltered for sessionKey so prior failed entries are reconsidered", async () => {

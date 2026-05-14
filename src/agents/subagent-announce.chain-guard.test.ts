@@ -57,6 +57,7 @@ vi.mock("../auto-reply/continuation-delegate-store.js", () => ({
 import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
 import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
 import { resolveStorePath } from "../config/sessions.js";
+import { drainSystemEventEntries } from "../infra/system-events.js";
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 import * as subagentSpawn from "./subagent-spawn.js";
 
@@ -67,6 +68,7 @@ function makeConfig(
     maxChainLength?: number;
     costCapTokens?: number;
     enabled?: boolean;
+    crossSessionTargeting?: "disabled" | "enabled";
   } = {},
 ) {
   return {
@@ -79,6 +81,7 @@ function makeConfig(
           costCapTokens: overrides.costCapTokens ?? 500_000,
           minDelayMs: 0,
           maxDelayMs: 0, // zero delay to avoid timer issues
+          crossSessionTargeting: overrides.crossSessionTargeting ?? "disabled",
         },
       },
     },
@@ -179,6 +182,35 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
     expect(spawnArgs.task).toContain("[continuation:chain-hop:1]");
   });
 
+  it("rejects child-emitted bracket fanout=all when cross-session targeting is disabled", async () => {
+    const params = buildChainShardParams(1);
+    params.roundOneReply =
+      "Research result.\n[[CONTINUE_DELEGATE: inspect all sessions | fanout=all]]";
+    drainSystemEventEntries(params.requesterSessionKey);
+
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(drainSystemEventEntries(params.requesterSessionKey).map((entry) => entry.text)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("cross-session targeting is disabled by policy"),
+      ]),
+    );
+  });
+
+  it("allows child-emitted bracket fanout=tree when cross-session targeting is disabled", async () => {
+    const params = buildChainShardParams(1);
+    params.roundOneReply = "Research result.\n[[CONTINUE_DELEGATE: inspect tree | fanout=tree]]";
+
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(spawnArgs.continuationFanoutMode).toBe("tree");
+  });
+
   it("respects custom maxChainLength from config at the exact boundary", async () => {
     setRuntimeConfigSnapshot(makeConfig({ maxChainLength: 3 }) as any);
 
@@ -276,6 +308,38 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
     expect(spawnArgs.task).toContain("[continuation:chain-hop:10]");
     expect(spawnArgs.task).toContain("Tool-delegated");
+  });
+
+  it("rejects child tool-delegate fanout=all when cross-session targeting is disabled", async () => {
+    mockedConsumePendingDelegates.mockReturnValue([
+      { task: "tool task for all", fanoutMode: "all" },
+    ]);
+    const params = buildToolDelegateParams(1);
+    drainSystemEventEntries(params.requesterSessionKey);
+
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(drainSystemEventEntries(params.requesterSessionKey).map((entry) => entry.text)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("cross-session targeting is disabled by policy"),
+      ]),
+    );
+  });
+
+  it("allows child tool-delegate fanout=tree when cross-session targeting is disabled", async () => {
+    mockedConsumePendingDelegates.mockReturnValue([
+      { task: "tool task for tree", fanoutMode: "tree" },
+    ]);
+    const params = buildToolDelegateParams(1);
+
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(spawnArgs.continuationFanoutMode).toBe("tree");
   });
 
   it("allows tool delegate at maxChainLength (next hop = maxChainLength, off-by-one fix)", async () => {

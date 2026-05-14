@@ -207,4 +207,20 @@ describe("continue_delegate cross-session targeting gate", () => {
       totalQueued: 0,
     });
   });
+
+  it("case 16: disabled rejects post-compaction fanoutMode=all without staging", async () => {
+    await expectContinueDelegateError({
+      crossSessionTargeting: "disabled",
+      args: {
+        mode: "post-compaction",
+        fanoutMode: "all",
+      },
+    });
+
+    expect(getContinuationDelegateQueueDepths(DISPATCHING_SESSION)).toMatchObject({
+      pendingQueued: 0,
+      stagedPostCompaction: 0,
+      totalQueued: 0,
+    });
+  });
 });
