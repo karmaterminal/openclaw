@@ -14,3 +14,6 @@
 - [ ] §4 immaterial-gates audit
 - [ ] §5 tests green
 - [ ] §6 declare-done
+      could not add label: 'in_coding_agent' not found
+
+Tracking: https://github.com/karmaterminal/openclaw/issues/685
