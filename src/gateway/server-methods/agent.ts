@@ -22,6 +22,7 @@ import {
   normalizeSpawnedRunMetadata,
   resolveIngressWorkspaceOverrideForSpawnedRun,
 } from "../../agents/spawned-context.js";
+import { consumeSubagentTraceparentHandoff } from "../../agents/subagent-traceparent-handoff.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import {
   resolveBareResetBootstrapFileAccess,
@@ -47,6 +48,7 @@ import {
 } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
+import { normalizeDiagnosticTraceparent } from "../../infra/diagnostic-trace-context-pure.js";
 import { formatUncaughtError } from "../../infra/errors.js";
 import {
   resolveAgentDeliveryPlan,
@@ -595,6 +597,11 @@ export const agentHandlers: GatewayRequestHandlers = {
       groupChannel?: string;
       groupSpace?: string;
       lane?: string;
+      continuationTrigger?: "work-wake" | "delegate-return";
+      /** When true, the run drains the continuation delegate queue after completion.
+       *  Set by continuation delegate spawns so sub-agents can use the continue_delegate tool. */
+      drainsContinuationDelegateQueue?: boolean;
+      traceparent?: string;
       extraSystemPrompt?: string;
       modelRun?: boolean;
       promptMode?: "full" | "minimal" | "none";
@@ -876,6 +883,7 @@ export const agentHandlers: GatewayRequestHandlers = {
     let bestEffortDeliver = requestedBestEffortDeliver ?? false;
     let cfgForAgent: OpenClawConfig | undefined;
     let resolvedSessionKey = requestedSessionKey;
+    let sessionContinuationTraceparent: string | undefined;
     let isNewSession = false;
     let skipTimestampInjection = false;
     let shouldPrependStartupContext = false;
@@ -968,6 +976,9 @@ export const agentHandlers: GatewayRequestHandlers = {
     if (requestedSessionKey) {
       const { cfg, storePath, entry, canonicalKey } = loadSessionEntry(requestedSessionKey);
       cfgForAgent = cfg;
+      sessionContinuationTraceparent = normalizeDiagnosticTraceparent(
+        entry?.continuationTraceparent,
+      );
       const now = Date.now();
       const resetPolicy = resolveSessionResetPolicy({
         sessionCfg: cfg.session,
@@ -1117,6 +1128,7 @@ export const agentHandlers: GatewayRequestHandlers = {
         groupId: resolvedGroupId,
         groupChannel: resolvedGroupChannel,
         space: resolvedGroupSpace,
+        continuationTraceparent: undefined,
         ...(pluginOwnerId ? { pluginOwnerId } : {}),
         sessionFile:
           entry?.sessionId && entry.sessionId !== sessionId ? undefined : entry?.sessionFile,
@@ -1464,6 +1476,13 @@ export const agentHandlers: GatewayRequestHandlers = {
         }
         const execApprovalFollowupElevatedDefaults =
           execApprovalFollowupRuntimeHandoff?.bashElevated;
+        const inheritedTraceparent =
+          request.traceparent ??
+          consumeSubagentTraceparentHandoff({
+            idempotencyKey: idem,
+            sessionKey: resolvedSessionKey,
+          })?.traceparent ??
+          sessionContinuationTraceparent;
 
         dispatchAgentRunFromGateway({
           ingressOpts: {
@@ -1502,6 +1521,10 @@ export const agentHandlers: GatewayRequestHandlers = {
             messageChannel: originMessageChannel,
             runId,
             lane: request.lane,
+            cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd === true,
+            continuationTrigger: request.continuationTrigger,
+            drainsContinuationDelegateQueue: request.drainsContinuationDelegateQueue,
+            traceparent: inheritedTraceparent,
             modelRun: request.modelRun === true,
             promptMode: request.promptMode,
             extraSystemPrompt: request.extraSystemPrompt,
@@ -1515,7 +1538,6 @@ export const agentHandlers: GatewayRequestHandlers = {
               inputProvenance,
               internalEvents: request.internalEvents,
             }),
-            cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd,
             abortSignal: activeRunAbort.controller.signal,
             onActiveModelSelected: ({ provider }) => {
               updateChatRunProvider(context.chatAbortControllers, {
