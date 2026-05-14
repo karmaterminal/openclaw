@@ -78,6 +78,7 @@ const { subagentRegistryRuntimeMock } = vi.hoisted(() => ({
 
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
+  dispatchGatewayMethodInProcess: async (_req: unknown) => ({}),
   getRuntimeConfig: () => mockConfig,
   isEmbeddedPiRunActive: (sessionId: string) => isEmbeddedPiRunActiveMock(sessionId),
   loadConfig: () => mockConfig,

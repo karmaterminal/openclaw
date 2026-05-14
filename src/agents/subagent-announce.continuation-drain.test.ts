@@ -102,7 +102,7 @@ const { continuationTargetingMock, subagentRegistryRuntimeMock } = vi.hoisted(()
     countActiveDescendantRuns: vi.fn(() => 0),
     countPendingDescendantRuns: vi.fn(() => 0),
     countPendingDescendantRunsExcludingRun: vi.fn(() => 0),
-    listAncestorSessionKeys: vi.fn(() => []),
+    listAncestorSessionKeys: vi.fn((_sessionKey: string): string[] => []),
     listSubagentRunsForRequester: vi.fn(() => []),
     replaceSubagentRunAfterSteer: vi.fn(() => true),
     resolveRequesterForChildSession: vi.fn(() => null),
@@ -111,6 +111,7 @@ const { continuationTargetingMock, subagentRegistryRuntimeMock } = vi.hoisted(()
 
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
+  dispatchGatewayMethodInProcess: async (_req: unknown) => ({}),
   getRuntimeConfig: () => mockConfig,
   isEmbeddedPiRunActive: (sessionId: string) => isEmbeddedPiRunActiveMock(sessionId),
   loadConfig: () => mockConfig,
@@ -750,6 +751,83 @@ describe("subagent-announce continuation drain (F7)", () => {
     );
     expect(continuationTargetingMock.enqueueContinuationReturnDeliveries).toHaveBeenCalledWith(
       expect.not.objectContaining({ traceparent: expect.any(String) }),
+    );
+  });
+
+  // Regression for PR #79925 cure-shape (1): the inner hand-rolled
+  // `if (crossSessionTargeting === "disabled")` gate at the subagent-announce
+  // return-delivery boundary used to treat `fanoutMode === "tree"` as
+  // cross-session and drop the return, contradicting the shared
+  // `hasCrossSessionDelegateTargeting` helper (which treats `tree` as
+  // intra-lineage). Tree-fanout returns must reach delivery under the default
+  // `crossSessionTargeting: "disabled"` policy. After the cure the gate is
+  // removed and the return path threads through
+  // `resolveContinuationReturnTargetSessionKeys` unconditionally.
+  it("delivers fanoutMode=tree returns under crossSessionTargeting=disabled", async () => {
+    resolveContinuationRuntimeConfigMock.mockImplementation((_cfg?: unknown) => ({
+      enabled: true,
+      defaultDelayMs: 15_000,
+      minDelayMs: 5_000,
+      maxDelayMs: 300_000,
+      maxChainLength: 10,
+      costCapTokens: 500_000,
+      maxDelegatesPerTurn: 5,
+      contextPressureThreshold: undefined,
+      crossSessionTargeting: "disabled",
+    }));
+    subagentRegistryRuntimeMock.listAncestorSessionKeys.mockReturnValue([
+      "agent:main:main",
+      "agent:main:root",
+    ]);
+    loadSessionStoreMock.mockImplementation(
+      () =>
+        ({
+          "agent:main:subagent:test": {
+            sessionId: "session-child",
+            updatedAt: Date.now(),
+          },
+          "agent:main:main": {
+            sessionId: "session-main",
+            updatedAt: Date.now(),
+          },
+          "agent:main:root": {
+            sessionId: "session-root",
+            updatedAt: Date.now(),
+          },
+        }) as Record<string, unknown>,
+    );
+
+    const didAnnounce = await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:test",
+      childRunId: "run-tree-fanout",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "[continuation:chain-hop:1] tree-fanout task",
+      timeoutMs: 100,
+      cleanup: "delete",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      roundOneReply: "tree-fanout result",
+      continuationFanoutMode: "tree",
+    });
+
+    expect(didAnnounce).toBe(true);
+    expect(
+      continuationTargetingMock.resolveContinuationReturnTargetSessionKeys,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultSessionKey: "agent:main:main",
+        fanoutMode: "tree",
+        treeSessionKeys: ["agent:main:main", "agent:main:root"],
+      }),
+    );
+    expect(continuationTargetingMock.enqueueContinuationReturnDeliveries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetSessionKeys: ["agent:main:main", "agent:main:root"],
+        fanoutMode: "tree",
+      }),
     );
   });
 });

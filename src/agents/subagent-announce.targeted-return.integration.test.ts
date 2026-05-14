@@ -41,6 +41,7 @@ vi.mock("../infra/heartbeat-wake.js", () => ({
 
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: vi.fn(async () => ({})),
+  dispatchGatewayMethodInProcess: vi.fn(async () => ({})),
   getRuntimeConfig: () => mockConfig,
   isEmbeddedPiRunActive: () => false,
   loadSessionStore: () => ({}),

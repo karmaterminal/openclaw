@@ -1063,4 +1063,46 @@ describe("post-compaction delegate dispatch extraction", () => {
       { sessionKey: "main" },
     );
   });
+
+  // Regression for PR #79925 cure-shape (1): behavioral parity between the
+  // post-compaction drain-time gate and the (now removed) subagent-announce
+  // delivery gate. `fanoutMode: "tree"` is intra-lineage per
+  // `hasCrossSessionDelegateTargeting` and must NOT be rejected by the
+  // drain-time gate under `crossSessionTargeting: "disabled"`. The
+  // `deliverQueuedPostCompactionDelegate` path must spawn the post-compaction
+  // shard so its return can route through the normal subagent-announce
+  // delivery path (which, after the cure, no longer has an inner gate that
+  // would drop the tree-fanout return either).
+  it("delivers fanoutMode=tree post-compaction shards under crossSessionTargeting=disabled", async () => {
+    await withTempDir({ prefix: "openclaw-post-compaction-tree-parity-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({ main: { sessionId: "session", updatedAt: 1 } }, null, 2),
+        "utf-8",
+      );
+      const { deps, spawnSubagentDirect, log } = createDeliveryDeps({
+        storePath,
+        runtimeConfig: { crossSessionTargeting: "disabled" },
+      });
+
+      await deliverQueuedPostCompactionDelegate(
+        {
+          entry: createQueuedEntry({
+            fanoutMode: "tree",
+            traceparent: VALID_TRACEPARENT,
+          }),
+        },
+        deps,
+      );
+
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({ continuationFanoutMode: "tree" }),
+        expect.any(Object),
+      );
+      expect(log).not.toHaveBeenCalledWith(
+        expect.stringContaining("crossSessionTargeting=disabled at delivery time"),
+      );
+    });
+  });
 });
