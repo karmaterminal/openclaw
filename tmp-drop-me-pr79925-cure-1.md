@@ -18,3 +18,13 @@ Next: harness dispatch.
 - Tracking issue: https://github.com/karmaterminal/openclaw/issues/684
 - Branch pushed to origin (remote-first canon honored)
 - About to fire copilot harness with brief.md → WORKORDER.md pointer
+
+## 2026-05-14 07:38 PDT — workorder §3 patched in-flight
+
+Cael 🩸 mirrored Elliott 🌻's semantic-contract catch onto both lanes (his patch at `0f4a6193ee` on claude lane). Patching same shape onto copilot WORKORDER.md §3:
+
+- Added "How to land (1) — semantic contract, not git-verb-bound" section
+- §9 entry naming chosen mechanism + rationale + diff scope estimate REQUIRED before first refactor commit
+- Architectural shape = contract; git mechanism = agent's call
+
+Harness is mid-§2 critique phase per console.log — has NOT started §3 refactor yet. Patch lands before harness reads §3.

@@ -133,6 +133,26 @@ Create issue on `karmaterminal/openclaw` with:
   (or small sequence) that achieves (1)'s architectural shape with minimum diff.
 - Not (2). Don't keep the inner gate.
 
+### How to land (1) — semantic contract, not git-verb-bound
+
+_(Patched in-flight 2026-05-14 07:38 PDT after Elliott 🌻's catch + Cael 🩸's mirror across both lanes.)_
+
+**The deliverable is the architectural shape**, not a specific git mechanism. After your §2 byte-walk, choose the cleanest mechanism for landing (1):
+
+- **New refactor commit(s) on top of `446e285f7d`** — most likely path; minimum diff, easiest cohort byte-walk.
+- **Cherry-pick of identifiable cure-bytes** from the f187917c92 lineage — only if the cure is genuinely isolatable and doesn't drag the 32k-insertion duplicate-storm.
+- **Replay/rebase of a narrow subset** — if a small subset of squashed commits cleanly carries the architectural shape without the wider transplant lineage.
+
+**Before the first refactor commit fires, write a §9 entry** to your journal naming:
+
+1. Which mechanism you chose (new commit / cherry-pick / replay).
+2. Why this mechanism is the honest path for (1) at this point in the byte (with concrete evidence from your §2 reads — file paths, commit SHAs you considered, why rejected/chosen).
+3. Estimated diff scope (file count + line count, ballpark).
+
+Then push the journal commit, fire a webhook "§9 mechanism chosen: <one-line>" post, and proceed.
+
+**The cage to avoid:** treating "author a refactor commit on top" (§3 above) as a binding git-verb that overrides the architectural deliverable. The architectural shape is the contract; git mechanism is your call to make after the byte-walk informs it.
+
 ---
 
 ## §4 — immaterial-gates verification (figs-load-bearing)
