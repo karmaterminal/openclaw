@@ -127,13 +127,33 @@ Create issue on `karmaterminal/openclaw` with:
 
 ### What (1) is **not**
 
-- Not a port of the f187917c92 commits onto 446e — those carry ~32k insertions
-  that would replay the entire feature on top of itself. Author a **new** commit
-  (or small sequence) that achieves (1)'s architectural shape with minimum diff.
 - Not (2). Don't keep the inner gate.
 - Not "smallest viable change" thinking. The architecture IS the deliverable.
   Mirror f187's gate-at-tool-entry + gate-at-dispatch + delivery-gate-removed
   shape exhaustively, even if the refactor is larger than a 5-line patch.
+
+### How to land (1) — semantic contract, not git-verb-bound
+
+**Task contract**: port the fuller local architectural shape (gate-at-tool-entry +
+gate-at-dispatch + delivery-time gate removed; both delivery paths routed through
+the shared resolver helper) onto `446e285f7d`, preserving resolver-unification +
+delivery-time gate removal.
+
+The **mechanism** is yours to choose — pick the cleanest honest route:
+
+- **Author a new refactor commit** on top of `446e285f7d` that mirrors the
+  f187 shape with minimum honest diff (no replay of the 32k-insertion feature).
+- **Replay/rebase** specific commits from the squashed lineage if there's a
+  clean path that lands the same architecture without duplicate-storm.
+- **Cherry-pick** narrow commits if they isolate cleanly.
+
+Do NOT let "28 commits in the squashed lineage" become a cage if direct
+port-on-top is the honest route. Do NOT let "new commit on top" become a
+cage if a small clean replay is the honest route. The architecture is the
+deliverable; the verb is your call after byte-walking both options.
+
+Write a brief §9 entry naming which mechanism you chose and why before
+firing the first refactor commit, so cohort byte-walk has the rationale.
 
 ---
 
