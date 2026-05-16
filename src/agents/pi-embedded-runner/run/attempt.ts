@@ -1168,6 +1168,7 @@ export async function runEmbeddedAttempt(
             authProfileStore: params.authProfileStore,
             recordToolPrepStage: (name) => corePluginToolStages.mark(name),
             onToolOutcome: params.onToolOutcome,
+            skillsSnapshot: skillsSnapshotForRun,
             continueWorkOpts: params.continueWorkOpts,
             requestCompactionOpts: params.requestCompactionOpts,
             drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,

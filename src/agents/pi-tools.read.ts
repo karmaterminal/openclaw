@@ -576,6 +576,42 @@ export function wrapToolMemoryFlushAppendOnlyWrite(
   };
 }
 
+function isSandboxRootEscapeError(error: unknown): boolean {
+  return error instanceof Error && /^Path escapes sandbox root \(/i.test(error.message);
+}
+
+async function assertSandboxPathWithinAnyRoot(params: {
+  filePath: string;
+  roots: readonly string[];
+}) {
+  let firstRootEscapeError: unknown;
+  const seen = new Set<string>();
+  for (const candidateRoot of params.roots) {
+    const trimmedRoot = candidateRoot.trim();
+    if (!trimmedRoot) {
+      continue;
+    }
+    const root = path.resolve(trimmedRoot);
+    if (seen.has(root)) {
+      continue;
+    }
+    seen.add(root);
+    try {
+      return await assertSandboxPath({
+        filePath: params.filePath,
+        cwd: root,
+        root,
+      });
+    } catch (error) {
+      if (!isSandboxRootEscapeError(error)) {
+        throw error;
+      }
+      firstRootEscapeError ??= error;
+    }
+  }
+  throw firstRootEscapeError ?? new Error("Path guard has no configured roots.");
+}
+
 const DEFAULT_MEMORY_DAY_FILE_PATTERN = /^memory\/\d{4}-\d{2}-\d{2}\.md$/;
 
 type MemoryDayFileWriteGuardOptions = {
@@ -702,6 +738,7 @@ export function wrapToolWorkspaceRootGuardWithOptions(
   tool: AnyAgentTool,
   root: string,
   options?: {
+    additionalRoots?: readonly string[];
     additionalContainerMounts?: readonly {
       containerRoot: string;
       hostRoot: string;
@@ -744,10 +781,11 @@ export function wrapToolWorkspaceRootGuardWithOptions(
             }
           }
         }
-        const sandboxResult = await assertSandboxPath({
+        const additionalRoots =
+          guardedRoot === root && !workspaceMapping.matched ? (options?.additionalRoots ?? []) : [];
+        const sandboxResult = await assertSandboxPathWithinAnyRoot({
           filePath: sandboxPath,
-          cwd: guardedRoot,
-          root: guardedRoot,
+          roots: [guardedRoot, ...additionalRoots],
         });
         if (options?.normalizeGuardedPathParams && record) {
           normalizedRecord ??= { ...record };
