@@ -1,9 +1,5 @@
 import crypto from "node:crypto";
-import {
-  clearAutoFallbackPrimaryProbeSelection,
-  hasSessionAutoModelFallbackProvenance,
-  type AutoFallbackPrimaryProbe,
-} from "../../agents/agent-scope.js";
+import { hasSessionAutoModelFallbackProvenance } from "../../agents/agent-scope.js";
 import { resolveSessionAuthProfileOverride } from "../../agents/auth-profiles/session-override.js";
 import type { ExecToolDefaults } from "../../agents/bash-tools.js";
 import { resolveFastModeState } from "../../agents/fast-mode.js";
@@ -358,7 +354,6 @@ type RunPreparedReplyParams = {
   hasAppliedImageModelOverride?: boolean;
   imageModelOverrideBaseProvider?: string;
   imageModelFallbacksOverride?: string[];
-  autoFallbackPrimaryProbe?: AutoFallbackPrimaryProbe;
 };
 
 export async function runPreparedReply(
@@ -924,17 +919,12 @@ export async function runPreparedReply(
         authProfileIdSource: preparedSessionState.sessionEntry?.authProfileOverrideSource,
       };
     }
-    const shouldUseEphemeralSession =
-      shouldResolveEphemeralAuthProfileForImageOverride() ||
-      params.autoFallbackPrimaryProbe !== undefined;
+    const shouldUseEphemeralSession = shouldResolveEphemeralAuthProfileForImageOverride();
     const authSessionKey = shouldUseEphemeralSession ? (sessionKey ?? sessionIdFinal) : sessionKey;
     const authSessionEntry =
       shouldUseEphemeralSession && preparedSessionState.sessionEntry
         ? { ...preparedSessionState.sessionEntry }
         : preparedSessionState.sessionEntry;
-    if (params.autoFallbackPrimaryProbe && authSessionEntry) {
-      clearAutoFallbackPrimaryProbeSelection(authSessionEntry);
-    }
     const authSessionStore =
       shouldUseEphemeralSession && authSessionEntry
         ? { [authSessionKey]: authSessionEntry }
@@ -1095,7 +1085,6 @@ export async function runPreparedReply(
       modelOverrideSource: runModelOverrideSource,
       hasAutoFallbackProvenance: runHasAutoFallbackProvenance || undefined,
       imageModelFallbacksOverride,
-      autoFallbackPrimaryProbe: params.autoFallbackPrimaryProbe,
       authProfileId,
       authProfileIdSource,
       thinkLevel: resolvedThinkLevel,
