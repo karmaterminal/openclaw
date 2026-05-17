@@ -1,3 +1,25 @@
+/**
+ * Spiderweb-T1: branch tests for `releaseQueuedCompactionCompletion`.
+ *
+ * This helper is the post-queued-compaction dispatcher invoked from the
+ * request_compaction async-resolution path at agent-runner-execution.ts:L2152.
+ * It owns incrementing the run-compaction count, refreshing the session entry,
+ * dispatching post-compaction delegates, and emitting the continuation-released
+ * span — a guardrail-class flow with zero prior test coverage on df502943c2.
+ *
+ * The four-branch table covered here:
+ *   1. compactionResult.ok === false               → early no-op
+ *   2. compactionResult.compacted === false        → early no-op
+ *   3. sessionKey / activeSessionStore missing     → logs `session-store-unavailable`, no-op
+ *   4. happy-path: increment → dispatch → span     → ordering + arg-passthrough
+ *   4b. sessionEntry resolves to undefined         → logs `session-entry-unavailable`, no-op
+ *
+ * Branches 1 & 2 are unreachable through the single call site at L2152 because
+ * that site already gates on `if (result.ok && result.compacted)`. They are
+ * defensive guards inside the helper. Testing them directly here means a future
+ * refactor that drops either guard breaks these tests, which is the spiderweb
+ * property the cohort asked for.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { FollowupRun } from "./queue.js";
@@ -7,6 +29,7 @@ const state = vi.hoisted(() => ({
   dispatchPostCompactionDelegatesMock: vi.fn(),
   emitContinuationCompactionReleasedSpanMock: vi.fn(),
   logVerboseMock: vi.fn(),
+  resolveSessionStoreEntryMock: vi.fn(),
 }));
 
 vi.mock("../../globals.js", () => ({
@@ -14,17 +37,7 @@ vi.mock("../../globals.js", () => ({
 }));
 
 vi.mock("../../config/sessions.js", () => ({
-  resolveSessionStoreEntry: ({
-    store,
-    sessionKey,
-  }: {
-    store: Record<string, SessionEntry>;
-    sessionKey: string;
-  }) => ({
-    existing: store[sessionKey],
-    legacyKeys: [],
-    normalizedKey: sessionKey,
-  }),
+  resolveSessionStoreEntry: (params: unknown) => state.resolveSessionStoreEntryMock(params),
 }));
 
 vi.mock("./session-run-accounting.js", () => ({
@@ -72,6 +85,14 @@ beforeEach(() => {
   state.dispatchPostCompactionDelegatesMock.mockReset();
   state.emitContinuationCompactionReleasedSpanMock.mockReset();
   state.logVerboseMock.mockReset();
+  state.resolveSessionStoreEntryMock.mockReset();
+  state.resolveSessionStoreEntryMock.mockImplementation(
+    ({ store, sessionKey }: { store: Record<string, SessionEntry>; sessionKey: string }) => ({
+      existing: store[sessionKey],
+      legacyKeys: [],
+      normalizedKey: sessionKey,
+    }),
+  );
 });
 
 describe("releaseQueuedCompactionCompletion", () => {
@@ -172,11 +193,25 @@ describe("releaseQueuedCompactionCompletion", () => {
     const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
     const activeSessionStore: Record<string, SessionEntry> = { main: sessionEntry };
     const followupRun = createFollowupRun();
+    const compactionId = 7;
 
-    state.incrementRunCompactionCountMock.mockResolvedValueOnce(7);
-    state.dispatchPostCompactionDelegatesMock.mockResolvedValueOnce({
-      queuedDelegates: 2,
-      droppedDelegates: 0,
+    const calls: string[] = [];
+    state.incrementRunCompactionCountMock.mockImplementation(async () => {
+      calls.push("increment");
+      return compactionId;
+    });
+    state.resolveSessionStoreEntryMock.mockImplementation(
+      ({ store, sessionKey }: { store: Record<string, SessionEntry>; sessionKey: string }) => {
+        calls.push("resolve");
+        return { existing: store[sessionKey], legacyKeys: [], normalizedKey: sessionKey };
+      },
+    );
+    state.dispatchPostCompactionDelegatesMock.mockImplementation(async () => {
+      calls.push("dispatch");
+      return { queuedDelegates: 2, droppedDelegates: 0 };
+    });
+    state.emitContinuationCompactionReleasedSpanMock.mockImplementation(() => {
+      calls.push("span");
     });
 
     await releaseQueuedCompactionCompletion({
@@ -216,7 +251,7 @@ describe("releaseQueuedCompactionCompletion", () => {
     expect(state.dispatchPostCompactionDelegatesMock).toHaveBeenCalledTimes(1);
     expect(state.dispatchPostCompactionDelegatesMock).toHaveBeenCalledWith({
       cfg: followupRun.run.config,
-      compactionCount: 7,
+      compactionCount: compactionId,
       followupRun,
       postCompactionDelegatesToPreserve: [],
       releaseTraceparent: VALID_TRACEPARENT,
@@ -234,11 +269,13 @@ describe("releaseQueuedCompactionCompletion", () => {
       log: (message: string) => void;
     };
     expect(spanArgs.releasedCount).toBe(2);
-    expect(spanArgs.compactionId).toBe(7);
+    expect(spanArgs.compactionId).toBe(compactionId);
     expect(spanArgs.traceparent).toBe(VALID_TRACEPARENT);
     expect(typeof spanArgs.log).toBe("function");
 
     spanArgs.log("[trace] released");
     expect(state.logVerboseMock).toHaveBeenCalledWith("[trace] released");
+
+    expect(calls).toEqual(["increment", "resolve", "dispatch", "span"]);
   });
 });
