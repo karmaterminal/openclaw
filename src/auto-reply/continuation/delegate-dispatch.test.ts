@@ -598,3 +598,149 @@ describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => 
     expect(mockFlows.get(queuedBefore[2])?.status).toBe("succeeded");
   });
 });
+
+describe("dispatchToolDelegates — nonexistent target session", () => {
+  it("passes a nonexistent targetSessionKey through to spawn without throwing", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
+    const sessionKey = "session-nonexistent-target";
+    enqueuePendingDelegate(sessionKey, {
+      task: "deliver to ghost",
+      mode: "silent-wake",
+      targetSessionKey: "agent:main:never-existed",
+    });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.dispatched).toBe(1);
+    expect(result.rejected).toBe(0);
+    expect(result.chainState.currentChainCount).toBe(1);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringContaining("deliver to ghost"),
+        silentAnnounce: true,
+        wakeOnReturn: true,
+        continuationTargetSessionKey: "agent:main:never-existed",
+      }),
+      expect.objectContaining({ agentSessionKey: sessionKey }),
+    );
+  });
+
+  it("passes nonexistent targetSessionKeys (plural) through to spawn", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
+    const sessionKey = "session-nonexistent-targets-plural";
+    enqueuePendingDelegate(sessionKey, {
+      task: "deliver to ghosts",
+      mode: "silent-wake",
+      targetSessionKeys: ["agent:main:ghost", "agent:main:phantom"],
+    });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.dispatched).toBe(1);
+    expect(result.rejected).toBe(0);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        continuationTargetSessionKeys: ["agent:main:ghost", "agent:main:phantom"],
+      }),
+      expect.objectContaining({ agentSessionKey: sessionKey }),
+    );
+  });
+
+  it("normalizes empty-string targetSessionKey away from spawn params", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
+    const sessionKey = "session-empty-target";
+    enqueuePendingDelegate(sessionKey, {
+      task: "deliver to empty",
+      targetSessionKey: "",
+    });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.dispatched).toBe(1);
+    expect(result.rejected).toBe(0);
+    const spawnParams = spawnSubagentDirectMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(spawnParams).not.toHaveProperty("continuationTargetSessionKey");
+  });
+
+  it("advances chain state correctly when targeting a nonexistent session", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
+    const sessionKey = "session-nonexistent-chain";
+    enqueuePendingDelegate(sessionKey, {
+      task: "chained ghost delivery",
+      targetSessionKey: "agent:main:stale-removed",
+    });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: {
+        currentChainCount: 3,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 500,
+      },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.chainState).toEqual({
+      currentChainCount: 4,
+      chainStartedAt: 1_700_000_000_000,
+      accumulatedChainTokens: 500,
+    });
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringContaining("[continuation:chain-hop:4]"),
+        continuationTargetSessionKey: "agent:main:stale-removed",
+      }),
+      expect.objectContaining({ agentSessionKey: sessionKey }),
+    );
+  });
+
+  it("marks the TaskFlow record succeeded for a nonexistent target (same as normal)", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { crossSessionTargeting: "enabled" } } },
+    });
+    const sessionKey = "session-nonexistent-taskflow";
+    enqueuePendingDelegate(sessionKey, {
+      task: "taskflow ghost",
+      targetSessionKey: "agent:main:never-existed",
+    });
+
+    const queuedBefore = [...mockFlows.values()].filter(
+      (f) => f.ownerKey === sessionKey && f.status === "queued",
+    );
+    expect(queuedBefore).toHaveLength(1);
+    const flowId = queuedBefore[0].flowId as string;
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(mockFlows.get(flowId)?.status).toBe("succeeded");
+  });
+});
