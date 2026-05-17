@@ -13,3 +13,26 @@ Session: cure11-cost-cap-boundary-claude (claude_session_*, model=opus)
 
 - 2026-05-17T16:08:00Z — lane initialized, branch + journal pushed first per remote-first canon. issue #694 filed, added to project 56. workorder file next.
 - 2026-05-17T16:10:53+00:00: workorder written, dispatching claude opus
+
+## §1 — Reads complete
+
+All 4 cost-cap enforcement sites confirmed using `>` (not `>=`):
+- `src/auto-reply/continuation/scheduler.ts:65` — `chainState.accumulatedChainTokens > config.costCapTokens`
+- `src/agents/subagent-announce.ts:988` — `parentChainTokens > costCapTokens`
+- `src/auto-reply/reply/agent-runner.ts:2476` — `accumulatedChainTokens > costCapTokens`
+- `src/auto-reply/reply/agent-runner.ts:3092` — `accumulatedChainTokens > costCapTokens`
+
+Contract: exactly-at-cap is ALLOWED; exceeding cap is REJECTED. No bug.
+
+## §2 — Plan
+
+Files to touch (test files only):
+1. `src/agents/subagent-announce.chain-guard.test.ts` — 2 tests after L248
+2. `src/auto-reply/continuation/scheduler.test.ts` — 2 tests after L64
+
+Test names:
+- allows continuation when accumulated tokens equal costCapTokens exactly (> not >=)
+- rejects continuation when accumulated tokens exceed costCapTokens by one
+(×2 — once in each file)
+
+scheduler.test.ts has a clean direct-call seam via `checkContinuationBudget()` — very low-touch.
