@@ -83,3 +83,40 @@ Gate receipts (all locally executed; crabbox wrapper attempted but unavailable, 
 Note on Gate 7 scope: Brief §3 offers full-suite OR focused. Per CLAUDE.md worktree guidance ("avoid direct local `pnpm test*`"), I ran focused via `node scripts/run-vitest.mjs` covering the new file PLUS the adjacent agent-runner-execution test file (the one that depends on the production file I exported from). This is the highest-leverage subset: it proves my new tests work AND that the `export` addition didn't break the file's other consumers. Broad/full-suite proof is a known gap and is acceptable per brief §3's OR clause; cure-(11) rebase will pick up broader Testbox proof.
 
 Proceeding to declare-done commit + push.
+
+## §8 — Declare-done (2026-05-17T16:07Z)
+
+**Final SHA**: `c7a60b716bdcbcf0dbc2b8ec8959052589fa8914`
+**Branch**: `silas/spiderweb/release-queued-compaction-completion-2026-05-17` (pushed)
+**Files touched** (3):
+
+- `src/auto-reply/reply/agent-runner-execution.release-queued-compaction.test.ts` (new, 5 test branches; oxfmt-formatted post-commit)
+- `src/auto-reply/reply/agent-runner-execution.ts` (single-keyword `export` addition at L149 per §3a-DB1)
+- `tmp-drop-me-spiderweb-rqcc.md` (journal §3a-c + §8)
+
+**Test count**: 5 (4 brief-required branches + 1 byte-walk sibling on `!sessionKey || !activeSessionStore` guard line)
+
+**Gate receipts** (all exit 0):
+| # | Gate | Outcome |
+|---|------|---------|
+| 1 | tsgo:core | exit 0; incremental cache, no diagnostics |
+| 2 | tsgo:test | exit 0; serialized behind oxlint lock, no diagnostics |
+| 3 | tsgo:extensions | exit 0; serialized behind tsgo:test lock, no diagnostics |
+| 4 | lint (oxlint sharded) | exit 0; oxlint:core 0w/0e on 8683 files, oxlint:extensions 0w/0e on 5385 files |
+| 5 | lint:extensions:bundled | exit 0; oxlint 0w/0e on 5389 files (pre-existing `[discord boundary dts]` stdout noise is non-fatal) |
+| 6 | test:extensions:package-boundary:compile | exit 0; 108 plugins compiled, boundary check passed |
+| 7 | vitest (focused: new file + adjacent agent-runner-execution.test.ts) | exit 0; **2 files, 114 tests passed, 7.37s** |
+
+**Open questions / known proof gaps**:
+
+1. **Full-suite vitest not run locally** — brief §3 explicitly offered focused-OR-full as alternatives; per CLAUDE.md worktree guidance, full local pnpm test is discouraged. Cure-(11) rebase + Crabbox will pick up broader proof. The focused proof covers the exact files most likely to regress.
+2. **Pre-existing `[discord boundary dts]` stdout warning in Gate 5** — pre-dates this lane (visible in the oxlint sub-script output but exit 0); unrelated to this lane's test-additions. Not blocking.
+3. **DESIGN-BREAK §3a-DB1 (`export` keyword)** — committed without cohort sign-off, as brief §5's policy was unclear on this edge. If unacceptable, the revert is a single-keyword Edit; the test file would then need adaptation (e.g., test through call site or rely on the dispatcher to grant the export). Heartbeat posted at §1 for visibility.
+
+**Discoverability snippet** (per brief §7):
+
+```bash
+git show origin/silas/spiderweb/release-queued-compaction-completion-2026-05-17:tmp-drop-me-spiderweb-rqcc.md | tail -60
+```
+
+Exiting cleanly. Not continuing to T-2/T-3 per brief §8.
