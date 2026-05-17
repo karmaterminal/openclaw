@@ -96,9 +96,9 @@ describe("scheduleWorkContinuation onFire-throws spiderweb", () => {
 
     const warns = loggerRecords.filter((r) => r.level === "warn");
     expect(warns.length).toBe(1);
-    expect(warns[0]!.message).toContain("[continuation:work-fire-failed]");
-    expect(warns[0]!.message).toContain(`session=${sessionKey}`);
-    expect(warns[0]!.message).toContain("disk write failed");
+    expect(warns[0].message).toContain("[continuation:work-fire-failed]");
+    expect(warns[0].message).toContain(`session=${sessionKey}`);
+    expect(warns[0].message).toContain("disk write failed");
   });
 
   it("emits warn-class log when onFire throws a non-Error value", async () => {
@@ -110,7 +110,6 @@ describe("scheduleWorkContinuation onFire-throws spiderweb", () => {
       config: baseConfig,
       sessionKey,
       onFire: () => {
-        // eslint-disable-next-line no-throw-literal
         throw "raw string rejection";
       },
     });
@@ -119,7 +118,7 @@ describe("scheduleWorkContinuation onFire-throws spiderweb", () => {
 
     const warns = loggerRecords.filter((r) => r.level === "warn");
     expect(warns.length).toBe(1);
-    expect(warns[0]!.message).toContain("raw string rejection");
+    expect(warns[0].message).toContain("raw string rejection");
   });
 
   it("passes workReason to onFire before throw", async () => {
@@ -198,6 +197,6 @@ describe("scheduleWorkContinuation onFire-throws spiderweb", () => {
     expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
     const warns = loggerRecords.filter((r) => r.level === "warn");
     expect(warns.length).toBe(1);
-    expect(warns[0]!.message).toContain("explodes after partial work");
+    expect(warns[0].message).toContain("explodes after partial work");
   });
 });
