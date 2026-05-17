@@ -11,3 +11,4 @@ Session: cure11-spiderweb-tests-claude (claude_session_*, model=opus)
 ## Checkpoints
 
 - 2026-05-17T15:50:00Z — lane initialized, branch + journal pushed first per remote-first canon. issue #693 filed, added to project 56. workorder file next.
+- 2026-05-17T15:52:13+00:00: workorder written, dispatching claude opus session
