@@ -19,8 +19,9 @@ import type { AssembleResult } from "../../../context-engine/types.js";
 import { emitTrustedDiagnosticEvent } from "../../../infra/diagnostic-events.js";
 import {
   createChildDiagnosticTraceContext,
-  createDiagnosticTraceContextFromActiveScope,
+  createDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
+  getActiveDiagnosticTraceContext,
 } from "../../../infra/diagnostic-trace-context.js";
 import { isEmbeddedMode } from "../../../infra/embedded-mode.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
@@ -1050,7 +1051,7 @@ export async function runEmbeddedAttempt(
     const activeContextEnginePluginId = resolveContextEngineOwnerPluginId(activeContextEngine);
     const agentDir = params.agentDir ?? resolveAgentDir(params.config ?? {}, sessionAgentId);
     const diagnosticTrace = freezeDiagnosticTraceContext(
-      createDiagnosticTraceContextFromActiveScope(),
+      getActiveDiagnosticTraceContext() ?? createDiagnosticTraceContext(),
     );
     const runTrace = freezeDiagnosticTraceContext(
       createChildDiagnosticTraceContext(diagnosticTrace),
@@ -1065,6 +1066,8 @@ export async function runEmbeddedAttempt(
       ...((params.messageChannel ?? params.messageProvider)
         ? { channel: params.messageChannel ?? params.messageProvider }
         : {}),
+      ...(params.fireReason ? { fireReason: params.fireReason } : {}),
+      ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
       trace: runTrace,
     };
     emitTrustedDiagnosticEvent({
@@ -1218,6 +1221,9 @@ export async function runEmbeddedAttempt(
             recordToolPrepStage: (name) => corePluginToolStages.mark(name),
             onToolOutcome: params.onToolOutcome,
             skillsSnapshot: skillsSnapshotForRun,
+            continueWorkOpts: params.continueWorkOpts,
+            requestCompactionOpts: params.requestCompactionOpts,
+            drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
             onYield: (message) => {
               yieldDetected = true;
               yieldMessage = message;
@@ -1747,6 +1753,7 @@ export async function runEmbeddedAttempt(
         bootstrapTruncationNotice,
         includeMemorySection: !activeContextEngine || activeContextEngine.info.id === "legacy",
         promptContribution,
+        continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
       },
       providerTransform: {
         provider: params.provider,
