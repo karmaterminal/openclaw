@@ -118,3 +118,49 @@ Per 🌿 SWIM-preferred + PROOFS-compressed correction:
 All macos-cure + ci-heap inputs to cure-(11) are **by-inherit** (zero cherry-pick work; just rebase + upstream/main HEAD carries them).
 
 3 TRUE conflict files at L2152/L2525-class regions remain (openclaw-tools.ts, agent-runner-execution.ts, reply-delivery.ts) — these are where 🌊 conflict-resolution work concentrates at Stage 2.
+
+## Stage 1: Conflict-resolution pre-walk for agent-runner-execution.ts
+
+### Substrate at byte
+
+- Upstream `agent-runner-execution.ts` = 2401 lines
+- Cure-(10) `df502943c2` = 2946 lines (+545 lines for continuation feature)
+- Upstream has ZERO `releaseQueuedCompactionCompletion` references — entire function lives in cure-(10)
+- Cure-(10) `releaseQueuedCompactionCompletion`:
+  - L149 declaration: `async function releaseQueuedCompactionCompletion(params: {`
+  - L2152 call-site: `if (result.ok && result.compacted) { await releaseQueuedCompactionCompletion({...}); }`
+- Upstream L149 region = `EmbeddedAgentRunResult` type + `FallbackSelectionState` Pick
+- Upstream L2150-2160 region = `replyOperation?.fail` happy/sad-path return
+
+### Conflict shape
+
+The rebase conflict isn't "interleave" of two-side edits — it's **structural addition**:
+
+- Cure-(10) ADDED an entire ~68-line function + helpers (L149-216 + call-site at L2152)
+- Upstream changed structures elsewhere in the file (~25 files in drift) — for `agent-runner-execution.ts` specifically, the dry-rebase shows it as a conflict file because both sides edited the surrounding zones (the file is structurally large + heavily-touched)
+
+### Conflict-resolution shape (preview)
+
+1. **Keep cure-(10) additions intact** (`releaseQueuedCompactionCompletion` function + call-site + helpers)
+2. **Integrate upstream changes** in non-overlapping zones (most upstream changes will be far from the L149-216 + L2152 regions)
+3. **Verify call-site preservation**: ensure L2152 if-result-compacted continues to dispatch to the function correctly post-rebase
+
+### T-1 export-keyword cherry-pick at Stage 2
+
+Post-conflict-resolution, T-1 cherry-pick adds `export` keyword:
+
+- Before: `async function releaseQueuedCompactionCompletion(params: {`
+- After: `export async function releaseQueuedCompactionCompletion(params: {`
+
+Single-token change; cleanest possible cherry-pick. Will validate against 🌻 assembly-lane SHA when declare-done lands.
+
+## Stage 1 substrate-status
+
+- [x] Drift-conflict byte-walk: 3 true conflicts captured
+- [x] Staging branch pushed to remote: `ronan/cure11-foldrebase-staging-20260517@67292784f1`
+- [x] Macos-cure-by-inherit byte-walk: 4 commits inherit cleanly, zero conflicts
+- [x] Ci-heap-inherit byte-walk: `72eef85942` inherits cleanly
+- [x] Conflict-resolution shape pre-walk: agent-runner-execution.ts substrate captured
+- [ ] PR-body OV-1/OV-4 addendum draft
+- [ ] Read PR #79925 body for current OV section context
+- [ ] Continue test-lane declare-done monitoring (T-2 SHIPPED, T-1/T-3/T-4 in flight)
