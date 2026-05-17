@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import {
-  resolveAutoFallbackPrimaryProbe,
   resolveAgentConfig,
   resolveAgentDir,
   resolveAgentWorkspaceDir,
@@ -15,6 +14,7 @@ import { type OpenClawConfig, getRuntimeConfig } from "../../config/config.js";
 import { logVerbose } from "../../globals.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { removeSystemEvents } from "../../infra/system-events.js";
 import { buildAgentHookContextChannelFields } from "../../plugins/hook-agent-context.js";
 import { defaultRuntime } from "../../runtime.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
@@ -27,6 +27,7 @@ import type { ReplyPayload } from "../reply-payload.js";
 import type { MsgContext } from "../templating.js";
 import { normalizeVerboseLevel } from "../thinking.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
+import { cancelContinuationTimer } from "./agent-runner.js";
 import { resolveDefaultModel } from "./directive-handling.defaults.js";
 import { clearInlineDirectives } from "./get-reply-directives-utils.js";
 import { resolveReplyDirectives } from "./get-reply-directives.js";
@@ -45,7 +46,7 @@ import { runPreparedReply } from "./get-reply-run.js";
 import { finalizeInboundContext } from "./inbound-context.js";
 import { hasInboundMedia } from "./inbound-media.js";
 import { emitPreAgentMessageHooks } from "./message-preprocess-hooks.js";
-import { createFastTestModelSelectionState, createModelSelectionState } from "./model-selection.js";
+import { createFastTestModelSelectionState } from "./model-selection.js";
 import { sanitizePendingFinalDeliveryText } from "./pending-final-delivery.js";
 import { initSessionState } from "./session.js";
 import {
@@ -560,18 +561,6 @@ export async function getReplyFromConfig(
     provider = storedModelOverride.provider ?? defaultProvider;
     model = storedModelOverride.model;
   }
-  const canApplyAutoFallbackPrimaryProbe =
-    !hasResolvedHeartbeatModelOverride &&
-    !hasAppliedImageModelOverride &&
-    !staleHeartbeatAutoFallbackOverride;
-  const autoFallbackPrimaryProbe = canApplyAutoFallbackPrimaryProbe
-    ? resolveAutoFallbackPrimaryProbe({
-        entry: sessionEntry,
-        sessionKey,
-        primaryProvider,
-        primaryModel,
-      })
-    : undefined;
   const hasEffectiveSessionModelOverride =
     hasSessionModelOverride && !staleHeartbeatAutoFallbackOverride;
   if (
@@ -655,11 +644,11 @@ export async function getReplyFromConfig(
         resolvedBlockStreamingBreak: "text_end",
         modelState: createFastTestModelSelectionState({
           agentCfg,
-          provider: autoFallbackPrimaryProbe?.provider ?? provider,
-          model: autoFallbackPrimaryProbe?.model ?? model,
+          provider,
+          model,
         }),
-        provider: autoFallbackPrimaryProbe?.provider ?? provider,
-        model: autoFallbackPrimaryProbe?.model ?? model,
+        provider,
+        model,
         perMessageQueueMode: undefined,
         perMessageQueueOptions: undefined,
         typing,
@@ -680,7 +669,6 @@ export async function getReplyFromConfig(
         hasAppliedImageModelOverride,
         imageModelOverrideBaseProvider,
         imageModelFallbacksOverride,
-        autoFallbackPrimaryProbe,
       }),
     );
   }
@@ -719,6 +707,12 @@ export async function getReplyFromConfig(
     }),
   );
   if (directiveResult.kind === "reply") {
+    // Directive-handled replies bypass runReplyAgent — cancel pending timers,
+    // reset chain metadata, and drain stale wake events.
+    if (sessionKey && !opts?.isHeartbeat) {
+      cancelContinuationTimer(sessionKey, { sessionEntry, sessionStore, storePath });
+      removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
+    }
     return directiveResult.reply;
   }
 
@@ -818,6 +812,13 @@ export async function getReplyFromConfig(
     }),
   );
   if (inlineActionResult.kind === "reply") {
+    // Inline actions (slash commands, status, etc.) bypass runReplyAgent but
+    // represent real user input — cancel timers, reset chain metadata, drain
+    // stale wake events.
+    if (sessionKey && !opts?.isHeartbeat) {
+      cancelContinuationTimer(sessionKey, { sessionEntry, sessionStore, storePath });
+      removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
+    }
     await maybeEmitMissingResetHooks();
     return inlineActionResult.reply;
   }
@@ -825,62 +826,6 @@ export async function getReplyFromConfig(
   directives = inlineActionResult.directives;
   cleanedBody = inlineActionResult.cleanedBody;
   abortedLastRun = inlineActionResult.abortedLastRun ?? abortedLastRun;
-  const runAutoFallbackPrimaryProbe = directives.hasModelDirective
-    ? undefined
-    : autoFallbackPrimaryProbe;
-  const runProvider = runAutoFallbackPrimaryProbe?.provider ?? provider;
-  const runModel = runAutoFallbackPrimaryProbe?.model ?? model;
-  let runModelState = modelState;
-  if (runAutoFallbackPrimaryProbe) {
-    runModelState = await createModelSelectionState({
-      cfg,
-      agentId,
-      agentCfg,
-      sessionEntry,
-      sessionStore,
-      sessionKey,
-      parentSessionKey:
-        sessionEntry.parentSessionKey ??
-        sessionCtx.ModelParentSessionKey ??
-        sessionCtx.ParentSessionKey,
-      storePath,
-      defaultProvider,
-      defaultModel,
-      primaryProvider,
-      primaryModel,
-      provider: runProvider,
-      model: runModel,
-      hasModelDirective: false,
-      hasOneTurnModelOverride: hasAppliedImageModelOverride,
-      skipStoredModelOverride: true,
-      hasResolvedHeartbeatModelOverride,
-      isHeartbeat: opts?.isHeartbeat === true,
-    });
-    const hasExplicitThinkLevel =
-      resolvedOpts?.thinkingLevelOverride !== undefined ||
-      directives.thinkLevel !== undefined ||
-      (!directives.clearThinkLevel && sessionEntry.thinkingLevel !== undefined) ||
-      agentCfg?.thinkingDefault !== undefined;
-    if (!hasExplicitThinkLevel) {
-      resolvedThinkLevel = await runModelState.resolveDefaultThinkingLevel();
-    }
-    const agentEntry = resolveAgentConfig(cfg, agentId);
-    const rawSessionReasoningLevel = sessionEntry.reasoningLevel;
-    const canUseReasoningState =
-      command.isAuthorizedSender ||
-      command.senderIsOwner ||
-      (Array.isArray(ctx.GatewayClientScopes) &&
-        ctx.GatewayClientScopes.includes("operator.admin"));
-    const hasExplicitReasoningLevel =
-      directives.reasoningLevel !== undefined ||
-      (rawSessionReasoningLevel != null && canUseReasoningState) ||
-      (rawSessionReasoningLevel != null && !canUseReasoningState) ||
-      agentEntry?.reasoningDefault != null ||
-      agentCfg?.reasoningDefault != null;
-    if (!hasExplicitReasoningLevel && resolvedThinkLevel === "off") {
-      resolvedReasoningLevel = await runModelState.resolveDefaultReasoningLevel();
-    }
-  }
 
   // Allow plugins to intercept and return a synthetic reply before the LLM runs.
   if (!useFastTestBootstrap) {
@@ -958,9 +903,9 @@ export async function getReplyFromConfig(
       blockStreamingEnabled,
       blockReplyChunking,
       resolvedBlockStreamingBreak,
-      modelState: runModelState,
-      provider: runProvider,
-      model: runModel,
+      modelState,
+      provider,
+      model,
       perMessageQueueMode,
       perMessageQueueOptions,
       typing,
@@ -981,7 +926,6 @@ export async function getReplyFromConfig(
       hasAppliedImageModelOverride,
       imageModelOverrideBaseProvider,
       imageModelFallbacksOverride,
-      autoFallbackPrimaryProbe: runAutoFallbackPrimaryProbe,
     }),
   );
 }
