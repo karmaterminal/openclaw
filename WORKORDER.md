@@ -107,23 +107,24 @@ Post to `karmaterminal/openclaw#697`:
 
 Use `gh issue comment 697 --repo karmaterminal/openclaw --body "..."`.
 
-## §7 webhook heartbeat
+## §7 webhook heartbeat (passive-inform shape)
 
-Resolve webhook from prince pocket:
+Webhook URL (already resolved from `karmaterminal/ronans-undertow` pocket-blob):
 
-```bash
-gh -R karmaterminal/ronans-undertow variable get WEBHOOK_SCRIBE_NOTIFY 2>/dev/null
+```
+https://discord.com/api/webhooks/1499941022996627556/4hW6CJqu_NsPZVRoEQq5WsnbUPb-o_Fn3GugzvQX-3OddnnArsIDGgoVdSPdN3gaNX2G
 ```
 
-If the var exists, fire a one-line heartbeat at each of the 5 checkpoints. Override `username` to `ronan-spiderweb-nonexistent-target-hook`. Format:
+Fire a one-line heartbeat at each of the 5 checkpoints. Override `username` to `ronan-spiderweb-nonexistent-target-hook`. Format:
 
 ```bash
+WEBHOOK_URL="https://discord.com/api/webhooks/1499941022996627556/4hW6CJqu_NsPZVRoEQq5WsnbUPb-o_Fn3GugzvQX-3OddnnArsIDGgoVdSPdN3gaNX2G"
 curl -sS -X POST -H "Content-Type: application/json" \
   -d "{\"username\":\"ronan-spiderweb-nonexistent-target-hook\",\"content\":\"🤖 spiderweb-nonexistent-target: <checkpoint>\"}" \
   "$WEBHOOK_URL"
 ```
 
-If webhook unavailable, use issue-comments only; cohort can watch the issue.
+This is the passive-inform substrate — your channel-visibility companion to journal+issue checkpoints. Cohort gets live progress without polling git/issue.
 
 ## §8 DECLARE-DONE format
 
