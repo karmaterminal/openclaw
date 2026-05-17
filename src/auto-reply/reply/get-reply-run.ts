@@ -1,9 +1,5 @@
 import crypto from "node:crypto";
-import {
-  clearAutoFallbackPrimaryProbeSelection,
-  hasSessionAutoModelFallbackProvenance,
-  type AutoFallbackPrimaryProbe,
-} from "../../agents/agent-scope.js";
+import { hasSessionAutoModelFallbackProvenance } from "../../agents/agent-scope.js";
 import { resolveSessionAuthProfileOverride } from "../../agents/auth-profiles/session-override.js";
 import type { ExecToolDefaults } from "../../agents/bash-tools.js";
 import { resolveFastModeState } from "../../agents/fast-mode.js";
@@ -358,7 +354,6 @@ type RunPreparedReplyParams = {
   hasAppliedImageModelOverride?: boolean;
   imageModelOverrideBaseProvider?: string;
   imageModelFallbacksOverride?: string[];
-  autoFallbackPrimaryProbe?: AutoFallbackPrimaryProbe;
 };
 
 export async function runPreparedReply(
@@ -466,6 +461,9 @@ export async function runPreparedReply(
     promptSessionCtx.ChatType === "group" || promptSessionCtx.ChatType === "channel";
   const isDirectChat = promptSessionCtx.ChatType === "direct" || promptSessionCtx.ChatType === "dm";
   const wasMentioned = ctx.WasMentioned === true;
+  const continuationTrigger = opts?.continuationTrigger;
+  const isDelegateWake = continuationTrigger === "delegate-return";
+  const isContinuationWake = continuationTrigger === "work-wake" || isDelegateWake;
   const { typingPolicy, suppressTyping } = resolveRunTypingPolicy({
     requestedPolicy: opts?.typingPolicy,
     suppressTyping: opts?.suppressTyping === true,
@@ -921,17 +919,12 @@ export async function runPreparedReply(
         authProfileIdSource: preparedSessionState.sessionEntry?.authProfileOverrideSource,
       };
     }
-    const shouldUseEphemeralSession =
-      shouldResolveEphemeralAuthProfileForImageOverride() ||
-      params.autoFallbackPrimaryProbe !== undefined;
+    const shouldUseEphemeralSession = shouldResolveEphemeralAuthProfileForImageOverride();
     const authSessionKey = shouldUseEphemeralSession ? (sessionKey ?? sessionIdFinal) : sessionKey;
     const authSessionEntry =
       shouldUseEphemeralSession && preparedSessionState.sessionEntry
         ? { ...preparedSessionState.sessionEntry }
         : preparedSessionState.sessionEntry;
-    if (params.autoFallbackPrimaryProbe && authSessionEntry) {
-      clearAutoFallbackPrimaryProbeSelection(authSessionEntry);
-    }
     const authSessionStore =
       shouldUseEphemeralSession && authSessionEntry
         ? { [authSessionKey]: authSessionEntry }
@@ -1092,7 +1085,6 @@ export async function runPreparedReply(
       modelOverrideSource: runModelOverrideSource,
       hasAutoFallbackProvenance: runHasAutoFallbackProvenance || undefined,
       imageModelFallbacksOverride,
-      autoFallbackPrimaryProbe: params.autoFallbackPrimaryProbe,
       authProfileId,
       authProfileIdSource,
       thinkLevel: resolvedThinkLevel,
@@ -1187,5 +1179,6 @@ export async function runPreparedReply(
     typingMode,
     resetTriggered: effectiveResetTriggered,
     replyThreadingOverride,
+    isContinuationWake,
   });
 }
