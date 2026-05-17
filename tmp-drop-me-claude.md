@@ -11,3 +11,4 @@ Session: cure11-onfire-throws-claude
 ## Checkpoints
 
 - 2026-05-17T16:33:00Z — lane init, issue #699 filed + project 56, branch + journal pushed first.
+- 2026-05-17T16:31:30+00:00: workorder written, dispatching
