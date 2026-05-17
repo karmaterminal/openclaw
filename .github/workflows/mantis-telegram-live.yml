@@ -139,9 +139,14 @@ jobs:
             }
 
             const normalized = body.toLowerCase();
+            const desktopProofRequested =
+              normalized.includes("telegram") &&
+              normalized.includes("desktop") &&
+              normalized.includes("proof");
             const requested =
               (normalized.includes("@openclaw-mantis") || normalized.includes("/openclaw-mantis")) &&
-              normalized.includes("telegram");
+              normalized.includes("telegram") &&
+              !desktopProofRequested;
             if (!requested) {
               core.notice("Comment mentioned Mantis but did not request Telegram live QA.");
               setOutput("should_run", "false");

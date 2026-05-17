@@ -155,7 +155,7 @@ export type StagedPostCompactionDelegate = {
  */
 export type ContinueWorkRequest = {
   reason: string;
-  delaySeconds: number;
+  delaySeconds?: number;
   traceparent?: string;
 };
 

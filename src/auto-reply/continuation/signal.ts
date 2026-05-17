@@ -129,7 +129,9 @@ export function extractContinuationSignal(params: {
     (continueWorkRequest
       ? {
           kind: "work" as const,
-          delayMs: continueWorkRequest.delaySeconds * 1000,
+          ...(continueWorkRequest.delaySeconds !== undefined
+            ? { delayMs: continueWorkRequest.delaySeconds * 1000 }
+            : {}),
           ...(continueWorkRequest.traceparent
             ? { traceparent: continueWorkRequest.traceparent }
             : {}),

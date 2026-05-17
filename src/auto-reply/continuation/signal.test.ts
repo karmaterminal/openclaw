@@ -44,6 +44,18 @@ describe("extractContinuationSignal", () => {
     expect(result.workReason).toBe("more to do");
   });
 
+  it("preserves omitted continue_work delay so the runner can apply the configured default", () => {
+    const result = extractContinuationSignal({
+      payloads: [{ text: "Normal reply." }],
+      continueWorkRequest: { reason: "more to do" },
+      enabled: true,
+    });
+
+    expect(result.signal).toEqual({ kind: "work" });
+    expect(result.fromBracket).toBe(false);
+    expect(result.workReason).toBe("more to do");
+  });
+
   it("handles absent tool-call traceparent without adding a carrier", () => {
     const result = extractContinuationSignal({
       payloads: [{ text: "Normal reply." }],

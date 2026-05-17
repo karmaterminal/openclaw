@@ -1,4 +1,8 @@
 import { Type } from "typebox";
+import {
+  clampDelayMs,
+  resolveContinuationRuntimeConfig,
+} from "../../auto-reply/continuation/config.js";
 import type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
 import { formatActiveContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import {
@@ -23,8 +27,8 @@ const ContinueWorkToolSchema = Type.Object({
     Type.Number({
       minimum: 0,
       description:
-        "Seconds to wait before the next turn fires. 0 or omitted = immediate. " +
-        "Clamped to continuation.minDelayMs / maxDelayMs from config.",
+        "Seconds to wait before the next turn fires. Omit to use the configured default delay. " +
+        "Set 0 to request the earliest allowed wake. The runtime clamps to continuation.minDelayMs / maxDelayMs.",
     }),
   ),
   traceparent: Type.Optional(
@@ -66,7 +70,12 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       if (parsedDelaySeconds !== undefined && parsedDelaySeconds < 0) {
         throw new ToolInputError("delaySeconds must be a non-negative number.");
       }
-      const delaySeconds = parsedDelaySeconds ?? 0;
+      const requestedDelaySeconds = parsedDelaySeconds;
+      const effectiveDelayMs = clampDelayMs(
+        requestedDelaySeconds !== undefined ? requestedDelaySeconds * 1000 : undefined,
+        resolveContinuationRuntimeConfig(),
+      );
+      const effectiveDelaySeconds = effectiveDelayMs / 1000;
       const traceparentRaw = readStringParam(params, "traceparent");
       const explicitTraceparent =
         traceparentRaw !== undefined ? normalizeDiagnosticTraceparent(traceparentRaw) : undefined;
@@ -77,17 +86,18 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       const traceContextFields = traceparent ? { traceparent } : {};
 
       log.debug(
-        `[continue_work:request] session=${sessionKey} delaySeconds=${delaySeconds} reason=${reason.slice(0, 80)}`,
+        `[continue_work:request] session=${sessionKey} requestedDelaySeconds=${requestedDelaySeconds ?? "default"} effectiveDelaySeconds=${effectiveDelaySeconds} reason=${reason.slice(0, 80)}`,
       );
       opts.requestContinuation({
         reason,
-        delaySeconds,
+        ...(requestedDelaySeconds !== undefined ? { delaySeconds: requestedDelaySeconds } : {}),
         ...traceContextFields,
       });
 
       return jsonResult({
         status: "scheduled",
-        delaySeconds,
+        delaySeconds: effectiveDelaySeconds,
+        ...(requestedDelaySeconds !== undefined ? { requestedDelaySeconds } : {}),
         ...traceContextFields,
       });
     },

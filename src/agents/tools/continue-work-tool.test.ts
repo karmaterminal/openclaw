@@ -14,6 +14,26 @@ import {
   runWithDiagnosticTraceContext,
   type DiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
+vi.mock("../../auto-reply/continuation/config.js", () => ({
+  resolveContinuationRuntimeConfig: () => ({
+    enabled: true,
+    defaultDelayMs: 15_000,
+    minDelayMs: 5_000,
+    maxDelayMs: 300_000,
+    maxChainLength: 10,
+    costCapTokens: 500_000,
+    maxDelegatesPerTurn: 5,
+    crossSessionTargeting: "disabled",
+    earlyWarningBand: 0.3125,
+  }),
+  clampDelayMs: (
+    rawMs: number | undefined,
+    config: { defaultDelayMs: number; minDelayMs: number; maxDelayMs: number },
+  ) => {
+    const requested = rawMs ?? config.defaultDelayMs;
+    return Math.max(config.minDelayMs, Math.min(config.maxDelayMs, requested));
+  },
+}));
 import { createContinueWorkTool, type ContinueWorkRequest } from "./continue-work-tool.js";
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
@@ -76,7 +96,7 @@ describe("continue_work tool", () => {
     });
   }
 
-  it("schedules another turn with the default delay and forwards the reason", async () => {
+  it("schedules another turn with the configured default delay and forwards the reason", async () => {
     const requestContinuation = vi.fn();
     const tool = makeTool({ requestContinuation });
 
@@ -88,11 +108,10 @@ describe("continue_work tool", () => {
 
     expect(requestContinuation).toHaveBeenCalledWith({
       reason: "Need one more turn to finish the summary.",
-      delaySeconds: 0,
     });
     expect(result).toEqual({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 15,
     });
   });
 
@@ -108,11 +127,10 @@ describe("continue_work tool", () => {
 
     expect(requestContinuation).toHaveBeenCalledWith({
       reason: "Continue without a traced parent.",
-      delaySeconds: 0,
     });
     expect(result).toEqual({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 15,
     });
     expect(result).not.toHaveProperty("traceparent");
   });
@@ -135,6 +153,29 @@ describe("continue_work tool", () => {
     expect(result).toEqual({
       status: "scheduled",
       delaySeconds: 15,
+      requestedDelaySeconds: 15,
+    });
+  });
+
+  it("reports the clamped floor when 0 requests the earliest allowed wake", async () => {
+    const requestContinuation = vi.fn();
+    const tool = makeTool({ requestContinuation });
+
+    const result = (
+      await tool.execute("call-delay-zero", {
+        reason: "Wake me as soon as policy allows.",
+        delaySeconds: 0,
+      })
+    )?.details as Record<string, unknown>;
+
+    expect(requestContinuation).toHaveBeenCalledWith({
+      reason: "Wake me as soon as policy allows.",
+      delaySeconds: 0,
+    });
+    expect(result).toEqual({
+      status: "scheduled",
+      delaySeconds: 5,
+      requestedDelaySeconds: 0,
     });
   });
 
@@ -156,6 +197,7 @@ describe("continue_work tool", () => {
     expect(result).toEqual({
       status: "scheduled",
       delaySeconds: 5,
+      requestedDelaySeconds: 5,
     });
   });
 
@@ -166,7 +208,7 @@ describe("continue_work tool", () => {
       emitContinuationWorkSpan({
         chainId: "019dcf57-b536-77cc-834b-b803d9262032",
         chainStepRemaining: 1,
-        delayMs: request.delaySeconds * 1000,
+        delayMs: (request.delaySeconds ?? 15) * 1000,
         reason: request.reason,
         traceparent: request.traceparent,
       });
@@ -182,12 +224,11 @@ describe("continue_work tool", () => {
 
     expect(requestContinuation).toHaveBeenCalledWith({
       reason: "Continue a traced chain.",
-      delaySeconds: 0,
       traceparent: VALID_TRACEPARENT,
     });
     expect(result).toMatchObject({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 15,
       traceparent: VALID_TRACEPARENT,
     });
     expect(spans).toHaveLength(1);
@@ -213,12 +254,11 @@ describe("continue_work tool", () => {
 
     expect(requestContinuation).toHaveBeenCalledWith({
       reason: "Continue with the active trace.",
-      delaySeconds: 0,
       traceparent: ACTIVE_TRACEPARENT,
     });
     expect(result).toMatchObject({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 15,
       traceparent: ACTIVE_TRACEPARENT,
     });
   });
@@ -238,12 +278,11 @@ describe("continue_work tool", () => {
 
     expect(requestContinuation).toHaveBeenCalledWith({
       reason: "Continue with explicit trace context.",
-      delaySeconds: 0,
       traceparent: VALID_TRACEPARENT,
     });
     expect(result).toMatchObject({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 15,
       traceparent: VALID_TRACEPARENT,
     });
   });
