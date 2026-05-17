@@ -11,3 +11,4 @@ Session: cure11-nonexistent-target-claude
 ## Checkpoints
 
 - 2026-05-17T16:25:00Z — lane init, branch + journal pushed first, issue #695 filed + project 56.
+- 2026-05-17T16:26:12+00:00: workorder written, dispatching
