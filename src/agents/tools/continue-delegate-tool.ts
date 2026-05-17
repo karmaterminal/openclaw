@@ -214,8 +214,9 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       if (delegatesThisTurn >= maxPerTurn) {
         const queueDepths = getContinuationDelegateQueueDepths(sessionKey);
         return jsonResult({
-          status: "error",
-          reason: `maxDelegatesPerTurn exceeded (${maxPerTurn}). Cannot schedule more delegates in this turn.`,
+          status: "rejected",
+          guard: "maxDelegatesPerTurn",
+          reason: `would exceed maxDelegatesPerTurn cap (${delegatesThisTurn}/${maxPerTurn} already scheduled this turn)`,
           delegatesThisTurn,
           limit: maxPerTurn,
           queuedDelegateDepth: queueDepths.totalQueued,

@@ -65,9 +65,14 @@ describe("continue_delegate tool", () => {
 
     const overflow = await executeTool(tool, 10, { task: "delegate 11" });
     expect(overflow).toMatchObject({
-      status: "error",
+      status: "rejected",
+      guard: "maxDelegatesPerTurn",
       limit: 10,
+      delegatesThisTurn: 10,
     });
+    expect(overflow.reason).toBe(
+      "would exceed maxDelegatesPerTurn cap (10/10 already scheduled this turn)",
+    );
   });
 
   it("re-reads maxDelegatesPerTurn on each call", async () => {
@@ -89,9 +94,14 @@ describe("continue_delegate tool", () => {
 
     const overflow = await executeTool(tool, 5, { task: "delegate 6" });
     expect(overflow).toMatchObject({
-      status: "error",
+      status: "rejected",
+      guard: "maxDelegatesPerTurn",
       limit: 5,
+      delegatesThisTurn: 5,
     });
+    expect(overflow.reason).toBe(
+      "would exceed maxDelegatesPerTurn cap (5/5 already scheduled this turn)",
+    );
   });
 
   it("uses the runtime default of 5 when maxDelegatesPerTurn is unset", async () => {
@@ -106,9 +116,14 @@ describe("continue_delegate tool", () => {
 
     const overflow = await executeTool(tool, 5, { task: "delegate 6" });
     expect(overflow).toMatchObject({
-      status: "error",
+      status: "rejected",
+      guard: "maxDelegatesPerTurn",
       limit: 5,
+      delegatesThisTurn: 5,
     });
+    expect(overflow.reason).toBe(
+      "would exceed maxDelegatesPerTurn cap (5/5 already scheduled this turn)",
+    );
   });
 
   it("does not let far-future queued delegates consume a fresh turn budget", async () => {
@@ -132,7 +147,8 @@ describe("continue_delegate tool", () => {
     await expect(
       executeTool(firstTurnTool, 2, { task: "same-turn overflow" }),
     ).resolves.toMatchObject({
-      status: "error",
+      status: "rejected",
+      guard: "maxDelegatesPerTurn",
       delegatesThisTurn: 2,
       limit: 2,
       pendingQueuedDelegates: 2,
