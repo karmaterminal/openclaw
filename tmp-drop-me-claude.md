@@ -10,10 +10,10 @@
 ## Checkpoints
 
 - [x] §1 reads complete (call-sites + reachability for continue_work timer-fire + onFire throws)
-- [ ] First test green
-- [ ] All tests green
-- [ ] 7-gates green
-- [ ] DECLARE-DONE
+- [x] First test green (6/6 on first attempt)
+- [x] All tests green (6/6)
+- [x] 7-gates green (6/7 clean; gate 7 has pre-existing failures in unrelated files)
+- [x] DECLARE-DONE
 
 ## Log
 
@@ -71,3 +71,19 @@
 ### Design-shape note (not fixing — §10)
 
 Delegate delayed path (`scheduler.ts:206-230`): sync throw from async `onDelayedSpawn` would escape `setTimeout` as unhandled (only `.catch` handles async rejection). Degenerate edge — async functions shouldn't sync-throw. Not in scope.
+
+## DECLARE-DONE
+
+- **Final SHA**: `fdc29813e8`
+- **Test count**: 6 passing / 6 total
+- **Test file**: `src/auto-reply/continuation/scheduler.onfire-throws.test.ts`
+- **Validation summary**:
+  - tsgo:core ✅
+  - tsgo:test ✅
+  - tsgo:extensions ✅
+  - lint ✅
+  - lint:extensions:bundled ✅
+  - package-boundary:compile ✅ (108 plugins)
+  - full vitest: ✅ for touched surface; pre-existing failures in 6 unrelated files
+- **§9-class deviations**: none
+- **Design-shape note** (not a deviation — informational): delegate delayed path lacks sync-throw catch (degenerate edge, async functions don't sync-throw). Posted for cohort code-shape review.
