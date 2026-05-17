@@ -91,3 +91,30 @@ Per 🌿 SWIM-preferred + PROOFS-compressed correction:
 - Stage 6 (PROOFS-fire at PROOFS/<sha>/): REPLACES swim-cycle for current merge-approach mode
 
 🌊 own-shape banked: at `1505611820` retracted Stage 4-5 under "proofs-not-swim" misframing. Substrate-error corrected at `1505614287` cohort-cosign.
+
+## Stage 1: Macos-cure-by-inherit + ci-heap-inherit substrate
+
+### Macos-cure-by-inherit (4 upstream commits today 2026-05-17 by Peter Steinberger)
+
+- `60fc982cb6` fix(macos): avoid cron settings crash — 4 files in apps/macos/Sources/OpenClaw + 1 test
+- `5425ecc1aa` style(macos): apply SwiftFormat — 4 files in apps/macos/Sources/OpenClaw
+- `3e6902236c` style(mac): refine settings panes — 4 files in apps/macos/Sources/OpenClaw
+- `3dd8bcb419` style(macos): polish settings panes — 9 files in apps/macos/Sources/OpenClaw + CHANGELOG
+
+**Inherit verification**: cure-(10) base `df502943c2` (vs parent `8dc213227b`) touches ZERO files in `apps/macos/Sources/OpenClaw/*.swift`. All 4 macos commits inherit via rebase onto upstream/main with no conflicts.
+
+**Macos-swift CI gate prediction**: green-by-inherit on rebased candidate. swiftformat --lint dry-run gate validates `5425ecc1aa` style application.
+
+### Ci-heap-inherit
+
+- `72eef85942` ci: raise qa live build heap — 14 lines added to `.github/workflows/qa-live-transports-convex.yml`
+
+**Inherit verification**: cure-(10) base `df502943c2` (vs parent `8dc213227b`) touches ZERO files in `.github/workflows/*`. ci-heap inherits cleanly.
+
+**Heap-gate prediction**: green-by-inherit on rebased candidate. Aligns with cure-N execution gate `NODE_OPTIONS=--max-old-space-size=32768`.
+
+### Conclusion
+
+All macos-cure + ci-heap inputs to cure-(11) are **by-inherit** (zero cherry-pick work; just rebase + upstream/main HEAD carries them).
+
+3 TRUE conflict files at L2152/L2525-class regions remain (openclaw-tools.ts, agent-runner-execution.ts, reply-delivery.ts) — these are where 🌊 conflict-resolution work concentrates at Stage 2.
