@@ -246,6 +246,37 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
 
     expect(spawnSpy).not.toHaveBeenCalled();
   });
+
+  it("allows continuation when accumulated tokens equal costCapTokens exactly (> not >=)", async () => {
+    writeSessionStore({
+      "agent:main:discord:dm:test-chain": {
+        sessionId: "test",
+        updatedAt: Date.now(),
+        continuationChainTokens: 500_000,
+      },
+    });
+
+    const params = buildChainShardParams(1);
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects continuation when accumulated tokens exceed costCapTokens by one", async () => {
+    writeSessionStore({
+      "agent:main:discord:dm:test-chain": {
+        sessionId: "test",
+        updatedAt: Date.now(),
+        continuationChainTokens: 500_001,
+      },
+    });
+
+    const params = buildChainShardParams(1);
+    await runSubagentAnnounceFlow(params);
+
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

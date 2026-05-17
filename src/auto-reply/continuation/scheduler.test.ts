@@ -63,6 +63,26 @@ describe("checkContinuationBudget", () => {
     ).toBe("cost-capped");
   });
 
+  it("allows continuation when accumulated tokens equal costCapTokens exactly (> not >=)", () => {
+    expect(
+      checkContinuationBudget({
+        chainState: { currentChainCount: 0, chainStartedAt: 0, accumulatedChainTokens: 500_000 },
+        config: baseConfig,
+        sessionKey: "test",
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects continuation when accumulated tokens exceed costCapTokens by one", () => {
+    expect(
+      checkContinuationBudget({
+        chainState: { currentChainCount: 0, chainStartedAt: 0, accumulatedChainTokens: 500_001 },
+        config: baseConfig,
+        sessionKey: "test",
+      }),
+    ).toBe("cost-capped");
+  });
+
   it("does not cost-cap when costCapTokens is 0 (unlimited)", () => {
     expect(
       checkContinuationBudget({
