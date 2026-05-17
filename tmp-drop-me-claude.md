@@ -12,3 +12,4 @@ Session: cure11-cost-cap-boundary-claude (claude_session_*, model=opus)
 ## Checkpoints
 
 - 2026-05-17T16:08:00Z — lane initialized, branch + journal pushed first per remote-first canon. issue #694 filed, added to project 56. workorder file next.
+- 2026-05-17T16:10:53+00:00: workorder written, dispatching claude opus
