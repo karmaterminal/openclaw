@@ -53,3 +53,41 @@ Per 🌿 `1505613384`: PROOFS-mode (not SWIM-mode). PR #1004 admin-merged at `16
 - figs: completeness `1505606638`, dispatch-by-default `1505608122`, passive-inform `1505608512`, fork-pristine-main `1505607845`, coordination-at-remote `1505612678` + `1505612773`, proofs-not-swim `1504536257`
 - 🌿: canon corrections `1505611076` `1505611174` `1505613384` `1505613593` `1505613851`
 - 🌫 banked TOOLS.md driver-disambiguation + PROOFS-not-SWIM `1505613567`, scope-correction `1505613565`
+
+## Substrate-resolution: PROOFS-dir + canon-mode
+
+Per 🌿 `1505614287`: SWIM is preferred; PROOFS is compressed-rapid for merge-approach + upstream-proofs-at-SHA-requirement. Currently in PROOFS-mode.
+
+**PROOFS-dir LIVES** at `karmaterminal/karmaterminal-openclaw-docs/PROOFS/<sha>/` (public-evidence-presentation repo for upstream-maintainer byte-walk).
+
+Cure-(10) precedent at `PROOFS/df502943c2/` — 8 rows:
+
+- `R-CD-1` — continuation-dispatch
+- `R-CW-1` / `R-CW-2` — continue-work
+- `R-LSTC-1` — livesession hot-reload
+- `R-RC-1` / `R-RC-2` — request-compaction
+- `R-RDT-1` — traceparent propagation
+- `R-SDPP-1` — skill-dispatch policy pipeline
+
+Per-row format: `R-<TYPE>-N.md` + `tempo-fetch.json` + `traceparent.txt`
+
+**Discipline** (per figs `1505460056`-area):
+
+- whole-corpus, no partials
+- tempo-trace-fetch (real trace data, not journal-only, not agent prose)
+- no skipped test cases
+
+**Cure-(11) PROOFS rows projection** (Stage 6 cohort-distributed):
+
+- Inherit cure-(10) 8 rows minimum (re-verify on new candidate-SHA)
+- Add rows for new substrate where relevant (e.g., 4 P0 spiderweb test additions if substrate-relevant; may not need new rows since they're test-additions to existing surfaces)
+
+## Re-instated Stage 4-5 substrate (corrected per 🌿 `1505614287`)
+
+Per 🌿 SWIM-preferred + PROOFS-compressed correction:
+
+- Stage 4 (canary smoke 10min): RE-INSTATED (pre-PROOFS discipline)
+- Stage 5 (fleet-roll to remaining 3 princes via deploy-gateway.yml): RE-INSTATED (pre-PROOFS discipline)
+- Stage 6 (PROOFS-fire at PROOFS/<sha>/): REPLACES swim-cycle for current merge-approach mode
+
+🌊 own-shape banked: at `1505611820` retracted Stage 4-5 under "proofs-not-swim" misframing. Substrate-error corrected at `1505614287` cohort-cosign.
