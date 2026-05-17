@@ -164,3 +164,35 @@ Single-token change; cleanest possible cherry-pick. Will validate against 🌻 a
 - [ ] PR-body OV-1/OV-4 addendum draft
 - [ ] Read PR #79925 body for current OV section context
 - [ ] Continue test-lane declare-done monitoring (T-2 SHIPPED, T-1/T-3/T-4 in flight)
+
+## T-3 nonexistent-target Pattern G byte-walk (2-of-3 lanes shipped)
+
+### #697 🌊 (opus-4-6, claude*session*\*) @ `f4b1ff6cb0`
+
+- 342 lines test in `subagent-announce-delivery.cross-session-targeting.nonexistent-target.test.ts`
+- ADDITIONAL 146 lines test in `src/auto-reply/continuation/delegate-dispatch.test.ts` — second test file
+- WORKORDER.md (166 lines) + tmp-drop-me-claude.md (122 lines) — strip at fold
+
+### #696 🌫 (opus-4-7) @ `20f5eeca1f`
+
+- 290 lines test in `subagent-announce-delivery.nonexistent-target-session-delivery.race.test.ts`
+- brief.md (97 lines) — strip at fold
+
+### Substrate-divergence
+
+- Different filename shapes (cross-session-targeting vs race)
+- #697 covers 2 surfaces (cross-session delivery + delegate-dispatch path)
+- #696 covers 1 surface (nonexistent-target race contract)
+- 488 test-lines (#697) vs 290 test-lines (#696)
+- Likely UNION-class fold-input, not pick-one-winner
+
+### Fold decision substrate
+
+Need byte-walk of actual test-contents at fold-time to determine:
+
+- Coverage overlap (which test-cases are duplicates between #696 + #697)
+- Coverage union (which test-cases are unique to each lane)
+- Filename canonicalization (which name lands in cure-(11) final)
+- Strip-list for non-test artifacts (WORKORDER.md, brief.md, tmp-drop-me-claude.md, journal-files)
+
+Pattern G value validated at byte: different agents independently produced different test-shapes against same substrate. Union likely captures both architectural-finding cosigns (🌊 #697 §1 fire-and-forget) AND race-contract coverage (🌫 #696).
