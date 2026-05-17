@@ -146,7 +146,7 @@ const GPT_CHAT_BREVITY_SOFT_MAX_SENTENCES = 6;
 const BLOCKED_LIVENESS_NOTICE_TEXT =
   "⚠️ Agent liveness: blocked. The run cannot make progress; try again or start a fresh conversation if this repeats.";
 
-async function releaseQueuedCompactionCompletion(params: {
+export async function releaseQueuedCompactionCompletion(params: {
   activeSessionStore?: Record<string, SessionEntry>;
   compactionResult: EmbeddedPiCompactResult;
   followupRun: FollowupRun;
