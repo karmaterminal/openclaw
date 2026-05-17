@@ -1,4 +1,8 @@
 import { Type } from "typebox";
+import {
+  clampDelayMs,
+  resolveContinuationRuntimeConfig,
+} from "../../auto-reply/continuation/config.js";
 import type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
 import { formatActiveContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import {
@@ -85,9 +89,20 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
         ...traceContextFields,
       });
 
+      // Report the resolved delay (post-clamp) so the model knows when its
+      // next turn will actually fire, not just the raw input value.
+      const continuationConfig = resolveContinuationRuntimeConfig();
+      const resolvedDelayMs = clampDelayMs(delaySeconds * 1000, continuationConfig);
+      const resolvedDelaySeconds = Math.round(resolvedDelayMs / 1000);
+
       return jsonResult({
         status: "scheduled",
-        delaySeconds,
+        delaySeconds: resolvedDelaySeconds,
+        ...(resolvedDelaySeconds !== delaySeconds
+          ? {
+              note: `Requested ${delaySeconds}s, clamped to ${resolvedDelaySeconds}s by continuation config.`,
+            }
+          : {}),
         ...traceContextFields,
       });
     },

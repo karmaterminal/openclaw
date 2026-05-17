@@ -132,7 +132,7 @@ function expectInteractiveApprovalButtons(
   result: Record<string, unknown>,
   expectedButtons: readonly Record<string, unknown>[],
 ) {
-  expect(requireNestedRecord(result, "interactive payload", ["interactive"])).toEqual({
+  expect(requireNestedRecord(result, "presentation payload", ["presentation"])).toEqual({
     blocks: [{ type: "buttons", buttons: expectedButtons }],
   });
 }

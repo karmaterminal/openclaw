@@ -16,6 +16,25 @@ import {
 } from "../../infra/diagnostic-trace-context.js";
 import { createContinueWorkTool, type ContinueWorkRequest } from "./continue-work-tool.js";
 
+// Mock continuation config for deterministic delay resolution in tests.
+vi.mock("../../auto-reply/continuation/config.js", () => ({
+  resolveContinuationRuntimeConfig: () => ({
+    defaultDelayMs: 15_000,
+    minDelayMs: 5_000,
+    maxDelayMs: 300_000,
+    maxChainLength: 10,
+    costCapTokens: 500_000,
+    maxDelegatesPerTurn: 5,
+  }),
+  clampDelayMs: (
+    rawMs: number | undefined,
+    config: { defaultDelayMs: number; minDelayMs: number; maxDelayMs: number },
+  ) => {
+    const requested = rawMs ?? config.defaultDelayMs;
+    return Math.max(config.minDelayMs, Math.min(config.maxDelayMs, requested));
+  },
+}));
+
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
 const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
@@ -92,7 +111,8 @@ describe("continue_work tool", () => {
     });
     expect(result).toEqual({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 5,
+      note: "Requested 0s, clamped to 5s by continuation config.",
     });
   });
 
@@ -112,7 +132,8 @@ describe("continue_work tool", () => {
     });
     expect(result).toEqual({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 5,
+      note: "Requested 0s, clamped to 5s by continuation config.",
     });
     expect(result).not.toHaveProperty("traceparent");
   });
@@ -187,7 +208,8 @@ describe("continue_work tool", () => {
     });
     expect(result).toMatchObject({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 5,
+      note: "Requested 0s, clamped to 5s by continuation config.",
       traceparent: VALID_TRACEPARENT,
     });
     expect(spans).toHaveLength(1);
@@ -218,7 +240,8 @@ describe("continue_work tool", () => {
     });
     expect(result).toMatchObject({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 5,
+      note: "Requested 0s, clamped to 5s by continuation config.",
       traceparent: ACTIVE_TRACEPARENT,
     });
   });
@@ -243,7 +266,8 @@ describe("continue_work tool", () => {
     });
     expect(result).toMatchObject({
       status: "scheduled",
-      delaySeconds: 0,
+      delaySeconds: 5,
+      note: "Requested 0s, clamped to 5s by continuation config.",
       traceparent: VALID_TRACEPARENT,
     });
   });
