@@ -117,12 +117,14 @@ async function withSymlinkedSessionPaths(
 
 async function expectActiveInProcessLockIsNotReclaimed(params?: {
   legacyStarttime?: unknown;
+  createdAt?: string;
+  staleMs?: number;
 }): Promise<void> {
   await withTempSessionLockFile(async ({ sessionFile, lockPath }) => {
     const lock = await acquireSessionWriteLock({ sessionFile, timeoutMs: 500 });
     const lockPayload = {
       pid: process.pid,
-      createdAt: new Date().toISOString(),
+      createdAt: params?.createdAt ?? new Date().toISOString(),
       ...(params && "legacyStarttime" in params ? { starttime: params.legacyStarttime } : {}),
     };
     await fs.writeFile(lockPath, JSON.stringify(lockPayload), "utf8");
@@ -131,6 +133,7 @@ async function expectActiveInProcessLockIsNotReclaimed(params?: {
       acquireSessionWriteLock({
         sessionFile,
         timeoutMs: 5,
+        ...(params?.staleMs === undefined ? {} : { staleMs: params.staleMs }),
         allowReentrant: false,
       }),
     ).rejects.toThrow(/session file locked/);
@@ -839,6 +842,13 @@ describe("acquireSessionWriteLock", () => {
   it("does not reclaim active in-process lock files with matching starttime", async () => {
     pinCurrentProcessStartTimeForTest();
     await expectActiveInProcessLockIsNotReclaimed({ legacyStarttime: FAKE_STARTTIME });
+  });
+
+  it("does not reclaim active in-process lock files even when payload age exceeds stale policy", async () => {
+    await expectActiveInProcessLockIsNotReclaimed({
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+      staleMs: 1,
+    });
   });
 
   it("registers cleanup for SIGQUIT and SIGABRT", () => {

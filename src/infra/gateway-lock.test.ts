@@ -138,7 +138,7 @@ function createPortProbeConnectionSpy(result: "connect" | "refused") {
   return vi.spyOn(net, "createConnection").mockImplementation(() => {
     const socket = new EventEmitter() as net.Socket;
     socket.destroy = vi.fn();
-    setImmediate(() => {
+    queueMicrotask(() => {
       if (result === "connect") {
         socket.emit("connect");
         return;

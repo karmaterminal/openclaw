@@ -608,6 +608,13 @@ function inspectLockPayloadForSession(params: {
   readOwnerProcessArgs: SessionLockOwnerProcessArgsReader;
 }): LockInspectionDetails {
   const inspected = inspectLockPayload(params.payload, params.staleMs, params.nowMs);
+  if (params.heldByThisProcess) {
+    return {
+      ...inspected,
+      stale: false,
+      staleReasons: [],
+    };
+  }
   if (
     shouldTreatAsOrphanSelfLock({
       payload: params.payload,
