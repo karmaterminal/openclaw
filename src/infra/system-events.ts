@@ -13,15 +13,28 @@ import {
   normalizeDeliveryContext,
 } from "../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
+import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 
 export type SystemEvent = {
   text: string;
   ts: number;
   contextKey?: string | null;
   deliveryContext?: DeliveryContext;
+  sessionDeliveryAckId?: string;
+  sessionDeliveryAckStateDir?: string;
   forceSenderIsOwnerFalse?: boolean;
   /** @deprecated Use forceSenderIsOwnerFalse. Kept for installed plugin compatibility. */
   trusted?: boolean;
+  /**
+   * W3C `traceparent` captured at enqueue-time so the substrate-queue drain can
+   * reconstruct the producer trace at announce/deliver time. Per RFC §6.7 the
+   * substrate queue is an asynchronous boundary (enqueue turn != drain turn,
+   * possibly across a gateway restart), so trace context rides on the payload
+   * itself rather than on a runtime ambient. Optional and additive — invalid
+   * traceparent values are silently dropped at enqueue-time so producers never
+   * fail-the-write on a malformed header.
+   */
+  traceparent?: string;
 };
 
 const MAX_EVENTS = 20;
@@ -43,10 +56,22 @@ type SystemEventOptions = {
   sessionKey: string;
   contextKey?: string | null;
   deliveryContext?: DeliveryContext;
+  sessionDeliveryAckId?: string;
+  sessionDeliveryAckStateDir?: string;
   forceSenderIsOwnerFalse?: boolean;
   /** @deprecated Use forceSenderIsOwnerFalse. Kept for installed plugin compatibility. */
   trusted?: boolean;
+  /**
+   * Optional W3C `traceparent` to attach to the queued event for cross-boundary
+   * trace correlation. Invalid values are silently dropped (additive contract:
+   * a malformed traceparent never prevents an enqueue).
+   */
+  traceparent?: string;
 };
+
+function normalizeTraceparent(traceparent?: string): string | undefined {
+  return normalizeDiagnosticTraceparent(traceparent);
+}
 
 function requireSessionKey(key?: string | null): string {
   const trimmed = normalizeOptionalString(key) ?? "";
@@ -153,14 +178,20 @@ export function enqueueSystemEvent(text: string, options: SystemEventOptions) {
     )
   ) {
     return false;
-  }
+  } // skip consecutive duplicates
+  const normalizedTraceparent = normalizeTraceparent(options?.traceparent);
   applyContextKeyPolicy(entry, normalizedContextKey);
   entry.queue.push({
     text: cleaned,
     ts: Date.now(),
     contextKey: normalizedContextKey,
     deliveryContext: normalizedDeliveryContext,
+    ...(options.sessionDeliveryAckId ? { sessionDeliveryAckId: options.sessionDeliveryAckId } : {}),
+    ...(options.sessionDeliveryAckStateDir
+      ? { sessionDeliveryAckStateDir: options.sessionDeliveryAckStateDir }
+      : {}),
     forceSenderIsOwnerFalse,
+    ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
   });
   if (entry.queue.length > MAX_EVENTS) {
     entry.queue.shift();
@@ -217,7 +248,10 @@ function areSystemEventsEqual(left: QueuedSystemEvent, right: SystemEvent): bool
     left.text === right.text &&
     left.ts === right.ts &&
     (left.contextKey ?? null) === (right.contextKey ?? null) &&
+    left.sessionDeliveryAckId === right.sessionDeliveryAckId &&
+    left.sessionDeliveryAckStateDir === right.sessionDeliveryAckStateDir &&
     left.forceSenderIsOwnerFalse === resolveEventOwnerDowngrade(right) &&
+    (left.traceparent ?? undefined) === (right.traceparent ?? undefined) &&
     areDeliveryContextsEqual(left.deliveryContext, right.deliveryContext)
   );
 }
@@ -284,6 +318,37 @@ export function consumeSelectedSystemEventEntries(
 
 export function drainSystemEvents(sessionKey: string): string[] {
   return drainSystemEventEntries(sessionKey).map((event) => event.text);
+}
+
+/**
+ * Remove system events matching a predicate without draining the entire queue.
+ * Returns the removed events; non-matching events stay queued.
+ */
+export function removeSystemEvents(
+  sessionKey: string,
+  predicate: (event: SystemEvent) => boolean,
+): SystemEvent[] {
+  const key = requireSessionKey(sessionKey);
+  const entry = queues.get(key);
+  if (!entry || entry.queue.length === 0) {
+    return [];
+  }
+  const removed: SystemEvent[] = [];
+  entry.queue = entry.queue.filter((event) => {
+    if (predicate(event)) {
+      removed.push(event);
+      return false;
+    }
+    return true;
+  });
+  if (entry.queue.length === 0) {
+    queues.delete(key);
+  } else if (removed.length > 0) {
+    // Reset dedup state to reflect actual queue contents.
+    const last = entry.queue[entry.queue.length - 1];
+    entry.lastContextKey = last.contextKey ?? null;
+  }
+  return removed;
 }
 
 export function peekSystemEventEntries(sessionKey: string): SystemEvent[] {
