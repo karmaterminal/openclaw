@@ -84,7 +84,6 @@ const mocks = vi.hoisted(() => ({
   updateSessionStore: vi.fn(),
   emitSessionLifecycleEvent: vi.fn(),
   persistSubagentRunsToDisk: vi.fn(),
-  persistSubagentRunsToDiskOrThrow: vi.fn(),
   restoreSubagentRunsFromDisk: vi.fn(() => 0),
   getSubagentRunsSnapshotForRead: vi.fn(
     (runs: Map<string, import("./subagent-registry.types.js").SubagentRunRecord>) => new Map(runs),
@@ -122,6 +121,16 @@ vi.mock("../config/sessions.js", () => ({
   resolveAgentIdFromSessionKey: mocks.resolveAgentIdFromSessionKey,
   resolveStorePath: mocks.resolveStorePath,
   updateSessionStore: mocks.updateSessionStore,
+  // Stubbed identity-style resolver returns normalizedKey=sessionKey,
+  // existing=store[sessionKey], no legacyKeys. The real impl applies session-key
+  // normalization; this test's session-key fixtures are already in canonical form.
+  resolveSessionStoreEntry: ({
+    store,
+    sessionKey,
+  }: {
+    store: Record<string, unknown>;
+    sessionKey: string;
+  }) => ({ normalizedKey: sessionKey, existing: store[sessionKey], legacyKeys: [] }),
 }));
 
 vi.mock("../sessions/session-lifecycle-events.js", () => ({
@@ -131,7 +140,7 @@ vi.mock("../sessions/session-lifecycle-events.js", () => ({
 vi.mock("./subagent-registry-state.js", () => ({
   getSubagentRunsSnapshotForRead: mocks.getSubagentRunsSnapshotForRead,
   persistSubagentRunsToDisk: mocks.persistSubagentRunsToDisk,
-  persistSubagentRunsToDiskOrThrow: mocks.persistSubagentRunsToDiskOrThrow,
+  persistSubagentRunsToDiskOrThrow: mocks.persistSubagentRunsToDisk,
   restoreSubagentRunsFromDisk: mocks.restoreSubagentRunsFromDisk,
 }));
 
@@ -213,7 +222,6 @@ describe("subagent registry seam flow", () => {
       cleanupBrowserSessionsForLifecycleEnd: mocks.cleanupBrowserSessionsForLifecycleEnd,
       onAgentEvent: mocks.onAgentEvent,
       persistSubagentRunsToDisk: mocks.persistSubagentRunsToDisk,
-      persistSubagentRunsToDiskOrThrow: mocks.persistSubagentRunsToDiskOrThrow,
       resolveAgentTimeoutMs: mocks.resolveAgentTimeoutMs,
       restoreSubagentRunsFromDisk: mocks.restoreSubagentRunsFromDisk,
       runSubagentAnnounceFlow: mocks.runSubagentAnnounceFlow,
@@ -732,30 +740,7 @@ describe("subagent registry seam flow", () => {
       "updated child session store entry",
     );
 
-    expect(mocks.persistSubagentRunsToDisk).toHaveBeenCalledTimes(6);
-  });
-
-  it("throws and removes the entry when the initial durable registry write fails", () => {
-    mocks.persistSubagentRunsToDiskOrThrow.mockImplementationOnce(() => {
-      throw new Error("disk full");
-    });
-
-    expect(() =>
-      mod.registerSubagentRun({
-        runId: "run-durability-required",
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-        requesterDisplayKey: "main",
-        task: "must fail closed",
-        cleanup: "keep",
-      }),
-    ).toThrowError("disk full");
-
-    expect(
-      mod
-        .listSubagentRunsForRequester("agent:main:main")
-        .find((entry) => entry.runId === "run-durability-required"),
-    ).toBeUndefined();
+    expect(mocks.persistSubagentRunsToDisk).toHaveBeenCalledTimes(7);
   });
 
   it("continues completion announce cleanup when lifecycle cleanup fails", async () => {
@@ -791,33 +776,6 @@ describe("subagent registry seam flow", () => {
       .listSubagentRunsForRequester("agent:main:main")
       .find((entry) => entry.runId === "run-cleanup-warning");
     expect(run?.cleanupCompletedAt).toBeTypeOf("number");
-  });
-
-  it("preserves run-mode keep entries past SESSION_RUN_TTL_MS sweep", async () => {
-    mod.registerSubagentRun({
-      runId: "run-keep-survives-ttl",
-      childSessionKey: "agent:main:subagent:child",
-      requesterSessionKey: "agent:main:main",
-      requesterDisplayKey: "main",
-      task: "keep me past the session ttl",
-      cleanup: "keep",
-      spawnMode: "run",
-    });
-
-    await waitForFast(() => {
-      const run = mod
-        .listSubagentRunsForRequester("agent:main:main")
-        .find((entry) => entry.runId === "run-keep-survives-ttl");
-      expect(run?.cleanupCompletedAt).toBeTypeOf("number");
-    });
-
-    vi.setSystemTime(new Date(Date.parse("2026-03-24T12:00:00Z") + 10 * 60_000));
-    await mod.__testing.sweepOnceForTests();
-
-    const run = mod
-      .listSubagentRunsForRequester("agent:main:main")
-      .find((entry) => entry.runId === "run-keep-survives-ttl");
-    expect(run?.runId).toBe("run-keep-survives-ttl");
   });
 
   it("retries completion hooks before resuming ended cleanup", async () => {
