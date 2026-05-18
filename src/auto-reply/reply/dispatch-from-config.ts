@@ -1043,7 +1043,7 @@ export async function dispatchReplyFromConfig(
     const shouldSendVerboseProgressMessages =
       !isSlackNonDirectSurface && (ctx.ChatType !== "group" || ctx.IsForum === true);
     const shouldSendToolSummaries = shouldSendVerboseProgressMessages;
-    const shouldSendToolStartStatuses = false;
+    const shouldSendToolStartStatuses = shouldSendVerboseProgressMessages;
     const shouldDeliverVerboseProgressDespiteSourceSuppression = () =>
       suppressAutomaticSourceDelivery &&
       sourceReplyDeliveryMode === "message_tool_only" &&
