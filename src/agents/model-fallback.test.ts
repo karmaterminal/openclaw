@@ -1622,7 +1622,7 @@ describe("runWithModelFallback", () => {
     ]);
   });
 
-  it("defaults provider/model when missing (regression #946)", () => {
+  it("defaults provider/model when missing", async () => {
     const cfg = makeCfg({
       agents: {
         defaults: {

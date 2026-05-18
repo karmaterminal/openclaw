@@ -50,10 +50,10 @@ import {
   markSubagentRunPausedAfterYield,
   type RegisterSubagentRunParams,
 } from "./subagent-registry-run-manager.js";
+import { configureSubagentRegistrySpawnRuntime } from "./subagent-registry-spawn-runtime.js";
 import {
   getSubagentRunsSnapshotForRead,
   persistSubagentRunsToDisk,
-  persistSubagentRunsToDiskOrThrow,
   restoreSubagentRunsFromDisk,
 } from "./subagent-registry-state.js";
 import { configureSubagentRegistrySteerRuntime } from "./subagent-registry-steer-runtime.js";
@@ -91,7 +91,6 @@ type SubagentRegistryDeps = {
   getRuntimeConfig: typeof getRuntimeConfig;
   onAgentEvent: typeof onAgentEvent;
   persistSubagentRunsToDisk: typeof persistSubagentRunsToDisk;
-  persistSubagentRunsToDiskOrThrow: typeof persistSubagentRunsToDiskOrThrow;
   resolveAgentTimeoutMs: typeof resolveAgentTimeoutMs;
   restoreSubagentRunsFromDisk: typeof restoreSubagentRunsFromDisk;
   runSubagentAnnounceFlow: SubagentAnnounceModule["runSubagentAnnounceFlow"];
@@ -130,7 +129,6 @@ const defaultSubagentRegistryDeps: SubagentRegistryDeps = {
   getRuntimeConfig,
   onAgentEvent,
   persistSubagentRunsToDisk,
-  persistSubagentRunsToDiskOrThrow,
   resolveAgentTimeoutMs,
   restoreSubagentRunsFromDisk,
   runSubagentAnnounceFlow: async (params) =>
@@ -250,10 +248,6 @@ async function resolveSubagentRegistryContextEngine(
 
 function persistSubagentRuns() {
   subagentRegistryDeps.persistSubagentRunsToDisk(subagentRuns);
-}
-
-function persistSubagentRunsOrThrow() {
-  subagentRegistryDeps.persistSubagentRunsToDiskOrThrow(subagentRuns);
 }
 
 export function scheduleSubagentOrphanRecovery(params?: { delayMs?: number; maxRetries?: number }) {
@@ -870,9 +864,8 @@ async function sweepSubagentRuns() {
         }
       }
 
-      if (!entry.archiveAtMs && entry.cleanup === "keep" && entry.spawnMode !== "session") {
-        continue;
-      }
+      // Session-mode runs have no archiveAtMs — apply absolute TTL after cleanup completes.
+      // Use cleanupCompletedAt (not endedAt) to avoid interrupting deferred cleanup flows.
       if (!entry.archiveAtMs) {
         if (
           typeof entry.cleanupCompletedAt === "number" &&
@@ -1033,7 +1026,6 @@ const subagentRunManager = createSubagentRunManager({
   resumedRuns,
   endedHookInFlightRunIds,
   persist: persistSubagentRuns,
-  persistOrThrow: persistSubagentRunsOrThrow,
   callGateway: (request) => subagentRegistryDeps.callGateway(request),
   getRuntimeConfig: () => subagentRegistryDeps.getRuntimeConfig(),
   ensureRuntimePluginsLoaded: (args: {
@@ -1057,6 +1049,11 @@ const subagentRunManager = createSubagentRunManager({
 configureSubagentRegistrySteerRuntime({
   replaceSubagentRunAfterSteer: (params) => subagentRunManager.replaceSubagentRunAfterSteer(params),
   finalizeInterruptedSubagentRun: async (params) => await finalizeInterruptedSubagentRun(params),
+});
+configureSubagentRegistrySpawnRuntime({
+  countActiveRunsForSession: (requesterSessionKey) =>
+    countActiveRunsForSession(requesterSessionKey),
+  registerSubagentRun: (params) => registerSubagentRun(params),
 });
 
 export function markSubagentRunForSteerRestart(runId: string) {
