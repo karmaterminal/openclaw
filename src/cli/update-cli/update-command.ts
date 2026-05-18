@@ -2789,9 +2789,8 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       postCoreConfigSnapshot,
       preUpdateSourceConfig,
     );
-    const parentPluginInstallRecords = await readPostCorePluginInstallRecordsFile(
-      postCoreInstallRecordsPath,
-    );
+    const parentPluginInstallRecords =
+      await readPostCorePluginInstallRecordsFile(postCoreInstallRecordsPath);
     // The updated doctor may have repaired plugin installs before this fresh process resumed.
     const currentPluginInstallRecords = await loadInstalledPluginIndexInstallRecords();
     const pluginInstallRecords =
