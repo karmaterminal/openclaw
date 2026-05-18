@@ -94,24 +94,6 @@ const CODEX_PROMPT_TOTAL_INPUT_KEYS = [
 
 const MAX_TOOL_OUTPUT_DELTA_MESSAGES_PER_ITEM = 20;
 const TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS = 12_000;
-const TRANSCRIPT_PROGRESS_SUPPRESSED_TOOL_NAMES = new Set([
-  "message",
-  "messages",
-  "reply",
-  "send",
-  "reaction",
-  "react",
-  "typing",
-]);
-
-export function shouldEmitTranscriptToolProgress(toolName: unknown, args?: unknown): boolean {
-  const normalized = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
-  return Boolean(
-    normalized &&
-    !TRANSCRIPT_PROGRESS_SUPPRESSED_TOOL_NAMES.has(normalized) &&
-    !isActivityLogCommandProgress(normalized, args),
-  );
-}
 
 type ToolTranscriptCallInput = {
   id: string;
@@ -140,18 +122,15 @@ export class CodexAppServerEventProjector {
   private readonly toolResultSummaryItemIds = new Set<string>();
   private readonly toolResultOutputItemIds = new Set<string>();
   private readonly toolResultOutputStreamedItemIds = new Set<string>();
-  private readonly transcriptToolProgressSuppressedIds = new Set<string>();
-  private readonly toolTranscriptArgumentsById = new Map<string, unknown>();
+  private readonly toolResultOutputTextByItem = new Map<string, string>();
   private readonly toolResultOutputDeltaState = new Map<
     string,
     { chars: number; messages: number; truncated: boolean }
   >();
-  private readonly toolResultOutputTextByItem = new Map<string, string>();
   private readonly toolMetas = new Map<string, { toolName: string; meta?: string }>();
   private readonly toolTranscriptMessages: AgentMessage[] = [];
   private readonly toolTranscriptCallIds = new Set<string>();
   private readonly toolTranscriptResultIds = new Set<string>();
-  private readonly transcriptToolProgressCallIds = new Set<string>();
   private readonly nativeGeneratedMediaUrls = new Set<string>();
   private readonly diagnosticToolStartedAtByItem = new Map<string, number>();
   private readonly afterToolCallObservedItemIds = new Set<string>();
@@ -714,12 +693,6 @@ export class CodexAppServerEventProjector {
     if (!this.shouldEmitToolOutput()) {
       return;
     }
-    if (
-      this.transcriptToolProgressSuppressedIds.has(itemId) ||
-      !shouldEmitTranscriptToolProgress(toolName, this.toolTranscriptArgumentsById.get(itemId))
-    ) {
-      return;
-    }
     const state = this.toolResultOutputDeltaState.get(itemId) ?? {
       chars: 0,
       messages: 0,
@@ -905,17 +878,11 @@ export class CodexAppServerEventProjector {
     if (!name) {
       return;
     }
+    const meta = itemMeta(item, this.toolProgressDetailMode());
+    const args = params.phase === "start" ? itemToolArgs(item) : undefined;
     const status = params.phase === "result" ? itemStatus(item) : "running";
-    const args = itemToolArgs(item);
     this.recordToolTrajectoryEvent({ phase: params.phase, item, name, args, status });
     this.emitDiagnosticToolExecutionEvent({ phase: params.phase, item, name, status });
-    if (!shouldEmitTranscriptToolProgress(name, args)) {
-      if (params.phase === "result") {
-        this.emitAfterToolCallObservation(item);
-      }
-      return;
-    }
-    const meta = itemMeta(item, this.toolProgressDetailMode());
     this.emitAgentEvent({
       stream: "tool",
       data: {
@@ -924,7 +891,7 @@ export class CodexAppServerEventProjector {
         itemId: item.id,
         toolCallId: item.id,
         ...(meta ? { meta } : {}),
-        ...(params.phase === "start" && args ? { args } : {}),
+        ...(args ? { args } : {}),
         ...(params.phase === "result"
           ? {
               status,
@@ -1079,9 +1046,6 @@ export class CodexAppServerEventProjector {
     if (!toolName) {
       return;
     }
-    if (!shouldEmitTranscriptToolProgress(toolName, itemToolArgs(item))) {
-      return;
-    }
     this.toolResultSummaryItemIds.add(itemId);
     const meta = itemMeta(item, this.toolProgressDetailMode());
     this.emitToolResultMessage({
@@ -1104,9 +1068,6 @@ export class CodexAppServerEventProjector {
     const toolName = itemName(item);
     const output = itemOutputText(item, this.toolResultOutputTextByItem);
     if (!toolName || !output) {
-      return;
-    }
-    if (!shouldEmitTranscriptToolProgress(toolName, itemToolArgs(item))) {
       return;
     }
     this.emitToolResultMessage({
@@ -1205,13 +1166,6 @@ export class CodexAppServerEventProjector {
       return;
     }
     this.toolTranscriptCallIds.add(params.id);
-    this.toolTranscriptArgumentsById.set(params.id, params.arguments);
-    if (!shouldEmitTranscriptToolProgress(params.name, params.arguments)) {
-      this.transcriptToolProgressSuppressedIds.add(params.id);
-    } else {
-      this.transcriptToolProgressSuppressedIds.delete(params.id);
-    }
-    this.emitTranscriptToolCallProgress(params);
     this.toolTranscriptMessages.push(
       attachCodexMirrorIdentity(
         this.createToolCallMessage(params),
@@ -1225,73 +1179,12 @@ export class CodexAppServerEventProjector {
       return;
     }
     this.toolTranscriptResultIds.add(params.id);
-    this.emitTranscriptToolResultProgress(params);
     this.toolTranscriptMessages.push(
       attachCodexMirrorIdentity(
         this.createToolResultMessage(params),
         `${this.turnId}:tool:${params.id}:result`,
       ),
     );
-  }
-
-  private emitTranscriptToolCallProgress(params: ToolTranscriptCallInput): void {
-    if (!shouldEmitTranscriptToolProgress(params.name, params.arguments)) {
-      return;
-    }
-    this.transcriptToolProgressCallIds.add(params.id);
-    const args = normalizeToolTranscriptArguments(params.arguments);
-    const meta = inferToolMetaFromArgs(params.name, args, {
-      detailMode: this.toolProgressDetailMode(),
-    });
-    if (
-      !this.params.onToolResult ||
-      !this.shouldEmitToolResult() ||
-      this.toolResultSummaryItemIds.has(params.id) ||
-      this.toolResultOutputStreamedItemIds.has(params.id)
-    ) {
-      return;
-    }
-    this.toolResultSummaryItemIds.add(params.id);
-    this.emitToolResultMessage({
-      itemId: params.id,
-      text: formatToolSummary(params.name, meta),
-    });
-  }
-
-  private emitTranscriptToolResultProgress(params: ToolTranscriptResultInput): void {
-    if (
-      this.transcriptToolProgressSuppressedIds.has(params.id) ||
-      !shouldEmitTranscriptToolProgress(
-        params.name,
-        this.toolTranscriptArgumentsById.get(params.id),
-      )
-    ) {
-      return;
-    }
-    if (!this.transcriptToolProgressCallIds.has(params.id)) {
-      this.emitTranscriptToolCallProgress({
-        id: params.id,
-        name: params.name,
-        arguments: {},
-      });
-    }
-    if (
-      !this.params.onToolResult ||
-      !this.shouldEmitToolOutput() ||
-      this.toolResultOutputItemIds.has(params.id) ||
-      this.toolResultOutputStreamedItemIds.has(params.id)
-    ) {
-      return;
-    }
-    const text = params.text?.trim();
-    if (!text) {
-      return;
-    }
-    this.emitToolResultMessage({
-      itemId: params.id,
-      text: formatToolOutput(params.name, undefined, text),
-      finalOutput: true,
-    });
   }
 
   private formatCodexErrorMessage(params: JsonObject): string | undefined {
@@ -1860,50 +1753,11 @@ function itemTranscriptResultText(
   return result ? stringifyJsonValue(result) : itemStatus(item);
 }
 
-function appendToolOutputDeltaText(
-  outputTextByItem: Map<string, string>,
-  itemId: string,
-  delta: string,
-): void {
-  const current = outputTextByItem.get(itemId) ?? "";
-  if (current.length >= TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS) {
-    return;
-  }
-  const remaining = TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS - current.length;
-  const next = current + (delta.length > remaining ? delta.slice(0, remaining) : delta);
-  outputTextByItem.set(itemId, next);
-}
-
 function normalizeToolTranscriptArguments(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
   return value as Record<string, unknown>;
-}
-
-function isActivityLogCommandProgress(toolName: string, args: unknown): boolean {
-  if (toolName !== "bash" && toolName !== "exec" && toolName !== "shell") {
-    return false;
-  }
-  const command = readToolCommandText(args);
-  return Boolean(command && command.includes("log_activity.sh"));
-}
-
-function readToolCommandText(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  for (const key of ["command", "cmd", "shellCommand", "script"]) {
-    const text = record[key];
-    if (typeof text === "string" && text) {
-      return text;
-    }
-  }
-  return undefined;
 }
 
 function collectDynamicToolContentText(contentItems: CodexThreadItem["contentItems"]): string {
@@ -1926,6 +1780,20 @@ function truncateToolTranscriptText(text: string): string {
     return text;
   }
   return `${text.slice(0, TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS)}\n...(truncated)...`;
+}
+
+function appendToolOutputDeltaText(
+  outputTextByItem: Map<string, string>,
+  itemId: string,
+  delta: string,
+): void {
+  const current = outputTextByItem.get(itemId) ?? "";
+  if (current.length >= TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS) {
+    return;
+  }
+  const remaining = TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS - current.length;
+  const next = current + (delta.length > remaining ? delta.slice(0, remaining) : delta);
+  outputTextByItem.set(itemId, next);
 }
 
 function toolResultStatusText(params: ToolTranscriptResultInput): string {

@@ -132,10 +132,6 @@
       "types": "./dist/plugin-sdk/runtime.d.ts",
       "default": "./dist/plugin-sdk/runtime.js"
     },
-    "./plugin-sdk/health": {
-      "types": "./dist/plugin-sdk/health.d.ts",
-      "default": "./dist/plugin-sdk/health.js"
-    },
     "./plugin-sdk/runtime-doctor": {
       "types": "./dist/plugin-sdk/runtime-doctor.d.ts",
       "default": "./dist/plugin-sdk/runtime-doctor.js"
@@ -1805,6 +1801,7 @@
     "typescript": "6.0.3",
     "typebox": "1.1.38",
     "undici": "8.3.0",
+    "uuid": "14.0.0",
     "web-push": "3.6.7",
     "web-tree-sitter": "0.26.8",
     "ws": "8.20.1",
