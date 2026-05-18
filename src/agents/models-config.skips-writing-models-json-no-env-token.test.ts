@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileExternalCliSyncMock } from "../../test/helpers/mock-auth-profiles.js";
 import { resolveDefaultAgentDir } from "./agent-scope.js";
 import {
   CUSTOM_PROXY_MODELS_CONFIG,
@@ -13,7 +14,9 @@ import {
 import type { ProviderConfig as ModelsProviderConfig } from "./models-config.providers.secrets.js";
 
 vi.mock("./auth-profiles/external-cli-sync.js", () => ({
-  resolveExternalCliAuthProfiles: () => [],
+  ...buildAuthProfileExternalCliSyncMock({
+    resolveExternalCliAuthProfiles: () => [],
+  }),
   syncExternalCliCredentials: () => false,
 }));
 

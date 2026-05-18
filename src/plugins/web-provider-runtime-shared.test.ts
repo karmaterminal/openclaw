@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../test/helpers/mock-plugin-runtime.js";
 
 const mocks = vi.hoisted(() => ({
   isPluginRegistryLoadInFlight: vi.fn(() => false),
@@ -34,10 +35,12 @@ vi.mock("./active-runtime-registry.js", () => ({
   getLoadedRuntimePluginRegistry: mocks.getLoadedRuntimePluginRegistry,
 }));
 
-vi.mock("./runtime.js", () => ({
-  getActivePluginRegistry: mocks.getActivePluginRegistry,
-  getActivePluginRegistryWorkspaceDir: mocks.getActivePluginRegistryWorkspaceDir,
-}));
+vi.mock("./runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginRegistry: mocks.getActivePluginRegistry,
+    getActivePluginRegistryWorkspaceDir: mocks.getActivePluginRegistryWorkspaceDir,
+  }),
+);
 
 vi.mock("./runtime/load-context.js", () => ({
   buildPluginRuntimeLoadOptionsFromValues: mocks.buildPluginRuntimeLoadOptionsFromValues,

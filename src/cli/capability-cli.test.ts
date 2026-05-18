@@ -3,6 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  buildAuthProfileStoreMock,
+  buildAuthProfilesMock,
+} from "../../test/helpers/mock-auth-profiles.js";
 import { runRegisteredCli } from "../test-utils/command-runner.js";
 import { registerCapabilityCli } from "./capability-cli.js";
 
@@ -188,17 +192,21 @@ vi.mock("../agents/simple-completion-runtime.js", () => ({
     mocks.completeWithPreparedSimpleCompletionModel as unknown as typeof import("../agents/simple-completion-runtime.js").completeWithPreparedSimpleCompletionModel,
 }));
 
-vi.mock("../agents/auth-profiles.js", () => ({
-  loadAuthProfileStoreForRuntime:
-    mocks.loadAuthProfileStoreForRuntime as unknown as typeof import("../agents/auth-profiles.js").loadAuthProfileStoreForRuntime,
-  listProfilesForProvider:
-    mocks.listProfilesForProvider as typeof import("../agents/auth-profiles.js").listProfilesForProvider,
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    loadAuthProfileStoreForRuntime:
+      mocks.loadAuthProfileStoreForRuntime as unknown as typeof import("../agents/auth-profiles.js").loadAuthProfileStoreForRuntime,
+    listProfilesForProvider:
+      mocks.listProfilesForProvider as typeof import("../agents/auth-profiles.js").listProfilesForProvider,
+  }),
+);
 
-vi.mock("../agents/auth-profiles/store.js", () => ({
-  updateAuthProfileStoreWithLock:
-    mocks.updateAuthProfileStoreWithLock as typeof import("../agents/auth-profiles/store.js").updateAuthProfileStoreWithLock,
-}));
+vi.mock("../agents/auth-profiles/store.js", () =>
+  buildAuthProfileStoreMock({
+    updateAuthProfileStoreWithLock:
+      mocks.updateAuthProfileStoreWithLock as typeof import("../agents/auth-profiles/store.js").updateAuthProfileStoreWithLock,
+  }),
+);
 
 vi.mock("../agents/memory-search.js", () => ({
   resolveMemorySearchConfig:

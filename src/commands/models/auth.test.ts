@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileStoreMock } from "../../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { ProviderPlugin } from "../../plugins/types.js";
 import type { RuntimeEnv } from "../../runtime.js";
@@ -69,9 +70,11 @@ vi.mock("../../agents/auth-profiles/profiles.js", () => ({
   upsertAuthProfileWithLock: mocks.upsertAuthProfileWithLock,
 }));
 
-vi.mock("../../agents/auth-profiles/store.js", () => ({
-  loadAuthProfileStoreForRuntime: mocks.loadAuthProfileStoreForRuntime,
-}));
+vi.mock("../../agents/auth-profiles/store.js", () =>
+  buildAuthProfileStoreMock({
+    loadAuthProfileStoreForRuntime: mocks.loadAuthProfileStoreForRuntime,
+  }),
+);
 
 vi.mock("../../agents/auth-profiles/usage.js", () => ({
   clearAuthProfileCooldown: mocks.clearAuthProfileCooldown,

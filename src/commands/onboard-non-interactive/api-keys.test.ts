@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../../test/helpers/mock-auth-profiles.js";
 import { resolveNonInteractiveApiKey } from "./api-keys.js";
 
 const resolveEnvApiKey = vi.hoisted(() => vi.fn());
@@ -19,11 +20,13 @@ const resolveApiKeyForProfile = vi.hoisted(() =>
     return profile?.type === "api_key" ? { apiKey: profile.key, source: "profile" } : null;
   }),
 );
-vi.mock("../../agents/auth-profiles.js", () => ({
-  ensureAuthProfileStore: vi.fn(() => authStore),
-  resolveApiKeyForProfile,
-  resolveAuthProfileOrder: vi.fn(() => Object.keys(authStore.profiles)),
-}));
+vi.mock("../../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore: vi.fn(() => authStore),
+    resolveApiKeyForProfile,
+    resolveAuthProfileOrder: vi.fn(() => Object.keys(authStore.profiles)),
+  }),
+);
 
 beforeEach(() => {
   vi.clearAllMocks();

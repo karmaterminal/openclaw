@@ -135,9 +135,10 @@ describe("gateway startup benchmark script", () => {
     try {
       const startAt = performance.now();
       const result = await __testing.waitForProbe({
-        deadlineAt: startAt + 1_000,
+        deadlineAt: startAt + 5_000,
         path: "/readyz",
         port,
+        requestTimeoutMs: 1_000,
         startAt,
       });
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../../test/helpers/mock-plugin-runtime.js";
 
 const resolveDefaultAgentIdMock = vi.hoisted(() => vi.fn());
 const resolveAgentWorkspaceDirMock = vi.hoisted(() => vi.fn());
@@ -30,13 +31,15 @@ vi.mock("../../plugins/loader.js", () => ({
   resolveRuntimePluginRegistry: (...args: unknown[]) => resolveRuntimePluginRegistryMock(...args),
 }));
 
-vi.mock("../../plugins/runtime.js", () => ({
-  getActivePluginRegistry: (...args: unknown[]) => getActivePluginRegistryMock(...args),
-  getActivePluginChannelRegistry: (...args: unknown[]) =>
-    getActivePluginChannelRegistryMock(...args),
-  getActivePluginChannelRegistryVersion: (...args: unknown[]) =>
-    getActivePluginChannelRegistryVersionMock(...args),
-}));
+vi.mock("../../plugins/runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginRegistry: (...args: unknown[]) => getActivePluginRegistryMock(...args),
+    getActivePluginChannelRegistry: (...args: unknown[]) =>
+      getActivePluginChannelRegistryMock(...args),
+    getActivePluginChannelRegistryVersion: (...args: unknown[]) =>
+      getActivePluginChannelRegistryVersionMock(...args),
+  }),
+);
 
 vi.mock("../../utils/message-channel.js", () => ({
   normalizeMessageChannel: (...args: unknown[]) => normalizeMessageChannelMock(...args),

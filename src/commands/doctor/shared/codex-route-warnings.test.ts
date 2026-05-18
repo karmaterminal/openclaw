@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../../../test/helpers/mock-auth-profiles.js";
 import { resolveAgentHarnessPolicy } from "../../../agents/harness/policy.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
@@ -13,11 +14,13 @@ const mocks = vi.hoisted(() => ({
   resolveProfileUnusableUntilForDisplay: vi.fn(),
 }));
 
-vi.mock("../../../agents/auth-profiles.js", () => ({
-  ensureAuthProfileStore: mocks.ensureAuthProfileStore,
-  resolveAuthProfileOrder: mocks.resolveAuthProfileOrder,
-  resolveProfileUnusableUntilForDisplay: mocks.resolveProfileUnusableUntilForDisplay,
-}));
+vi.mock("../../../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore: mocks.ensureAuthProfileStore,
+    resolveAuthProfileOrder: mocks.resolveAuthProfileOrder,
+    resolveProfileUnusableUntilForDisplay: mocks.resolveProfileUnusableUntilForDisplay,
+  }),
+);
 
 vi.mock("../../../agents/auth-profiles/credential-state.js", () => ({
   evaluateStoredCredentialEligibility: mocks.evaluateStoredCredentialEligibility,

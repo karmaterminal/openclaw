@@ -1,14 +1,30 @@
-import chalk, { Chalk } from "chalk";
+import chalk, { Chalk, type ChalkInstance } from "chalk";
 import { LOBSTER_PALETTE } from "./palette.js";
 
-const hasForceColor =
-  typeof process.env.FORCE_COLOR === "string" &&
-  process.env.FORCE_COLOR.trim().length > 0 &&
-  process.env.FORCE_COLOR.trim() !== "0";
+type ThemeColor = ((text: string) => string) & {
+  bold: (text: string) => string;
+};
 
-const baseChalk = process.env.NO_COLOR && !hasForceColor ? new Chalk({ level: 0 }) : chalk;
+function hasForceColor(): boolean {
+  return (
+    typeof process.env.FORCE_COLOR === "string" &&
+    process.env.FORCE_COLOR.trim().length > 0 &&
+    process.env.FORCE_COLOR.trim() !== "0"
+  );
+}
 
-const hex = (value: string) => baseChalk.hex(value);
+function resolveBaseChalk(): ChalkInstance {
+  if (hasForceColor()) {
+    return new Chalk({ level: 1 });
+  }
+  return process.env.NO_COLOR ? new Chalk({ level: 0 }) : chalk;
+}
+
+function hex(value: string): ThemeColor {
+  const color = ((text: string) => resolveBaseChalk().hex(value)(text)) as ThemeColor;
+  color.bold = (text: string) => resolveBaseChalk().bold.hex(value)(text);
+  return color;
+}
 
 export const theme = {
   accent: hex(LOBSTER_PALETTE.accent),
@@ -19,12 +35,12 @@ export const theme = {
   warn: hex(LOBSTER_PALETTE.warn),
   error: hex(LOBSTER_PALETTE.error),
   muted: hex(LOBSTER_PALETTE.muted),
-  heading: baseChalk.bold.hex(LOBSTER_PALETTE.accent),
+  heading: (text: string) => resolveBaseChalk().bold.hex(LOBSTER_PALETTE.accent)(text),
   command: hex(LOBSTER_PALETTE.accentBright),
   option: hex(LOBSTER_PALETTE.warn),
 } as const;
 
-export const isRich = () => baseChalk.level > 0;
+export const isRich = () => resolveBaseChalk().level > 0;
 
 export const colorize = (rich: boolean, color: (value: string) => string, value: string) =>
   rich ? color(value) : value;

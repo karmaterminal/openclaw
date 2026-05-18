@@ -43,6 +43,9 @@ function resolveDispatcherTimeoutMs(fromParams: number | undefined): number | un
 }
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+const DEBUG_PROXY_FETCH_PATCHED_FUNCTION_KEY = Symbol.for(
+  "openclaw.debugProxy.fetchPatchedFunction",
+);
 
 export const GUARDED_FETCH_MODE = {
   STRICT: "strict",
@@ -235,6 +238,15 @@ function isAmbientGlobalFetch(params: {
   );
 }
 
+function isDebugProxyPatchedFetch(fetchImpl: FetchLike | undefined): boolean {
+  return Boolean(
+    fetchImpl &&
+    (fetchImpl as FetchLike & { [DEBUG_PROXY_FETCH_PATCHED_FUNCTION_KEY]?: true })[
+      DEBUG_PROXY_FETCH_PATCHED_FUNCTION_KEY
+    ],
+  );
+}
+
 export function retainSafeHeadersForCrossOriginRedirectHeaders(
   headers?: HeadersInit,
 ): Record<string, string> | undefined {
@@ -249,9 +261,14 @@ async function captureGuardedFetchExchange(params: {
   response: Response;
   transport?: "http" | "sse";
   capture: GuardedFetchOptions["capture"];
+  capturedByGlobalFetchPatch?: boolean;
   auditContext?: string;
 }): Promise<void> {
-  if (params.capture === false || !isTruthyEnvValue(process.env[OPENCLAW_DEBUG_PROXY_ENABLED])) {
+  if (
+    params.capture === false ||
+    params.capturedByGlobalFetchPatch ||
+    !isTruthyEnvValue(process.env[OPENCLAW_DEBUG_PROXY_ENABLED])
+  ) {
     return;
   }
   const { captureHttpExchange } = await import("../../proxy-capture/runtime.js");
@@ -497,6 +514,8 @@ export async function fetchWithSsrFGuard(params: GuardedFetchOptions): Promise<G
         response,
         transport: "http",
         capture: params.capture,
+        capturedByGlobalFetchPatch:
+          !shouldUseRuntimeFetch && isDebugProxyPatchedFetch(defaultFetch),
         auditContext: params.auditContext,
       });
 

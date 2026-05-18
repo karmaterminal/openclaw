@@ -1,5 +1,6 @@
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { checkQmdBinaryAvailability as checkQmdBinaryAvailabilityFn } from "../memory-host-sdk/engine-qmd.js";
 import type { DoctorPrompter } from "./doctor-prompter.js";
@@ -44,9 +45,11 @@ vi.mock("../agents/model-auth.js", () => ({
   resolveUsableCustomProviderApiKey: vi.fn(() => null),
 }));
 
-vi.mock("../agents/auth-profiles.js", () => ({
-  hasAnyAuthProfileStoreSource,
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    hasAnyAuthProfileStoreSource,
+  }),
+);
 
 vi.mock("../plugins/memory-runtime.js", () => ({
   getActiveMemorySearchManager,

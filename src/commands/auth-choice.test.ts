@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import { resolveAgentDir } from "../agents/agent-scope.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
@@ -165,23 +166,25 @@ function seedTestAuthProfile(params: {
   testAuthProfileStores.set(key, store);
 }
 
-vi.mock("../agents/auth-profiles.js", () => ({
-  upsertAuthProfile: (params: {
-    profileId: string;
-    credential: StoredAuthProfile;
-    agentDir?: string;
-  }) => {
-    seedTestAuthProfile(params);
-  },
-  upsertAuthProfileWithLock: async (params: {
-    profileId: string;
-    credential: StoredAuthProfile;
-    agentDir?: string;
-  }) => {
-    seedTestAuthProfile(params);
-    return { version: 1, profiles: readTestAuthProfileStore(params.agentDir).profiles };
-  },
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    upsertAuthProfile: (params: {
+      profileId: string;
+      credential: StoredAuthProfile;
+      agentDir?: string;
+    }) => {
+      seedTestAuthProfile(params);
+    },
+    upsertAuthProfileWithLock: async (params: {
+      profileId: string;
+      credential: StoredAuthProfile;
+      agentDir?: string;
+    }) => {
+      seedTestAuthProfile(params);
+      return { version: 1, profiles: readTestAuthProfileStore(params.agentDir).profiles };
+    },
+  }),
+);
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";

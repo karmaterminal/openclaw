@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../../test/helpers/mock-auth-profiles.js";
 import type { AuthProfileStore } from "../../agents/auth-profiles.js";
 import type { OpenClawConfig } from "../../config/config.js";
 
@@ -23,26 +24,28 @@ vi.mock("../../agents/auth-health.js", () => ({
   formatRemainingShort: () => "1h",
 }));
 
-vi.mock("../../agents/auth-profiles.js", () => ({
-  isConfiguredAwsSdkAuthProfileForProvider: ({
-    cfg,
-    provider,
-    profileId,
-  }: {
-    cfg?: OpenClawConfig;
-    provider: string;
-    profileId: string;
-  }) => {
-    const profile = cfg?.auth?.profiles?.[profileId];
-    return (
-      profile?.mode === "aws-sdk" &&
-      profile.provider.trim().toLowerCase() === provider.trim().toLowerCase()
-    );
-  },
-  isProfileInCooldown: () => false,
-  resolveAuthProfileDisplayLabel: ({ profileId }: { profileId: string }) => profileId,
-  resolveAuthStorePathForDisplay: () => "/tmp/auth-profiles.json",
-}));
+vi.mock("../../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    isConfiguredAwsSdkAuthProfileForProvider: ({
+      cfg,
+      provider,
+      profileId,
+    }: {
+      cfg?: OpenClawConfig;
+      provider: string;
+      profileId: string;
+    }) => {
+      const profile = cfg?.auth?.profiles?.[profileId];
+      return (
+        profile?.mode === "aws-sdk" &&
+        profile.provider.trim().toLowerCase() === provider.trim().toLowerCase()
+      );
+    },
+    isProfileInCooldown: () => false,
+    resolveAuthProfileDisplayLabel: ({ profileId }: { profileId: string }) => profileId,
+    resolveAuthStorePathForDisplay: () => "/tmp/auth-profiles.json",
+  }),
+);
 
 vi.mock("../../agents/model-selection.js", () => ({
   findNormalizedProviderValue: (

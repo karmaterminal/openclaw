@@ -14,6 +14,11 @@ type EvaluatedModules = {
 };
 
 const SHARED_TEST_SETUP = Symbol.for("openclaw.sharedTestSetup");
+const DIRECT_ENV_KEYS_TO_RESTORE = ["FORCE_COLOR", "NO_COLOR"] as const;
+const initialDirectEnvValues = new Map(
+  DIRECT_ENV_KEYS_TO_RESTORE.map((key) => [key, process.env[key]]),
+);
+const activeFileSuites = new Set<string>();
 
 function getSharedTestHome(): string | undefined {
   const globalState = globalThis as typeof globalThis & {
@@ -60,10 +65,24 @@ function restoreSharedTestHomeAfterEnvUnstub(testHomeRaw: string | undefined): v
   process.env.XDG_CACHE_HOME = path.join(testHome, ".cache");
 }
 
+function restoreDirectEnvMutations(): void {
+  for (const [key, value] of initialDirectEnvValues) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
 export default class OpenClawNonIsolatedRunner extends TestRunner {
   override onCollectStart(file: { filepath: string }) {
     super.onCollectStart(file);
-    restoreSharedTestHomeAfterEnvUnstub(getSharedTestHome());
+    if (activeFileSuites.size === 0) {
+      restoreDirectEnvMutations();
+      restoreSharedTestHomeAfterEnvUnstub(getSharedTestHome());
+    }
+    activeFileSuites.add(file.filepath);
     const orderLogPath = process.env.OPENCLAW_VITEST_FILE_ORDER_LOG?.trim();
     if (orderLogPath) {
       fs.appendFileSync(orderLogPath, `START ${file.filepath}\n`);
@@ -80,10 +99,15 @@ export default class OpenClawNonIsolatedRunner extends TestRunner {
     if (orderLogPath) {
       fs.appendFileSync(orderLogPath, `END ${suite.filepath}\n`);
     }
+    activeFileSuites.delete(suite.filepath);
+    if (activeFileSuites.size > 0) {
+      return;
+    }
 
     // Mirror the missing cleanup from Vitest isolate mode so shared workers do
     // not carry file-scoped timers, stubs, spies, or stale module state
-    // forward into the next file.
+    // forward into the next file. With file-level parallelism, cleanup must wait
+    // until no sibling file in the worker is still using its hoisted mocks.
     if (vi.isFakeTimers()) {
       vi.useRealTimers();
     }
@@ -91,6 +115,7 @@ export default class OpenClawNonIsolatedRunner extends TestRunner {
     vi.unstubAllGlobals();
     const testHome = getSharedTestHome();
     vi.unstubAllEnvs();
+    restoreDirectEnvMutations();
     restoreSharedTestHomeAfterEnvUnstub(testHome);
     vi.clearAllMocks();
     vi.resetModules();

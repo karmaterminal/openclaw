@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../test/helpers/mock-plugin-runtime.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
@@ -132,10 +133,12 @@ vi.mock("../plugins/registry.js", () => ({
   createEmptyPluginRegistry: () => ({ diagnostics: [], gatewayHandlers: {}, plugins: [] }),
 }));
 
-vi.mock("../plugins/runtime.js", () => ({
-  getActivePluginRegistry: () => undefined,
-  setActivePluginRegistry: vi.fn(),
-}));
+vi.mock("../plugins/runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginRegistry: () => null,
+    setActivePluginRegistry: vi.fn(),
+  }),
+);
 
 vi.mock("./server-methods-list.js", () => ({
   listGatewayMethods: () => ["ping"],

@@ -556,20 +556,28 @@ async function emitToolResultOutput(params: {
     }
     ctx.state.deterministicApprovalPromptPending = true;
     try {
-      const { buildExecApprovalPendingReplyPayload } = await loadExecApprovalReply();
-      await ctx.params.onToolResult(
-        buildExecApprovalPendingReplyPayload({
-          approvalId: approvalPending.approvalId,
-          approvalSlug: approvalPending.approvalSlug,
-          allowedDecisions: approvalPending.allowedDecisions,
-          command: approvalPending.command,
-          cwd: approvalPending.cwd,
-          host: approvalPending.host,
-          nodeId: approvalPending.nodeId,
-          expiresAtMs: approvalPending.expiresAtMs,
-          warningText: approvalPending.warningText,
-        }),
-      );
+      const { buildExecApprovalInteractiveReply, buildExecApprovalPendingReplyPayload } =
+        await loadExecApprovalReply();
+      const approvalPayload = buildExecApprovalPendingReplyPayload({
+        approvalId: approvalPending.approvalId,
+        approvalSlug: approvalPending.approvalSlug,
+        allowedDecisions: approvalPending.allowedDecisions,
+        command: approvalPending.command,
+        cwd: approvalPending.cwd,
+        host: approvalPending.host,
+        nodeId: approvalPending.nodeId,
+        expiresAtMs: approvalPending.expiresAtMs,
+        warningText: approvalPending.warningText,
+      });
+      await ctx.params.onToolResult({
+        ...approvalPayload,
+        interactive:
+          approvalPayload.interactive ??
+          buildExecApprovalInteractiveReply({
+            approvalCommandId: approvalPending.approvalId,
+            allowedDecisions: approvalPending.allowedDecisions,
+          }),
+      });
       ctx.state.deterministicApprovalPromptSent = true;
     } catch {
       ctx.state.deterministicApprovalPromptSent = false;

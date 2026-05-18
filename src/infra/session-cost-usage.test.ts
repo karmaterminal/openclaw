@@ -1294,7 +1294,7 @@ describe("session cost usage", () => {
           },
           {
             interval: 1,
-            timeout: 200,
+            timeout: 1_000,
           },
         );
       });

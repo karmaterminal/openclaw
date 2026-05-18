@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileUpsertWithLockMock } from "../../test/helpers/mock-auth-profiles.js";
 import {
   configureOpenAICompatibleSelfHostedProviderNonInteractive,
   discoverOpenAICompatibleLocalModels,
@@ -14,9 +15,11 @@ vi.mock("../infra/net/fetch-guard.js", () => ({
   fetchWithSsrFGuard: fetchWithSsrFGuardMock,
 }));
 
-vi.mock("../agents/auth-profiles/upsert-with-lock.js", () => ({
-  upsertAuthProfileWithLock,
-}));
+vi.mock("../agents/auth-profiles/upsert-with-lock.js", () =>
+  buildAuthProfileUpsertWithLockMock({
+    upsertAuthProfileWithLock,
+  }),
+);
 
 beforeEach(() => {
   vi.clearAllMocks();

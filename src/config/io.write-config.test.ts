@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readPersistedInstalledPluginIndex } from "../plugins/installed-plugin-index-store.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.js";
+import { clearLoadPluginMetadataSnapshotMemo } from "../plugins/plugin-metadata-snapshot.js";
 import { createSuiteTempRootTracker } from "../test-helpers/temp-dir.js";
 import { CONFIG_CLOBBER_SNAPSHOT_LIMIT } from "./io.clobber-snapshot.js";
 import {
@@ -31,6 +32,13 @@ const mockLoadPluginManifestRegistry = vi.hoisted(() =>
 const mockMaintainConfigBackups = vi.hoisted(() =>
   vi.fn<typeof import("./backup-rotation.js").maintainConfigBackups>(async () => {}),
 );
+
+function resetMockPluginManifestRegistry(): void {
+  mockLoadPluginManifestRegistry.mockReturnValue({
+    diagnostics: [],
+    plugins: [],
+  } satisfies PluginManifestRegistry);
+}
 
 vi.mock("../plugins/manifest-registry.js", () => ({
   loadPluginManifestRegistry: mockLoadPluginManifestRegistry,
@@ -78,14 +86,13 @@ describe("config io write", () => {
 
     // Default: return an empty plugin list so existing tests that don't need
     // plugin-owned channel schemas keep working unchanged.
-    mockLoadPluginManifestRegistry.mockReturnValue({
-      diagnostics: [],
-      plugins: [],
-    } satisfies PluginManifestRegistry);
+    resetMockPluginManifestRegistry();
   });
 
   afterEach(() => {
     resetConfigRuntimeState();
+    clearLoadPluginMetadataSnapshotMemo();
+    resetMockPluginManifestRegistry();
     mockMaintainConfigBackups.mockReset();
     mockMaintainConfigBackups.mockResolvedValue(undefined);
   });

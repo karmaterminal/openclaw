@@ -225,10 +225,16 @@ export async function attachWebInboxToSocket(
   type QueuedInboundMessage = WebInboundMessage & {
     dedupeKey?: string;
     debounceKey?: string;
+    receivedSequence: number;
   };
+  let nextInboundMessageSequence = 0;
   const inboundDebounceMs = Math.max(0, Math.trunc(options.debounceMs ?? 0));
   const pendingDebounceKeys = new Set<string>();
   const activeInboundFlushes = new Set<Promise<void>>();
+  const compareQueuedInboundMessages = (
+    left: QueuedInboundMessage,
+    right: QueuedInboundMessage,
+  ): number => left.receivedSequence - right.receivedSequence;
   const buildInboundDebounceKey = (msg: WebInboundMessage): string | null => {
     const sender = msg.sender;
     const senderKey =
@@ -280,24 +286,27 @@ export async function attachWebInboxToSocket(
         if (!last) {
           return;
         }
+        const orderedEntries =
+          entries.length > 1 ? entries.toSorted(compareQueuedInboundMessages) : entries;
         try {
-          if (entries.length === 1) {
+          if (orderedEntries.length === 1) {
             await options.onMessage(last);
             await finalizeInboundDedupe(entries);
             return;
           }
           const mentioned = new Set<string>();
-          for (const entry of entries) {
+          for (const entry of orderedEntries) {
             for (const jid of entry.mentions ?? entry.mentionedJids ?? []) {
               mentioned.add(jid);
             }
           }
-          const combinedBody = entries
+          const lastOrdered = orderedEntries.at(-1) ?? last;
+          const combinedBody = orderedEntries
             .map((entry) => entry.body)
             .filter(Boolean)
             .join("\n");
           const combinedMessage: WebInboundMessage = {
-            ...last,
+            ...lastOrdered,
             body: combinedBody,
             mentions: mentioned.size > 0 ? Array.from(mentioned) : undefined,
             mentionedJids: mentioned.size > 0 ? Array.from(mentioned) : undefined,
@@ -504,11 +513,13 @@ export async function attachWebInboxToSocket(
     groupSubject?: string;
     groupParticipants?: string[];
     messageTimestampMs?: number;
+    receivedSequence: number;
     access: Awaited<ReturnType<typeof checkInboundAccessControl>>;
   };
 
   const normalizeInboundMessage = async (
     msg: WAMessage,
+    receivedSequence: number,
   ): Promise<NormalizedInboundMessage | null> => {
     const id = msg.key?.id ?? undefined;
     const remoteJid = msg.key?.remoteJid;
@@ -604,6 +615,7 @@ export async function attachWebInboxToSocket(
       groupSubject,
       groupParticipants,
       messageTimestampMs,
+      receivedSequence,
       access,
     };
   };
@@ -798,6 +810,7 @@ export async function attachWebInboxToSocket(
       mediaType: enriched.mediaType,
       mediaFileName: enriched.mediaFileName,
       dedupeKey: inbound.id ? `${options.accountId}:${inbound.remoteJid}:${inbound.id}` : undefined,
+      receivedSequence: inbound.receivedSequence,
     };
     const debounceKey = buildInboundDebounceKey(inboundMessage);
     if (debounceKey) {
@@ -833,7 +846,8 @@ export async function attachWebInboxToSocket(
       return;
     }
     for (const msg of upsert.messages ?? []) {
-      const inbound = await normalizeInboundMessage(msg);
+      const receivedSequence = nextInboundMessageSequence++;
+      const inbound = await normalizeInboundMessage(msg, receivedSequence);
       if (!inbound) {
         continue;
       }

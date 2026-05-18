@@ -2,16 +2,19 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileStoreMock } from "../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { createDiagnosticLogRecordCapture } from "../logging/test-helpers/diagnostic-log-capture.js";
 import type { AuthProfileStore } from "./auth-profiles.js";
 import { makeModelFallbackCfg } from "./test-helpers/model-fallback-config-fixture.js";
 
 // Mock auth-profile submodules — must be before importing model-fallback
-vi.mock("./auth-profiles/store.js", () => ({
-  ensureAuthProfileStore: vi.fn(),
-  loadAuthProfileStoreForRuntime: vi.fn(),
-}));
+vi.mock("./auth-profiles/store.js", () =>
+  buildAuthProfileStoreMock({
+    ensureAuthProfileStore: vi.fn(),
+    loadAuthProfileStoreForRuntime: vi.fn(),
+  }),
+);
 
 vi.mock("./auth-profiles/usage.js", () => ({
   getSoonestCooldownExpiry: vi.fn(),

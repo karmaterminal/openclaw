@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileExternalCliSyncMock } from "../../test/helpers/mock-auth-profiles.js";
 import { AUTH_STORE_LOCK_OPTIONS, AUTH_STORE_VERSION } from "./auth-profiles/constants.js";
 import {
   clearRuntimeAuthProfileStoreSnapshots,
@@ -22,9 +23,11 @@ const mocks = vi.hoisted(() => ({
   >(() => []),
 }));
 
-vi.mock("./auth-profiles/external-cli-sync.js", () => ({
-  resolveExternalCliAuthProfiles: mocks.resolveExternalCliAuthProfiles,
-}));
+vi.mock("./auth-profiles/external-cli-sync.js", () =>
+  buildAuthProfileExternalCliSyncMock({
+    resolveExternalCliAuthProfiles: mocks.resolveExternalCliAuthProfiles,
+  }),
+);
 
 vi.mock("../plugins/provider-runtime.js", () => ({
   resolveExternalAuthProfilesWithPlugins: () => [],

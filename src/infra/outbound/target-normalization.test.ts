@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../../test/helpers/mock-plugin-runtime.js";
 import type { OpenClawConfig } from "../../config/config.js";
 
 const getLoadedChannelPluginMock = vi.hoisted(() => vi.fn());
@@ -23,10 +24,12 @@ vi.mock("../../channels/plugins/index.js", () => ({
   getChannelPlugin: (...args: unknown[]) => getChannelPluginMock(...args),
 }));
 
-vi.mock("../../plugins/runtime.js", () => ({
-  getActivePluginChannelRegistryVersion: (...args: unknown[]) =>
-    getActivePluginChannelRegistryVersionMock(...args),
-}));
+vi.mock("../../plugins/runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginChannelRegistryVersion: (...args: unknown[]) =>
+      getActivePluginChannelRegistryVersionMock(...args),
+  }),
+);
 
 beforeAll(async () => {
   ({

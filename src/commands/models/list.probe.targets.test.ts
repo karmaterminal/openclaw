@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../../test/helpers/mock-auth-profiles.js";
 import type { AuthProfileStore } from "../../agents/auth-profiles.js";
 import type { ModelCatalogEntry } from "../../agents/model-catalog.js";
 import type { OpenClawConfig } from "../../config/config.js";
@@ -73,24 +74,26 @@ vi.mock("./shared.js", () => ({
   formatMs: (ms: number) => `${ms}ms`,
 }));
 
-vi.mock("../../agents/auth-profiles.js", () => ({
-  externalCliDiscoveryScoped: (params: Record<string, unknown> = {}) => ({
-    mode: "scoped",
-    ...params,
+vi.mock("../../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    externalCliDiscoveryScoped: (params: Record<string, unknown> = {}) => ({
+      mode: "scoped",
+      ...params,
+    }),
+    ensureAuthProfileStore: (agentDir?: string) =>
+      agentDir === "/tmp/coder-agent" && mockAgentStore ? mockAgentStore : mockStore,
+    listProfilesForProvider: (store: AuthProfileStore, provider: string) =>
+      Object.entries(store.profiles)
+        .filter(
+          ([, profile]) =>
+            typeof profile.provider === "string" && profile.provider.toLowerCase() === provider,
+        )
+        .map(([profileId]) => profileId),
+    resolveAuthProfileDisplayLabel: ({ profileId }: { profileId: string }) => profileId,
+    resolveAuthProfileOrder: resolveAuthProfileOrderMock,
+    resolveAuthProfileEligibility: resolveAuthProfileEligibilityMock,
   }),
-  ensureAuthProfileStore: (agentDir?: string) =>
-    agentDir === "/tmp/coder-agent" && mockAgentStore ? mockAgentStore : mockStore,
-  listProfilesForProvider: (store: AuthProfileStore, provider: string) =>
-    Object.entries(store.profiles)
-      .filter(
-        ([, profile]) =>
-          typeof profile.provider === "string" && profile.provider.toLowerCase() === provider,
-      )
-      .map(([profileId]) => profileId),
-  resolveAuthProfileDisplayLabel: ({ profileId }: { profileId: string }) => profileId,
-  resolveAuthProfileOrder: resolveAuthProfileOrderMock,
-  resolveAuthProfileEligibility: resolveAuthProfileEligibilityMock,
-}));
+);
 
 const { buildProbeTargets } = await import("./list.probe.js");
 

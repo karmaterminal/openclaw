@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../test/helpers/mock-plugin-runtime.js";
 import {
   createCompatibilityNotice,
   createCustomHook,
@@ -98,10 +99,12 @@ vi.mock("../plugin-sdk/facade-runtime.js", () => ({
     listImportedBundledPluginFacadeIdsMock(...args),
 }));
 
-vi.mock("./runtime.js", () => ({
-  getActivePluginChannelRegistry: () => null,
-  listImportedRuntimePluginIds: (...args: unknown[]) => listImportedRuntimePluginIdsMock(...args),
-}));
+vi.mock("./runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginChannelRegistry: () => null,
+    listImportedRuntimePluginIds: (...args: unknown[]) => listImportedRuntimePluginIdsMock(...args),
+  }),
+);
 
 vi.mock("../agents/agent-scope.js", () => ({
   resolveAgentWorkspaceDir: () => undefined,

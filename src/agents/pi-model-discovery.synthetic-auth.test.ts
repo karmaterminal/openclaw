@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileStoreMock } from "../../test/helpers/mock-auth-profiles.js";
 
 const resolveRuntimeSyntheticAuthProviderRefs = vi.hoisted(() => vi.fn(() => ["claude-cli"]));
 
@@ -29,10 +30,12 @@ vi.mock("../plugins/provider-runtime.js", () => ({
   resolveExternalAuthProfilesWithPlugins: () => [],
 }));
 
-vi.mock("./auth-profiles/store.js", () => ({
-  ensureAuthProfileStore: () => ({ version: 1, profiles: {} }),
-  loadAuthProfileStoreForSecretsRuntime: () => ({ version: 1, profiles: {} }),
-}));
+vi.mock("./auth-profiles/store.js", () =>
+  buildAuthProfileStoreMock({
+    ensureAuthProfileStore: () => ({ version: 1, profiles: {} }),
+    loadAuthProfileStoreForSecretsRuntime: () => ({ version: 1, profiles: {} }),
+  }),
+);
 
 vi.mock("./pi-auth-discovery-core.js", () => ({
   addEnvBackedPiCredentials: (credentials: Record<string, unknown>) => ({ ...credentials }),

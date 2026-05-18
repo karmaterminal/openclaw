@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { DoctorPrompter } from "./doctor-prompter.js";
 
@@ -11,12 +12,14 @@ const authProfileMocks = vi.hoisted(() => ({
   resolveProfileUnusableUntilForDisplay: vi.fn(),
 }));
 
-vi.mock("../agents/auth-profiles.js", () => ({
-  ensureAuthProfileStore: authProfileMocks.ensureAuthProfileStore,
-  hasAnyAuthProfileStoreSource: authProfileMocks.hasAnyAuthProfileStoreSource,
-  resolveApiKeyForProfile: authProfileMocks.resolveApiKeyForProfile,
-  resolveProfileUnusableUntilForDisplay: authProfileMocks.resolveProfileUnusableUntilForDisplay,
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore: authProfileMocks.ensureAuthProfileStore,
+    hasAnyAuthProfileStoreSource: authProfileMocks.hasAnyAuthProfileStoreSource,
+    resolveApiKeyForProfile: authProfileMocks.resolveApiKeyForProfile,
+    resolveProfileUnusableUntilForDisplay: authProfileMocks.resolveProfileUnusableUntilForDisplay,
+  }),
+);
 
 vi.mock("../terminal/note.js", () => ({ note: vi.fn() }));
 

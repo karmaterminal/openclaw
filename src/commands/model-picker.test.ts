@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { NormalizedModelCatalogRow } from "../model-catalog/index.js";
 import {
@@ -29,15 +30,17 @@ const ensureAuthProfileStore = vi.hoisted(() =>
 );
 const listProfilesForProvider = vi.hoisted(() => vi.fn(() => []));
 const upsertAuthProfile = vi.hoisted(() => vi.fn());
-vi.mock("../agents/auth-profiles.js", () => ({
-  externalCliDiscoveryForProviderAuth: () => ({
-    mode: "scoped",
-    allowKeychainPrompt: false,
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    externalCliDiscoveryForProviderAuth: () => ({
+      mode: "scoped",
+      allowKeychainPrompt: false,
+    }),
+    ensureAuthProfileStore,
+    listProfilesForProvider,
+    upsertAuthProfile,
   }),
-  ensureAuthProfileStore,
-  listProfilesForProvider,
-  upsertAuthProfile,
-}));
+);
 
 const resolveEnvApiKey = vi.hoisted(() =>
   vi.fn<(_provider: string, _env?: NodeJS.ProcessEnv) => { apiKey: string; source: string } | null>(

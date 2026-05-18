@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { withTempHome as withTempHomeBase } from "openclaw/plugin-sdk/test-env";
 import { beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
+import { buildAuthProfileStoreMock } from "../../test/helpers/mock-auth-profiles.js";
 import "./agent-command.test-mocks.js";
 import { __testing as acpManagerTesting } from "../acp/control-plane/manager.js";
 import * as authProfileStoreModule from "../agents/auth-profiles/store.js";
@@ -46,7 +47,7 @@ vi.mock("../plugins/runtime/runtime-registry-loader.js", () => ({
 
 vi.mock("../agents/auth-profiles/store.js", () => {
   const createEmptyStore = () => ({ version: 1, profiles: {} });
-  return {
+  return buildAuthProfileStoreMock({
     clearRuntimeAuthProfileStoreSnapshots: vi.fn(),
     ensureAuthProfileStore: vi.fn(createEmptyStore),
     ensureAuthProfileStoreForLocalUpdate: vi.fn(createEmptyStore),
@@ -57,7 +58,7 @@ vi.mock("../agents/auth-profiles/store.js", () => {
     replaceRuntimeAuthProfileStoreSnapshots: vi.fn(),
     saveAuthProfileStore: vi.fn(),
     updateAuthProfileStoreWithLock: vi.fn(async () => createEmptyStore()),
-  };
+  });
 });
 
 vi.mock("../agents/command/session-store.runtime.js", () => {

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileStoreMock } from "../../test/helpers/mock-auth-profiles.js";
 import { withEnvAsync } from "../test-utils/env.js";
 
 let modelsListCommand: typeof import("./models/list.list-command.js").modelsListCommand;
@@ -58,9 +59,11 @@ vi.mock("../agents/auth-profiles/profile-list.js", () => ({
   listProfilesForProvider,
 }));
 
-vi.mock("../agents/auth-profiles/store.js", () => ({
-  loadAuthProfileStoreWithoutExternalProfiles: ensureAuthProfileStore,
-}));
+vi.mock("../agents/auth-profiles/store.js", () =>
+  buildAuthProfileStoreMock({
+    loadAuthProfileStoreWithoutExternalProfiles: ensureAuthProfileStore,
+  }),
+);
 
 vi.mock("../agents/model-auth.js", () => ({
   hasUsableCustomProviderApiKey,

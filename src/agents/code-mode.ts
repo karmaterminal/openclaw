@@ -41,6 +41,7 @@ const DEFAULT_SNAPSHOT_TTL_SECONDS = 900;
 const DEFAULT_SEARCH_LIMIT = 8;
 const DEFAULT_MAX_SEARCH_LIMIT = 50;
 const MAX_ACTIVE_CODE_MODE_RUNS = 64;
+const MIN_WORKER_WATCHDOG_MS = 5_000;
 
 type CodeModeLanguage = "javascript" | "typescript";
 
@@ -488,6 +489,10 @@ function codeModeWorkerUrl(): URL {
   return resolveCodeModeWorkerUrl(import.meta.url);
 }
 
+function workerWatchdogMs(codeTimeoutMs: number): number {
+  return Math.max(codeTimeoutMs + 1_000, MIN_WORKER_WATCHDOG_MS);
+}
+
 async function runCodeModeWorker(
   workerData: unknown,
   timeoutMs: number,
@@ -659,7 +664,7 @@ async function runExec(params: {
         config,
         catalog: runtime.all(),
       },
-      config.timeoutMs + 1000,
+      workerWatchdogMs(config.timeoutMs),
     );
     if (result.status === "waiting") {
       return snapshotState({
@@ -768,7 +773,7 @@ async function runWait(params: {
         config: state.config,
         settledRequests,
       },
-      state.config.timeoutMs + 1000,
+      workerWatchdogMs(state.config.timeoutMs),
     );
     const output = [...state.output, ...result.output];
     enforceOutputLimit(output, state.config);
@@ -921,5 +926,6 @@ export const __testing = {
   codeModeWorkerUrl,
   resolveCodeModeWorkerUrl,
   resolveCodeModeConfig,
+  workerWatchdogMs,
   getTypescriptRuntimePromise: () => typescriptRuntimePromise,
 };

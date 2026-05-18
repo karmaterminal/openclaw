@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilePersistedMock } from "../../test/helpers/mock-auth-profiles.js";
 
 const selectMock = vi.hoisted(() => vi.fn());
 const createSecretsConfigIOMock = vi.hoisted(() => vi.fn());
@@ -14,9 +15,12 @@ vi.mock("./config-io.js", () => ({
   createSecretsConfigIO: (...args: unknown[]) => createSecretsConfigIOMock(...args),
 }));
 
-vi.mock("../agents/auth-profiles/persisted.js", () => ({
-  loadPersistedAuthProfileStore: (...args: unknown[]) => loadPersistedAuthProfileStoreMock(...args),
-}));
+vi.mock("../agents/auth-profiles/persisted.js", () =>
+  buildAuthProfilePersistedMock({
+    loadPersistedAuthProfileStore: (...args: unknown[]) =>
+      loadPersistedAuthProfileStoreMock(...args),
+  }),
+);
 
 const { runSecretsConfigureInteractive } = await import("./configure.js");
 

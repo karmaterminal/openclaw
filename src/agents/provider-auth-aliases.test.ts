@@ -1,114 +1,94 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const pluginRegistryMocks = vi.hoisted(() => {
-  const loadManifestRegistry = vi.fn();
-  return {
-    loadPluginManifestRegistryForInstalledIndex: loadManifestRegistry,
-    loadPluginManifestRegistryForPluginRegistry: loadManifestRegistry,
-    loadPluginRegistrySnapshot: vi.fn(() => ({ plugins: [] })),
-    loadPluginMetadataSnapshot: vi.fn((params: unknown) => {
-      const registry = loadManifestRegistry(params) ?? { plugins: [], diagnostics: [] };
-      return {
-        index: {
-          plugins: registry.plugins.map((plugin: { id: string; origin?: string }) => ({
-            pluginId: plugin.id,
-            origin: plugin.origin ?? "global",
-            enabled: true,
-            enabledByDefault: true,
-          })),
-        },
-        plugins: registry.plugins,
-      };
-    }),
-  };
-});
-
-vi.mock("../plugins/manifest-registry-installed.js", () => ({
-  loadPluginManifestRegistryForInstalledIndex:
-    pluginRegistryMocks.loadPluginManifestRegistryForInstalledIndex,
-}));
-
-vi.mock("../plugins/plugin-registry.js", () => ({
-  loadPluginManifestRegistryForPluginRegistry:
-    pluginRegistryMocks.loadPluginManifestRegistryForPluginRegistry,
-  loadPluginRegistrySnapshot: pluginRegistryMocks.loadPluginRegistrySnapshot,
-}));
-
-vi.mock("../plugins/plugin-metadata-snapshot.js", () => ({
-  loadPluginMetadataSnapshot: pluginRegistryMocks.loadPluginMetadataSnapshot,
-}));
-
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { clearCurrentPluginMetadataSnapshot } from "../plugins/current-plugin-metadata-snapshot.js";
+import { clearLoadPluginMetadataSnapshotMemo } from "../plugins/plugin-metadata-snapshot.js";
 import {
   resetProviderAuthAliasMapCacheForTest,
   resolveProviderIdForAuth,
 } from "./provider-auth-aliases.js";
 
+const tempDirs: string[] = [];
+
+function createTempHome(): string {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-provider-auth-aliases-"));
+  tempDirs.push(home);
+  return home;
+}
+
+function createPluginEnv(home: string): NodeJS.ProcessEnv {
+  return {
+    HOME: home,
+    USERPROFILE: home,
+    OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
+    OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY: "1",
+    VITEST: process.env.VITEST,
+  };
+}
+
+function writeGlobalPlugin(home: string, id: string, manifest: Record<string, unknown>): void {
+  const pluginDir = path.join(home, ".openclaw", "extensions", id);
+  fs.mkdirSync(pluginDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(pluginDir, "openclaw.plugin.json"),
+    JSON.stringify({ id, enabledByDefault: true, configSchema: { type: "object" }, ...manifest }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(pluginDir, "index.js"), "export default {};\n", "utf8");
+}
+
 describe("provider auth aliases", () => {
   beforeEach(() => {
     resetProviderAuthAliasMapCacheForTest();
-    pluginRegistryMocks.loadPluginManifestRegistryForInstalledIndex.mockReset();
-    pluginRegistryMocks.loadPluginManifestRegistryForPluginRegistry.mockReset();
-    pluginRegistryMocks.loadPluginRegistrySnapshot.mockReset();
-    pluginRegistryMocks.loadPluginRegistrySnapshot.mockReturnValue({ plugins: [] });
-    pluginRegistryMocks.loadPluginMetadataSnapshot.mockClear();
+    clearLoadPluginMetadataSnapshotMemo();
+    clearCurrentPluginMetadataSnapshot();
+  });
+
+  afterEach(() => {
+    resetProviderAuthAliasMapCacheForTest();
+    clearLoadPluginMetadataSnapshotMemo();
+    clearCurrentPluginMetadataSnapshot();
+    for (const dir of tempDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("treats deprecated auth choice ids as provider auth aliases", () => {
-    pluginRegistryMocks.loadPluginManifestRegistryForInstalledIndex.mockReturnValue({
-      plugins: [
+    const home = createTempHome();
+    const env = createPluginEnv(home);
+    writeGlobalPlugin(home, "openai", {
+      providerAuthChoices: [
         {
-          id: "openai",
-          origin: "bundled",
-          providerAuthChoices: [
-            {
-              provider: "openai-codex",
-              method: "oauth",
-              choiceId: "openai-codex",
-              deprecatedChoiceIds: ["codex-cli", "openai-codex-import"],
-            },
-          ],
+          provider: "openai-codex",
+          method: "oauth",
+          choiceId: "openai-codex",
+          deprecatedChoiceIds: ["codex-cli", "openai-codex-import"],
         },
       ],
-      diagnostics: [],
     });
 
-    expect(resolveProviderIdForAuth("codex-cli")).toBe("openai-codex");
-    expect(resolveProviderIdForAuth("openai-codex-import")).toBe("openai-codex");
-    expect(resolveProviderIdForAuth("openai-codex")).toBe("openai-codex");
+    expect(resolveProviderIdForAuth("codex-cli", { config: {}, env })).toBe("openai-codex");
+    expect(resolveProviderIdForAuth("openai-codex-import", { config: {}, env })).toBe(
+      "openai-codex",
+    );
+    expect(resolveProviderIdForAuth("openai-codex", { config: {}, env })).toBe("openai-codex");
   });
 
   it("does not reuse aliases across env-resolved plugin roots", () => {
-    const env = {
-      HOME: "/home/one",
-      OPENCLAW_HOME: undefined,
-    } as NodeJS.ProcessEnv;
-    pluginRegistryMocks.loadPluginManifestRegistryForPluginRegistry
-      .mockReturnValueOnce({
-        plugins: [
-          {
-            id: "one",
-            origin: "global",
-            providerAuthAliases: { fixture: "provider-one" },
-          },
-        ],
-        diagnostics: [],
-      })
-      .mockReturnValueOnce({
-        plugins: [
-          {
-            id: "two",
-            origin: "global",
-            providerAuthAliases: { fixture: "provider-two" },
-          },
-        ],
-        diagnostics: [],
-      });
+    const firstHome = createTempHome();
+    const secondHome = createTempHome();
+    const env = createPluginEnv(firstHome);
+    writeGlobalPlugin(firstHome, "one", {
+      providerAuthAliases: { fixture: "provider-one" },
+    });
+    writeGlobalPlugin(secondHome, "two", {
+      providerAuthAliases: { fixture: "provider-two" },
+    });
 
     expect(resolveProviderIdForAuth("fixture", { config: {}, env })).toBe("provider-one");
-    env.HOME = "/home/two";
+    env.HOME = secondHome;
+    env.USERPROFILE = secondHome;
     expect(resolveProviderIdForAuth("fixture", { config: {}, env })).toBe("provider-two");
-    expect(pluginRegistryMocks.loadPluginManifestRegistryForPluginRegistry).toHaveBeenCalledTimes(
-      2,
-    );
   });
 });

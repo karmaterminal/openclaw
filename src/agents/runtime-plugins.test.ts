@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../test/helpers/mock-plugin-runtime.js";
 
 const hoisted = vi.hoisted(() => ({
   getCurrentPluginMetadataSnapshot: vi.fn(),
@@ -16,9 +17,11 @@ vi.mock("../plugins/runtime/standalone-runtime-registry-loader.js", () => ({
   ensureStandaloneRuntimePluginRegistryLoaded: hoisted.ensureStandaloneRuntimePluginRegistryLoaded,
 }));
 
-vi.mock("../plugins/runtime.js", () => ({
-  getActivePluginRuntimeSubagentMode: hoisted.getActivePluginRuntimeSubagentMode,
-}));
+vi.mock("../plugins/runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginRuntimeSubagentMode: hoisted.getActivePluginRuntimeSubagentMode,
+  }),
+);
 
 describe("ensureRuntimePluginsLoaded", () => {
   let ensureRuntimePluginsLoaded: typeof import("./runtime-plugins.js").ensureRuntimePluginsLoaded;

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { ModelDefinitionConfig } from "../../config/types.models.js";
 import type {
@@ -92,33 +93,39 @@ vi.mock("../pi-tools.abort.js", () => ({
   wrapToolWithAbortSignal: vi.fn((tool) => tool),
 }));
 
-vi.mock("../auth-profiles.js", () => ({
-  externalCliDiscoveryForProviderAuth: () => undefined,
-  ensureAuthProfileStore: (agentDir?: string) => {
-    if (!agentDir) {
-      return { version: 1, profiles: {} };
-    }
-    const pathname = path.join(agentDir, "auth-profiles.json");
-    try {
-      return JSON.parse(fsSync.readFileSync(pathname, "utf8")) as {
-        version?: number;
-        profiles?: Record<string, { provider?: string }>;
-      };
-    } catch {
-      return { version: 1, profiles: {} };
-    }
-  },
-  hasAnyAuthProfileStoreSource: (agentDir?: string) => {
-    if (!agentDir) {
-      return false;
-    }
-    return fsSync.existsSync(path.join(agentDir, "auth-profiles.json"));
-  },
-  listProfilesForProvider: (
-    store: { profiles?: Record<string, { provider?: string }> },
-    provider: string,
-  ) => Object.values(store.profiles ?? {}).filter((profile) => profile?.provider === provider),
-}));
+vi.mock("../auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    externalCliDiscoveryForProviderAuth: () => undefined,
+    ensureAuthProfileStore: (agentDir?: string) => {
+      if (!agentDir) {
+        return { version: 1, profiles: {} };
+      }
+      const pathname = path.join(agentDir, "auth-profiles.json");
+      try {
+        const parsed = JSON.parse(fsSync.readFileSync(pathname, "utf8")) as {
+          version?: number;
+          profiles?: Record<string, { provider?: string }>;
+        };
+        return { version: parsed.version ?? 1, profiles: parsed.profiles ?? {} };
+      } catch {
+        return { version: 1, profiles: {} };
+      }
+    },
+    hasAnyAuthProfileStoreSource: (agentDir?: string) => {
+      if (!agentDir) {
+        return false;
+      }
+      return fsSync.existsSync(path.join(agentDir, "auth-profiles.json"));
+    },
+    listProfilesForProvider: (
+      store: { profiles?: Record<string, { provider?: string }> },
+      provider: string,
+    ) =>
+      Object.entries(store.profiles ?? {})
+        .filter(([, profile]) => profile?.provider === provider)
+        .map(([profileId]) => profileId),
+  }),
+);
 
 vi.mock("../model-auth.js", () => ({
   resolveEnvApiKey: (provider: string) => {

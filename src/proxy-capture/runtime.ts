@@ -16,6 +16,9 @@ import type {
 } from "./types.js";
 
 const DEBUG_PROXY_FETCH_PATCH_KEY = Symbol.for("openclaw.debugProxy.fetchPatch");
+const DEBUG_PROXY_FETCH_PATCHED_FUNCTION_KEY = Symbol.for(
+  "openclaw.debugProxy.fetchPatchedFunction",
+);
 const REDACTED_CAPTURE_HEADER_VALUE = "[REDACTED]";
 const SENSITIVE_CAPTURE_HEADER_NAMES = new Set([
   "authorization",
@@ -48,6 +51,10 @@ type GlobalFetchPatchTarget = typeof globalThis & {
   [DEBUG_PROXY_FETCH_PATCH_KEY]?: GlobalFetchPatchedState;
 };
 
+type DebugProxyPatchedFetch = typeof globalThis.fetch & {
+  [DEBUG_PROXY_FETCH_PATCHED_FUNCTION_KEY]?: true;
+};
+
 type DebugProxyCaptureStoreLike = Pick<
   ReturnType<typeof getDebugProxyCaptureStore>,
   "upsertSession" | "endSession" | "recordEvent"
@@ -75,6 +82,20 @@ function resolveRuntimeDeps(deps: DebugProxyCaptureRuntimeDeps = {}) {
     safeJsonString: deps.safeJsonString ?? safeJsonString,
     fetchTarget: deps.fetchTarget ?? globalThis,
   };
+}
+
+function preserveMockedFetchMarker(
+  patchedFetch: typeof globalThis.fetch,
+  originalFetch: typeof globalThis.fetch,
+): void {
+  const mock = (originalFetch as typeof globalThis.fetch & { mock?: unknown }).mock;
+  if (typeof mock !== "object" || mock === null) {
+    return;
+  }
+  Object.defineProperty(patchedFetch, "mock", {
+    configurable: true,
+    get: () => (originalFetch as typeof globalThis.fetch & { mock?: unknown }).mock,
+  });
 }
 
 function protocolFromUrl(rawUrl: string): CaptureProtocol {
@@ -171,9 +192,10 @@ function installDebugProxyGlobalFetchPatch(
   if (fetchTarget[DEBUG_PROXY_FETCH_PATCH_KEY]) {
     return;
   }
-  const originalFetch = fetchTarget.fetch.bind(fetchTarget);
+  const originalFetchSource = fetchTarget.fetch;
+  const originalFetch = originalFetchSource.bind(fetchTarget);
   fetchTarget[DEBUG_PROXY_FETCH_PATCH_KEY] = { originalFetch };
-  fetchTarget.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const patchedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = resolveUrlString(input);
     const normalizedInit = normalizeRequestInitHeadersForFetch(init);
     try {
@@ -239,6 +261,9 @@ function installDebugProxyGlobalFetchPatch(
       throw error;
     }
   }) as typeof globalThis.fetch;
+  (patchedFetch as DebugProxyPatchedFetch)[DEBUG_PROXY_FETCH_PATCHED_FUNCTION_KEY] = true;
+  preserveMockedFetchMarker(patchedFetch, originalFetchSource);
+  fetchTarget.fetch = patchedFetch;
 }
 
 function uninstallDebugProxyGlobalFetchPatch(deps: DebugProxyCaptureRuntimeDeps = {}): void {

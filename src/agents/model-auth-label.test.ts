@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import { resolveModelAuthLabel } from "./model-auth-label.js";
 
 const mocks = vi.hoisted(() => ({
@@ -13,13 +14,15 @@ const mocks = vi.hoisted(() => ({
   readCodexCliCredentialsCached: vi.fn<(options?: unknown) => unknown>(() => null),
 }));
 
-vi.mock("./auth-profiles.js", () => ({
-  ensureAuthProfileStore: mocks.ensureAuthProfileStore,
-  externalCliDiscoveryForProviderAuth: mocks.externalCliDiscoveryForProviderAuth,
-  loadAuthProfileStoreWithoutExternalProfiles: mocks.loadAuthProfileStoreWithoutExternalProfiles,
-  resolveAuthProfileOrder: mocks.resolveAuthProfileOrder,
-  resolveAuthProfileDisplayLabel: mocks.resolveAuthProfileDisplayLabel,
-}));
+vi.mock("./auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore: mocks.ensureAuthProfileStore,
+    externalCliDiscoveryForProviderAuth: mocks.externalCliDiscoveryForProviderAuth,
+    loadAuthProfileStoreWithoutExternalProfiles: mocks.loadAuthProfileStoreWithoutExternalProfiles,
+    resolveAuthProfileOrder: mocks.resolveAuthProfileOrder,
+    resolveAuthProfileDisplayLabel: mocks.resolveAuthProfileDisplayLabel,
+  }),
+);
 
 vi.mock("./model-auth.js", () => ({
   resolveUsableCustomProviderApiKey: mocks.resolveUsableCustomProviderApiKey,

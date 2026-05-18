@@ -442,6 +442,7 @@ async function waitForProbe(params: {
   isDone?: () => boolean;
   path: string;
   port: number;
+  requestTimeoutMs?: number;
   startAt: number;
 }): Promise<ProbeResult> {
   let firstErrorKind: string | null = null;
@@ -454,7 +455,7 @@ async function waitForProbe(params: {
     if (params.isDone?.()) {
       break;
     }
-    const attempt = await requestProbeStatus(params.port, params.path);
+    const attempt = await requestProbeStatus(params.port, params.path, params.requestTimeoutMs);
     const now = performance.now();
     const elapsedMs = now - params.startAt;
     lastStatus = attempt.status;
@@ -493,9 +494,10 @@ async function waitForProbe(params: {
 async function requestProbeStatus(
   port: number,
   pathname: string,
+  timeoutMs?: number,
 ): Promise<{ errorKind: string | null; status: number | null }> {
   try {
-    const status = await requestStatus(port, pathname);
+    const status = await requestStatus(port, pathname, timeoutMs);
     return {
       errorKind: status === 200 ? null : `http-${status}`,
       status,
@@ -526,10 +528,10 @@ function classifyProbeErrorKind(error: unknown): string {
   return "error";
 }
 
-function requestStatus(port: number, pathname: string): Promise<number> {
+function requestStatus(port: number, pathname: string, timeoutMs = 100): Promise<number> {
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", method: "GET", path: pathname, port, timeout: 100 },
+      { host: "127.0.0.1", method: "GET", path: pathname, port, timeout: timeoutMs },
       (res) => {
         res.resume();
         res.on("end", () => resolve(res.statusCode ?? 0));

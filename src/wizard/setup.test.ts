@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ProviderPlugin } from "openclaw/plugin-sdk/provider-model-shared";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import { createWizardPrompter as buildWizardPrompter } from "../../test/helpers/wizard-prompter.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../agents/workspace.js";
 import type { PluginCompatibilityNotice } from "../plugins/status.js";
@@ -21,7 +22,7 @@ type ResolveManifestProviderAuthChoice =
 type PromptDefaultModel = typeof import("../commands/model-picker.js").promptDefaultModel;
 type ApplyAuthChoice = typeof import("../commands/auth-choice.js").applyAuthChoice;
 
-const ensureAuthProfileStore = vi.hoisted(() => vi.fn(() => ({ profiles: {} })));
+const ensureAuthProfileStore = vi.hoisted(() => vi.fn(() => ({ version: 1, profiles: {} })));
 const promptAuthChoiceGrouped = vi.hoisted(() => vi.fn(async () => "skip"));
 const applyAuthChoice = vi.hoisted(() =>
   vi.fn<ApplyAuthChoice>(async (args) => ({ config: args.config })),
@@ -204,9 +205,11 @@ vi.mock("../commands/onboard-skills.js", () => ({
   setupSkills,
 }));
 
-vi.mock("../agents/auth-profiles.js", () => ({
-  ensureAuthProfileStore,
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore,
+  }),
+);
 
 vi.mock("../agents/auth-profiles.runtime.js", () => ({
   ensureAuthProfileStore,

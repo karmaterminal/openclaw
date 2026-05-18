@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilePersistedMock } from "../../../test/helpers/mock-auth-profiles.js";
 import { NON_ENV_SECRETREF_MARKER } from "../../agents/model-auth-markers.js";
 import { resolveEnvApiKey } from "../../agents/model-auth.js";
 import { withEnv } from "../../test-utils/env.js";
@@ -10,11 +11,13 @@ vi.mock("../../agents/auth-profiles/display.js", () => ({
   resolveAuthProfileDisplayLabel: vi.fn(({ profileId }: { profileId: string }) => profileId),
 }));
 
-vi.mock("../../agents/auth-profiles/persisted.js", () => ({
-  loadPersistedAuthProfileStore: vi.fn((agentDir?: string) =>
-    persistedStores.get(agentDir ?? "__main__"),
-  ),
-}));
+vi.mock("../../agents/auth-profiles/persisted.js", () =>
+  buildAuthProfilePersistedMock({
+    loadPersistedAuthProfileStore: vi.fn((agentDir?: string) =>
+      persistedStores.get(agentDir ?? "__main__"),
+    ),
+  }),
+);
 
 vi.mock("../../agents/auth-profiles/paths.js", () => ({
   resolveAuthStorePathForDisplay: vi.fn((agentDir?: string) =>

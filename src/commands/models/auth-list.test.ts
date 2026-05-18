@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../../test/helpers/mock-auth-profiles.js";
 import type { AuthProfileStore } from "../../agents/auth-profiles.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { OutputRuntimeEnv } from "../../runtime.js";
@@ -17,12 +18,14 @@ vi.mock("../../agents/agent-scope.js", () => ({
   resolveDefaultAgentId: () => "main",
 }));
 
-vi.mock("../../agents/auth-profiles.js", () => ({
-  ensureAuthProfileStore: mocks.ensureAuthProfileStore,
-  externalCliDiscoveryForProviderAuth: mocks.externalCliDiscoveryForProviderAuth,
-  resolveAuthProfileDisplayLabel: mocks.resolveAuthProfileDisplayLabel,
-  resolveAuthStatePathForDisplay: (agentDir: string) => `${agentDir}/auth-state.json`,
-}));
+vi.mock("../../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore: mocks.ensureAuthProfileStore,
+    externalCliDiscoveryForProviderAuth: mocks.externalCliDiscoveryForProviderAuth,
+    resolveAuthProfileDisplayLabel: mocks.resolveAuthProfileDisplayLabel,
+    resolveAuthStatePathForDisplay: (agentDir: string) => `${agentDir}/auth-state.json`,
+  }),
+);
 
 vi.mock("./load-config.js", () => ({
   loadModelsConfig: mocks.loadModelsConfig,

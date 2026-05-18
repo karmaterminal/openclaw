@@ -1,40 +1,20 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  createConfigIO: vi.fn().mockReturnValue({
-    configPath: "/tmp/openclaw-dev/openclaw.json",
-  }),
-}));
-
-vi.mock("./io.js", () => ({
-  createConfigIO: mocks.createConfigIO,
-}));
-
-let formatConfigPath: typeof import("./logging.js").formatConfigPath;
-let formatConfigUpdatedMessage: typeof import("./logging.js").formatConfigUpdatedMessage;
-let logConfigUpdated: typeof import("./logging.js").logConfigUpdated;
-
-beforeAll(async () => {
-  ({ formatConfigPath, formatConfigUpdatedMessage, logConfigUpdated } =
-    await import("./logging.js"));
-});
-
-beforeEach(() => {
-  mocks.createConfigIO.mockClear();
-});
+import { describe, expect, it, vi } from "vitest";
+import { displayPath } from "../utils.js";
+import { formatConfigPath, formatConfigUpdatedMessage, logConfigUpdated } from "./logging.js";
+import { resolveConfigPath } from "./paths.js";
 
 describe("config logging", () => {
   it("formats the live config path when no explicit path is provided", () => {
-    expect(formatConfigPath()).toBe("/tmp/openclaw-dev/openclaw.json");
+    expect(formatConfigPath()).toBe(displayPath(resolveConfigPath()));
   });
 
   it("logs the live config path when no explicit path is provided", () => {
     const runtime = { log: vi.fn() };
     logConfigUpdated(runtime as never);
-    expect(runtime.log).toHaveBeenCalledWith("Updated config: /tmp/openclaw-dev/openclaw.json");
+    expect(runtime.log).toHaveBeenCalledWith(`Updated config: ${displayPath(resolveConfigPath())}`);
   });
 
   it("formats backup as an indented detail when present", () => {

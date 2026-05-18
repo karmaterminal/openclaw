@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../test/helpers/mock-plugin-runtime.js";
 
 const applyPluginAutoEnableMock = vi.hoisted(() => vi.fn());
 const getActivePluginRegistryMock = vi.hoisted(() => vi.fn());
@@ -14,9 +15,11 @@ vi.mock("../plugins/channel-plugin-ids.js", () => ({
     resolveConfiguredChannelPluginIdsMock(...args),
 }));
 
-vi.mock("../plugins/runtime.js", () => ({
-  getActivePluginRegistry: (...args: unknown[]) => getActivePluginRegistryMock(...args),
-}));
+vi.mock("../plugins/runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginRegistry: (...args: unknown[]) => getActivePluginRegistryMock(...args),
+  }),
+);
 
 vi.mock("../plugins/runtime/metadata-registry-loader.js", () => ({
   loadPluginMetadataRegistrySnapshot: (...args: unknown[]) =>

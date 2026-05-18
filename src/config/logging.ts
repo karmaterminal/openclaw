@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { RuntimeEnv } from "../runtime.js";
 import { theme } from "../terminal/theme.js";
 import { displayPath } from "../utils.js";
-import { createConfigIO } from "./io.js";
+import { resolveConfigPath } from "./paths.js";
 
 type LogConfigUpdatedOptions = {
   path?: string;
@@ -10,7 +10,7 @@ type LogConfigUpdatedOptions = {
   suffix?: string;
 };
 
-export function formatConfigPath(path: string = createConfigIO().configPath): string {
+export function formatConfigPath(path: string = resolveConfigPath()): string {
   return displayPath(path);
 }
 
@@ -29,5 +29,5 @@ export function formatConfigUpdatedMessage(
 }
 
 export function logConfigUpdated(runtime: RuntimeEnv, opts: LogConfigUpdatedOptions = {}): void {
-  runtime.log(formatConfigUpdatedMessage(opts.path ?? createConfigIO().configPath, opts));
+  runtime.log(formatConfigUpdatedMessage(opts.path ?? resolveConfigPath(), opts));
 }

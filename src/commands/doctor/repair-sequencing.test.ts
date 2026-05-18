@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { runDoctorRepairSequence } from "./repair-sequencing.js";
 
@@ -38,11 +39,13 @@ vi.mock("./shared/missing-configured-plugin-install.js", () => ({
   repairMissingConfiguredPluginInstalls: mocks.repairMissingConfiguredPluginInstalls,
 }));
 
-vi.mock("../../agents/auth-profiles.js", () => ({
-  ensureAuthProfileStore: mocks.ensureAuthProfileStore,
-  resolveAuthProfileOrder: mocks.resolveAuthProfileOrder,
-  resolveProfileUnusableUntilForDisplay: mocks.resolveProfileUnusableUntilForDisplay,
-}));
+vi.mock("../../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore: mocks.ensureAuthProfileStore,
+    resolveAuthProfileOrder: mocks.resolveAuthProfileOrder,
+    resolveProfileUnusableUntilForDisplay: mocks.resolveProfileUnusableUntilForDisplay,
+  }),
+);
 
 vi.mock("../../agents/auth-profiles/credential-state.js", () => ({
   evaluateStoredCredentialEligibility: mocks.evaluateStoredCredentialEligibility,

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileStoreMock } from "../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 const storeMocks = vi.hoisted(() => ({
@@ -23,7 +24,7 @@ const syntheticAuthMocks = vi.hoisted(() => ({
   resolveProviderSyntheticAuthWithPlugin: vi.fn(),
 }));
 
-vi.mock("./auth-profiles/store.js", () => storeMocks);
+vi.mock("./auth-profiles/store.js", () => buildAuthProfileStoreMock(storeMocks));
 
 vi.mock("./pi-auth-credentials.js", () => credentialMocks);
 

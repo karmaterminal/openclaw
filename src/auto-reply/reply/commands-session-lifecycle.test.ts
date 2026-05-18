@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../../test/helpers/mock-plugin-runtime.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionBindingRecord } from "../../infra/outbound/session-binding-service.js";
 import type { HandleCommandsParams } from "./commands-types.js";
@@ -185,14 +186,14 @@ const hoisted = vi.hoisted(() => {
 });
 
 vi.mock("../../plugins/runtime.js", () => {
-  return {
+  return buildPluginRuntimeMock({
     getActivePluginRegistry: () => hoisted.runtimeChannelRegistry,
     requireActivePluginRegistry: () => hoisted.runtimeChannelRegistry,
     getActivePluginChannelRegistry: () => hoisted.runtimeChannelRegistry,
     requireActivePluginChannelRegistry: () => hoisted.runtimeChannelRegistry,
     getActivePluginRegistryVersion: () => 1,
     getActivePluginChannelRegistryVersion: () => 1,
-  };
+  });
 });
 
 vi.mock("../../channels/plugins/index.js", () => ({

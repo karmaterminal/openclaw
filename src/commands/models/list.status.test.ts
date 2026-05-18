@@ -1,4 +1,8 @@
 import { describe, expect, it, type Mock, vi } from "vitest";
+import {
+  buildAuthProfilePersistedMock,
+  buildAuthProfileStoreMock,
+} from "../../../test/helpers/mock-auth-profiles.js";
 
 const mocks = vi.hoisted(() => {
   type MockAuthProfile = { provider: string; [key: string]: unknown };
@@ -157,16 +161,20 @@ vi.mock("../../agents/auth-profiles/display.js", () => ({
 vi.mock("../../agents/auth-profiles/paths.js", () => ({
   resolveAuthStorePathForDisplay: mocks.resolveAuthStorePathForDisplay,
 }));
-vi.mock("../../agents/auth-profiles/persisted.js", () => ({
-  loadPersistedAuthProfileStore: mocks.loadPersistedAuthProfileStore,
-}));
+vi.mock("../../agents/auth-profiles/persisted.js", () =>
+  buildAuthProfilePersistedMock({
+    loadPersistedAuthProfileStore: mocks.loadPersistedAuthProfileStore,
+  }),
+);
 vi.mock("../../agents/auth-profiles/profiles.js", () => ({
   listProfilesForProvider: mocks.listProfilesForProvider,
 }));
-vi.mock("../../agents/auth-profiles/store.js", () => ({
-  ensureAuthProfileStore: mocks.ensureAuthProfileStore,
-  ensureAuthProfileStoreWithoutExternalProfiles: mocks.ensureAuthProfileStore,
-}));
+vi.mock("../../agents/auth-profiles/store.js", () =>
+  buildAuthProfileStoreMock({
+    ensureAuthProfileStore: mocks.ensureAuthProfileStore,
+    ensureAuthProfileStoreWithoutExternalProfiles: mocks.ensureAuthProfileStore,
+  }),
+);
 vi.mock("../../agents/auth-profiles/usage.js", () => ({
   resolveProfileUnusableUntilForDisplay: mocks.resolveProfileUnusableUntilForDisplay,
 }));

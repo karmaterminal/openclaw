@@ -2,29 +2,34 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 
 const resolveProviderUsageAuthWithPluginMock = vi.fn(
   async (..._args: unknown[]): Promise<unknown> => null,
 );
 const hasAnyAuthProfileStoreSourceMock = vi.fn(() => false);
 const ensureAuthProfileStoreMock = vi.fn(() => ({
+  version: 1,
   profiles: {},
 }));
 const ensureAuthProfileStoreWithoutExternalProfilesMock = vi.fn(() => ({
+  version: 1,
   profiles: {},
 }));
 const resolveAuthProfileOrderMock = vi.fn((_params: unknown): string[] => []);
 
-vi.mock("../agents/auth-profiles.js", () => ({
-  dedupeProfileIds: (profileIds: string[]) => [...new Set(profileIds)],
-  ensureAuthProfileStore: () => ensureAuthProfileStoreMock(),
-  ensureAuthProfileStoreWithoutExternalProfiles: () =>
-    ensureAuthProfileStoreWithoutExternalProfilesMock(),
-  hasAnyAuthProfileStoreSource: () => hasAnyAuthProfileStoreSourceMock(),
-  listProfilesForProvider: () => [],
-  resolveApiKeyForProfile: async () => null,
-  resolveAuthProfileOrder: (params: unknown) => resolveAuthProfileOrderMock(params),
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    dedupeProfileIds: (profileIds: string[]) => [...new Set(profileIds)],
+    ensureAuthProfileStore: () => ensureAuthProfileStoreMock(),
+    ensureAuthProfileStoreWithoutExternalProfiles: () =>
+      ensureAuthProfileStoreWithoutExternalProfilesMock(),
+    hasAnyAuthProfileStoreSource: () => hasAnyAuthProfileStoreSourceMock(),
+    listProfilesForProvider: () => [],
+    resolveApiKeyForProfile: async () => null,
+    resolveAuthProfileOrder: (params: unknown) => resolveAuthProfileOrderMock(params),
+  }),
+);
 
 vi.mock("../plugins/provider-runtime.js", async () => {
   const actual = await vi.importActual<typeof import("../plugins/provider-runtime.js")>(
@@ -65,10 +70,12 @@ describe("resolveProviderAuths plugin boundary", () => {
     hasAnyAuthProfileStoreSourceMock.mockReturnValue(false);
     ensureAuthProfileStoreMock.mockClear();
     ensureAuthProfileStoreMock.mockReturnValue({
+      version: 1,
       profiles: {},
     });
     ensureAuthProfileStoreWithoutExternalProfilesMock.mockClear();
     ensureAuthProfileStoreWithoutExternalProfilesMock.mockReturnValue({
+      version: 1,
       profiles: {},
     });
     resolveAuthProfileOrderMock.mockReset();
@@ -170,6 +177,7 @@ describe("resolveProviderAuths plugin boundary", () => {
   it("keeps auth-profile credential sources provider-specific", async () => {
     hasAnyAuthProfileStoreSourceMock.mockReturnValue(true);
     ensureAuthProfileStoreWithoutExternalProfilesMock.mockReturnValue({
+      version: 1,
       profiles: {
         "anthropic:default": {
           type: "api_key",
@@ -212,6 +220,7 @@ describe("resolveProviderAuths plugin boundary", () => {
   it("keeps plugin usage auth when an owned alias provider has auth-profile credentials", async () => {
     hasAnyAuthProfileStoreSourceMock.mockReturnValue(true);
     ensureAuthProfileStoreWithoutExternalProfilesMock.mockReturnValue({
+      version: 1,
       profiles: {
         "minimax-portal:default": {
           type: "oauth",

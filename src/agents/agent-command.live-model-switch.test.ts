@@ -1,4 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  buildAuthProfileStoreMock,
+  buildAuthProfilesMock,
+} from "../../test/helpers/mock-auth-profiles.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { INTERNAL_RUNTIME_CONTEXT_BEGIN, INTERNAL_RUNTIME_CONTEXT_END } from "./internal-events.js";
 import { LiveSessionModelSwitchError } from "./live-model-switch-error.js";
@@ -300,13 +304,17 @@ vi.mock("./agent-scope.js", () => ({
   resolveAgentWorkspaceDir: () => "/tmp/workspace",
 }));
 
-vi.mock("./auth-profiles.js", () => ({
-  ensureAuthProfileStore: () => ({ profiles: {} }),
-}));
+vi.mock("./auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore: () => ({ version: 1, profiles: {} }),
+  }),
+);
 
-vi.mock("./auth-profiles/store.js", () => ({
-  ensureAuthProfileStore: () => state.authProfileStoreMock,
-}));
+vi.mock("./auth-profiles/store.js", () =>
+  buildAuthProfileStoreMock({
+    ensureAuthProfileStore: () => ({ version: 1, ...state.authProfileStoreMock }),
+  }),
+);
 
 vi.mock("./auth-profiles/session-override.js", () => ({
   clearSessionAuthProfileOverride: (...args: unknown[]) =>

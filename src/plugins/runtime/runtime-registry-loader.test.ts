@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../../test/helpers/mock-plugin-runtime.js";
 import { createEmptyPluginRegistry } from "../registry.js";
 
 const mocks = vi.hoisted(() => ({
@@ -71,13 +72,15 @@ vi.mock("../loader.js", () => ({
     mocks.resolveRuntimePluginRegistry(...args),
 }));
 
-vi.mock("../runtime.js", () => ({
-  getActivePluginChannelRegistry: () => null,
-  getActivePluginHttpRouteRegistry: () => null,
-  getActivePluginRegistry: (...args: Parameters<typeof mocks.getActivePluginRegistry>) =>
-    mocks.getActivePluginRegistry(...args),
-  getActivePluginRegistryWorkspaceDir: () => undefined,
-}));
+vi.mock("../runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginChannelRegistry: () => null,
+    getActivePluginHttpRouteRegistry: () => null,
+    getActivePluginRegistry: (...args: Parameters<typeof mocks.getActivePluginRegistry>) =>
+      mocks.getActivePluginRegistry(...args),
+    getActivePluginRegistryWorkspaceDir: () => undefined,
+  }),
+);
 
 vi.mock("../channel-plugin-ids.js", () => ({
   resolveConfiguredChannelPluginIds: (

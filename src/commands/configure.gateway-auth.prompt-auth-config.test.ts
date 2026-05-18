@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { NormalizedModelCatalogRow } from "../model-catalog/index.js";
 import type { RuntimeEnv } from "../runtime.js";
@@ -156,12 +157,14 @@ function normalizeTestModelKeys(values: string[]): string[] {
   return next;
 }
 
-vi.mock("../agents/auth-profiles.js", () => ({
-  ensureAuthProfileStore: vi.fn(() => ({
-    version: 1,
-    profiles: {},
-  })),
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore: vi.fn(() => ({
+      version: 1,
+      profiles: {},
+    })),
+  }),
+);
 
 vi.mock("./auth-choice-prompt.js", () => ({
   promptAuthChoiceGrouped: mocks.promptAuthChoiceGrouped,

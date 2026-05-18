@@ -3,6 +3,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  buildAuthProfileExternalCliSyncMock,
+  buildAuthProfilesMock,
+} from "../../test/helpers/mock-auth-profiles.js";
 import { NON_ENV_SECRETREF_MARKER } from "../agents/model-auth-markers.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ModelDefinitionConfig } from "../config/types.models.js";
@@ -119,7 +123,7 @@ vi.mock("../agents/auth-profiles.js", () => {
     return null;
   };
 
-  return {
+  return buildAuthProfilesMock({
     clearRuntimeAuthProfileStoreSnapshots: () => {},
     ensureAuthProfileStore: (agentDir?: string) => readStore(agentDir),
     hasAnyAuthProfileStoreSource: (agentDir?: string) =>
@@ -128,7 +132,7 @@ vi.mock("../agents/auth-profiles.js", () => {
     listProfilesForProvider,
     resolveApiKeyForProfile,
     resolveAuthProfileOrder,
-  };
+  });
 });
 
 const providerRuntimeMocks = vi.hoisted(() => ({
@@ -258,6 +262,7 @@ vi.mock("../agents/cli-credentials.js", () => ({
 }));
 
 vi.mock("../agents/auth-profiles/external-cli-sync.js", () => ({
+  ...buildAuthProfileExternalCliSyncMock(),
   syncExternalCliCredentials: () => false,
 }));
 

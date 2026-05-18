@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import type { AuthProfileStore } from "../agents/auth-profiles.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { warnIfModelConfigLooksOff } from "./auth-choice.model-check.js";
@@ -13,10 +14,12 @@ const ensureAuthProfileStore = vi.hoisted(() => vi.fn(() => ({ version: 1, profi
 const listProfilesForProvider = vi.hoisted(() =>
   vi.fn<(store: AuthProfileStore, provider: string) => string[]>(() => []),
 );
-vi.mock("../agents/auth-profiles.js", () => ({
-  ensureAuthProfileStore,
-  listProfilesForProvider,
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    ensureAuthProfileStore,
+    listProfilesForProvider,
+  }),
+);
 
 const resolveEnvApiKey = vi.hoisted(() => vi.fn(() => undefined));
 const hasUsableCustomProviderApiKey = vi.hoisted(() => vi.fn(() => false));

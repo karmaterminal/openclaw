@@ -137,6 +137,11 @@ describe("Code Mode", () => {
     ).toBe("/repo/dist/agents/code-mode.worker.js");
   });
 
+  it("keeps a minimum worker watchdog above tiny code execution timeouts", () => {
+    expect(__testing.workerWatchdogMs(100)).toBe(5_000);
+    expect(__testing.workerWatchdogMs(60_000)).toBe(61_000);
+  });
+
   it("hides all normal tools behind exec and wait", () => {
     const { config, catalogRef, tools: codeModeTools } = createCodeModeHarness();
     const shellExec = fakeTool("exec", "Run shell command");
@@ -306,7 +311,7 @@ describe("Code Mode", () => {
       tools: {
         codeMode: {
           enabled: true,
-          timeoutMs: 100,
+          timeoutMs: 5_000,
         },
       },
     } as never;
@@ -360,7 +365,7 @@ describe("Code Mode", () => {
       tools: {
         codeMode: {
           enabled: true,
-          timeoutMs: 100,
+          timeoutMs: 5_000,
         },
       },
     } as never;
@@ -403,6 +408,11 @@ describe("Code Mode", () => {
     );
     expect(first.status).toBe("waiting");
     expect(first.pendingToolCalls).toHaveLength(2);
+    const suspended = __testing.activeRuns.get(String(first.runId));
+    expect(suspended).toBeDefined();
+    if (suspended) {
+      suspended.config.timeoutMs = 100;
+    }
 
     const second = resultDetails(
       await codeModeTools[1].execute("code-wait-timeout", { runId: first.runId }),

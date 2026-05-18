@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPluginRuntimeMock } from "../../../test/helpers/mock-plugin-runtime.js";
 import type { ChannelDirectoryEntry } from "../../channels/plugins/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
 type TargetResolverModule = typeof import("./target-resolver.js");
@@ -28,11 +29,13 @@ vi.mock("../../channels/plugins/registry-loaded-read.js", () => ({
   getLoadedChannelPluginForRead: (...args: unknown[]) => mocks.getLoadedChannelPlugin(...args),
 }));
 
-vi.mock("../../plugins/runtime.js", () => ({
-  getActivePluginChannelRegistry: () => null,
-  getActivePluginRegistry: () => null,
-  getActivePluginChannelRegistryVersion: () => mocks.getActivePluginChannelRegistryVersion(),
-}));
+vi.mock("../../plugins/runtime.js", () =>
+  buildPluginRuntimeMock({
+    getActivePluginChannelRegistry: () => null,
+    getActivePluginRegistry: () => null,
+    getActivePluginChannelRegistryVersion: () => mocks.getActivePluginChannelRegistryVersion(),
+  }),
+);
 
 beforeAll(async () => {
   ({ resetDirectoryCache, resolveMessagingTarget, formatTargetDisplay } =

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DebugProxySettings } from "./env.js";
 import {
   captureHttpExchange,
@@ -111,6 +111,22 @@ describe("debug proxy runtime", () => {
       "x-hidden": "yes",
     });
     expect(Object.getOwnPropertySymbols(headers)).toHaveLength(1);
+  });
+
+  it("preserves Vitest fetch mock markers on the global debug proxy patch", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    fetchTarget.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    initializeDebugProxyCapture("test", settings, deps);
+    try {
+      expect((fetchTarget.fetch as typeof globalThis.fetch & { mock?: unknown }).mock).toBe(
+        fetchMock.mock,
+      );
+      await fetchTarget.fetch("https://api.example.com/messages");
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      finalizeDebugProxyCapture(settings, deps);
+    }
   });
 
   it("redacts sensitive request and response headers before persistence", async () => {

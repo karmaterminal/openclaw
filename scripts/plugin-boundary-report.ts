@@ -159,11 +159,24 @@ function repoRelative(file: string): string {
 }
 
 function collectWorkspaceTextFileSources(): WorkspaceTextFile[] {
-  return collectWorkspaceTextFiles().map((file) => ({
-    file,
-    relativeFile: repoRelative(file),
-    source: readFileSync(file, "utf8"),
-  }));
+  const sources: WorkspaceTextFile[] = [];
+  for (const file of collectWorkspaceTextFiles()) {
+    let source: string;
+    try {
+      source = readFileSync(file, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+    sources.push({
+      file,
+      relativeFile: repoRelative(file),
+      source,
+    });
+  }
+  return sources;
 }
 
 function isDocsFile(file: string): boolean {

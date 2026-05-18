@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfilesMock } from "../../test/helpers/mock-auth-profiles.js";
 import {
   applyAuthChoiceLoadedPluginProvider,
   applyAuthChoicePluginProvider,
@@ -42,10 +43,12 @@ vi.mock("../plugins/provider-auth-choices.js", () => ({
 }));
 
 const upsertAuthProfile = vi.hoisted(() => vi.fn(() => ({ version: 1, profiles: {} })));
-vi.mock("../agents/auth-profiles.js", () => ({
-  upsertAuthProfile,
-  upsertAuthProfileWithLock: upsertAuthProfile,
-}));
+vi.mock("../agents/auth-profiles.js", () =>
+  buildAuthProfilesMock({
+    upsertAuthProfile,
+    upsertAuthProfileWithLock: upsertAuthProfile,
+  }),
+);
 
 const resolveDefaultAgentId = vi.hoisted(() => vi.fn(() => "default"));
 const resolveAgentWorkspaceDir = vi.hoisted(() => vi.fn(() => "/tmp/workspace"));

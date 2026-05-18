@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildAuthProfileStoreMock } from "../../test/helpers/mock-auth-profiles.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ProviderPlugin } from "../plugins/types.js";
@@ -22,9 +23,11 @@ vi.mock("../agents/auth-profiles/repair.js", () => ({
   repairOAuthProfileIdMismatch: repairMocks.repairOAuthProfileIdMismatch,
 }));
 
-vi.mock("../agents/auth-profiles/store.js", () => ({
-  ensureAuthProfileStore: () => authProfileStoreMock.store,
-}));
+vi.mock("../agents/auth-profiles/store.js", () =>
+  buildAuthProfileStoreMock({
+    ensureAuthProfileStore: () => authProfileStoreMock.store,
+  }),
+);
 
 vi.mock("../terminal/note.js", () => ({
   note: vi.fn(),
