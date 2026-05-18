@@ -198,6 +198,16 @@ async function loadModelFallbackAuthRuntime() {
   return await modelFallbackAuthRuntimeLoader.load();
 }
 
+function isSessionTakeoverError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  return (
+    err.name === "EmbeddedAttemptSessionTakeoverError" ||
+    err.message.includes("session file changed while embedded prompt lock was released")
+  );
+}
+
 function buildFallbackSuccess<T>(params: {
   result: T;
   provider: string;
@@ -228,7 +238,7 @@ async function runFallbackCandidate<T>(params: {
       result,
     };
   } catch (err) {
-    if (isCommandLaneTaskTimeoutError(err)) {
+    if (isCommandLaneTaskTimeoutError(err) || isSessionTakeoverError(err)) {
       throw err;
     }
     // Normalize abort-wrapped rate-limit errors (e.g. Google Vertex RESOURCE_EXHAUSTED)

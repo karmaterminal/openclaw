@@ -572,6 +572,25 @@ describe("runWithModelFallback", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  it("does not treat embedded session takeover as a model fallback failure", async () => {
+    const cfg = makeCfg();
+    const takeoverError = new Error(
+      "session file changed while embedded prompt lock was released: /tmp/session.jsonl",
+    );
+    takeoverError.name = "EmbeddedAttemptSessionTakeoverError";
+    const run = vi.fn().mockRejectedValue(takeoverError);
+
+    await expect(
+      runWithModelFallback({
+        cfg,
+        provider: "openai",
+        model: "gpt-4.1-mini",
+        run,
+      }),
+    ).rejects.toBe(takeoverError);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps raw provider schema errors in fallback summaries", async () => {
     const cfg = makeCfg({
       agents: {
