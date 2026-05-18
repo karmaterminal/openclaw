@@ -1674,7 +1674,7 @@ describe("dispatchReplyFromConfig", () => {
     expect(dispatcher.sendFinalReply).toHaveBeenCalledWith(notice);
   });
 
-  it("renders plain-text plan updates without generic working statuses when verbose is enabled", async () => {
+  it("renders plain-text plan updates and concise approval progress when verbose is enabled", async () => {
     setNoAbort();
     const cfg = {
       ...emptyConfig,
@@ -1713,11 +1713,17 @@ describe("dispatchReplyFromConfig", () => {
     expect(firstToolResultPayload(dispatcher)?.text).toBe(
       "Inspect code, patch it, run tests.\n\n1. Inspect code\n2. Patch code\n3. Run tests",
     );
-    expect(dispatcher.sendToolResult).toHaveBeenCalledTimes(1);
+    const secondToolPayload = firstMockArg(
+      dispatcher.sendToolResult as ReturnType<typeof vi.fn>,
+      "tool result",
+      1,
+    ) as ReplyPayload;
+    expect(secondToolPayload.text).toBe("Working: awaiting approval: pnpm test");
+    expect(dispatcher.sendToolResult).toHaveBeenCalledTimes(2);
     expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "done" });
   });
 
-  it("suppresses generic patch working statuses when verbose is enabled", async () => {
+  it("renders concise patch summaries when verbose is enabled", async () => {
     setNoAbort();
     const cfg = {
       ...emptyConfig,
@@ -1748,7 +1754,8 @@ describe("dispatchReplyFromConfig", () => {
 
     await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
 
-    expect(dispatcher.sendToolResult).not.toHaveBeenCalled();
+    expect(firstToolResultPayload(dispatcher)?.text).toBe("Working: 1 added, 2 modified");
+    expect(dispatcher.sendToolResult).toHaveBeenCalledTimes(1);
     expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "done" });
   });
 
@@ -1907,7 +1914,7 @@ describe("dispatchReplyFromConfig", () => {
     expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "done" });
   });
 
-  it("delivers plan progress without generic working status when verbose overrides preview suppression", async () => {
+  it("delivers plan and working-status progress when verbose overrides preview suppression", async () => {
     setNoAbort();
     sessionStoreMocks.currentEntry = {
       verboseLevel: "on",
@@ -1949,7 +1956,9 @@ describe("dispatchReplyFromConfig", () => {
     expect(dispatcher.sendToolResult).toHaveBeenNthCalledWith(1, {
       text: "Inspect code.\n\n1. Patch code",
     });
-    expect(dispatcher.sendToolResult).toHaveBeenCalledTimes(1);
+    expect(dispatcher.sendToolResult).toHaveBeenNthCalledWith(2, {
+      text: "Working: awaiting approval: pnpm test",
+    });
     expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "done" });
   });
 
