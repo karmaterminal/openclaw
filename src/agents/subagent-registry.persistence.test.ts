@@ -290,7 +290,7 @@ describe("subagent registry persistence", () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
     process.env.OPENCLAW_STATE_DIR = tempStateDir;
     const persistError = new Error("disk full");
-    __testing.setDepsForTest({
+    testing.setDepsForTest({
       ...createSubagentRegistryTestDeps(),
       persistSubagentRunsToDisk: () => {
         throw persistError;
@@ -320,7 +320,7 @@ describe("subagent registry persistence", () => {
     );
     await fs.writeFile(tempStateDir, "not a directory", "utf8");
     process.env.OPENCLAW_STATE_DIR = tempStateDir;
-    __testing.setDepsForTest({
+    testing.setDepsForTest({
       ...createSubagentRegistryTestDeps(),
       runSubagentAnnounceFlow: announceSpy,
     });
