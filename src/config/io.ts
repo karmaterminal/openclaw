@@ -887,14 +887,6 @@ export type ConfigIoDeps = {
   logger?: Pick<typeof console, "error" | "warn">;
   measure?: ConfigSnapshotReadMeasure;
   suppressFutureVersionWarning?: boolean;
-  observe?: boolean;
-};
-
-export type ConfigSnapshotReadOptions = {
-  measure?: ConfigSnapshotReadMeasure;
-  observe?: boolean;
-  skipPluginValidation?: boolean;
-  preservedLegacyRootKeys?: readonly string[];
 };
 
 function warnOnConfigMiskeys(raw: unknown, logger: Pick<typeof console, "warn">): void {
@@ -954,7 +946,6 @@ function normalizeDeps(overrides: ConfigIoDeps = {}): Required<ConfigIoDeps> {
     logger: overrides.logger ?? console,
     measure: overrides.measure ?? (async (_name, run) => await run()),
     suppressFutureVersionWarning: overrides.suppressFutureVersionWarning ?? false,
-    observe: overrides.observe ?? true,
   };
 }
 
@@ -1227,9 +1218,7 @@ async function finalizeReadConfigSnapshotInternalResult(
   deps: Required<ConfigIoDeps>,
   result: ReadConfigFileSnapshotInternalResult,
 ): Promise<ReadConfigFileSnapshotInternalResult> {
-  if (deps.observe) {
-    await observeConfigSnapshot(deps, result.snapshot);
-  }
+  await observeConfigSnapshot(deps, result.snapshot);
   return result;
 }
 
@@ -2393,14 +2382,15 @@ export async function readSourceConfigBestEffort(): Promise<OpenClawConfig> {
   return await createConfigIO().readSourceConfigBestEffort();
 }
 
-export async function readConfigFileSnapshot(
-  options: ConfigSnapshotReadOptions = {},
-): Promise<ConfigFileSnapshot> {
+export async function readConfigFileSnapshot(options?: {
+  measure?: ConfigSnapshotReadMeasure;
+  skipPluginValidation?: boolean;
+  preservedLegacyRootKeys?: readonly string[];
+}): Promise<ConfigFileSnapshot> {
   return await createConfigIO({
-    ...(options.measure ? { measure: options.measure } : {}),
-    ...(options.observe === false ? { observe: false } : {}),
-    ...(options.skipPluginValidation ? { pluginValidation: "skip" } : {}),
-    ...(options.preservedLegacyRootKeys
+    ...(options?.measure ? { measure: options.measure } : {}),
+    ...(options?.skipPluginValidation ? { pluginValidation: "skip" } : {}),
+    ...(options?.preservedLegacyRootKeys
       ? { preservedLegacyRootKeys: options.preservedLegacyRootKeys }
       : {}),
   }).readConfigFileSnapshot();
