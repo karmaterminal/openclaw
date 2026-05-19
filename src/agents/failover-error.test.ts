@@ -1121,28 +1121,14 @@ describe("failover-error", () => {
         owner: "pid=37121",
         lockPath: "/tmp/openclaw/session.jsonl.lock",
       });
-    const makeEmbeddedTakeoverError = () => {
-      const err = new Error(
-        "session file changed while embedded prompt lock was released: /tmp/openclaw/session.jsonl",
-      );
-      err.name = "EmbeddedAttemptSessionTakeoverError";
-      return err;
-    };
 
     it("returns true for direct session write-lock timeout errors", () => {
       expect(isNonProviderRuntimeCoordinationError(makeSessionLockError())).toBe(true);
     });
 
-    it("returns true for direct embedded attempt session takeover errors", () => {
-      expect(isNonProviderRuntimeCoordinationError(makeEmbeddedTakeoverError())).toBe(true);
-    });
-
     it("returns true when the coordination error is nested via cause", () => {
       const wrapped = new Error("wrapper", { cause: makeSessionLockError() });
       expect(isNonProviderRuntimeCoordinationError(wrapped)).toBe(true);
-
-      const wrappedTakeover = new Error("wrapper", { cause: makeEmbeddedTakeoverError() });
-      expect(isNonProviderRuntimeCoordinationError(wrappedTakeover)).toBe(true);
     });
 
     it("returns false for plain timeouts and provider errors", () => {

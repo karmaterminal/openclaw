@@ -11,7 +11,6 @@ import { stripSystemPromptCacheBoundary } from "../system-prompt-cache-boundary.
 import { mergeTransportHeaders, sanitizeTransportPayloadText } from "../transport-stream-shared.js";
 import { log } from "./logger.js";
 import { isGooglePromptCacheEligible, resolveCacheRetention } from "./prompt-cache-retention.js";
-import { EmbeddedAttemptSessionTakeoverError } from "./run/attempt.session-lock.js";
 import { streamWithPayloadPatch } from "./stream-payload-utils.js";
 
 const GOOGLE_PROMPT_CACHE_CUSTOM_TYPE = "openclaw.google-prompt-cache";
@@ -168,7 +167,7 @@ async function appendGooglePromptCacheEntry(
   try {
     await sessionManager.appendCustomEntry(GOOGLE_PROMPT_CACHE_CUSTOM_TYPE, entry);
   } catch (err) {
-    if (err instanceof EmbeddedAttemptSessionTakeoverError || isSessionWriteLockTimeoutError(err)) {
+    if (isSessionWriteLockTimeoutError(err)) {
       throw err;
     }
     // ignore persistence failures

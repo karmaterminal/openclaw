@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionWriteLockTimeoutError } from "../../session-write-lock-error.js";
 import {
   createEmbeddedAttemptSessionLockController,
-  EmbeddedAttemptSessionTakeoverError,
   installPromptSubmissionLockRelease,
   installSessionEventWriteLock,
   installSessionExternalHookWriteLock,
@@ -156,7 +155,7 @@ describe("embedded attempt session lock lifecycle", () => {
     expect(events).toEqual(["acquire-1", "release", "events-drained", "acquire-2", "release"]);
   });
 
-  it("rejects post-prompt writes when another owner advances the session file", async () => {
+  it("tolerates cooperating writer that appends bytes between release and reacquire", async () => {
     const sessionFile = await createTempSessionFile();
     const release = vi.fn(async () => {});
     const acquireSessionWriteLock = vi.fn(async () => ({ release }));
@@ -166,17 +165,23 @@ describe("embedded attempt session lock lifecycle", () => {
     });
 
     await controller.releaseForPrompt();
-    await fs.appendFile(sessionFile, '{"type":"message","id":"takeover"}\n', "utf8");
+    // Simulate a cooperating writer that properly acquired the lock and appended bytes
+    // while our prompt was in-flight. The write is real on disk; the underlying
+    // acquireSessionWriteLock substrate already arbitrated ownership.
+    await fs.appendFile(sessionFile, '{"type":"custom","customType":"mirror"}\n', "utf8");
 
-    await expect(controller.withSessionWriteLock(() => "late-write")).rejects.toBeInstanceOf(
-      EmbeddedAttemptSessionTakeoverError,
-    );
-    expect(controller.hasSessionTakeover()).toBe(true);
+    await expect(controller.withSessionWriteLock(() => "post-write")).resolves.toBe("post-write");
+    expect(controller.hasSessionTakeover()).toBe(false);
 
     const cleanupLock = await controller.acquireForCleanup();
     await cleanupLock.release();
 
-    expect(release).toHaveBeenCalledTimes(2);
+    // initial acquire + post-prompt reacquire + cleanup acquire
+    expect(acquireSessionWriteLock).toHaveBeenCalledTimes(3);
+    expect(release).toHaveBeenCalledTimes(3);
+
+    const finalContent = await fs.readFile(sessionFile, "utf8");
+    expect(finalContent).toContain('"customType":"mirror"');
   });
 
   it("returns a no-op cleanup lock after prompt lock reacquisition times out", async () => {

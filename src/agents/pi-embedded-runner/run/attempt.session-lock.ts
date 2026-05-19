@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import fs from "node:fs/promises";
 import { isSessionWriteLockTimeoutError } from "../../session-write-lock-error.js";
 import type { acquireSessionWriteLock } from "../../session-write-lock.js";
 
@@ -98,55 +97,6 @@ function installLockableFunction(params: {
   params.owner[params.key] = wrapped;
 }
 
-type SessionFileFingerprint =
-  | { exists: false }
-  | {
-      exists: true;
-      dev: bigint;
-      ino: bigint;
-      size: bigint;
-      mtimeNs: bigint;
-      ctimeNs: bigint;
-    };
-
-function sameSessionFileFingerprint(
-  left: SessionFileFingerprint | undefined,
-  right: SessionFileFingerprint,
-): boolean {
-  if (!left || left.exists !== right.exists) {
-    return false;
-  }
-  if (!left.exists || !right.exists) {
-    return true;
-  }
-  return (
-    left.dev === right.dev &&
-    left.ino === right.ino &&
-    left.size === right.size &&
-    left.mtimeNs === right.mtimeNs &&
-    left.ctimeNs === right.ctimeNs
-  );
-}
-
-async function readSessionFileFingerprint(sessionFile: string): Promise<SessionFileFingerprint> {
-  try {
-    const stat = await fs.stat(sessionFile, { bigint: true });
-    return {
-      exists: true,
-      dev: stat.dev,
-      ino: stat.ino,
-      size: stat.size,
-      mtimeNs: stat.mtimeNs,
-      ctimeNs: stat.ctimeNs,
-    };
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return { exists: false };
-    }
-    throw err;
-  }
-}
-
 async function waitForSessionEventQueue(session: unknown): Promise<void> {
   const owner = session as SessionEventQueueOwner;
   for (let attempts = 0; attempts < 5; attempts += 1) {
@@ -162,13 +112,6 @@ async function waitForSessionEventQueue(session: unknown): Promise<void> {
   const queue = owner?.["_agentEventQueue"];
   if (queue && typeof queue.then === "function") {
     await Promise.resolve(queue).catch(() => {});
-  }
-}
-
-export class EmbeddedAttemptSessionTakeoverError extends Error {
-  constructor(sessionFile: string) {
-    super(`session file changed while embedded prompt lock was released: ${sessionFile}`);
-    this.name = "EmbeddedAttemptSessionTakeoverError";
   }
 }
 
@@ -263,9 +206,7 @@ export async function createEmbeddedAttemptSessionLockController(params: {
 
   let heldLock: SessionLock | undefined = await acquireLock();
   const activeWriteLock = new AsyncLocalStorage<SessionLock>();
-  let fenceFingerprint: SessionFileFingerprint | undefined;
-  let fenceActive = false;
-  let takeoverDetected = false;
+  let reacquireTimeout = false;
 
   async function acquireWriteLock(): Promise<{ lock: SessionLock; owned: boolean }> {
     if (heldLock) {
@@ -275,26 +216,9 @@ export async function createEmbeddedAttemptSessionLockController(params: {
       return { lock: await acquireLock(), owned: true };
     } catch (err) {
       if (isSessionWriteLockTimeoutError(err)) {
-        takeoverDetected = true;
+        reacquireTimeout = true;
       }
       throw err;
-    }
-  }
-
-  async function assertSessionFileFence(): Promise<void> {
-    if (!fenceActive) {
-      return;
-    }
-    const current = await readSessionFileFingerprint(params.lockOptions.sessionFile);
-    if (!sameSessionFileFingerprint(fenceFingerprint, current)) {
-      takeoverDetected = true;
-      throw new EmbeddedAttemptSessionTakeoverError(params.lockOptions.sessionFile);
-    }
-  }
-
-  async function refreshSessionFileFence(): Promise<void> {
-    if (fenceActive && !takeoverDetected) {
-      fenceFingerprint = await readSessionFileFingerprint(params.lockOptions.sessionFile);
     }
   }
 
@@ -307,30 +231,19 @@ export async function createEmbeddedAttemptSessionLockController(params: {
       }
       const lock = heldLock;
       heldLock = undefined;
-      fenceFingerprint = await readSessionFileFingerprint(params.lockOptions.sessionFile);
-      fenceActive = true;
       await lock.release();
     },
     waitForSessionEvents: waitForSessionEventQueue,
     async withSessionWriteLock<T>(run: () => Promise<T> | T): Promise<T> {
-      if (takeoverDetected) {
-        throw new EmbeddedAttemptSessionTakeoverError(params.lockOptions.sessionFile);
-      }
       if (activeWriteLock.getStore()) {
         return await run();
       }
       const { lock, owned } = await acquireWriteLock();
       try {
-        await assertSessionFileFence();
-        const runWithLock = async () => {
-          const result = await run();
-          await refreshSessionFileFence();
-          return result;
-        };
         if (owned) {
-          return await activeWriteLock.run(lock, runWithLock);
+          return await activeWriteLock.run(lock, run);
         }
-        return await runWithLock();
+        return await run();
       } finally {
         if (owned) {
           await lock.release();
@@ -341,33 +254,24 @@ export async function createEmbeddedAttemptSessionLockController(params: {
       if (cleanupParams?.session) {
         await waitForSessionEventQueue(cleanupParams.session);
       }
-      if (takeoverDetected) {
+      if (reacquireTimeout) {
         return noopLock;
       }
       try {
         heldLock ??= await acquireLock();
       } catch (err) {
         if (isSessionWriteLockTimeoutError(err)) {
-          takeoverDetected = true;
+          reacquireTimeout = true;
           return noopLock;
         }
         throw err;
       }
       const cleanupLock = heldLock;
       heldLock = undefined;
-      try {
-        await assertSessionFileFence();
-      } catch (err) {
-        await cleanupLock.release();
-        if (err instanceof EmbeddedAttemptSessionTakeoverError) {
-          return noopLock;
-        }
-        throw err;
-      }
       return cleanupLock;
     },
     hasSessionTakeover(): boolean {
-      return takeoverDetected;
+      return reacquireTimeout;
     },
   };
 }

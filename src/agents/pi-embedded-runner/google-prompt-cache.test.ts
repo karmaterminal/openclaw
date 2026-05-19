@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
+import { SessionWriteLockTimeoutError } from "../session-write-lock-error.js";
 import { prepareGooglePromptCacheStreamFn } from "./google-prompt-cache.js";
-import { EmbeddedAttemptSessionTakeoverError } from "./run/attempt.session-lock.js";
 
 type SessionCustomEntry = {
   type: "custom";
@@ -276,17 +276,21 @@ describe("google prompt cache", () => {
     expect(getCapturedPayload()?.cachedContent).toBe("cachedContents/system-cache-2");
   });
 
-  it("propagates session takeover errors from cache entry persistence", async () => {
+  it("propagates session write-lock timeout errors from cache entry persistence", async () => {
     const now = 2_500_000;
-    const takeoverError = new EmbeddedAttemptSessionTakeoverError("/tmp/session.jsonl");
+    const lockError = new SessionWriteLockTimeoutError({
+      timeoutMs: 10_000,
+      owner: "pid=4242",
+      lockPath: "/tmp/session.jsonl.lock",
+    });
     const sessionManager = {
       appendCustomEntry: vi.fn(async () => {
-        throw takeoverError;
+        throw lockError;
       }),
       getEntries: vi.fn(() => []),
     };
     const fetchMock = createCacheFetchMock({
-      name: "cachedContents/system-cache-takeover",
+      name: "cachedContents/system-cache-lock-timeout",
       expireTime: new Date(now + 3_600_000).toISOString(),
     });
     const innerStreamFn = vi.fn(() => "stream" as never);
@@ -306,7 +310,7 @@ describe("google prompt cache", () => {
           {} as never,
         ),
       ),
-    ).rejects.toBe(takeoverError);
+    ).rejects.toBe(lockError);
     expect(innerStreamFn).not.toHaveBeenCalled();
   });
 
