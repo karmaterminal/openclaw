@@ -2098,7 +2098,7 @@ describe("CodexAppServerEventProjector", () => {
     );
 
     const text = (mockCallArg(onToolResult, 0, 0, "onToolResult") as { text?: string }).text;
-    expect(text).toContain("sk-123…ZZZZ");
+    expect(text).toContain("OPENAI_API_KEY=*** pnpm test");
     expect(text).not.toContain("sk-1234567890abcdefZZZZ");
   });
 
