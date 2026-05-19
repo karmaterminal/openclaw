@@ -45,7 +45,6 @@ import {
 } from "../../agents/pi-embedded-helpers.js";
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
 import { isMessagingToolSendAction } from "../../agents/pi-embedded-messaging.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import type { EmbeddedPiCompactResult } from "../../agents/pi-embedded-runner/types.js";
 import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
