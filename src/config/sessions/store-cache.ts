@@ -284,6 +284,7 @@ export function setSerializedSessionStore(storePath: string, serialized?: string
 
 export function dropSessionStoreObjectCache(storePath: string): void {
   SESSION_STORE_CACHE.delete(storePath);
+  SESSION_STORE_SERIALIZED_CACHE.delete(storePath);
 }
 
 export function dropSessionStoreSnapshotCache(storePath: string): void {
