@@ -19,7 +19,6 @@ import {
 } from "../../gateway/session-compaction-checkpoints.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
-import { generateSecureToken } from "../../infra/secure-random.js";
 import { listRegisteredPluginAgentPromptGuidance } from "../../plugins/command-registry-state.js";
 import { getCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
@@ -50,6 +49,7 @@ import {
   resolveChannelMessageToolHints,
   resolveChannelReactionGuidance,
 } from "../channel-tools.js";
+import { createCompactionDiagId } from "../compaction-attribution.js";
 import {
   hasMeaningfulConversationContent,
   isRealConversationMessage,
@@ -170,6 +170,7 @@ import type { EmbeddedPiCompactResult } from "./types.js";
 import { mapThinkingLevel } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
 export type { CompactEmbeddedPiSessionParams } from "./compact.types.js";
+export type { CompactionMessageMetrics } from "./compact.types.js";
 
 function hasRealConversationContent(
   msg: AgentMessage,
@@ -177,10 +178,6 @@ function hasRealConversationContent(
   index: number,
 ): boolean {
   return isRealConversationMessage(msg, messages, index);
-}
-
-function createCompactionDiagId(): string {
-  return `cmp-${Date.now().toString(36)}-${generateSecureToken(4)}`;
 }
 
 function prepareCompactionSessionAgent(params: {
@@ -970,6 +967,7 @@ async function compactEmbeddedPiSessionDirectOnce(
           config: params.config,
           workspaceDir: effectiveWorkspace,
           context: {
+            systemPrompt: builtSystemPrompt,
             config: params.config,
             agentDir,
             workspaceDir: effectiveWorkspace,
@@ -979,7 +977,6 @@ async function compactEmbeddedPiSessionDirectOnce(
             runtimeChannel,
             runtimeCapabilities,
             agentId: sessionAgentId,
-            systemPrompt: builtSystemPrompt,
           },
         }),
       );
