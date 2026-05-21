@@ -161,7 +161,8 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
     label: "Compaction",
     name: "request_compaction",
     description: [
-      "Trigger compaction now on your terms — working state preserved via paired continue_delegate(mode='post-compaction'); the alternative is auto-compaction firing at threshold with no warning.",
+      "Trigger compaction now on your terms — but FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this; the alternative is auto-compaction firing at threshold with no warning.",
+      "Working state is NOT preserved automatically — the paired post-compaction delegate is what carries state across the seam, and you must stage it before requesting compaction.",
       "Reach for this when you've felt context pressure and want to land compaction at a chosen moment rather than mid-thought.",
       "Async: enqueues compaction; runs after this turn completes — safe to call mid-turn.",
       "Guards return as structured rejections (not errors): requires >=70% context usage and at most one request per 5 minutes per session.",
