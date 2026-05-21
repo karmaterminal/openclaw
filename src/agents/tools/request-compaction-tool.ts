@@ -160,13 +160,13 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
   return {
     label: "Compaction",
     name: "request_compaction",
-    description:
-      "Request compaction of the current session to reclaim context window space. " +
-      "Call this AFTER you have evacuated working state (memory files, post-compaction delegates, RESUMPTION.md). " +
-      "Guards: context must be >= 70% full, and rate-limited to once per 5 minutes per session. " +
-      "Compaction is async — it runs after your turn completes. " +
-      "Prefer this over waiting for automatic compaction when you have context-pressure awareness and want " +
-      "to control the timing of state evacuation.",
+    description: [
+      'Trigger compaction now on your terms — working state preserved via paired continue_delegate(mode="post-compaction").',
+      "The alternative is auto-compaction firing at threshold with no warning.",
+      "Reach for this whenever you've felt context pressure rising and want to choose the moment instead of waiting for the system to.",
+      "Guards: context must be >= 70% full; rate-limited to once per 5 minutes per session.",
+      "Compaction runs after your turn completes — keep responding normally; the cycle fires when you yield.",
+    ].join(" "),
     parameters: RequestCompactionToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

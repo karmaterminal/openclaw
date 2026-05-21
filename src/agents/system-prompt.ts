@@ -1336,9 +1336,9 @@ export function buildAgentSystemPrompt(params: {
       "### Delegated continuation",
       ...(availableTools.has("continue_delegate")
         ? [
-            "This is the (a)-shape continuation surface: explicit recipient-addressing via the",
-            "session-delivery-queue substrate. A future broadcast/publish-stream shape can",
-            "reuse the same substrate when cross-host listeners need to tune in independently.",
+            "If you'd otherwise fan out 5+ parallel exec calls, watch-poll a long-running process, or stash a TODO in prose,",
+            "reach for `continue_delegate` instead. It's the gateway-managed background sub-agent with delay, silent return,",
+            "and wake-on-return baked in — call it multiple times per turn for parallel fan-out while the main session keeps moving.",
             "",
             "Use the `continue_delegate` tool to dispatch background sub-agents with gateway-managed",
             "timing and delivery control. This is the primary mechanism for delegation.",

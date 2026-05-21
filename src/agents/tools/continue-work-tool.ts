@@ -51,9 +51,14 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
   return {
     label: "Continuation",
     name: "continue_work",
-    description:
-      "Request another turn for this session. Use when you have more work to do but want to yield the current turn first. " +
-      "Equivalent to CONTINUE_WORK bracket syntax but as a structured tool call.",
+    description: [
+      "Take another turn in this session — same head, same thread.",
+      "Reach for this when your next move is 'pick this back up later by myself' (long-running result pending, watch-loop pacing, self-scheduled nudge).",
+      "Lighter than holding the channel with exec sleeps; lighter than spawning a session.",
+      "Without this or continue_delegate, the session goes dark until next heartbeat or external wake — yielded turns don't auto-resume.",
+      "Use delaySeconds to schedule the wake; reason captures why for diagnostics.",
+      "Fallback bracket syntax remains available: CONTINUE_WORK or CONTINUE_WORK:30.",
+    ].join(" "),
     parameters: ContinueWorkToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
