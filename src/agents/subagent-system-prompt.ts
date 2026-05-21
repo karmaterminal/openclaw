@@ -113,6 +113,8 @@ export function buildSubagentSystemPrompt(params: {
     lines.push("## Continuation Chaining");
     if (toolPrimaryContinuation) {
       lines.push(
+        "If you'd otherwise relay through the parent or fan out parallel `exec` calls,",
+        "reach for `continue_delegate` instead.",
         "Use the `continue_delegate` tool to keep a delegate branch moving without making the parent relay every hop.",
         "The tool supports structured parameters (`task`, `delaySeconds`, `mode`) and multi-delegate fan-out.",
         "",

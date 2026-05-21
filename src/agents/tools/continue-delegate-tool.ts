@@ -131,19 +131,14 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
   return {
     label: "Continuation",
     name: "continue_delegate",
-    description:
-      "Schedule a continuation delegate — a background sub-agent that can run now, later, " +
-      "or at compaction, then return visibly or silently to this session. Use for ambient " +
-      "enrichment, chunked/aspected fan-out, or preserving working state across compaction. " +
-      'Use "silent-wake" when the result should quietly enrich context and wake you to act. ' +
-      "Can be called multiple times per turn for parallel fan-out while the main session stays free. " +
-      "Return targeting modes: default returns to the dispatching session; targetSessionKey returns to one other session; " +
-      "targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; " +
-      "fanoutMode=all returns to all known sessions on this host. " +
-      "Prefer this over exec or raw sessions_spawn when the goal is gateway-managed delayed/silent/wake-on-return delegate work. " +
-      "This is the (a)-shape continuation surface: explicit recipient-addressing via the " +
-      "session-delivery-queue substrate (intra-host today). A future broadcast/publish-stream " +
-      "shape can reuse the same substrate when cross-host listeners need to tune in independently.",
+    description: [
+      "Fire a background sub-agent that runs now, later, or at compaction, then returns visibly or silently.",
+      "Reach for this when you'd otherwise fan out parallel exec calls for independent byte-walks, sleep+poll in exec, or relay a hand-off through the parent — the gateway handles timing, chain-tracking, and delivery.",
+      "Call multiple times in one turn for parallel fan-out; the main session stays free.",
+      'Use mode="silent-wake" for ambient enrichment that quietly returns to context and wakes you to act on it.',
+      'Use mode="post-compaction" to stage working-state survival across the compaction seam (lich-protocol phylactery shape — what survives is what you elect to carry).',
+      "Return targeting: default returns to the dispatching session; targetSessionKey returns to one other session; targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; fanoutMode=all returns to all known sessions on this host.",
+    ].join(" "),
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

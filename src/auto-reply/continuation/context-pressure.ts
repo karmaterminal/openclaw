@@ -112,10 +112,14 @@ function buildContextPressureEvent(params: {
 
   const urgency =
     params.band >= 95
-      ? "COMPACTION IMMINENT — evacuate working state now. Use CONTINUE_DELEGATE to dispatch shards or write critical state to memory files immediately."
+      ? "COMPACTION IMMINENT — stage working-state survival via continue_delegate(mode='post-compaction', task='<working-state-summary>'), " +
+        "then call request_compaction(reason='<why>') to trigger compaction on your terms. " +
+        "Both are tool calls you can make right now, this turn."
       : params.band >= 90
-        ? "Context window nearly full — strongly consider evacuating working state via CONTINUE_DELEGATE or memory files."
-        : "Consider evacuating working state to memory files or delegating remaining work.";
+        ? "Context window nearly full — stage working-state survival via continue_delegate(mode='post-compaction', task='...'), " +
+          "then call request_compaction(reason='...') to trigger compaction on your terms. " +
+          "The post-compaction delegate fires after compaction completes and returns elective working-state to the new session."
+        : "Consider continue_delegate(mode='post-compaction', task='...') to stage working-state survival for upcoming compaction, or write critical state to memory files.";
 
   return (
     `[system:context-pressure] ${params.percentUsed}% of context window consumed ` +
