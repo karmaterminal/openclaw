@@ -157,6 +157,7 @@
           "_guards",
           "_GRAPH_HOST",
           "_handlers",
+          "_hasPendingCompactionSession",
           "_host",
           "_id",
           "_instruction",

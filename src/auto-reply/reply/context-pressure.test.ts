@@ -398,7 +398,7 @@ describe("checkContextPressure", () => {
     expect(events[0]).toMatch(/100k/);
   });
 
-  it("uses evacuation language at sub-95% bands", () => {
+  it("uses staging language at sub-90% bands (per #725 cure replacing 'evacuat')", () => {
     const entry = makeSessionEntry({ totalTokens: 85_000, totalTokensFresh: true });
     checkContextPressure({
       sessionEntry: entry,
@@ -408,7 +408,7 @@ describe("checkContextPressure", () => {
     });
     const events = peekSystemEvents(SESSION_KEY);
     expect(events.length).toBeGreaterThan(0);
-    expect(events[0]).toMatch(/evacuat/i);
+    expect(events[0]).toMatch(/stage working-state survival/i);
     expect(events[0]).not.toMatch(/imminent/i);
   });
 
