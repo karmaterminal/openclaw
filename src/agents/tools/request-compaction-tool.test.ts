@@ -11,6 +11,7 @@ import {
 } from "../../infra/continuation-tracer.js";
 import {
   createRequestCompactionTool,
+  _hasPendingCompactionSession,
   _resetGuardState,
   _resetVolitionalCounts,
   _setPending,
@@ -628,6 +629,30 @@ describe("request_compaction tool", () => {
         "and the second call would return `already_pending` (Guard 0) instead of " +
         "`rejected/rate_limit` (Guard 2)",
     ).not.toMatchObject({ status: "already_pending" });
+  });
+
+  it("clears pending compaction session when triggerCompaction throws synchronously", async () => {
+    mockTriggerCompaction
+      .mockImplementationOnce(() => {
+        throw new Error("simulated synchronous enqueue failure");
+      })
+      .mockResolvedValueOnce({ ok: true, compacted: true });
+
+    const tool = makeTool();
+
+    await expect(
+      tool.execute("call-sync-throw", { reason: "sync throw after pending add" }),
+    ).rejects.toThrow("simulated synchronous enqueue failure");
+
+    const pendingAfterSyncThrow = _hasPendingCompactionSession(SESSION_KEY);
+    const second = await executeTool(tool, { reason: "retry after sync throw" });
+
+    expect(
+      [pendingAfterSyncThrow, second.status],
+      "a synchronous triggerCompaction throw must not leak pendingCompactionSessions; " +
+        "otherwise the retry is rejected by Guard 0 as already_pending",
+    ).toEqual([false, "compaction_requested"]);
+    expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
   });
 
   // _resetGuardState restart/test-isolation contract.

@@ -277,49 +277,57 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           code,
           reason,
         });
-      void opts
-        .triggerCompaction(request)
-        .then(
-          (result) => {
-            if (result.ok && result.compacted) {
-              sessionGuardState.set(sessionKey, {
-                lastRequestMs: Date.now(),
-              });
-              log.info(
-                `[request_compaction:resolved-success] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
-                  `diagId=${diagId} trigger=volitional outcome=compacted`,
+      let asyncCleanupRegistered = false;
+      try {
+        void opts
+          .triggerCompaction(request)
+          .then(
+            (result) => {
+              if (result.ok && result.compacted) {
+                sessionGuardState.set(sessionKey, {
+                  lastRequestMs: Date.now(),
+                });
+                log.info(
+                  `[request_compaction:resolved-success] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                    `diagId=${diagId} trigger=volitional outcome=compacted`,
+                );
+                incrementVolitionalCompactionCount(sessionKey);
+                return;
+              }
+              const code = classifyCompactionReason(result.reason);
+              const reason = result.reason ?? "";
+              if (result.ok && isCompactionSkipCode(code)) {
+                log.info(
+                  `[request_compaction:resolved-skip] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                    `diagId=${diagId} trigger=volitional outcome=skipped code=${code} reason=${reason}`,
+                );
+                return;
+              }
+              log.warn(
+                `[request_compaction:resolved-failure] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                  `diagId=${diagId} trigger=volitional outcome=failed code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
               );
-              incrementVolitionalCompactionCount(sessionKey);
-              return;
-            }
-            const code = classifyCompactionReason(result.reason);
-            const reason = result.reason ?? "";
-            if (result.ok && isCompactionSkipCode(code)) {
-              log.info(
-                `[request_compaction:resolved-skip] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
-                  `diagId=${diagId} trigger=volitional outcome=skipped code=${code} reason=${reason}`,
+              notifyFailure(code, reason);
+            },
+            (err: unknown) => {
+              const message = formatErrorMessage(err);
+              const code = classifyCompactionReason(message);
+              log.error(
+                `[request_compaction:background-error] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                  `diagId=${diagId} trigger=volitional outcome=failed code=${code} error=${message}`,
               );
-              return;
-            }
-            log.warn(
-              `[request_compaction:resolved-failure] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
-                `diagId=${diagId} trigger=volitional outcome=failed code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
-            );
-            notifyFailure(code, reason);
-          },
-          (err: unknown) => {
-            const message = formatErrorMessage(err);
-            const code = classifyCompactionReason(message);
-            log.error(
-              `[request_compaction:background-error] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
-                `diagId=${diagId} trigger=volitional outcome=failed code=${code} error=${message}`,
-            );
-            notifyFailure(code, message);
-          },
-        )
-        .finally(() => {
+              notifyFailure(code, message);
+            },
+          )
+          .finally(() => {
+            pendingCompactionSessions.delete(sessionKey);
+          });
+        asyncCleanupRegistered = true;
+      } finally {
+        if (!asyncCleanupRegistered) {
           pendingCompactionSessions.delete(sessionKey);
-        });
+        }
+      }
 
       return jsonResult({
         status: "compaction_requested",
@@ -373,6 +381,11 @@ export function _resetGuardState(sessionKey?: string): void {
 /** Mark a session as having a pending compaction. Exported for tests only. */
 export function _setPending(sessionKey: string): void {
   pendingCompactionSessions.add(sessionKey);
+}
+
+/** Check whether a session has a pending compaction. Exported for tests only. */
+export function _hasPendingCompactionSession(sessionKey: string): boolean {
+  return pendingCompactionSessions.has(sessionKey);
 }
 
 /** Reset volitional compaction counters. Exported for tests only. */
