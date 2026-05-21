@@ -112,11 +112,11 @@ function buildContextPressureEvent(params: {
 
   const urgency =
     params.band >= 95
-      ? "COMPACTION IMMINENT — FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<working-state-summary>'), THEN call request_compaction(reason='<why>') to trigger compaction on your terms. " +
+      ? "COMPACTION IMMINENT — FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<working-state-summary>'), THEN call request_compaction(reason='<why>') volitionally; the alternative is forced compaction at absolute context exhaustion. " +
         "The post-compaction delegate is what carries state across the seam — if you call request_compaction without staging it first, working state will NOT survive. " +
         "Both are tool calls you can make right now, this turn."
       : params.band >= 90
-        ? "Context window nearly full — FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='...'), THEN call request_compaction(reason='...') to trigger compaction on your terms. " +
+        ? "Context window nearly full — FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='...'), THEN call request_compaction(reason='...') volitionally; the alternative is forced compaction at absolute context exhaustion. " +
           "The post-compaction delegate fires after compaction completes and returns elective working-state to the new session — it is what carries state across the seam."
         : "Consider continue_delegate(mode='post-compaction', task='...') to stage working-state survival for upcoming compaction, or write critical state to memory files.";
 
