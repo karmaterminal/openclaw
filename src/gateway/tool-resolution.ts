@@ -153,6 +153,11 @@ export function resolveGatewayScopedTools(params: {
     config: params.cfg,
     liveSessionToolConfig: true,
     workspaceDir,
+    // karmaterminal/openclaw#723: gateway tool-resolution feeds direct-invoke
+    // surfaces (HTTP tools.invoke, MCP loopback). They have no agent-turn
+    // finalization drain, so continue_delegate would strand queued work.
+    // Gate it off here; agent-turn paths set this true explicitly.
+    drainsContinuationDelegateQueue: false,
     pluginToolAllowlist: collectExplicitAllowlist([
       profilePolicy,
       providerProfilePolicy,

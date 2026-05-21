@@ -160,6 +160,10 @@ export function resolveSkillDispatchTools(params: {
     currentChannelId: params.currentChannelId,
     modelProvider: params.provider,
     modelId: params.model,
+    // karmaterminal/openclaw#723: skill-tool dispatch is a direct-invoke surface
+    // with no agent-turn finalization drain. continue_delegate would strand
+    // queued work here, so gate it off; agent-turn paths set this true.
+    drainsContinuationDelegateQueue: false,
     pluginToolAllowlist: collectExplicitAllowlist(explicitPolicyList),
     pluginToolDenylist: collectExplicitDenylist(explicitPolicyList),
     inheritedToolAllowlist,
