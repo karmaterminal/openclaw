@@ -161,7 +161,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
     label: "Compaction",
     name: "request_compaction",
     description: [
-      "Trigger compaction volitionally — the alternative is forced compaction at absolute context exhaustion, with no warning and no chance to stage state. FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this.",
+      "Trigger compaction volitionally — but FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this — vs becoming subject to forced compaction at context exhaustion with no warning.",
       "Working state is NOT preserved automatically — the paired post-compaction delegate is what carries state across the seam, and you must stage it before requesting compaction.",
       "Reach for this when you've felt context pressure and want to land compaction at a chosen moment rather than mid-thought.",
       "Async: enqueues compaction; runs after this turn completes — safe to call mid-turn.",
