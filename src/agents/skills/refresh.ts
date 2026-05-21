@@ -166,9 +166,32 @@ export function ensureSkillsWatcher(params: { workspaceDir: string; config?: Ope
     }, debounceMs);
   };
 
-  watcher.on("add", (p) => schedule(p));
-  watcher.on("change", (p) => schedule(p));
-  watcher.on("unlink", (p) => schedule(p));
+  const isSkillFile = (changedPath: string): boolean => {
+    if (!changedPath) return false;
+    const normalized = changedPath.replaceAll("\\", "/");
+    return path.posix.basename(normalized) === "SKILL.md";
+  };
+
+  const scheduleIfSkill = (changedPath?: string) => {
+    // #646 cure: filter watcher-change-events by filename before bumping snapshot version.
+    // Without this, agent self-edits to MEMORY.md / TOOLS.md / daily-files trigger
+    // skill-snapshot cache invalidation, which feeds producer-2 (formatSkillsForPrompt)
+    // re-allocation. Perverse feedback loop: agent banking-discipline feeds the leak
+    // that pressures compaction.
+    //
+    // shouldIgnoreSkillsWatchPath already filters in chokidar's ignored callback, but only
+    // for paths with stat-info attached (see line 91-95). Event handlers receive the path
+    // string without stats, so the filter must be re-applied here for correctness.
+    if (changedPath !== undefined && !isSkillFile(changedPath)) {
+      return;
+    }
+    schedule(changedPath);
+  };
+
+  watcher.on("add", (p) => scheduleIfSkill(p));
+  watcher.on("change", (p) => scheduleIfSkill(p));
+  watcher.on("unlink", (p) => scheduleIfSkill(p));
+  // Directory unlinks always bump (SKILL.md cannot survive its parent directory removal).
   watcher.on("unlinkDir", (p) => schedule(p));
   watcher.on("error", (err) => {
     log.warn(`skills watcher error (${workspaceDir}): ${String(err)}`);
