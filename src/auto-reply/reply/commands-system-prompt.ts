@@ -11,6 +11,7 @@ import { resolveAgentPromptSurfaceForSessionKey } from "../../agents/prompt-surf
 import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
 import { getSkillsSnapshotVersion } from "../../agents/skills/refresh-state.js";
+import { ensureSkillsWatcher } from "../../agents/skills/refresh.js";
 import { buildConfiguredAgentSystemPrompt } from "../../agents/system-prompt-config.js";
 import { buildSystemPromptParams } from "../../agents/system-prompt-params.js";
 import type { WorkspaceBootstrapFile } from "../../agents/workspace.js";
@@ -60,6 +61,15 @@ export async function resolveCommandsSystemPromptBundle(
   });
   const skillsSnapshot = (() => {
     try {
+      // Ensure the skills-file watcher is running so getSkillsSnapshotVersion()
+      // returns a meaningful version on the system-prompt-construction path.
+      // Without this, this code path can run before the watcher was started by
+      // any other code path (e.g., fresh process, first-turn prompt construction),
+      // causing the cache to never invalidate when skill files change on disk.
+      // Idempotent: the watcher is process-scoped + ensure-* semantics.
+      // Refs cohort issue #633 + cael commit 918deee66d (May 10, adapted for
+      // current commands-system-prompt structure post-upstream-refactor).
+      ensureSkillsWatcher({ workspaceDir, config: params.cfg });
       return buildWorkspaceSkillSnapshot(workspaceDir, {
         config: params.cfg,
         agentId: sessionAgentId,
