@@ -516,7 +516,7 @@ export function createOpenClawTools(
     // continue_delegate alone, with no warning. The guard below surfaces that silent partial-
     // registration so misconfiguration is observable instead of hidden.
     // Tracking: karmaterminal/openclaw#619.
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    ...(resolvedConfig?.agents?.defaults?.continuation?.enabled === true &&
     options?.continueWorkOpts
       ? [
           createContinueWorkTool({
@@ -525,7 +525,7 @@ export function createOpenClawTools(
           }),
         ]
       : []),
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    ...(resolvedConfig?.agents?.defaults?.continuation?.enabled === true &&
     options?.drainsContinuationDelegateQueue !== false
       ? [
           createContinueDelegateTool({
@@ -533,7 +533,7 @@ export function createOpenClawTools(
           }),
         ]
       : []),
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    ...(resolvedConfig?.agents?.defaults?.continuation?.enabled === true &&
     options?.requestCompactionOpts
       ? [
           createRequestCompactionTool({
@@ -547,7 +547,7 @@ export function createOpenClawTools(
   ];
 
   if (
-    options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    resolvedConfig?.agents?.defaults?.continuation?.enabled === true &&
     !options?.continueWorkOpts &&
     !options?.requestCompactionOpts
   ) {
