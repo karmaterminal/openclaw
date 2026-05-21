@@ -11,6 +11,8 @@ type SessionStore = Record<string, Record<string, unknown>>;
 type SessionStoreMutator = (store: SessionStore) => unknown;
 type HookRunner = Pick<SubagentLifecycleHookRunner, "hasHooks" | "runSubagentSpawning"> &
   Partial<Pick<SubagentLifecycleHookRunner, "runSubagentSpawned" | "runSubagentEnded">>;
+type BuildSubagentSystemPromptFn =
+  typeof import("./subagent-system-prompt.js").buildSubagentSystemPrompt;
 type SubagentSpawnModuleForTest = Awaited<typeof import("./subagent-spawn.js")> & {
   resetSubagentRegistryForTests: MockFn;
 };
@@ -154,6 +156,14 @@ export async function loadSubagentSpawnModuleForTest(params: {
   workspaceDir?: string;
   sessionStorePath?: string;
   resetModules?: boolean;
+  /**
+   * Override for `buildSubagentSystemPrompt`. Default stubs to a constant string
+   * because most tests don't care about prompt contents. Tests that exercise
+   * production threading of prompt parameters (e.g. continuationEnabled per
+   * issue #715) should pass the real builder so the end-to-end caller path
+   * is observable through gateway "agent" request params.
+   */
+  buildSubagentSystemPromptOverride?: BuildSubagentSystemPromptFn;
 }): Promise<SubagentSpawnModuleForTest> {
   if (params.resetModules ?? true) {
     vi.resetModules();
@@ -163,7 +173,7 @@ export async function loadSubagentSpawnModuleForTest(params: {
 
   vi.doMock("./subagent-spawn.runtime.js", () => ({
     callGateway: (opts: unknown) => params.callGatewayMock(opts),
-    buildSubagentSystemPrompt: () => "system-prompt",
+    buildSubagentSystemPrompt: params.buildSubagentSystemPromptOverride ?? (() => "system-prompt"),
     forkSessionFromParent:
       params.forkSessionFromParentMock ??
       (async () => ({ sessionId: "forked-session-id", sessionFile: "/tmp/forked-session.jsonl" })),
