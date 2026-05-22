@@ -53,6 +53,7 @@ type FinalEffectiveToolPolicyParams = {
   senderName?: string | null;
   senderUsername?: string | null;
   senderE164?: string | null;
+  senderIsOwner?: boolean;
   warn: (message: string) => void;
 };
 
