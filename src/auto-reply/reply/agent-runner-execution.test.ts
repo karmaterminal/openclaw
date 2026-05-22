@@ -4747,6 +4747,7 @@ describe("runAgentTurnWithFallback", () => {
           MessageSid: "msg",
         } as unknown as TemplateContext,
       }),
+      resetSessionAfterCompactionFailure: async () => true,
       replyOperation,
       sessionKey: "agent:main:main",
       getActiveSessionEntry: () => activeSessionEntry,
@@ -4756,7 +4757,7 @@ describe("runAgentTurnWithFallback", () => {
 
     expect(result.kind).toBe("final");
     if (result.kind === "final") {
-      expect(result.payload.text).toContain("kept this conversation mapped to the current session");
+      expect(result.payload.text).toContain("I've reset our conversation to start fresh");
       expect(result.payload.text).toContain("reserveTokensFloor");
       expectRecordFields(requireRecord(getReplyPayloadMetadata(result.payload), "reply metadata"), {
         deliverDespiteSourceReplySuppression: true,
@@ -4790,6 +4791,7 @@ describe("runAgentTurnWithFallback", () => {
           MessageSid: "msg",
         } as unknown as TemplateContext,
       }),
+      resetSessionAfterCompactionFailure: async () => true,
       replyOperation,
       sessionKey: "agent:main:main",
       getActiveSessionEntry: () => activeSessionEntry,
@@ -4799,7 +4801,7 @@ describe("runAgentTurnWithFallback", () => {
 
     expect(result.kind).toBe("final");
     if (result.kind === "final") {
-      expect(result.payload.text).toContain("kept this conversation mapped to the current session");
+      expect(result.payload.text).toContain("I've reset our conversation to start fresh");
       expect(result.payload.text).toContain("reserveTokensFloor");
       expectRecordFields(requireRecord(getReplyPayloadMetadata(result.payload), "reply metadata"), {
         deliverDespiteSourceReplySuppression: true,
