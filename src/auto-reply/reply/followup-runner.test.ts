@@ -2664,3 +2664,73 @@ describe("createFollowupRunner queued user message idempotency across fallback",
     expect(secondAttempt.suppressAssistantErrorPersistence).toBe(false);
   });
 });
+
+describe("createFollowupRunner continueWorkOpts threading (#746)", () => {
+  it("passes continueWorkOpts to runEmbeddedPiAgent when continuation.enabled=true", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "anthropic/claude",
+      sessionKey: "agent:main:subagent:test-organ",
+    });
+    const queued = createQueuedRun({
+      run: {
+        sessionKey: "agent:main:subagent:test-organ",
+        config: {
+          agents: {
+            defaults: {
+              continuation: {
+                enabled: true,
+                maxChainLength: 200,
+                defaultDelayMs: 15000,
+                minDelayMs: 5000,
+                maxDelayMs: 86400000,
+                costCapTokens: 50000000,
+                maxDelegatesPerTurn: 500,
+              },
+            },
+          },
+        } as OpenClawConfig,
+        drainsContinuationDelegateQueue: true,
+      },
+    });
+
+    await runner(queued);
+
+    expect(runEmbeddedPiAgentMock).toHaveBeenCalled();
+    const callArgs = requireLastMockCallArg(runEmbeddedPiAgentMock, "runEmbeddedPiAgent");
+    expect(callArgs.continueWorkOpts).toBeDefined();
+    expect(typeof (callArgs.continueWorkOpts as any).requestContinuation).toBe("function");
+  });
+
+  it("does NOT pass continueWorkOpts when continuation is disabled", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "done" }],
+      meta: {},
+    });
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "anthropic/claude",
+      sessionKey: "agent:main:subagent:test-leaf",
+    });
+    const queued = createQueuedRun({
+      run: {
+        sessionKey: "agent:main:subagent:test-leaf",
+        config: {
+          agents: { defaults: {} },
+        } as OpenClawConfig,
+      },
+    });
+
+    await runner(queued);
+
+    expect(runEmbeddedPiAgentMock).toHaveBeenCalled();
+    const callArgs = requireLastMockCallArg(runEmbeddedPiAgentMock, "runEmbeddedPiAgent");
+    expect(callArgs.continueWorkOpts).toBeUndefined();
+  });
+});
