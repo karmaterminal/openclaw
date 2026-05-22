@@ -1401,6 +1401,8 @@ export function buildAgentSystemPrompt(params: {
       "The session parks until an external event (subagent result, user message) arrives.",
       "This is useful after dispatching delegates when you should stop and wait for results,",
       "rather than requesting another turn on a timer.",
+      "Do NOT pair `sessions_yield` with `message` (or other delivery tool-calls) in the same turn — the yield aborts queued tool-calls and will strip the in-flight message body before delivery, leaving an empty placeholder in the channel.",
+      "For a clean turn-end with no follow-up, fire no continuation tool; let the turn end naturally when no more tool-calls are queued. Only fire `sessions_yield` when you actually need to wait on an external event (subagent result, etc.).",
       "",
       "### Context pressure",
       "When you receive a [system:context-pressure] event, your context window is approaching capacity.",
