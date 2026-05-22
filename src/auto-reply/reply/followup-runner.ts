@@ -23,9 +23,17 @@ import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { readStringValue } from "../../shared/string-coerce.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
+import {
+  registerContinuationTimerHandle,
+  retainContinuationTimerRef,
+  unregisterContinuationTimerHandle,
+} from "../continuation/state.js";
+import type { ContinueWorkRequest } from "../continuation/types.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { runCliAgentWithLifecycle } from "./agent-runner-cli-dispatch.js";
 import {
@@ -532,6 +540,7 @@ export function createFollowupRunner(params: {
         | undefined;
       let queuedUserMessagePersistedAcrossFallback = false;
       let assistantErrorPersistedAcrossFallback = false;
+      let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
       try {
         const outcomePlan = buildAgentRuntimeOutcomePlan();
         const fallbackResult = await runWithModelFallback<EmbeddedAgentRunResult>({
@@ -759,6 +768,18 @@ export function createFollowupRunner(params: {
                   bootstrapPromptWarningSignaturesSeen[
                     bootstrapPromptWarningSignaturesSeen.length - 1
                   ],
+                // Continuation: thread continueWorkOpts so continue_work is
+                // callable on queued followup turns (subagent sessions, continuation-
+                // triggered heartbeats). Without this, the tool never registers and
+                // subagents cannot self-elect another turn. (#746)
+                continueWorkOpts:
+                  runtimeConfig?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        requestContinuation: (request: ContinueWorkRequest) => {
+                          attemptContinueWorkRequest = request;
+                        },
+                      }
+                    : undefined,
                 // Continuation: thread requestCompactionOpts so request_compaction
                 // is callable on queued followup turns, not just the first turn.
                 requestCompactionOpts:
@@ -1009,6 +1030,78 @@ export function createFollowupRunner(params: {
               );
             }
           }
+        }
+      }
+
+      // --- continue_work processing (#746) ---
+      // When the agent calls continue_work during this followup turn, schedule
+      // a delayed heartbeat for the session (same mechanism as agent-runner.ts).
+      // This enables subagent/organ sessions to self-elect another turn.
+      if (
+        attemptContinueWorkRequest &&
+        runtimeConfig?.agents?.defaults?.continuation?.enabled === true &&
+        sessionKey
+      ) {
+        const { resolveLiveContinuationRuntimeConfig } = await import("../continuation/config.js");
+        const continuationConfig = resolveLiveContinuationRuntimeConfig(runtimeConfig);
+        const { maxChainLength, minDelayMs, maxDelayMs, defaultDelayMs } = continuationConfig;
+
+        // Load chain state to check cap.
+        const { loadContinuationChainState, persistContinuationChainState } =
+          await import("../continuation/state.js");
+        const tailUsage = runResult.meta?.agentMeta?.usage;
+        const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
+        const tailEntry = (sessionKey ? sessionStore?.[sessionKey] : undefined) ?? sessionEntry;
+        const chainState = loadContinuationChainState(tailEntry, turnTokens);
+        const currentChainCount = chainState.currentChainCount;
+
+        if (currentChainCount >= maxChainLength) {
+          defaultRuntime.log(
+            `[followup-runner] continue_work cap reached for ${sessionKey}: ` +
+              `${currentChainCount}/${maxChainLength}`,
+          );
+        } else {
+          const nextChainCount = currentChainCount + 1;
+          const requestedDelayMs = attemptContinueWorkRequest.delaySeconds * 1000;
+          const clampedDelay = Math.max(
+            minDelayMs,
+            Math.min(maxDelayMs, requestedDelayMs || defaultDelayMs),
+          );
+
+          // Persist advanced chain state.
+          persistContinuationChainState({
+            sessionEntry: tailEntry,
+            count: nextChainCount,
+            startedAt: chainState.chainStartedAt,
+            tokens: chainState.accumulatedChainTokens,
+          });
+
+          // Schedule the continuation timer.
+          retainContinuationTimerRef(sessionKey);
+          const timerHandle = setTimeout(() => {
+            try {
+              defaultRuntime.log(
+                `[followup-runner] continue_work timer fired for session ${sessionKey}`,
+              );
+              enqueueSystemEvent(
+                `[continuation:wake] Turn ${nextChainCount}/${maxChainLength}. ` +
+                  `The agent elected to continue working.` +
+                  (attemptContinueWorkRequest!.reason
+                    ? ` Reason: ${attemptContinueWorkRequest!.reason}`
+                    : ""),
+                { sessionKey, trusted: true },
+              );
+              requestHeartbeatNow({
+                sessionKey,
+                reason: "continuation",
+                parentRunId: runId,
+              });
+            } finally {
+              unregisterContinuationTimerHandle(sessionKey, timerHandle);
+            }
+          }, clampedDelay);
+          registerContinuationTimerHandle(sessionKey, timerHandle);
+          timerHandle.unref();
         }
       }
 

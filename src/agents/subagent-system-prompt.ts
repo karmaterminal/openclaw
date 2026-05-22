@@ -146,6 +146,19 @@ export function buildSubagentSystemPrompt(params: {
     }
   }
 
+  // Teach continue_work regardless of canSpawn — any subagent with continuation
+  // enabled can elect its own next turn within the same session.
+  if (params.continuationEnabled && params.toolNames?.includes("continue_work")) {
+    lines.push(
+      "## Self-Continuation",
+      "Use `continue_work` to take another turn in this same session.",
+      "This keeps your working context intact across turns (no state packing needed).",
+      "Bounded by the same chain-length and cost-cap guards as continue_delegate.",
+      "Use it when you need multiple turns to complete a task.",
+      "",
+    );
+  }
+
   lines.push(
     "## Session Context",
     ...[
