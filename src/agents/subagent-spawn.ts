@@ -1077,8 +1077,10 @@ export async function spawnSubagentDirect(
       params.drainsContinuationDelegateQueue === true &&
       childDepth < maxSpawnDepth &&
       !cfg.tools?.subagents?.tools?.deny?.includes("continue_delegate")
-        ? ["continue_delegate"]
-        : undefined,
+        ? ["continue_delegate", "continue_work"]
+        : cfg.agents?.defaults?.continuation?.enabled === true
+          ? ["continue_work"]
+          : undefined,
     // Without this, `buildSubagentSystemPrompt` falls through the continuation
     // chaining gate (#715) and subagents never see the guidance even when
     // `agents.defaults.continuation.enabled === true`.
