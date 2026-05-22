@@ -90,6 +90,7 @@ import {
   readRecentSessionUsageFromTranscript,
   readSessionTitleFieldsFromTranscriptAsync,
   readSessionTitleFieldsFromTranscript,
+  resolveSessionTranscriptCandidates,
 } from "./session-utils.fs.js";
 import type {
   GatewayAgentRow,
@@ -674,6 +675,25 @@ function resolveChildSessionKeys(
   return mergeChildSessionKeys(runtimeChildSessions, storeChildSessions);
 }
 
+/**
+ * Cache for transcript usage reads keyed by resolved file path.
+ * Avoids redundant file I/O on repeated sessions.list calls when the
+ * underlying .jsonl hasn't changed (same size + mtime).
+ *
+ * Bounded to 512 entries; oldest evicted on overflow (simple FIFO via
+ * Map insertion order). This is sufficient for typical fleet session
+ * counts while bounding RSS contribution to ~2-3 MB.
+ */
+const transcriptUsageCache = new Map<
+  string,
+  {
+    size: number;
+    mtimeMs: number;
+    snapshot: ReturnType<typeof readRecentSessionUsageFromTranscript>;
+  }
+>();
+const TRANSCRIPT_USAGE_CACHE_MAX = 512;
+
 function resolveTranscriptUsageFallback(params: {
   cfg: OpenClawConfig;
   key: string;
@@ -699,13 +719,54 @@ function resolveTranscriptUsageFallback(params: {
   const agentId = parsed?.agentId
     ? normalizeAgentId(parsed.agentId)
     : resolveDefaultAgentId(params.cfg);
-  const snapshot = readRecentSessionUsageFromTranscript(
+
+  // Resolve the file path and check cache before doing expensive I/O.
+  // The transcript file is append-only; if size+mtime haven't changed the
+  // usage snapshot is identical — skip the read entirely.
+  const maxBytes =
+    typeof params.maxTranscriptBytes === "number" ? params.maxTranscriptBytes : 256 * 1024;
+  const candidates = resolveSessionTranscriptCandidates(
     entry.sessionId,
     params.storePath,
     entry.sessionFile,
     agentId,
-    typeof params.maxTranscriptBytes === "number" ? params.maxTranscriptBytes : 256 * 1024,
   );
+  const filePath =
+    candidates.find((p) => {
+      try {
+        return fs.statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    }) ?? null;
+
+  let snapshot: ReturnType<typeof readRecentSessionUsageFromTranscript> = null;
+  if (filePath) {
+    try {
+      const stat = fs.statSync(filePath);
+      const cached = transcriptUsageCache.get(filePath);
+      if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) {
+        snapshot = cached.snapshot;
+      } else {
+        snapshot = readRecentSessionUsageFromTranscript(
+          entry.sessionId,
+          params.storePath,
+          entry.sessionFile,
+          agentId,
+          maxBytes,
+        );
+        // Evict oldest if over capacity (FIFO via Map insertion order)
+        if (transcriptUsageCache.size >= TRANSCRIPT_USAGE_CACHE_MAX) {
+          const firstKey = transcriptUsageCache.keys().next().value;
+          if (firstKey !== undefined) transcriptUsageCache.delete(firstKey);
+        }
+        transcriptUsageCache.set(filePath, { size: stat.size, mtimeMs: stat.mtimeMs, snapshot });
+      }
+    } catch {
+      // stat failed — file may have been removed; fall through to null
+      snapshot = null;
+    }
+  }
   if (!snapshot) {
     return null;
   }
