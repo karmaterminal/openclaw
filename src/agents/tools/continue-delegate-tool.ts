@@ -138,6 +138,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
       'Use mode="silent-wake" for ambient enrichment that quietly returns to context and wakes you to act on it.',
       'Use mode="post-compaction" to stage working-state survival across the compaction seam (lich-protocol phylactery shape — what survives is what you elect to carry).',
       "Return targeting: default returns to the dispatching session; targetSessionKey returns to one other session; targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; fanoutMode=all returns to all known sessions on this host.",
+      "Use fanoutMode for distribution across comms channel between sessions that can be dispatched of delegates at low cost to this session.",
     ].join(" "),
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {

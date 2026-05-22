@@ -52,8 +52,8 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
     label: "Continuation",
     name: "continue_work",
     description: [
-      "Take another turn in this session — same head, same thread.",
-      "Reach for this when your next move is 'pick this back up later by myself' (long-running result pending, watch-loop pacing, self-scheduled check).",
+      "Schedule next turn, in this session, to occur immediately after this turn completes or on a time delay.",
+      "Use for long-running result pending, watch-loop pacing, self-scheduled check, or simply to schedule your next turn without being event-prompted — at any point in this turn when you would like another.",
       "Lighter than holding the channel with exec sleeps; lighter than spawning a session.",
       "Without this or continue_delegate, the session goes dark until next heartbeat or external wake — yielded turns don't auto-resume.",
       "Use delaySeconds to schedule the wake; reason captures why for diagnostics.",
