@@ -1070,15 +1070,22 @@ export async function spawnSubagentDirect(
     childDepth,
     maxSpawnDepth,
     // Hint tool availability so the subagent prompt teaches tool-primary vs bracket-only.
-    // The tool will actually appear when drains === true AND the child is not a leaf
-    // (DENY_LEAF blocks it at max depth). Also respect explicit deny config so the
-    // prompt doesn't teach a tool the policy will strip from the actual toolset.
-    toolNames:
-      params.drainsContinuationDelegateQueue === true &&
-      childDepth < maxSpawnDepth &&
-      !cfg.tools?.subagents?.tools?.deny?.includes("continue_delegate")
-        ? ["continue_delegate"]
-        : undefined,
+    // continue_work is always available when continuation is enabled (not in any deny list).
+    // continue_delegate requires drainsContinuationDelegateQueue + non-leaf depth + no explicit deny.
+    toolNames: (() => {
+      const names: string[] = [];
+      if (cfg.agents?.defaults?.continuation?.enabled === true) {
+        names.push("continue_work");
+      }
+      if (
+        params.drainsContinuationDelegateQueue === true &&
+        childDepth < maxSpawnDepth &&
+        !cfg.tools?.subagents?.tools?.deny?.includes("continue_delegate")
+      ) {
+        names.push("continue_delegate");
+      }
+      return names.length > 0 ? names : undefined;
+    })(),
     // Without this, `buildSubagentSystemPrompt` falls through the continuation
     // chaining gate (#715) and subagents never see the guidance even when
     // `agents.defaults.continuation.enabled === true`.
