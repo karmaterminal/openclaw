@@ -387,7 +387,9 @@ export async function buildStatusText(params: BuildStatusTextParams): Promise<st
     if (staged > 0) {
       parts.push(`${staged} post-compaction staged`);
     }
-    parts.push(`volitional: ${volitional}`);
+    if (volitional > 0) {
+      parts.push(`volitional: ${volitional}`);
+    }
     continuationLine = `🔄 Continuation: ${parts.join(" | ")}`;
   }
   const groupActivation = isGroup
