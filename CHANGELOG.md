@@ -54,6 +54,7 @@ Docs: https://docs.openclaw.ai
 ### Fixes
 
 - Memory/LanceDB: expose public memory artifacts through the active memory provider bridge so memory-wiki imports durable memory files, daily notes, dream reports, and event logs without depending on memory-core internals. Fixes #83604. (#85060) Thanks @brokemac79.
+- Docker setup: stop printing the Gateway bearer token in setup logs and printed follow-up commands.
 - Agents: let embedded compaction fallback retries proceed when PI-compatible candidates do not need agent harness plugin preparation.
 - Agents/tools: honor configured custom provider API keys when deciding whether media, image-generation, video-generation, music-generation, and PDF tools are available. (#85570)
 - StepFun: stop advertising stale generic API key auth choices so onboarding only offers runtime-backed Standard and Step Plan choices.
@@ -110,6 +111,7 @@ Docs: https://docs.openclaw.ai
 - OpenCode Go: strip unsupported Kimi reasoning replay fields before provider requests so repeated `kimi-k2.6` turns do not fail schema validation. Fixes #83812. Thanks @Sleeck.
 - Browser/CDP: add a WSL2 portproxy self-loop hint when Chrome DevTools endpoints accept connections but return an empty HTTP reply. Fixes #59209. Thanks @Owlock.
 - Agents/tools: add bounded tool-policy audit log entries that identify which allow/deny rule removed tools or blocked a sandboxed tool call. Fixes #55801. Thanks @justinjkline.
+- CLI/logs: read implicit local Gateway logs through the passive backend client path so `openclaw logs --follow` does not register as a paired device, and use the active Linux systemd journal instead of stale configured-file fallbacks when live local RPC is unavailable. Fixes #83656 and #66841.
 - Agents/OpenAI: preserve structured provider error code, type, and redacted body metadata on boundary-aware transport failures.
 - Doctor/Codex: point native Codex asset warnings at the canonical `openclaw migrate plan codex` preview command. Fixes #84948. Thanks @markoa.
 - CLI/models: make `capability model auth logout --agent` remove auth profiles from the selected non-default agent store. Fixes #85092. Thanks @islandpreneur007.
