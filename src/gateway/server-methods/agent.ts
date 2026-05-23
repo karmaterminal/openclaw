@@ -770,6 +770,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       internalEvents?: AgentInternalEvent[];
       idempotencyKey: string;
       sourceReplyDeliveryMode?: "automatic" | "message_tool_only";
+      disableMessageTool?: boolean;
       timeout?: number;
       bestEffortDeliver?: boolean;
       cleanupBundleMcpOnRunEnd?: boolean;
@@ -1935,6 +1936,7 @@ export const agentHandlers: GatewayRequestHandlers = {
               internalEvents: request.internalEvents,
               inputProvenance,
               sourceReplyDeliveryMode: request.sourceReplyDeliveryMode,
+              disableMessageTool: request.disableMessageTool,
               suppressPromptPersistence: shouldSuppressAgentPromptPersistence({
                 inputProvenance,
                 internalEvents: request.internalEvents,
