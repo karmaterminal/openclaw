@@ -2790,8 +2790,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             case "model.failover":
               recordModelFailover(evt, metadata);
               return;
-            case "diagnostic.continuation_queue.sample":
-              return;
           }
         } catch (err) {
           ctx.logger.error(
