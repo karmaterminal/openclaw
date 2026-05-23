@@ -106,7 +106,7 @@ vi.mock("./command/session-store.runtime.js", () => ({
 vi.mock("./command/session.js", () => ({
   resolveSession: () => ({
     sessionId: "session-1",
-    sessionKey: "agent:main",
+    sessionKey: "agent:main:main",
     sessionEntry: state.sessionEntryMock ?? {
       sessionId: "session-1",
       updatedAt: Date.now(),
@@ -241,30 +241,17 @@ vi.mock("../logging/subsystem.js", () => ({
   },
 }));
 
-vi.mock("../routing/session-key.js", () => ({
-  classifySessionKeyShape: (key?: string | null) => {
-    const raw = (key ?? "").trim();
-    if (!raw) {
-      return "missing";
-    }
-    if (/^agent:[^:]+:.+$/.test(raw)) {
-      return "agent";
-    }
-    if (raw.toLowerCase().startsWith("agent:")) {
-      return "agent";
-    }
-    return "legacy_or_alias";
-  },
-  isSubagentSessionKey: () => false,
-  isUnscopedSessionKeySentinel: () => false,
-  normalizeAgentId: (id: string) => id,
-  normalizeMainKey: (key?: string | null) => key?.trim() || "main",
-  resolveAgentIdFromSessionKey: (key?: string | null) => {
-    const match = (key ?? "").match(/^agent:([^:]+)/);
-    return match?.[1] ?? "main";
-  },
-  scopeLegacySessionKeyToAgent: ({ sessionKey }: { sessionKey?: string }) => sessionKey,
-}));
+vi.mock("../routing/session-key.js", async () => {
+  const actual = await vi.importActual<typeof import("../routing/session-key.js")>(
+    "../routing/session-key.js",
+  );
+  return {
+    ...actual,
+    isSubagentSessionKey: () => false,
+    normalizeAgentId: (id: string) => id,
+    normalizeMainKey: (key?: string | null) => key?.trim() || "main",
+  };
+});
 
 vi.mock("../runtime.js", () => ({
   defaultRuntime: {
@@ -321,12 +308,10 @@ vi.mock("./agent-scope.js", () => ({
 }));
 
 vi.mock("./auth-profiles.js", () => ({
-  clearRuntimeAuthProfileStoreSnapshots: vi.fn(),
   ensureAuthProfileStore: () => ({ profiles: {} }),
 }));
 
 vi.mock("./auth-profiles/store.js", () => ({
-  clearRuntimeAuthProfileStoreSnapshots: vi.fn(),
   ensureAuthProfileStore: () => state.authProfileStoreMock,
 }));
 
@@ -894,7 +879,7 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
       pendingFinalDeliveryIntentId: "intent-1",
     };
     state.sessionEntryMock = sessionEntry;
-    state.sessionStoreMock = { "agent:main": sessionEntry };
+    state.sessionStoreMock = { "agent:main:main": sessionEntry };
     state.storePathMock = "/tmp/openclaw-sessions.json";
     state.deliverAgentCommandResultMock.mockResolvedValue(undefined);
 
@@ -904,7 +889,7 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
       deliver: true,
     });
 
-    const stored = (state.sessionStoreMock as Record<string, SessionEntry>)["agent:main"];
+    const stored = (state.sessionStoreMock as Record<string, SessionEntry>)["agent:main:main"];
     expect(stored?.pendingFinalDelivery).toBeUndefined();
     expect(stored?.pendingFinalDeliveryText).toBeUndefined();
     expect(stored?.pendingFinalDeliveryCreatedAt).toBeUndefined();
@@ -1212,7 +1197,7 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
       skillsSnapshot: { prompt: "", skills: [], version: 0 },
     };
     state.sessionEntryMock = sessionEntry;
-    const sessionStore: Record<string, SessionEntry> = { "agent:main": sessionEntry };
+    const sessionStore: Record<string, SessionEntry> = { "agent:main:main": sessionEntry };
     state.sessionStoreMock = sessionStore;
     state.storePathMock = "/tmp/openclaw-session-store.json";
     setupModelSwitchRetry({
@@ -1253,12 +1238,12 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
       skillsSnapshot: { prompt: "", skills: [], version: 0 },
     };
     state.sessionEntryMock = sessionEntry;
-    const sessionStore: Record<string, SessionEntry> = { "agent:main": sessionEntry };
+    const sessionStore: Record<string, SessionEntry> = { "agent:main:main": sessionEntry };
     state.sessionStoreMock = sessionStore;
     state.storePathMock = "/tmp/openclaw-session-store.json";
     state.runWithModelFallbackMock.mockImplementationOnce(async (params: FallbackRunnerParams) => {
       const result = await params.run(params.provider, params.model);
-      sessionStore["agent:main"] = {
+      sessionStore["agent:main:main"] = {
         sessionId: "session-1",
         updatedAt: Date.now(),
         providerOverride: "google",
@@ -1277,7 +1262,7 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
 
     await runBasicAgentCommand();
 
-    expectRecordFields(sessionStore["agent:main"], {
+    expectRecordFields(sessionStore["agent:main:main"], {
       providerOverride: "google",
       modelOverride: "gemini-3-pro",
       modelOverrideSource: "user",
@@ -1492,7 +1477,7 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
         "hidden task completion event",
         INTERNAL_RUNTIME_CONTEXT_END,
       ].join("\n"),
-      sessionKey: "agent:main",
+      sessionKey: "agent:main:main",
       internalEvents: [
         {
           type: "task_completion",
@@ -1542,7 +1527,7 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
 
     await agentCommand({
       message: "bootstrap ACP child",
-      sessionKey: "agent:main",
+      sessionKey: "agent:main:main",
       acpTurnSource: "manual_spawn",
     });
 
@@ -1566,7 +1551,7 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
     await expect(
       agentCommand({
         message: "automatic ACP turn",
-        sessionKey: "agent:main",
+        sessionKey: "agent:main:main",
       }),
     ).rejects.toThrow("ACP dispatch is disabled");
 
