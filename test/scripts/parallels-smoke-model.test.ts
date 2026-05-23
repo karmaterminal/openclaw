@@ -1,15 +1,9 @@
-import {
-  chmodSync,
-  copyFileSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, join, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import { resolveHostCommandInvocation } from "../../scripts/e2e/parallels/host-command.ts";
 import { execNodeEvalSync, spawnNodeEvalSync } from "../../src/test-utils/node-process.js";
 
 const WRAPPERS = {
@@ -66,11 +60,7 @@ function fakePrlctlEnv(tempDir: string): Record<string, string> {
   return { NODE_OPTIONS: nodeOptions, PATH: pathValue, Path: pathValue };
 }
 
-function writeFakePrlctl(
-  tempDir: string,
-  posixScript: string,
-  windowsBootstrap: string,
-): void {
+function writeFakePrlctl(tempDir: string, posixScript: string, windowsBootstrap: string): void {
   const prlctlPath = join(tempDir, "prlctl");
   writeFileSync(prlctlPath, posixScript);
   chmodSync(prlctlPath, 0o755);
@@ -566,6 +556,55 @@ console.log(JSON.stringify(result));
 
     expect(result.status).toBe(124);
     expect(result.stdout).toBeTypeOf("string");
+  });
+
+  it("routes Windows host pnpm and npm shims through safe runners", () => {
+    const comSpec = "C:\\Windows\\System32\\cmd.exe";
+
+    expect(
+      resolveHostCommandInvocation("pnpm", ["build"], {
+        env: {
+          ComSpec: comSpec,
+          npm_execpath: "C:\\Tools\\pnpm.cmd",
+        },
+        platform: "win32",
+      }),
+    ).toEqual({
+      args: ["/d", "/s", "/c", "C:\\Tools\\pnpm.cmd build"],
+      command: comSpec,
+      shell: false,
+      windowsVerbatimArguments: true,
+    });
+
+    const execPath = "C:\\nodejs\\node.exe";
+    const npmCmdPath = win32.resolve(win32.dirname(execPath), "npm.cmd");
+    expect(
+      resolveHostCommandInvocation("npm", ["view", "openclaw", "version"], {
+        env: { ComSpec: comSpec },
+        execPath,
+        existsSync: (candidate) => candidate === npmCmdPath,
+        platform: "win32",
+      }),
+    ).toEqual({
+      args: ["/d", "/s", "/c", `${npmCmdPath} view openclaw version`],
+      command: comSpec,
+      shell: false,
+      windowsVerbatimArguments: true,
+    });
+  });
+
+  it("wraps explicit Windows batch host commands without shell mode", () => {
+    expect(
+      resolveHostCommandInvocation("C:\\Tools\\helper.cmd", ["@scope/pkg@^1.0.0"], {
+        comSpec: "cmd.exe",
+        platform: "win32",
+      }),
+    ).toEqual({
+      args: ["/d", "/s", "/c", "C:\\Tools\\helper.cmd @scope/pkg@^^1.0.0"],
+      command: "cmd.exe",
+      shell: false,
+      windowsVerbatimArguments: true,
+    });
   });
 
   it("runs the Windows agent turn through the detached done-file runner", () => {

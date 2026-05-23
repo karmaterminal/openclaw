@@ -34,7 +34,9 @@ function makeFakeCrabbox(helpText: string): string {
   return binDir;
 }
 
-function makeFakeGit(responses: Record<string, { status?: number; stdout?: string; stderr?: string }>): string {
+function makeFakeGit(
+  responses: Record<string, { status?: number; stdout?: string; stderr?: string }>,
+): string {
   const binDir = mkdtempSync(path.join(tmpdir(), "openclaw-fake-git-"));
   tempDirs.push(binDir);
   const gitPath = path.join(binDir, "git");
@@ -54,6 +56,7 @@ function makeFakeGit(responses: Record<string, { status?: number; stdout?: strin
     "process.exit(response.status ?? 0);",
   ].join("\n");
   writeFileSync(gitPath, `${script}\n`, "utf8");
+  writeFileSync(`${gitPath}.cmd`, `@echo off\r\n"${process.execPath}" "%~dp0git" %*\r\n`, "utf8");
   chmodSync(gitPath, 0o755);
   return binDir;
 }
@@ -61,7 +64,10 @@ function makeFakeGit(responses: Record<string, { status?: number; stdout?: strin
 function runWrapper(
   helpText: string,
   args: string[],
-  options: { gitResponses?: Record<string, { status?: number; stdout?: string; stderr?: string }> } = {},
+  options: {
+    extraPathEntries?: string[];
+    gitResponses?: Record<string, { status?: number; stdout?: string; stderr?: string }>;
+  } = {},
 ) {
   const binDir = makeFakeCrabbox(helpText);
   const gitBinDir = options.gitResponses ? makeFakeGit(options.gitResponses) : "";
@@ -70,7 +76,9 @@ function runWrapper(
     encoding: "utf8",
     env: {
       ...process.env,
-      PATH: [binDir, gitBinDir, process.env.PATH ?? ""].filter(Boolean).join(path.delimiter),
+      PATH: [...(options.extraPathEntries ?? []), binDir, gitBinDir, process.env.PATH ?? ""]
+        .filter(Boolean)
+        .join(path.delimiter),
       ...(options.gitResponses
         ? { OPENCLAW_FAKE_GIT_RESPONSES: JSON.stringify(options.gitResponses) }
         : {}),
@@ -78,7 +86,10 @@ function runWrapper(
   });
 }
 
-function parseFakeCrabboxOutput(result: ReturnType<typeof runWrapper>): { args: string[]; cwd: string } {
+function parseFakeCrabboxOutput(result: ReturnType<typeof runWrapper>): {
+  args: string[];
+  cwd: string;
+} {
   return JSON.parse(result.stdout.trim()) as { args: string[]; cwd: string };
 }
 
@@ -115,6 +126,30 @@ describe("scripts/crabbox-wrapper", () => {
       "providers=hetzner,aws,local-container,blacksmith-testbox,docker,cloudflare",
     );
   });
+
+  if (process.platform === "win32") {
+    it("preserves shell metacharacters through Windows Crabbox command shims", () => {
+      const remoteCommand = "pnpm build && pnpm test | more < in.txt > out.txt %PATH%";
+      const result = runWrapper("provider: aws\n", ["run", "--shell", "--", remoteCommand]);
+
+      expect(result.status).toBe(0);
+      expect(parseFakeCrabboxOutput(result).args).toEqual(["run", "--shell", "--", remoteCommand]);
+    });
+  }
+
+  if (process.platform !== "win32") {
+    it("keeps POSIX PATH lookup semantics for non-executable entries", () => {
+      const staleBinDir = mkdtempSync(path.join(tmpdir(), "openclaw-stale-crabbox-"));
+      tempDirs.push(staleBinDir);
+      writeFileSync(path.join(staleBinDir, "crabbox"), "not executable\n", "utf8");
+      const result = runWrapper("provider: aws\n", ["run", "--provider", "aws", "--", "echo ok"], {
+        extraPathEntries: [staleBinDir],
+      });
+
+      expect(result.status).toBe(0);
+      expect(parseFakeCrabboxOutput(result).args).toContain("aws");
+    });
+  }
 
   it("accepts Crabbox provider aliases when their canonical provider is advertised", () => {
     const helpText = [
@@ -279,7 +314,9 @@ describe("scripts/crabbox-wrapper", () => {
     const output = parseFakeCrabboxOutput(result);
     expect(result.status).toBe(0);
     expect(output.cwd).toContain("openclaw-crabbox-sync-");
-    expect(output.args).toContain(`--capture-stdout=${path.join(repoRoot, ".artifacts/stdout.log")}`);
+    expect(output.args).toContain(
+      `--capture-stdout=${path.join(repoRoot, ".artifacts/stdout.log")}`,
+    );
     expect(output.args).toContain(path.join(repoRoot, ".artifacts/stderr.log"));
     expect(output.args).toContain(`/tmp/proof=${path.join(repoRoot, ".artifacts/proof")}`);
   });

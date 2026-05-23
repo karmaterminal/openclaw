@@ -1497,9 +1497,6 @@ export async function runAgentTurnWithFallback(params: {
     model: string,
     candidateRun: FollowupRun["run"],
   ): Promise<(() => Promise<void>) | undefined> => {
-    if (effectiveRun.hasOneTurnModelOverride === true) {
-      return undefined;
-    }
     if (
       !params.sessionKey ||
       !params.activeSessionStore ||
