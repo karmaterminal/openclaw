@@ -5,9 +5,11 @@ import type { NormalizedUsage, UsageLike } from "../agents/usage.js";
 import { normalizeUsage } from "../agents/usage.js";
 import { stripInboundMetadata } from "../auto-reply/reply/strip-inbound-meta.js";
 import {
+  isCheckpointSessionTranscriptFileName,
   isPrimarySessionTranscriptFileName,
   isSessionArchiveArtifactName,
   isUsageCountedSessionTranscriptFileName,
+  parseParentSessionIdFromCheckpointFileName,
   parseSessionArchiveTimestamp,
   parseUsageCountedSessionIdFromFileName,
 } from "../config/sessions/artifacts.js";
@@ -370,12 +372,18 @@ async function writeUsageCostCache(cachePath: string, cache: UsageCostCacheFile)
 
 async function listUsageCountedTranscriptFileStats(
   agentId?: string,
-  params?: { minMtimeMs?: number },
+  params?: { minMtimeMs?: number; includeCheckpoints?: boolean },
 ): Promise<UsageCostTranscriptFile[]> {
   const sessionsDir = resolveSessionTranscriptsDirForAgent(agentId);
   const entries = await fs.promises.readdir(sessionsDir, { withFileTypes: true }).catch(() => []);
   const tasks = entries
-    .filter((entry) => entry.isFile() && isUsageCountedSessionTranscriptFileName(entry.name))
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        isUsageCountedSessionTranscriptFileName(entry.name) &&
+        (params?.includeCheckpoints === true ||
+          !isCheckpointSessionTranscriptFileName(entry.name)),
+    )
     .map(
       (entry) => async (): Promise<UsageCostTranscriptFile | undefined> => {
         const filePath = path.join(sessionsDir, entry.name);
@@ -1871,6 +1879,7 @@ export async function discoverAllSessions(params?: {
 }): Promise<DiscoveredSession[]> {
   const files = await listUsageCountedTranscriptFileStats(params?.agentId, {
     minMtimeMs: params?.startMs,
+    includeCheckpoints: true,
   });
 
   const discovered = new Map<string, DiscoveredSession>();
@@ -1879,6 +1888,48 @@ export async function discoverAllSessions(params?: {
     // Do not exclude by endMs: a session can have activity in range even if it continued later.
     const filePath = file.filePath;
     const fileName = path.basename(filePath);
+
+    // Checkpoint-twin dedup: `<parentId>.checkpoint.<uuid>.jsonl`
+    // files are pre-compaction snapshot siblings of the parent primary
+    // session. They must NOT surface as distinct discovered sessions — that
+    // lopsides the discover map (one lopsided session can present as
+    // 6 separate sessions) and, worse, opens each file for first-user-message
+    // extraction, which is the dominant read cost on a heavy session with deep
+    // checkpoint history. Group them under the parent session id, do not
+    // re-read for label (the parent primary already carries it), and advance
+    // the parent's mtime if this checkpoint is newer.
+    if (isCheckpointSessionTranscriptFileName(fileName)) {
+      const parentId = parseParentSessionIdFromCheckpointFileName(fileName);
+      if (!parentId) {
+        continue;
+      }
+      const existing = discovered.get(parentId);
+      if (!existing) {
+        // Parent primary may not have been scanned yet (or may be absent
+        // entirely, which is the parent-missing recovery case). Record the
+        // checkpoint's mtime under the parent id without a sessionFile
+        // commitment; the parent primary will replace this entry when we
+        // encounter it via the primary branch below.
+        discovered.set(parentId, {
+          sessionId: parentId,
+          sessionFile: filePath,
+          mtime: file.mtimeMs,
+          firstUserMessage: undefined,
+        });
+      } else if (file.mtimeMs > existing.mtime) {
+        // Advance the parent's mtime if this checkpoint is newer; do NOT
+        // overwrite sessionFile when existing points at a primary transcript.
+        const existingIsPrimary = isPrimarySessionTranscriptFileName(
+          path.basename(existing.sessionFile),
+        );
+        discovered.set(parentId, {
+          ...existing,
+          sessionFile: existingIsPrimary ? existing.sessionFile : filePath,
+          mtime: file.mtimeMs,
+        });
+      }
+      continue;
+    }
 
     const sessionId = parseUsageCountedSessionIdFromFileName(fileName);
     if (!sessionId) {
