@@ -308,10 +308,12 @@ vi.mock("./agent-scope.js", () => ({
 }));
 
 vi.mock("./auth-profiles.js", () => ({
+  clearRuntimeAuthProfileStoreSnapshots: vi.fn(),
   ensureAuthProfileStore: () => ({ profiles: {} }),
 }));
 
 vi.mock("./auth-profiles/store.js", () => ({
+  clearRuntimeAuthProfileStoreSnapshots: vi.fn(),
   ensureAuthProfileStore: () => state.authProfileStoreMock,
 }));
 

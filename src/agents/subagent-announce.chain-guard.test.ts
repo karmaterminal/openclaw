@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // --- Mocks that DO intercept the SUT (non-barrel modules) ---
 
 vi.mock("./subagent-announce.runtime.js", async (importOriginal) => ({
-  ...((await importOriginal()) as object),
+  ...(await importOriginal<typeof import("./subagent-announce.runtime.js")>()),
   readSessionMessagesAsync: vi.fn(async () => []),
 }));
 

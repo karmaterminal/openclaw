@@ -403,6 +403,7 @@ describe("subagent announce formatting", () => {
       ) => (await callGatewaySpy(req)) as T,
       getRuntimeConfig: () => configOverride,
       readSessionEntry: (_storePath, sessionKey) => loadSessionStoreFixture()[sessionKey],
+      readSessionMessagesAsync: vi.fn(async () => []),
       resolveAgentIdFromSessionKey: () => "main",
       resolveStorePath: () => "/tmp/sessions.json",
     });

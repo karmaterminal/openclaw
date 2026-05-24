@@ -874,6 +874,9 @@ async function sweepSubagentRuns() {
         }
       }
 
+      if (!entry.archiveAtMs && entry.cleanup === "keep" && entry.spawnMode !== "session") {
+        continue;
+      }
       // Session-mode runs have no archiveAtMs — apply absolute TTL after cleanup completes.
       // Use cleanupCompletedAt (not endedAt) to avoid interrupting deferred cleanup flows.
       if (!entry.archiveAtMs) {

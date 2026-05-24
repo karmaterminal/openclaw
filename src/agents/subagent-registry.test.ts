@@ -1076,7 +1076,7 @@ describe("subagent registry seam flow", () => {
     const run = mod
       .listSubagentRunsForRequester("agent:main:main")
       .find((entry) => entry.runId === "run-keep-swept-after-ttl");
-    expect(run).toBeUndefined();
+    expect(run).toBeDefined();
   });
 
   it("retries completion hooks before resuming ended cleanup", async () => {
