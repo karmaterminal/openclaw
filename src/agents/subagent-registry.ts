@@ -61,6 +61,7 @@ import {
   markSubagentRunPausedAfterYield,
   type RegisterSubagentRunParams,
 } from "./subagent-registry-run-manager.js";
+import { configureSubagentRegistrySpawnRuntime } from "./subagent-registry-spawn-runtime.js";
 import {
   getSubagentRunsSnapshotForRead,
   persistSubagentRunsToDisk,
@@ -875,9 +876,13 @@ async function sweepSubagentRuns() {
         }
       }
 
+      // Keep-mode run entries survive sweep (they stay visible in status/history).
       if (!entry.archiveAtMs && entry.cleanup === "keep" && entry.spawnMode !== "session") {
         continue;
       }
+
+      // Session-mode runs have no archiveAtMs — apply absolute TTL after cleanup completes.
+      // Use cleanupCompletedAt (not endedAt) to avoid interrupting deferred cleanup flows.
       if (!entry.archiveAtMs) {
         if (
           typeof entry.cleanupCompletedAt === "number" &&
@@ -1100,6 +1105,11 @@ configureSubagentRegistrySteerRuntime({
   replaceSubagentRunAfterSteer: (params) => subagentRunManager.replaceSubagentRunAfterSteer(params),
   finalizeInterruptedSubagentRun: async (params) => await finalizeInterruptedSubagentRun(params),
 });
+configureSubagentRegistrySpawnRuntime({
+  countActiveRunsForSession: (requesterSessionKey) =>
+    countActiveRunsForSession(requesterSessionKey),
+  registerSubagentRun: (params) => registerSubagentRun(params),
+});
 
 export function markSubagentRunForSteerRestart(runId: string) {
   return subagentRunManager.markSubagentRunForSteerRestart(runId);
@@ -1158,12 +1168,16 @@ export const testing = {
     await sweepSubagentRuns();
   },
   setDepsForTest(overrides?: Partial<SubagentRegistryDeps>) {
-    subagentRegistryDeps = overrides
+    const nextDeps = overrides
       ? {
           ...defaultSubagentRegistryDeps,
           ...overrides,
         }
       : defaultSubagentRegistryDeps;
+    if (overrides?.persistSubagentRunsToDisk && !overrides.persistSubagentRunsToDiskOrThrow) {
+      nextDeps.persistSubagentRunsToDiskOrThrow = overrides.persistSubagentRunsToDisk;
+    }
+    subagentRegistryDeps = nextDeps;
   },
 } as const;
 
