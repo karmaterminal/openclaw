@@ -567,6 +567,39 @@ function sessionLockHeldByThisProcess(normalizedSessionFile: string): boolean {
   );
 }
 
+async function removeReportedStaleLockIfStillStale(params: {
+  lockPath: string;
+  normalizedSessionFile: string;
+  staleMs: number;
+  readOwnerProcessArgs?: SessionLockOwnerProcessArgsReader;
+}): Promise<boolean> {
+  const nowMs = Date.now();
+  const payload = await readLockPayload(params.lockPath);
+  if (payload === null) {
+    try {
+      await fs.access(params.lockPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return true;
+      }
+      throw error;
+    }
+  }
+  const inspected = inspectLockPayloadForSession({
+    payload,
+    staleMs: params.staleMs,
+    nowMs,
+    heldByThisProcess: sessionLockHeldByThisProcess(params.normalizedSessionFile),
+    reclaimLockWithoutStarttime: true,
+    readOwnerProcessArgs: params.readOwnerProcessArgs ?? readProcessArgsSync,
+  });
+  if (!(await shouldReclaimContendedLockFile(params.lockPath, inspected, params.staleMs, nowMs))) {
+    return false;
+  }
+  await fs.rm(params.lockPath, { force: true });
+  return true;
+}
+
 function shouldTreatAsOrphanSelfLock(params: {
   payload: LockFilePayload | null;
   heldByThisProcess: boolean;
@@ -729,13 +762,26 @@ export async function acquireSessionWriteLock(params: {
   const sessionDir = path.dirname(sessionFile);
   const normalizedSessionFile = await resolveNormalizedSessionFile(sessionFile);
   const lockPath = `${normalizedSessionFile}.lock`;
+  const startedAtMs = Date.now();
+  const throwTimeout = async (): Promise<never> => {
+    const payload = await readLockPayload(lockPath);
+    const owner = typeof payload?.pid === "number" ? `pid=${payload.pid}` : "unknown";
+    throw new SessionWriteLockTimeoutError({ timeoutMs, owner, lockPath });
+  };
   await fs.mkdir(sessionDir, { recursive: true });
 
   while (true) {
+    const remainingTimeoutMs =
+      timeoutMs === Number.POSITIVE_INFINITY
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, timeoutMs - (Date.now() - startedAtMs));
+    if (remainingTimeoutMs <= 0) {
+      await throwTimeout();
+    }
     try {
       const lock = await SESSION_LOCKS.acquire(sessionFile, {
         staleMs,
-        timeoutMs,
+        timeoutMs: remainingTimeoutMs,
         retry: { minTimeout: 50, maxTimeout: 1000, factor: 1 },
         staleRecovery: "remove-if-unchanged",
         allowReentrant,
@@ -778,6 +824,31 @@ export async function acquireSessionWriteLock(params: {
       });
       return { release: lock.release };
     } catch (err) {
+      if (isFileLockError(err, "file_lock_stale")) {
+        const staleLockPath = (err as { lockPath?: string }).lockPath ?? lockPath;
+        if (
+          await removeReportedStaleLockIfStillStale({
+            lockPath: staleLockPath,
+            normalizedSessionFile,
+            staleMs,
+          })
+        ) {
+          continue;
+        }
+        // The lower-level lock manager can make a stale decision from a snapshot
+        // that races with this wrapper's process-aware recheck. If the recheck no
+        // longer agrees the lock is stale, keep waiting instead of breaking a live
+        // critical section.
+        const retryDelayMs =
+          timeoutMs === Number.POSITIVE_INFINITY
+            ? 50
+            : Math.min(50, Math.max(0, timeoutMs - (Date.now() - startedAtMs)));
+        if (retryDelayMs <= 0) {
+          await throwTimeout();
+        }
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        continue;
+      }
       if (!isFileLockError(err, "file_lock_timeout")) {
         throw err;
       }
