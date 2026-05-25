@@ -2,6 +2,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { attachPluginApiFacades, type OpenClawPluginApiWithoutFacades } from "./api-facades.js";
 import type { PluginRuntime } from "./runtime/types.js";
 import type { OpenClawPluginApi, PluginLogger } from "./types.js";
+import { delegateCompactionToRuntime } from "../context-engine/delegate.js";
 
 export type BuildPluginApiParams = {
   id: string;
@@ -134,6 +135,11 @@ const noopOnConversationBindingResolved: OpenClawPluginApi["onConversationBindin
 const noopRegisterCommand: OpenClawPluginApi["registerCommand"] = () => {};
 const noopRegisterContextEngine: OpenClawPluginApi["registerContextEngine"] = () => {};
 const noopRegisterCompactionProvider: OpenClawPluginApi["registerCompactionProvider"] = () => {};
+const noopDelegateCompactionToRuntime: OpenClawPluginApi["delegateCompactionToRuntime"] = async () => ({
+  ok: false,
+  compacted: false,
+  reason: "not wired",
+});
 const noopRegisterAgentHarness: OpenClawPluginApi["registerAgentHarness"] = () => {};
 const noopRegisterCodexAppServerExtensionFactory: OpenClawPluginApi["registerCodexAppServerExtensionFactory"] =
   () => {};
@@ -249,6 +255,7 @@ export function buildPluginApi(params: BuildPluginApiParams): OpenClawPluginApi 
     registerContextEngine: handlers.registerContextEngine ?? noopRegisterContextEngine,
     registerCompactionProvider:
       handlers.registerCompactionProvider ?? noopRegisterCompactionProvider,
+    delegateCompactionToRuntime,
     registerAgentHarness: handlers.registerAgentHarness ?? noopRegisterAgentHarness,
     registerCodexAppServerExtensionFactory:
       handlers.registerCodexAppServerExtensionFactory ?? noopRegisterCodexAppServerExtensionFactory,
