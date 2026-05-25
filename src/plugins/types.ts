@@ -2717,6 +2717,15 @@ export type OpenClawPluginApi = {
   registerCompactionProvider: (
     provider: import("./compaction-provider.js").CompactionProvider,
   ) => void;
+  /**
+   * Delegate compaction to the runtime's built-in compaction pipeline.
+   * Context engine plugins should call this from their `compact()` method
+   * to reuse the gateway's native summarization instead of implementing
+   * their own compression.
+   */
+  delegateCompactionToRuntime: (
+    params: Parameters<import("../context-engine/types.js").ContextEngine["compact"]>[0],
+  ) => Promise<import("../context-engine/types.js").CompactResult>;
   /** Register an agent harness implementation. */
   registerAgentHarness: (harness: AgentHarness) => void;
   /**
