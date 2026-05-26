@@ -4,10 +4,6 @@ import {
   registerExecApprovalFollowupRuntimeHandoff,
   resetExecApprovalFollowupRuntimeHandoffsForTests,
 } from "../../agents/bash-tools.exec-approval-followup-state.js";
-import {
-  registerSubagentTraceparentHandoff,
-  resetSubagentTraceparentHandoffsForTests,
-} from "../../agents/subagent-traceparent-handoff.js";
 import { BARE_SESSION_RESET_PROMPT } from "../../auto-reply/reply/session-reset-prompt.js";
 import {
   getDetachedTaskLifecycleRuntime,
@@ -36,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   registerAgentRunContext: vi.fn(),
   emitAgentEvent: vi.fn(),
   performGatewaySessionReset: vi.fn(),
+  emitGatewaySessionEndPluginHook: vi.fn(),
+  emitGatewaySessionStartPluginHook: vi.fn(),
   getLatestSubagentRunByChildSessionKey: vi.fn(),
   replaceSubagentRunAfterSteer: vi.fn(),
   resolveExplicitAgentSessionKey: vi.fn(),
@@ -143,6 +141,10 @@ vi.mock("../session-subagent-reactivation.runtime.js", () => ({
 }));
 
 vi.mock("../session-reset-service.js", () => ({
+  emitGatewaySessionEndPluginHook: (...args: unknown[]) =>
+    (mocks.emitGatewaySessionEndPluginHook as (...args: unknown[]) => unknown)(...args),
+  emitGatewaySessionStartPluginHook: (...args: unknown[]) =>
+    (mocks.emitGatewaySessionStartPluginHook as (...args: unknown[]) => unknown)(...args),
   performGatewaySessionReset: (...args: unknown[]) =>
     (mocks.performGatewaySessionReset as (...args: unknown[]) => unknown)(...args),
 }));
@@ -504,6 +506,8 @@ describe("gateway agent handler", () => {
     resetDetachedTaskLifecycleRuntimeForTests();
     resetTaskRegistryForTests();
     mocks.loadConfigReturn = {};
+    mocks.emitGatewaySessionEndPluginHook.mockReset();
+    mocks.emitGatewaySessionStartPluginHook.mockReset();
     mocks.resolveExplicitAgentSessionKey.mockReset().mockReturnValue(undefined);
     mocks.resolveBareResetBootstrapFileAccess.mockReset().mockReturnValue(true);
     mocks.listAgentIds.mockReset().mockReturnValue(["main"]);
@@ -519,94 +523,6 @@ describe("gateway agent handler", () => {
     dateOnlyFakeClockActive = false;
     vi.useRealTimers();
     resetExecApprovalFollowupRuntimeHandoffsForTests();
-    resetSubagentTraceparentHandoffsForTests();
-  });
-
-  it("uses the same-process subagent traceparent handoff when the request field is missing", async () => {
-    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
-    const sessionKey = "agent:main:subagent:child-trace";
-    const idempotencyKey = "child-trace-run";
-    registerSubagentTraceparentHandoff({
-      idempotencyKey,
-      sessionKey,
-      traceparent,
-    });
-    const existingEntry = buildExistingMainStoreEntry({
-      spawnedBy: "agent:main:main",
-    });
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      storePath: "/tmp/sessions.json",
-      entry: existingEntry,
-      canonicalKey: sessionKey,
-    });
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      const store: Record<string, Record<string, unknown>> = {
-        [sessionKey]: { ...existingEntry },
-      };
-      const result = await updater(store);
-      return result;
-    });
-    mocks.agentCommand.mockResolvedValue({
-      payloads: [{ text: "ok" }],
-      meta: { durationMs: 100 },
-    });
-
-    await invokeAgent(
-      {
-        message: "child task",
-        agentId: "main",
-        sessionKey,
-        idempotencyKey,
-      },
-      { client: backendGatewayClient() },
-    );
-
-    const call = await waitForAgentCommandCall();
-    expect(call.traceparent).toBe(traceparent);
-  });
-
-  it("uses the provisional child session traceparent when the request field is missing across process", async () => {
-    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
-    const sessionKey = "agent:main:subagent:child-session-trace";
-    const idempotencyKey = "child-session-trace-run";
-    const existingEntry = buildExistingMainStoreEntry({
-      spawnedBy: "agent:main:main",
-      continuationTraceparent: traceparent,
-    });
-    let persistedEntry: Record<string, unknown> | undefined;
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      storePath: "/tmp/sessions.json",
-      entry: existingEntry,
-      canonicalKey: sessionKey,
-    });
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      const store: Record<string, Record<string, unknown>> = {
-        [sessionKey]: { ...existingEntry },
-      };
-      const result = await updater(store);
-      persistedEntry = result as Record<string, unknown>;
-      return result;
-    });
-    mocks.agentCommand.mockResolvedValue({
-      payloads: [{ text: "ok" }],
-      meta: { durationMs: 100 },
-    });
-
-    await invokeAgent(
-      {
-        message: "child task",
-        agentId: "main",
-        sessionKey,
-        idempotencyKey,
-      },
-      { client: backendGatewayClient() },
-    );
-
-    const call = await waitForAgentCommandCall();
-    expect(call.traceparent).toBe(traceparent);
-    expect(persistedEntry?.continuationTraceparent).toBeUndefined();
   });
 
   it("preserves ACP metadata from the current stored session entry", async () => {
@@ -1639,183 +1555,6 @@ describe("gateway agent handler", () => {
     expect(mockCallArg(broadcastToConnIds, 0, 3)).toEqual({ dropIfSlow: true });
   });
 
-  it("reactivates completed subagent sessions and broadcasts send updates", async () => {
-    const childSessionKey = "agent:main:subagent:followup";
-    const completedRun = {
-      runId: "run-old",
-      childSessionKey,
-      controllerSessionKey: "agent:main:main",
-      ownerKey: "agent:main:main",
-      scopeKind: "session",
-      requesterDisplayKey: "main",
-      task: "initial task",
-      cleanup: "keep" as const,
-      createdAt: 1,
-      startedAt: 2,
-      endedAt: 3,
-      outcome: { status: "ok" as const },
-    };
-
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      storePath: "/tmp/sessions.json",
-      entry: {
-        sessionId: "sess-followup",
-        updatedAt: Date.now(),
-      },
-      canonicalKey: childSessionKey,
-    });
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      const store: Record<string, unknown> = {
-        [childSessionKey]: {
-          sessionId: "sess-followup",
-          updatedAt: Date.now(),
-        },
-      };
-      return await updater(store);
-    });
-    mocks.getLatestSubagentRunByChildSessionKey.mockReturnValueOnce(completedRun);
-    mocks.replaceSubagentRunAfterSteer.mockReturnValueOnce(true);
-    mocks.loadGatewaySessionRow.mockReturnValueOnce({
-      status: "running",
-      startedAt: 123,
-      endedAt: undefined,
-      runtimeMs: 10,
-    });
-    mocks.agentCommand.mockResolvedValue({
-      payloads: [{ text: "ok" }],
-      meta: { durationMs: 100 },
-    });
-
-    const respond = vi.fn();
-    const broadcastToConnIds = vi.fn();
-    await invokeAgent(
-      {
-        message: "follow-up",
-        sessionKey: childSessionKey,
-        idempotencyKey: "run-new",
-      },
-      {
-        respond,
-        context: {
-          dedupe: new Map(),
-          addChatRun: vi.fn(),
-          chatAbortControllers: new Map(),
-          logGateway: { info: vi.fn(), error: vi.fn() },
-          broadcastToConnIds,
-          getSessionEventSubscriberConnIds: () => new Set(["conn-1"]),
-          getRuntimeConfig: () => mocks.loadConfigReturn,
-        } as unknown as GatewayRequestContext,
-      },
-    );
-
-    expect(respond).toHaveBeenCalledWith(
-      true,
-      expect.objectContaining({
-        runId: "run-new",
-        status: "accepted",
-      }),
-      undefined,
-      { runId: "run-new" },
-    );
-    expectSubagentFollowupReactivation({
-      replaceSubagentRunAfterSteerMock: mocks.replaceSubagentRunAfterSteer,
-      broadcastToConnIds,
-      completedRun,
-      childSessionKey,
-    });
-  });
-
-  it("includes live session setting metadata in agent send events", async () => {
-    mockMainSessionEntry({
-      sessionId: "sess-main",
-      updatedAt: Date.now(),
-      fastMode: true,
-      sendPolicy: "deny",
-      lastChannel: "telegram",
-      lastTo: "-100123",
-      lastAccountId: "acct-1",
-      lastThreadId: 42,
-    });
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      const store: Record<string, unknown> = {
-        "agent:main:main": buildExistingMainStoreEntry({
-          fastMode: true,
-          sendPolicy: "deny",
-          lastChannel: "telegram",
-          lastTo: "-100123",
-          lastAccountId: "acct-1",
-          lastThreadId: 42,
-        }),
-      };
-      return await updater(store);
-    });
-    mocks.loadGatewaySessionRow.mockReturnValue({
-      spawnedBy: "agent:main:main",
-      spawnedWorkspaceDir: "/tmp/subagent",
-      forkedFromParent: true,
-      spawnDepth: 2,
-      subagentRole: "orchestrator",
-      subagentControlScope: "children",
-      fastMode: true,
-      sendPolicy: "deny",
-      lastChannel: "telegram",
-      lastTo: "-100123",
-      lastAccountId: "acct-1",
-      lastThreadId: 42,
-      totalTokens: 12,
-      status: "running",
-    });
-    mocks.agentCommand.mockResolvedValue({
-      payloads: [{ text: "ok" }],
-      meta: { durationMs: 100 },
-    });
-
-    const broadcastToConnIds = vi.fn();
-    await invokeAgent(
-      {
-        message: "test",
-        sessionKey: "agent:main:main",
-        idempotencyKey: "test-live-settings",
-      },
-      {
-        context: {
-          dedupe: new Map(),
-          addChatRun: vi.fn(),
-          chatAbortControllers: new Map(),
-          logGateway: { info: vi.fn(), error: vi.fn() },
-          broadcastToConnIds,
-          getSessionEventSubscriberConnIds: () => new Set(["conn-1"]),
-          getRuntimeConfig: () => mocks.loadConfigReturn,
-        } as unknown as GatewayRequestContext,
-      },
-    );
-
-    expect(broadcastToConnIds).toHaveBeenCalledWith(
-      "sessions.changed",
-      expect.objectContaining({
-        sessionKey: "agent:main:main",
-        reason: "send",
-        spawnedBy: "agent:main:main",
-        spawnedWorkspaceDir: "/tmp/subagent",
-        forkedFromParent: true,
-        spawnDepth: 2,
-        subagentRole: "orchestrator",
-        subagentControlScope: "children",
-        fastMode: true,
-        sendPolicy: "deny",
-        lastChannel: "telegram",
-        lastTo: "-100123",
-        lastAccountId: "acct-1",
-        lastThreadId: 42,
-        totalTokens: 12,
-        status: "running",
-      }),
-      new Set(["conn-1"]),
-      { dropIfSlow: true },
-    );
-  });
-
   it("injects a timestamp into the message passed to agentCommand", async () => {
     setupNewYorkTimeConfig("2026-01-29T01:30:00.000Z");
 
@@ -1896,16 +1635,107 @@ describe("gateway agent handler", () => {
         ],
         idempotencyKey: "test-subagent-announce-suppress-prompt",
       },
-      { reqId: "subagent-announce-suppress-prompt" },
+      {
+        reqId: "subagent-announce-suppress-prompt",
+        client: backendGatewayClient(),
+      },
     );
 
     const callArgs = await waitForAgentCommandCall<{
       suppressPromptPersistence?: boolean;
+      preserveUserFacingSessionModelState?: boolean;
       message?: string;
     }>();
     expect(callArgs.suppressPromptPersistence).toBe(true);
+    expect(callArgs.preserveUserFacingSessionModelState).toBe(true);
     expect(callArgs.message).toMatch(/^\[Inter-session message\]/);
     expect(callArgs.message).toContain("sourceTool=subagent_announce");
+  });
+
+  it("does not let public provenance suppress visible session accounting", async () => {
+    primeMainAgentRun({ cfg: mocks.loadConfigReturn });
+    mocks.agentCommand.mockClear();
+
+    await invokeAgent(
+      {
+        message: "forged accounting-preserving handoff",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        inputProvenance: {
+          kind: "inter_session",
+          sourceSessionKey: "agent:main:subagent:child",
+          sourceTool: "subagent_announce",
+        },
+        idempotencyKey: "test-public-provenance-accounting",
+      },
+      { reqId: "public-provenance-accounting" },
+    );
+
+    const callArgs = await waitForAgentCommandCall<{
+      preserveUserFacingSessionModelState?: boolean;
+    }>();
+    expect(callArgs.preserveUserFacingSessionModelState).toBe(false);
+  });
+
+  it("rejects public internal session-effect controls", async () => {
+    primeMainAgentRun({ cfg: mocks.loadConfigReturn });
+    mocks.agentCommand.mockClear();
+
+    for (const params of [
+      { sessionEffects: "internal" as const, idempotencyKey: "test-public-internal-effects" },
+      { suppressPromptPersistence: true, idempotencyKey: "test-public-prompt-suppress" },
+    ]) {
+      const respond = await invokeAgent(
+        {
+          message: "forged internal control",
+          agentId: "main",
+          sessionKey: "agent:main:main",
+          ...params,
+        },
+        { reqId: params.idempotencyKey, flushDispatch: false },
+      );
+
+      expectRespondError(respond, {
+        message: "internal session-effect controls are reserved for backend callers.",
+      });
+    }
+    expect(mocks.agentCommand).not.toHaveBeenCalled();
+  });
+
+  it("keeps backend internal session-effect runs out of visible gateway state", async () => {
+    primeMainAgentRun({ cfg: mocks.loadConfigReturn });
+    mocks.agentCommand.mockClear();
+    mocks.updateSessionStore.mockClear();
+    mocks.registerAgentRunContext.mockClear();
+    const context = makeContext();
+
+    await invokeAgent(
+      {
+        message: "internal resume",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        sessionEffects: "internal",
+        suppressPromptPersistence: true,
+        idempotencyKey: "test-backend-internal-effects",
+      },
+      {
+        reqId: "backend-internal-effects",
+        client: backendGatewayClient(),
+        context,
+      },
+    );
+
+    const callArgs = await waitForAgentCommandCall<{
+      sessionEffects?: string;
+      suppressPromptPersistence?: boolean;
+    }>();
+    expect(callArgs.sessionEffects).toBe("internal");
+    expect(callArgs.suppressPromptPersistence).toBe(true);
+    expect(mocks.updateSessionStore).not.toHaveBeenCalled();
+    expect(context.addChatRun).not.toHaveBeenCalled();
+    expect(mocks.registerAgentRunContext).toHaveBeenCalledWith("test-backend-internal-effects", {
+      isControlUiVisible: false,
+    });
   });
 
   it("rejects public transcriptMessage overrides", async () => {
@@ -2036,43 +1866,6 @@ describe("gateway agent handler", () => {
       | { continuationTrigger?: string }
       | undefined;
     expect(call?.continuationTrigger).toBe("delegate-return");
-  });
-
-  it.each([
-    {
-      name: "passes senderIsOwner=false for write-scoped gateway callers",
-      scopes: ["operator.write"],
-      idempotencyKey: "test-sender-owner-write",
-      senderIsOwner: false,
-    },
-    {
-      name: "passes senderIsOwner=true for admin-scoped gateway callers",
-      scopes: ["operator.admin"],
-      idempotencyKey: "test-sender-owner-admin",
-      senderIsOwner: true,
-    },
-  ])("$name", async ({ scopes, idempotencyKey, senderIsOwner }) => {
-    primeMainAgentRun();
-
-    await invokeAgent(
-      {
-        message: "owner-tools check",
-        sessionKey: "agent:main:main",
-        idempotencyKey,
-      },
-      {
-        client: {
-          connect: {
-            role: "operator",
-            scopes,
-            client: { id: "test-client", mode: "gateway" },
-          },
-        } as unknown as AgentHandlerArgs["client"],
-      },
-    );
-
-    const callArgs = await waitForAgentCommandCall<{ senderIsOwner?: boolean }>();
-    expect(callArgs.senderIsOwner).toBe(senderIsOwner);
   });
 
   it("respects explicit bestEffortDeliver=false for main session runs", async () => {
@@ -3095,6 +2888,7 @@ describe("gateway agent handler", () => {
         meta: { durationMs: 100 },
       });
 
+      const broadcastToConnIds = vi.fn();
       await invokeAgent(
         {
           message: "daily rollover",
@@ -3102,7 +2896,14 @@ describe("gateway agent handler", () => {
           sessionKey: "agent:main:main",
           idempotencyKey: "daily-rollover-agent-session",
         },
-        { reqId: "daily-rollover-agent-session" },
+        {
+          reqId: "daily-rollover-agent-session",
+          context: {
+            ...makeContext(),
+            broadcastToConnIds,
+            getSessionEventSubscriberConnIds: () => new Set(["conn-1"]),
+          },
+        },
       );
 
       const call = await waitForAgentCommandCall<{
@@ -3113,6 +2914,263 @@ describe("gateway agent handler", () => {
       expect(call.sessionId).not.toBe("stale-session-id");
       expect(capturedEntry?.sessionStartedAt).toBe(now);
       expect(capturedEntry?.lastInteractionAt).toBe(now);
+      expect(mocks.emitGatewaySessionEndPluginHook).toHaveBeenCalledTimes(1);
+      expectRecordFields(
+        mockCallArg(mocks.emitGatewaySessionEndPluginHook) as Record<string, unknown>,
+        {
+          sessionKey: "agent:main:main",
+          sessionId: "stale-session-id",
+          reason: "daily",
+          storePath: "/tmp/sessions.json",
+          nextSessionId: call.sessionId,
+          nextSessionKey: "agent:main:main",
+        },
+      );
+      expect(mocks.emitGatewaySessionStartPluginHook).toHaveBeenCalledTimes(1);
+      expectRecordFields(
+        mockCallArg(mocks.emitGatewaySessionStartPluginHook) as Record<string, unknown>,
+        {
+          sessionKey: "agent:main:main",
+          sessionId: call.sessionId,
+          resumedFrom: "stale-session-id",
+          storePath: "/tmp/sessions.json",
+        },
+      );
+      expect(broadcastToConnIds.mock.calls.map((call) => call[1]?.reason)).toEqual([
+        "create",
+        "send",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits idle lifecycle reason when inactivity rotates a gateway agent session", async () => {
+    const now = Date.parse("2026-04-25T12:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      mocks.resolveExplicitAgentSessionKey.mockReturnValue("agent:main:main");
+      mockMainSessionEntry(
+        {
+          sessionId: "idle-session-id",
+          updatedAt: now,
+          sessionStartedAt: now,
+          lastInteractionAt: now - 60 * 60_000,
+        },
+        {
+          session: {
+            reset: {
+              mode: "idle",
+              idleMinutes: 5,
+            },
+          },
+        },
+      );
+      const loaded = mocks.loadSessionEntry();
+      mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
+        const store: Record<string, unknown> = {
+          [loaded.canonicalKey]: structuredClone(loaded.entry),
+        };
+        return updater(store);
+      });
+      mocks.agentCommand.mockResolvedValue({
+        payloads: [{ text: "ok" }],
+        meta: { durationMs: 100 },
+      });
+
+      await invokeAgent(
+        {
+          message: "idle rollover",
+          agentId: "main",
+          sessionKey: "agent:main:main",
+          idempotencyKey: "idle-rollover-agent-session",
+        },
+        { reqId: "idle-rollover-agent-session" },
+      );
+
+      const call = await waitForAgentCommandCall<{
+        sessionId?: string;
+        sessionKey?: string;
+      }>();
+      expect(call.sessionKey).toBe("agent:main:main");
+      expect(call.sessionId).not.toBe("idle-session-id");
+      expectRecordFields(
+        mockCallArg(mocks.emitGatewaySessionEndPluginHook) as Record<string, unknown>,
+        {
+          sessionKey: "agent:main:main",
+          sessionId: "idle-session-id",
+          reason: "idle",
+          nextSessionId: call.sessionId,
+          nextSessionKey: "agent:main:main",
+        },
+      );
+      expectRecordFields(
+        mockCallArg(mocks.emitGatewaySessionStartPluginHook) as Record<string, unknown>,
+        {
+          sessionKey: "agent:main:main",
+          sessionId: call.sessionId,
+          resumedFrom: "idle-session-id",
+        },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits lifecycle hooks when a committed rotation later fails delivery validation", async () => {
+    const now = Date.parse("2026-04-25T12:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      mocks.resolveExplicitAgentSessionKey.mockReturnValue("agent:main:main");
+      mockMainSessionEntry(
+        {
+          sessionId: "stale-before-validation-id",
+          updatedAt: now,
+          sessionStartedAt: now - 25 * 60 * 60_000,
+          lastInteractionAt: now - 25 * 60 * 60_000,
+        },
+        {
+          session: {
+            reset: {
+              mode: "daily",
+              atHour: 4,
+            },
+          },
+        },
+      );
+      const loaded = mocks.loadSessionEntry();
+      mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
+        const store: Record<string, unknown> = {
+          [loaded.canonicalKey]: structuredClone(loaded.entry),
+        };
+        return updater(store);
+      });
+      mocks.agentCommand.mockClear();
+      const respond = vi.fn();
+
+      await invokeAgent(
+        {
+          message: "strict missing delivery target after rollover",
+          agentId: "main",
+          sessionKey: "agent:main:main",
+          deliver: true,
+          replyChannel: "telegram",
+          bestEffortDeliver: false,
+          idempotencyKey: "lifecycle-before-delivery-validation",
+        },
+        {
+          reqId: "lifecycle-before-delivery-validation",
+          respond,
+          flushDispatch: false,
+        },
+      );
+
+      expect(mocks.agentCommand).not.toHaveBeenCalled();
+      const error = expectRespondError(respond, {});
+      expectStringFieldContains(error, "message", "requires target");
+      expect(mocks.emitGatewaySessionEndPluginHook).toHaveBeenCalledTimes(1);
+      expectRecordFields(
+        mockCallArg(mocks.emitGatewaySessionEndPluginHook) as Record<string, unknown>,
+        {
+          sessionKey: "agent:main:main",
+          sessionId: "stale-before-validation-id",
+          reason: "daily",
+        },
+      );
+      expect(mocks.emitGatewaySessionStartPluginHook).toHaveBeenCalledTimes(1);
+      expectRecordFields(
+        mockCallArg(mocks.emitGatewaySessionStartPluginHook) as Record<string, unknown>,
+        {
+          sessionKey: "agent:main:main",
+          resumedFrom: "stale-before-validation-id",
+        },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits lifecycle hooks and sessions.changed when an explicit sessionId replaces a fresh session", async () => {
+    const now = Date.parse("2026-04-25T12:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      mockMainSessionEntry({
+        sessionId: "current-session-id",
+        updatedAt: now,
+        sessionStartedAt: now,
+        lastInteractionAt: now,
+      });
+      const loaded = mocks.loadSessionEntry();
+      let capturedEntry: Record<string, unknown> | undefined;
+      mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
+        const store: Record<string, unknown> = {
+          [loaded.canonicalKey]: structuredClone(loaded.entry),
+        };
+        const result = await updater(store);
+        capturedEntry = result as Record<string, unknown>;
+        return result;
+      });
+      mocks.agentCommand.mockResolvedValue({
+        payloads: [{ text: "ok" }],
+        meta: { durationMs: 100 },
+      });
+
+      const broadcastToConnIds = vi.fn();
+      await invokeAgent(
+        {
+          message: "explicit replacement",
+          agentId: "main",
+          sessionKey: "agent:main:main",
+          sessionId: "caller-selected-session-id",
+          idempotencyKey: "explicit-replacement-agent-session",
+        },
+        {
+          reqId: "explicit-replacement-agent-session",
+          context: {
+            ...makeContext(),
+            broadcastToConnIds,
+            getSessionEventSubscriberConnIds: () => new Set(["conn-1"]),
+          },
+        },
+      );
+
+      const call = await waitForAgentCommandCall<{
+        sessionId?: string;
+        sessionKey?: string;
+      }>();
+      expect(call.sessionKey).toBe("agent:main:main");
+      expect(call.sessionId).toBe("caller-selected-session-id");
+      expect(capturedEntry?.sessionId).toBe("caller-selected-session-id");
+      expect(capturedEntry?.sessionStartedAt).toBe(now);
+      expect(mocks.emitGatewaySessionEndPluginHook).toHaveBeenCalledTimes(1);
+      expectRecordFields(
+        mockCallArg(mocks.emitGatewaySessionEndPluginHook) as Record<string, unknown>,
+        {
+          sessionKey: "agent:main:main",
+          sessionId: "current-session-id",
+          reason: "new",
+          storePath: "/tmp/sessions.json",
+          nextSessionId: "caller-selected-session-id",
+          nextSessionKey: "agent:main:main",
+        },
+      );
+      expect(mocks.emitGatewaySessionStartPluginHook).toHaveBeenCalledTimes(1);
+      expectRecordFields(
+        mockCallArg(mocks.emitGatewaySessionStartPluginHook) as Record<string, unknown>,
+        {
+          sessionKey: "agent:main:main",
+          sessionId: "caller-selected-session-id",
+          resumedFrom: "current-session-id",
+          storePath: "/tmp/sessions.json",
+        },
+      );
+      expect(broadcastToConnIds.mock.calls.map((call) => call[1]?.reason)).toEqual([
+        "create",
+        "send",
+      ]);
     } finally {
       vi.useRealTimers();
     }
@@ -4216,6 +4274,8 @@ describe("gateway agent handler chat.abort integration", () => {
     mocks.loadGatewaySessionRow.mockReset();
     mocks.loadSessionEntry.mockReset();
     mocks.updateSessionStore.mockReset();
+    mocks.emitGatewaySessionEndPluginHook.mockReset();
+    mocks.emitGatewaySessionStartPluginHook.mockReset();
     mocks.getLatestSubagentRunByChildSessionKey.mockReset();
     mocks.replaceSubagentRunAfterSteer.mockReset();
     mocks.resolveExplicitAgentSessionKey.mockReset().mockReturnValue(undefined);

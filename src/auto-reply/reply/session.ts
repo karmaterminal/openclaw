@@ -23,11 +23,7 @@ import {
 import { resolveAndPersistSessionFile } from "../../config/sessions/session-file.js";
 import { resolveSessionKey } from "../../config/sessions/session-key.js";
 import { resolveMaintenanceConfigFromInput } from "../../config/sessions/store-maintenance.js";
-import {
-  loadSessionStore,
-  resolveSessionStoreEntry,
-  updateSessionStore,
-} from "../../config/sessions/store.js";
+import { loadSessionStore, updateSessionStore } from "../../config/sessions/store.js";
 import { parseSessionThreadInfoFast } from "../../config/sessions/thread-info.js";
 import {
   DEFAULT_RESET_TRIGGERS,
@@ -148,22 +144,8 @@ function resolveSessionDefaultAccountId(params: {
 function resolveStaleSessionEndReason(params: {
   entry: SessionEntry | undefined;
   freshness?: SessionFreshness;
-  now: number;
 }): ReplySessionEndReason | undefined {
-  if (!params.entry || !params.freshness) {
-    return undefined;
-  }
-  const staleDaily =
-    params.freshness.dailyResetAt != null && params.entry.updatedAt < params.freshness.dailyResetAt;
-  const staleIdle =
-    params.freshness.idleExpiresAt != null && params.now > params.freshness.idleExpiresAt;
-  if (staleIdle) {
-    return "idle";
-  }
-  if (staleDaily) {
-    return "daily";
-  }
-  return undefined;
+  return params.entry ? params.freshness?.staleReason : undefined;
 }
 
 function hasProviderOwnedSession(entry: SessionEntry | undefined): boolean {
@@ -424,7 +406,7 @@ export async function initSessionState(params: {
   if (retiredLegacyMainDelivery) {
     sessionStore[retiredLegacyMainDelivery.key] = retiredLegacyMainDelivery.entry;
   }
-  const entry = resolveSessionStoreEntry({ store: sessionStore, sessionKey }).existing;
+  const entry = sessionStore[sessionKey];
   const now = Date.now();
   const isThread = resolveThreadFlag({
     sessionKey,
@@ -497,7 +479,6 @@ export async function initSessionState(params: {
     : resolveStaleSessionEndReason({
         entry,
         freshness: entryFreshness,
-        now,
       });
   clearBootstrapSnapshotOnSessionRollover({
     sessionKey,
@@ -814,22 +795,12 @@ export async function initSessionState(params: {
     sessionEntry.skillsSnapshot = undefined;
   }
   // Preserve per-session overrides while resetting compaction state on /new.
-  {
-    const resolved = resolveSessionStoreEntry({ store: sessionStore, sessionKey });
-    sessionStore[resolved.normalizedKey] = { ...resolved.existing, ...sessionEntry };
-    for (const legacyKey of resolved.legacyKeys) {
-      delete sessionStore[legacyKey];
-    }
-  }
+  sessionStore[sessionKey] = { ...sessionStore[sessionKey], ...sessionEntry };
   await updateSessionStore(
     storePath,
     (store) => {
-      const resolved = resolveSessionStoreEntry({ store, sessionKey });
       // Preserve per-session overrides while resetting compaction state on /new.
-      store[resolved.normalizedKey] = { ...resolved.existing, ...sessionEntry };
-      for (const legacyKey of resolved.legacyKeys) {
-        delete store[legacyKey];
-      }
+      store[sessionKey] = { ...store[sessionKey], ...sessionEntry };
       if (retiredLegacyMainDelivery) {
         store[retiredLegacyMainDelivery.key] = retiredLegacyMainDelivery.entry;
       }
