@@ -57,9 +57,19 @@ Upstream has, we don't:
 - Direct `sessionStore[sessionKey]` access (replaces `resolveSessionStoreEntry`)
 - Conditional `undefined` return when no existing entry + preserving
 
-### Supporting files (already exist on our branch — verify, don't modify):
-- `src/agents/internal-session-effects.ts` ✅
-- `src/sessions/input-provenance.ts` — `shouldPreserveUserFacingSessionStateForInputProvenance` ✅
+### §3.5 — Test-File Deltas
+
+Diff the following test files vs upstream/main and restore their deltas alongside production code:
+- `src/gateway/server-methods/agent.test.ts`
+- `src/agents/agent-command.live-model-switch.test.ts`
+- `src/agents/command/session-store.test.ts`
+- `src/auto-reply/reply/session.test.ts`
+
+If upstream evolved tests alongside the guards, restore them so Gate 3e doesn't fire on stale coverage.
+
+### Supporting files (already exist on our branch — verify, don't modify bodies):
+- `src/agents/internal-session-effects.ts` ✅ (may ADD imports/call-sites, do NOT modify body)
+- `src/sessions/input-provenance.ts` — `shouldPreserveUserFacingSessionStateForInputProvenance` ✅ (same)
 
 ## §4 — Fix Shape
 
@@ -99,9 +109,14 @@ pnpm lint
 pnpm lint:extensions:bundled
 pnpm package-boundary:compile
 NODE_OPTIONS=--max-old-space-size=8192 pnpm vitest run
+
+# Gate 3g — prepush-ci.sh (single-worker, CI=true, 6GB heap):
+bash scripts/prepush-ci.sh
 ```
 
 All must exit 0.
+
+**Note:** 8192 heap used because this seat has 12GB total RAM. Canonical is 12288 on larger seats.
 
 ## §7 — Journal + Heartbeat
 
