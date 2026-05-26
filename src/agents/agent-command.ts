@@ -17,7 +17,6 @@ import {
   emitAgentEvent,
   registerAgentRunContext,
 } from "../infra/agent-events.js";
-import { runWithDiagnosticTraceparent } from "../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { buildOutboundSessionContext } from "../infra/outbound/session-context.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -62,7 +61,6 @@ import { isStoredCredentialCompatibleWithAuthProvider } from "./auth-profiles/or
 import { clearSessionAuthProfileOverride } from "./auth-profiles/session-override.js";
 import { ensureAuthProfileStore } from "./auth-profiles/store.js";
 import { createAgentAttemptLifecycleCallbacks } from "./command/attempt-callbacks.js";
-import { createAcpVisibleTextAccumulator } from "./command/attempt-execution.helpers.js";
 import {
   persistSessionEntry as persistSessionEntryBase,
   prependInternalEventContext,
@@ -76,6 +74,7 @@ import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
 import { resolveFastModeState } from "./fast-mode.js";
 import { ensureSelectedAgentHarnessPlugin } from "./harness/runtime-plugin.js";
 import { resolveAvailableAgentHarnessPolicy } from "./harness/selection.js";
+import { prepareInternalSessionEffectsTranscript } from "./internal-session-effects.js";
 import { AGENT_LANE_SUBAGENT } from "./lanes.js";
 import { LiveSessionModelSwitchError } from "./live-model-switch.js";
 import { loadManifestModelCatalog } from "./model-catalog.js";
@@ -98,6 +97,7 @@ import { listOpenAIAuthProfileProvidersForAgentRuntime } from "./openai-codex-ro
 import { classifyEmbeddedPiRunResultForModelFallback } from "./pi-embedded-runner/result-fallback-classifier.js";
 import { resolveProviderIdForAuth } from "./provider-auth-aliases.js";
 import { hydrateResolvedSkillsAsync } from "./skills/snapshot-hydration.js";
+import type { SkillSnapshot } from "./skills/types.js";
 import { normalizeSpawnedRunMetadata } from "./spawned-context.js";
 import { resolveAgentTimeoutMs } from "./timeout.js";
 import { ensureAgentWorkspace } from "./workspace.js";
@@ -161,6 +161,19 @@ const skillsRefreshStateRuntimeLoader = createLazyImportLoader<SkillsRefreshStat
 const skillsRemoteRuntimeLoader = createLazyImportLoader<SkillsRemoteRuntime>(
   () => import("../infra/skills-remote.js"),
 );
+
+function createEmptySkillsSnapshot(params: {
+  skillFilter: string[];
+  version?: number;
+}): SkillSnapshot {
+  return {
+    prompt: "",
+    skills: [],
+    resolvedSkills: [],
+    skillFilter: params.skillFilter,
+    version: params.version,
+  };
+}
 
 function loadAttemptExecutionRuntime(): Promise<AttemptExecutionRuntime> {
   return attemptExecutionRuntimeLoader.load();
@@ -531,6 +544,8 @@ async function agentCommandInternal(
 ) {
   const resolvedDeps = await resolveAgentCommandDeps(deps);
   const isRawModelRun = opts.modelRun === true || opts.promptMode === "none";
+  const suppressVisibleSessionEffects = opts.sessionEffects === "internal";
+  const preserveUserFacingSessionModelState = opts.preserveUserFacingSessionModelState === true;
   const prepared = await prepareAgentCommandExecution(opts, runtime);
   const {
     body,
@@ -582,9 +597,14 @@ async function agentCommandInternal(
     if (!isRawModelRun && acpResolution?.kind === "ready" && sessionKey) {
       const attemptExecutionRuntime = await loadAttemptExecutionRuntime();
       const startedAt = Date.now();
-      registerAgentRunContext(runId, {
-        sessionKey,
-      });
+      registerAgentRunContext(
+        runId,
+        suppressVisibleSessionEffects
+          ? { isControlUiVisible: false }
+          : {
+              sessionKey,
+            },
+      );
       attemptExecutionRuntime.emitAcpLifecycleStart({ runId, startedAt });
 
       const visibleTextAccumulator = attemptExecutionRuntime.createAcpVisibleTextAccumulator();
@@ -610,56 +630,54 @@ async function agentCommandInternal(
           throw agentPolicyError;
         }
 
-        await runWithDiagnosticTraceparent(opts.traceparent, () =>
-          acpManager.runTurn({
-            cfg,
-            sessionKey,
-            text: body,
-            mode: "prompt",
-            requestId: runId,
-            signal: opts.abortSignal,
-            onLifecycle: (event) => {
-              if (event.type === "prompt_submitted") {
-                attemptExecutionRuntime.emitAcpPromptSubmitted({
-                  runId,
-                  sessionKey,
-                  at: event.at,
-                });
-              }
-            },
-            onEvent: (event) => {
-              if (event.type !== "text_delta") {
-                attemptExecutionRuntime.emitAcpRuntimeEvent({
-                  runId,
-                  sessionKey,
-                  event,
-                });
-              }
-              if (event.type === "done") {
-                stopReason = event.stopReason;
-                return;
-              }
-              if (event.type !== "text_delta") {
-                return;
-              }
-              if (event.stream && event.stream !== "output") {
-                return;
-              }
-              if (!event.text) {
-                return;
-              }
-              const visibleUpdate = visibleTextAccumulator.consume(event.text);
-              if (!visibleUpdate) {
-                return;
-              }
-              attemptExecutionRuntime.emitAcpAssistantDelta({
+        await acpManager.runTurn({
+          cfg,
+          sessionKey,
+          text: body,
+          mode: "prompt",
+          requestId: runId,
+          signal: opts.abortSignal,
+          onLifecycle: (event) => {
+            if (event.type === "prompt_submitted") {
+              attemptExecutionRuntime.emitAcpPromptSubmitted({
                 runId,
-                text: visibleUpdate.text,
-                delta: visibleUpdate.delta,
+                sessionKey,
+                at: event.at,
               });
-            },
-          }),
-        );
+            }
+          },
+          onEvent: (event) => {
+            if (event.type !== "text_delta") {
+              attemptExecutionRuntime.emitAcpRuntimeEvent({
+                runId,
+                sessionKey,
+                event,
+              });
+            }
+            if (event.type === "done") {
+              stopReason = event.stopReason;
+              return;
+            }
+            if (event.type !== "text_delta") {
+              return;
+            }
+            if (event.stream && event.stream !== "output") {
+              return;
+            }
+            if (!event.text) {
+              return;
+            }
+            const visibleUpdate = visibleTextAccumulator.consume(event.text);
+            if (!visibleUpdate) {
+              return;
+            }
+            attemptExecutionRuntime.emitAcpAssistantDelta({
+              runId,
+              text: visibleUpdate.text,
+              delta: visibleUpdate.delta,
+            });
+          },
+        });
       } catch (error) {
         const { toAcpRuntimeError } = await loadAcpRuntimeErrorsRuntime();
         const acpError = toAcpRuntimeError({
@@ -680,21 +698,53 @@ async function agentCommandInternal(
       const finalTextRaw = visibleTextAccumulator.finalizeRaw();
       const finalText = visibleTextAccumulator.finalize();
       try {
-        const { resolveAcpSessionCwd } = await loadAcpSessionIdentifiersRuntime();
+        const [{ resolveAcpSessionCwd }, { resolveSessionTranscriptFile }] = await Promise.all([
+          loadAcpSessionIdentifiersRuntime(),
+          loadTranscriptResolveRuntime(),
+        ]);
+        const internalSource = suppressVisibleSessionEffects
+          ? await resolveSessionTranscriptFile({
+              sessionId,
+              sessionKey,
+              sessionEntry,
+              agentId: sessionAgentId,
+              threadId: opts.threadId,
+            })
+          : undefined;
+        const internalSessionFile = suppressVisibleSessionEffects
+          ? await prepareInternalSessionEffectsTranscript({
+              sessionFile: internalSource?.sessionFile,
+              runId,
+            })
+          : undefined;
+        const transcriptSessionEntry: SessionEntry | undefined = internalSessionFile
+          ? {
+              ...(sessionEntry ?? {
+                sessionId,
+                updatedAt: Date.now(),
+                sessionStartedAt: Date.now(),
+              }),
+              sessionId,
+              sessionFile: internalSessionFile,
+            }
+          : sessionEntry;
         sessionEntry = await attemptExecutionRuntime.persistAcpTurnTranscript({
           body,
           transcriptBody,
           finalText: finalTextRaw,
           sessionId,
           sessionKey,
-          sessionEntry,
-          sessionStore,
-          storePath,
+          sessionEntry: transcriptSessionEntry,
+          sessionStore: suppressVisibleSessionEffects ? undefined : sessionStore,
+          storePath: suppressVisibleSessionEffects ? undefined : storePath,
           sessionAgentId,
           threadId: opts.threadId,
           sessionCwd: resolveAcpSessionCwd(acpResolution.meta) ?? workspaceDir,
           config: cfg,
         });
+        if (internalSessionFile) {
+          sessionEntry = prepared.sessionEntry;
+        }
       } catch (error) {
         log.warn(
           `ACP transcript persistence failed for ${sessionKey}: ${formatErrorMessage(error)}`,
@@ -726,10 +776,11 @@ async function agentCommandInternal(
     const resolvedVerboseLevel =
       verboseOverride ?? persistedVerbose ?? (agentCfg?.verboseDefault as VerboseLevel | undefined);
 
-    if (sessionKey) {
+    if (sessionKey || suppressVisibleSessionEffects) {
       registerAgentRunContext(runId, {
-        sessionKey,
+        ...(sessionKey && !suppressVisibleSessionEffects ? { sessionKey } : {}),
         verboseLevel: resolvedVerboseLevel,
+        isControlUiVisible: !suppressVisibleSessionEffects,
       });
     }
 
@@ -743,7 +794,14 @@ async function agentCommandInternal(
       shouldRefreshSnapshotForVersion(currentSkillsSnapshot.version, skillsSnapshotVersion) ||
       !matchesSkillFilter(currentSkillsSnapshot.skillFilter, skillFilter);
     const needsSkillsSnapshot = isNewSession || shouldRefreshSkillsSnapshot;
+    const emptySkillsFilter = skillFilter !== undefined && skillFilter.length === 0;
     const buildSkillsSnapshot = async () => {
+      if (emptySkillsFilter) {
+        return createEmptySkillsSnapshot({
+          skillFilter,
+          version: skillsSnapshotVersion,
+        });
+      }
       const [
         { buildWorkspaceSkillSnapshot },
         { getRemoteSkillEligibility },
@@ -776,7 +834,13 @@ async function agentCommandInternal(
         ? undefined
         : await hydrateResolvedSkillsAsync(currentSkillsSnapshot, buildSkillsSnapshot);
 
-    if (skillsSnapshot && sessionStore && sessionKey && needsSkillsSnapshot) {
+    if (
+      skillsSnapshot &&
+      sessionStore &&
+      sessionKey &&
+      needsSkillsSnapshot &&
+      !suppressVisibleSessionEffects
+    ) {
       const now = Date.now();
       const current = sessionEntry ?? {
         sessionId,
@@ -800,7 +864,7 @@ async function agentCommandInternal(
     }
 
     // Persist explicit /command overrides to the session store when we have a key.
-    if (sessionStore && sessionKey) {
+    if (sessionStore && sessionKey && !suppressVisibleSessionEffects) {
       const now = Date.now();
       const entry = sessionStore[sessionKey] ??
         sessionEntry ?? { sessionId, updatedAt: now, sessionStartedAt: now };
@@ -881,7 +945,13 @@ async function agentCommandInternal(
       allowedModelCatalog = visibilityPolicy.allowedCatalog;
     }
 
-    if (sessionEntry && sessionStore && sessionKey && hasStoredOverride) {
+    if (
+      sessionEntry &&
+      sessionStore &&
+      sessionKey &&
+      hasStoredOverride &&
+      !suppressVisibleSessionEffects
+    ) {
       const entry = sessionEntry;
       const repaired = repairProviderWrappedModelOverride({
         entry,
@@ -1033,7 +1103,7 @@ async function agentCommandInternal(
               authProfileOverrideSource: undefined,
               authProfileOverrideCompactionCount: undefined,
             };
-          } else if (sessionStore && sessionKey) {
+          } else if (sessionStore && sessionKey && !suppressVisibleSessionEffects) {
             await clearSessionAuthProfileOverride({
               sessionEntry: entry,
               sessionStore,
@@ -1087,7 +1157,8 @@ async function agentCommandInternal(
           sessionEntry &&
           sessionStore &&
           sessionKey &&
-          sessionEntry.thinkingLevel === previousThinkLevel
+          sessionEntry.thinkingLevel === previousThinkLevel &&
+          !suppressVisibleSessionEffects
         ) {
           const entry = sessionEntry;
           entry.thinkingLevel = fallbackThinkLevel;
@@ -1107,8 +1178,8 @@ async function agentCommandInternal(
       const resolvedSessionFile = await resolveSessionTranscriptFile({
         sessionId,
         sessionKey,
-        sessionStore,
-        storePath,
+        sessionStore: suppressVisibleSessionEffects ? undefined : sessionStore,
+        storePath: suppressVisibleSessionEffects ? undefined : storePath,
         sessionEntry,
         agentId: sessionAgentId,
         threadId: opts.threadId,
@@ -1128,6 +1199,9 @@ async function agentCommandInternal(
       sessionFile = resolvedSessionFile.sessionFile;
       sessionEntry = resolvedSessionFile.sessionEntry;
     }
+    const attemptSessionFile = suppressVisibleSessionEffects
+      ? await prepareInternalSessionEffectsTranscript({ sessionFile, runId })
+      : sessionFile;
 
     const startedAt = Date.now();
     const attemptLifecycleState = {
@@ -1299,7 +1373,7 @@ async function agentCommandInternal(
               sessionId,
               sessionKey,
               sessionAgentId,
-              sessionFile,
+              sessionFile: attemptSessionFile,
               workspaceDir,
               body,
               isFallbackRetry,
@@ -1321,11 +1395,12 @@ async function agentCommandInternal(
               resolvedVerboseLevel,
               agentDir,
               authProfileProvider: providerForAuthProfileValidation,
-              sessionStore,
-              storePath,
+              sessionStore: suppressVisibleSessionEffects ? undefined : sessionStore,
+              storePath: suppressVisibleSessionEffects ? undefined : storePath,
               allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
               sessionHasHistory:
-                !isNewSession || (await attemptExecutionRuntime.sessionFileHasContent(sessionFile)),
+                !isNewSession ||
+                (await attemptExecutionRuntime.sessionFileHasContent(attemptSessionFile)),
               suppressPromptPersistenceOnRetry:
                 opts.suppressPromptPersistence === true ||
                 (isFallbackRetry && attemptLifecycleState.currentTurnUserMessagePersisted),
@@ -1344,6 +1419,8 @@ async function agentCommandInternal(
           sessionEntry &&
           sessionStore &&
           sessionKey &&
+          !suppressVisibleSessionEffects &&
+          !preserveUserFacingSessionModelState &&
           entryMatchesAutoFallbackPrimaryProbe(sessionEntry, autoFallbackPrimaryProbe)
         ) {
           const nextSessionEntry = { ...sessionEntry };
@@ -1497,7 +1574,7 @@ async function agentCommandInternal(
       await fallbackTrajectoryRecorder?.flush();
 
       // Update token+model fields in the session store.
-      if (sessionStore && sessionKey) {
+      if (sessionStore && sessionKey && !suppressVisibleSessionEffects) {
         const { updateSessionStoreAfterAgentRun } = await loadSessionStoreRuntime();
         await updateSessionStoreAfterAgentRun({
           cfg,
@@ -1515,7 +1592,9 @@ async function agentCommandInternal(
             opts.bootstrapContextRunKind !== "cron" &&
             opts.bootstrapContextRunKind !== "heartbeat" &&
             !opts.internalEvents?.length,
-          preserveRuntimeModel: opts.bootstrapContextRunKind === "heartbeat",
+          preserveRuntimeModel:
+            opts.bootstrapContextRunKind === "heartbeat" || preserveUserFacingSessionModelState,
+          preserveUserFacingSessionModelState,
         });
         sessionEntry = sessionStore[sessionKey] ?? sessionEntry;
       }
@@ -1528,28 +1607,42 @@ async function agentCommandInternal(
       if (transcriptPersistenceRunner === "cli" || embeddedAssistantGapFill) {
         let persistedCliTurnTranscript = false;
         try {
+          const transcriptSessionEntry: SessionEntry | undefined = suppressVisibleSessionEffects
+            ? {
+                ...(sessionEntry ?? {
+                  sessionId,
+                  updatedAt: Date.now(),
+                  sessionStartedAt: Date.now(),
+                }),
+                sessionId,
+                sessionFile: attemptSessionFile,
+              }
+            : sessionEntry;
           sessionEntry = await attemptExecutionRuntime.persistCliTurnTranscript({
             body,
             transcriptBody,
             result,
             sessionId,
             sessionKey: sessionKey ?? sessionId,
-            sessionEntry,
-            sessionStore,
-            storePath,
+            sessionEntry: transcriptSessionEntry,
+            sessionStore: suppressVisibleSessionEffects ? undefined : sessionStore,
+            storePath: suppressVisibleSessionEffects ? undefined : storePath,
             sessionAgentId,
             threadId: opts.threadId,
             sessionCwd: workspaceDir,
             config: cfg,
             embeddedAssistantGapFill,
           });
+          if (suppressVisibleSessionEffects) {
+            sessionEntry = prepared.sessionEntry;
+          }
           persistedCliTurnTranscript = true;
         } catch (error) {
           log.warn(
             `Turn transcript persistence failed for ${sessionKey ?? sessionId}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
-        if (persistedCliTurnTranscript) {
+        if (persistedCliTurnTranscript && !suppressVisibleSessionEffects) {
           sessionEntry = await (
             await loadCliCompactionRuntime()
           ).runCliTurnCompactionLifecycle({
@@ -1583,6 +1676,7 @@ async function agentCommandInternal(
         opts.deliver === true &&
         sessionStore &&
         sessionKey &&
+        !suppressVisibleSessionEffects &&
         payloads.length > 0 &&
         !isSubagentSessionKey(sessionKey)
       ) {
@@ -1616,7 +1710,7 @@ async function agentCommandInternal(
 
       const { deliverAgentCommandResult } = await loadDeliveryRuntime();
       const resolveFreshSessionEntryForDelivery =
-        sessionStore && sessionKey
+        sessionStore && sessionKey && !suppressVisibleSessionEffects
           ? async (): Promise<SessionEntry | undefined> => {
               const { loadSessionStore } = await loadSessionStoreRuntime();
               const freshStore = loadSessionStore(storePath, {
@@ -1652,7 +1746,12 @@ async function agentCommandInternal(
       );
 
       // Phase 2: Clear pending delivery payload after successful delivery.
-      if (sessionStore && sessionKey && !isSubagentSessionKey(sessionKey)) {
+      if (
+        sessionStore &&
+        sessionKey &&
+        !isSubagentSessionKey(sessionKey) &&
+        !suppressVisibleSessionEffects
+      ) {
         const entry = sessionStore[sessionKey] ?? sessionEntry;
         const noPendingTextForThisRun =
           opts.deliver === true &&
@@ -1728,7 +1827,6 @@ export async function agentCommandFromIngress(
 export const testing = {
   resolveAgentRuntimeConfig,
   prepareAgentCommandExecution,
-  createAcpVisibleTextAccumulator,
 };
 
 /** @deprecated Use `testing`. */
