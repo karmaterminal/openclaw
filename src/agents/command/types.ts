@@ -137,6 +137,10 @@ export type AgentCommandOpts = {
   acpTurnSource?: AcpTurnSource;
   /** Internal handoffs can feed the model without writing the synthetic prompt to transcript. */
   suppressPromptPersistence?: boolean;
+  /** Internal backend callers can request a hidden run that does not mutate visible session state. */
+  sessionEffects?: "visible" | "internal";
+  /** Inter-session inputs from trusted sources preserve the user-facing session model selection. */
+  preserveUserFacingSessionModelState?: boolean;
 };
 
 export type AgentCommandIngressOpts = Omit<
