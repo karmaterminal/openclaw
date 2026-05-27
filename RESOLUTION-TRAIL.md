@@ -78,6 +78,7 @@ Receipts: `gates/ronan-trio-f91-delete.patch`, `gates/ronan-trio-upstream-diffs.
 9. Gate E shrinkwrap guard failed after npm registry drift floated `lru-cache@^11` to 11.5.1 while `pnpm-lock.yaml` pins 11.5.0. `scripts/generate-npm-shrinkwrap.mjs` now emits parent-scoped npm overrides from the pnpm lock for multi-major transitives, preserving separate `lru-cache@6` consumers, and regenerated the stale Slack/Twitch shrinkwraps.
 10. Gate E support-boundary timeout exposed real merge fallout in E2E helper scripts. Restored target `scripts/e2e/kitchen-sink-rpc-walk.mjs` and `scripts/lib/openclaw-e2e-instance.sh` so HTTP probes are bounded, Gateway teardown releases stalled handles, OpenClaw CLI wrapping remains timeout-protected, and PTY scripts run under the configured timeout.
 11. Gate E Matrix shard failure fixed recovery-key verification failure reporting: when a staged key is rejected but backup was already usable from existing material, `verifyWithRecoveryKey` now preserves `backupUsable: true` while discarding the rejected staged key.
+12. Gate E Matrix extension rerun exposed backup-status diagnostics timing out under broad shard load. `getRoomKeyBackupStatus` now reads Matrix crypto backup metadata before falling back to the direct HTTP room-key version probe, so offline diagnostics do not mask trusted/untrusted backup state when crypto already has it.
 
 ## Gate D replacement proof
 
@@ -98,3 +99,5 @@ Focused receipts:
 - `gates/ronan-focused-ui-i18n-check.log`
 - `gates/ronan-focused-agent-command-live-model-switch.log`
 - `gates/ronan-ui-i18n-sync.log`
+- `gates/ronan-matrix-sdk-after-http-fallback-fix.log`
+- `gates/ronan-matrix-extension-after-http-fallback-fix.log`
