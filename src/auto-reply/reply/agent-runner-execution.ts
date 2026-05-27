@@ -995,6 +995,24 @@ function resolveHeartbeatBleedHint(params: {
   );
 }
 
+const DEFAULT_RESERVE_TOKENS_FLOOR = 20_000;
+
+export function computeContextAwareReserveTokensFloor(contextWindow: number | undefined): number {
+  if (typeof contextWindow !== "number" || contextWindow <= 0) {
+    return DEFAULT_RESERVE_TOKENS_FLOOR;
+  }
+  if (contextWindow >= 1_000_000) {
+    return 100_000;
+  }
+  if (contextWindow >= 200_000) {
+    return 50_000;
+  }
+  if (contextWindow >= 100_000) {
+    return 35_000;
+  }
+  return DEFAULT_RESERVE_TOKENS_FLOOR;
+}
+
 export function buildContextOverflowRecoveryText(params: {
   duringCompaction?: boolean;
   preserveSessionMapping?: boolean;
@@ -1002,6 +1020,8 @@ export function buildContextOverflowRecoveryText(params: {
   agentId?: string;
   primaryProvider?: string;
   primaryModel?: string;
+  runtimeProvider?: string;
+  runtimeModel?: string;
   activeSessionEntry?: SessionEntry;
 }): string {
   const prefix = params.preserveSessionMapping

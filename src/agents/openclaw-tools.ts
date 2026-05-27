@@ -23,7 +23,7 @@ import {
 import { applyNodesToolWorkspaceGuard } from "./openclaw-tools.nodes-workspace-guard.js";
 import {
   collectPresentOpenClawTools,
-  isUpdatePlanToolEnabledForOpenClawTools,
+  shouldIncludeUpdatePlanToolForOpenClawTools,
 } from "./openclaw-tools.registration.js";
 import {
   type HookContext,
