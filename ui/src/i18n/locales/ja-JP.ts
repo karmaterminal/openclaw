@@ -365,8 +365,6 @@ export const ja_JP: TranslationMap = {
     pending: "{count} pending",
     allowOnce: "Allow once",
     alwaysAllow: "Always allow",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Deny",
     labels: {
       host: "Host",
@@ -1088,6 +1086,8 @@ export const ja_JP: TranslationMap = {
     settings: "チャット設定",
     thinkingToggle: "アシスタントの思考 / 作業出力の表示を切り替え",
     toolCallsToggle: "ツール呼び出しとツール結果の表示を切り替え",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "自動スクロールモード",
     autoScrollAlways: "常に",
     autoScrollNearBottom: "下部付近",

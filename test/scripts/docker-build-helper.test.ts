@@ -32,7 +32,6 @@ const ONBOARD_DOCKER_E2E_PATH = "scripts/e2e/onboard-docker.sh";
 const KITCHEN_SINK_PLUGIN_DOCKER_E2E_PATH = "scripts/e2e/kitchen-sink-plugin-docker.sh";
 const KITCHEN_SINK_RPC_DOCKER_E2E_PATH = "scripts/e2e/kitchen-sink-rpc-docker.sh";
 const CODEX_ON_DEMAND_DOCKER_E2E_PATH = "scripts/e2e/codex-on-demand-docker.sh";
-const CODEX_MEDIA_PATH_SCENARIO_PATH = "scripts/e2e/lib/codex-media-path/scenario.sh";
 const CODEX_NPM_PLUGIN_LIVE_DOCKER_E2E_PATH = "scripts/e2e/codex-npm-plugin-live-docker.sh";
 const LIVE_PLUGIN_TOOL_DOCKER_E2E_PATH = "scripts/e2e/live-plugin-tool-docker.sh";
 const NPM_ONBOARD_CHANNEL_AGENT_DOCKER_E2E_PATH = "scripts/e2e/npm-onboard-channel-agent-docker.sh";
@@ -74,8 +73,6 @@ const UPDATE_CHANNEL_SWITCH_ASSERTIONS_PATH =
 const RELEASE_UPGRADE_USER_JOURNEY_SCENARIO_PATH =
   "scripts/e2e/lib/release-upgrade-user-journey/scenario.sh";
 const UPGRADE_SURVIVOR_RUN_SCRIPT = "scripts/e2e/lib/upgrade-survivor/run.sh";
-const UPGRADE_SURVIVOR_UPDATE_RESTART_AUTH_PATH =
-  "scripts/e2e/lib/upgrade-survivor/update-restart-auth.sh";
 const GATEWAY_NETWORK_DOCKER_E2E_PATH = "scripts/e2e/gateway-network-docker.sh";
 const CENTRALIZED_BUILD_SCRIPTS = [
   "scripts/docker/setup.sh",
@@ -464,50 +461,6 @@ stderr="$(<"$TMPDIR/stderr")"
 [[ "$status" = "127" ]]
 [[ "$stderr" = *"timeout command not found; cannot bound Docker command after 7s"* ]]
 [[ ! -e "$TMPDIR/docker-seen" ]]
-`;
-
-      execFileSync("bash", ["-lc", script], { encoding: "utf8" });
-    } finally {
-      rmSync(workDir, { recursive: true, force: true });
-    }
-  });
-
-  it("uses a Node watchdog for Docker commands when timeout is unavailable", () => {
-    const workDir = mkdtempSync(join(tmpdir(), "openclaw-docker-node-timeout-"));
-
-    try {
-      const binDir = join(workDir, "bin");
-      mkdirSync(binDir);
-      writeFileSync(
-        join(binDir, "node"),
-        `#!/bin/bash\nexec ${shellQuote(process.execPath)} "$@"\n`,
-      );
-      writeFileSync(
-        join(binDir, "docker"),
-        `#!/bin/bash\ninput="$(/bin/cat)"\nprintf "%s|%s\\n" "$*" "$input" >"$TMPDIR/docker-seen"\nexit 13\n`,
-      );
-      chmodSync(join(binDir, "node"), 0o755);
-      chmodSync(join(binDir, "docker"), 0o755);
-      const rootDir = process.cwd();
-      const script = `
-set -euo pipefail
-ROOT_DIR=${shellQuote(rootDir)}
-TMPDIR=${shellQuote(workDir)}
-export ROOT_DIR TMPDIR
-export PATH="$TMPDIR/bin"
-export DOCKER_COMMAND_TIMEOUT=7s
-
-source "$ROOT_DIR/scripts/lib/docker-e2e-container.sh"
-
-set +e
-printf payload | docker_e2e_docker_cmd run -i demo 2>"$TMPDIR/stderr"
-status="$?"
-set -e
-
-stderr="$(<"$TMPDIR/stderr")"
-[[ "$status" = "13" ]]
-[[ "$stderr" = *"timeout command not found; using Node watchdog for Docker command timeout 7s"* ]]
-[[ "$(<"$TMPDIR/docker-seen")" = "run -i demo|payload" ]]
 `;
 
       execFileSync("bash", ["-lc", script], { encoding: "utf8" });
@@ -968,7 +921,7 @@ test -f "$external_dir/openclaw-current.tgz"
     }
   });
 
-  it("propagates shared E2E command timeouts into package-backed containers", () => {
+  it("propagates the shared E2E npm install timeout into package-backed containers", () => {
     const workDir = mkdtempSync(join(tmpdir(), "openclaw-docker-package-timeout-env-"));
 
     try {
@@ -983,14 +936,12 @@ source "$ROOT_DIR/scripts/lib/docker-e2e-package.sh"
 package="$TMPDIR/openclaw-current.tgz"
 printf fixture >"$package"
 export OPENCLAW_E2E_NPM_INSTALL_TIMEOUT=42s
-export OPENCLAW_E2E_COMMAND_TIMEOUT=23s
 docker_e2e_package_mount_args "$package"
 printf "%s\\n" "\${DOCKER_E2E_PACKAGE_ARGS[@]}" >"$TMPDIR/package-args"
 
 grep -qx -- "-e" "$TMPDIR/package-args"
 grep -qx -- "OPENCLAW_CURRENT_PACKAGE_TGZ=/tmp/openclaw-current.tgz" "$TMPDIR/package-args"
 grep -qx -- "OPENCLAW_E2E_NPM_INSTALL_TIMEOUT=42s" "$TMPDIR/package-args"
-grep -qx -- "OPENCLAW_E2E_COMMAND_TIMEOUT=23s" "$TMPDIR/package-args"
 `;
 
       execFileSync("bash", ["-lc", script], { encoding: "utf8" });
@@ -1045,31 +996,6 @@ grep -qx -- "OPENCLAW_E2E_COMMAND_TIMEOUT=23s" "$TMPDIR/package-args"
     }
   });
 
-  it("wraps package-backed scenario OpenClaw CLI calls with the shared timeout helper", () => {
-    const paths = [
-      CODEX_ON_DEMAND_DOCKER_E2E_PATH,
-      CODEX_MEDIA_PATH_SCENARIO_PATH,
-      CODEX_NPM_PLUGIN_LIVE_DOCKER_E2E_PATH,
-      LIVE_PLUGIN_TOOL_DOCKER_E2E_PATH,
-      NPM_ONBOARD_CHANNEL_AGENT_DOCKER_E2E_PATH,
-      UPDATE_CHANNEL_SWITCH_DOCKER_E2E_PATH,
-      RELEASE_UPGRADE_USER_JOURNEY_SCENARIO_PATH,
-      "scripts/e2e/lib/release-media-memory/scenario.sh",
-      "scripts/e2e/lib/release-plugin-marketplace/scenario.sh",
-      "scripts/e2e/lib/release-typed-onboarding/scenario.sh",
-      "scripts/e2e/lib/release-user-journey/scenario.sh",
-    ];
-
-    for (const path of paths) {
-      const script = readFileSync(path, "utf8");
-
-      expect(script, path).toContain("openclaw_e2e_enable_openclaw_cli_timeout");
-    }
-    expect(readFileSync(RELEASE_UPGRADE_USER_JOURNEY_SCENARIO_PATH, "utf8")).toContain(
-      'openclaw_e2e_run_command node "$baseline_entry" onboard',
-    );
-  });
-
   it("kills timed Docker scenario runners after the grace period", () => {
     const multiNode = readFileSync(MULTI_NODE_UPDATE_DOCKER_E2E_PATH, "utf8");
     const upgradeSurvivor = readFileSync(UPGRADE_SURVIVOR_DOCKER_E2E_PATH, "utf8");
@@ -1082,72 +1008,6 @@ grep -qx -- "OPENCLAW_E2E_COMMAND_TIMEOUT=23s" "$TMPDIR/package-args"
     for (const script of [multiNode, upgradeSurvivor]) {
       expect(script).not.toContain('timeout "$DOCKER_RUN_TIMEOUT"');
     }
-  });
-
-  it("bounds upgrade survivor foreground OpenClaw CLI calls", () => {
-    const runner = readFileSync(UPGRADE_SURVIVOR_DOCKER_E2E_PATH, "utf8");
-    const publishedRunner = readFileSync(UPGRADE_SURVIVOR_RUN_SCRIPT, "utf8");
-    const updateRestartAuth = readFileSync(UPGRADE_SURVIVOR_UPDATE_RESTART_AUTH_PATH, "utf8");
-
-    expect(runner).toContain(
-      'COMMAND_TIMEOUT="${OPENCLAW_UPGRADE_SURVIVOR_COMMAND_TIMEOUT:-900s}"',
-    );
-    expect(runner).toContain('-e OPENCLAW_UPGRADE_SURVIVOR_COMMAND_TIMEOUT="$COMMAND_TIMEOUT"');
-    expect(runner).toContain(
-      'command_timeout="${OPENCLAW_UPGRADE_SURVIVOR_COMMAND_TIMEOUT:-900s}"',
-    );
-    expect(runner).toContain(
-      'openclaw_e2e_maybe_timeout "$command_timeout" env -u OPENCLAW_GATEWAY_TOKEN',
-    );
-    expect(runner).toContain(
-      'openclaw_e2e_maybe_timeout "$command_timeout" openclaw doctor --fix --non-interactive',
-    );
-    expect(runner).toContain(
-      'openclaw_e2e_maybe_timeout "$command_timeout" openclaw config validate',
-    );
-    expect(runner).toContain(
-      'openclaw_e2e_maybe_timeout "$command_timeout" openclaw gateway status',
-    );
-    expect(runner).toContain(
-      'openclaw gateway --port "$PORT" --bind loopback --allow-unconfigured',
-    );
-
-    expect(publishedRunner).toContain(
-      'COMMAND_TIMEOUT="${OPENCLAW_UPGRADE_SURVIVOR_COMMAND_TIMEOUT:-900s}"',
-    );
-    expect(publishedRunner).toContain(
-      'openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" env -u OPENCLAW_GATEWAY_TOKEN',
-    );
-    expect(publishedRunner).toContain(
-      'openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw --version',
-    );
-    expect(publishedRunner).toContain(
-      'openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw config validate >"$BASELINE_CONFIG_VALIDATE_LOG"',
-    );
-    expect(publishedRunner).toContain(
-      'openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" "${update_env[@]}" openclaw',
-    );
-    expect(publishedRunner).toContain(
-      'openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" "${root_cli_env[@]}" openclaw',
-    );
-    expect(publishedRunner).toContain(
-      'openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw doctor --fix --non-interactive',
-    );
-    expect(publishedRunner).toContain(
-      'openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw config validate',
-    );
-    expect(publishedRunner).toContain(
-      'openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw gateway status',
-    );
-    expect(publishedRunner).toContain('openclaw gateway --port "$port" --bind loopback');
-
-    expect(updateRestartAuth).toContain(
-      'command_timeout="${OPENCLAW_UPGRADE_SURVIVOR_COMMAND_TIMEOUT:-900s}"',
-    );
-    expect(updateRestartAuth).toContain(
-      'openclaw_e2e_maybe_timeout "$command_timeout" env -u OPENCLAW_GATEWAY_TOKEN',
-    );
-    expect(updateRestartAuth).toContain('openclaw gateway --port "$port" --bind loopback');
   });
 
   it("keeps the harness run wrapper available with pre-sourced Docker command helpers", () => {

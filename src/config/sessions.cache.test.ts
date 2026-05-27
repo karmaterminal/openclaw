@@ -20,7 +20,6 @@ import {
   readSessionUpdatedAt,
   saveSessionStore,
   updateSessionStore,
-  updateSessionStoreEntry,
 } from "./sessions/store.js";
 import type { SessionEntry } from "./sessions/types.js";
 
@@ -558,46 +557,6 @@ describe("Session Store Cache", () => {
     expect(after["session:1"].displayName).toBe("Updated Session");
   });
 
-  it("can publish writer-owned session updates directly into the object cache", async () => {
-    await saveSessionStore(storePath, createSingleSessionStore());
-
-    const persisted = await updateSessionStore(
-      storePath,
-      (store) => {
-        const next = {
-          ...store["session:1"],
-          displayName: "Writer owned",
-          updatedAt: Date.now() + 1,
-        };
-        store["session:1"] = next;
-        return next;
-      },
-      { takeCacheOwnership: true },
-    );
-
-    const cached = loadSessionStore(storePath, { clone: false });
-    expect(cached["session:1"]).toBe(persisted);
-    expect(cached["session:1"].displayName).toBe("Writer owned");
-  });
-
-  it("can publish writer-owned entry patches directly into the object cache", async () => {
-    await saveSessionStore(storePath, createSingleSessionStore());
-
-    const persisted = await updateSessionStoreEntry({
-      storePath,
-      sessionKey: "session:1",
-      takeCacheOwnership: true,
-      update: async () => ({
-        displayName: "Entry writer owned",
-        updatedAt: Date.now() + 1,
-      }),
-    });
-
-    const cached = loadSessionStore(storePath, { clone: false });
-    expect(cached["session:1"]).toBe(persisted);
-    expect(cached["session:1"].displayName).toBe("Entry writer owned");
-  });
-
   it("builds immutable session snapshots lazily after writes", async () => {
     await saveSessionStore(storePath, createSingleSessionStore());
 
@@ -746,5 +705,21 @@ describe("Session Store Cache", () => {
     // The cache should detect the size change and reload from disk
     const loaded2 = loadSessionStore(storePath);
     expect(loaded2["session:2"]?.displayName).toBe("Added");
+  });
+
+  it("expires serialized write-through cache on the same TTL as the object cache", async () => {
+    process.env.OPENCLAW_SESSION_CACHE_TTL_MS = "10";
+    clearSessionStoreCacheForTest();
+
+    let fakeNow = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+    const testStore = createSingleSessionStore();
+    await saveSessionStore(storePath, testStore);
+    expect(getSerializedSessionStore(storePath)).toBeDefined();
+
+    fakeNow += 11;
+    expect(getSerializedSessionStore(storePath)).toBeUndefined();
+    vi.restoreAllMocks();
   });
 });

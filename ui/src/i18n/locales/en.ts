@@ -360,8 +360,6 @@ export const en: TranslationMap = {
     pending: "{count} pending",
     allowOnce: "Allow once",
     alwaysAllow: "Always allow",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Deny",
     labels: {
       host: "Host",
@@ -1075,6 +1073,8 @@ export const en: TranslationMap = {
     settings: "Chat settings",
     thinkingToggle: "Toggle assistant thinking/working output",
     toolCallsToggle: "Toggle tool calls and tool results",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Auto-scroll mode",
     autoScrollAlways: "Always",
     autoScrollNearBottom: "Near bottom",

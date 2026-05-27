@@ -21,14 +21,6 @@ const RPC_READY_TIMEOUT_MS = readPositiveInt(
   process.env.OPENCLAW_BUNDLED_PLUGIN_RUNTIME_RPC_READY_MS,
   210000,
 );
-const COMMAND_TIMEOUT_MS = readPositiveInt(
-  process.env.OPENCLAW_BUNDLED_PLUGIN_RUNTIME_COMMAND_MS,
-  120000,
-);
-const HTTP_PROBE_TIMEOUT_MS = readPositiveInt(
-  process.env.OPENCLAW_BUNDLED_PLUGIN_RUNTIME_HTTP_MS,
-  5000,
-);
 
 function readPositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw || ""), 10);
@@ -167,47 +159,22 @@ function formatCapturedOutput(label, buffer) {
   return `${prefix}${buffer.text}`;
 }
 
-export function runCommand(command, args, options = {}) {
+function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const { timeoutMs = COMMAND_TIMEOUT_MS, ...spawnOptions } = options;
     const child = childProcess.spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
-      ...spawnOptions,
+      ...options,
     });
     let stdout = { text: "", truncatedChars: 0 };
     let stderr = { text: "", truncatedChars: 0 };
-    let timedOut = false;
-    let settled = false;
     child.stdout?.on("data", (chunk) => {
       stdout = appendBoundedOutput(stdout, chunk);
     });
     child.stderr?.on("data", (chunk) => {
       stderr = appendBoundedOutput(stderr, chunk);
     });
-    const clearCommandTimer = timeoutMs
-      ? setTimeout(() => {
-          timedOut = true;
-          child.kill("SIGKILL");
-        }, timeoutMs)
-      : undefined;
-    child.on("error", (error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (clearCommandTimer) {
-        clearTimeout(clearCommandTimer);
-      }
-      reject(error);
-    });
+    child.on("error", reject);
     child.on("close", (status, signal) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (clearCommandTimer) {
-        clearTimeout(clearCommandTimer);
-      }
       if (status === 0) {
         resolve({
           stdout: stdout.text,
@@ -224,10 +191,11 @@ export function runCommand(command, args, options = {}) {
         .filter(Boolean)
         .join("\n")
         .trim();
-      const outcome = timedOut
-        ? `timed out after ${timeoutMs}ms`
-        : `failed with ${signal || status}`;
-      reject(new Error(`${command} ${args.join(" ")} ${outcome}${detail ? `\n${detail}` : ""}`));
+      reject(
+        new Error(
+          `${command} ${args.join(" ")} failed with ${signal || status}${detail ? `\n${detail}` : ""}`,
+        ),
+      );
     });
   });
 }
@@ -283,7 +251,7 @@ async function waitForReady(params) {
       throw new Error(`gateway exited before ready\n${tailFile(params.logPath)}`);
     }
     try {
-      const res = await fetchHttpProbeStatus(params.port, "/readyz");
+      const res = await fetch(`http://127.0.0.1:${params.port}/readyz`);
       if (res.ok) {
         return;
       }
@@ -304,31 +272,9 @@ function logShowsGatewayReady(logPath) {
   return log.includes("[gateway] ready");
 }
 
-async function fetchHttpProbeStatus(port, pathName, options = {}) {
-  const { timeoutMs = HTTP_PROBE_TIMEOUT_MS } = options;
-  const controller = new AbortController();
-  const clearProbeTimer = timeoutMs
-    ? setTimeout(() => {
-        controller.abort();
-      }, timeoutMs)
-    : undefined;
+async function httpOk(port, pathName) {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}${pathName}`, {
-      signal: controller.signal,
-    });
-    const status = { ok: res.ok, status: res.status };
-    await res.body?.cancel().catch(() => {});
-    return status;
-  } finally {
-    if (clearProbeTimer) {
-      clearTimeout(clearProbeTimer);
-    }
-  }
-}
-
-export async function httpOk(port, pathName, options = {}) {
-  try {
-    const res = await fetchHttpProbeStatus(port, pathName, options);
+    const res = await fetch(`http://127.0.0.1:${port}${pathName}`);
     return res.ok;
   } catch {
     return false;
@@ -340,7 +286,7 @@ async function assertHttpOk(port, pathName) {
   let lastError;
   while (Date.now() - started < RPC_READY_TIMEOUT_MS) {
     try {
-      const res = await fetchHttpProbeStatus(port, pathName);
+      const res = await fetch(`http://127.0.0.1:${port}${pathName}`);
       if (res.ok) {
         return;
       }
@@ -358,7 +304,7 @@ async function assertReadyzProbe(options) {
   let lastError;
   while (Date.now() - started < RPC_READY_TIMEOUT_MS) {
     try {
-      const res = await fetchHttpProbeStatus(options.port, "/readyz");
+      const res = await fetch(`http://127.0.0.1:${options.port}/readyz`);
       if (res.ok) {
         return;
       }

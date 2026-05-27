@@ -15,6 +15,7 @@ import { type OpenClawConfig, getRuntimeConfig } from "../../config/config.js";
 import { logVerbose } from "../../globals.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { removeSystemEvents } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { buildAgentHookContextChannelFields } from "../../plugins/hook-agent-context.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -28,6 +29,7 @@ import type { ReplyPayload } from "../reply-payload.js";
 import type { MsgContext } from "../templating.js";
 import { normalizeVerboseLevel } from "../thinking.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
+import { cancelContinuationTimer } from "./agent-runner.js";
 import { resolveDefaultModel } from "./directive-handling.defaults.js";
 import { clearInlineDirectives } from "./get-reply-directives-utils.js";
 import { resolveReplyDirectives } from "./get-reply-directives.js";
@@ -185,36 +187,6 @@ async function applyMediaUnderstandingIfNeeded(params: {
     );
     return false;
   }
-}
-
-async function stageRemoteInboundMediaBeforeUnderstandingIfNeeded(params: {
-  ctx: MsgContext;
-  cfg: OpenClawConfig;
-  sessionKey?: string;
-  workspaceDir: string;
-}): Promise<boolean> {
-  if (
-    !params.sessionKey ||
-    params.ctx.MediaStaged ||
-    !normalizeOptionalString(params.ctx.MediaRemoteHost) ||
-    !hasInboundMedia(params.ctx)
-  ) {
-    return false;
-  }
-
-  const { stageSandboxMedia } = await loadStageSandboxMediaRuntime();
-  const result = await stageSandboxMedia({
-    ctx: params.ctx,
-    sessionCtx: params.ctx,
-    cfg: params.cfg,
-    sessionKey: params.sessionKey,
-    workspaceDir: params.workspaceDir,
-  });
-  if (result.staged.size > 0) {
-    params.ctx.MediaStaged = true;
-    return true;
-  }
-  return false;
 }
 
 async function applyLinkUnderstandingIfNeeded(params: {
@@ -417,20 +389,6 @@ export async function getReplyFromConfig(
   );
   const workspaceDir = workspace.dir;
 
-  if (
-    !isFastTestEnv &&
-    normalizeOptionalString(finalized.MediaRemoteHost) &&
-    hasInboundMedia(finalized)
-  ) {
-    await traceGetReplyPhase("reply.stage_remote_media_pre_understanding", () =>
-      stageRemoteInboundMediaBeforeUnderstandingIfNeeded({
-        ctx: finalized,
-        cfg,
-        sessionKey: agentSessionKey,
-        workspaceDir,
-      }),
-    );
-  }
   if (!isFastTestEnv && hasInboundMedia(finalized)) {
     await traceGetReplyPhase("reply.apply_media_understanding", () =>
       applyMediaUnderstandingIfNeeded({
@@ -520,8 +478,6 @@ export async function getReplyFromConfig(
           await updateSessionStoreEntry({
             storePath,
             sessionKey,
-            skipMaintenance: true,
-            takeCacheOwnership: true,
             update: async () => ({
               pendingFinalDelivery: undefined,
               pendingFinalDeliveryText: undefined,
@@ -550,8 +506,6 @@ export async function getReplyFromConfig(
           await updateSessionStoreEntry({
             storePath,
             sessionKey,
-            skipMaintenance: true,
-            takeCacheOwnership: true,
             update: async () => ({
               pendingFinalDeliveryText: replayText,
               pendingFinalDeliveryLastAttemptAt: updatedAt,
@@ -781,6 +735,12 @@ export async function getReplyFromConfig(
     }),
   );
   if (directiveResult.kind === "reply") {
+    // Directive-handled replies bypass runReplyAgent — cancel pending timers,
+    // reset chain metadata, and drain stale wake events.
+    if (sessionKey && !opts?.isHeartbeat) {
+      cancelContinuationTimer(sessionKey, { sessionEntry, sessionStore, storePath });
+      removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
+    }
     logResolverTiming("completed", "directive_reply");
     return directiveResult.reply;
   }
@@ -881,6 +841,13 @@ export async function getReplyFromConfig(
     }),
   );
   if (inlineActionResult.kind === "reply") {
+    // Inline actions (slash commands, status, etc.) bypass runReplyAgent but
+    // represent real user input — cancel timers, reset chain metadata, drain
+    // stale wake events.
+    if (sessionKey && !opts?.isHeartbeat) {
+      cancelContinuationTimer(sessionKey, { sessionEntry, sessionStore, storePath });
+      removeSystemEvents(sessionKey, (e) => e.text?.startsWith("[continuation:wake]") ?? false);
+    }
     await maybeEmitMissingResetHooks();
     logResolverTiming("completed", "inline_action_reply");
     return inlineActionResult.reply;

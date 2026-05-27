@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { until } from "lit/directives/until.js";
+import { t } from "../../i18n/index.ts";
 import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { AssistantIdentity } from "../assistant-identity.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
@@ -1610,8 +1611,8 @@ function renderGroupedMessage(
                 ${toolMessageHasError
                   ? html`<span
                       class="chat-tool-msg-summary__error-badge"
-                      aria-label="Tool returned an error"
-                      >${icons.x}<span>Error</span></span
+                      aria-label=${t("chat.toolReturnedError")}
+                      >${icons.x}<span>${t("chat.error")}</span></span
                     >`
                   : nothing}
               </button>

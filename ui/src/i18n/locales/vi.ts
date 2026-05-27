@@ -362,8 +362,6 @@ export const vi: TranslationMap = {
     pending: "{count} đang chờ",
     allowOnce: "Cho phép một lần",
     alwaysAllow: "Luôn cho phép",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Từ chối",
     labels: {
       host: "Máy chủ",
@@ -1076,6 +1074,8 @@ export const vi: TranslationMap = {
     settings: "Cài đặt trò chuyện",
     thinkingToggle: "Bật/tắt đầu ra suy nghĩ/đang xử lý của trợ lý",
     toolCallsToggle: "Bật/tắt lượt gọi công cụ và kết quả công cụ",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Chế độ tự động cuộn",
     autoScrollAlways: "Luôn luôn",
     autoScrollNearBottom: "Gần cuối",

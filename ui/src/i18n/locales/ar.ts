@@ -361,8 +361,6 @@ export const ar: TranslationMap = {
     pending: "{count} قيد الانتظار",
     allowOnce: "السماح مرة واحدة",
     alwaysAllow: "السماح دائمًا",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "رفض",
     labels: {
       host: "المضيف",
@@ -1069,6 +1067,8 @@ export const ar: TranslationMap = {
     settings: "إعدادات الدردشة",
     thinkingToggle: "تبديل مخرجات تفكير/عمل المساعد",
     toolCallsToggle: "تبديل استدعاءات الأدوات ونتائج الأدوات",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "وضع التمرير التلقائي",
     autoScrollAlways: "دائمًا",
     autoScrollNearBottom: "قرب الأسفل",
