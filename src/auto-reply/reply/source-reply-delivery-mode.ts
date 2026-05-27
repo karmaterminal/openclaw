@@ -3,8 +3,11 @@ import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { SessionSendPolicyDecision } from "../../sessions/send-policy.js";
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
-import { resolveCommandTurnContext, type CommandTurnContext } from "../command-turn-context.js";
-import { isExplicitCommandTurnContext } from "../command-turn-detection.js";
+import {
+  isExplicitCommandTurn,
+  resolveCommandTurnContext,
+  type CommandTurnContext,
+} from "../command-turn-context.js";
 import type { SourceReplyDeliveryMode } from "../get-reply-options.types.js";
 
 export type SourceReplyDeliveryModeContext = {
@@ -20,11 +23,8 @@ export type SourceReplyDeliveryModeContext = {
   BotUsername?: string;
 };
 
-export function isExplicitSourceReplyCommand(
-  ctx: SourceReplyDeliveryModeContext,
-  cfg: OpenClawConfig,
-): boolean {
-  return isExplicitCommandTurnContext(ctx, cfg);
+export function isExplicitSourceReplyCommand(ctx: SourceReplyDeliveryModeContext): boolean {
+  return isExplicitCommandTurn(resolveCommandTurnContext(ctx));
 }
 
 function isUnauthorizedTextSlashCommand(ctx: SourceReplyDeliveryModeContext): boolean {
@@ -71,7 +71,7 @@ export function resolveSourceReplyDeliveryMode(params: {
   ) {
     return params.requested;
   }
-  if (isExplicitSourceReplyCommand(params.ctx, params.cfg)) {
+  if (isExplicitSourceReplyCommand(params.ctx)) {
     return "automatic";
   }
   const chatType = normalizeChatType(params.ctx.ChatType);

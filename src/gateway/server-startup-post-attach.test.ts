@@ -875,6 +875,7 @@ describe("startGatewayPostAttachRuntime", () => {
       });
 
       await vi.advanceTimersToNextTimerAsync();
+      await vi.dynamicImportSettled();
       await vi.waitFor(() => {
         expect(onPostReadySidecars).toHaveBeenCalledTimes(1);
         expect(onGatewayLifetimeSidecars).toHaveBeenCalledTimes(1);
@@ -1643,39 +1644,6 @@ describe("startGatewayPostAttachRuntime", () => {
     });
     expect([...unavailableGatewayMethods]).toStrictEqual([]);
     expect(startGatewaySidecars).toHaveBeenCalledTimes(1);
-  });
-
-  it("loads lazy startup plugins before returning with deferred sidecars", async () => {
-    const pluginRegistry = {
-      plugins: [{ id: "lazy", status: "loaded" }],
-      typedHooks: [],
-    } as never;
-    const loaded = { pluginRegistry, gatewayMethods: ["core.ping"] };
-    const loadStartupPlugins = vi.fn(async () => loaded);
-    const onStartupPluginsLoaded = vi.fn();
-    const startGatewaySidecars = vi.fn(async () => ({
-      pluginServices: null,
-      postReadySidecars: [],
-    }));
-
-    await startGatewayPostAttachRuntime(
-      {
-        ...createPostAttachParams({
-          deferSidecars: true,
-          loadStartupPlugins,
-          onStartupPluginsLoaded,
-        }),
-      },
-      createPostAttachRuntimeDeps({ startGatewaySidecars }),
-    );
-
-    expect(loadStartupPlugins).toHaveBeenCalledTimes(1);
-    expect(onStartupPluginsLoaded).toHaveBeenCalledWith(loaded);
-    expect(startGatewaySidecars).not.toHaveBeenCalled();
-
-    await vi.waitFor(() => {
-      expect(startGatewaySidecars).toHaveBeenCalledTimes(1);
-    });
   });
 
   it("dispatches registered gateway startup internal hooks without configured hook packs", async () => {

@@ -7,35 +7,9 @@ import {
 import { applyMockOpenAiModelConfig } from "../fixtures/mock-openai-config.mjs";
 
 const command = process.argv[2];
-const CLICKCLACK_HTTP_TIMEOUT_MS = readPositiveInt(
-  process.env.OPENCLAW_RELEASE_USER_JOURNEY_HTTP_TIMEOUT_MS,
-  5000,
-);
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
-}
-
-function readPositiveInt(raw, fallback) {
-  const parsed = Number.parseInt(String(raw || ""), 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-async function withClickClackFixtureResponse(url, init, consume, options = {}) {
-  const timeoutMs = options.timeoutMs ?? CLICKCLACK_HTTP_TIMEOUT_MS;
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-  try {
-    const response = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-    return await consume(response);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 function resolveHomePath(value) {
@@ -234,17 +208,12 @@ function assertChannelStatus() {
 async function postClickClackInbound() {
   const baseUrl = process.argv[3];
   const body = process.argv[4];
-  await withClickClackFixtureResponse(
-    `${baseUrl}/fixture/inbound`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body }),
-    },
-    async (response) => {
-      assert(response.ok, `fixture inbound failed: ${response.status} ${await response.text()}`);
-    },
-  );
+  const response = await fetch(`${baseUrl}/fixture/inbound`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  assert(response.ok, `fixture inbound failed: ${response.status} ${await response.text()}`);
 }
 
 async function waitClickClackSocket() {
@@ -252,16 +221,9 @@ async function waitClickClackSocket() {
   const timeoutSeconds = Number(process.argv[4] ?? 30);
   const deadline = Date.now() + timeoutSeconds * 1000;
   while (Date.now() < deadline) {
-    const remainingMs = Math.max(1, deadline - Date.now());
-    const state = await withClickClackFixtureResponse(
-      `${baseUrl}/fixture/state`,
-      {},
-      async (response) => (response.ok ? await response.json() : undefined),
-      {
-        timeoutMs: Math.min(CLICKCLACK_HTTP_TIMEOUT_MS, remainingMs),
-      },
-    ).catch(() => undefined);
-    if (state) {
+    const response = await fetch(`${baseUrl}/fixture/state`).catch(() => undefined);
+    if (response?.ok) {
+      const state = await response.json();
       if (Number(state.socketCount ?? 0) > 0) {
         return;
       }

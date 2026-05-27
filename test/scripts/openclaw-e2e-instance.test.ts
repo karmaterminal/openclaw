@@ -504,10 +504,10 @@ describe("scripts/lib/openclaw-e2e-instance.sh", () => {
           "set -euo pipefail",
           'if [ "${1:-}" = "--kill-after=1s" ]; then exit 0; fi',
           'printf "%s\\n" "$*" >"$OPENCLAW_TEST_TIMEOUT_ARGS"',
-          `while [ "$#" -gt 0 ] && [ "$1" != ${shellQuote(path.join(tempDir, "openclaw"))} ]; do shift; done`,
+          'while [ "$#" -gt 0 ] && [ "$(basename "$1")" != "openclaw" ]; do shift; done',
           '[ "$#" -gt 0 ] || exit 127',
           "shift",
-          'exec "$OPENCLAW_TEST_OPENCLAW_BIN" "$@"',
+          'printf "%s\\n" "$*" >"$OPENCLAW_TEST_COMMAND_ARGS"',
           "",
         ].join("\n"),
       );
@@ -542,15 +542,18 @@ describe("scripts/lib/openclaw-e2e-instance.sh", () => {
             OPENCLAW_E2E_COMMAND_TIMEOUT: "23s",
             OPENCLAW_TEST_TIMEOUT_ARGS: timeoutArgsPath,
             OPENCLAW_TEST_COMMAND_ARGS: commandArgsPath,
-            OPENCLAW_TEST_OPENCLAW_BIN: path.join(tempDir, "openclaw"),
           }),
         },
       );
 
       expect(result.status).toBe(0);
-      expect(fs.readFileSync(timeoutArgsPath, "utf8").trim()).toBe(
-        `--kill-after=30s 23s ${path.join(tempDir, "openclaw")} plugins list --json`,
+      const timeoutArgs = fs.readFileSync(timeoutArgsPath, "utf8").trim();
+      expect(timeoutArgs).toMatch(/^--kill-after=30s 23s .+ plugins list --json$/u);
+      const commandToken = timeoutArgs.slice(
+        "--kill-after=30s 23s ".length,
+        -" plugins list --json".length,
       );
+      expect(path.basename(commandToken)).toBe("openclaw");
       expect(fs.readFileSync(commandArgsPath, "utf8").trim()).toBe("plugins list --json");
     } finally {
       fs.rmSync(tempDir, { force: true, recursive: true });

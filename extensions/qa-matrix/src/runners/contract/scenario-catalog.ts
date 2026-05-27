@@ -1231,7 +1231,6 @@ const MATRIX_QA_MEDIA_PROFILE_SCENARIO_IDS = [
 
 const MATRIX_QA_EXPLICIT_ONLY_SCENARIO_IDS = new Set<MatrixQaScenarioId>([
   "matrix-room-block-streaming",
-  "matrix-subagent-thread-spawn",
 ]);
 
 const MATRIX_QA_E2EE_SMOKE_PROFILE_SCENARIO_IDS = [

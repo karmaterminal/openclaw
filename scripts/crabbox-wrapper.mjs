@@ -195,15 +195,11 @@ function gitOutput(commandArgs) {
   };
 }
 
-function envProvider() {
+function configuredProvider() {
   const envProvider = process.env.CRABBOX_PROVIDER?.trim();
   if (envProvider) {
     return envProvider;
   }
-  return "";
-}
-
-function configProvider() {
   try {
     const config = readFileSync(resolve(repoRoot, ".crabbox.yaml"), "utf8");
     const match = config.match(/^provider:\s*([^\s#]+)/m);
@@ -211,10 +207,6 @@ function configProvider() {
   } catch {
     return "aws";
   }
-}
-
-function configuredProvider() {
-  return envProvider() || configProvider();
 }
 
 const runValueOptions = new Set([
@@ -397,15 +389,8 @@ function commandProvider(commandArgs) {
   return "";
 }
 
-function selectedProvider(commandArgs, advertisedProviders = []) {
-  const explicitProvider = commandProvider(commandArgs);
-  if (explicitProvider) {
-    return explicitProvider;
-  }
-  if (shouldPreferAzureForWindows(commandArgs, advertisedProviders)) {
-    return "azure";
-  }
-  return configuredProvider();
+function selectedProvider(commandArgs) {
+  return commandProvider(commandArgs) || configuredProvider();
 }
 
 function shouldRequireBrokeredAws(commandArgs, providerName) {
@@ -486,28 +471,6 @@ function commandOptionEnd(commandArgs) {
   }
   const delimiter = commandArgs.indexOf("--");
   return delimiter >= 0 ? delimiter : commandArgs.length;
-}
-
-function shouldPreferAzureForWindows(commandArgs, advertisedProviders = []) {
-  return (
-    ["run", "warmup"].includes(commandArgs[0]) &&
-    isWindowsRemoteTarget(commandArgs) &&
-    !commandProvider(commandArgs) &&
-    !envProvider() &&
-    !hasOption(commandArgs, "--id") &&
-    advertisedProviders.includes("azure")
-  );
-}
-
-function ensureAzureWindowsProvider(commandArgs, providerName, advertisedProviders = []) {
-  if (providerName !== "azure" || !shouldPreferAzureForWindows(commandArgs, advertisedProviders)) {
-    return commandArgs;
-  }
-
-  const optionEnd = commandOptionEnd(commandArgs);
-  const normalizedArgs = [...commandArgs];
-  normalizedArgs.splice(optionEnd, 0, "--provider", "azure");
-  return normalizedArgs;
 }
 
 function ensureAwsMacOnDemandMarket(commandArgs, providerName) {
@@ -1452,7 +1415,11 @@ function remoteAwsMacosJsBootstrap({ packageManager = false } = {}) {
 }
 
 function scopedAwsMacosEnvCommand(commandArgs) {
-  if (commandArgs.length <= 1 || shellWordBasename(commandArgs[0]) !== "env" || commandArgs[0].includes("/")) {
+  if (
+    commandArgs.length <= 1 ||
+    shellWordBasename(commandArgs[0]) !== "env" ||
+    commandArgs[0].includes("/")
+  ) {
     return null;
   }
 
@@ -1462,7 +1429,10 @@ function scopedAwsMacosEnvCommand(commandArgs) {
   }
 
   const targetEntrypoint = shellWordBasename(targetWords[0]);
-  if (!jsRuntimeEntrypoints.has(targetEntrypoint) && !awsMacosCorepackEntrypoints.has(targetEntrypoint)) {
+  if (
+    !jsRuntimeEntrypoints.has(targetEntrypoint) &&
+    !awsMacosCorepackEntrypoints.has(targetEntrypoint)
+  ) {
     return null;
   }
 
@@ -1478,7 +1448,8 @@ function injectRemoteAwsMacosJsBootstrap(commandArgs, providerName) {
   const directScopedEnvCommand = hasOption(commandArgs, "--shell")
     ? null
     : scopedAwsMacosEnvCommand(runArgs);
-  const runtimeEntrypoint = directScopedEnvCommand?.runtimeEntrypoint || commandRuntimeEntrypoint(runArgs);
+  const runtimeEntrypoint =
+    directScopedEnvCommand?.runtimeEntrypoint || commandRuntimeEntrypoint(runArgs);
   if (!isAwsMacosRemoteTarget(commandArgs, providerName) || !runtimeEntrypoint) {
     return commandArgs;
   }
@@ -1496,7 +1467,8 @@ function injectRemoteAwsMacosJsBootstrap(commandArgs, providerName) {
       ? remoteCommand[0]
       : shellJoin(remoteCommand));
   const shellCommand = `${remoteAwsMacosJsBootstrap({
-    packageManager: directScopedEnvCommand?.packageManager || commandNeedsAwsMacosPackageManager(runArgs),
+    packageManager:
+      directScopedEnvCommand?.packageManager || commandNeedsAwsMacosPackageManager(runArgs),
   })} && { ${originalShellCommand}\n}`;
 
   if (!hasOption(normalizedArgs, "--shell")) {
@@ -1777,12 +1749,9 @@ function isProviderAdvertised(provider, advertisedProviders) {
 
 const providers = parseProvidersFromHelp(help.text);
 const displayBinary = binary === "crabbox" ? "crabbox" : relative(repoRoot, binary);
-const provider = selectedProvider(args, providers);
+const provider = selectedProvider(args);
 const commandProviderValue = commandProvider(args);
-let normalizedArgs = ensureAwsMacOnDemandMarket(
-  ensureAzureWindowsProvider(args, provider, providers),
-  provider,
-);
+let normalizedArgs = ensureAwsMacOnDemandMarket(args, provider);
 
 console.error(
   `[crabbox] bin=${displayBinary} version=${version.text || "unknown"} provider=${provider || "unknown"} providers=${providers.join(",") || "unknown"}`,
@@ -1898,7 +1867,7 @@ if (
 }
 if (
   isLocalContainerProvider(provider) &&
-  process.platform === "linux" &&
+  process.platform !== "win32" &&
   !childEnv.CRABBOX_LOCAL_CONTAINER_WORK_ROOT &&
   !hasOption(normalizedArgs, "--local-container-work-root")
 ) {
