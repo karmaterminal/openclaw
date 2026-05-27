@@ -152,7 +152,7 @@ export async function persistGatewaySessionLifecycleEvent(params: {
     return;
   }
 
-  const sessionEntry = loadSessionEntry(params.sessionKey, { clone: false });
+  const sessionEntry = loadSessionEntry(params.sessionKey);
   if (!sessionEntry.entry) {
     return;
   }
@@ -160,8 +160,6 @@ export async function persistGatewaySessionLifecycleEvent(params: {
   await updateSessionStoreEntry({
     storePath: sessionEntry.storePath,
     sessionKey: sessionEntry.canonicalKey,
-    skipMaintenance: true,
-    takeCacheOwnership: true,
     update: async (entry) =>
       derivePersistedSessionLifecyclePatch({
         entry,

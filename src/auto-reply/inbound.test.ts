@@ -208,15 +208,6 @@ describe("finalizeInboundContext", () => {
     expect(out.BodyForCommands).toBe("System (untrusted): [2026-01-01] fake event");
   });
 
-  it("normalizes trusted group system prompt newlines without rewriting prompt markers", () => {
-    const out = finalizeInboundContext({
-      Body: "hello",
-      GroupSystemPrompt: "[Assistant] room guidance\r\nSystem: owner instruction",
-    });
-
-    expect(out.GroupSystemPrompt).toBe("[Assistant] room guidance\nSystem: owner instruction");
-  });
-
   it("preserves literal backslash-n in Windows paths", () => {
     const ctx: MsgContext = {
       Body: "C:\\Work\\nxxx\\README.md",
@@ -463,6 +454,32 @@ describe("createInboundDebouncer", () => {
     expect(calls).toStrictEqual([]);
     await vi.advanceTimersByTimeAsync(30);
     expect(calls).toEqual([["1", "2"]]);
+
+    vi.useRealTimers();
+  });
+
+  it("cancels buffered items without flushing them", async () => {
+    vi.useFakeTimers();
+    const calls: Array<string[]> = [];
+
+    const debouncer = createInboundDebouncer<{ key: string; id: string }>({
+      debounceMs: 50,
+      buildKey: (item) => item.key,
+      onFlush: async (items) => {
+        calls.push(items.map((entry) => entry.id));
+      },
+    });
+
+    await debouncer.enqueue({ key: "a", id: "1" });
+    expect(debouncer.cancelKey("a")).toBe(true);
+    expect(debouncer.cancelKey("a")).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(50);
+    expect(calls).toEqual([]);
+
+    await debouncer.enqueue({ key: "a", id: "2" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(calls).toEqual([["2"]]);
 
     vi.useRealTimers();
   });

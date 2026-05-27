@@ -351,7 +351,6 @@ const PRECISE_SOURCE_TEST_TARGETS = new Map([
     ],
   ],
 ]);
-const BROAD_ONLY_TEST_HELPERS = new Set(["test/helpers/poll.ts"]);
 const TOOLING_SOURCE_TEST_TARGETS = new Map([
   ["scripts/github/barnacle-auto-response.mjs", ["test/scripts/barnacle-auto-response.test.ts"]],
   ["scripts/changed-lanes.mjs", ["test/scripts/changed-lanes.test.ts"]],
@@ -376,7 +375,6 @@ const TOOLING_SOURCE_TEST_TARGETS = new Map([
     ["test/scripts/mantis-build-telegram-desktop-proof-evidence.test.ts"],
   ],
   ["scripts/mantis/publish-pr-evidence.mjs", ["test/scripts/mantis-publish-pr-evidence.test.ts"]],
-  ["scripts/qa-lab-up.ts", ["test/scripts/qa-lab-up.test.ts"]],
   [
     "scripts/run-vitest.mjs",
     [
@@ -388,10 +386,6 @@ const TOOLING_SOURCE_TEST_TARGETS = new Map([
   ["scripts/run-oxlint.mjs", ["test/scripts/run-oxlint.test.ts"]],
   ["scripts/run-node.mjs", ["src/infra/run-node.test.ts"]],
   ["scripts/ci-run-timings.mjs", ["test/scripts/ci-run-timings.test.ts"]],
-  ["scripts/docker-e2e.mjs", ["test/scripts/docker-e2e-helper-cli.test.ts"]],
-  ["scripts/docker-e2e-rerun.mjs", ["test/scripts/docker-e2e-helper-cli.test.ts"]],
-  ["scripts/docker-e2e-timings.mjs", ["test/scripts/docker-e2e-helper-cli.test.ts"]],
-  ["scripts/kova-ci-summary.mjs", ["test/scripts/kova-ci-summary.test.ts"]],
   ["scripts/test-extension-batch.mjs", ["test/scripts/test-extension.test.ts"]],
   ["scripts/lib/extension-test-plan.mjs", ["test/scripts/test-extension.test.ts"]],
   ["scripts/lib/vitest-batch-runner.mjs", ["test/scripts/test-extension.test.ts"]],
@@ -430,11 +424,8 @@ const TOOLING_TEST_TARGETS = new Map([
   ],
   ["test/scripts/ci-docker-pull-retry.test.ts", ["test/scripts/ci-docker-pull-retry.test.ts"]],
   ["test/scripts/docker-build-helper.test.ts", ["test/scripts/docker-build-helper.test.ts"]],
-  ["test/scripts/docker-e2e-helper-cli.test.ts", ["test/scripts/docker-e2e-helper-cli.test.ts"]],
-  ["test/scripts/kova-ci-summary.test.ts", ["test/scripts/kova-ci-summary.test.ts"]],
   ["test/scripts/live-docker-stage.test.ts", ["test/scripts/live-docker-stage.test.ts"]],
   ["test/scripts/openclaw-test-state.test.ts", ["test/scripts/openclaw-test-state.test.ts"]],
-  ["test/scripts/qa-lab-up.test.ts", ["test/scripts/qa-lab-up.test.ts"]],
   [
     "test/scripts/mantis-publish-pr-evidence.test.ts",
     ["test/scripts/mantis-publish-pr-evidence.test.ts"],
@@ -602,9 +593,6 @@ const SOURCE_ROOTS_FOR_IMPORT_GRAPH = [
   "test",
 ];
 const IMPORTABLE_FILE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"];
-const IMPORT_GRAPH_GREP_PATHS = SOURCE_ROOTS_FOR_IMPORT_GRAPH.flatMap((root) =>
-  IMPORTABLE_FILE_EXTENSIONS.map((ext) => `:(glob)${root}/**/*${ext}`),
-);
 const IMPORT_SPECIFIER_PATTERN =
   /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/gu;
 const BROAD_CHANGED_ENV_KEY = "OPENCLAW_TEST_CHANGED_BROAD";
@@ -780,7 +768,7 @@ function isPathLikeTargetArg(arg, cwd) {
   if (!arg || arg === "--" || arg.startsWith("-")) {
     return false;
   }
-  return isGlobTarget(arg) || isFileLikeTarget(arg) || isExistingPathTarget(arg, cwd);
+  return isExistingPathTarget(arg, cwd) || isGlobTarget(arg) || isFileLikeTarget(arg);
 }
 
 function toRepoRelativeTarget(arg, cwd) {
@@ -856,11 +844,7 @@ export function findUnmatchedExplicitTestTargets(args, cwd = process.cwd()) {
     return [];
   }
 
-  let candidateFiles = null;
-  const getCandidateFiles = () => {
-    candidateFiles ??= listExplicitTestTargetFilesForCwd(cwd);
-    return candidateFiles;
-  };
+  const candidateFiles = listExplicitTestTargetFilesForCwd(cwd);
   const unmatched = [];
   for (const targetArg of targetArgs) {
     const relative = toRepoRelativeTarget(targetArg, cwd);
@@ -872,7 +856,7 @@ export function findUnmatchedExplicitTestTargets(args, cwd = process.cwd()) {
       continue;
     }
     if (isGlobTarget(relative)) {
-      if (!includePatternMatchesAnyFile(relative, getCandidateFiles())) {
+      if (!includePatternMatchesAnyFile(relative, candidateFiles)) {
         unmatched.push({
           target: targetArg,
           reason: "glob-matched-no-files",
@@ -895,7 +879,7 @@ export function findUnmatchedExplicitTestTargets(args, cwd = process.cwd()) {
     }
 
     const includePattern = toScopedIncludePattern(targetArg, cwd);
-    if (!includePatternMatchesAnyFile(includePattern, getCandidateFiles())) {
+    if (!includePatternMatchesAnyFile(includePattern, candidateFiles)) {
       unmatched.push({
         target: targetArg,
         reason: "target-matched-no-test-files",
@@ -964,8 +948,6 @@ let cachedImportGraph = null;
 let cachedImportGraphCwd = null;
 let cachedImportGraphFiles = null;
 let cachedImportGraphFilesCwd = null;
-const cachedImportGraphGrepMatches = new Map();
-const cachedDirectImporters = new Map();
 
 function isImportableGraphFile(relative) {
   return IMPORTABLE_FILE_EXTENSIONS.some((ext) => relative.endsWith(ext));
@@ -1007,33 +989,18 @@ function stripImportableGraphExtension(relative) {
   return relative;
 }
 
-function resolveImportGraphSearchTerms(relative) {
-  const withoutExtension = stripImportableGraphExtension(relative);
+function resolveImportGraphSearchTerm(relative) {
   const basename = path.posix.basename(stripImportableGraphExtension(relative));
   if (basename === "index" || basename.length < 3) {
-    return [];
+    return null;
   }
-  const terms = [];
-  const segments = withoutExtension.split("/");
-  if (segments.length > 1) {
-    terms.push(segments.slice(-2).join("/"), withoutExtension);
-  }
-  if (relative.startsWith("test/helpers/")) {
-    return [...new Set(terms)];
-  }
-  terms.push(basename);
-  return [...new Set(terms)];
+  return basename;
 }
 
 function listImportGraphGrepMatches(cwd, term) {
-  const cacheKey = `${cwd}\0${term}`;
-  if (cachedImportGraphGrepMatches.has(cacheKey)) {
-    return cachedImportGraphGrepMatches.get(cacheKey);
-  }
-
   const result = spawnSync(
     "git",
-    ["grep", "-l", "--fixed-strings", term, "--", ...IMPORT_GRAPH_GREP_PATHS],
+    ["grep", "-l", "--fixed-strings", term, "--", ...SOURCE_ROOTS_FOR_IMPORT_GRAPH],
     {
       cwd,
       encoding: "utf8",
@@ -1041,73 +1008,48 @@ function listImportGraphGrepMatches(cwd, term) {
     },
   );
   if (result.status === 1) {
-    cachedImportGraphGrepMatches.set(cacheKey, []);
     return [];
   }
   if (result.status !== 0) {
-    cachedImportGraphGrepMatches.set(cacheKey, null);
     return null;
   }
-  const matches = result.stdout
+  return result.stdout
     .split("\n")
     .map((line) => normalizePathPattern(line.trim()))
     .filter((line) => line.length > 0 && isImportableGraphFile(line));
-  cachedImportGraphGrepMatches.set(cacheKey, matches);
-  return matches;
 }
 
 function findDirectImportersWithGitGrep(cwd, importedFile, fileSet) {
-  const cacheKey = `${cwd}\0${importedFile}`;
-  if (cachedDirectImporters.has(cacheKey)) {
-    return cachedDirectImporters.get(cacheKey);
-  }
-
-  const terms = resolveImportGraphSearchTerms(importedFile);
-  if (terms.length === 0) {
-    cachedDirectImporters.set(cacheKey, null);
+  const term = resolveImportGraphSearchTerm(importedFile);
+  if (!term) {
     return null;
   }
 
-  let skippedBroadTerm = false;
+  const candidates = listImportGraphGrepMatches(cwd, term);
+  if (!candidates || candidates.length > 800) {
+    return null;
+  }
+
   const importers = [];
-  for (const term of terms) {
-    const candidates = listImportGraphGrepMatches(cwd, term);
-    if (!candidates) {
-      cachedDirectImporters.set(cacheKey, null);
-      return null;
-    }
-    if (candidates.length > 800) {
-      skippedBroadTerm = true;
+  for (const file of candidates) {
+    if (file === importedFile || !fileSet.has(file)) {
       continue;
     }
-    for (const file of candidates) {
-      if (file === importedFile || !fileSet.has(file) || importers.includes(file)) {
-        continue;
-      }
-      let source = "";
-      try {
-        source = fs.readFileSync(path.join(cwd, file), "utf8");
-      } catch {
-        continue;
-      }
-      for (const match of source.matchAll(IMPORT_SPECIFIER_PATTERN)) {
-        const imported = resolveImportSpecifier(file, match[1] ?? match[2] ?? "", fileSet);
-        if (imported === importedFile) {
-          importers.push(file);
-          break;
-        }
-      }
+    let source = "";
+    try {
+      source = fs.readFileSync(path.join(cwd, file), "utf8");
+    } catch {
+      continue;
     }
-    if (importedFile.startsWith("test/helpers/") && importers.length > 0 && term.includes("/")) {
-      break;
+    for (const match of source.matchAll(IMPORT_SPECIFIER_PATTERN)) {
+      const imported = resolveImportSpecifier(file, match[1] ?? match[2] ?? "", fileSet);
+      if (imported === importedFile) {
+        importers.push(file);
+        break;
+      }
     }
   }
-  const result =
-    skippedBroadTerm && importers.length === 0 && !importedFile.startsWith("test/helpers/")
-      ? null
-      : importers;
-  cachedDirectImporters.set(cacheKey, result);
-  return result;
+  return importers;
 }
 
 function resolveAffectedTestsFromTargetedImportScan(changedPath, cwd) {
@@ -1138,7 +1080,6 @@ function resolveAffectedTestsFromTargetedImportScan(changedPath, cwd) {
       seen.add(importer);
       if (testFiles.has(importer)) {
         targets.push(importer);
-        continue;
       }
       queue.push(importer);
     }
@@ -1363,13 +1304,6 @@ function resolveSiblingTestTarget(changedPath, cwd) {
   return fs.existsSync(path.join(cwd, sibling)) ? sibling : null;
 }
 
-function shouldRouteChangedTargetWithoutImportGraph(changedPath) {
-  return (
-    changedPath.endsWith(".live.test.ts") ||
-    (changedPath.startsWith("ui/src/") && !changedPath.startsWith("ui/src/ui/"))
-  );
-}
-
 function resolvePreciseChangedTestTargets(changedPath, options) {
   const cwd = options.cwd ?? process.cwd();
   const mappedTargets =
@@ -1383,12 +1317,6 @@ function resolvePreciseChangedTestTargets(changedPath, options) {
   const siblingTest = resolveSiblingTestTarget(changedPath, cwd);
   if (siblingTest) {
     return [siblingTest];
-  }
-  if (BROAD_ONLY_TEST_HELPERS.has(changedPath)) {
-    return null;
-  }
-  if (shouldRouteChangedTargetWithoutImportGraph(changedPath)) {
-    return changedPath.startsWith("ui/src/") ? [changedPath] : null;
   }
   if (/^(?:src|test\/helpers|extensions|packages|ui\/src|ui\/config)\//u.test(changedPath)) {
     const affectedTests = resolveAffectedTestsFromImportGraph(changedPath, cwd);
@@ -1468,14 +1396,11 @@ function classifyTarget(arg, cwd) {
   if (configTargetKind) {
     return configTargetKind;
   }
+  if (resolveUnitFastTestIncludePattern(relative)) {
+    return "unitFast";
+  }
   if (isControlUiE2eTarget(relative)) {
     return "uiE2e";
-  }
-  if (relative.startsWith("ui/src/")) {
-    if (isUnitUiTestTarget(relative)) {
-      return "unitUi";
-    }
-    return "ui";
   }
   if (relative.startsWith("src/tui/tui-pty-")) {
     return "tuiPty";
@@ -1489,16 +1414,6 @@ function classifyTarget(arg, cwd) {
     relative === "src/gateway/sessions-history-http.test.ts"
   ) {
     return "e2e";
-  }
-  const channelContractKind = resolveChannelContractTargetKind(relative);
-  if (channelContractKind) {
-    return channelContractKind;
-  }
-  if (relative.startsWith("src/plugins/contracts/")) {
-    return "contractsPlugin";
-  }
-  if (resolveUnitFastTestIncludePattern(relative)) {
-    return "unitFast";
   }
   if (relative === "extensions") {
     return "extensionFull";
@@ -1573,6 +1488,13 @@ function classifyTarget(arg, cwd) {
       return "extensionMisc";
     }
     return isProviderExtensionRoot(extensionRoot) ? "extensionProvider" : "extension";
+  }
+  const channelContractKind = resolveChannelContractTargetKind(relative);
+  if (channelContractKind) {
+    return channelContractKind;
+  }
+  if (relative.startsWith("src/plugins/contracts/")) {
+    return "contractsPlugin";
   }
   if (isChannelSurfaceTestFile(relative)) {
     return "channel";
@@ -1649,14 +1571,23 @@ function classifyTarget(arg, cwd) {
   if (relative.startsWith("src/commands/")) {
     return isCommandsLightTarget(relative) ? "commandLight" : "command";
   }
-  if (relative.startsWith("src/auto-reply/")) {
+  if (relative === "src/auto-reply" || relative.startsWith("src/auto-reply/")) {
     return "autoReply";
   }
-  if (relative.startsWith("src/agents/")) {
+  if (relative === "src/agents" || relative.startsWith("src/agents/")) {
     return "agent";
   }
   if (relative.startsWith("src/plugins/")) {
     return "plugin";
+  }
+  if (relative.startsWith("ui/src/")) {
+    if (isControlUiE2eTarget(relative)) {
+      return "uiE2e";
+    }
+    if (isUnitUiTestTarget(relative)) {
+      return "unitUi";
+    }
+    return "ui";
   }
   if (relative.startsWith("src/utils/")) {
     return "utils";

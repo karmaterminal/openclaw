@@ -364,8 +364,6 @@ export const it: TranslationMap = {
     pending: "{count} in sospeso",
     allowOnce: "Consenti una volta",
     alwaysAllow: "Consenti sempre",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Nega",
     labels: {
       host: "Host",

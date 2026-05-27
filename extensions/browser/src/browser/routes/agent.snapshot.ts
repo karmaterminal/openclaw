@@ -546,20 +546,12 @@ export function registerBrowserAgentSnapshotRoutes(
         const tab = await profileCtx.ensureTabAvailable(targetId || undefined);
         const usesChromeMcp = getBrowserProfileCapabilities(profileCtx.profile).usesChromeMcp;
         const ssrfPolicyOpts = browserNavigationPolicyForProfile(ctx, profileCtx);
-        if ((plan.labels || plan.mode === "efficient") && plan.format === "aria") {
-          return jsonError(res, 400, "labels/mode=efficient require format=ai");
-        }
-        if (usesChromeMcp && (plan.selectorValue || plan.frameSelectorValue)) {
-          return jsonError(res, 400, EXISTING_SESSION_LIMITS.snapshot.snapshotSelector);
-        }
-        if (ssrfPolicyOpts.ssrfPolicy) {
+        let observedBrowserState: unknown;
+        if (!usesChromeMcp && pwModule) {
           await assertBrowserNavigationResultAllowed({
             url: tab.url,
             ...ssrfPolicyOpts,
           });
-        }
-        let observedBrowserState: unknown;
-        if (!usesChromeMcp && pwModule) {
           observedBrowserState = await pwModule
             .getObservedBrowserStateViaPlaywright({
               cdpUrl: profileCtx.profile.cdpUrl,
@@ -568,7 +560,19 @@ export function registerBrowserAgentSnapshotRoutes(
             })
             .catch(() => undefined);
         }
+        if ((plan.labels || plan.mode === "efficient") && plan.format === "aria") {
+          return jsonError(res, 400, "labels/mode=efficient require format=ai");
+        }
         if (usesChromeMcp) {
+          if (plan.selectorValue || plan.frameSelectorValue) {
+            return jsonError(res, 400, EXISTING_SESSION_LIMITS.snapshot.snapshotSelector);
+          }
+          if (ssrfPolicyOpts.ssrfPolicy) {
+            await assertBrowserNavigationResultAllowed({
+              url: tab.url,
+              ...ssrfPolicyOpts,
+            });
+          }
           const snapshot = await takeChromeMcpSnapshot({
             profileName: profileCtx.profile.name,
             profile: profileCtx.profile,

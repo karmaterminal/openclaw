@@ -2,29 +2,24 @@ import { normalizeChatType } from "../../channels/chat-type.js";
 import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { SessionSendPolicyDecision } from "../../sessions/send-policy.js";
-import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
-import { resolveCommandTurnContext, type CommandTurnContext } from "../command-turn-context.js";
-import { isExplicitCommandTurnContext } from "../command-turn-detection.js";
+import {
+  isExplicitCommandTurn,
+  resolveCommandTurnContext,
+  type CommandTurnContext,
+} from "../command-turn-context.js";
 import type { SourceReplyDeliveryMode } from "../get-reply-options.types.js";
 
 export type SourceReplyDeliveryModeContext = {
   ChatType?: string;
   InboundEventKind?: InboundEventKind;
-  Provider?: string;
-  Surface?: string;
-  ExplicitDeliverRoute?: boolean;
   CommandAuthorized?: boolean;
   CommandBody?: string;
   CommandSource?: "text" | "native";
   CommandTurn?: CommandTurnContext;
-  BotUsername?: string;
 };
 
-export function isExplicitSourceReplyCommand(
-  ctx: SourceReplyDeliveryModeContext,
-  cfg: OpenClawConfig,
-): boolean {
-  return isExplicitCommandTurnContext(ctx, cfg);
+export function isExplicitSourceReplyCommand(ctx: SourceReplyDeliveryModeContext): boolean {
+  return isExplicitCommandTurn(resolveCommandTurnContext(ctx));
 }
 
 function isUnauthorizedTextSlashCommand(ctx: SourceReplyDeliveryModeContext): boolean {
@@ -33,21 +28,6 @@ function isUnauthorizedTextSlashCommand(ctx: SourceReplyDeliveryModeContext): bo
     commandTurn.kind === "text-slash" &&
     !commandTurn.authorized &&
     (commandTurn.commandName !== undefined || commandTurn.body?.trim().startsWith("/") === true)
-  );
-}
-
-function isInternalRoomEvent(ctx: SourceReplyDeliveryModeContext): boolean {
-  return ctx.InboundEventKind === "room_event" && isInternalSourceReplyChannel(ctx);
-}
-
-export function isInternalSourceReplyChannel(ctx: SourceReplyDeliveryModeContext): boolean {
-  const providerChannel = normalizeMessageChannel(ctx.Provider);
-  const surfaceChannel = normalizeMessageChannel(ctx.Surface);
-  const currentSurface = providerChannel ?? surfaceChannel;
-  return (
-    currentSurface === INTERNAL_MESSAGE_CHANNEL &&
-    (surfaceChannel === INTERNAL_MESSAGE_CHANNEL || !surfaceChannel) &&
-    ctx.ExplicitDeliverRoute !== true
   );
 }
 
@@ -62,7 +42,7 @@ export function resolveSourceReplyDeliveryMode(params: {
   if (params.strictMessageToolOnly === true) {
     return "message_tool_only";
   }
-  if (params.ctx.InboundEventKind === "room_event" && !isInternalRoomEvent(params.ctx)) {
+  if (params.ctx.InboundEventKind === "room_event") {
     return "message_tool_only";
   }
   if (
@@ -71,7 +51,7 @@ export function resolveSourceReplyDeliveryMode(params: {
   ) {
     return params.requested;
   }
-  if (isExplicitSourceReplyCommand(params.ctx, params.cfg)) {
+  if (isExplicitSourceReplyCommand(params.ctx)) {
     return "automatic";
   }
   const chatType = normalizeChatType(params.ctx.ChatType);
@@ -87,9 +67,7 @@ export function resolveSourceReplyDeliveryMode(params: {
       params.cfg.messages?.groupChat?.visibleReplies ?? params.cfg.messages?.visibleReplies;
     mode = configuredMode === "message_tool" ? "message_tool_only" : "automatic";
   } else {
-    const configuredMode =
-      params.cfg.messages?.visibleReplies ??
-      (isInternalSourceReplyChannel(params.ctx) ? "automatic" : params.defaultVisibleReplies);
+    const configuredMode = params.cfg.messages?.visibleReplies ?? params.defaultVisibleReplies;
     mode = configuredMode === "message_tool" ? "message_tool_only" : "automatic";
   }
   if (mode === "message_tool_only" && params.messageToolAvailable === false) {

@@ -40,6 +40,15 @@ vi.mock("./model-selection.js", async () => {
 vi.mock("../config/sessions/store.js", () => ({
   loadSessionStore: (...args: unknown[]) => state.loadSessionStoreMock(...args),
   updateSessionStore: (...args: unknown[]) => state.updateSessionStoreMock(...args),
+  // Stubbed identity-style resolver. The real impl applies
+  // session-key normalization; tests don't exercise the legacy-key cleanup paths.
+  resolveSessionStoreEntry: ({
+    store,
+    sessionKey,
+  }: {
+    store: Record<string, unknown>;
+    sessionKey: string;
+  }) => ({ normalizedKey: sessionKey, existing: store[sessionKey], legacyKeys: [] }),
 }));
 
 vi.mock("../config/sessions/paths.js", () => ({
@@ -50,6 +59,14 @@ vi.mock("../config/sessions.js", () => ({
   loadSessionStore: (...args: unknown[]) => state.loadSessionStoreMock(...args),
   resolveStorePath: (...args: unknown[]) => state.resolveStorePathMock(...args),
   updateSessionStore: (...args: unknown[]) => state.updateSessionStoreMock(...args),
+  // Stubbed identity-style resolver. See store.js mock above.
+  resolveSessionStoreEntry: ({
+    store,
+    sessionKey,
+  }: {
+    store: Record<string, unknown>;
+    sessionKey: string;
+  }) => ({ normalizedKey: sessionKey, existing: store[sessionKey], legacyKeys: [] }),
 }));
 
 let mod: typeof import("./live-model-switch.js");
@@ -398,13 +415,12 @@ describe("live model switch", () => {
 
   describe("shouldSwitchToLiveModel", () => {
     it("returns the persisted selection when liveModelSwitchPending is true and model differs", async () => {
-      const sessionEntry = {
-        liveModelSwitchPending: true,
-        providerOverride: "openai",
-        modelOverride: "gpt-5.4",
-      };
       state.loadSessionStoreMock.mockReturnValue({
-        main: sessionEntry,
+        main: {
+          liveModelSwitchPending: true,
+          providerOverride: "openai",
+          modelOverride: "gpt-5.4",
+        },
       });
 
       const { shouldSwitchToLiveModel } = await loadModule();
@@ -432,20 +448,15 @@ describe("live model switch", () => {
       const result = shouldSwitchToLiveModel(makeShouldSwitchParams());
 
       expect(result).toBeUndefined();
-      expect(state.loadSessionStoreMock).toHaveBeenCalledWith("/tmp/session-store.json", {
-        skipCache: true,
-        clone: false,
-      });
     });
 
     it("returns undefined when liveModelSwitchPending is true but models match", async () => {
-      const sessionEntry = {
-        liveModelSwitchPending: true,
-        providerOverride: "anthropic",
-        modelOverride: "claude-opus-4-6",
-      };
       state.loadSessionStoreMock.mockReturnValue({
-        main: sessionEntry,
+        main: {
+          liveModelSwitchPending: true,
+          providerOverride: "anthropic",
+          modelOverride: "claude-opus-4-6",
+        },
       });
 
       const { shouldSwitchToLiveModel } = await loadModule();

@@ -19,7 +19,6 @@ import {
 } from "../../gateway/session-compaction-checkpoints.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
-import { generateSecureToken } from "../../infra/secure-random.js";
 import { listRegisteredPluginAgentPromptGuidance } from "../../plugins/command-registry-state.js";
 import { getCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
@@ -50,6 +49,7 @@ import {
   resolveChannelMessageToolHints,
   resolveChannelReactionGuidance,
 } from "../channel-tools.js";
+import { createCompactionDiagId } from "../compaction-attribution.js";
 import {
   hasMeaningfulConversationContent,
   isRealConversationMessage,
@@ -173,6 +173,7 @@ import type { EmbeddedPiCompactResult } from "./types.js";
 import { mapThinkingLevel, normalizeContextTokenBudget } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
 export type { CompactEmbeddedPiSessionParams } from "./compact.types.js";
+export type { CompactionMessageMetrics } from "./compact.types.js";
 
 function hasRealConversationContent(
   msg: AgentMessage,
@@ -180,10 +181,6 @@ function hasRealConversationContent(
   index: number,
 ): boolean {
   return isRealConversationMessage(msg, messages, index);
-}
-
-function createCompactionDiagId(): string {
-  return `cmp-${Date.now().toString(36)}-${generateSecureToken(4)}`;
 }
 
 function prepareCompactionSessionAgent(params: {
@@ -431,7 +428,6 @@ export async function compactEmbeddedPiSessionDirect(
   });
   const primaryProvider = resolvedCompactionTarget.provider ?? DEFAULT_PROVIDER;
   const primaryModel = resolvedCompactionTarget.model ?? DEFAULT_MODEL;
-  const requestedPrimaryProvider = params.provider?.trim() || DEFAULT_PROVIDER;
   const fallbacksOverride = resolveCompactionFallbacksOverride(params);
   const fallbackAgentId = resolveSessionAgentIds({
     sessionKey: params.sandboxSessionKey ?? params.sessionKey,
@@ -462,9 +458,7 @@ export async function compactEmbeddedPiSessionDirect(
       classifyResult: ({ result, provider, model }) =>
         classifyCompactionFallbackResult(result, provider, model),
       run: async (provider, model) => {
-        const preservesPrimaryAuth =
-          provider === primaryProvider || provider === requestedPrimaryProvider;
-        const authProfileId = preservesPrimaryAuth ? params.authProfileId : undefined;
+        const authProfileId = provider === primaryProvider ? params.authProfileId : undefined;
         return await compactEmbeddedPiSessionDirectOnce({
           ...params,
           provider,
@@ -502,7 +496,7 @@ async function compactEmbeddedPiSessionDirectOnce(
     defaultProvider: DEFAULT_PROVIDER,
     defaultModel: DEFAULT_MODEL,
   });
-  // Keep the configured provider for harness policy, while auth/model loading below can
+  // Keep the configured provider for context-window policy, while auth/model loading below can
   // route OpenAI compaction through Codex OAuth when that runtime owns the session credentials.
   const modelConfigProvider = resolvedCompactionTarget.provider ?? DEFAULT_PROVIDER;
   const modelId = resolvedCompactionTarget.model ?? DEFAULT_MODEL;
@@ -765,6 +759,7 @@ async function compactEmbeddedPiSessionDirectOnce(
       senderName: params.senderName,
       senderUsername: params.senderUsername,
       senderE164: params.senderE164,
+      senderIsOwner: params.senderIsOwner,
       allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
       agentDir,
       workspaceDir: effectiveWorkspace,
@@ -873,6 +868,7 @@ async function compactEmbeddedPiSessionDirectOnce(
             sessionId: params.sessionId,
             agentId: sessionAgentId,
             senderId: params.senderId,
+            senderIsOwner: params.senderIsOwner,
           }),
         )
       : undefined;
@@ -990,6 +986,7 @@ async function compactEmbeddedPiSessionDirectOnce(
           config: params.config,
           workspaceDir: effectiveWorkspace,
           context: {
+            systemPrompt: builtSystemPrompt,
             config: params.config,
             agentDir,
             workspaceDir: effectiveWorkspace,
@@ -999,7 +996,6 @@ async function compactEmbeddedPiSessionDirectOnce(
             runtimeChannel,
             runtimeCapabilities,
             agentId: sessionAgentId,
-            systemPrompt: builtSystemPrompt,
           },
         }),
       );

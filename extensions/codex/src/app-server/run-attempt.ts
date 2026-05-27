@@ -4315,14 +4315,9 @@ async function buildDynamicTools(input: DynamicToolBuildParams) {
         : undefined,
     modelApi: params.model.api,
     modelContextWindowTokens: params.model.contextWindow,
-    modelAuthMode: resolveModelAuthMode(
-      params.model.provider,
-      params.config,
-      params.toolAuthProfileStore ?? params.authProfileStore,
-      {
-        workspaceDir: input.effectiveWorkspace,
-      },
-    ),
+    modelAuthMode: resolveModelAuthMode(params.model.provider, params.config, undefined, {
+      workspaceDir: input.effectiveWorkspace,
+    }),
     suppressManagedWebSearch: false,
     currentChannelId: params.currentChannelId,
     hookChannelId: resolveCodexAppServerHookChannelId(params, input.sandboxSessionKey),
@@ -5841,27 +5836,6 @@ function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
-const CODEX_DELIVERY_HINT_LINES = [
-  "Delivery: to send a message, use the `message` tool.",
-  "Delivery: Final assistant text is not automatically delivered in this run. Use the `message` tool to send user-visible output.",
-] as const;
-
-function splitLeadingCodexDeliveryHint(prompt: string): {
-  deliveryHint?: string;
-  prompt: string;
-} {
-  const trimmedStart = prompt.trimStart();
-  const matchedHint = CODEX_DELIVERY_HINT_LINES.find((hint) => trimmedStart.startsWith(hint));
-  if (!matchedHint) {
-    return { prompt };
-  }
-  const remainder = trimmedStart
-    .slice(matchedHint.length)
-    .replace(/^\s*\n/, "")
-    .trimStart();
-  return { deliveryHint: matchedHint, prompt: remainder };
-}
-
 function buildCodexOpenClawPromptContext(params: {
   params: EmbeddedRunAttemptParams;
   skillsPrompt?: string;
@@ -5901,20 +5875,10 @@ function prependCodexOpenClawPromptContext(prompt: string, context: string | und
   if (!context?.trim()) {
     return prompt;
   }
-  const { deliveryHint, prompt: promptWithoutDeliveryHint } = splitLeadingCodexDeliveryHint(prompt);
-  const promptSection = promptWithoutDeliveryHint.startsWith(
-    "OpenClaw assembled context for this turn:",
-  )
-    ? promptWithoutDeliveryHint
-    : ["Current user request:", promptWithoutDeliveryHint].join("\n");
-  const deliverySection = deliveryHint
-    ? [
-        "OpenClaw delivery metadata:",
-        "This delivery metadata is runtime routing guidance, not the user's request.",
-        deliveryHint,
-      ].join("\n")
-    : undefined;
-  return [context.trim(), deliverySection, promptSection].filter(Boolean).join("\n\n");
+  const promptSection = prompt.startsWith("OpenClaw assembled context for this turn:")
+    ? prompt
+    : ["Current user request:", prompt].join("\n");
+  return [context.trim(), "", promptSection].join("\n");
 }
 
 function renderCodexWorkspaceBootstrapPromptContext(
