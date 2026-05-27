@@ -1540,6 +1540,7 @@ describe("session cost usage", () => {
         } finally {
           await fs.rm(lockPath, { force: true });
         }
+        await vi.advanceTimersByTimeAsync(50);
 
         await vi.waitFor(
           async () => {

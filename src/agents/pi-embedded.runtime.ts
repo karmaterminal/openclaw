@@ -4,7 +4,6 @@ export {
   isEmbeddedPiRunActive,
   isEmbeddedPiRunStreaming,
   resolveActiveEmbeddedRunSessionId,
-  resolveActiveEmbeddedRunSessionIdBySessionFile,
   runEmbeddedPiAgent,
   resolveEmbeddedSessionLane,
   waitForEmbeddedPiRunEnd,

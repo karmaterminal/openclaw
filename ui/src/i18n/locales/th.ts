@@ -360,8 +360,6 @@ export const th: TranslationMap = {
     pending: "{count} pending",
     allowOnce: "Allow once",
     alwaysAllow: "Always allow",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Deny",
     labels: {
       host: "Host",
@@ -1054,6 +1052,8 @@ export const th: TranslationMap = {
     settings: "การตั้งค่าแชท",
     thinkingToggle: "สลับการแสดงผลการคิด/การทำงานของผู้ช่วย",
     toolCallsToggle: "สลับการแสดงการเรียกใช้ tool และผลลัพธ์ของ tool",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "โหมดเลื่อนอัตโนมัติ",
     autoScrollAlways: "เสมอ",
     autoScrollNearBottom: "ใกล้ด้านล่าง",

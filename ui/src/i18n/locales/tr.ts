@@ -364,8 +364,6 @@ export const tr: TranslationMap = {
     pending: "{count} pending",
     allowOnce: "Allow once",
     alwaysAllow: "Always allow",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Deny",
     labels: {
       host: "Host",
@@ -1090,6 +1088,8 @@ export const tr: TranslationMap = {
     settings: "Sohbet ayarları",
     thinkingToggle: "Asistanın düşünme/çalışma çıktısını aç/kapat",
     toolCallsToggle: "Araç çağrılarını ve araç sonuçlarını aç/kapat",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Otomatik kaydırma modu",
     autoScrollAlways: "Her zaman",
     autoScrollNearBottom: "Alta yakın",

@@ -360,8 +360,6 @@ export const zh_CN: TranslationMap = {
     pending: "{count} 个待处理",
     allowOnce: "允许一次",
     alwaysAllow: "始终允许",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "拒绝",
     labels: {
       host: "主机",
@@ -1050,6 +1048,8 @@ export const zh_CN: TranslationMap = {
     settings: "聊天设置",
     thinkingToggle: "切换助手思考/工作输出",
     toolCallsToggle: "切换工具调用和工具结果",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "自动滚动模式",
     autoScrollAlways: "始终",
     autoScrollNearBottom: "接近底部",

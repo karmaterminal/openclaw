@@ -362,8 +362,6 @@ export const id: TranslationMap = {
     pending: "{count} pending",
     allowOnce: "Allow once",
     alwaysAllow: "Always allow",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Deny",
     labels: {
       host: "Host",
@@ -1084,6 +1082,8 @@ export const id: TranslationMap = {
     settings: "Pengaturan chat",
     thinkingToggle: "Alihkan output berpikir/bekerja asisten",
     toolCallsToggle: "Alihkan panggilan alat dan hasil alat",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Mode gulir otomatis",
     autoScrollAlways: "Selalu",
     autoScrollNearBottom: "Dekat bagian bawah",

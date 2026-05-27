@@ -1094,12 +1094,6 @@
         "url": "https://github.com/sponsors/sindresorhus"
       }
     },
-    "node_modules/p-queue/node_modules/eventemitter3": {
-      "version": "4.0.7",
-      "resolved": "https://registry.npmjs.org/eventemitter3/-/eventemitter3-4.0.7.tgz",
-      "integrity": "sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==",
-      "license": "MIT"
-    },
     "node_modules/p-retry": {
       "version": "4.6.2",
       "resolved": "https://registry.npmjs.org/p-retry/-/p-retry-4.6.2.tgz",

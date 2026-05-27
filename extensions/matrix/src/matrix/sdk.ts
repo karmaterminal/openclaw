@@ -1513,7 +1513,9 @@ export class MatrixClient {
       };
     } catch (err) {
       this.recoveryKeyStore.discardStagedRecoveryKey();
-      return await fail(formatMatrixErrorMessage(err));
+      return await fail(formatMatrixErrorMessage(err), {
+        backupUsable: backupUsableBeforeStagedRecovery,
+      });
     }
   }
 
