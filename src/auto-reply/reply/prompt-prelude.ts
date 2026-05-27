@@ -133,14 +133,10 @@ function resolveRoomEventBody(params: ReplyPromptEnvelopeBaseParams): string {
 
 function buildRoomEventContext(params: ReplyPromptEnvelopeBaseParams): string {
   const roomEventBody = resolveRoomEventBody(params);
-  const visibleReplyContract =
-    params.sourceReplyDeliveryMode === "message_tool_only"
-      ? `visible_reply_contract: ${ROOM_EVENT_SOURCE_REPLY_DELIVERY_MODE}`
-      : undefined;
   return [
     "[OpenClaw room event]",
     "inbound_event_kind: room_event",
-    visibleReplyContract,
+    `visible_reply_contract: ${ROOM_EVENT_SOURCE_REPLY_DELIVERY_MODE}`,
     params.inboundUserContext.trim() ? `Room context:\n${params.inboundUserContext.trim()}` : "",
     `Current event:\n${formatRoomEventLine(params.sessionCtx, roomEventBody)}`,
     "Treat this as observed room activity. Decide whether to act.",

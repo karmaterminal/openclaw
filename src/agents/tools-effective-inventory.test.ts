@@ -878,4 +878,36 @@ describe("resolveEffectiveToolInventory", () => {
     });
     expect(createToolsOptions?.modelApi).toBe("openai-completions");
   });
+
+  it("threads requestCompactionOpts when continuation.enabled is true", async () => {
+    const createToolsMock = vi.fn<typeof createOpenClawCodingTools>(() => [
+      mockTool({ name: "exec", label: "Exec", description: "Run shell commands" }),
+    ]);
+    const { resolveEffectiveToolInventory } = await loadHarness({ createToolsMock });
+
+    resolveEffectiveToolInventory({
+      cfg: { agents: { defaults: { continuation: { enabled: true } } } },
+    });
+
+    expect(createToolsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestCompactionOpts: expect.objectContaining({
+          getContextUsage: expect.any(Function),
+          triggerCompaction: expect.any(Function),
+        }),
+      }),
+    );
+  });
+
+  it("omits requestCompactionOpts when continuation.enabled is not true", async () => {
+    const createToolsMock = vi.fn<typeof createOpenClawCodingTools>(() => [
+      mockTool({ name: "exec", label: "Exec", description: "Run shell commands" }),
+    ]);
+    const { resolveEffectiveToolInventory } = await loadHarness({ createToolsMock });
+
+    resolveEffectiveToolInventory({ cfg: {} });
+
+    const passed = createToolsMock.mock.calls[0]?.[0];
+    expect(passed?.requestCompactionOpts).toBeUndefined();
+  });
 });
