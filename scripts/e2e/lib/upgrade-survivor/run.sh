@@ -39,7 +39,6 @@ CANDIDATE_SPEC="${OPENCLAW_UPGRADE_SURVIVOR_CANDIDATE_SPEC:-${OPENCLAW_CURRENT_P
 SCENARIO="${OPENCLAW_UPGRADE_SURVIVOR_SCENARIO:-base}"
 UPDATE_RESTART_MODE="${OPENCLAW_UPGRADE_SURVIVOR_UPDATE_RESTART_MODE:-manual}"
 ROOT_MANAGED_VPS="${OPENCLAW_UPGRADE_SURVIVOR_ROOT_MANAGED_VPS:-0}"
-COMMAND_TIMEOUT="${OPENCLAW_UPGRADE_SURVIVOR_COMMAND_TIMEOUT:-900s}"
 CURRENT_PHASE="setup"
 FAILURE_PHASE=""
 FAILURE_MESSAGE=""
@@ -669,7 +668,7 @@ install_baseline() {
   fi
   baseline_version="$installed_version"
   local version_output
-  if ! version_output="$(openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw --version 2>&1)"; then
+  if ! version_output="$(openclaw --version 2>&1)"; then
     echo "baseline openclaw --version failed" >&2
     echo "$version_output" >&2
     return 1
@@ -704,7 +703,7 @@ apply_baseline_config_recipe() {
 }
 
 validate_baseline_config() {
-  if ! openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw config validate >"$BASELINE_CONFIG_VALIDATE_LOG" 2>&1; then
+  if ! openclaw config validate >"$BASELINE_CONFIG_VALIDATE_LOG" 2>&1; then
     echo "generated baseline config failed baseline validation" >&2
     cat "$BASELINE_CONFIG_VALIDATE_LOG" >&2 || true
     return 1
@@ -854,7 +853,7 @@ SHIM
 }
 
 install_update_restart_service_unit() {
-  if ! openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" env -u OPENCLAW_GATEWAY_TOKEN -u OPENCLAW_GATEWAY_PASSWORD openclaw gateway install --force --json >"$BASELINE_SERVICE_INSTALL_JSON" 2>"$BASELINE_SERVICE_INSTALL_ERR"; then
+  if ! env -u OPENCLAW_GATEWAY_TOKEN -u OPENCLAW_GATEWAY_PASSWORD openclaw gateway install --force --json >"$BASELINE_SERVICE_INSTALL_JSON" 2>"$BASELINE_SERVICE_INSTALL_ERR"; then
     echo "baseline gateway service install failed" >&2
     cat "$BASELINE_SERVICE_INSTALL_ERR" >&2 || true
     cat "$BASELINE_SERVICE_INSTALL_JSON" >&2 || true
@@ -1102,7 +1101,7 @@ update_candidate() {
   if [ "$ROOT_MANAGED_VPS" != "1" ]; then
     update_env+=(OPENCLAW_ALLOW_ROOT=1)
   fi
-  if ! openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" "${update_env[@]}" openclaw "${update_args[@]}" >"$UPDATE_JSON" 2>"$UPDATE_ERR"; then
+  if ! "${update_env[@]}" openclaw "${update_args[@]}" >"$UPDATE_JSON" 2>"$UPDATE_ERR"; then
     echo "openclaw update failed" >&2
     cat "$UPDATE_ERR" >&2 || true
     cat "$UPDATE_JSON" >&2 || true
@@ -1126,12 +1125,12 @@ assert_root_managed_vps_cli_usable() {
     -u OPENCLAW_GATEWAY_PASSWORD
     -u OPENCLAW_ALLOW_ROOT
   )
-  openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" "${root_cli_env[@]}" openclaw config file >"$ARTIFACT_ROOT/root-vps-config-file.out" 2>"$ARTIFACT_ROOT/root-vps-config-file.err"
-  openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" "${root_cli_env[@]}" openclaw plugins >"$ARTIFACT_ROOT/root-vps-plugins.out" 2>"$ARTIFACT_ROOT/root-vps-plugins.err"
+  "${root_cli_env[@]}" openclaw config file >"$ARTIFACT_ROOT/root-vps-config-file.out" 2>"$ARTIFACT_ROOT/root-vps-config-file.err"
+  "${root_cli_env[@]}" openclaw plugins >"$ARTIFACT_ROOT/root-vps-plugins.out" 2>"$ARTIFACT_ROOT/root-vps-plugins.err"
 }
 
 run_doctor() {
-  if ! openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw doctor --fix --non-interactive >"$DOCTOR_LOG" 2>&1; then
+  if ! openclaw doctor --fix --non-interactive >"$DOCTOR_LOG" 2>&1; then
     echo "openclaw doctor failed" >&2
     cat "$DOCTOR_LOG" >&2 || true
     return 1
@@ -1139,7 +1138,7 @@ run_doctor() {
 }
 
 validate_post_doctor_config() {
-  if ! openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw config validate >>"$DOCTOR_LOG" 2>&1; then
+  if ! openclaw config validate >>"$DOCTOR_LOG" 2>&1; then
     echo "post-doctor config validation failed" >&2
     cat "$DOCTOR_LOG" >&2 || true
     return 1
@@ -1218,7 +1217,7 @@ check_gateway_status() {
   local status_start
   local status_end
   status_start="$(node -e "process.stdout.write(String(Date.now()))")"
-  if ! openclaw_e2e_maybe_timeout "$COMMAND_TIMEOUT" openclaw gateway status --url "ws://127.0.0.1:$port" --token "$GATEWAY_AUTH_TOKEN_REF" --require-rpc --timeout 30000 --json >"$STATUS_JSON" 2>"$STATUS_ERR"; then
+  if ! openclaw gateway status --url "ws://127.0.0.1:$port" --token "$GATEWAY_AUTH_TOKEN_REF" --require-rpc --timeout 30000 --json >"$STATUS_JSON" 2>"$STATUS_ERR"; then
     echo "gateway status failed" >&2
     cat "$STATUS_ERR" >&2 || true
     cat "$GATEWAY_LOG" >&2 || true

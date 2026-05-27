@@ -1,4 +1,3 @@
-import path from "node:path";
 import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { resolvePathFromInput } from "../agents/path-policy.js";
 import { resolveGroupToolPolicy } from "../agents/pi-tools.policy.js";
@@ -81,23 +80,6 @@ export function createAgentScopedHostMediaReadFile(
   };
 }
 
-function appendWorkspaceDirToLocalRoots(
-  roots: readonly string[] | undefined,
-  workspaceDir?: string,
-): readonly string[] | undefined {
-  if (!workspaceDir) {
-    return roots;
-  }
-  const resolvedWorkspaceDir = path.resolve(workspaceDir);
-  if (!roots?.length) {
-    return [resolvedWorkspaceDir];
-  }
-  if (roots.some((root) => path.resolve(root) === resolvedWorkspaceDir)) {
-    return roots;
-  }
-  return [...roots, resolvedWorkspaceDir];
-}
-
 export function resolveAgentScopedOutboundMediaAccess(
   params: {
     cfg: OpenClawConfig;
@@ -108,12 +90,8 @@ export function resolveAgentScopedOutboundMediaAccess(
     mediaReadFile?: OutboundMediaReadFile;
   } & OutboundHostMediaPolicyContext,
 ): OutboundMediaAccess {
-  const resolvedWorkspaceDir =
-    params.workspaceDir ??
-    params.mediaAccess?.workspaceDir ??
-    (params.agentId ? resolveAgentWorkspaceDir(params.cfg, params.agentId) : undefined);
   const hostMediaReadAllowed = isAgentScopedHostMediaReadAllowed(params);
-  const baseLocalRoots =
+  const localRoots =
     params.mediaAccess?.localRoots ??
     (hostMediaReadAllowed
       ? getAgentScopedMediaLocalRootsForSources({
@@ -122,7 +100,10 @@ export function resolveAgentScopedOutboundMediaAccess(
           mediaSources: params.mediaSources,
         })
       : getAgentScopedMediaLocalRoots(params.cfg, params.agentId));
-  const localRoots = appendWorkspaceDirToLocalRoots(baseLocalRoots, resolvedWorkspaceDir);
+  const resolvedWorkspaceDir =
+    params.workspaceDir ??
+    params.mediaAccess?.workspaceDir ??
+    (params.agentId ? resolveAgentWorkspaceDir(params.cfg, params.agentId) : undefined);
   const readFile =
     params.mediaAccess?.readFile ??
     params.mediaReadFile ??

@@ -22,16 +22,17 @@
     "activity.title",
     "activity.toolCallId",
     "activity.visibleCount",
-    "execApproval.allowAlwaysUnavailable",
+    "chat.error",
+    "chat.toolReturnedError",
     "subtitles.activity",
     "tabs.activity"
   ],
-  "generatedAt": "2026-05-27T02:52:45.045Z",
+  "generatedAt": "2026-05-27T14:13:09.594Z",
   "locale": "de",
   "model": "claude-opus-4-7",
   "provider": "anthropic",
-  "sourceHash": "24e6aff2cfb534faf3b6a9c96ccafee1470519c2f4498c07841072435a0565ea",
-  "totalKeys": 1155,
+  "sourceHash": "99e07a16330702a7a9fe6f5474d928dd8bd7a90217c750d7ebfcd4e178aa75a7",
+  "totalKeys": 1156,
   "translatedKeys": 1130,
   "workflow": 1
 }

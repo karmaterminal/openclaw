@@ -154,10 +154,112 @@ function readPnpmLockVersionOverrides() {
   if (versionsByName.size === 0) {
     throw new Error("pnpm-lock.yaml is missing package resolution data.");
   }
-  return Object.fromEntries(
+  const globalOverrides = Object.fromEntries(
     [...versionsByName.entries()]
       .map(([name, versions]) => [name, pnpmLockOverrideVersionForVersions(versions)])
       .filter(([, version]) => version !== null)
+      .toSorted(([left], [right]) => left.localeCompare(right)),
+  );
+  const dependencyOverrides = collectPnpmLockDependencyOverrides(lockfile, versionsByName);
+  for (const [name, nested] of Object.entries(dependencyOverrides)) {
+    if (globalOverrides[name] !== undefined) {
+      dependencyOverrides[name] = { ".": globalOverrides[name], ...nested };
+      delete globalOverrides[name];
+    }
+  }
+  return {
+    ...globalOverrides,
+    ...dependencyOverrides,
+  };
+}
+
+function collectPnpmLockDependencyOverrides(
+  lockfile,
+  versionsByName = collectPnpmLockPackageVersions(lockfile),
+) {
+  const snapshots = lockfile?.snapshots;
+  if (!snapshots || typeof snapshots !== "object" || Array.isArray(snapshots)) {
+    return {};
+  }
+  const grouped = new Map();
+  for (const [packageKey, metadata] of Object.entries(snapshots)) {
+    const parent = parsePnpmPackageKey(packageKey);
+    if (!parent || !metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      continue;
+    }
+    const dependencies = {
+      ...(metadata.dependencies && typeof metadata.dependencies === "object"
+        ? metadata.dependencies
+        : {}),
+      ...(metadata.optionalDependencies && typeof metadata.optionalDependencies === "object"
+        ? metadata.optionalDependencies
+        : {}),
+    };
+    for (const [dependencyName, dependencySpec] of Object.entries(dependencies)) {
+      const dependencyVersion = exactVersionFromOverrideSpec(
+        String(dependencySpec).replace(/\(.*/u, ""),
+      );
+      if (!dependencyVersion) {
+        continue;
+      }
+      const lockedVersions = versionsByName.get(dependencyName);
+      if (!lockedVersions || pnpmLockOverrideVersionForVersions(lockedVersions) !== null) {
+        continue;
+      }
+      const byDependency = grouped.get(parent.name) ?? new Map();
+      const byVersion = byDependency.get(dependencyName) ?? new Map();
+      const parentVersions = byVersion.get(dependencyVersion) ?? new Set();
+      parentVersions.add(parent.version);
+      byVersion.set(dependencyVersion, parentVersions);
+      byDependency.set(dependencyName, byVersion);
+      grouped.set(parent.name, byDependency);
+    }
+  }
+  const overrides = new Map();
+  for (const [parentName, byDependency] of grouped) {
+    const unversioned = {};
+    for (const [dependencyName, byVersion] of byDependency) {
+      if (byVersion.size === 1) {
+        unversioned[dependencyName] = [...byVersion.keys()][0];
+        continue;
+      }
+      const versionCountsByParentVersion = new Map();
+      for (const parentVersions of byVersion.values()) {
+        for (const parentVersion of parentVersions) {
+          versionCountsByParentVersion.set(
+            parentVersion,
+            (versionCountsByParentVersion.get(parentVersion) ?? 0) + 1,
+          );
+        }
+      }
+      for (const [dependencyVersion, parentVersions] of byVersion) {
+        for (const parentVersion of parentVersions) {
+          if ((versionCountsByParentVersion.get(parentVersion) ?? 0) > 1) {
+            continue;
+          }
+          const parentKey = `${parentName}@${parentVersion}`;
+          const parentOverrides = overrides.get(parentKey) ?? {};
+          parentOverrides[dependencyName] = dependencyVersion;
+          overrides.set(parentKey, parentOverrides);
+        }
+      }
+    }
+    if (Object.keys(unversioned).length > 0) {
+      const parentOverrides = overrides.get(parentName) ?? {};
+      for (const [dependencyName, dependencyVersion] of Object.entries(unversioned)) {
+        parentOverrides[dependencyName] = dependencyVersion;
+      }
+      overrides.set(parentName, parentOverrides);
+    }
+  }
+  return Object.fromEntries(
+    [...overrides.entries()]
+      .map(([parentKey, nested]) => [
+        parentKey,
+        Object.fromEntries(
+          Object.entries(nested).toSorted(([left], [right]) => left.localeCompare(right)),
+        ),
+      ])
       .toSorted(([left], [right]) => left.localeCompare(right)),
   );
 }
@@ -174,6 +276,25 @@ function mergeOverrides(packageOverrides, workspaceOverrides, pnpmLockOverrides)
   ]) {
     const current = merged[name];
     if (current !== undefined && JSON.stringify(current) !== JSON.stringify(spec)) {
+      if (
+        typeof current === "string" &&
+        spec &&
+        typeof spec === "object" &&
+        !Array.isArray(spec) &&
+        spec["."] === current
+      ) {
+        merged[name] = spec;
+        continue;
+      }
+      if (
+        current &&
+        typeof current === "object" &&
+        !Array.isArray(current) &&
+        typeof spec === "string" &&
+        current["."] === spec
+      ) {
+        continue;
+      }
       throw new Error(`package.json overrides.${name} conflicts with pnpm lock policy for ${name}`);
     }
     merged[name] = spec;
@@ -860,6 +981,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 export {
   collectCurrentShrinkwrapOverrides,
   collectOverrideViolations,
+  collectPnpmLockDependencyOverrides,
   collectPnpmLockViolations,
   disableShrinkwrappedOverrideConflictSources,
   exactOverrideRulesFromOverrides,

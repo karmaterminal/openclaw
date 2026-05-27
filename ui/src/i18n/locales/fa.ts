@@ -363,8 +363,6 @@ export const fa: TranslationMap = {
     pending: "{count} در انتظار",
     allowOnce: "یک‌بار مجاز کن",
     alwaysAllow: "همیشه مجاز کن",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "رد کردن",
     labels: {
       host: "میزبان",
@@ -1086,6 +1084,8 @@ export const fa: TranslationMap = {
     settings: "تنظیمات چت",
     thinkingToggle: "تغییر وضعیت خروجی فکر/کار دستیار",
     toolCallsToggle: "تغییر وضعیت نمایش فراخوانی‌های ابزار و نتایج ابزار",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "حالت پیمایش خودکار",
     autoScrollAlways: "همیشه",
     autoScrollNearBottom: "نزدیک پایین",

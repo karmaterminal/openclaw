@@ -363,8 +363,6 @@ export const uk: TranslationMap = {
     pending: "{count} pending",
     allowOnce: "Allow once",
     alwaysAllow: "Always allow",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Deny",
     labels: {
       host: "Host",
@@ -1087,6 +1085,8 @@ export const uk: TranslationMap = {
     settings: "Налаштування чату",
     thinkingToggle: "Перемкнути показ мислення/роботи асистента",
     toolCallsToggle: "Перемкнути виклики інструментів і результати інструментів",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Режим автопрокручування",
     autoScrollAlways: "Завжди",
     autoScrollNearBottom: "Біля низу",

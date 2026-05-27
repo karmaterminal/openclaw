@@ -2345,21 +2345,18 @@ describe("runCodexAppServerAttempt", () => {
       testing.buildDeveloperInstructions(params, {
         dynamicTools: [createMessageDynamicTool("Message test tool")],
       }),
-    ).toContain("Visible source replies are not automatically delivered for this run.");
+    ).toContain("To send a visible message, use the `message` tool.");
 
     const withoutMessageToolInstructions = testing.buildDeveloperInstructions(params, {
       dynamicTools: [],
     });
-    expect(withoutMessageToolInstructions).toContain(
-      "reply normally in your final assistant message",
-    );
-    expect(withoutMessageToolInstructions).not.toContain("message(action=send)");
-    expect(withoutMessageToolInstructions).not.toContain("Use `message`");
+    expect(withoutMessageToolInstructions).toContain("active Codex delivery path");
+    expect(withoutMessageToolInstructions).not.toContain("use the `message` tool");
 
     params.sourceReplyDeliveryMode = "automatic";
     const automaticInstructions = testing.buildDeveloperInstructions(params);
-    expect(automaticInstructions).toContain("reply normally in your final assistant message");
-    expect(automaticInstructions).not.toContain("message(action=send)");
+    expect(automaticInstructions).toContain("active Codex delivery path");
+    expect(automaticInstructions).not.toContain("use the `message` tool");
   });
 
   it("includes Codex app-server scoped plugin command guidance in developer instructions", () => {
@@ -2445,36 +2442,6 @@ describe("runCodexAppServerAttempt", () => {
     expect(result.systemPromptReport?.skills.entries).toEqual([
       { name: "demo", blockChars: "<skill><name>demo</name></skill>".length },
     ]);
-  });
-
-  it("keeps leading delivery hints out of the Codex current user request", async () => {
-    const sessionFile = path.join(tempDir, "session-delivery-hint.jsonl");
-    const workspaceDir = path.join(tempDir, "workspace-delivery-hint");
-    const harness = createStartedThreadHarness();
-    const params = createParams(sessionFile, workspaceDir);
-    params.prompt = "Delivery: to send a message, use the `message` tool.\n\nhello";
-    params.skillsSnapshot = {
-      prompt: "<available_skills><skill><name>demo</name></skill></available_skills>",
-      skills: [],
-    };
-
-    const run = runCodexAppServerAttempt(params);
-    await harness.waitForMethod("turn/start");
-    await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
-    await run;
-
-    const turnStart = harness.requests.find((request) => request.method === "turn/start");
-    const turnStartParams = turnStart?.params as {
-      input?: Array<{ text?: string }>;
-    };
-    const inputText = turnStartParams.input?.[0]?.text ?? "";
-    expect(inputText).toContain("OpenClaw delivery metadata:");
-    expect(inputText).toContain(
-      "This delivery metadata is runtime routing guidance, not the user's request.",
-    );
-    expect(inputText).toContain("Delivery: to send a message, use the `message` tool.");
-    expect(inputText).toContain("Current user request:\nhello");
-    expect(inputText).not.toContain("Current user request:\nDelivery:");
   });
 
   it("mirrors the Codex prompt into the transcript when the turn starts", async () => {
@@ -6625,7 +6592,7 @@ describe("runCodexAppServerAttempt", () => {
     sessionManager.appendMessage(
       assistantMessage("David Ondrej was mentioned in that prior thread", bindingUpdatedAt + 2_000),
     );
-    const harness = createResumeHarness();
+    const harness = createStartedThreadHarness();
     const params = createParams(sessionFile, workspaceDir);
     params.prompt = "is the previous message trustworthy?";
 
@@ -8667,12 +8634,8 @@ describe("runCodexAppServerAttempt", () => {
     );
     await waitForMethod("turn/start");
 
-    expect(
-      queueActiveRunMessageForTest("session-1", "first", { debounceMs: 5, steeringMode: "all" }),
-    ).toBe(true);
-    expect(
-      queueActiveRunMessageForTest("session-1", "second", { debounceMs: 5, steeringMode: "all" }),
-    ).toBe(true);
+    expect(queueActiveRunMessageForTest("session-1", "first", { steeringMode: "all" })).toBe(true);
+    expect(queueActiveRunMessageForTest("session-1", "second", { steeringMode: "all" })).toBe(true);
 
     await vi.waitFor(
       () =>

@@ -6,7 +6,6 @@ import {
   type ActiveProcessSessionReference,
 } from "../bash-process-references.js";
 import type { ExecElevatedDefaults } from "../bash-tools.js";
-import { resolveSelectedOpenAIPiRuntimeProvider } from "../openai-codex-routing.js";
 import type { SkillSnapshot } from "../skills.js";
 
 export type EmbeddedCompactionRuntimeContext = {
@@ -25,7 +24,6 @@ export type EmbeddedCompactionRuntimeContext = {
   senderIsOwner?: boolean;
   senderId?: string;
   provider?: string;
-  runtimeProvider?: string;
   model?: string;
   modelFallbacksOverride?: string[];
   thinkLevel?: ThinkLevel;
@@ -48,37 +46,15 @@ export function resolveEmbeddedCompactionTarget(params: {
   authProfileId?: string | null;
   defaultProvider?: string;
   defaultModel?: string;
-}): {
-  provider: string | undefined;
-  runtimeProvider?: string;
-  model: string | undefined;
-  authProfileId: string | undefined;
-} {
+}): { provider: string | undefined; model: string | undefined; authProfileId: string | undefined } {
   const provider = params.provider?.trim() || params.defaultProvider;
   const model = params.modelId?.trim() || params.defaultModel;
   const override = params.config?.agents?.defaults?.compaction?.model?.trim();
-  const resolveRuntimeProvider = (
-    targetProvider: string | undefined,
-    authProfileId: string | undefined,
-  ) => {
-    if (!targetProvider) {
-      return undefined;
-    }
-    const runtimeProvider = resolveSelectedOpenAIPiRuntimeProvider({
-      provider: targetProvider,
-      harnessRuntime: "pi",
-      authProfileId,
-      config: params.config,
-    });
-    return runtimeProvider === targetProvider ? undefined : runtimeProvider;
-  };
   if (!override) {
-    const authProfileId = params.authProfileId ?? undefined;
     return {
       provider,
-      runtimeProvider: resolveRuntimeProvider(provider, authProfileId),
       model,
-      authProfileId,
+      authProfileId: params.authProfileId ?? undefined,
     };
   }
   const slashIdx = override.indexOf("/");
@@ -91,19 +67,12 @@ export function resolveEmbeddedCompactionTarget(params: {
       overrideProvider !== (params.provider ?? "")?.trim()
         ? undefined
         : (params.authProfileId ?? undefined);
-    return {
-      provider: overrideProvider,
-      runtimeProvider: resolveRuntimeProvider(overrideProvider, authProfileId),
-      model: overrideModel,
-      authProfileId,
-    };
+    return { provider: overrideProvider, model: overrideModel, authProfileId };
   }
-  const authProfileId = params.authProfileId ?? undefined;
   return {
     provider,
-    runtimeProvider: resolveRuntimeProvider(provider, authProfileId),
     model: override,
-    authProfileId,
+    authProfileId: params.authProfileId ?? undefined,
   };
 }
 
@@ -161,7 +130,6 @@ export function buildEmbeddedCompactionRuntimeContext(params: {
     senderIsOwner: params.senderIsOwner,
     senderId: params.senderId ?? undefined,
     provider: resolved.provider,
-    runtimeProvider: resolved.runtimeProvider,
     model: resolved.model,
     modelFallbacksOverride: params.modelFallbacksOverride,
     thinkLevel: params.thinkLevel,
