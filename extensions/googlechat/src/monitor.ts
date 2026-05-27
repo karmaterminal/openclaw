@@ -279,7 +279,6 @@ async function processMessageWithPipeline(params: {
     body: rawBody,
   });
 
-  const replyThreadName = isGroup ? message.thread?.name : undefined;
   const ctxPayload = core.channel.turn.buildContext({
     channel: "googlechat",
     accountId: route.accountId,
@@ -309,8 +308,8 @@ async function processMessageWithPipeline(params: {
     reply: {
       to: `googlechat:${spaceId}`,
       originatingTo: `googlechat:${spaceId}`,
-      replyToId: replyThreadName,
-      replyToIdFull: replyThreadName,
+      replyToId: message.thread?.name,
+      replyToIdFull: message.thread?.name,
     },
     message: {
       body,
@@ -365,7 +364,7 @@ async function processMessageWithPipeline(params: {
         account,
         space: spaceId,
         text: `_${botName} is typing..._`,
-        thread: replyThreadName,
+        thread: message.thread?.name,
       });
       typingMessageName = result?.messageName;
     } catch (err) {

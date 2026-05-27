@@ -202,11 +202,6 @@ export const forcedUnitFastTestFiles = [
 ];
 const forcedUnitFastTestFileSet = new Set(forcedUnitFastTestFiles);
 const unitFastCandidateExactFiles = [...pluginSdkLightTestFiles, ...commandsLightTestFiles];
-const unitFastCandidateExactFileSet = new Set(unitFastCandidateExactFiles);
-const unitFastSourceExactFileSet = new Set([
-  ...pluginSdkLightSourceFiles,
-  ...commandsLightSourceFiles,
-]);
 const broadUnitFastCandidateGlobs = [
   "src/**/*.test.ts",
   "packages/**/*.test.ts",
@@ -287,15 +282,6 @@ const disqualifyingPatterns = [
 
 function matchesAnyGlob(file, patterns) {
   return patterns.some((pattern) => path.matchesGlob(file, pattern));
-}
-
-function isUnitFastCandidateFile(file) {
-  return (
-    forcedUnitFastTestFileSet.has(file) ||
-    unitFastCandidateExactFileSet.has(file) ||
-    (matchesAnyGlob(file, unitFastCandidateGlobs) &&
-      !matchesAnyGlob(file, broadUnitFastCandidateSkipGlobs))
-  );
 }
 
 function walkFiles(directory, files = []) {
@@ -425,7 +411,7 @@ export function collectUnitFastTestFileAnalysis(cwd = process.cwd(), options = {
 
 let cachedUnitFastTestFiles = null;
 let cachedUnitFastTestFileSet = null;
-const cachedSingleUnitFastTestFileResults = new Map();
+let cachedSourceToUnitFastTestFile = null;
 
 export function getUnitFastTestFiles() {
   if (cachedUnitFastTestFiles !== null) {
@@ -445,31 +431,18 @@ function getUnitFastTestFileSet() {
   return cachedUnitFastTestFileSet;
 }
 
-function isUnitFastTestFileOnDemand(file, cwd = process.cwd()) {
-  const normalized = normalizeRepoPath(file);
-  const cacheKey = `${normalizeRepoPath(cwd)}\0${normalized}`;
-  if (cachedSingleUnitFastTestFileResults.has(cacheKey)) {
-    return cachedSingleUnitFastTestFileResults.get(cacheKey);
+function getSourceToUnitFastTestFile() {
+  if (cachedSourceToUnitFastTestFile !== null) {
+    return cachedSourceToUnitFastTestFile;
   }
-
-  if (!isUnitFastCandidateFile(normalized)) {
-    cachedSingleUnitFastTestFileResults.set(cacheKey, false);
-    return false;
-  }
-
-  let source = "";
-  try {
-    source = fs.readFileSync(path.join(cwd, normalized), "utf8");
-  } catch {
-    cachedSingleUnitFastTestFileResults.set(cacheKey, false);
-    return false;
-  }
-
-  const result =
-    forcedUnitFastTestFileSet.has(normalized) ||
-    classifyUnitFastTestFileContent(source).length === 0;
-  cachedSingleUnitFastTestFileResults.set(cacheKey, result);
-  return result;
+  const unitFastTestFileSet = getUnitFastTestFileSet();
+  cachedSourceToUnitFastTestFile = new Map(
+    [...pluginSdkLightSourceFiles, ...commandsLightSourceFiles].flatMap((sourceFile) => {
+      const testFile = sourceFile.replace(/\.ts$/u, ".test.ts");
+      return unitFastTestFileSet.has(testFile) ? [[sourceFile, testFile]] : [];
+    }),
+  );
+  return cachedSourceToUnitFastTestFile;
 }
 
 export function isUnitFastTestFile(file) {
@@ -478,16 +451,13 @@ export function isUnitFastTestFile(file) {
 
 export function resolveUnitFastTestIncludePattern(file) {
   const normalized = normalizeRepoPath(file);
-  if (isUnitFastTestFileOnDemand(normalized)) {
+  const unitFastTestFileSet = getUnitFastTestFileSet();
+  if (unitFastTestFileSet.has(normalized)) {
     return normalized;
   }
   const siblingTestFile = normalized.replace(/\.ts$/u, ".test.ts");
-  if (isUnitFastTestFileOnDemand(siblingTestFile)) {
+  if (unitFastTestFileSet.has(siblingTestFile)) {
     return siblingTestFile;
   }
-  if (unitFastSourceExactFileSet.has(normalized)) {
-    const exactTestFile = normalized.replace(/\.ts$/u, ".test.ts");
-    return isUnitFastTestFileOnDemand(exactTestFile) ? exactTestFile : null;
-  }
-  return null;
+  return getSourceToUnitFastTestFile().get(normalized) ?? null;
 }

@@ -84,7 +84,6 @@ import { buildReplyPromptEnvelope, buildReplyPromptEnvelopeBase } from "./prompt
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import { resolveQueueSettings } from "./queue/settings-runtime.js";
 import {
-  REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS,
   abortReplyRunBySessionId,
   isReplyRunActiveForSessionId,
   isReplyRunStreamingForSessionId,
@@ -96,8 +95,7 @@ import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
 import { resolveBareSessionResetPromptState } from "./session-reset-prompt.js";
 import { resolveBareResetBootstrapFileAccess } from "./session-reset-prompt.js";
-import { drainFormattedSystemEvents } from "./session-system-events.js";
-import { isInternalSourceReplyChannel } from "./source-reply-delivery-mode.js";
+import { drainFormattedSystemEventBlock } from "./session-system-events.js";
 import { buildSessionStartupContextPrelude, shouldApplyStartupContext } from "./startup-context.js";
 import { resolveTypingMode } from "./typing-mode.js";
 import { resolveRunTypingPolicy } from "./typing-policy.js";
@@ -486,13 +484,6 @@ export async function runPreparedReply(
     isHeartbeat,
   });
   const inboundEventKind = promptSessionCtx.InboundEventKind;
-  const isInternalPromptChannel = isInternalSourceReplyChannel(promptSessionCtx);
-  const sourceReplyDeliveryMode =
-    inboundEventKind === "room_event" && !isInternalPromptChannel
-      ? "message_tool_only"
-      : isInternalPromptChannel && opts?.sourceReplyDeliveryMode === undefined
-        ? "automatic"
-        : opts?.sourceReplyDeliveryMode;
   const silentReplyConversationType = resolvePromptSilentReplyConversationType({
     ctx: promptSessionCtx,
     inboundSessionKey: ctx.SessionKey,
@@ -521,6 +512,9 @@ export async function runPreparedReply(
     promptSessionCtx.ChatType === "group" || promptSessionCtx.ChatType === "channel";
   const isDirectChat = promptSessionCtx.ChatType === "direct" || promptSessionCtx.ChatType === "dm";
   const wasMentioned = ctx.WasMentioned === true;
+  const continuationTrigger = opts?.continuationTrigger;
+  const isDelegateWake = continuationTrigger === "delegate-return";
+  const isContinuationWake = continuationTrigger === "work-wake" || isDelegateWake;
   const { typingPolicy, suppressTyping } = resolveRunTypingPolicy({
     requestedPolicy: opts?.typingPolicy,
     suppressTyping: opts?.suppressTyping === true,
@@ -534,7 +528,7 @@ export async function runPreparedReply(
     isHeartbeat,
     typingPolicy,
     suppressTyping,
-    sourceReplyDeliveryMode,
+    sourceReplyDeliveryMode: opts?.sourceReplyDeliveryMode,
   });
   const shouldInjectGroupIntro = Boolean(
     isGroupChat && (isFirstTurnInSession || sessionEntry?.groupActivationNeedsSystemIntro),
@@ -542,14 +536,14 @@ export async function runPreparedReply(
   const directChatContext = isDirectChat
     ? buildDirectChatContext({
         sessionCtx: promptSessionCtx,
-        sourceReplyDeliveryMode,
+        sourceReplyDeliveryMode: opts?.sourceReplyDeliveryMode,
       })
     : "";
   // Always include persistent group chat context (provider + reply guidance).
   const groupChatContext = isGroupChat
     ? buildGroupChatContext({
         sessionCtx: promptSessionCtx,
-        sourceReplyDeliveryMode,
+        sourceReplyDeliveryMode: opts?.sourceReplyDeliveryMode,
         silentReplyPolicy: silentReplySettings.policy,
         silentToken: SILENT_REPLY_TOKEN,
       })
@@ -607,7 +601,7 @@ export async function runPreparedReply(
     }),
   ].filter(Boolean);
   const silentReplyPromptMode: SilentReplyPromptMode =
-    directChatContext || groupChatContext || sourceReplyDeliveryMode === "message_tool_only"
+    directChatContext || groupChatContext || opts?.sourceReplyDeliveryMode === "message_tool_only"
       ? "none"
       : "generic";
   const baseBody = sessionCtx.BodyStripped ?? sessionCtx.Body ?? "";
@@ -688,7 +682,7 @@ export async function runPreparedReply(
         }
       : { ...sessionCtx, ThreadStarterBody: undefined },
     envelopeOptions,
-    { sourceReplyDeliveryMode },
+    { sourceReplyDeliveryMode: opts?.sourceReplyDeliveryMode },
   );
   const inboundUserContextPromptJoiner = resolveInboundUserContextPromptJoiner(sessionCtx);
   const hasUserBody =
@@ -723,7 +717,6 @@ export async function runPreparedReply(
     softResetTail,
     isHeartbeat,
     inboundEventKind: inboundEventKind,
-    sourceReplyDeliveryMode,
   });
   const effectiveBaseBody = promptEnvelopeBase.effectiveBaseBody;
   let prefixedBodyBase = await applySessionHints({
@@ -765,6 +758,7 @@ export async function runPreparedReply(
       ? `[Thread starter - for context]\n${threadStarterBody}`
       : undefined;
   const drainedSystemEventBlocks: string[] = [];
+  let forceSenderIsOwnerFalseFromSystemEvents = false;
   const rebuildPromptBodies = async (): Promise<{
     prefixedCommandBody: string;
     queuedBody: string;
@@ -773,14 +767,17 @@ export async function runPreparedReply(
     currentInboundContext?: typeof promptEnvelopeBase.currentInboundContext;
   }> => {
     if (!useFastReplyRuntime) {
-      const eventsBlock = await drainFormattedSystemEvents({
+      const eventsBlock = await drainFormattedSystemEventBlock({
         cfg,
         sessionKey,
         isMainSession,
         isNewSession,
       });
       if (eventsBlock) {
-        drainedSystemEventBlocks.push(eventsBlock);
+        drainedSystemEventBlocks.push(eventsBlock.text);
+        if (eventsBlock.forceSenderIsOwnerFalse) {
+          forceSenderIsOwnerFalseFromSystemEvents = true;
+        }
       }
     }
     return buildReplyPromptEnvelope({
@@ -797,7 +794,6 @@ export async function runPreparedReply(
       softResetTail,
       isHeartbeat,
       inboundEventKind: inboundEventKind,
-      sourceReplyDeliveryMode,
       threadContextNote,
       systemEventBlocks: drainedSystemEventBlocks,
     });
@@ -951,15 +947,12 @@ export async function runPreparedReply(
   const piRuntime = useFastReplyRuntime
     ? null
     : await traceRunPhase("reply.load_pi_runtime", () => loadPiEmbeddedRuntime());
-  const resolveActiveEmbeddedSessionId = (sessionFile = preparedSessionState.sessionFile) =>
-    piRuntime?.resolveActiveEmbeddedRunSessionId(sessionKey) ??
-    piRuntime?.resolveActiveEmbeddedRunSessionIdBySessionFile?.(sessionFile);
   const sessionLaneKey = piRuntime
     ? piRuntime.resolveEmbeddedSessionLane(sessionKey ?? sessionIdFinal)
     : undefined;
   const laneSize = sessionLaneKey ? getQueueSize(sessionLaneKey) : 0;
   const activeRunQueueMode = effectiveResetTriggered ? "interrupt" : resolvedQueue.mode;
-  const rawActiveSessionIdForInterrupt = resolveActiveEmbeddedSessionId();
+  const rawActiveSessionIdForInterrupt = piRuntime?.resolveActiveEmbeddedRunSessionId(sessionKey);
   const activeSessionIdForInterrupt = isOwnPreDispatchOperationSession(
     rawActiveSessionIdForInterrupt,
   )
@@ -1049,11 +1042,11 @@ export async function runPreparedReply(
   const resolveActiveReplyOperationSessionId = () =>
     sessionKey ? resolveActiveReplyRunSessionId(sessionKey) : undefined;
   const resolveActiveQueueSessionId = () =>
-    resolveActiveEmbeddedSessionId() ??
+    piRuntime?.resolveActiveEmbeddedRunSessionId(sessionKey) ??
     resolveActiveReplyOperationSessionId() ??
     preparedSessionState.sessionId;
   const resolveQueueBusyState = () => {
-    const embeddedActiveSessionId = resolveActiveEmbeddedSessionId();
+    const embeddedActiveSessionId = piRuntime?.resolveActiveEmbeddedRunSessionId(sessionKey);
     const replyOperationActiveSessionId = resolveActiveReplyOperationSessionId();
     const activeSessionId =
       embeddedActiveSessionId ?? replyOperationActiveSessionId ?? preparedSessionState.sessionId;
@@ -1110,7 +1103,7 @@ export async function runPreparedReply(
       },
       waitForActiveRunEnd: (activeRunSessionId) =>
         isReplyRunActiveForSessionId(activeRunSessionId)
-          ? waitForReplyRunEndBySessionId(activeRunSessionId, REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS)
+          ? waitForReplyRunEndBySessionId(activeRunSessionId)
           : (piRuntime?.waitForEmbeddedPiRunEnd(activeRunSessionId) ?? Promise.resolve(undefined)),
       refreshPreparedState: async () => {
         preparedSessionState = resolvePreparedSessionState();
@@ -1238,11 +1231,10 @@ export async function runPreparedReply(
       senderName: normalizeOptionalString(sessionCtx.SenderName),
       senderUsername: normalizeOptionalString(sessionCtx.SenderUsername),
       senderE164: normalizeOptionalString(sessionCtx.SenderE164),
-      // Queued system events are prompt content in the same trusted session;
-      // they do not rewrite the sender identity used by command/action auth.
-      senderIsOwner: command.senderIsOwner,
+      senderIsOwner: forceSenderIsOwnerFalseFromSystemEvents ? false : command.senderIsOwner,
       traceAuthorized:
-        command.senderIsOwner || (ctx.GatewayClientScopes ?? []).includes("operator.admin"),
+        (forceSenderIsOwnerFalseFromSystemEvents ? false : command.senderIsOwner) ||
+        (ctx.GatewayClientScopes ?? []).includes("operator.admin"),
       sessionFile: preparedSessionState.sessionFile,
       workspaceDir,
       config: cfg,
@@ -1283,7 +1275,7 @@ export async function runPreparedReply(
       ownerNumbers: command.ownerList.length > 0 ? command.ownerList : undefined,
       inputProvenance,
       extraSystemPrompt: extraSystemPromptParts.join("\n\n") || undefined,
-      sourceReplyDeliveryMode,
+      sourceReplyDeliveryMode: isRoomEvent ? "message_tool_only" : opts?.sourceReplyDeliveryMode,
       silentReplyPromptMode,
       extraSystemPromptStatic: extraSystemPromptStaticParts.join("\n\n"),
       skipProviderRuntimeHints: useFastReplyRuntime,
@@ -1321,8 +1313,7 @@ export async function runPreparedReply(
     isRunActive: () => {
       const latestSessionState = resolvePreparedSessionState();
       const latestActiveSessionId =
-        resolveActiveEmbeddedSessionId(latestSessionState.sessionFile) ??
-        latestSessionState.sessionId;
+        piRuntime?.resolveActiveEmbeddedRunSessionId(sessionKey) ?? latestSessionState.sessionId;
       return piRuntime?.isEmbeddedPiRunActive(latestActiveSessionId) ?? false;
     },
     isStreaming,
@@ -1348,6 +1339,7 @@ export async function runPreparedReply(
     typingMode,
     resetTriggered: effectiveResetTriggered,
     replyThreadingOverride,
+    isContinuationWake,
     replyOperation: providedReplyOperation,
   });
 }
