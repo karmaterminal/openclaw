@@ -65,7 +65,6 @@ export function resolveSessionStorePathForAcp(params: {
 export function readAcpSessionEntry(params: {
   sessionKey: string;
   cfg?: OpenClawConfig;
-  clone?: boolean;
 }): AcpSessionStoreEntry | null {
   const sessionKey = params.sessionKey.trim();
   if (!sessionKey) {
@@ -78,7 +77,7 @@ export function readAcpSessionEntry(params: {
   let store: Record<string, SessionEntry>;
   let storeReadFailed = false;
   try {
-    store = loadSessionStore(storePath, params.clone === false ? { clone: false } : undefined);
+    store = loadSessionStore(storePath);
   } catch {
     storeReadFailed = true;
     store = {};
@@ -136,8 +135,6 @@ export async function listAcpSessionEntries(params: {
 export async function upsertAcpSessionMeta(params: {
   sessionKey: string;
   cfg?: OpenClawConfig;
-  skipMaintenance?: boolean;
-  takeCacheOwnership?: boolean;
   mutate: (
     current: SessionAcpMeta | undefined,
     entry: SessionEntry | undefined,
@@ -177,8 +174,6 @@ export async function upsertAcpSessionMeta(params: {
     {
       activeSessionKey: normalizeLowercaseStringOrEmpty(sessionKey),
       allowDropAcpMetaSessionKeys: [sessionKey],
-      ...(params.skipMaintenance === true ? { skipMaintenance: true } : {}),
-      ...(params.takeCacheOwnership === true ? { takeCacheOwnership: true } : {}),
     },
   );
 }

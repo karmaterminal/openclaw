@@ -44,9 +44,7 @@ pnpm crabbox:run -- --help | sed -n '1,120p'
 - OpenClaw scripts prefer `../crabbox/bin/crabbox` when present. The user PATH
   shim can be stale.
 - Check `.crabbox.yaml` for direct-provider defaults. Omitting `--provider`
-  means brokered AWS for normal Linux/macOS paths; the wrapper selects Azure
-  for unqualified Windows/WSL2 runs when the local Crabbox binary advertises
-  Azure.
+  means brokered AWS today.
 - The brokered AWS default is a Linux developer image in `eu-west-1`; the repo
   config pins hot `eu-west-1a/b/c` placement so Fast Snapshot Restore can apply.
   If warmup drifts well past the minute-scale path, verify image promotion,
@@ -84,16 +82,18 @@ Use these only when the task needs an existing non-Linux host. OpenClaw broad
 Linux validation uses the repo Crabbox config unless a provider is explicitly
 requested.
 
-Native brokered Windows is available for Windows-specific proof. Prefer Azure
-for Windows/WSL2 when the subscription has quota or credits and the local
-Crabbox binary advertises Azure. Keep broad Linux gates on Linux/Testbox unless
-the bug is Windows-specific, and only force AWS when the operator asks for the
-older AWS developer image/cache path or Azure is unavailable:
+Native brokered Windows is available for Windows-specific proof. Use the AWS
+developer image in `us-west-2` on demand; it has the expected OpenClaw developer
+toolchain and Docker image cache. Keep broad Linux gates on Linux/Testbox unless
+the bug is Windows-specific:
 
 ```sh
-pnpm crabbox:warmup -- \
+../crabbox/bin/crabbox warmup \
+  --provider aws \
   --target windows \
-  --windows-mode wsl2 \
+  --windows-mode normal \
+  --region us-west-2 \
+  --market on-demand \
   --timing-json
 ```
 

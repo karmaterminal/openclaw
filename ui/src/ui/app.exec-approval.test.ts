@@ -70,32 +70,6 @@ describe("OpenClawApp exec approval decisions", () => {
     expect(app.execApprovalBusy).toBe(false);
   });
 
-  it("dismisses and refreshes when the backend reports an already resolved approval", async () => {
-    const request = vi.fn<RequestFn>(async (method) => {
-      if (method === "exec.approval.resolve") {
-        throw createGatewayError("approval already resolved", {
-          reason: "APPROVAL_ALREADY_RESOLVED",
-        });
-      }
-      if (method === "exec.approval.list") {
-        return [];
-      }
-      if (method === "plugin.approval.list") {
-        return [];
-      }
-      return {};
-    });
-    const app = await createApp(request);
-
-    await app.handleExecApprovalDecision("deny");
-
-    expect(app.execApprovalQueue).toEqual([]);
-    expect(app.execApprovalError).toBeNull();
-    expect(app.execApprovalBusy).toBe(false);
-    expect(request).toHaveBeenCalledWith("exec.approval.list", {});
-    expect(request).toHaveBeenCalledWith("plugin.approval.list", {});
-  });
-
   it("keeps the active approval open for unrelated errors", async () => {
     const request = vi.fn<RequestFn>(async () => {
       throw createGatewayError("gateway unavailable");

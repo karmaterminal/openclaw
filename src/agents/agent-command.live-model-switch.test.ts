@@ -38,6 +38,9 @@ const state = vi.hoisted(() => ({
   trajectoryRecordEventMock: vi.fn(),
   trajectoryFlushMock: vi.fn(async () => undefined),
   persistSessionEntryMock: vi.fn(async (..._args: unknown[]): Promise<unknown> => undefined),
+  prepareInternalSessionEffectsTranscriptMock: vi.fn(
+    async (..._args: unknown[]): Promise<string> => "/tmp/openclaw-internal-run.jsonl",
+  ),
   clearSessionAuthProfileOverrideMock: vi.fn(),
   isThinkingLevelSupportedMock: vi.fn((_args: unknown) => true),
   resolveThinkingDefaultMock: vi.fn((_args: unknown) => "low"),
@@ -48,8 +51,6 @@ const state = vi.hoisted(() => ({
     resolvedSkills: [],
     version: 0,
   })),
-  prepareInternalSessionEffectsTranscriptMock: vi.fn(),
-  removeInternalSessionEffectsTranscriptMock: vi.fn(),
   authProfileStoreMock: { profiles: {} } as { profiles: Record<string, unknown> },
   sessionEntryMock: undefined as unknown,
   sessionStoreMock: undefined as unknown,
@@ -126,6 +127,14 @@ vi.mock("./command/session.js", () => ({
 }));
 
 vi.mock("./command/types.js", () => ({}));
+
+vi.mock("./internal-session-effects.js", () => ({
+  prepareInternalSessionEffectsTranscript: (...args: unknown[]) =>
+    state.prepareInternalSessionEffectsTranscriptMock(...args),
+  removeInternalSessionEffectsTranscript: vi.fn(),
+  resolveInternalSessionEffectsTranscriptPath: (runId: string) =>
+    `/tmp/openclaw-internal-runs/${runId}.jsonl`,
+}));
 
 vi.mock("./harness/runtime-plugin.js", () => ({
   ensureSelectedAgentHarnessPlugin: vi.fn(async () => undefined),
@@ -214,13 +223,6 @@ vi.mock("../config/sessions/transcript-resolve.runtime.js", () => ({
     sessionFile: "/tmp/session.jsonl",
     sessionEntry: { sessionId: "session-1", updatedAt: Date.now() },
   }),
-}));
-
-vi.mock("./internal-session-effects.js", () => ({
-  prepareInternalSessionEffectsTranscript: (...args: unknown[]) =>
-    state.prepareInternalSessionEffectsTranscriptMock(...args),
-  removeInternalSessionEffectsTranscript: (...args: unknown[]) =>
-    state.removeInternalSessionEffectsTranscriptMock(...args),
 }));
 
 vi.mock("../infra/agent-events.js", () => ({
@@ -322,6 +324,7 @@ vi.mock("./agent-scope.js", () => ({
 
 vi.mock("./auth-profiles.js", () => ({
   ensureAuthProfileStore: () => ({ profiles: {} }),
+  clearRuntimeAuthProfileStoreSnapshots: vi.fn(),
 }));
 
 vi.mock("./auth-profiles/store.js", () => ({
@@ -741,17 +744,6 @@ async function runBasicAgentCommand() {
   });
 }
 
-function setupSessionTouchStore(): void {
-  const sessionEntry: SessionEntry = {
-    sessionId: "session-1",
-    updatedAt: 1,
-    skillsSnapshot: { prompt: "", skills: [], version: 0 },
-  };
-  state.sessionEntryMock = sessionEntry;
-  state.sessionStoreMock = { "agent:main:main": sessionEntry };
-  state.storePathMock = "/tmp/openclaw-sessions.json";
-}
-
 function expectFallbackOverrideCalls(first: boolean, second: boolean) {
   expect(state.resolveEffectiveModelFallbacksMock).toHaveBeenCalledTimes(2);
   expectRecordFields(mockCallArg(state.resolveEffectiveModelFallbacksMock, 0), {
@@ -833,10 +825,6 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
     state.deliverAgentCommandResultMock.mockResolvedValue(undefined);
     state.updateSessionStoreAfterAgentRunMock.mockResolvedValue(undefined);
     state.trajectoryFlushMock.mockResolvedValue(undefined);
-    state.prepareInternalSessionEffectsTranscriptMock.mockResolvedValue(
-      "/tmp/openclaw-internal-run.jsonl",
-    );
-    state.removeInternalSessionEffectsTranscriptMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -890,56 +878,6 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
     expect(deliveryOrder).toBeLessThan(
       state.emitAgentEventMock.mock.invocationCallOrder[lastEndIndex] ?? 0,
     );
-  });
-
-  it("keeps the initial session touch for local runs", async () => {
-    setupSingleAttemptFallback();
-    state.runAgentAttemptMock.mockResolvedValue(makeSuccessResult("openai", "gpt-5.4"));
-    setupSessionTouchStore();
-
-    await runBasicAgentCommand();
-
-    const touchWrites = state.persistSessionEntryMock.mock.calls.filter((call) => {
-      const entry = (call[0] as { entry?: Record<string, unknown> } | undefined)?.entry;
-      return entry?.lastInteractionAt !== undefined;
-    });
-    expect(touchWrites).toHaveLength(1);
-    expect(state.updateSessionStoreAfterAgentRunMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("skips the initial session touch after gateway ingress already persisted activity", async () => {
-    setupSingleAttemptFallback();
-    state.runAgentAttemptMock.mockResolvedValue(makeSuccessResult("openai", "gpt-5.4"));
-    setupSessionTouchStore();
-
-    await agentCommand({
-      message: "hello",
-      to: "+1234567890",
-      skipInitialSessionTouch: true,
-    });
-
-    expect(state.persistSessionEntryMock).not.toHaveBeenCalled();
-    expect(state.updateSessionStoreAfterAgentRunMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("persists explicit overrides even when ingress skips the initial touch", async () => {
-    setupSingleAttemptFallback();
-    state.runAgentAttemptMock.mockResolvedValue(makeSuccessResult("openai", "gpt-5.4"));
-    setupSessionTouchStore();
-
-    await agentCommand({
-      message: "hello",
-      to: "+1234567890",
-      thinking: "medium",
-      skipInitialSessionTouch: true,
-    });
-
-    const touchWrite = mockCallArg(state.persistSessionEntryMock) as {
-      entry?: Record<string, unknown>;
-    };
-    expect(touchWrite.entry?.thinkingLevel).toBe("medium");
-    expect(touchWrite.entry?.lastInteractionAt).toBeDefined();
-    expect(state.updateSessionStoreAfterAgentRunMock).toHaveBeenCalledTimes(1);
   });
 
   it("clears stale flag-only pending final delivery when there is no final payload", async () => {

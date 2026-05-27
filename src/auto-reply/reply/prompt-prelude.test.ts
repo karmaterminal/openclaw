@@ -95,6 +95,7 @@ describe("buildReplyPromptEnvelope", () => {
       [
         "[OpenClaw room event]",
         "inbound_event_kind: room_event",
+        "visible_reply_contract: message_tool_only",
         [
           "Room context:",
           "Conversation info (untrusted metadata):",

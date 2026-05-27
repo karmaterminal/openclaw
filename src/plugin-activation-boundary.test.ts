@@ -3,22 +3,6 @@ import { normalizeModelRef } from "./agents/model-selection-normalize.js";
 import { isStaticallyChannelConfigured } from "./config/channel-configured-shared.js";
 import { parseBrowserMajorVersion } from "./plugin-sdk/browser-host-inspection.js";
 
-const testModelIdNormalization = {
-  providers: {
-    google: {
-      aliases: {
-        "gemini-3.1-pro": "gemini-3.1-pro-preview",
-        "gemini-3-pro-preview": "gemini-3.1-pro-preview",
-      },
-    },
-    xai: {
-      aliases: {
-        "grok-4-fast-reasoning": "grok-4-fast",
-      },
-    },
-  },
-};
-
 const loadBundledPluginPublicSurfaceModuleSync = vi.hoisted(() =>
   vi.fn((params: { artifactBasename: string }) => {
     if (params.artifactBasename === "browser-host-inspection.js") {
@@ -50,7 +34,21 @@ const loadPluginManifestRegistryForPluginRegistry = vi.hoisted(() =>
           slack: ["SLACK_BOT_TOKEN"],
           telegram: ["TELEGRAM_BOT_TOKEN"],
         },
-        modelIdNormalization: testModelIdNormalization,
+        modelIdNormalization: {
+          providers: {
+            google: {
+              aliases: {
+                "gemini-3.1-pro": "gemini-3.1-pro-preview",
+                "gemini-3-pro-preview": "gemini-3.1-pro-preview",
+              },
+            },
+            xai: {
+              aliases: {
+                "grok-4-fast-reasoning": "grok-4-fast",
+              },
+            },
+          },
+        },
         skills: [],
         hooks: [],
         origin: "bundled",
@@ -139,7 +137,25 @@ describe("plugin activation boundary", () => {
     expect(isStaticallyChannelConfigured({}, "whatsapp", {})).toBe(false);
     const staticNormalize = {
       allowPluginNormalization: false,
-      manifestPlugins: loadPluginManifestRegistryForPluginRegistry().plugins,
+      manifestPlugins: [
+        {
+          modelIdNormalization: {
+            providers: {
+              google: {
+                aliases: {
+                  "gemini-3.1-pro": "gemini-3.1-pro-preview",
+                  "gemini-3-pro-preview": "gemini-3.1-pro-preview",
+                },
+              },
+              xai: {
+                aliases: {
+                  "grok-4-fast-reasoning": "grok-4-fast",
+                },
+              },
+            },
+          },
+        },
+      ],
     };
     expect(normalizeModelRef("google", "gemini-3.1-pro", staticNormalize)).toEqual({
       provider: "google",

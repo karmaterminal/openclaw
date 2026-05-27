@@ -364,8 +364,6 @@ export const nl: TranslationMap = {
     pending: "{count} in behandeling",
     allowOnce: "Eenmalig toestaan",
     alwaysAllow: "Altijd toestaan",
-    allowAlwaysUnavailable:
-      "The effective approval policy requires approval every time, so Allow Always is unavailable.",
     deny: "Weigeren",
     labels: {
       host: "Host",

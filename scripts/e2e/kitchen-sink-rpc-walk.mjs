@@ -27,10 +27,7 @@ const INSTALL_TIMEOUT_MS = readPositiveInt(
   Math.max(COMMAND_TIMEOUT_MS, 600000),
 );
 const RPC_TIMEOUT_MS = readPositiveInt(process.env.OPENCLAW_KITCHEN_SINK_RPC_CALL_MS, 60000);
-const FETCH_TIMEOUT_MS = readPositiveInt(process.env.OPENCLAW_KITCHEN_SINK_RPC_FETCH_MS, 10000);
 const MAX_RSS_MIB = readPositiveInt(process.env.OPENCLAW_KITCHEN_SINK_MAX_RSS_MIB, 2048);
-const GATEWAY_TEARDOWN_GRACE_MS = 10000;
-const GATEWAY_TEARDOWN_KILL_GRACE_MS = 2000;
 const OUTPUT_CAPTURE_CHARS = readPositiveInt(
   process.env.OPENCLAW_KITCHEN_SINK_OUTPUT_CAPTURE_CHARS,
   1024 * 1024,
@@ -441,27 +438,11 @@ function isRetryableTransientNetworkError(error, seen = new Set()) {
 
 export async function fetchJson(url, options = {}) {
   const attempts = Math.max(1, options.attempts ?? 3);
-  const timeoutMs = Math.max(1, options.timeoutMs ?? FETCH_TIMEOUT_MS);
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const controller = new AbortController();
-    const timeoutError = Object.assign(new Error(`fetch ${url} timed out after ${timeoutMs}ms`), {
-      code: "ETIMEDOUT",
-    });
-    let timeout;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeout = setTimeout(() => {
-        controller.abort(timeoutError);
-        reject(timeoutError);
-      }, timeoutMs);
-      timeout.unref?.();
-    });
     try {
-      const response = await Promise.race([
-        (options.fetchImpl ?? fetch)(url, { signal: controller.signal }),
-        timeoutPromise,
-      ]);
-      const text = await Promise.race([response.text(), timeoutPromise]);
+      const response = await (options.fetchImpl ?? fetch)(url);
+      const text = await response.text();
       let body = null;
       try {
         body = text ? JSON.parse(text) : null;
@@ -475,10 +456,6 @@ export async function fetchJson(url, options = {}) {
         throw error;
       }
       await delay(options.retryDelayMs ?? 250);
-    } finally {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
     }
   }
   throw lastError ?? new Error(`fetch ${url} failed`);
@@ -561,34 +538,18 @@ async function startGateway(runner, port, env, logPath) {
   return child;
 }
 
-export async function stopGateway(child, options = {}) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) {
+async function stopGateway(child) {
+  if (!child || child.exitCode !== null) {
     return;
   }
-  const teardownGraceMs = Math.max(0, options.teardownGraceMs ?? GATEWAY_TEARDOWN_GRACE_MS);
-  const killGraceMs = Math.max(0, options.killGraceMs ?? GATEWAY_TEARDOWN_KILL_GRACE_MS);
-  const exited = new Promise((resolve) => child.once("exit", resolve));
-  const waitForExit = async (ms) =>
-    child.exitCode !== null || child.signalCode !== null
-      ? true
-      : await Promise.race([exited.then(() => true), delay(ms).then(() => false)]);
-
   signalGateway(child, "SIGTERM");
-  if (await waitForExit(teardownGraceMs)) {
-    return;
+  const started = Date.now();
+  while (child.exitCode === null && Date.now() - started < 10000) {
+    await delay(100);
   }
-  signalGateway(child, "SIGKILL");
-  if (await waitForExit(killGraceMs)) {
-    return;
+  if (child.exitCode === null) {
+    signalGateway(child, "SIGKILL");
   }
-  releaseUnsettledGatewayChild(child);
-}
-
-function releaseUnsettledGatewayChild(child) {
-  child.stdin?.destroy?.();
-  child.stdout?.destroy?.();
-  child.stderr?.destroy?.();
-  child.unref?.();
 }
 
 function signalGateway(child, signal) {
