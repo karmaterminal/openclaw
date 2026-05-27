@@ -238,11 +238,11 @@ describe("workspace path resolution", () => {
         const { writeTool } = expectReadWriteEditTools(tools);
 
         await writeTool.execute("ws-write-symlink-parent", {
-          path: "memory/2026-05-20.md",
+          path: "memory/new-note.md",
           content: "remember this\n",
         });
 
-        await expect(fs.readFile(path.join(realDir, "2026-05-20.md"), "utf8")).resolves.toBe(
+        await expect(fs.readFile(path.join(realDir, "new-note.md"), "utf8")).resolves.toBe(
           "remember this\n",
         );
       });

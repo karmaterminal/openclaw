@@ -10,6 +10,7 @@ import { SessionWriteLockTimeoutError } from "./session-write-lock-error.js";
 type LockFilePayload = {
   pid?: number;
   createdAt?: string;
+  maxHoldMs?: number;
   /** Process start time in clock ticks (from /proc/pid/stat field 22). */
   starttime?: number;
 };
@@ -457,6 +458,7 @@ function inspectLockPayload(
   payload: LockFilePayload | null,
   staleMs: number,
   nowMs: number,
+  opts: { respectMaxHold?: boolean } = {},
 ): LockInspectionDetails {
   const pid = isValidLockNumber(payload?.pid) && payload.pid > 0 ? payload.pid : null;
   const pidAlive = pid !== null ? isPidAlive(pid) : false;
@@ -488,6 +490,16 @@ function inspectLockPayload(
     staleReasons.push("invalid-createdAt");
   } else if (ageMs > staleMs) {
     staleReasons.push("too-old");
+  }
+  const holderMaxHoldMs =
+    isValidLockNumber(payload?.maxHoldMs) && payload.maxHoldMs > 0 ? payload.maxHoldMs : undefined;
+  if (
+    opts.respectMaxHold === true &&
+    typeof holderMaxHoldMs === "number" &&
+    ageMs !== null &&
+    ageMs > holderMaxHoldMs
+  ) {
+    staleReasons.push("hold-exceeded");
   }
 
   return {
@@ -624,8 +636,11 @@ function inspectLockPayloadForSession(params: {
   heldByThisProcess: boolean;
   reclaimLockWithoutStarttime: boolean;
   readOwnerProcessArgs: SessionLockOwnerProcessArgsReader;
+  respectMaxHold?: boolean;
 }): LockInspectionDetails {
-  const inspected = inspectLockPayload(params.payload, params.staleMs, params.nowMs);
+  const inspected = inspectLockPayload(params.payload, params.staleMs, params.nowMs, {
+    respectMaxHold: params.respectMaxHold,
+  });
   if (
     shouldTreatAsOrphanSelfLock({
       payload: params.payload,
@@ -795,7 +810,7 @@ export async function acquireSessionWriteLock(params: {
         payload: () => {
           const createdAt = new Date().toISOString();
           const starttime = resolveProcessStartTimeForLock(process.pid);
-          const lockPayload: LockFilePayload = { pid: process.pid, createdAt };
+          const lockPayload: LockFilePayload = { pid: process.pid, createdAt, maxHoldMs };
           if (starttime !== null) {
             lockPayload.starttime = starttime;
           }

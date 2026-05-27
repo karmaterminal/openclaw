@@ -21,9 +21,7 @@ type CurrentAttemptAssistantWithError = NonNullable<
   EmbeddedRunAttemptResult["currentAttemptAssistant"]
 > & { errorMessage: string };
 
-function isCurrentAttemptAssistant(
-  value: unknown,
-): value is CurrentAttemptAssistantWithError {
+function isCurrentAttemptAssistant(value: unknown): value is CurrentAttemptAssistantWithError {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -244,9 +242,21 @@ describe("runEmbeddedPiAgent cross-provider fallback error handling", () => {
       config: makeCrossProviderFallbackConfig(),
     });
 
-    await expect(promise).rejects.toBeInstanceOf(MockedFailoverError);
-    await expect(promise).rejects.toThrow("LLM request timed out.");
-    await expect(promise).rejects.not.toThrow("OpenAI quota");
+    await expect(promise).resolves.toMatchObject({
+      payloads: [
+        {
+          isError: true,
+          text: expect.stringContaining("Request timed out"),
+        },
+      ],
+    });
+    await expect(promise).resolves.not.toMatchObject({
+      payloads: [
+        {
+          text: expect.stringContaining("OpenAI quota"),
+        },
+      ],
+    });
     expect(getLastFormattedAssistant()).toBeUndefined();
   });
 

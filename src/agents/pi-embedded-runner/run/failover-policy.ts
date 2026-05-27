@@ -218,9 +218,18 @@ export function resolveRunFailoverDecision(params: RunFailoverDecisionParams): R
       reason: params.failoverReason,
     };
   }
+  const harnessOwnedTimeout =
+    params.harnessOwnsTransport &&
+    (isAssistantTimeoutFailure(params) || params.failoverReason === "timeout");
+  if (harnessOwnedTimeout && !isConcreteNonTimeoutAssistantFailure(params)) {
+    return {
+      action: "continue_normal",
+    };
+  }
   if (
     params.timedOut &&
     !params.aborted &&
+    !harnessOwnedTimeout &&
     !params.timedOutDuringToolExecution &&
     !params.timedOutDuringCompaction
   ) {

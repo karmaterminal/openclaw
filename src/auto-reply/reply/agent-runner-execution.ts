@@ -2342,7 +2342,8 @@ export async function runAgentTurnWithFallback(params: {
                     drainsContinuationDelegateQueue:
                       params.followupRun.run.drainsContinuationDelegateQueue,
                     continueWorkOpts:
-                      params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
+                      params.followupRun.run.config?.agents?.defaults?.continuation?.enabled ===
+                      true
                         ? {
                             requestContinuation: (request) => {
                               attemptContinueWorkRequest = request;
@@ -2959,18 +2960,17 @@ export async function runAgentTurnWithFallback(params: {
         };
       }
 
-      if (
-        isCompactionFailure &&
-        !didResetAfterCompactionFailure &&
-        (await params.resetSessionAfterCompactionFailure(message))
-      ) {
-        didResetAfterCompactionFailure = true;
+      if (isCompactionFailure && !didResetAfterCompactionFailure) {
+        const didResetAfterCompactionFailureNow =
+          await params.resetSessionAfterCompactionFailure(message);
+        didResetAfterCompactionFailure = didResetAfterCompactionFailureNow;
         params.replyOperation?.fail("run_failed", err);
         return {
           kind: "final",
           payload: markAgentRunFailureReplyPayload({
             text: buildContextOverflowRecoveryText({
               duringCompaction: true,
+              preserveSessionMapping: !didResetAfterCompactionFailureNow,
               cfg: runtimeConfig,
               agentId: params.followupRun.run.agentId,
               primaryProvider: params.followupRun.run.provider,
