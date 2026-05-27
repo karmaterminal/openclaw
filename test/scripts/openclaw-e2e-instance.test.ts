@@ -506,7 +506,8 @@ describe("scripts/lib/openclaw-e2e-instance.sh", () => {
           'printf "%s\\n" "$*" >"$OPENCLAW_TEST_TIMEOUT_ARGS"',
           'while [ "$#" -gt 0 ] && [ "$(basename "$1")" != "openclaw" ]; do shift; done',
           '[ "$#" -gt 0 ] || exit 127',
-          'exec "$@"',
+          "shift",
+          'printf "%s\\n" "$*" >"$OPENCLAW_TEST_COMMAND_ARGS"',
           "",
         ].join("\n"),
       );
