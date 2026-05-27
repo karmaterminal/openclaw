@@ -378,19 +378,17 @@ async function listUsageCountedTranscriptFileStats(
   const entries = await fs.promises.readdir(sessionsDir, { withFileTypes: true }).catch(() => []);
   const tasks = entries
     .filter((entry) => entry.isFile() && isUsageCountedSessionTranscriptFileName(entry.name))
-    .map(
-      (entry) => async (): Promise<UsageCostTranscriptFile | undefined> => {
-        const filePath = path.join(sessionsDir, entry.name);
-        const stats = await fs.promises.stat(filePath).catch(() => null);
-        if (!stats) {
-          return undefined;
-        }
-        if (params?.minMtimeMs !== undefined && stats.mtimeMs < params.minMtimeMs) {
-          return undefined;
-        }
-        return { filePath, size: stats.size, mtimeMs: stats.mtimeMs };
-      },
-    );
+    .map((entry) => async (): Promise<UsageCostTranscriptFile | undefined> => {
+      const filePath = path.join(sessionsDir, entry.name);
+      const stats = await fs.promises.stat(filePath).catch(() => null);
+      if (!stats) {
+        return undefined;
+      }
+      if (params?.minMtimeMs !== undefined && stats.mtimeMs < params.minMtimeMs) {
+        return undefined;
+      }
+      return { filePath, size: stats.size, mtimeMs: stats.mtimeMs };
+    });
   const { results } = await runTasksWithConcurrency({
     tasks,
     limit: USAGE_COST_TRANSCRIPT_STAT_CONCURRENCY,
@@ -1306,6 +1304,13 @@ export async function loadCostUsageSummary(params?: {
   });
 
   for (const file of files) {
+    // Checkpoint transcript twins (`<parentId>.checkpoint.<uuid>.jsonl`) carry
+    // copies of pre-compaction entries from the parent primary; counting them
+    // in daily totals would double-count tokens/cost. Skip — discovery uses
+    // them to advance parent mtime and label, but cost tallies must not.
+    if (isCheckpointSessionTranscriptFileName(path.basename(file.filePath))) {
+      continue;
+    }
     await scanUsageFile({
       filePath: file.filePath,
       config: params?.config,
