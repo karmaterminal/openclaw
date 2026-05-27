@@ -4,6 +4,7 @@ import {
   applyPackageExtensionPeerMetadata,
   collectCurrentShrinkwrapOverrides,
   collectOverrideViolations,
+  collectPnpmLockDependencyOverrides,
   collectPnpmLockViolations,
   createNpmShrinkwrapCommand,
   disableShrinkwrappedOverrideConflictSources,
@@ -54,6 +55,58 @@ describe("generate-npm-shrinkwrap", () => {
     expect(pnpmLockOverrideVersionForVersions(new Set(["3.972.38", "3.972.39"]))).toBe("3.972.39");
     expect(pnpmLockOverrideVersionForVersions(new Set(["3.972.39", "3.973.0"]))).toBeNull();
     expect(pnpmLockOverrideVersionForVersions(new Set(["3.972.39", "4.0.0"]))).toBeNull();
+  });
+
+  it("pins multi-major transitive dependencies through parent-scoped npm overrides", () => {
+    expect(
+      collectPnpmLockDependencyOverrides({
+        packages: {
+          "parent-a@1.0.0": {},
+          "parent-b@1.0.0": {},
+          "shared@6.0.0": {},
+          "shared@11.5.0": {},
+        },
+        snapshots: {
+          "parent-a@1.0.0": {
+            dependencies: {
+              shared: "11.5.0",
+            },
+          },
+          "parent-b@1.0.0": {
+            dependencies: {
+              shared: "6.0.0",
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      "parent-a": { shared: "11.5.0" },
+      "parent-b": { shared: "6.0.0" },
+    });
+  });
+
+  it("skips parent-scoped overrides when peer variants need different dependency majors", () => {
+    expect(
+      collectPnpmLockDependencyOverrides({
+        packages: {
+          "parent@1.0.0": {},
+          "shared@1.0.0": {},
+          "shared@2.0.0": {},
+        },
+        snapshots: {
+          "parent@1.0.0(peer-a@1.0.0)": {
+            dependencies: {
+              shared: "1.0.0",
+            },
+          },
+          "parent@1.0.0(peer-a@2.0.0)": {
+            dependencies: {
+              shared: "2.0.0",
+            },
+          },
+        },
+      }),
+    ).toEqual({});
   });
 
   it("parses nested scoped package paths", () => {

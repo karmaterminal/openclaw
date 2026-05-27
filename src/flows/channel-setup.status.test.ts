@@ -12,11 +12,15 @@ type FormatChannelPrimerLine = typeof import("../channels/registry.js").formatCh
 type FormatChannelSelectionLine =
   typeof import("../channels/registry.js").formatChannelSelectionLine;
 type IsChannelConfigured = typeof import("../config/channel-configured.js").isChannelConfigured;
+type ChannelSetupStatusModule = typeof import("./channel-setup.status.js");
 type NoteChannelPrimerChannels = Parameters<
   typeof import("./channel-setup.status.js").noteChannelPrimer
 >[1];
 
-const listChatChannels = vi.hoisted(() => vi.fn<ListChatChannels>(() => []));
+const listChatChannels = vi.hoisted(() => {
+  vi.resetModules();
+  return vi.fn<ListChatChannels>(() => []);
+});
 const resolveChannelSetupEntries = vi.hoisted(() =>
   vi.fn<ResolveChannelSetupEntries>(() => ({
     entries: [],
@@ -38,15 +42,30 @@ vi.mock("../channels/chat-meta.js", () => ({
   listChatChannels: () => listChatChannels(),
 }));
 
-vi.mock("../channels/registry.js", () => ({
-  formatChannelPrimerLine: (meta: Parameters<FormatChannelPrimerLine>[0]) =>
-    formatChannelPrimerLine(meta),
-  formatChannelSelectionLine: (
-    meta: Parameters<FormatChannelSelectionLine>[0],
-    docsLink: Parameters<FormatChannelSelectionLine>[1],
-  ) => formatChannelSelectionLine(meta, docsLink),
-  normalizeAnyChannelId: (channelId?: string) => channelId?.trim().toLowerCase() ?? null,
-}));
+vi.mock("../channels/registry.js", () => {
+  const normalizeChannel = (channelId?: unknown) =>
+    typeof channelId === "string" ? channelId.trim().toLowerCase() || null : null;
+  return {
+    CHANNEL_IDS: [],
+    CHAT_CHANNEL_ALIASES: {},
+    CHAT_CHANNEL_ORDER: [],
+    formatChannelPrimerLine: (meta: Parameters<FormatChannelPrimerLine>[0]) =>
+      formatChannelPrimerLine(meta),
+    formatChannelSelectionLine: (
+      meta: Parameters<FormatChannelSelectionLine>[0],
+      docsLink: Parameters<FormatChannelSelectionLine>[1],
+    ) => formatChannelSelectionLine(meta, docsLink),
+    getChatChannelMeta: () => null,
+    getRegisteredChannelPluginMeta: () => null,
+    listChatChannelAliases: () => [],
+    listChatChannels: () => listChatChannels(),
+    listRegisteredChannelPluginAliases: () => [],
+    listRegisteredChannelPluginIds: () => [],
+    normalizeAnyChannelId: normalizeChannel,
+    normalizeChannelId: normalizeChannel,
+    normalizeChatChannelId: normalizeChannel,
+  };
+});
 
 vi.mock("../commands/channel-setup/discovery.js", () => ({
   resolveChannelSetupEntries: (params: Parameters<ResolveChannelSetupEntries>[0]) =>
@@ -73,13 +92,11 @@ vi.mock("../plugins/bundled-sources.js", () => ({
   findBundledPluginSourceInMap: () => undefined,
 }));
 
-import {
-  collectChannelStatus,
-  noteChannelPrimer,
-  noteChannelStatus,
-  resolveChannelSelectionNoteLines,
-  resolveChannelSetupSelectionContributions,
-} from "./channel-setup.status.js";
+let collectChannelStatus: ChannelSetupStatusModule["collectChannelStatus"];
+let noteChannelStatus: ChannelSetupStatusModule["noteChannelStatus"];
+let noteChannelPrimer: ChannelSetupStatusModule["noteChannelPrimer"];
+let resolveChannelSelectionNoteLines: ChannelSetupStatusModule["resolveChannelSelectionNoteLines"];
+let resolveChannelSetupSelectionContributions: ChannelSetupStatusModule["resolveChannelSetupSelectionContributions"];
 
 function requireFirstMockCall<const Calls extends readonly unknown[][]>(
   calls: Calls,
@@ -93,7 +110,8 @@ function requireFirstMockCall<const Calls extends readonly unknown[][]>(
 }
 
 describe("resolveChannelSetupSelectionContributions", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     vi.clearAllMocks();
     listChatChannels.mockReturnValue([
       makeMeta("discord", "Discord"),
@@ -105,6 +123,13 @@ describe("resolveChannelSetupSelectionContributions", () => {
     );
     formatChannelSelectionLine.mockImplementation((meta) => `${meta.label} — ${meta.blurb}`);
     isChannelConfigured.mockReturnValue(false);
+    ({
+      collectChannelStatus,
+      noteChannelStatus,
+      noteChannelPrimer,
+      resolveChannelSelectionNoteLines,
+      resolveChannelSetupSelectionContributions,
+    } = await import("./channel-setup.status.js"));
   });
 
   it("sorts channels alphabetically by picker label", () => {

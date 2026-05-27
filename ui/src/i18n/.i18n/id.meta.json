@@ -1,11 +1,14 @@
 {
-  "fallbackKeys": [],
+  "fallbackKeys": [
+    "chat.error",
+    "chat.toolReturnedError"
+  ],
   "generatedAt": "2026-05-28T05:54:22.983Z",
   "locale": "id",
   "model": "claude-opus-4-7",
   "provider": "anthropic",
-  "sourceHash": "24e6aff2cfb534faf3b6a9c96ccafee1470519c2f4498c07841072435a0565ea",
-  "totalKeys": 1155,
+  "sourceHash": "deab6f29b3230cd4acc6839320863e1a188c5f9410e13879ad3ee5be343070e0",
+  "totalKeys": 1157,
   "translatedKeys": 1155,
   "workflow": 1
 }

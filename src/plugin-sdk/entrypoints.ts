@@ -108,7 +108,7 @@ export function buildPluginSdkPackageExports() {
 
 /** List the dist artifacts expected for every generated plugin SDK entrypoint. */
 export function listPluginSdkDistArtifacts() {
-  return publicPluginSdkEntrypoints.flatMap((entry) => [
+  return pluginSdkEntrypoints.flatMap((entry) => [
     `dist/plugin-sdk/${entry}.js`,
     `dist/plugin-sdk/${entry}.d.ts`,
   ]);
