@@ -62,6 +62,7 @@ import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-event
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { logSessionTurnCreated } from "../../logging/diagnostic.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { CommandLane } from "../../process/lanes.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -114,6 +115,7 @@ import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
 import type { ReplyMediaContext } from "./reply-media-paths.js";
 import { createReplyMediaContext } from "./reply-media-paths.runtime.js";
 import type { ReplyOperation } from "./reply-run-registry.js";
+import { isReplyProfilerEnabled } from "./reply-timing-tracker.js";
 import { resolveReplyRunFireReason } from "./run-provenance.js";
 import type { TypingSignaler } from "./typing-mode.js";
 
@@ -218,6 +220,148 @@ export async function releaseQueuedCompactionCompletion(params: {
     traceparent: params.traceparent,
     log: (message) => logVerbose(message),
   });
+}
+
+type AgentTurnTimingSpan = {
+  name: string;
+  durationMs: number;
+  elapsedMs: number;
+};
+
+type AgentTurnTimingSummary = {
+  totalMs: number;
+  spans: AgentTurnTimingSpan[];
+};
+
+const agentTurnTimingLog = createSubsystemLogger("auto-reply/agent-turn-timing");
+const AGENT_TURN_TIMING_WARN_TOTAL_MS = 1_000;
+const AGENT_TURN_TIMING_WARN_STAGE_MS = 500;
+
+function createAgentTurnTimingTracker(options: { profilerEnabled?: boolean } = {}): {
+  measure: <T>(name: string, run: () => Promise<T> | T) => Promise<T>;
+  measureSync: <T>(name: string, run: () => T) => T;
+  logIfSlow: (params: {
+    runId: string;
+    sessionId?: string;
+    sessionKey?: string;
+    outcome: "completed" | "error";
+    error?: string;
+  }) => void;
+  logMilestoneIfSlow: (params: {
+    runId: string;
+    sessionId?: string;
+    sessionKey?: string;
+    milestone: string;
+  }) => void;
+} {
+  if (!options.profilerEnabled) {
+    // This tracker wraps the agent-turn hot path. Without an explicit profiler
+    // flag, keep every wrapper pass-through so normal turns avoid Date.now and
+    // span-array work entirely.
+    return {
+      async measure(_name, run) {
+        return await run();
+      },
+      measureSync(_name, run) {
+        return run();
+      },
+      logIfSlow() {},
+      logMilestoneIfSlow() {},
+    };
+  }
+
+  const startedAt = Date.now();
+  let didLog = false;
+  const spans: AgentTurnTimingSpan[] = [];
+  const toMs = (value: number) => Math.max(0, Math.round(value));
+  const record = (name: string, spanStartedAt: number) => {
+    spans.push({
+      name,
+      durationMs: toMs(Date.now() - spanStartedAt),
+      elapsedMs: toMs(Date.now() - startedAt),
+    });
+  };
+  const snapshot = (): AgentTurnTimingSummary => ({
+    totalMs: toMs(Date.now() - startedAt),
+    spans: spans.slice(),
+  });
+  const shouldLog = (summary: AgentTurnTimingSummary) =>
+    summary.totalMs >= AGENT_TURN_TIMING_WARN_TOTAL_MS ||
+    summary.spans.some((span) => span.durationMs >= AGENT_TURN_TIMING_WARN_STAGE_MS);
+  const formatSpans = (summary: AgentTurnTimingSummary) =>
+    summary.spans.length > 0
+      ? summary.spans
+          .map((span) => `${span.name}:${span.durationMs}ms@${span.elapsedMs}ms`)
+          .join(",")
+      : "none";
+  return {
+    async measure(name, run) {
+      const spanStartedAt = Date.now();
+      try {
+        return await run();
+      } finally {
+        record(name, spanStartedAt);
+      }
+    },
+    measureSync(name, run) {
+      const spanStartedAt = Date.now();
+      try {
+        return run();
+      } finally {
+        record(name, spanStartedAt);
+      }
+    },
+    logIfSlow(params) {
+      if (didLog) {
+        return;
+      }
+      const summary = snapshot();
+      if (!shouldLog(summary)) {
+        return;
+      }
+      didLog = true;
+      agentTurnTimingLog.warn(
+        `agent turn timings runId=${params.runId} sessionId=${
+          params.sessionId ?? "unknown"
+        } sessionKey=${params.sessionKey ?? "unknown"} outcome=${params.outcome} totalMs=${
+          summary.totalMs
+        } stages=${formatSpans(summary)}${params.error ? ` error="${params.error}"` : ""}`,
+        {
+          runId: params.runId,
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          outcome: params.outcome,
+          error: params.error,
+          totalMs: summary.totalMs,
+          spans: summary.spans,
+        },
+      );
+    },
+    logMilestoneIfSlow(params) {
+      if (!options.profilerEnabled) {
+        return;
+      }
+      const summary = snapshot();
+      if (!shouldLog(summary)) {
+        return;
+      }
+      agentTurnTimingLog.warn(
+        `agent turn milestone runId=${params.runId} sessionId=${
+          params.sessionId ?? "unknown"
+        } sessionKey=${params.sessionKey ?? "unknown"} milestone=${params.milestone} totalMs=${
+          summary.totalMs
+        } stages=${formatSpans(summary)}`,
+        {
+          runId: params.runId,
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          milestone: params.milestone,
+          totalMs: summary.totalMs,
+          spans: summary.spans,
+        },
+      );
+    },
+  };
 }
 
 function readApprovalScopeValue(value: unknown): "turn" | "session" | undefined {
@@ -816,6 +960,92 @@ export function buildKnownAgentRunFailureReplyPayload(params: {
   });
 }
 
+const DEFAULT_RESERVE_TOKENS_FLOOR = 20_000;
+
+export function computeContextAwareReserveTokensFloor(contextWindow: number | undefined): number {
+  if (typeof contextWindow !== "number" || contextWindow <= 0) {
+    return DEFAULT_RESERVE_TOKENS_FLOOR;
+  }
+  if (contextWindow >= 1_000_000) {
+    return 100_000;
+  }
+  if (contextWindow >= 200_000) {
+    return 50_000;
+  }
+  if (contextWindow >= 100_000) {
+    return 35_000;
+  }
+  return DEFAULT_RESERVE_TOKENS_FLOOR;
+}
+
+function resolveContextWindowForCompactionHint(params: {
+  cfg: FollowupRun["run"]["config"];
+  primaryProvider?: string;
+  primaryModel?: string;
+  runtimeProvider?: string;
+  runtimeModel?: string;
+  agentId?: string;
+  activeSessionEntry?: SessionEntry;
+}): number | undefined {
+  let modelWindow: number | undefined;
+  const entryProvider = params.activeSessionEntry?.modelProvider;
+  const entryModel = params.activeSessionEntry?.model;
+  const runtimeProvider = params.runtimeProvider ?? entryProvider;
+  const runtimeModel = params.runtimeModel ?? entryModel;
+  const hasExplicitRuntimeRef = Boolean(params.runtimeProvider && params.runtimeModel);
+  if (runtimeProvider && runtimeModel) {
+    const resolved = resolveContextTokensForModel({
+      cfg: params.cfg,
+      provider: runtimeProvider,
+      model: runtimeModel,
+      allowAsyncLoad: false,
+    });
+    if (typeof resolved === "number" && resolved > 0) {
+      modelWindow = resolved;
+    }
+  }
+  const sessionWindow = normalizePositiveContextTokens(params.activeSessionEntry?.contextTokens);
+  const sessionMatchesRuntimeRef = runtimeProvider === entryProvider && runtimeModel === entryModel;
+  const trustedSessionWindow =
+    !hasExplicitRuntimeRef || sessionMatchesRuntimeRef ? sessionWindow : undefined;
+  if (modelWindow === undefined && sessionMatchesRuntimeRef && sessionWindow !== undefined) {
+    modelWindow = sessionWindow;
+  }
+  if (
+    modelWindow === undefined &&
+    !hasExplicitRuntimeRef &&
+    params.primaryProvider &&
+    params.primaryModel
+  ) {
+    const resolved = resolveContextTokensForModel({
+      cfg: params.cfg,
+      provider: params.primaryProvider,
+      model: params.primaryModel,
+      allowAsyncLoad: false,
+    });
+    if (typeof resolved === "number" && resolved > 0) {
+      modelWindow = resolved;
+    }
+  }
+  const contextWindow = modelWindow ?? trustedSessionWindow;
+  const agentCap = resolveAgentContextTokensForHint({
+    cfg: params.cfg,
+    agentId: params.agentId,
+  });
+  if (agentCap !== undefined && contextWindow !== undefined) {
+    return Math.min(agentCap, contextWindow);
+  }
+  return agentCap ?? contextWindow;
+}
+
+function buildContextOverflowResetHint(contextWindowTokens: number | undefined): string {
+  const reserveFloor = computeContextAwareReserveTokensFloor(contextWindowTokens);
+  return (
+    "\n\nTo prevent this, increase your compaction buffer by setting " +
+    `\`agents.defaults.compaction.reserveTokensFloor\` to ${reserveFloor} or higher in your config.`
+  );
+}
+
 type ModelRefLike = {
   provider: string;
   model: string;
@@ -988,92 +1218,6 @@ function resolveHeartbeatBleedHint(params: {
     "`heartbeat.model`, so the overflow is likely heartbeat model bleed rather than a " +
     "compaction-buffer problem. Set `heartbeat.isolatedSession: true`, enable " +
     "`heartbeat.lightContext: true`, or use a heartbeat model with a larger context window."
-  );
-}
-
-const DEFAULT_RESERVE_TOKENS_FLOOR = 20_000;
-
-export function computeContextAwareReserveTokensFloor(contextWindow: number | undefined): number {
-  if (typeof contextWindow !== "number" || contextWindow <= 0) {
-    return DEFAULT_RESERVE_TOKENS_FLOOR;
-  }
-  if (contextWindow >= 1_000_000) {
-    return 100_000;
-  }
-  if (contextWindow >= 200_000) {
-    return 50_000;
-  }
-  if (contextWindow >= 100_000) {
-    return 35_000;
-  }
-  return DEFAULT_RESERVE_TOKENS_FLOOR;
-}
-
-function resolveContextWindowForCompactionHint(params: {
-  cfg: FollowupRun["run"]["config"];
-  primaryProvider?: string;
-  primaryModel?: string;
-  runtimeProvider?: string;
-  runtimeModel?: string;
-  agentId?: string;
-  activeSessionEntry?: SessionEntry;
-}): number | undefined {
-  let modelWindow: number | undefined;
-  const entryProvider = params.activeSessionEntry?.modelProvider;
-  const entryModel = params.activeSessionEntry?.model;
-  const runtimeProvider = params.runtimeProvider ?? entryProvider;
-  const runtimeModel = params.runtimeModel ?? entryModel;
-  const hasExplicitRuntimeRef = Boolean(params.runtimeProvider && params.runtimeModel);
-  if (runtimeProvider && runtimeModel) {
-    const resolved = resolveContextTokensForModel({
-      cfg: params.cfg,
-      provider: runtimeProvider,
-      model: runtimeModel,
-      allowAsyncLoad: false,
-    });
-    if (typeof resolved === "number" && resolved > 0) {
-      modelWindow = resolved;
-    }
-  }
-  const sessionWindow = normalizePositiveContextTokens(params.activeSessionEntry?.contextTokens);
-  const sessionMatchesRuntimeRef = runtimeProvider === entryProvider && runtimeModel === entryModel;
-  const trustedSessionWindow =
-    !hasExplicitRuntimeRef || sessionMatchesRuntimeRef ? sessionWindow : undefined;
-  if (modelWindow === undefined && sessionMatchesRuntimeRef && sessionWindow !== undefined) {
-    modelWindow = sessionWindow;
-  }
-  if (
-    modelWindow === undefined &&
-    !hasExplicitRuntimeRef &&
-    params.primaryProvider &&
-    params.primaryModel
-  ) {
-    const resolved = resolveContextTokensForModel({
-      cfg: params.cfg,
-      provider: params.primaryProvider,
-      model: params.primaryModel,
-      allowAsyncLoad: false,
-    });
-    if (typeof resolved === "number" && resolved > 0) {
-      modelWindow = resolved;
-    }
-  }
-  const contextWindow = modelWindow ?? trustedSessionWindow;
-  const agentCap = resolveAgentContextTokensForHint({
-    cfg: params.cfg,
-    agentId: params.agentId,
-  });
-  if (agentCap !== undefined && contextWindow !== undefined) {
-    return Math.min(agentCap, contextWindow);
-  }
-  return agentCap ?? contextWindow;
-}
-
-function buildContextOverflowResetHint(contextWindowTokens: number | undefined): string {
-  const reserveFloor = computeContextAwareReserveTokensFloor(contextWindowTokens);
-  return (
-    "\n\nTo prevent this, increase your compaction buffer by setting " +
-    `\`agents.defaults.compaction.reserveTokensFloor\` to ${reserveFloor} or higher in your config.`
   );
 }
 
@@ -1426,6 +1570,9 @@ export async function runAgentTurnWithFallback(params: {
   };
 
   const runId = params.opts?.runId ?? crypto.randomUUID();
+  const agentTurnTiming = createAgentTurnTimingTracker({
+    profilerEnabled: isReplyProfilerEnabled({ config: runtimeConfig }),
+  });
   if (isDiagnosticsEnabled(runtimeConfig)) {
     logSessionTurnCreated({
       runId,
@@ -1441,26 +1588,30 @@ export async function runAgentTurnWithFallback(params: {
   }
   const replyMediaContext =
     params.replyMediaContext ??
-    createReplyMediaContext({
+    agentTurnTiming.measureSync("reply_media_context", () =>
+      createReplyMediaContext({
+        cfg: runtimeConfig,
+        sessionKey: params.sessionKey,
+        workspaceDir: params.followupRun.run.workspaceDir,
+        messageProvider: params.followupRun.run.messageProvider,
+        accountId: params.followupRun.originatingAccountId ?? params.followupRun.run.agentAccountId,
+        groupId: params.followupRun.run.groupId,
+        groupChannel: params.followupRun.run.groupChannel,
+        groupSpace: params.followupRun.run.groupSpace,
+        requesterSenderId: params.followupRun.run.senderId,
+        requesterSenderName: params.followupRun.run.senderName,
+        requesterSenderUsername: params.followupRun.run.senderUsername,
+        requesterSenderE164: params.followupRun.run.senderE164,
+      }),
+    );
+  const currentTurnImages = await agentTurnTiming.measure("current_turn_images", () =>
+    resolveCurrentTurnImages({
+      ctx: params.sessionCtx,
       cfg: runtimeConfig,
-      sessionKey: params.sessionKey,
-      workspaceDir: params.followupRun.run.workspaceDir,
-      messageProvider: params.followupRun.run.messageProvider,
-      accountId: params.followupRun.originatingAccountId ?? params.followupRun.run.agentAccountId,
-      groupId: params.followupRun.run.groupId,
-      groupChannel: params.followupRun.run.groupChannel,
-      groupSpace: params.followupRun.run.groupSpace,
-      requesterSenderId: params.followupRun.run.senderId,
-      requesterSenderName: params.followupRun.run.senderName,
-      requesterSenderUsername: params.followupRun.run.senderUsername,
-      requesterSenderE164: params.followupRun.run.senderE164,
-    });
-  const currentTurnImages = await resolveCurrentTurnImages({
-    ctx: params.sessionCtx,
-    cfg: runtimeConfig,
-    images: params.followupRun.images ?? params.opts?.images,
-    imageOrder: params.followupRun.imageOrder ?? params.opts?.imageOrder,
-  });
+      images: params.followupRun.images ?? params.opts?.images,
+      imageOrder: params.followupRun.imageOrder ?? params.opts?.imageOrder,
+    }),
+  );
   let didNotifyAgentRunStart = false;
   const notifyAgentRunStart = () => {
     if (didNotifyAgentRunStart) {
@@ -1846,753 +1997,791 @@ export async function runAgentTurnWithFallback(params: {
       const runLane = CommandLane.Main;
       let queuedUserMessagePersistedAcrossFallback = false;
       let assistantErrorPersistedAcrossFallback = false;
-      const fallbackResult = await runWithModelFallback<
-        | EmbeddedAgentRunResult
-        | {
-            result: EmbeddedAgentRunResult;
-            continueWorkRequest?: ContinueWorkRequest;
-            compactionTraceparent?: string;
-          }
-      >({
-        ...resolveModelFallbackOptions(effectiveRun, runtimeConfig),
+      const userTurnTranscriptRecorder =
+        params.followupRun.userTurnTranscriptRecorder ?? params.opts?.userTurnTranscriptRecorder;
+      const notifyUserMessagePersisted = () => {
+        queuedUserMessagePersistedAcrossFallback = true;
+      };
+      // Profiler-only milestone: it separates fallback setup from the actual
+      // model run without adding extra live logs/snapshots to normal turns.
+      agentTurnTiming.logMilestoneIfSlow({
         runId,
         sessionId: params.followupRun.run.sessionId,
-        lane: runLane,
-        resolveAgentHarnessRuntimeOverride: (provider) =>
-          resolveSessionRuntimeOverrideForProvider({
-            provider,
-            entry: params.getActiveSessionEntry(),
-          }),
-        prepareAgentHarnessRuntime: async ({ provider, model, agentHarnessRuntimeOverride }) => {
-          await ensureSelectedAgentHarnessPlugin({
-            config: runtimeConfig,
-            provider,
-            modelId: model,
-            agentId: params.followupRun.run.agentId,
-            sessionKey: params.followupRun.run.runtimePolicySessionKey ?? params.sessionKey,
-            agentHarnessRuntimeOverride,
-            workspaceDir: params.followupRun.run.workspaceDir,
-          });
-        },
-        onFallbackStep: (step) => {
-          emitModelFallbackStepLifecycle({
-            runId,
-            sessionKey: params.sessionKey,
-            step,
-          });
-        },
-        classifyResult: async ({ result, provider, model }) => {
-          const effectiveResult = isContinuationWrappedRunResult(result) ? result.result : result;
-          const classification = outcomePlan.classifyRunResult({
-            result: effectiveResult,
-            provider,
-            model,
-            hasDirectlySentBlockReply: directlySentBlockKeys.size > 0,
-            hasBlockReplyPipelineOutput: Boolean(
-              blockReplyPipeline?.hasBuffered() || blockReplyPipeline?.didStream(),
-            ),
-          });
-          if (classification) {
-            await rollbackClassifiedFallbackCandidateSelection(provider, model);
-          }
-          return classification;
-        },
-        run: async (provider, model, runOptions) => {
-          attemptedRuntimeProvider = provider;
-          attemptedRuntimeModel = model;
-          const suppressQueuedUserPersistenceForCandidate =
-            (params.followupRun.run.suppressNextUserMessagePersistence ?? false) ||
-            queuedUserMessagePersistedAcrossFallback;
-          const suppressAssistantErrorPersistenceForCandidate =
-            assistantErrorPersistedAcrossFallback;
-          const userTurnTranscriptRecorder =
-            params.followupRun.userTurnTranscriptRecorder ??
-            params.opts?.userTurnTranscriptRecorder;
-          const candidateRun = resolveRunForFallbackCandidate(provider, model);
-          const activeProbe = effectiveRun.autoFallbackPrimaryProbe;
-          if (activeProbe && provider === activeProbe.provider && model === activeProbe.model) {
-            markAutoFallbackPrimaryProbe({
-              probe: activeProbe,
-              sessionKey: params.sessionKey,
-            });
-          }
-          // Notify that model selection is complete (including after fallback).
-          // This allows responsePrefix template interpolation with the actual model.
-          params.opts?.onModelSelected?.({
-            provider,
-            model,
-            thinkLevel: params.followupRun.run.thinkLevel,
-          });
-          let rollbackFallbackCandidateSelection: (() => Promise<void>) | undefined;
-          try {
-            rollbackFallbackCandidateSelection = await persistFallbackCandidateSelection(
-              provider,
-              model,
-              candidateRun,
-            );
-            if (rollbackFallbackCandidateSelection) {
-              pendingFallbackCandidateRollback = {
-                provider,
-                model,
-                rollback: rollbackFallbackCandidateSelection,
-              };
+        sessionKey: params.sessionKey,
+        milestone: "before_model_fallback",
+      });
+      const fallbackResult = await agentTurnTiming.measure("model_fallback", () =>
+        runWithModelFallback<
+          | EmbeddedAgentRunResult
+          | {
+              result: EmbeddedAgentRunResult;
+              continueWorkRequest?: ContinueWorkRequest;
+              compactionTraceparent?: string;
             }
-          } catch (error) {
-            logVerbose(
-              `failed to persist fallback candidate selection (non-fatal): ${String(error)}`,
-            );
-          }
-
-          const sessionRuntimeOverride = resolveSessionRuntimeOverrideForProvider({
-            provider,
-            entry: params.getActiveSessionEntry(),
-          });
-          const selectedAuthProfile = resolveRunAuthProfile(candidateRun, provider, {
-            config: runtimeConfig,
-          });
-          const cliExecutionProvider =
-            sessionRuntimeOverride === "pi"
-              ? provider
-              : ((sessionRuntimeOverride && isCliProvider(sessionRuntimeOverride, runtimeConfig)
-                  ? sessionRuntimeOverride
-                  : undefined) ??
-                resolveCliRuntimeExecutionProvider({
-                  provider,
-                  cfg: runtimeConfig,
-                  agentId: params.followupRun.run.agentId,
-                  modelId: model,
-                  authProfileId: selectedAuthProfile.authProfileId,
-                }) ??
-                provider);
-
-          if (isCliProvider(cliExecutionProvider, runtimeConfig)) {
-            const isRoomEventCliRun = params.followupRun.currentInboundEventKind === "room_event";
-            const cliSessionBinding = isRoomEventCliRun
-              ? undefined
-              : getCliSessionBinding(params.getActiveSessionEntry(), cliExecutionProvider);
-            const authProfile = resolveRunAuthProfile(candidateRun, cliExecutionProvider, {
-              config: runtimeConfig,
-            });
-            const hookMessageProvider = resolveOriginMessageProvider({
-              originatingChannel: params.followupRun.originatingChannel,
-              provider: params.sessionCtx.Provider,
-            });
-            const result = await runCliAgentWithLifecycle({
-              runId,
-              provider: cliExecutionProvider,
-              onAgentRunStart: notifyAgentRunStart,
-              suppressAssistantBridge: params.followupRun.run.silentExpected,
-              onAssistantText: async (text) => {
-                const textForTyping = await handlePartialForTyping({ text } as ReplyPayload);
-                if (textForTyping === undefined || !params.opts?.onPartialReply) {
-                  return;
-                }
-                await params.opts.onPartialReply({ text: textForTyping });
-              },
-              onReasoningText: async (text) => {
-                await params.opts?.onReasoningStream?.({ text });
-              },
-              onErrorBeforeLifecycle: async () => {
-                if (!rollbackFallbackCandidateSelection) {
-                  return;
-                }
-                try {
-                  await rollbackFallbackCandidateSelection();
-                  clearPendingFallbackRollback(rollbackFallbackCandidateSelection);
-                } catch (rollbackError) {
-                  logVerbose(
-                    `failed to roll back fallback candidate selection (non-fatal): ${String(rollbackError)}`,
-                  );
-                }
-              },
-              runParams: {
-                sessionId: params.followupRun.run.sessionId,
-                sessionKey: params.sessionKey,
-                agentId: params.followupRun.run.agentId,
-                trigger: params.isHeartbeat ? "heartbeat" : "user",
-                sessionFile: params.followupRun.run.sessionFile,
-                workspaceDir: params.followupRun.run.workspaceDir,
-                config: runtimeConfig,
-                prompt: params.commandBody,
-                transcriptPrompt: params.transcriptCommandBody,
-                currentInboundEventKind: params.followupRun.currentInboundEventKind,
-                currentInboundContext: params.followupRun.currentInboundContext,
-                inputProvenance: params.followupRun.run.inputProvenance,
-                provider: cliExecutionProvider,
-                model,
-                thinkLevel: params.followupRun.run.thinkLevel,
-                timeoutMs: params.followupRun.run.timeoutMs,
-                runId,
-                lane: runLane,
-                extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
-                sourceReplyDeliveryMode: params.followupRun.run.sourceReplyDeliveryMode,
-                silentReplyPromptMode: params.followupRun.run.silentReplyPromptMode,
-                extraSystemPromptStatic: params.followupRun.run.extraSystemPromptStatic,
-                ownerNumbers: params.followupRun.run.ownerNumbers,
-                cliSessionId: cliSessionBinding?.sessionId,
-                cliSessionBinding,
-                authProfileId: authProfile.authProfileId,
-                bootstrapPromptWarningSignaturesSeen,
-                bootstrapPromptWarningSignature:
-                  bootstrapPromptWarningSignaturesSeen[
-                    bootstrapPromptWarningSignaturesSeen.length - 1
-                  ],
-                images: currentTurnImages.images,
-                imageOrder: currentTurnImages.imageOrder,
-                skillsSnapshot: params.followupRun.run.skillsSnapshot,
-                messageChannel: params.followupRun.originatingChannel ?? undefined,
-                messageProvider: hookMessageProvider,
-                agentAccountId: params.followupRun.run.agentAccountId,
-                senderIsOwner: params.followupRun.run.senderIsOwner,
-                suppressNextUserMessagePersistence: suppressQueuedUserPersistenceForCandidate,
-                onUserMessagePersisted: () => {
-                  queuedUserMessagePersistedAcrossFallback = true;
-                },
-                userTurnTranscriptRecorder,
-                disableTools: params.opts?.disableTools,
-                abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
-                replyOperation: params.replyOperation,
-              },
-              transformResult: (rawResult) =>
-                isRoomEventCliRun && rawResult.meta.agentMeta
-                  ? (() => {
-                      const { cliSessionBinding: _cliSessionBinding, ...agentMeta } =
-                        rawResult.meta.agentMeta;
-                      return {
-                        ...rawResult,
-                        meta: {
-                          ...rawResult.meta,
-                          agentMeta: {
-                            ...agentMeta,
-                            sessionId: "",
-                          },
-                        },
-                      };
-                    })()
-                  : rawResult,
-            });
-            bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
-              result.meta?.systemPromptReport,
-            );
-            return result;
-          }
-          const { embeddedContext, senderContext, runBaseParams } = buildEmbeddedRunExecutionParams(
-            {
-              run: candidateRun,
-              sessionCtx: params.sessionCtx,
-              hasRepliedRef: params.opts?.hasRepliedRef,
+        >({
+          ...resolveModelFallbackOptions(effectiveRun, runtimeConfig),
+          runId,
+          sessionId: params.followupRun.run.sessionId,
+          lane: runLane,
+          resolveAgentHarnessRuntimeOverride: (provider) =>
+            resolveSessionRuntimeOverrideForProvider({
               provider,
-              runId,
-              allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
-              model,
-            },
-          );
-          const agentHarnessPolicy = sessionRuntimeOverride
-            ? ({ runtime: sessionRuntimeOverride, runtimeSource: "model" } as const)
-            : resolveAgentHarnessPolicy({
+              entry: params.getActiveSessionEntry(),
+            }),
+          prepareAgentHarnessRuntime: async ({ provider, model, agentHarnessRuntimeOverride }) => {
+            await agentTurnTiming.measure("fallback_prepare_harness", () =>
+              ensureSelectedAgentHarnessPlugin({
+                config: runtimeConfig,
                 provider,
                 modelId: model,
-                config: runtimeConfig,
                 agentId: params.followupRun.run.agentId,
                 sessionKey: params.followupRun.run.runtimePolicySessionKey ?? params.sessionKey,
-              });
-          const embeddedRunProvider = resolveOpenAIRuntimeProviderForPi({
-            provider,
-            harnessRuntime: agentHarnessPolicy.runtime,
-            authProfileProvider: runBaseParams.authProfileId?.split(":", 1)[0],
-            authProfileId: runBaseParams.authProfileId,
-            config: runtimeConfig,
-            workspaceDir: params.followupRun.run.workspaceDir,
-          });
-          const embeddedRunHarnessOverride =
-            sessionRuntimeOverride ??
-            (agentHarnessPolicy.runtime === "pi" && embeddedRunProvider !== provider
-              ? "pi"
-              : undefined);
-          return (async () => {
-            let attemptCompactionCount = 0;
-            let attemptCompactionTraceparent: string | undefined;
-            const lifecycleBackstop = createEmbeddedLifecycleTerminalBackstop({
+                agentHarnessRuntimeOverride,
+                workspaceDir: params.followupRun.run.workspaceDir,
+              }),
+            );
+          },
+          onFallbackStep: (step) => {
+            emitModelFallbackStepLifecycle({
               runId,
               sessionKey: params.sessionKey,
+              step,
             });
-            let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
+          },
+          classifyResult: async ({ result, provider, model }) => {
+            const effectiveResult = isContinuationWrappedRunResult(result) ? result.result : result;
+            const classification = outcomePlan.classifyRunResult({
+              result: effectiveResult,
+              provider,
+              model,
+              hasDirectlySentBlockReply: directlySentBlockKeys.size > 0,
+              hasBlockReplyPipelineOutput: Boolean(
+                blockReplyPipeline?.hasBuffered() || blockReplyPipeline?.didStream(),
+              ),
+            });
+            if (classification) {
+              await rollbackClassifiedFallbackCandidateSelection(provider, model);
+            }
+            return classification;
+          },
+          run: async (provider, model, runOptions) => {
+            attemptedRuntimeProvider = provider;
+            attemptedRuntimeModel = model;
+            const suppressQueuedUserPersistenceForCandidate =
+              (params.followupRun.run.suppressNextUserMessagePersistence ?? false) ||
+              queuedUserMessagePersistedAcrossFallback;
+            const suppressAssistantErrorPersistenceForCandidate =
+              assistantErrorPersistedAcrossFallback;
+            const candidateRun = resolveRunForFallbackCandidate(provider, model);
+            const activeProbe = effectiveRun.autoFallbackPrimaryProbe;
+            if (activeProbe && provider === activeProbe.provider && model === activeProbe.model) {
+              markAutoFallbackPrimaryProbe({
+                probe: activeProbe,
+                sessionKey: params.sessionKey,
+              });
+            }
+            // Notify that model selection is complete (including after fallback).
+            // This allows responsePrefix template interpolation with the actual model.
+            params.opts?.onModelSelected?.({
+              provider,
+              model,
+              thinkLevel: params.followupRun.run.thinkLevel,
+            });
+            let rollbackFallbackCandidateSelection: (() => Promise<void>) | undefined;
             try {
-              const result = await runEmbeddedPiAgentDefault({
-                ...embeddedContext,
-                allowGatewaySubagentBinding: true,
-                trigger: params.isHeartbeat ? "heartbeat" : "user",
-                fireReason: resolveReplyRunFireReason({
-                  opts: params.opts,
-                  drainsContinuationDelegateQueue:
-                    effectiveRun.drainsContinuationDelegateQueue === true,
-                }),
-                parentRunId: params.opts?.parentRunId,
-                groupId: resolveGroupSessionKey(params.sessionCtx)?.id,
-                groupChannel:
-                  normalizeOptionalString(params.sessionCtx.GroupChannel) ??
-                  normalizeOptionalString(params.sessionCtx.GroupSubject),
-                groupSpace: normalizeOptionalString(params.sessionCtx.GroupSpace),
-                ...senderContext,
-                ...runBaseParams,
-                provider: embeddedRunProvider,
-                agentHarnessId: embeddedRunHarnessOverride,
-                agentHarnessRuntimeOverride: embeddedRunHarnessOverride,
-                sandboxSessionKey: params.runtimePolicySessionKey,
-                prompt: params.commandBody,
-                transcriptPrompt: params.transcriptCommandBody,
-                currentInboundEventKind: params.followupRun.currentInboundEventKind,
-                currentInboundContext: params.followupRun.currentInboundContext,
-                extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
-                sourceReplyDeliveryMode: params.followupRun.run.sourceReplyDeliveryMode,
-                forceMessageTool:
-                  params.followupRun.run.sourceReplyDeliveryMode === "message_tool_only",
-                silentReplyPromptMode: params.followupRun.run.silentReplyPromptMode,
-                suppressNextUserMessagePersistence: suppressQueuedUserPersistenceForCandidate,
-                onUserMessagePersisted: () => {
-                  queuedUserMessagePersistedAcrossFallback = true;
-                },
-                suppressTranscriptOnlyAssistantPersistence:
-                  params.followupRun.run.suppressTranscriptOnlyAssistantPersistence,
-                suppressAssistantErrorPersistence: suppressAssistantErrorPersistenceForCandidate,
-                onAssistantErrorMessagePersisted: () => {
-                  assistantErrorPersistedAcrossFallback = true;
-                },
-                drainsContinuationDelegateQueue:
-                  params.followupRun.run.drainsContinuationDelegateQueue,
-                continueWorkOpts:
-                  params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
-                    ? {
-                        requestContinuation: (request) => {
-                          attemptContinueWorkRequest = request;
-                        },
-                      }
-                    : undefined,
-                toolResultFormat: (() => {
-                  const channel = resolveMessageChannel(
-                    params.sessionCtx.Surface,
-                    params.sessionCtx.Provider,
-                  );
-                  if (!channel) {
-                    return "markdown";
-                  }
-                  return isMarkdownCapableMessageChannel(channel) ? "markdown" : "plain";
-                })(),
-                toolProgressDetail: params.toolProgressDetail,
-                suppressToolErrorWarnings: params.opts?.suppressToolErrorWarnings,
-                disableTools: params.opts?.disableTools,
-                enableHeartbeatTool: params.opts?.enableHeartbeatTool,
-                forceHeartbeatTool: params.opts?.forceHeartbeatTool,
-                bootstrapContextMode: params.opts?.bootstrapContextMode,
-                bootstrapContextRunKind: params.opts?.isHeartbeat ? "heartbeat" : "default",
-                images: currentTurnImages.images,
-                imageOrder: currentTurnImages.imageOrder,
-                abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
-                replyOperation: params.replyOperation,
-                // Continuation: request_compaction opts wired from session state.
-                requestCompactionOpts:
-                  runtimeConfig?.agents?.defaults?.continuation?.enabled === true
-                    ? {
-                        sessionId: params.followupRun.run.sessionId,
-                        getContextUsage: () => {
-                          const entry = params.getActiveSessionEntry();
-                          const totalTokens =
-                            (entry as { totalTokens?: number } | undefined)?.totalTokens ?? 0;
-                          const contextWindow =
-                            (entry as { contextTokens?: number } | undefined)?.contextTokens ??
-                            200_000;
-                          return contextWindow > 0 ? totalTokens / contextWindow : 0;
-                        },
-                        triggerCompaction: async (request) => {
-                          attemptCompactionTraceparent = request.traceparent;
-                          try {
-                            const { compactEmbeddedPiSession } =
-                              await import("../../agents/pi-embedded-runner/compact.queued.js");
-                            // Thread the session's active provider/model through so
-                            // volitional compaction doesn't fall back to DEFAULT_PROVIDER/MODEL.
-                            // Use inner-scope provider/model from the fallback
-                            // dispatcher (line 805) so a fallback-selected model
-                            // gets the compaction request, not the persisted primary
-                            // (which may be in cooldown — would re-fail immediately).
-                            // Thread authProfileId only when the inner-scope provider
-                            // matches the persisted primary
-                            // (the persisted profile is keyed to the primary). On fallback
-                            // to a different provider, leave undefined so resolveEmbedded-
-                            // CompactionTarget picks the default profile for that provider.
-                            // Mirrors the pattern at line ~841 (runCliAgent dispatch).
-                            const compactionAuthProfileId =
-                              provider === params.followupRun.run.provider
-                                ? params.followupRun.run.authProfileId
-                                : undefined;
-                            const result = await compactEmbeddedPiSession({
-                              sessionId: params.followupRun.run.sessionId ?? "",
-                              runId: request.runId ?? runId,
-                              sessionKey: params.sessionKey,
-                              sessionFile: params.followupRun.run.sessionFile ?? "",
-                              workspaceDir: params.followupRun.run.workspaceDir ?? process.cwd(),
-                              config: params.followupRun.run.config,
-                              messageProvider: params.followupRun.run.messageProvider,
-                              provider,
-                              model,
-                              authProfileId: compactionAuthProfileId,
-                              trigger: request.trigger,
-                              diagId: request.diagId,
-                              traceparent: request.traceparent,
-                            });
-                            if (result.ok && result.compacted) {
-                              await releaseQueuedCompactionCompletion({
-                                activeSessionStore: params.activeSessionStore,
-                                compactionResult: result,
-                                followupRun: params.followupRun,
-                                getActiveSessionEntry: params.getActiveSessionEntry,
-                                sessionKey: params.sessionKey,
-                                storePath: params.storePath,
-                                traceparent: request.traceparent,
-                              });
-                            }
-                            // Honor the real result instead of unconditionally claiming
-                            // success; otherwise compaction telemetry lies and the
-                            // failure is invisible to the caller.
-                            return {
-                              ok: result.ok,
-                              compacted: result.compacted,
-                              reason: result.reason,
-                            };
-                          } catch (err) {
-                            return {
-                              ok: false,
-                              compacted: false,
-                              reason: err instanceof Error ? err.message : String(err),
-                            };
-                          }
-                        },
-                      }
-                    : undefined,
-                blockReplyBreak: params.resolvedBlockStreamingBreak,
-                blockReplyChunking: params.blockReplyChunking,
-                onPartialReply: async (payload) => {
-                  const textForTyping = await handlePartialForTyping(payload);
-                  if (!params.opts?.onPartialReply || textForTyping === undefined) {
-                    return;
-                  }
-                  await params.opts.onPartialReply({
-                    text: textForTyping,
-                    mediaUrls: payload.mediaUrls,
-                  });
-                },
-                onAssistantMessageStart: async () => {
-                  await params.typingSignals.signalMessageStart();
-                  await params.opts?.onAssistantMessageStart?.();
-                },
-                onReasoningStream:
-                  params.typingSignals.shouldStartOnReasoning || params.opts?.onReasoningStream
-                    ? async (payload) => {
-                        if (params.followupRun.run.silentExpected) {
-                          return;
-                        }
-                        await params.typingSignals.signalReasoningDelta();
-                        await params.opts?.onReasoningStream?.({
-                          text: payload.text,
-                          mediaUrls: payload.mediaUrls,
-                        });
-                      }
-                    : undefined,
-                onReasoningEnd: params.opts?.onReasoningEnd,
-                onAgentEvent: async (evt) => {
-                  lifecycleBackstop.note(evt);
-                  // Signal run start only after the embedded agent emits real activity.
-                  const hasLifecyclePhase =
-                    evt.stream === "lifecycle" && typeof evt.data.phase === "string";
-                  if (evt.stream !== "lifecycle" || hasLifecyclePhase) {
-                    notifyAgentRunStart();
-                  }
-                  if (
-                    evt.stream === "lifecycle" &&
-                    readStringValue(evt.data.livenessState) === "blocked"
-                  ) {
-                    await surfaceBlockedLivenessState();
-                  }
-                  // Trigger typing when tools start executing.
-                  // Must await to ensure typing indicator starts before tool summaries are emitted.
-                  if (evt.stream === "tool") {
-                    const phase = readStringValue(evt.data.phase) ?? "";
-                    const name = readStringValue(evt.data.name);
-                    const toolCallId = readStringValue(evt.data.toolCallId) ?? "";
-                    const args =
-                      evt.data.args && typeof evt.data.args === "object"
-                        ? (evt.data.args as Record<string, unknown>)
-                        : undefined;
-                    if (
-                      sourceRepliesAreToolOnly &&
-                      toolCallId &&
-                      name &&
-                      (phase === "start" || phase === "update") &&
-                      args &&
-                      isMessagingToolSendAction(name, args)
-                    ) {
-                      messageToolOnlyDeliveryToolCallIds.add(toolCallId);
-                    }
-                    if (shouldSuppressProgressAfterMessageToolDelivery()) {
+              rollbackFallbackCandidateSelection = await agentTurnTiming.measure(
+                "fallback_persist_selection",
+                () => persistFallbackCandidateSelection(provider, model, candidateRun),
+              );
+              if (rollbackFallbackCandidateSelection) {
+                pendingFallbackCandidateRollback = {
+                  provider,
+                  model,
+                  rollback: rollbackFallbackCandidateSelection,
+                };
+              }
+            } catch (error) {
+              logVerbose(
+                `failed to persist fallback candidate selection (non-fatal): ${String(error)}`,
+              );
+            }
+
+            const { sessionRuntimeOverride, cliExecutionProvider } = agentTurnTiming.measureSync(
+              "fallback_resolve_runtime",
+              () => {
+                const resolvedSessionRuntimeOverride = resolveSessionRuntimeOverrideForProvider({
+                  provider,
+                  entry: params.getActiveSessionEntry(),
+                });
+                const resolvedSelectedAuthProfile = resolveRunAuthProfile(candidateRun, provider, {
+                  config: runtimeConfig,
+                });
+                const resolvedCliExecutionProvider =
+                  resolvedSessionRuntimeOverride === "pi"
+                    ? provider
+                    : ((resolvedSessionRuntimeOverride &&
+                      isCliProvider(resolvedSessionRuntimeOverride, runtimeConfig)
+                        ? resolvedSessionRuntimeOverride
+                        : undefined) ??
+                      resolveCliRuntimeExecutionProvider({
+                        provider,
+                        cfg: runtimeConfig,
+                        agentId: params.followupRun.run.agentId,
+                        modelId: model,
+                        authProfileId: resolvedSelectedAuthProfile.authProfileId,
+                      }) ??
+                      provider);
+                return {
+                  sessionRuntimeOverride: resolvedSessionRuntimeOverride,
+                  cliExecutionProvider: resolvedCliExecutionProvider,
+                };
+              },
+            );
+
+            if (isCliProvider(cliExecutionProvider, runtimeConfig)) {
+              const isRoomEventCliRun = params.followupRun.currentInboundEventKind === "room_event";
+              const cliSessionBinding = isRoomEventCliRun
+                ? undefined
+                : getCliSessionBinding(params.getActiveSessionEntry(), cliExecutionProvider);
+              const authProfile = resolveRunAuthProfile(candidateRun, cliExecutionProvider, {
+                config: runtimeConfig,
+              });
+              const hookMessageProvider = resolveOriginMessageProvider({
+                originatingChannel: params.followupRun.originatingChannel,
+                provider: params.sessionCtx.Provider,
+              });
+              const result = await agentTurnTiming.measure("cli_run", () =>
+                runCliAgentWithLifecycle({
+                  runId,
+                  provider: cliExecutionProvider,
+                  onAgentRunStart: notifyAgentRunStart,
+                  suppressAssistantBridge: params.followupRun.run.silentExpected,
+                  onAssistantText: async (text) => {
+                    const textForTyping = await handlePartialForTyping({ text } as ReplyPayload);
+                    if (textForTyping === undefined || !params.opts?.onPartialReply) {
                       return;
                     }
-                    if (phase === "start" || phase === "update") {
-                      const toolStartProgressPromise = params.opts?.onToolStart?.({
-                        name,
-                        phase,
-                        args,
-                        detailMode: params.toolProgressDetail,
-                      });
-                      await Promise.all([
-                        params.typingSignals.signalToolStart(),
-                        toolStartProgressPromise,
-                      ]);
+                    await params.opts.onPartialReply({ text: textForTyping });
+                  },
+                  onReasoningText: async (text) => {
+                    await params.opts?.onReasoningStream?.({ text });
+                  },
+                  onErrorBeforeLifecycle: async () => {
+                    if (!rollbackFallbackCandidateSelection) {
+                      return;
                     }
-                  }
-                  const suppressItemChannelProgress =
-                    evt.stream === "item" &&
-                    evt.data.suppressChannelProgress === true &&
-                    Boolean(params.opts?.onToolStart);
-                  const itemPhase = evt.stream === "item" ? readStringValue(evt.data.phase) : "";
-                  const itemName = evt.stream === "item" ? readStringValue(evt.data.name) : "";
-                  const itemStatus = evt.stream === "item" ? readStringValue(evt.data.status) : "";
-                  const itemToolCallId =
-                    evt.stream === "item" ? (readStringValue(evt.data.toolCallId) ?? "") : "";
-                  const completedMessageToolDelivery =
-                    sourceRepliesAreToolOnly &&
-                    itemPhase === "end" &&
-                    itemStatus === "completed" &&
-                    itemToolCallId.length > 0 &&
-                    messageToolOnlyDeliveryToolCallIds.has(itemToolCallId);
-                  const suppressProgressAfterMessageToolDelivery =
-                    shouldSuppressProgressAfterMessageToolDelivery();
-                  if (completedMessageToolDelivery) {
-                    messageToolOnlyDeliveryToolCallIds.delete(itemToolCallId);
-                    messageToolOnlyDeliveryCompleted = true;
-                  }
-                  if (
-                    evt.stream === "item" &&
-                    !suppressItemChannelProgress &&
-                    (!suppressProgressAfterMessageToolDelivery || completedMessageToolDelivery)
-                  ) {
-                    await params.opts?.onItemEvent?.({
-                      itemId: readStringValue(evt.data.itemId),
-                      kind: readStringValue(evt.data.kind),
-                      title: readStringValue(evt.data.title),
-                      name: itemName,
-                      phase: itemPhase,
-                      status: itemStatus,
-                      summary: readStringValue(evt.data.summary),
-                      progressText: readStringValue(evt.data.progressText),
-                      meta: readStringValue(evt.data.meta),
-                      approvalId: readStringValue(evt.data.approvalId),
-                      approvalSlug: readStringValue(evt.data.approvalSlug),
-                    });
-                  }
-                  if (evt.stream === "plan" && !shouldSuppressProgressAfterMessageToolDelivery()) {
-                    await params.opts?.onPlanUpdate?.({
-                      phase: readStringValue(evt.data.phase),
-                      title: readStringValue(evt.data.title),
-                      explanation: readStringValue(evt.data.explanation),
-                      steps: Array.isArray(evt.data.steps)
-                        ? evt.data.steps.filter((step): step is string => typeof step === "string")
-                        : undefined,
-                      source: readStringValue(evt.data.source),
-                    });
-                  }
-                  if (
-                    evt.stream === "approval" &&
-                    !shouldSuppressProgressAfterMessageToolDelivery()
-                  ) {
-                    await params.opts?.onApprovalEvent?.({
-                      phase: readStringValue(evt.data.phase),
-                      kind: readStringValue(evt.data.kind),
-                      status: readStringValue(evt.data.status),
-                      title: readStringValue(evt.data.title),
-                      itemId: readStringValue(evt.data.itemId),
-                      toolCallId: readStringValue(evt.data.toolCallId),
-                      approvalId: readStringValue(evt.data.approvalId),
-                      approvalSlug: readStringValue(evt.data.approvalSlug),
-                      command: readStringValue(evt.data.command),
-                      host: readStringValue(evt.data.host),
-                      reason: readStringValue(evt.data.reason),
-                      scope: readApprovalScopeValue(evt.data.scope),
-                      message: readStringValue(evt.data.message),
-                    });
-                  }
-                  if (
-                    evt.stream === "command_output" &&
-                    !shouldSuppressProgressAfterMessageToolDelivery()
-                  ) {
-                    await params.opts?.onCommandOutput?.({
-                      itemId: readStringValue(evt.data.itemId),
-                      phase: readStringValue(evt.data.phase),
-                      title: readStringValue(evt.data.title),
-                      toolCallId: readStringValue(evt.data.toolCallId),
-                      name: readStringValue(evt.data.name),
-                      output: readStringValue(evt.data.output),
-                      status: readStringValue(evt.data.status),
-                      exitCode:
-                        typeof evt.data.exitCode === "number" || evt.data.exitCode === null
-                          ? evt.data.exitCode
-                          : undefined,
-                      durationMs:
-                        typeof evt.data.durationMs === "number" ? evt.data.durationMs : undefined,
-                      cwd: readStringValue(evt.data.cwd),
-                    });
-                  }
-                  if (evt.stream === "patch" && !shouldSuppressProgressAfterMessageToolDelivery()) {
-                    await params.opts?.onPatchSummary?.({
-                      itemId: readStringValue(evt.data.itemId),
-                      phase: readStringValue(evt.data.phase),
-                      title: readStringValue(evt.data.title),
-                      toolCallId: readStringValue(evt.data.toolCallId),
-                      name: readStringValue(evt.data.name),
-                      added: Array.isArray(evt.data.added)
-                        ? evt.data.added.filter(
-                            (entry): entry is string => typeof entry === "string",
-                          )
-                        : undefined,
-                      modified: Array.isArray(evt.data.modified)
-                        ? evt.data.modified.filter(
-                            (entry): entry is string => typeof entry === "string",
-                          )
-                        : undefined,
-                      deleted: Array.isArray(evt.data.deleted)
-                        ? evt.data.deleted.filter(
-                            (entry): entry is string => typeof entry === "string",
-                          )
-                        : undefined,
-                      summary: readStringValue(evt.data.summary),
-                    });
-                  }
-                  // Track auto-compaction and notify higher layers.
-                  if (evt.stream === "compaction") {
-                    const phase = readStringValue(evt.data.phase) ?? "";
-                    const hookMessages = readCompactionHookMessages(evt.data.messages);
-                    if (phase === "start") {
-                      // Keep custom compaction callbacks active, but gate the
-                      // fallback user-facing notice behind explicit opt-in.
-                      if (params.opts?.onCompactionStart) {
-                        await params.opts.onCompactionStart();
-                      }
-                      if (hookMessages.length > 0) {
-                        await sendCompactionHookMessages(hookMessages);
-                      } else if (
-                        !params.opts?.onCompactionStart &&
-                        shouldNotifyUserAboutCompaction
-                      ) {
-                        // Send directly via opts.onBlockReply (bypassing the
-                        // pipeline) so the notice does not cause final payloads
-                        // to be discarded on non-streaming model paths.
-                        await sendCompactionNotice("start");
-                      }
+                    try {
+                      await rollbackFallbackCandidateSelection();
+                      clearPendingFallbackRollback(rollbackFallbackCandidateSelection);
+                    } catch (rollbackError) {
+                      logVerbose(
+                        `failed to roll back fallback candidate selection (non-fatal): ${String(rollbackError)}`,
+                      );
                     }
-                    if (phase === "end") {
-                      const completed = evt.data?.completed === true;
-                      if (completed) {
-                        attemptCompactionCount += 1;
-                        if (params.opts?.onCompactionEnd) {
-                          await params.opts.onCompactionEnd();
-                        }
-                        if (hookMessages.length > 0) {
-                          await sendCompactionHookMessages(hookMessages);
-                        } else if (
-                          !params.opts?.onCompactionEnd &&
-                          shouldNotifyUserAboutCompaction
-                        ) {
-                          await sendCompactionNotice("end");
-                        }
-                      } else if (hookMessages.length > 0) {
-                        await sendCompactionHookMessages(hookMessages);
-                      } else if (shouldNotifyUserAboutCompaction) {
-                        await sendCompactionNotice("incomplete");
-                      }
-                    }
-                  }
-                },
-                // Always pass onBlockReply so flushBlockReplyBuffer works before tool execution,
-                // even when regular block streaming is disabled. The handler sends directly
-                // via opts.onBlockReply when the pipeline isn't available.
-                onBlockReply: blockReplyHandler,
-                onBlockReplyFlush:
-                  params.blockStreamingEnabled && blockReplyPipeline
-                    ? async () => {
-                        await blockReplyPipeline.flush({ force: true });
-                      }
-                    : undefined,
-                shouldEmitToolResult: params.shouldEmitToolResult,
-                shouldEmitToolOutput: params.shouldEmitToolOutput,
-                bootstrapPromptWarningSignaturesSeen,
-                bootstrapPromptWarningSignature:
-                  bootstrapPromptWarningSignaturesSeen[
-                    bootstrapPromptWarningSignaturesSeen.length - 1
-                  ],
-                onToolResult: onToolResult
-                  ? (() => {
-                      // Serialize tool result delivery to preserve message ordering.
-                      // Without this, concurrent tool callbacks race through typing signals
-                      // and message sends, causing out-of-order delivery to the user.
-                      // See: https://github.com/openclaw/openclaw/issues/11044
-                      let toolResultChain: Promise<void> = Promise.resolve();
-                      return (payload: ReplyPayload) => {
-                        toolResultChain = toolResultChain
-                          .then(async () => {
-                            const { text, skip } = normalizeStreamingText(payload);
-                            if (skip) {
-                              return;
-                            }
-                            if (text !== undefined) {
-                              await params.typingSignals.signalTextDelta(text);
-                            }
-                            await onToolResult({
-                              ...payload,
-                              text,
-                            });
-                          })
-                          .catch((err) => {
-                            // Keep chain healthy after an error so later tool results still deliver.
-                            logVerbose(`tool result delivery failed: ${String(err)}`);
-                          });
-                        const task = toolResultChain.finally(() => {
-                          params.pendingToolTasks.delete(task);
-                        });
-                        params.pendingToolTasks.add(task);
-                      };
-                    })()
-                  : undefined,
-              });
+                  },
+                  runParams: {
+                    sessionId: params.followupRun.run.sessionId,
+                    sessionKey: params.sessionKey,
+                    agentId: params.followupRun.run.agentId,
+                    trigger: params.isHeartbeat ? "heartbeat" : "user",
+                    sessionFile: params.followupRun.run.sessionFile,
+                    workspaceDir: params.followupRun.run.workspaceDir,
+                    config: runtimeConfig,
+                    prompt: params.commandBody,
+                    transcriptPrompt: params.transcriptCommandBody,
+                    suppressNextUserMessagePersistence: suppressQueuedUserPersistenceForCandidate,
+                    userTurnTranscriptRecorder,
+                    onUserMessagePersisted: notifyUserMessagePersisted,
+                    currentInboundEventKind: params.followupRun.currentInboundEventKind,
+                    currentInboundContext: params.followupRun.currentInboundContext,
+                    inputProvenance: params.followupRun.run.inputProvenance,
+                    provider: cliExecutionProvider,
+                    model,
+                    thinkLevel: params.followupRun.run.thinkLevel,
+                    timeoutMs: params.followupRun.run.timeoutMs,
+                    runId,
+                    lane: runLane,
+                    extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
+                    sourceReplyDeliveryMode: params.followupRun.run.sourceReplyDeliveryMode,
+                    silentReplyPromptMode: params.followupRun.run.silentReplyPromptMode,
+                    extraSystemPromptStatic: params.followupRun.run.extraSystemPromptStatic,
+                    ownerNumbers: params.followupRun.run.ownerNumbers,
+                    cliSessionId: cliSessionBinding?.sessionId,
+                    cliSessionBinding,
+                    authProfileId: authProfile.authProfileId,
+                    bootstrapPromptWarningSignaturesSeen,
+                    bootstrapPromptWarningSignature:
+                      bootstrapPromptWarningSignaturesSeen[
+                        bootstrapPromptWarningSignaturesSeen.length - 1
+                      ],
+                    images: currentTurnImages.images,
+                    imageOrder: currentTurnImages.imageOrder,
+                    skillsSnapshot: params.followupRun.run.skillsSnapshot,
+                    messageChannel: params.followupRun.originatingChannel ?? undefined,
+                    messageProvider: hookMessageProvider,
+                    agentAccountId: params.followupRun.run.agentAccountId,
+                    senderIsOwner: params.followupRun.run.senderIsOwner,
+                    disableTools: params.opts?.disableTools,
+                    abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
+                    replyOperation: params.replyOperation,
+                  },
+                  transformResult: (rawResult) =>
+                    isRoomEventCliRun && rawResult.meta.agentMeta
+                      ? (() => {
+                          const { cliSessionBinding: _cliSessionBinding, ...agentMeta } =
+                            rawResult.meta.agentMeta;
+                          return {
+                            ...rawResult,
+                            meta: {
+                              ...rawResult.meta,
+                              agentMeta: {
+                                ...agentMeta,
+                                sessionId: "",
+                              },
+                            },
+                          };
+                        })()
+                      : rawResult,
+                }),
+              );
               bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
                 result.meta?.systemPromptReport,
               );
-              lifecycleBackstop.emit("end", result);
-              const resultCompactionCount = Math.max(
-                0,
-                result.meta?.agentMeta?.compactionCount ?? 0,
-              );
-              attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
-              return {
-                result,
-                continueWorkRequest: attemptContinueWorkRequest,
-                compactionTraceparent: attemptCompactionTraceparent,
-              };
-            } catch (err) {
-              if (rollbackFallbackCandidateSelection) {
-                try {
-                  await rollbackFallbackCandidateSelection();
-                  clearPendingFallbackRollback(rollbackFallbackCandidateSelection);
-                } catch (rollbackError) {
-                  logVerbose(
-                    `failed to roll back fallback candidate selection (non-fatal): ${String(rollbackError)}`,
-                  );
-                }
-              }
-              lifecycleBackstop.emit("error", err);
-              throw err;
-            } finally {
-              autoCompactionCount += attemptCompactionCount;
+              return result;
             }
-          })();
-        },
+            const { embeddedContext, senderContext, runBaseParams } =
+              buildEmbeddedRunExecutionParams({
+                run: candidateRun,
+                sessionCtx: params.sessionCtx,
+                hasRepliedRef: params.opts?.hasRepliedRef,
+                provider,
+                runId,
+                allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
+                model,
+              });
+            const agentHarnessPolicy = sessionRuntimeOverride
+              ? ({ runtime: sessionRuntimeOverride, runtimeSource: "model" } as const)
+              : resolveAgentHarnessPolicy({
+                  provider,
+                  modelId: model,
+                  config: runtimeConfig,
+                  agentId: params.followupRun.run.agentId,
+                  sessionKey: params.followupRun.run.runtimePolicySessionKey ?? params.sessionKey,
+                });
+            const embeddedRunProvider = resolveOpenAIRuntimeProviderForPi({
+              provider,
+              harnessRuntime: agentHarnessPolicy.runtime,
+              authProfileProvider: runBaseParams.authProfileId?.split(":", 1)[0],
+              authProfileId: runBaseParams.authProfileId,
+              config: runtimeConfig,
+              workspaceDir: params.followupRun.run.workspaceDir,
+            });
+            const embeddedRunHarnessOverride =
+              sessionRuntimeOverride ??
+              (agentHarnessPolicy.runtime === "pi" && embeddedRunProvider !== provider
+                ? "pi"
+                : undefined);
+            return (async () => {
+              let attemptCompactionCount = 0;
+              let attemptCompactionTraceparent: string | undefined;
+              let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
+              const lifecycleBackstop = createEmbeddedLifecycleTerminalBackstop({
+                runId,
+                sessionKey: params.sessionKey,
+              });
+              try {
+                // Profiler-only milestone: it exposes time spent before Codex
+                // dispatch while leaving the regular embedded run path inert.
+                agentTurnTiming.logMilestoneIfSlow({
+                  runId,
+                  sessionId: params.followupRun.run.sessionId,
+                  sessionKey: params.sessionKey,
+                  milestone: "before_embedded_run",
+                });
+                const result = await agentTurnTiming.measure("embedded_run", () =>
+                  runEmbeddedPiAgentDefault({
+                    ...embeddedContext,
+                    allowGatewaySubagentBinding: true,
+                    trigger: params.isHeartbeat ? "heartbeat" : "user",
+                    fireReason: resolveReplyRunFireReason({
+                      opts: params.opts,
+                      drainsContinuationDelegateQueue:
+                        effectiveRun.drainsContinuationDelegateQueue === true,
+                    }),
+                    parentRunId: params.opts?.parentRunId,
+                    groupId: resolveGroupSessionKey(params.sessionCtx)?.id,
+                    groupChannel:
+                      normalizeOptionalString(params.sessionCtx.GroupChannel) ??
+                      normalizeOptionalString(params.sessionCtx.GroupSubject),
+                    groupSpace: normalizeOptionalString(params.sessionCtx.GroupSpace),
+                    ...senderContext,
+                    ...runBaseParams,
+                    provider: embeddedRunProvider,
+                    agentHarnessId: embeddedRunHarnessOverride,
+                    agentHarnessRuntimeOverride: embeddedRunHarnessOverride,
+                    sandboxSessionKey: params.runtimePolicySessionKey,
+                    prompt: params.commandBody,
+                    transcriptPrompt: params.transcriptCommandBody,
+                    userTurnTranscriptRecorder,
+                    currentInboundEventKind: params.followupRun.currentInboundEventKind,
+                    currentInboundContext: params.followupRun.currentInboundContext,
+                    extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
+                    sourceReplyDeliveryMode: params.followupRun.run.sourceReplyDeliveryMode,
+                    forceMessageTool:
+                      params.followupRun.run.sourceReplyDeliveryMode === "message_tool_only",
+                    silentReplyPromptMode: params.followupRun.run.silentReplyPromptMode,
+                    suppressNextUserMessagePersistence: suppressQueuedUserPersistenceForCandidate,
+                    onUserMessagePersisted: notifyUserMessagePersisted,
+                    suppressTranscriptOnlyAssistantPersistence:
+                      params.followupRun.run.suppressTranscriptOnlyAssistantPersistence,
+                    suppressAssistantErrorPersistence:
+                      suppressAssistantErrorPersistenceForCandidate,
+                    onAssistantErrorMessagePersisted: () => {
+                      assistantErrorPersistedAcrossFallback = true;
+                    },
+                    drainsContinuationDelegateQueue:
+                      params.followupRun.run.drainsContinuationDelegateQueue,
+                    continueWorkOpts:
+                      params.followupRun.run.config?.agents?.defaults?.continuation?.enabled ===
+                      true
+                        ? {
+                            requestContinuation: (request) => {
+                              attemptContinueWorkRequest = request;
+                            },
+                          }
+                        : undefined,
+                    toolResultFormat: (() => {
+                      const channel = resolveMessageChannel(
+                        params.sessionCtx.Surface,
+                        params.sessionCtx.Provider,
+                      );
+                      if (!channel) {
+                        return "markdown";
+                      }
+                      return isMarkdownCapableMessageChannel(channel) ? "markdown" : "plain";
+                    })(),
+                    toolProgressDetail: params.toolProgressDetail,
+                    suppressToolErrorWarnings:
+                      params.opts?.shouldSuppressToolErrorWarnings ??
+                      params.opts?.suppressToolErrorWarnings,
+                    disableTools: params.opts?.disableTools,
+                    enableHeartbeatTool: params.opts?.enableHeartbeatTool,
+                    forceHeartbeatTool: params.opts?.forceHeartbeatTool,
+                    bootstrapContextMode: params.opts?.bootstrapContextMode,
+                    bootstrapContextRunKind: params.opts?.isHeartbeat ? "heartbeat" : "default",
+                    images: currentTurnImages.images,
+                    imageOrder: currentTurnImages.imageOrder,
+                    abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
+                    replyOperation: params.replyOperation,
+                    requestCompactionOpts:
+                      runtimeConfig?.agents?.defaults?.continuation?.enabled === true
+                        ? {
+                            sessionId: params.followupRun.run.sessionId,
+                            getContextUsage: () => {
+                              const entry = params.getActiveSessionEntry();
+                              const totalTokens =
+                                (entry as { totalTokens?: number } | undefined)?.totalTokens ?? 0;
+                              const contextWindow =
+                                (entry as { contextTokens?: number } | undefined)?.contextTokens ??
+                                200_000;
+                              return contextWindow > 0 ? totalTokens / contextWindow : 0;
+                            },
+                            triggerCompaction: async (request) => {
+                              attemptCompactionTraceparent = request.traceparent;
+                              try {
+                                const { compactEmbeddedPiSession } =
+                                  await import("../../agents/pi-embedded-runner/compact.queued.js");
+                                const compactionAuthProfileId =
+                                  provider === params.followupRun.run.provider
+                                    ? params.followupRun.run.authProfileId
+                                    : undefined;
+                                const result = await compactEmbeddedPiSession({
+                                  sessionId: params.followupRun.run.sessionId ?? "",
+                                  runId: request.runId ?? runId,
+                                  sessionKey: params.sessionKey,
+                                  sessionFile: params.followupRun.run.sessionFile ?? "",
+                                  workspaceDir:
+                                    params.followupRun.run.workspaceDir ?? process.cwd(),
+                                  config: params.followupRun.run.config,
+                                  messageProvider: params.followupRun.run.messageProvider,
+                                  provider,
+                                  model,
+                                  authProfileId: compactionAuthProfileId,
+                                  trigger: request.trigger,
+                                  diagId: request.diagId,
+                                  traceparent: request.traceparent,
+                                });
+                                if (result.ok && result.compacted) {
+                                  await releaseQueuedCompactionCompletion({
+                                    activeSessionStore: params.activeSessionStore,
+                                    compactionResult: result,
+                                    followupRun: params.followupRun,
+                                    getActiveSessionEntry: params.getActiveSessionEntry,
+                                    sessionKey: params.sessionKey,
+                                    storePath: params.storePath,
+                                    traceparent: request.traceparent,
+                                  });
+                                }
+                                return {
+                                  ok: result.ok,
+                                  compacted: result.compacted,
+                                  reason: result.reason,
+                                };
+                              } catch (err) {
+                                return {
+                                  ok: false,
+                                  compacted: false,
+                                  reason: err instanceof Error ? err.message : String(err),
+                                };
+                              }
+                            },
+                          }
+                        : undefined,
+                    blockReplyBreak: params.resolvedBlockStreamingBreak,
+                    blockReplyChunking: params.blockReplyChunking,
+                    onPartialReply: async (payload) => {
+                      const textForTyping = await handlePartialForTyping(payload);
+                      if (!params.opts?.onPartialReply || textForTyping === undefined) {
+                        return;
+                      }
+                      await params.opts.onPartialReply({
+                        text: textForTyping,
+                        mediaUrls: payload.mediaUrls,
+                      });
+                    },
+                    onAssistantMessageStart: async () => {
+                      await params.typingSignals.signalMessageStart();
+                      await params.opts?.onAssistantMessageStart?.();
+                    },
+                    onReasoningStream:
+                      params.typingSignals.shouldStartOnReasoning || params.opts?.onReasoningStream
+                        ? async (payload) => {
+                            if (params.followupRun.run.silentExpected) {
+                              return;
+                            }
+                            await params.typingSignals.signalReasoningDelta();
+                            await params.opts?.onReasoningStream?.({
+                              text: payload.text,
+                              mediaUrls: payload.mediaUrls,
+                            });
+                          }
+                        : undefined,
+                    onReasoningEnd: params.opts?.onReasoningEnd,
+                    onAgentEvent: async (evt) => {
+                      lifecycleBackstop.note(evt);
+                      // Signal run start only after the embedded agent emits real activity.
+                      const hasLifecyclePhase =
+                        evt.stream === "lifecycle" && typeof evt.data.phase === "string";
+                      if (evt.stream !== "lifecycle" || hasLifecyclePhase) {
+                        notifyAgentRunStart();
+                      }
+                      if (
+                        evt.stream === "lifecycle" &&
+                        readStringValue(evt.data.livenessState) === "blocked"
+                      ) {
+                        await surfaceBlockedLivenessState();
+                      }
+                      // Trigger typing when tools start executing.
+                      // Must await to ensure typing indicator starts before tool summaries are emitted.
+                      if (evt.stream === "tool") {
+                        const phase = readStringValue(evt.data.phase) ?? "";
+                        const name = readStringValue(evt.data.name);
+                        const toolCallId = readStringValue(evt.data.toolCallId) ?? "";
+                        const args =
+                          evt.data.args && typeof evt.data.args === "object"
+                            ? (evt.data.args as Record<string, unknown>)
+                            : undefined;
+                        if (
+                          sourceRepliesAreToolOnly &&
+                          toolCallId &&
+                          name &&
+                          (phase === "start" || phase === "update") &&
+                          args &&
+                          isMessagingToolSendAction(name, args)
+                        ) {
+                          messageToolOnlyDeliveryToolCallIds.add(toolCallId);
+                        }
+                        if (shouldSuppressProgressAfterMessageToolDelivery()) {
+                          return;
+                        }
+                        if (phase === "start" || phase === "update") {
+                          const toolStartProgressPromise = params.opts?.onToolStart?.({
+                            name,
+                            phase,
+                            args,
+                            detailMode: params.toolProgressDetail,
+                          });
+                          await Promise.all([
+                            params.typingSignals.signalToolStart(),
+                            toolStartProgressPromise,
+                          ]);
+                        }
+                      }
+                      const suppressItemChannelProgress =
+                        evt.stream === "item" &&
+                        evt.data.suppressChannelProgress === true &&
+                        Boolean(params.opts?.onToolStart);
+                      const itemPhase =
+                        evt.stream === "item" ? readStringValue(evt.data.phase) : "";
+                      const itemName = evt.stream === "item" ? readStringValue(evt.data.name) : "";
+                      const itemStatus =
+                        evt.stream === "item" ? readStringValue(evt.data.status) : "";
+                      const itemToolCallId =
+                        evt.stream === "item" ? (readStringValue(evt.data.toolCallId) ?? "") : "";
+                      const completedMessageToolDelivery =
+                        sourceRepliesAreToolOnly &&
+                        itemPhase === "end" &&
+                        itemStatus === "completed" &&
+                        itemToolCallId.length > 0 &&
+                        messageToolOnlyDeliveryToolCallIds.has(itemToolCallId);
+                      const suppressProgressAfterMessageToolDelivery =
+                        shouldSuppressProgressAfterMessageToolDelivery();
+                      if (completedMessageToolDelivery) {
+                        messageToolOnlyDeliveryToolCallIds.delete(itemToolCallId);
+                        messageToolOnlyDeliveryCompleted = true;
+                      }
+                      if (
+                        evt.stream === "item" &&
+                        !suppressItemChannelProgress &&
+                        (!suppressProgressAfterMessageToolDelivery || completedMessageToolDelivery)
+                      ) {
+                        await params.opts?.onItemEvent?.({
+                          itemId: readStringValue(evt.data.itemId),
+                          kind: readStringValue(evt.data.kind),
+                          title: readStringValue(evt.data.title),
+                          name: itemName,
+                          phase: itemPhase,
+                          status: itemStatus,
+                          summary: readStringValue(evt.data.summary),
+                          progressText: readStringValue(evt.data.progressText),
+                          meta: readStringValue(evt.data.meta),
+                          approvalId: readStringValue(evt.data.approvalId),
+                          approvalSlug: readStringValue(evt.data.approvalSlug),
+                        });
+                      }
+                      if (
+                        evt.stream === "plan" &&
+                        !shouldSuppressProgressAfterMessageToolDelivery()
+                      ) {
+                        await params.opts?.onPlanUpdate?.({
+                          phase: readStringValue(evt.data.phase),
+                          title: readStringValue(evt.data.title),
+                          explanation: readStringValue(evt.data.explanation),
+                          steps: Array.isArray(evt.data.steps)
+                            ? evt.data.steps.filter(
+                                (step): step is string => typeof step === "string",
+                              )
+                            : undefined,
+                          source: readStringValue(evt.data.source),
+                        });
+                      }
+                      if (
+                        evt.stream === "approval" &&
+                        !shouldSuppressProgressAfterMessageToolDelivery()
+                      ) {
+                        await params.opts?.onApprovalEvent?.({
+                          phase: readStringValue(evt.data.phase),
+                          kind: readStringValue(evt.data.kind),
+                          status: readStringValue(evt.data.status),
+                          title: readStringValue(evt.data.title),
+                          itemId: readStringValue(evt.data.itemId),
+                          toolCallId: readStringValue(evt.data.toolCallId),
+                          approvalId: readStringValue(evt.data.approvalId),
+                          approvalSlug: readStringValue(evt.data.approvalSlug),
+                          command: readStringValue(evt.data.command),
+                          host: readStringValue(evt.data.host),
+                          reason: readStringValue(evt.data.reason),
+                          scope: readApprovalScopeValue(evt.data.scope),
+                          message: readStringValue(evt.data.message),
+                        });
+                      }
+                      if (
+                        evt.stream === "command_output" &&
+                        !shouldSuppressProgressAfterMessageToolDelivery()
+                      ) {
+                        await params.opts?.onCommandOutput?.({
+                          itemId: readStringValue(evt.data.itemId),
+                          phase: readStringValue(evt.data.phase),
+                          title: readStringValue(evt.data.title),
+                          toolCallId: readStringValue(evt.data.toolCallId),
+                          name: readStringValue(evt.data.name),
+                          output: readStringValue(evt.data.output),
+                          status: readStringValue(evt.data.status),
+                          exitCode:
+                            typeof evt.data.exitCode === "number" || evt.data.exitCode === null
+                              ? evt.data.exitCode
+                              : undefined,
+                          durationMs:
+                            typeof evt.data.durationMs === "number"
+                              ? evt.data.durationMs
+                              : undefined,
+                          cwd: readStringValue(evt.data.cwd),
+                        });
+                      }
+                      if (
+                        evt.stream === "patch" &&
+                        !shouldSuppressProgressAfterMessageToolDelivery()
+                      ) {
+                        await params.opts?.onPatchSummary?.({
+                          itemId: readStringValue(evt.data.itemId),
+                          phase: readStringValue(evt.data.phase),
+                          title: readStringValue(evt.data.title),
+                          toolCallId: readStringValue(evt.data.toolCallId),
+                          name: readStringValue(evt.data.name),
+                          added: Array.isArray(evt.data.added)
+                            ? evt.data.added.filter(
+                                (entry): entry is string => typeof entry === "string",
+                              )
+                            : undefined,
+                          modified: Array.isArray(evt.data.modified)
+                            ? evt.data.modified.filter(
+                                (entry): entry is string => typeof entry === "string",
+                              )
+                            : undefined,
+                          deleted: Array.isArray(evt.data.deleted)
+                            ? evt.data.deleted.filter(
+                                (entry): entry is string => typeof entry === "string",
+                              )
+                            : undefined,
+                          summary: readStringValue(evt.data.summary),
+                        });
+                      }
+                      // Track auto-compaction and notify higher layers.
+                      if (evt.stream === "compaction") {
+                        const phase = readStringValue(evt.data.phase) ?? "";
+                        const hookMessages = readCompactionHookMessages(evt.data.messages);
+                        if (phase === "start") {
+                          // Keep custom compaction callbacks active, but gate the
+                          // fallback user-facing notice behind explicit opt-in.
+                          if (params.opts?.onCompactionStart) {
+                            await params.opts.onCompactionStart();
+                          }
+                          if (hookMessages.length > 0) {
+                            await sendCompactionHookMessages(hookMessages);
+                          } else if (
+                            !params.opts?.onCompactionStart &&
+                            shouldNotifyUserAboutCompaction
+                          ) {
+                            // Send directly via opts.onBlockReply (bypassing the
+                            // pipeline) so the notice does not cause final payloads
+                            // to be discarded on non-streaming model paths.
+                            await sendCompactionNotice("start");
+                          }
+                        }
+                        if (phase === "end") {
+                          const completed = evt.data?.completed === true;
+                          if (completed) {
+                            attemptCompactionCount += 1;
+                            if (params.opts?.onCompactionEnd) {
+                              await params.opts.onCompactionEnd();
+                            }
+                            if (hookMessages.length > 0) {
+                              await sendCompactionHookMessages(hookMessages);
+                            } else if (
+                              !params.opts?.onCompactionEnd &&
+                              shouldNotifyUserAboutCompaction
+                            ) {
+                              await sendCompactionNotice("end");
+                            }
+                          } else if (hookMessages.length > 0) {
+                            await sendCompactionHookMessages(hookMessages);
+                          } else if (shouldNotifyUserAboutCompaction) {
+                            await sendCompactionNotice("incomplete");
+                          }
+                        }
+                      }
+                    },
+                    // Always pass onBlockReply so flushBlockReplyBuffer works before tool execution,
+                    // even when regular block streaming is disabled. The handler sends directly
+                    // via opts.onBlockReply when the pipeline isn't available.
+                    onBlockReply: blockReplyHandler,
+                    onBlockReplyFlush:
+                      params.blockStreamingEnabled && blockReplyPipeline
+                        ? async () => {
+                            await blockReplyPipeline.flush({ force: true });
+                          }
+                        : undefined,
+                    shouldEmitToolResult: params.shouldEmitToolResult,
+                    shouldEmitToolOutput: params.shouldEmitToolOutput,
+                    bootstrapPromptWarningSignaturesSeen,
+                    bootstrapPromptWarningSignature:
+                      bootstrapPromptWarningSignaturesSeen[
+                        bootstrapPromptWarningSignaturesSeen.length - 1
+                      ],
+                    onToolResult: onToolResult
+                      ? (() => {
+                          // Serialize tool result delivery to preserve message ordering.
+                          // Without this, concurrent tool callbacks race through typing signals
+                          // and message sends, causing out-of-order delivery to the user.
+                          // See: https://github.com/openclaw/openclaw/issues/11044
+                          let toolResultChain: Promise<void> = Promise.resolve();
+                          return (payload: ReplyPayload) => {
+                            toolResultChain = toolResultChain
+                              .then(async () => {
+                                const { text, skip } = normalizeStreamingText(payload);
+                                if (skip) {
+                                  return;
+                                }
+                                if (text !== undefined) {
+                                  await params.typingSignals.signalTextDelta(text);
+                                }
+                                await onToolResult({
+                                  ...payload,
+                                  text,
+                                });
+                              })
+                              .catch((err) => {
+                                // Keep chain healthy after an error so later tool results still deliver.
+                                logVerbose(`tool result delivery failed: ${String(err)}`);
+                              });
+                            const task = toolResultChain.finally(() => {
+                              params.pendingToolTasks.delete(task);
+                            });
+                            params.pendingToolTasks.add(task);
+                          };
+                        })()
+                      : undefined,
+                  }),
+                );
+                bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
+                  result.meta?.systemPromptReport,
+                );
+                lifecycleBackstop.emit("end", result);
+                const resultCompactionCount = Math.max(
+                  0,
+                  result.meta?.agentMeta?.compactionCount ?? 0,
+                );
+                attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
+                return {
+                  result,
+                  continueWorkRequest: attemptContinueWorkRequest,
+                  compactionTraceparent: attemptCompactionTraceparent,
+                };
+              } catch (err) {
+                if (rollbackFallbackCandidateSelection) {
+                  try {
+                    await rollbackFallbackCandidateSelection();
+                    clearPendingFallbackRollback(rollbackFallbackCandidateSelection);
+                  } catch (rollbackError) {
+                    logVerbose(
+                      `failed to roll back fallback candidate selection (non-fatal): ${String(rollbackError)}`,
+                    );
+                  }
+                }
+                lifecycleBackstop.emit("error", err);
+                throw err;
+              } finally {
+                autoCompactionCount += attemptCompactionCount;
+              }
+            })();
+          },
+        }),
+      );
+      agentTurnTiming.logIfSlow({
+        runId,
+        sessionId: params.followupRun.run.sessionId,
+        sessionKey: params.sessionKey,
+        outcome: "completed",
       });
       const fallbackRunResult = fallbackResult.result as
         | EmbeddedAgentRunResult
@@ -2715,6 +2904,13 @@ export async function runAgentTurnWithFallback(params: {
         continue;
       }
       const message = formatErrorMessage(err);
+      agentTurnTiming.logIfSlow({
+        runId,
+        sessionId: params.followupRun.run.sessionId,
+        sessionKey: params.sessionKey,
+        outcome: "error",
+        error: message,
+      });
       const isBilling = isFallbackSummaryError(err)
         ? hasBillingAttemptSummary(err)
         : isBillingErrorMessage(message);
@@ -2764,41 +2960,17 @@ export async function runAgentTurnWithFallback(params: {
         };
       }
 
-      if (
-        isCompactionFailure &&
-        !didResetAfterCompactionFailure &&
-        (await params.resetSessionAfterCompactionFailure(message))
-      ) {
-        didResetAfterCompactionFailure = true;
+      if (isCompactionFailure && !didResetAfterCompactionFailure) {
+        const didResetAfterCompactionFailureNow =
+          await params.resetSessionAfterCompactionFailure(message);
+        didResetAfterCompactionFailure = didResetAfterCompactionFailureNow;
         params.replyOperation?.fail("run_failed", err);
         return {
           kind: "final",
           payload: markAgentRunFailureReplyPayload({
             text: buildContextOverflowRecoveryText({
               duringCompaction: true,
-              cfg: runtimeConfig,
-              agentId: params.followupRun.run.agentId,
-              primaryProvider: params.followupRun.run.provider,
-              primaryModel: params.followupRun.run.model,
-              runtimeProvider: attemptedRuntimeProvider,
-              runtimeModel: attemptedRuntimeModel,
-              activeSessionEntry: params.getActiveSessionEntry(),
-            }),
-          }),
-        };
-      }
-
-      if (isCompactionFailure) {
-        defaultRuntime.error(
-          `Auto-compaction failed (${message}). Preserving existing session mapping for ${params.sessionKey ?? params.followupRun.run.sessionId}.`,
-        );
-        params.replyOperation?.fail("run_failed", err);
-        return {
-          kind: "final",
-          payload: markAgentRunFailureReplyPayload({
-            text: buildContextOverflowRecoveryText({
-              duringCompaction: true,
-              preserveSessionMapping: true,
+              preserveSessionMapping: !didResetAfterCompactionFailureNow,
               cfg: runtimeConfig,
               agentId: params.followupRun.run.agentId,
               primaryProvider: params.followupRun.run.provider,
