@@ -537,7 +537,6 @@ describe("runEmbeddedAgent", () => {
       cfg,
       sessionId: "resume-123",
       agentId: undefined,
-      clone: false,
     });
     expect(firstRunEmbeddedAttemptParams().sessionKey).toBe("agent:test:resolved");
   });
@@ -578,7 +577,6 @@ describe("runEmbeddedAgent", () => {
       cfg,
       sessionId: "resume-124",
       agentId: undefined,
-      clone: false,
     });
     expect(firstRunEmbeddedAttemptParams().sessionKey).toBeUndefined();
   });

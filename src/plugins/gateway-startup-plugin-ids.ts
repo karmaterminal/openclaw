@@ -870,47 +870,21 @@ export function resolveConfiguredDeferredChannelPluginIdsFromRegistry(params: {
     rootConfig: params.config,
   };
   const manifestLookup = createManifestRegistryLookup(params.manifestRegistry);
-  return resolveConfiguredDeferredChannelPluginIdsFromPrepared({
-    config: params.config,
-    index: params.index,
-    configuredChannelIds,
-    pluginsConfig,
-    activationSource,
-    manifestLookup,
-  });
-}
-
-function resolveConfiguredDeferredChannelPluginIdsFromPrepared(params: {
-  config: OpenClawConfig;
-  index: PluginRegistrySnapshot;
-  configuredChannelIds: ReadonlySet<string>;
-  pluginsConfig: ReturnType<typeof normalizePluginsConfigWithRegistry>;
-  activationSource: {
-    plugins: ReturnType<typeof normalizePluginsConfigWithRegistry>;
-    rootConfig?: OpenClawConfig;
-  };
-  manifestLookup: ManifestRegistryLookup;
-  platform?: NodeJS.Platform;
-}): string[] {
-  if (params.configuredChannelIds.size === 0) {
-    return [];
-  }
   return params.index.plugins
     .filter(
       (plugin) =>
         hasConfiguredStartupChannel({
           plugin,
-          manifestLookup: params.manifestLookup,
-          configuredChannelIds: params.configuredChannelIds,
+          manifestLookup,
+          configuredChannelIds,
         }) &&
         plugin.startup.deferConfiguredChannelFullLoadUntilAfterListen &&
         canStartConfiguredChannelPlugin({
           plugin,
           config: params.config,
-          pluginsConfig: params.pluginsConfig,
-          activationSource: params.activationSource,
-          manifestLookup: params.manifestLookup,
-          platform: params.platform,
+          pluginsConfig,
+          activationSource,
+          manifestLookup,
         }),
     )
     .map((plugin) => plugin.pluginId);
@@ -935,6 +909,12 @@ export function resolveGatewayStartupPluginPlanFromRegistry(params: {
   const channelPluginIds = resolveChannelPluginIdsFromRegistry({
     manifestRegistry: params.manifestRegistry,
   });
+  const configuredDeferredChannelPluginIds = resolveConfiguredDeferredChannelPluginIdsFromRegistry({
+    config: params.config,
+    env: params.env,
+    index: params.index,
+    manifestRegistry: params.manifestRegistry,
+  });
   const configuredChannelIds = new Set(listPotentialEnabledChannelIds(params.config, params.env));
   const pluginsConfig = normalizePluginsConfigWithRegistry(params.config.plugins, params.index, {
     manifestRegistry: params.manifestRegistry,
@@ -952,23 +932,11 @@ export function resolveGatewayStartupPluginPlanFromRegistry(params: {
     plugins: activationSourcePlugins,
     rootConfig: activationSourceConfig,
   };
-  const manifestLookup = createManifestRegistryLookup(params.manifestRegistry);
-  const configuredDeferredChannelPluginIds = resolveConfiguredDeferredChannelPluginIdsFromPrepared({
-    config: params.config,
-    index: params.index,
-    configuredChannelIds,
-    pluginsConfig,
-    activationSource: {
-      plugins: pluginsConfig,
-      rootConfig: params.config,
-    },
-    manifestLookup,
-    platform: params.platform,
-  });
   const requiredAgentHarnessRuntimes = new Set(
     collectConfiguredAgentHarnessRuntimes(activationSourceConfig),
   );
   const startupDreamingPluginIds = resolveGatewayStartupDreamingPluginIds(params.config);
+  const manifestLookup = createManifestRegistryLookup(params.manifestRegistry);
   const configuredSpeechProviderIds = collectConfiguredSpeechProviderIds(activationSourceConfig);
   const configuredWebSearchProviderIds =
     collectConfiguredWebSearchProviderIds(activationSourceConfig);

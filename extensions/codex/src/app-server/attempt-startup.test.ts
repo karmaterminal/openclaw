@@ -51,7 +51,10 @@ function readHarnessMessages(writes: string[]): Array<{ id?: number; method?: st
 function startThreadWithHarness(
   startupTimeoutMs: number,
   signal = new AbortController().signal,
-  overrides?: { pluginConfig?: CodexPluginConfig },
+  overrides?: {
+    pluginConfig?: CodexPluginConfig;
+    retireSharedClientOnLogicalStartupError?: boolean;
+  },
 ) {
   const harness = createClientHarness();
   vi.spyOn(CodexAppServerClient, "start").mockReturnValue(harness.client);
@@ -82,6 +85,7 @@ function startThreadWithHarness(
     startupTimeoutMs,
     signal,
     onStartupTimeout: vi.fn(),
+    retireSharedClientOnLogicalStartupError: overrides?.retireSharedClientOnLogicalStartupError,
     spawnedBy: undefined,
   });
 
@@ -133,7 +137,9 @@ describe("startCodexAttemptThread", () => {
   });
 
   it("clears the shared app-server when top-level thread startup fails with an app error", async () => {
-    const { harness, run } = startThreadWithHarness(5_000);
+    const { harness, run } = startThreadWithHarness(5_000, undefined, {
+      retireSharedClientOnLogicalStartupError: true,
+    });
     await answerInitialize(harness);
     const threadStart = await waitForThreadStart(harness);
     harness.send({

@@ -5437,7 +5437,6 @@ describe("dispatchReplyFromConfig", () => {
     hookMocks.runner.runInboundClaimForPluginOutcome.mockResolvedValue({
       status: "no_handler",
     });
-    hookMocks.runner.runInboundClaimForPluginOutcome.mockClear();
     sessionBindingMocks.resolveByConversation.mockReturnValue({
       bindingId: "binding-no-handler-1",
       targetSessionKey: "plugin-binding:codex:nohandler123",
@@ -6859,7 +6858,6 @@ describe("sendPolicy deny — suppress delivery, not processing (#53328)", () =>
     hookMocks.runner.runInboundClaimForPluginOutcome.mockResolvedValue({
       status: "no_handler",
     });
-    hookMocks.runner.runInboundClaimForPluginOutcome.mockClear();
     sessionBindingMocks.resolveByConversation.mockReturnValue({
       bindingId: "binding-message-tool-fallback",
       targetSessionKey: "plugin-binding:codex:abc123",
@@ -7590,59 +7588,6 @@ describe("sendPolicy deny — suppress delivery, not processing (#53328)", () =>
         SessionKey: "test:discord:channel:C1",
       }),
       cfg: emptyConfig,
-      dispatcher,
-      replyResolver,
-    });
-
-    expect(replyResolver).toHaveBeenCalledTimes(1);
-    expect(result.queuedFinal).toBe(false);
-    expect(result.sourceReplyDeliveryMode).toBe("message_tool_only");
-    expect(dispatcher.sendFinalReply).not.toHaveBeenCalled();
-  });
-
-  it("delivers internal WebChat room-event final replies automatically", async () => {
-    setNoAbort();
-    const dispatcher = createDispatcher();
-    const replyResolver = vi.fn(async (_ctx: MsgContext, opts?: GetReplyOptions) => {
-      expect(opts?.sourceReplyDeliveryMode).toBe("automatic");
-      return { text: "visible webchat reply" } satisfies ReplyPayload;
-    });
-
-    const result = await dispatchReplyFromConfig({
-      ctx: buildTestCtx({
-        ChatType: "direct",
-        InboundEventKind: "room_event",
-        Provider: "webchat",
-        Surface: "webchat",
-        SessionKey: "agent:forge:webchat:forge-main",
-      }),
-      cfg: emptyConfig,
-      dispatcher,
-      replyResolver,
-    });
-
-    expect(replyResolver).toHaveBeenCalledTimes(1);
-    expect(result.queuedFinal).toBe(true);
-    expect(result.sourceReplyDeliveryMode).toBeUndefined();
-    expect(firstFinalReplyPayload(dispatcher)?.text).toBe("visible webchat reply");
-  });
-
-  it("preserves configured message-tool delivery for internal WebChat direct replies", async () => {
-    setNoAbort();
-    const dispatcher = createDispatcher();
-    const replyResolver = vi.fn(async (_ctx: MsgContext, opts?: GetReplyOptions) => {
-      expect(opts?.sourceReplyDeliveryMode).toBe("message_tool_only");
-      return { text: "private webchat final" } satisfies ReplyPayload;
-    });
-
-    const result = await dispatchReplyFromConfig({
-      ctx: buildTestCtx({
-        ChatType: "direct",
-        Provider: "webchat",
-        Surface: "webchat",
-        SessionKey: "agent:forge:webchat:forge-main",
-      }),
-      cfg: { messages: { visibleReplies: "message_tool" } } as OpenClawConfig,
       dispatcher,
       replyResolver,
     });

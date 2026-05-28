@@ -874,6 +874,7 @@ export async function runPreflightCompactionIfNeeded(params: {
     senderName: params.followupRun.run.senderName,
     senderUsername: params.followupRun.run.senderUsername,
     senderE164: params.followupRun.run.senderE164,
+    authProfileId: params.followupRun.run.authProfileId,
     sessionFile: sessionFile ?? params.followupRun.run.sessionFile,
     workspaceDir: params.followupRun.run.workspaceDir,
     cwd: params.followupRun.run.cwd,
@@ -882,7 +883,6 @@ export async function runPreflightCompactionIfNeeded(params: {
     skillsSnapshot: entry.skillsSnapshot ?? params.followupRun.run.skillsSnapshot,
     provider: params.followupRun.run.provider,
     model: params.followupRun.run.model,
-    authProfileId: params.followupRun.run.authProfileId,
     agentHarnessId:
       entry.sessionId === params.followupRun.run.sessionId ? entry.agentHarnessId : undefined,
     thinkLevel: params.followupRun.run.thinkLevel,
@@ -1211,10 +1211,10 @@ export async function runMemoryFlushIfNeeded(params: {
         activeMemoryFlushPlan.model,
         params.cfg,
       ),
+      abortSignal: params.replyOperation.abortSignal,
       runId: flushRunId,
       sessionId: activeSessionEntry?.sessionId ?? params.followupRun.run.sessionId,
       lane: CommandLane.Main,
-      abortSignal: params.replyOperation.abortSignal,
       resolveAgentHarnessRuntimeOverride: (provider) =>
         resolveMemoryFlushRuntimeOverrideForProvider({
           provider,

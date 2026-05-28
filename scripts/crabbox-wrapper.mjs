@@ -1947,7 +1947,7 @@ if (
 }
 if (
   isLocalContainerProvider(provider) &&
-  process.platform === "linux" &&
+  process.platform !== "win32" &&
   !childEnv.CRABBOX_LOCAL_CONTAINER_WORK_ROOT &&
   !hasOption(normalizedArgs, "--local-container-work-root")
 ) {
