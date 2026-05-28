@@ -179,9 +179,7 @@ import {
   buildEmptyExplicitToolAllowlistError,
   collectExplicitToolAllowlistSources,
 } from "../../tool-allowlist-guard.js";
-import {
-  filterRuntimeCompatibleTools,
-} from "../../tool-schema-projection.js";
+import { filterRuntimeCompatibleTools } from "../../tool-schema-projection.js";
 import { logRuntimeToolSchemaQuarantine } from "../../tool-schema-quarantine.js";
 import {
   addClientToolsToToolSearchCatalog,
@@ -1785,8 +1783,6 @@ export async function runEmbeddedAttempt(
     await throwIfAttemptAbortSignalFiredAfterPrepCleanup();
     retainedSessionFileOwner = await acquireEmbeddedAttemptSessionFileOwner({
       sessionFile: params.sessionFile,
-      timeoutMs: sessionWriteLockOptions.maxHoldMs,
-      signal: params.abortSignal,
     });
     const sessionLockController = await createEmbeddedAttemptSessionLockController({
       acquireSessionWriteLock,

@@ -14,7 +14,7 @@ import {
   listHealthChecks,
   registerHealthCheck,
 } from "./health-check-registry.js";
-import type { HealthCheck } from "./health-checks.js";
+import type { HealthCheck, HealthFinding } from "./health-checks.js";
 
 const runtime = { log() {}, error() {}, exit() {} };
 
@@ -64,6 +64,9 @@ function createDeps(overrides: Partial<CoreHealthCheckDeps> = {}): CoreHealthChe
       return [];
     },
     async collectWorkspaceSuggestionNotes(): Promise<readonly string[]> {
+      return [];
+    },
+    async collectRuntimeToolSchemaFindings(): Promise<readonly HealthFinding[]> {
       return [];
     },
     ...overrides,
