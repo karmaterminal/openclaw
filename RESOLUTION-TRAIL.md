@@ -31,3 +31,4 @@ Lane: `copilot/pr85651-driftcure-N3-20260528-062600`
 
 - `src/agents/embedded-agent-runner/runs.ts`: removed duplicate active session file helper left by the three-way merge and restored `resolveEmbeddedSessionFileKey` import so upstream abandoned-run handling and PR-head session-file normalization share the same canonical helper.
 - `src/plugin-sdk/agent-harness-runtime.ts`: restored the current-target `projectRuntimeToolInputSchema` export group required by upstream Codex dynamic-tool schema quarantine; this preserves the target SDK surface rather than adding a new subpath.
+- `src/gateway/probe.close-drain.test.ts`: removed stale `no-underscore-dangle` oxlint suppression after Gate E iteration 2 showed it is now unused under the current lint rules.
