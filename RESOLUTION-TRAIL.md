@@ -32,3 +32,11 @@ Lane: `copilot/pr85651-driftcure-N3-20260528-062600`
 - `src/agents/embedded-agent-runner/runs.ts`: removed duplicate active session file helper left by the three-way merge and restored `resolveEmbeddedSessionFileKey` import so upstream abandoned-run handling and PR-head session-file normalization share the same canonical helper.
 - `src/plugin-sdk/agent-harness-runtime.ts`: restored the current-target `projectRuntimeToolInputSchema` export group required by upstream Codex dynamic-tool schema quarantine; this preserves the target SDK surface rather than adding a new subpath.
 - `src/gateway/probe.close-drain.test.ts`: removed stale `no-underscore-dangle` oxlint suppression after Gate E iteration 2 showed it is now unused under the current lint rules.
+
+## Gate E iteration 5 fixes
+
+- `scripts/crabbox-wrapper.mjs` / `test/scripts/crabbox-wrapper.test.ts`: restored current-target Azure preference for unqualified Windows Crabbox runs while preserving the PR-head fake Crabbox helper improvements.
+- `scripts/lib/plugin-sdk-private-local-only-subpaths.json`: restored current-target private local-only SDK test subpaths so boundary constants and generated package-boundary path config agree.
+- `src/config/sessions.cache.test.ts`: restored the missing `updateSessionStoreEntry` import for the upstream writer-owned entry cache test.
+- `extensions/codex/src/app-server/attempt-startup.test.ts`: updated the top-level logical startup error test to opt into the new `retireSharedClientOnLogicalStartupError` path used by production top-level attempts.
+- `extensions/imessage/src/monitor.media-policy.test.ts`: waited for the async inbound policy check before asserting attachments were not staged.

@@ -20,6 +20,7 @@ import {
   readSessionUpdatedAt,
   saveSessionStore,
   updateSessionStore,
+  updateSessionStoreEntry,
 } from "./sessions/store.js";
 import type { SessionEntry } from "./sessions/types.js";
 

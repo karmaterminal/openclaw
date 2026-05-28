@@ -205,6 +205,8 @@ afterAll(() => {
 });
 
 describe.concurrent("scripts/crabbox-wrapper", () => {
+  const azureProviderHelp =
+    "provider: hetzner, aws, azure, local-container, blacksmith-testbox, or cloudflare\n";
   const advertisedProviderAliasHelp = [
     "provider: hetzner, aws, gcp, local-container, blacksmith-testbox,",
     "  namespace-devbox, runpod, semaphore, cloudflare, railway, exe-dev, or ssh",
