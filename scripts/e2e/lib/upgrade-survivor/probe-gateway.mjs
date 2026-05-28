@@ -36,30 +36,10 @@ const timeoutMs = Number.parseInt(
   option("--timeout-ms", process.env.OPENCLAW_UPGRADE_SURVIVOR_PROBE_TIMEOUT_MS || "60000"),
   10,
 );
-const attemptTimeoutMs = Number.parseInt(
-  option(
-    "--attempt-timeout-ms",
-    process.env.OPENCLAW_UPGRADE_SURVIVOR_PROBE_ATTEMPT_TIMEOUT_MS || "5000",
-  ),
-  10,
-);
-const maxBodyBytes = Number.parseInt(
-  option(
-    "--max-body-bytes",
-    process.env.OPENCLAW_UPGRADE_SURVIVOR_PROBE_MAX_BODY_BYTES || "1048576",
-  ),
-  10,
-);
 const url = new URL(probePath, baseUrl).toString();
 
 if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
   throw new Error(`invalid --timeout-ms: ${String(timeoutMs)}`);
-}
-if (!Number.isFinite(attemptTimeoutMs) || attemptTimeoutMs <= 0) {
-  throw new Error(`invalid --attempt-timeout-ms: ${String(attemptTimeoutMs)}`);
-}
-if (!Number.isFinite(maxBodyBytes) || maxBodyBytes <= 0) {
-  throw new Error(`invalid --max-body-bytes: ${String(maxBodyBytes)}`);
 }
 if (expectKind !== "live" && expectKind !== "ready") {
   throw new Error(`unknown probe expectation: ${expectKind}`);
@@ -80,51 +60,14 @@ function matchesExpectation(body) {
   );
 }
 
-async function readBoundedResponseText(response, byteLimit) {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return "";
-  }
-  const chunks = [];
-  let totalBytes = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    totalBytes += value.byteLength;
-    if (totalBytes > byteLimit) {
-      await reader.cancel();
-      throw new Error(`${url} probe body exceeded ${byteLimit} bytes`);
-    }
-    chunks.push(Buffer.from(value));
-  }
-  return Buffer.concat(chunks, totalBytes).toString("utf8");
-}
-
-async function fetchProbeText() {
-  const elapsedMs = Date.now() - startedAt;
-  const remainingMs = Math.max(1, timeoutMs - elapsedMs);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.min(attemptTimeoutMs, remainingMs));
-  try {
-    const response = await fetch(url, { method: "GET", signal: controller.signal });
-    return {
-      response,
-      text: await readBoundedResponseText(response, maxBodyBytes),
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 const startedAt = Date.now();
 let lastError;
 let lastResult;
 
 while (Date.now() - startedAt <= timeoutMs) {
   try {
-    const { response, text } = await fetchProbeText();
+    const response = await fetch(url, { method: "GET" });
+    const text = await response.text();
     let body;
     try {
       body = text ? JSON.parse(text) : null;

@@ -56,8 +56,8 @@ const EMBEDDED_RUN_STATE_KEY = Symbol.for("openclaw.embeddedRunState");
 const embeddedRunState = resolveGlobalSingleton(EMBEDDED_RUN_STATE_KEY, () => ({
   activeRuns: new Map<string, EmbeddedAgentQueueHandle>(),
   snapshots: new Map<string, ActiveEmbeddedRunSnapshot>(),
-  sessionIdsByKey: new Map<string, string>(),
   sessionIdsByFile: new Map<string, string>(),
+  sessionIdsByKey: new Map<string, string>(),
   abandonedRunsBySessionId: new Map<string, AbandonedEmbeddedRun>(),
   abandonedRunSessionIdsByKey: new Map<string, string>(),
   abandonedRunSessionIdsByFile: new Map<string, string>(),
@@ -71,12 +71,12 @@ export const ACTIVE_EMBEDDED_RUNS =
 export const ACTIVE_EMBEDDED_RUN_SNAPSHOTS =
   embeddedRunState.snapshots ??
   (embeddedRunState.snapshots = new Map<string, ActiveEmbeddedRunSnapshot>());
-export const ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY =
-  embeddedRunState.sessionIdsByKey ??
-  (embeddedRunState.sessionIdsByKey = new Map<string, string>());
 export const ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE =
   embeddedRunState.sessionIdsByFile ??
   (embeddedRunState.sessionIdsByFile = new Map<string, string>());
+export const ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY =
+  embeddedRunState.sessionIdsByKey ??
+  (embeddedRunState.sessionIdsByKey = new Map<string, string>());
 export const ABANDONED_EMBEDDED_RUNS_BY_SESSION_ID =
   embeddedRunState.abandonedRunsBySessionId ??
   (embeddedRunState.abandonedRunsBySessionId = new Map<string, AbandonedEmbeddedRun>());

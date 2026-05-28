@@ -883,6 +883,7 @@ export async function runCodexAppServerAttempt(
       onStartupTimeout: () => {
         runAbortController.abort("codex_startup_timeout");
       },
+      retireSharedClientOnLogicalStartupError: params.spawnedBy == null,
       spawnedBy: params.spawnedBy,
     });
     client = startupResult.client;
