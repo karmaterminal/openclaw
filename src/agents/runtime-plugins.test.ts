@@ -17,6 +17,10 @@ vi.mock("../plugins/runtime/standalone-runtime-registry-loader.js", () => ({
 }));
 
 vi.mock("../plugins/runtime.js", () => ({
+  getActivePluginChannelRegistry: () => null,
+  getActivePluginHttpRouteRegistry: () => null,
+  getActivePluginRegistry: () => null,
+  getActivePluginRegistryWorkspaceDir: () => null,
   getActivePluginRuntimeSubagentMode: hoisted.getActivePluginRuntimeSubagentMode,
 }));
 

@@ -35,3 +35,19 @@ The Discord webhook file did not contain a valid Discord webhook URL; it contain
 ## Preservation check after conflict resolution
 
 Before staging the resolved files, the seven preservation counts still matched baseline excluding this trail file: `29/41/25/27/34/1/58`.
+
+## Gate E iterations
+
+- `lane-A-gate-E-prepush-final1.log`: failed the npm shrinkwrap guard. Ran `pnpm deps:shrinkwrap:generate`; only root `npm-shrinkwrap.json` changed, removing stale `uuid` package entries.
+- `lane-A-gate-E-prepush-final2.log`: passed shrinkwrap guard and failed core typecheck because PR-head `runs.ts` still referenced the removed diagnostic `sessionFile`/`updateDiagnosticSessionFile` surface. Current upstream diagnostic session state no longer stores `sessionFile`; the preserved replacement path is the active embedded-run session-file index in `runs.ts`/`run-state.ts`, which stuck-session recovery now queries directly.
+- `lane-A-gate-E-prepush-final3.log`: passed core typecheck and failed extension typecheck because `src/plugin-sdk/agent-harness-runtime.ts` lost the upstream `projectRuntimeToolInputSchema` export while `extensions/codex/src/app-server/dynamic-tools.ts` imports it through the public SDK. Restored the upstream export block instead of making the plugin deep-import host internals.
+- `lane-A-gate-E-prepush-final4.log`: passed typecheck and failed lint on an unused `no-underscore-dangle` suppression in `src/gateway/probe.close-drain.test.ts`. Removed only the stale suppression comments.
+- `lane-A-gate-E-prepush-final5.log`: reached full tests, then failed/stalled on:
+  - `test/scripts/crabbox-wrapper.test.ts` because upstream Azure-for-Windows wrapper logic was lost from `scripts/crabbox-wrapper.mjs`; restored upstream `envProvider`, Azure Windows selection/injection, and Linux-only local-container work-root behavior.
+  - plugin SDK package boundary contracts because upstream private-local-only plugin SDK test subpaths and public-only dist artifact listing were lost from `scripts/lib/plugin-sdk-private-local-only-subpaths.json`, `scripts/lib/plugin-sdk-entries.mjs`, and `src/plugin-sdk/entrypoints.ts`; restored them.
+  - `extensions/codex/src/app-server/attempt-startup.test.ts` because the PR-head logical-startup-error retirement flag is now explicit; updated the top-level test helper to pass `retireSharedClientOnLogicalStartupError: true`.
+  - `extensions/imessage/src/monitor.media-policy.test.ts` because notification dispatch is fire-and-forget; changed the assertion to `vi.waitFor` the inbound policy read before checking that attachment staging did not run.
+- `lane-A-gate-E-prepush-final6.log`: previous failures cleared; full run then exposed an `isolate:false` unit-fast mock leak from `src/agents/runtime-plugins.test.ts` into `src/agents/memory-search.test.ts`. Added the current `../plugins/runtime.js` exports used by active-runtime-registry to the narrow mock.
+- The same run showed `test/vitest/vitest.full-extensions.config.ts` passes when run directly but exceeds the test-projects 5-minute no-output watchdog under the default reporter. Raised only that aggregate shard's watchdog to 15 minutes; leaf extension shards and explicit settings keep the default behavior.
+- `lane-A-gate-E-prepush-final7.log`: blocked at typecheck before tests because peer Lane B held the shared local heavy-check lock from `/tmp/wo-pr85651-driftcure-N3-2026-05-28-0626/worktree-copilot` for the full lock wait window. No candidate-code failure.
+- `lane-A-gate-E-prepush-final8.log`: green. `bash scripts/prepush-ci.sh` completed on Linux, with macOS mirror skipped on non-Darwin host.

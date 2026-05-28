@@ -5,6 +5,7 @@ import fg from "fast-glob";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
+  FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS,
   applyDefaultMultiSpecVitestCachePaths,
   applyDefaultVitestNoOutputTimeout,
   applyParallelVitestCachePaths,
@@ -1675,10 +1676,18 @@ describe("scripts/test-projects failed shard digest", () => {
 
 describe("scripts/test-projects Vitest stall watchdog", () => {
   it("adds a default no-output timeout to non-watch specs", () => {
-    const [spec] = applyDefaultVitestNoOutputTimeout(
+    const [spec, fullExtensionsSpec] = applyDefaultVitestNoOutputTimeout(
       [
         {
           config: "test/vitest/vitest.extension-feishu.config.ts",
+          env: { PATH: "/usr/bin" },
+          includeFilePath: null,
+          includePatterns: null,
+          pnpmArgs: [],
+          watchMode: false,
+        },
+        {
+          config: "test/vitest/vitest.full-extensions.config.ts",
           env: { PATH: "/usr/bin" },
           includeFilePath: null,
           includePatterns: null,
@@ -1691,6 +1700,9 @@ describe("scripts/test-projects Vitest stall watchdog", () => {
 
     expect(spec?.env.OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS).toBe(
       DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
+    );
+    expect(fullExtensionsSpec?.env.OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS).toBe(
+      FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS,
     );
   });
 

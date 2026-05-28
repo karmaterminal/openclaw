@@ -604,6 +604,7 @@ const VITEST_NO_OUTPUT_RETRY_ENV_KEY = "OPENCLAW_VITEST_NO_OUTPUT_RETRY";
 export const DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS = String(
   DEFAULT_VITEST_NO_OUTPUT_TIMEOUT_MS,
 );
+export const FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS = String(15 * 60 * 1000);
 const GATEWAY_SERVER_FULL_SUITE_TARGET_CHUNK_COUNT = 4;
 const GATEWAY_SERVER_BACKED_HTTP_TEST_TARGETS = new Set([
   "src/gateway/embeddings-http.test.ts",
@@ -2016,7 +2017,10 @@ export function applyDefaultVitestNoOutputTimeout(specs, params = {}) {
       ...spec,
       env: {
         ...spec.env,
-        [VITEST_NO_OUTPUT_TIMEOUT_ENV_KEY]: DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
+        [VITEST_NO_OUTPUT_TIMEOUT_ENV_KEY]:
+          spec.config === FULL_EXTENSIONS_VITEST_CONFIG
+            ? FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS
+            : DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
       },
     };
   });

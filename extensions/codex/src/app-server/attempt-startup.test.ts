@@ -82,6 +82,7 @@ function startThreadWithHarness(
     startupTimeoutMs,
     signal,
     onStartupTimeout: vi.fn(),
+    retireSharedClientOnLogicalStartupError: true,
     spawnedBy: undefined,
   });
 

@@ -16,7 +16,6 @@ import {
   diagnosticLogger as diag,
   logMessageQueued,
   logSessionStateChange,
-  updateDiagnosticSessionFile,
 } from "../../logging/diagnostic.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import {
@@ -727,7 +726,6 @@ export function setActiveEmbeddedRun(
   logSessionStateChange({
     sessionId,
     sessionKey,
-    sessionFile,
     state: "processing",
     reason: wasActive ? "run_replaced" : "run_started",
   });
@@ -756,7 +754,6 @@ export function updateActiveEmbeddedRunSessionFile(
   }
   clearActiveRunSessionFiles(sessionId);
   setActiveRunSessionFile(sessionFile, sessionId);
-  updateDiagnosticSessionFile({ sessionId, sessionFile });
 }
 
 export function clearActiveEmbeddedRun(
@@ -778,7 +775,6 @@ export function clearActiveEmbeddedRun(
     logSessionStateChange({
       sessionId,
       sessionKey,
-      sessionFile,
       state: "idle",
       reason: "run_completed",
     });
