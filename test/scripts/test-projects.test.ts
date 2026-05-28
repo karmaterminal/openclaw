@@ -1317,6 +1317,7 @@ describe("scripts/test-projects full-suite sharding", () => {
         "test/vitest/vitest.full-agentic.config.ts",
         "test/vitest/vitest.full-auto-reply.config.ts",
         "test/vitest/vitest.full-extensions.config.ts",
+        "test/vitest/vitest.full-extension-slack.config.ts",
       ]);
     } finally {
       if (previousParallel === undefined) {
@@ -1502,7 +1503,6 @@ describe("scripts/test-projects full-suite sharding", () => {
       "test/vitest/vitest.extension-provider-openai.config.ts",
       "test/vitest/vitest.extension-providers.config.ts",
       "test/vitest/vitest.extension-signal.config.ts",
-      "test/vitest/vitest.extension-slack.config.ts",
       "test/vitest/vitest.extension-telegram.config.ts",
       "test/vitest/vitest.extension-voice-call.config.ts",
       "test/vitest/vitest.extension-whatsapp.config.ts",
@@ -1512,6 +1512,7 @@ describe("scripts/test-projects full-suite sharding", () => {
       "test/vitest/vitest.extension-media.config.ts",
       "test/vitest/vitest.extensions.config.ts",
       "test/vitest/vitest.extension-misc.config.ts",
+      "test/vitest/vitest.extension-slack.config.ts",
     ]);
 
     const gatewayPlans = plans.filter((plan) => plan.config === gatewayServerConfig);

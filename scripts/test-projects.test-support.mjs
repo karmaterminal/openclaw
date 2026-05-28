@@ -113,6 +113,7 @@ const EXTENSION_WHATSAPP_VITEST_CONFIG = "test/vitest/vitest.extension-whatsapp.
 const EXTENSION_ZALO_VITEST_CONFIG = "test/vitest/vitest.extension-zalo.config.ts";
 const EXTENSIONS_VITEST_CONFIG = "test/vitest/vitest.extensions.config.ts";
 const FULL_EXTENSIONS_VITEST_CONFIG = "test/vitest/vitest.full-extensions.config.ts";
+const FULL_EXTENSION_SLACK_VITEST_CONFIG = "test/vitest/vitest.full-extension-slack.config.ts";
 const GATEWAY_CLIENT_VITEST_CONFIG = "test/vitest/vitest.gateway-client.config.ts";
 const GATEWAY_CORE_VITEST_CONFIG = "test/vitest/vitest.gateway-core.config.ts";
 const GATEWAY_METHODS_VITEST_CONFIG = "test/vitest/vitest.gateway-methods.config.ts";
@@ -1884,7 +1885,8 @@ export function buildFullSuiteVitestRunPlans(args, cwd = process.cwd()) {
   return fullSuiteVitestShards.flatMap((shard) => {
     if (
       process.env.OPENCLAW_TEST_SKIP_FULL_EXTENSIONS_SHARD === "1" &&
-      shard.config === FULL_EXTENSIONS_VITEST_CONFIG
+      (shard.config === FULL_EXTENSIONS_VITEST_CONFIG ||
+        shard.config === FULL_EXTENSION_SLACK_VITEST_CONFIG)
     ) {
       return [];
     }
