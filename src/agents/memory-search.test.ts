@@ -186,6 +186,7 @@ describe("memory search config", () => {
 
   it("defaults provider to openai when unspecified", () => {
     const cfg = asConfig({
+      plugins: { enabled: false },
       agents: {
         defaults: {
           memorySearch: {

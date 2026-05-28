@@ -31,10 +31,6 @@ const staleOAuthShadowState = vi.hoisted(() => ({
   warnings: [] as string[],
 }));
 
-const activeToolSchemaState = vi.hoisted(() => ({
-  warnings: [] as string[],
-}));
-
 const tempRoots = new Set<string>();
 
 vi.mock("../channel-capabilities.js", () => {
@@ -178,10 +174,6 @@ vi.mock("./stale-oauth-profile-shadows.js", () => ({
     hits.map((hit) => hit.warning),
 }));
 
-vi.mock("./active-tool-schema-warnings.js", () => ({
-  collectActiveToolSchemaProjectionWarnings: () => activeToolSchemaState.warnings,
-}));
-
 function manifest(id: string): TestManifestRecord {
   return {
     id,
@@ -226,7 +218,6 @@ describe("doctor preview warnings", () => {
     manifestState.plugins = [manifest("discord")];
     manifestState.diagnostics = [];
     staleOAuthShadowState.warnings = [];
-    activeToolSchemaState.warnings = [];
   });
 
   afterEach(() => {
@@ -384,21 +375,6 @@ describe("doctor preview warnings", () => {
     });
 
     expectSingleWarningContaining(warnings, "stale OAuth auth profile openai-codex:default");
-  });
-
-  it("includes active tool schema projection warnings", async () => {
-    activeToolSchemaState.warnings = [
-      '- agents.main: active tool "dofbot_move_angles" from plugin "dofbot" has unsupported runtime input schema.',
-    ];
-
-    const warnings = await collectDoctorPreviewWarnings({
-      cfg: { tools: { allow: ["dofbot_move_angles"] } },
-      doctorFixCommand: "openclaw doctor --fix",
-    });
-
-    expect(warnings.some((warning) => warning.includes('active tool "dofbot_move_angles"'))).toBe(
-      true,
-    );
   });
 
   it("warns but skips auto-removal when plugin discovery has errors", async () => {

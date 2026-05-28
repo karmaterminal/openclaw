@@ -163,7 +163,6 @@ beforeEach(() => {
     ensureRuntimePluginsLoaded: () => {},
     getSubagentRunsSnapshotForRead: (runs) => new Map(runs),
     persistSubagentRunsToDisk: () => {},
-    persistSubagentRunsToDiskOrThrow: () => {},
     restoreSubagentRunsFromDisk: () => 0,
     resolveContextEngine: async () => ({
       info: { id: "test", name: "Test" },
@@ -1372,9 +1371,7 @@ describe("steerControlledSubagentRun", () => {
     });
 
     setSubagentControlDepsForTest({
-      callGateway: async <T = Record<string, unknown>>(
-        request: CallGatewayOptions,
-      ) => {
+      callGateway: async <T = Record<string, unknown>>(request: CallGatewayOptions) => {
         if (request.method === "agent.wait") {
           return {} as T;
         }

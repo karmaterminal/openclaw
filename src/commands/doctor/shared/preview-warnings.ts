@@ -773,10 +773,6 @@ export async function collectDoctorPreviewNotes(params: {
   warnings.push(...collectChannelBoundMessageToolPolicyWarnings(params.cfg));
   warnings.push(...collectProfileConfiguredToolSectionWarnings(params.cfg));
 
-  const { collectActiveToolSchemaProjectionWarnings } =
-    await import("./active-tool-schema-warnings.js");
-  warnings.push(...collectActiveToolSchemaProjectionWarnings({ cfg: params.cfg, env }));
-
   const channelPluginRuntime =
     hasChannelConfig && hasExplicitChannelPluginBlockerConfig(params.cfg)
       ? await import("./channel-plugin-blockers.js")
