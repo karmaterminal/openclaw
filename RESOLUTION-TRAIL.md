@@ -52,3 +52,4 @@ Lane: `copilot/pr85651-driftcure-N3-20260528-062600`
 ## Comparison-discovered fix before final handoff
 
 - `src/agents/embedded-agent-runner/runs.ts`: restored `resolveEmbeddedSessionFileKey(...)` in active-run session-file lookup after lane comparison exposed that my candidate stored canonical session-file keys but looked them up with raw trimmed paths. Added regression coverage in `runs.test.ts`.
+- `scripts/test-projects.test-support.mjs`: extended the same quiet-shard no-output watchdog to the full-agentic shard after final Gate E showed both attempts were killed before producing a summary.

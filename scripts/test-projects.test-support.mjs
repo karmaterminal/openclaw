@@ -245,6 +245,7 @@ const UI_VITEST_CONFIG = "test/vitest/vitest.ui.config.ts";
 const UI_E2E_VITEST_CONFIG = "test/vitest/vitest.ui-e2e.config.ts";
 const UTILS_VITEST_CONFIG = "test/vitest/vitest.utils.config.ts";
 const WIZARD_VITEST_CONFIG = "test/vitest/vitest.wizard.config.ts";
+const FULL_AGENTIC_VITEST_CONFIG = "test/vitest/vitest.full-agentic.config.ts";
 const INCLUDE_FILE_ENV_KEY = "OPENCLAW_VITEST_INCLUDE_FILE";
 const FS_MODULE_CACHE_PATH_ENV_KEY = "OPENCLAW_VITEST_FS_MODULE_CACHE_PATH";
 const FAILED_SHARD_DIGEST_LIMIT = 12;
@@ -606,6 +607,7 @@ export const DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS = String(
   DEFAULT_VITEST_NO_OUTPUT_TIMEOUT_MS,
 );
 export const FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS = "900000";
+export const QUIET_FULL_SUITE_VITEST_NO_OUTPUT_TIMEOUT_MS = "900000";
 const GATEWAY_SERVER_FULL_SUITE_TARGET_CHUNK_COUNT = 4;
 const GATEWAY_SERVER_BACKED_HTTP_TEST_TARGETS = new Set([
   "src/gateway/embeddings-http.test.ts",
@@ -2020,8 +2022,9 @@ export function applyDefaultVitestNoOutputTimeout(specs, params = {}) {
       env: {
         ...spec.env,
         [VITEST_NO_OUTPUT_TIMEOUT_ENV_KEY]:
-          spec.config === FULL_EXTENSIONS_VITEST_CONFIG
-            ? FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS
+          spec.config === FULL_EXTENSIONS_VITEST_CONFIG ||
+          spec.config === FULL_AGENTIC_VITEST_CONFIG
+            ? QUIET_FULL_SUITE_VITEST_NO_OUTPUT_TIMEOUT_MS
             : DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
       },
     };
