@@ -45,3 +45,4 @@ Lane: `copilot/pr85651-driftcure-N3-20260528-062600`
 
 - `package.json`: re-synced plugin-sdk exports so private local-only test/helper subpaths are not published.
 - `scripts/lib/plugin-sdk-entries.mjs` and `src/plugin-sdk/entrypoints.ts`: restored the current-target split where public dist artifacts and private local-only artifacts are listed separately.
+- `scripts/test-projects.test-support.mjs`: raised only the full-extensions shard no-output watchdog to 15 minutes after Gate E proved the shard can pass with verbose output but remains silent for ~470s under the default reporter.
