@@ -46,6 +46,7 @@ function createMessageUpdateContext(
       reasoningStreamOpen: false,
       streamReasoning: false,
       deltaBuffer: "",
+      visibleAssistantBuffer: "",
       blockBuffer: "",
       partialBlockState: {
         thinking: false,
@@ -110,6 +111,7 @@ function createMessageEndContext(
       streamReasoning: false,
       blockReplyBreak: "message_end",
       deltaBuffer: "Need send.",
+      visibleAssistantBuffer: "Need send.",
       blockBuffer: "Need send.",
       blockState: {
         thinking: false,
@@ -328,6 +330,37 @@ describe("handleMessageUpdate text signatures", () => {
         data: { text: "Hello world", delta: " world" },
       },
     ]);
+  });
+
+  it("builds visible partial text incrementally across text_delta events", () => {
+    const onAgentEvent = vi.fn();
+    const stripBlockTags = vi.fn((text: string) => text);
+    const ctx = createMessageUpdateContext({ onAgentEvent, stripBlockTags });
+
+    handleMessageUpdate(ctx, createTextUpdateEvent({ type: "text_delta", text: "Hello" }));
+    handleMessageUpdate(ctx, createTextUpdateEvent({ type: "text_delta", text: " world" }));
+
+    expect(ctx.state.visibleAssistantBuffer).toBe("Hello world");
+  });
+
+  it("rebuilds visibleAssistantBuffer on non-monotonic content replacement", () => {
+    const onAgentEvent = vi.fn();
+    const stripBlockTags = vi.fn((text: string) => text);
+    const ctx = createMessageUpdateContext({ onAgentEvent, stripBlockTags });
+    // Simulate a state where prior deltaBuffer accumulated and a new
+    // non-monotonic content arrives via text_end (mimicking providers that
+    // resend a fully-different content payload on completion).
+    ctx.state.deltaBuffer = "Stale draft";
+    ctx.state.visibleAssistantBuffer = "Stale draft + extra accumulation";
+
+    handleMessageUpdate(ctx, createTextUpdateEvent({ type: "text_end", text: "Replacement" }));
+
+    // shouldRebuildVisibleBuffer detection fires when content does not share a
+    // prefix/suffix with the existing deltaBuffer. The buffer is re-derived
+    // from the post-chunk deltaBuffer via stripBlockTags rather than being
+    // accumulated. The previously-accumulated "extra accumulation" must be
+    // gone after the rebuild.
+    expect(ctx.state.visibleAssistantBuffer.includes("extra accumulation")).toBe(false);
   });
 
   it("uses full partial text for suffix deltas after a suppressed commentary item", () => {

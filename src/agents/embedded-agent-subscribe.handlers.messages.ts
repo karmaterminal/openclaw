@@ -556,6 +556,22 @@ export function handleMessageUpdate(
     content,
   });
 
+  // Detect when content is a non-monotonic replacement so the visible buffer
+  // can be rebuilt from scratch (feature: shouldRebuildVisibleBuffer).
+  // This runs in parallel to upstream's `shouldRecomputeFullStream` flow and
+  // preserves the PR's separate `visibleAssistantBuffer` accumulation surface.
+  let shouldRebuildVisibleBuffer = false;
+  if (
+    evtType !== "text_delta" &&
+    !delta &&
+    content &&
+    !content.startsWith(ctx.state.deltaBuffer) &&
+    !ctx.state.deltaBuffer.startsWith(content) &&
+    !ctx.state.deltaBuffer.includes(content)
+  ) {
+    shouldRebuildVisibleBuffer = true;
+  }
+
   const chunk = resolveAssistantTextChunk({
     evtType,
     delta,
@@ -655,6 +671,22 @@ export function handleMessageUpdate(
     visibleDelta = ctx.stripBlockTags(chunk, ctx.state.partialBlockState, {
       final: evtType === "text_end",
     });
+  }
+  // PR-feature: maintain `visibleAssistantBuffer` as a parallel accumulation
+  // of visible-delta text. Rebuild from scratch on non-monotonic content
+  // replacements (shouldRebuildVisibleBuffer); accumulate visibleDelta otherwise.
+  if (shouldRebuildVisibleBuffer) {
+    const rebuiltBlockState: EmbeddedAgentSubscribeState["partialBlockState"] = {
+      thinking: false,
+      final: false,
+      inlineCode: createInlineCodeState(),
+    };
+    const rebuiltVisible = ctx.stripBlockTags(ctx.state.deltaBuffer, rebuiltBlockState);
+    if (!shouldUsePhaseAwareBlockReply) {
+      ctx.state.visibleAssistantBuffer = rebuiltVisible;
+    }
+  } else if (!shouldUsePhaseAwareBlockReply && visibleDelta) {
+    ctx.state.visibleAssistantBuffer += visibleDelta;
   }
   if (next) {
     if (!wasThinking && ctx.state.partialBlockState.thinking) {
@@ -819,6 +851,7 @@ export function handleMessageEnd(
 
   const finalizeMessageEnd = () => {
     ctx.state.deltaBuffer = "";
+    ctx.state.visibleAssistantBuffer = "";
     ctx.state.blockBuffer = "";
     ctx.blockChunker?.reset();
     ctx.state.blockState.thinking = false;

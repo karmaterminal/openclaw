@@ -60,6 +60,7 @@ export type EmbeddedAgentSubscribeState = {
   streamReasoning: boolean;
 
   deltaBuffer: string;
+  visibleAssistantBuffer: string;
   blockBuffer: string;
   blockState: {
     thinking: boolean;
