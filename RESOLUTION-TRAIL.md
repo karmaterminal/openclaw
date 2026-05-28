@@ -48,3 +48,7 @@ Lane: `copilot/pr85651-driftcure-N3-20260528-062600`
 - `scripts/test-projects.test-support.mjs`: raised only the full-extensions shard no-output watchdog to 15 minutes after Gate E proved the shard can pass with verbose output but remains silent for ~470s under the default reporter.
 - `test/vitest/vitest.extension-slack.config.ts`: disabled Slack test file parallelism because the Slack monitor tests share one mocked Bolt handler map; Gate E exposed message-handler overwrites in the full-extensions shard.
 - `test/vitest/vitest.test-shards.mjs`: split Slack out of the all-extension project shard into `vitest.full-extension-slack.config.ts` after Gate E showed Slack is healthy alone but unstable inside the very large multi-project extensions shard.
+
+## Comparison-discovered fix before final handoff
+
+- `src/agents/embedded-agent-runner/runs.ts`: restored `resolveEmbeddedSessionFileKey(...)` in active-run session-file lookup after lane comparison exposed that my candidate stored canonical session-file keys but looked them up with raw trimmed paths. Added regression coverage in `runs.test.ts`.

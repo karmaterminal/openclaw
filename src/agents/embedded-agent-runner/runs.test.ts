@@ -22,6 +22,8 @@ import {
   queueEmbeddedAgentMessageWithOutcomeAsync,
   requestEmbeddedRunModelSwitch,
   resolveActiveEmbeddedRunHandleSessionId,
+  resolveActiveEmbeddedRunHandleSessionIdBySessionFile,
+  resolveActiveEmbeddedRunSessionIdBySessionFile,
   setActiveEmbeddedRun,
   updateActiveEmbeddedRunSnapshot,
   waitForActiveEmbeddedRuns,
@@ -346,19 +348,24 @@ describe("embedded-agent runner run registry", () => {
 
   it("tracks actual embedded handles separately from reply-operation ownership", () => {
     const handle = createRunHandle();
+    const sessionFile = "./openclaw-active-run-session.jsonl";
 
     expect(isEmbeddedAgentRunHandleActive("session-a")).toBe(false);
     expect(resolveActiveEmbeddedRunHandleSessionId("agent:main:main")).toBeUndefined();
+    expect(resolveActiveEmbeddedRunHandleSessionIdBySessionFile(sessionFile)).toBeUndefined();
 
-    setActiveEmbeddedRun("session-a", handle, "agent:main:main");
+    setActiveEmbeddedRun("session-a", handle, "agent:main:main", sessionFile);
 
     expect(isEmbeddedAgentRunHandleActive("session-a")).toBe(true);
     expect(resolveActiveEmbeddedRunHandleSessionId("agent:main:main")).toBe("session-a");
+    expect(resolveActiveEmbeddedRunHandleSessionIdBySessionFile(sessionFile)).toBe("session-a");
+    expect(resolveActiveEmbeddedRunSessionIdBySessionFile(sessionFile)).toBe("session-a");
 
-    clearActiveEmbeddedRun("session-a", handle, "agent:main:main");
+    clearActiveEmbeddedRun("session-a", handle, "agent:main:main", sessionFile);
 
     expect(isEmbeddedAgentRunHandleActive("session-a")).toBe(false);
     expect(resolveActiveEmbeddedRunHandleSessionId("agent:main:main")).toBeUndefined();
+    expect(resolveActiveEmbeddedRunHandleSessionIdBySessionFile(sessionFile)).toBeUndefined();
   });
 
   it("tracks timeout abandonment by session id, key, and file until a new run starts", () => {

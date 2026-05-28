@@ -544,7 +544,9 @@ export function resolveActiveEmbeddedRunHandleSessionIdBySessionFile(
   if (!normalizedSessionFile) {
     return undefined;
   }
-  return ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE.get(normalizedSessionFile);
+  return ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE.get(
+    resolveEmbeddedSessionFileKey(normalizedSessionFile),
+  );
 }
 
 export function resolveActiveEmbeddedRunSessionIdBySessionFile(
