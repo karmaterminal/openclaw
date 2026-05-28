@@ -40,3 +40,8 @@ Lane: `copilot/pr85651-driftcure-N3-20260528-062600`
 - `src/config/sessions.cache.test.ts`: restored the missing `updateSessionStoreEntry` import for the upstream writer-owned entry cache test.
 - `extensions/codex/src/app-server/attempt-startup.test.ts`: updated the top-level logical startup error test to opt into the new `retireSharedClientOnLogicalStartupError` path used by production top-level attempts.
 - `extensions/imessage/src/monitor.media-policy.test.ts`: waited for the async inbound policy check before asserting attachments were not staged.
+
+## Gate E iteration 7 fixes
+
+- `package.json`: re-synced plugin-sdk exports so private local-only test/helper subpaths are not published.
+- `scripts/lib/plugin-sdk-entries.mjs` and `src/plugin-sdk/entrypoints.ts`: restored the current-target split where public dist artifacts and private local-only artifacts are listed separately.
