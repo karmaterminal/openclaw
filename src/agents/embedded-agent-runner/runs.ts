@@ -36,6 +36,7 @@ import {
   type EmbeddedRunModelSwitchRequest,
   type EmbeddedRunWaiter,
 } from "./run-state.js";
+import { resolveEmbeddedSessionFileKey } from "./session-file-key.js";
 
 export {
   getActiveEmbeddedRunCount,
@@ -111,29 +112,6 @@ function setActiveRunSessionKey(sessionKey: string | undefined, sessionId: strin
     return;
   }
   ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY.set(normalizedSessionKey, sessionId);
-}
-
-function setActiveRunSessionFile(sessionFile: string | undefined, sessionId: string): void {
-  const normalizedSessionFile = sessionFile?.trim();
-  if (!normalizedSessionFile) {
-    return;
-  }
-  ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE.set(normalizedSessionFile, sessionId);
-}
-
-function clearActiveRunSessionFiles(sessionId: string, sessionFile?: string): void {
-  const normalizedSessionFile = sessionFile?.trim();
-  if (normalizedSessionFile) {
-    if (ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE.get(normalizedSessionFile) === sessionId) {
-      ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE.delete(normalizedSessionFile);
-    }
-    return;
-  }
-  for (const [file, activeSessionId] of ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE) {
-    if (activeSessionId === sessionId) {
-      ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE.delete(file);
-    }
-  }
 }
 
 function clearActiveRunSessionKeys(sessionId: string, sessionKey?: string): void {

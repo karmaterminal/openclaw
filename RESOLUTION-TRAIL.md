@@ -26,3 +26,8 @@ Lane: `copilot/pr85651-driftcure-N3-20260528-062600`
 ## Mechanical conflicts
 
 - `ui/src/i18n/.i18n/{ar,de,es,fa,fr,id,it,ja-JP,ko,nl,pl,pt-BR,th,tr,uk,vi,zh-CN,zh-TW}.meta.json`: merged generated metadata as described above.
+
+## Gate E iteration 1 fix
+
+- `src/agents/embedded-agent-runner/runs.ts`: removed duplicate active session file helper left by the three-way merge and restored `resolveEmbeddedSessionFileKey` import so upstream abandoned-run handling and PR-head session-file normalization share the same canonical helper.
+- `src/plugin-sdk/agent-harness-runtime.ts`: restored the current-target `projectRuntimeToolInputSchema` export group required by upstream Codex dynamic-tool schema quarantine; this preserves the target SDK surface rather than adding a new subpath.
