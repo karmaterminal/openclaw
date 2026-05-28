@@ -58,7 +58,7 @@ type SessionFileFenceSnapshot = {
   text?: string;
 };
 
-export type EmbeddedAttemptSessionFileOwner = {
+type EmbeddedAttemptSessionFileOwner = {
   release(): void;
 };
 

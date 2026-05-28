@@ -721,7 +721,6 @@ export function setActiveEmbeddedRun(
   clearEmbeddedRunAbandonment({ sessionId, sessionKey, sessionFile });
   ACTIVE_EMBEDDED_RUNS.set(sessionId, handle);
   setActiveRunSessionKey(sessionKey, sessionId);
-  clearActiveRunSessionFiles(sessionId);
   setActiveRunSessionFile(sessionFile, sessionId);
   logSessionStateChange({
     sessionId,
@@ -743,17 +742,6 @@ export function updateActiveEmbeddedRunSnapshot(
     return;
   }
   ACTIVE_EMBEDDED_RUN_SNAPSHOTS.set(sessionId, snapshot);
-}
-
-export function updateActiveEmbeddedRunSessionFile(
-  sessionId: string,
-  sessionFile: string | undefined,
-): void {
-  if (!ACTIVE_EMBEDDED_RUNS.has(sessionId)) {
-    return;
-  }
-  clearActiveRunSessionFiles(sessionId);
-  setActiveRunSessionFile(sessionFile, sessionId);
 }
 
 export function clearActiveEmbeddedRun(

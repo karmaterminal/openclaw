@@ -5,16 +5,6 @@ export type ResolvedTimeFormat = "12" | "24";
 
 let cachedTimeFormat: ResolvedTimeFormat | undefined;
 
-function buildNormalizedTimestamp(
-  timestampMs: number,
-): { timestampMs: number; timestampUtc: string } | undefined {
-  if (!Number.isSafeInteger(timestampMs)) {
-    return undefined;
-  }
-  const timestampUtc = new Date(timestampMs).toISOString();
-  return { timestampMs, timestampUtc };
-}
-
 export function resolveUserTimezone(configured?: string): string {
   const trimmed = configured?.trim();
   if (trimmed) {
@@ -79,11 +69,7 @@ export function normalizeTimestamp(
   if (timestampMs === undefined || !Number.isFinite(timestampMs)) {
     return undefined;
   }
-  try {
-    return buildNormalizedTimestamp(timestampMs);
-  } catch {
-    return undefined;
-  }
+  return { timestampMs, timestampUtc: new Date(timestampMs).toISOString() };
 }
 
 export function withNormalizedTimestamp<T extends Record<string, unknown>>(

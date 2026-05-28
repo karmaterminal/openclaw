@@ -241,13 +241,9 @@ function expandScopedOverrideChildren(overrides) {
 
 function readPnpmLockScopedVersionOverrides() {
   const lockfile = parseYaml(readFileSync(path.join(ROOT_DIR, "pnpm-lock.yaml"), "utf8"));
-  return collectPnpmLockDependencyOverrides(lockfile, { versionedParents: true });
-}
-
-function collectPnpmLockDependencyOverrides(lockfile, options = {}) {
   const versionsByName = collectPnpmLockPackageVersions(lockfile);
   if (versionsByName.size === 0) {
-    return {};
+    throw new Error("pnpm-lock.yaml is missing package resolution data.");
   }
   const forkedPackageNames = new Set(
     [...versionsByName.entries()]
@@ -274,8 +270,7 @@ function collectPnpmLockDependencyOverrides(lockfile, options = {}) {
     ) {
       continue;
     }
-    const parentSelector =
-      options.versionedParents === true ? `${parent.name}@${parent.version}` : parent.name;
+    const parentSelector = `${parent.name}@${parent.version}`;
     for (const [dependencyName, dependencySpec] of Object.entries(dependencies)) {
       if (!forkedPackageNames.has(dependencyName)) {
         continue;
@@ -1272,7 +1267,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 export {
   collectCurrentShrinkwrapOverrides,
   collectOverrideViolations,
-  collectPnpmLockDependencyOverrides,
   collectPnpmLockViolations,
   disableShrinkwrappedOverrideConflictSources,
   exactOverrideRulesFromOverrides,
