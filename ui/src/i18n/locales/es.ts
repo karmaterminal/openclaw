@@ -1090,6 +1090,8 @@ export const es: TranslationMap = {
     settings: "Configuración del chat",
     thinkingToggle: "Alternar salida de pensamiento/trabajo del asistente",
     toolCallsToggle: "Alternar llamadas a herramientas y resultados de herramientas",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Modo de desplazamiento automático",
     autoScrollAlways: "Siempre",
     autoScrollNearBottom: "Cerca del final",

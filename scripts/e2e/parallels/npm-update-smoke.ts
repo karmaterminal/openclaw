@@ -31,7 +31,6 @@ import {
 import { runWindowsBackgroundPowerShell } from "./guest-transports.ts";
 import { linuxUpdateScript, macosUpdateScript, windowsUpdateScript } from "./npm-update-scripts.ts";
 import { ensureVmRunning, resolveUbuntuVmName } from "./parallels-vm.ts";
-import { runTimedUpdateJob } from "./update-job-timeout.ts";
 
 interface NpmUpdateOptions {
   betaValidation?: string;
@@ -100,7 +99,6 @@ const macosVm = "macOS Tahoe";
 const windowsVm = "Windows 11";
 const linuxVmDefault = "Ubuntu 26.04";
 const updateTimeoutSeconds = Number(process.env.OPENCLAW_PARALLELS_NPM_UPDATE_TIMEOUT_S || 1200);
-const updateCleanupBackstopMs = 60_000;
 
 function usage(): string {
   return `Usage: bash scripts/e2e/parallels-npm-update-smoke.sh [options]
@@ -574,14 +572,20 @@ class NpmUpdateSmoke {
         log += text;
         this.noteJobOutput(job, text);
       };
-      return await runTimedUpdateJob({
-        append,
-        label,
-        run: () => fn({ append, logPath }),
-        timeoutDescription: `${updateTimeoutSeconds}s plus cleanup backstop`,
-        timeoutMs: updateTimeoutSeconds * 1000 + updateCleanupBackstopMs,
-        writeLog: () => writeFile(logPath, log, "utf8"),
-      });
+      const timeout = setTimeout(() => {
+        append(`${label} update timed out after ${updateTimeoutSeconds}s\n`);
+      }, updateTimeoutSeconds * 1000);
+      try {
+        await fn({ append, logPath });
+        await writeFile(logPath, log, "utf8");
+        return 0;
+      } catch (error) {
+        append(`${error instanceof Error ? error.message : String(error)}\n`);
+        await writeFile(logPath, log, "utf8");
+        return 1;
+      } finally {
+        clearTimeout(timeout);
+      }
     })().finally(() => {
       job.durationMs = Date.now() - job.startedAt;
       job.done = true;
