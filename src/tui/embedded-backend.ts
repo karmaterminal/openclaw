@@ -13,7 +13,6 @@ import { createDefaultDeps } from "../cli/deps.js";
 import { getRuntimeConfig } from "../config/config.js";
 import { updateSessionStore } from "../config/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { isChatStopCommandText } from "../gateway/chat-abort.js";
 import {
   projectRecentChatDisplayMessages,
   resolveEffectiveChatHistoryMaxChars,
@@ -76,13 +75,6 @@ type LocalRunState = {
   lifecycleStopReason?: string;
   finalSent: boolean;
   registered: boolean;
-  queuedRunReady: Promise<void>;
-  markQueuedRunReady: () => void;
-};
-
-type QueuedSessionRun = {
-  run: LocalRunState;
-  promise: Promise<void>;
 };
 
 const LIFECYCLE_ERROR_RETRY_GRACE_MS = 15_000;
@@ -169,28 +161,6 @@ function resolveDeltaPayload(text: string, previousText: string | undefined) {
   return { deltaText: text.slice(previousText.length) };
 }
 
-function createQueuedRunReadiness() {
-  let resolve: (() => void) | undefined;
-  const promise = new Promise<void>((ready) => {
-    resolve = ready;
-  });
-  if (!resolve) {
-    throw new Error("Expected queue readiness resolver to be initialized");
-  }
-  const resolveReady = resolve;
-  let settled = false;
-  return {
-    promise,
-    markReady: () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      resolveReady();
-    },
-  };
-}
-
 async function waitForLocalRunShutdown(promises: Promise<void>[]): Promise<boolean> {
   if (promises.length === 0) {
     return true;
@@ -216,12 +186,7 @@ async function waitForLocalRunShutdown(promises: Promise<void>[]): Promise<boole
   return completed;
 }
 
-async function waitForQueuedLocalRun(previousRun: QueuedSessionRun, runId: string): Promise<void> {
-  await previousRun.run.queuedRunReady;
-  if (!previousRun.run.finishing && !previousRun.run.lifecycleEnded) {
-    await previousRun.promise;
-    return;
-  }
+async function waitForQueuedLocalRun(previousRun: Promise<void>, runId: string): Promise<void> {
   const timeoutMs = resolveLocalRunShutdownGraceMs();
   if (timeoutMs <= 0) {
     throw new Error(
@@ -231,7 +196,7 @@ async function waitForQueuedLocalRun(previousRun: QueuedSessionRun, runId: strin
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      previousRun.promise,
+      previousRun,
       new Promise<void>((_, reject) => {
         timeout = setTimeout(() => {
           reject(
@@ -325,16 +290,13 @@ export class EmbeddedTuiBackend implements TuiBackend {
   async sendChat(opts: ChatSendOptions): Promise<{ runId: string }> {
     const runId = opts.runId ?? randomUUID();
     const question = resolveBtwQuestion(opts.message);
-    const abortableSessionRun = this.hasAbortableSessionRun(opts.sessionKey);
-    const stopCommand = abortableSessionRun && isChatStopCommandText(opts.message);
-    const queuedAfter =
-      question || stopCommand ? undefined : this.findQueuedSessionRunPromise(opts.sessionKey);
-    if (stopCommand) {
-      this.abortSessionRuns(opts.sessionKey);
-      return { runId };
+    const queuedAfter = question ? undefined : this.findPendingSessionRunPromise(opts.sessionKey);
+    if (!question) {
+      if (!queuedAfter) {
+        this.abortSessionRuns(opts.sessionKey);
+      }
     }
     const controller = new AbortController();
-    const queuedRunReadiness = createQueuedRunReadiness();
     this.runs.set(runId, {
       sessionKey: opts.sessionKey,
       controller,
@@ -345,8 +307,6 @@ export class EmbeddedTuiBackend implements TuiBackend {
       lifecycleEnded: false,
       finalSent: false,
       registered: false,
-      queuedRunReady: queuedRunReadiness.promise,
-      markQueuedRunReady: queuedRunReadiness.markReady,
     });
 
     const runPromise = this.runTurn({
@@ -372,7 +332,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     if (!run || run.sessionKey !== opts.sessionKey) {
       return { ok: true, aborted: false };
     }
-    if (!this.isAbortableRun(opts.runId, run)) {
+    if (run.lifecycleEnded) {
       return { ok: true, aborted: false };
     }
     run.controller.abort();
@@ -525,38 +485,21 @@ export class EmbeddedTuiBackend implements TuiBackend {
     }));
   }
 
-  private findQueuedSessionRunPromise(sessionKey: string): QueuedSessionRun | undefined {
-    let queuedAfter: QueuedSessionRun | undefined;
-    for (const [runId, run] of this.runs) {
-      if (run.sessionKey === sessionKey && !run.isBtw) {
-        const promise = this.runPromises.get(runId);
-        if (promise) {
-          queuedAfter = { run, promise };
-        }
-      }
-    }
-    return queuedAfter;
-  }
-
   private abortSessionRuns(sessionKey: string) {
-    for (const [runId, run] of this.runs) {
-      if (run.sessionKey === sessionKey && !run.isBtw && this.isAbortableRun(runId, run)) {
+    for (const run of this.runs.values()) {
+      if (run.sessionKey === sessionKey && !run.isBtw && !run.lifecycleEnded && !run.finishing) {
         run.controller.abort();
       }
     }
   }
 
-  private hasAbortableSessionRun(sessionKey: string): boolean {
+  private findPendingSessionRunPromise(sessionKey: string): Promise<void> | undefined {
     for (const [runId, run] of this.runs) {
-      if (run.sessionKey === sessionKey && !run.isBtw && this.isAbortableRun(runId, run)) {
-        return true;
+      if (run.sessionKey === sessionKey && !run.isBtw && (run.finishing || run.lifecycleEnded)) {
+        return this.runPromises.get(runId);
       }
     }
-    return false;
-  }
-
-  private isAbortableRun(runId: string, run: LocalRunState): boolean {
-    return !run.lifecycleEnded || this.runPromises.has(runId);
+    return undefined;
   }
 
   private nextSeq() {
@@ -627,7 +570,6 @@ export class EmbeddedTuiBackend implements TuiBackend {
 
   private emitChatFinal(runId: string, run: LocalRunState, stopReason?: string) {
     this.clearPendingLifecycleError(runId);
-    run.markQueuedRunReady();
     const alreadyFinal = run.finalSent;
     run.finishing = false;
     run.lifecycleEnded = true;
@@ -661,7 +603,6 @@ export class EmbeddedTuiBackend implements TuiBackend {
 
   private emitChatAborted(runId: string, run: LocalRunState) {
     this.clearPendingLifecycleError(runId);
-    run.markQueuedRunReady();
     const alreadyFinal = run.finalSent;
     run.finishing = false;
     run.lifecycleEnded = true;
@@ -680,7 +621,6 @@ export class EmbeddedTuiBackend implements TuiBackend {
 
   private emitChatError(runId: string, run: LocalRunState, errorMessage?: string) {
     this.clearPendingLifecycleError(runId);
-    run.markQueuedRunReady();
     const alreadyFinal = run.finalSent;
     run.finishing = false;
     run.lifecycleEnded = true;
@@ -766,7 +706,6 @@ export class EmbeddedTuiBackend implements TuiBackend {
     const aborted = evt.data?.aborted === true || run.controller.signal.aborted;
     if (phase === "finishing") {
       run.finishing = true;
-      run.markQueuedRunReady();
       run.lifecycleStopReason =
         typeof evt.data?.stopReason === "string" ? evt.data.stopReason : undefined;
       return;
@@ -778,7 +717,6 @@ export class EmbeddedTuiBackend implements TuiBackend {
         return;
       }
       run.lifecycleEnded = true;
-      run.markQueuedRunReady();
       run.lifecycleStopReason =
         typeof evt.data?.stopReason === "string" ? evt.data.stopReason : undefined;
       return;
@@ -804,7 +742,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     deliver?: boolean;
     timeoutMs?: number;
     controller: AbortController;
-    queuedAfter?: QueuedSessionRun;
+    queuedAfter?: Promise<void>;
   }) {
     try {
       if (params.queuedAfter) {
@@ -854,10 +792,6 @@ export class EmbeddedTuiBackend implements TuiBackend {
       if (!run) {
         return;
       }
-      if (params.controller.signal.aborted || result?.meta?.aborted === true) {
-        this.emitChatAborted(params.runId, run);
-        return;
-      }
 
       if (run.isBtw) {
         const text = payloadText(result?.payloads);
@@ -896,7 +830,6 @@ export class EmbeddedTuiBackend implements TuiBackend {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.emitChatError(params.runId, run, errorMessage);
     } finally {
-      this.runs.get(params.runId)?.markQueuedRunReady();
       this.runs.delete(params.runId);
     }
   }

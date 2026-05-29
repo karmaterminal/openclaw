@@ -2475,6 +2475,7 @@ describe("MatrixClient crypto bootstrapping", () => {
 
     const status = await client.getOwnDeviceVerificationStatus();
     expect(status.backupVersion).toBe("11");
+    expect(client.doRequest).not.toHaveBeenCalled();
     expect(status.backup).toEqual({
       serverVersion: "11",
       activeVersion: "11",

@@ -177,10 +177,9 @@ export async function compactEmbeddedAgentSession(
     defaultModel: DEFAULT_MODEL,
   });
   const ceProvider = resolvedCompactionTarget.provider ?? DEFAULT_PROVIDER;
-  const ceRuntimeProvider = resolvedCompactionTarget.runtimeProvider ?? ceProvider;
   const ceModelId = resolvedCompactionTarget.model ?? DEFAULT_MODEL;
   const { model: ceModel } = await resolveModelAsync(
-    ceRuntimeProvider,
+    ceProvider,
     ceModelId,
     agentDir,
     params.config,
@@ -507,7 +506,6 @@ function buildCompactionContextEngineRuntimeContext(params: {
       config: params.params.config,
       sessionKey: params.params.sessionKey,
       agentId: sessionAgentId,
-      authProfileId: params.params.authProfileId,
       contextEnginePluginId: params.contextEnginePluginId,
       purpose: "context-engine.compaction",
     }),

@@ -26,10 +26,7 @@ const TOOL_RESULT_BLOCK_TYPES = new Set([
   "tool_result_error",
   "function_call_output",
 ]);
-const MESSAGE_TOOL_DELIVERY_PREFIXES = [
-  "Delivery: to send a message, use the `message` tool.",
-  "Delivery: Final assistant text is not automatically delivered in this run. Use the `message` tool to send user-visible output.",
-] as const;
+const MESSAGE_TOOL_DELIVERY_PREFIX = "Delivery: to send a message, use the `message` tool.";
 
 type HeartbeatTranscriptMessage = { role: string; content?: unknown };
 
@@ -302,7 +299,7 @@ export function isHeartbeatUserMessage(
     return true;
   }
   if (
-    MESSAGE_TOOL_DELIVERY_PREFIXES.some((prefix) => trimmed.startsWith(prefix)) &&
+    trimmed.startsWith(MESSAGE_TOOL_DELIVERY_PREFIX) &&
     trimmed.endsWith(HEARTBEAT_TRANSCRIPT_PROMPT)
   ) {
     return true;

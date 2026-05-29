@@ -1,5 +1,4 @@
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import {
   chmodSync,
   createWriteStream,
@@ -16,6 +15,7 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import chalk from "chalk";
 import { fetchWithSsrFGuard } from "../../infra/net/fetch-guard.js";
+import { generateSecureToken } from "../../infra/secure-random.js";
 import { APP_NAME, getBinDir } from "../config.js";
 
 const TOOLS_DIR = getBinDir();
@@ -320,7 +320,7 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
   // during startup, so sharing a fixed directory causes races.
   const extractDir = join(
     TOOLS_DIR,
-    `extract_tmp_${config.binaryName}_${process.pid}_${randomUUID()}`,
+    `extract_tmp_${config.binaryName}_${process.pid}_${Date.now()}_${generateSecureToken(6)}`,
   );
   mkdirSync(extractDir, { recursive: true });
 
