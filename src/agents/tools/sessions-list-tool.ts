@@ -76,6 +76,7 @@ export function createSessionsListTool(opts?: {
   agentSessionKey?: string;
   sandboxed?: boolean;
   config?: OpenClawConfig;
+  getConfig?: () => OpenClawConfig;
   callGateway?: GatewayCaller;
 }): AnyAgentTool {
   return {
@@ -86,7 +87,7 @@ export function createSessionsListTool(opts?: {
     parameters: SessionsListToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
-      const cfg = opts?.config ?? getRuntimeConfig();
+      const cfg = opts?.getConfig?.() ?? opts?.config ?? getRuntimeConfig();
       const { mainKey, alias, requesterInternalKey, restrictToSpawned } =
         resolveSandboxedSessionToolContext({
           cfg,

@@ -1097,6 +1097,8 @@ export const fr: TranslationMap = {
     settings: "Paramètres de chat",
     thinkingToggle: "Afficher/masquer la sortie de réflexion/travail de l’assistant",
     toolCallsToggle: "Afficher/masquer les appels d’outil et les résultats d’outil",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Mode de défilement automatique",
     autoScrollAlways: "Toujours",
     autoScrollNearBottom: "Près du bas",

@@ -105,6 +105,7 @@ export function isFallbackSummaryError(err: unknown): err is FallbackSummaryErro
 
 export type ModelFallbackRunOptions = {
   allowTransientCooldownProbe?: boolean;
+  abortSignal?: AbortSignal;
 };
 
 type ModelFallbackRuntimeContext = {
@@ -142,20 +143,6 @@ function isFallbackAbortError(err: unknown): boolean {
 
 function shouldRethrowAbort(err: unknown): boolean {
   return isFallbackAbortError(err) && !isTimeoutError(err);
-}
-
-function isTerminalAbort(signal: AbortSignal | undefined): boolean {
-  if (!signal?.aborted) {
-    return false;
-  }
-  const reason = signal.reason;
-  if (!(reason instanceof Error)) {
-    return false;
-  }
-  if (reason.name === "TimeoutError") {
-    return true;
-  }
-  return reason.name === "ClientDisconnectError";
 }
 
 function createModelCandidateCollector(allowlist: Set<string> | null | undefined): {
@@ -262,7 +249,6 @@ async function runFallbackCandidate<T>(params: {
   model: string;
   options?: ModelFallbackRunOptions;
   attribution?: FailoverAttribution;
-  abortSignal?: AbortSignal;
 }): Promise<{ ok: true; result: T } | { ok: false; error: unknown }> {
   try {
     const result = params.options
@@ -277,9 +263,6 @@ async function runFallbackCandidate<T>(params: {
       throw err;
     }
     if (isNonProviderRuntimeCoordinationError(err)) {
-      throw err;
-    }
-    if (isTerminalAbort(params.abortSignal)) {
       throw err;
     }
     // Normalize abort-wrapped rate-limit errors (e.g. Google Vertex RESOURCE_EXHAUSTED)
@@ -307,7 +290,6 @@ async function runFallbackAttempt<T>(params: {
   attempt: number;
   total: number;
   attribution?: FailoverAttribution;
-  abortSignal?: AbortSignal;
 }): Promise<{ success: ModelFallbackRunResult<T> } | { error: unknown }> {
   const runResult = await runFallbackCandidate({
     run: params.run,
@@ -315,7 +297,6 @@ async function runFallbackAttempt<T>(params: {
     model: params.model,
     options: params.options,
     attribution: params.attribution,
-    abortSignal: params.abortSignal,
   });
   if (runResult.ok) {
     const classification = await params.classifyResult?.({
@@ -331,9 +312,6 @@ async function runFallbackAttempt<T>(params: {
       attribution: params.attribution,
     });
     if (classifiedError) {
-      if (isTerminalAbort(params.abortSignal)) {
-        throw classifiedError;
-      }
       return { error: classifiedError };
     }
     return {
@@ -746,29 +724,22 @@ function resolveFallbackCandidateCacheKey(
   }
   const workspaceDir = getActivePluginRegistryWorkspaceDirFromState();
   const env = process.env;
-  const pluginMetadata = getCurrentPluginMetadataSnapshot({
-    env,
-    workspaceDir,
-    allowWorkspaceScopedSnapshot: true,
-  });
-  const providerLoadMetadata = getCurrentPluginMetadataSnapshot({
-    config: params.cfg,
-    env,
-    workspaceDir,
-    allowWorkspaceScopedSnapshot: true,
-  });
   if (
     isPluginProvidersLoadInFlight({
       config: params.cfg,
       workspaceDir,
       env,
-      ...(providerLoadMetadata ? { pluginMetadataSnapshot: providerLoadMetadata } : {}),
       activate: false,
       bundledProviderVitestCompat: true,
     })
   ) {
     return null;
   }
+  const pluginMetadata = getCurrentPluginMetadataSnapshot({
+    env,
+    workspaceDir,
+    allowWorkspaceScopedSnapshot: true,
+  });
   const registryState = getPluginRegistryState();
   return JSON.stringify({
     provider: params.provider,
@@ -1134,12 +1105,12 @@ export async function runWithModelFallback<T>(
     agentDir?: string;
     /** Optional explicit fallbacks list; when provided (even empty), replaces agents.defaults.model.fallbacks. */
     fallbacksOverride?: string[];
+    abortSignal?: AbortSignal;
     run: ModelFallbackRunFn<T>;
     onError?: ModelFallbackErrorHandler;
     onFallbackStep?: ModelFallbackStepHandler;
     classifyResult?: ModelFallbackResultClassifier<T>;
     skipAuthProfileRuntime?: boolean;
-    abortSignal?: AbortSignal;
   } & ModelManifestNormalizationContext,
 ): Promise<ModelFallbackRunResult<T>> {
   const candidates = resolveFallbackCandidates({
@@ -1373,16 +1344,19 @@ export async function runWithModelFallback<T>(
       }
     }
 
+    const effectiveRunOptions =
+      params.abortSignal || runOptions
+        ? { ...runOptions, ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}) }
+        : undefined;
     const attemptRun = await runFallbackAttempt({
       run: params.run,
       ...candidate,
       attempts,
-      options: runOptions,
+      options: effectiveRunOptions,
       classifyResult: params.classifyResult,
       attempt: i + 1,
       total: candidates.length,
       attribution: { sessionId: params.sessionId, lane: params.lane },
-      abortSignal: params.abortSignal,
     });
     if ("success" in attemptRun) {
       if (i > 0 || attempts.length > 0 || attemptedDuringCooldown) {

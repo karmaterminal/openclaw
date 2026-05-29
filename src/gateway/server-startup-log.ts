@@ -2,16 +2,16 @@ import chalk from "chalk";
 import { resolveDefaultAgentId, resolveAgentConfig } from "../agents/agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { resolveFastModeState } from "../agents/fast-mode.js";
-import type { ModelCatalogEntry } from "../agents/model-catalog.types.js";
-import { legacyModelKey, modelKey } from "../agents/model-selection-normalize.js";
 import {
   buildConfiguredModelCatalog,
   resolveConfiguredModelRef,
-} from "../agents/model-selection-shared.js";
-import { resolveThinkingDefault } from "../agents/model-thinking-default.js";
+  resolveThinkingDefault,
+  legacyModelKey,
+  modelKey,
+} from "../agents/model-selection.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { getResolvedLoggerSettings } from "../logging.js";
-import { collectEnabledInsecureOrDangerousFlagsFromCurrentSnapshot } from "../security/dangerous-config-flags-current.js";
+import { collectEnabledInsecureOrDangerousFlags } from "../security/dangerous-config-flags.js";
 import { normalizeSortedUniqueStringEntries } from "../shared/string-normalization.js";
 
 type StartupThinkLevel =
@@ -24,7 +24,7 @@ type StartupThinkLevel =
   | "adaptive"
   | "max";
 
-export async function logGatewayStartup(params: {
+export function logGatewayStartup(params: {
   cfg: OpenClawConfig;
   bindHost: string;
   bindHosts?: string[];
@@ -61,11 +61,7 @@ export async function logGatewayStartup(params: {
     params.log.info("gateway: running in Nix mode (config managed externally)");
   }
 
-  const enabledDangerousFlags =
-    collectEnabledInsecureOrDangerousFlagsFromCurrentSnapshot(params.cfg) ??
-    (await import("../security/dangerous-config-flags.js")).collectEnabledInsecureOrDangerousFlags(
-      params.cfg,
-    );
+  const enabledDangerousFlags = collectEnabledInsecureOrDangerousFlags(params.cfg);
   if (enabledDangerousFlags.length > 0) {
     const warning =
       `security warning: dangerous config flags enabled: ${enabledDangerousFlags.join(", ")}. ` +
@@ -105,11 +101,11 @@ function resolveExplicitStartupThinking(params: {
 }
 
 function isConfiguredReasoningDisabled(params: {
-  catalog: readonly ModelCatalogEntry[];
+  cfg: OpenClawConfig;
   provider: string;
   model: string;
 }): boolean {
-  return params.catalog.some(
+  return buildConfiguredModelCatalog({ cfg: params.cfg }).some(
     (entry) =>
       entry.provider === params.provider && entry.id === params.model && entry.reasoning === false,
   );
@@ -120,7 +116,6 @@ export function formatAgentModelStartupDetails(params: {
   provider: string;
   model: string;
 }): string {
-  const configuredCatalog = buildConfiguredModelCatalog({ cfg: params.cfg });
   const defaultAgentId = resolveDefaultAgentId(params.cfg);
   const defaultAgentConfig = resolveAgentConfig(params.cfg, defaultAgentId);
   const explicitThinking = resolveExplicitStartupThinking({
@@ -135,15 +130,10 @@ export function formatAgentModelStartupDetails(params: {
       cfg: params.cfg,
       provider: params.provider,
       model: params.model,
-      catalog: configuredCatalog,
     });
   const thinking =
     explicitThinking ??
-    (isConfiguredReasoningDisabled({
-      catalog: configuredCatalog,
-      provider: params.provider,
-      model: params.model,
-    })
+    (isConfiguredReasoningDisabled(params)
       ? "off"
       : resolvedThinking === "off"
         ? "medium"

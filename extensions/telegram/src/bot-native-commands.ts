@@ -177,7 +177,7 @@ async function resolveTelegramCommandSessionFile(params: {
   agentId: string;
   sessionKey: string;
   threadId?: string | number;
-}): Promise<{ sessionId?: string; sessionFile?: string; authProfileId?: string }> {
+}): Promise<{ sessionId?: string; sessionFile?: string }> {
   const sessionKey = params.sessionKey.trim();
   if (!sessionKey) {
     return {};
@@ -187,7 +187,6 @@ async function resolveTelegramCommandSessionFile(params: {
     const store = loadSessionStore(storePath);
     const resolved = resolveSessionStoreEntry({ store, sessionKey });
     const sessionId = resolved.existing?.sessionId?.trim() || randomUUID();
-    const authProfileId = normalizeOptionalString(resolved.existing?.authProfileOverride);
     const sessionsDir = path.dirname(storePath);
     const fallbackSessionFile = resolveSessionTranscriptPathInDir(
       sessionId,
@@ -204,11 +203,7 @@ async function resolveTelegramCommandSessionFile(params: {
       sessionsDir,
       fallbackSessionFile,
     });
-    return {
-      sessionId,
-      sessionFile: persisted.sessionFile,
-      ...(authProfileId ? { authProfileId } : {}),
-    };
+    return { sessionId, sessionFile: persisted.sessionFile };
   } catch {
     return {};
   }
@@ -920,7 +915,7 @@ export const registerTelegramNativeCommands = ({
       isForum,
       messageThreadId: resolvedThreadId ?? messageThreadId,
     });
-    let { route, bindingMode } = resolveTelegramConversationRoute({
+    let { route, configuredBinding } = resolveTelegramConversationRoute({
       cfg: runtimeCfg,
       accountId,
       chatId,
@@ -931,14 +926,14 @@ export const registerTelegramNativeCommands = ({
       topicAgentId,
     });
     const nativeCommandRuntime = await loadTelegramNativeCommandRuntime();
-    if (bindingMode.kind === "configured") {
+    if (configuredBinding) {
       const ensured = await nativeCommandRuntime.ensureConfiguredBindingRouteReady({
         cfg: runtimeCfg,
-        bindingResolution: bindingMode.binding,
+        bindingResolution: configuredBinding,
       });
       if (!ensured.ok) {
         logVerbose(
-          `telegram native command: configured ACP binding unavailable for topic ${bindingMode.binding.record.conversation.conversationId}: ${ensured.error}`,
+          `telegram native command: configured ACP binding unavailable for topic ${configuredBinding.record.conversation.conversationId}: ${ensured.error}`,
         );
         await withTelegramApiErrorLogging({
           operation: "sendMessage",
@@ -1423,10 +1418,6 @@ export const registerTelegramNativeCommands = ({
           botHasTopicsEnabled: resolveTelegramBotHasTopicsEnabled(ctx.me),
           resolveThreadSessionKeys: nativeCommandRuntime.resolveThreadSessionKeys,
         });
-        const targetSessionEntry = nativeCommandRuntime.getSessionEntry({
-          agentId: route.agentId,
-          sessionKey: targetSessionKey,
-        });
         const deliveryBaseOptions = buildCommandDeliveryBaseOptions({
           cfg: runtimeCfg,
           chatId,
@@ -1484,12 +1475,9 @@ export const registerTelegramNativeCommands = ({
             channel: "telegram",
             isAuthorizedSender: commandAuthorized,
             senderIsOwner,
-            agentId: route.agentId,
             sessionKey: targetSessionKey,
             sessionId: sessionFileContext.sessionId,
             sessionFile: sessionFileContext.sessionFile,
-            authProfileId:
-              sessionFileContext.authProfileId ?? targetSessionEntry?.authProfileOverride,
             commandBody,
             config: runtimeCfg,
             from,

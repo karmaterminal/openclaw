@@ -38,7 +38,6 @@ export function resolveGatewayScopedTools(params: {
   messageProvider?: string;
   accountId?: string;
   inboundEventKind?: InboundEventKind;
-  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
   agentTo?: string;
   agentThreadId?: string;
   senderIsOwner?: boolean;
@@ -63,12 +62,8 @@ export function resolveGatewayScopedTools(params: {
   const profilePolicy = resolveToolProfilePolicy(profile);
   const providerProfilePolicy = resolveToolProfilePolicy(providerProfile);
   const gatewayRequestedTools = params.gatewayRequestedTools ?? [];
-  const messageProvider = params.messageProvider?.trim().toLowerCase();
   const sourceReplyDeliveryMode: SourceReplyDeliveryMode | undefined =
-    params.sourceReplyDeliveryMode ??
-    (params.inboundEventKind === "room_event" && messageProvider !== "webchat"
-      ? "message_tool_only"
-      : undefined);
+    params.inboundEventKind === "room_event" ? "message_tool_only" : undefined;
   const runtimeAlsoAllow = sourceReplyDeliveryMode === "message_tool_only" ? ["message"] : [];
   const profilePolicyWithAlsoAllow = mergeAlsoAllowPolicy(profilePolicy, [
     ...(profileAlsoAllow ?? []),
@@ -156,6 +151,7 @@ export function resolveGatewayScopedTools(params: {
     disablePluginTools: params.disablePluginTools,
     wrapBeforeToolCallHook: false,
     config: params.cfg,
+    liveSessionToolConfig: true,
     workspaceDir,
     pluginToolAllowlist: collectExplicitAllowlist([
       profilePolicy,
