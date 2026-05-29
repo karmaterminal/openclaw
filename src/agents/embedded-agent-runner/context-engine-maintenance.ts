@@ -313,7 +313,6 @@ export function buildContextEngineMaintenanceRuntimeContext(params: {
       config: params.config,
       sessionKey: params.sessionKey,
       agentId: params.agentId,
-      authProfileId: normalizeOptionalString(params.runtimeContext?.authProfileId),
       contextEnginePluginId: params.contextEnginePluginId,
       purpose: params.purpose ?? "context-engine.maintenance",
     }),

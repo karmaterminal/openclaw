@@ -40,6 +40,7 @@ import {
   normalizeSpawnedRunMetadata,
   resolveIngressWorkspaceOverrideForSpawnedRun,
 } from "../../agents/spawned-context.js";
+import { consumeSubagentTraceparentHandoff } from "../../agents/subagent-traceparent-handoff.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import {
   resolveBareResetBootstrapFileAccess,
@@ -858,7 +859,11 @@ export const agentHandlers: GatewayRequestHandlers = {
       inputProvenance?: InputProvenance;
       workspaceDir?: string;
       voiceWakeTrigger?: string;
+      continuationTrigger?: "work-wake" | "delegate-return";
+      drainsContinuationDelegateQueue?: boolean;
+      traceparent?: string;
     };
+    const senderIsOwner = clientHasAdminScope(client);
     const allowModelOverride = resolveAllowModelOverrideFromClient(client);
     const canResetSession = resolveCanResetSessionFromClient(client);
     const canUseInternalRuntimeHandoff = resolveCanUseInternalRuntimeHandoff(client);
@@ -1238,13 +1243,13 @@ export const agentHandlers: GatewayRequestHandlers = {
       }
       let resolvedSessionId = requestedSessionId;
       let sessionEntry: SessionEntry | undefined;
+      let sessionContinuationTraceparent: string | undefined;
       let bestEffortDeliver = requestedBestEffortDeliver ?? false;
       let cfgForAgent: OpenClawConfig | undefined;
       let resolvedSessionKey = requestedSessionKey;
       let isNewSession = false;
       let skipTimestampInjection = false;
       let shouldPrependStartupContext = false;
-      let skipAgentInitialSessionTouch = false;
 
       const resetCommandMatch = message.match(RESET_COMMAND_RE);
       if (resetCommandMatch && requestedSessionKey) {
@@ -1336,6 +1341,7 @@ export const agentHandlers: GatewayRequestHandlers = {
           clone: false,
         });
         cfgForAgent = cfg;
+        sessionContinuationTraceparent = entry?.continuationTraceparent;
         const now = Date.now();
         const resetPolicy = resolveSessionResetPolicy({
           sessionCfg: cfg.session,
@@ -1565,47 +1571,44 @@ export const agentHandlers: GatewayRequestHandlers = {
         if (storePath && !suppressVisibleSessionEffects) {
           const requestedStoreKey = requestedSessionKey;
           let deniedBySendPolicy = false;
-          const persisted = await updateSessionStore(
-            storePath,
-            (store) => {
-              const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({
-                cfg,
-                key: requestedStoreKey,
-                store,
-              });
-              const freshEntry = store[primaryKey];
-              patchBuild = buildSessionPatch(freshEntry);
-              const effectivePatch =
-                recoveredSessionStartedAt !== undefined &&
-                freshEntry?.sessionStartedAt === undefined &&
-                freshEntry?.sessionId === entry?.sessionId
-                  ? { ...patchBuild.patch, sessionStartedAt: recoveredSessionStartedAt }
-                  : patchBuild.patch;
-              const merged = mergeSessionEntry(freshEntry, effectivePatch);
-              const sendPolicy =
-                request.deliver === true
-                  ? resolveSendPolicy({
-                      cfg,
-                      entry: merged,
-                      sessionKey: canonicalKey,
-                      channel: merged?.channel,
-                      chatType: merged?.chatType,
-                    })
-                  : "allow";
-              if (sendPolicy === "deny") {
-                deniedBySendPolicy = true;
-                return merged;
-              }
-              store[primaryKey] = merged;
+          const persisted = await updateSessionStore(storePath, (store) => {
+            const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({
+              cfg,
+              key: requestedStoreKey,
+              store,
+            });
+            const freshEntry = store[primaryKey];
+            patchBuild = buildSessionPatch(freshEntry);
+            const basePatch =
+              recoveredSessionStartedAt !== undefined &&
+              freshEntry?.sessionStartedAt === undefined &&
+              freshEntry?.sessionId === entry?.sessionId
+                ? { ...patchBuild.patch, sessionStartedAt: recoveredSessionStartedAt }
+                : patchBuild.patch;
+            // Clear continuationTraceparent after consumption (one-shot handoff).
+            const effectivePatch = { ...basePatch, continuationTraceparent: undefined };
+            const merged = mergeSessionEntry(freshEntry, effectivePatch);
+            const sendPolicy =
+              request.deliver === true
+                ? resolveSendPolicy({
+                    cfg,
+                    entry: merged,
+                    sessionKey: canonicalKey,
+                    channel: merged?.channel,
+                    chatType: merged?.chatType,
+                  })
+                : "allow";
+            if (sendPolicy === "deny") {
+              deniedBySendPolicy = true;
               return merged;
-            },
-            { takeCacheOwnership: true },
-          );
+            }
+            store[primaryKey] = merged;
+            return merged;
+          });
           if (persisted) {
             sessionEntry = persisted;
             resolvedSessionId = sessionEntry.sessionId;
           }
-          skipAgentInitialSessionTouch = touchInteraction;
           if (deniedBySendPolicy) {
             respond(
               false,
@@ -2031,6 +2034,13 @@ export const agentHandlers: GatewayRequestHandlers = {
           }
           const execApprovalFollowupElevatedDefaults =
             execApprovalFollowupRuntimeHandoff?.bashElevated;
+          const inheritedTraceparent =
+            request.traceparent ??
+            consumeSubagentTraceparentHandoff({
+              idempotencyKey: idem,
+              sessionKey: resolvedSessionKey,
+            })?.traceparent ??
+            sessionContinuationTraceparent;
 
           dispatchAgentRunFromGateway({
             ingressOpts: {
@@ -2069,6 +2079,9 @@ export const agentHandlers: GatewayRequestHandlers = {
               messageChannel: originMessageChannel,
               runId,
               lane: request.lane,
+              continuationTrigger: request.continuationTrigger,
+              drainsContinuationDelegateQueue: request.drainsContinuationDelegateQueue,
+              traceparent: inheritedTraceparent,
               modelRun: request.modelRun === true,
               promptMode: request.promptMode,
               extraSystemPrompt: request.extraSystemPrompt,
@@ -2078,7 +2091,6 @@ export const agentHandlers: GatewayRequestHandlers = {
               internalEvents: request.internalEvents,
               inputProvenance,
               sessionEffects,
-              skipInitialSessionTouch: skipAgentInitialSessionTouch,
               preserveUserFacingSessionModelState,
               sourceReplyDeliveryMode: request.sourceReplyDeliveryMode,
               disableMessageTool: request.disableMessageTool,
@@ -2109,6 +2121,7 @@ export const agentHandlers: GatewayRequestHandlers = {
                 sessionEntry,
               }),
               allowModelOverride,
+              senderIsOwner,
             },
             runId,
             dedupeKeys: agentDedupeKeys,
