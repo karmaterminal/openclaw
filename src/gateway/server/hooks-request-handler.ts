@@ -23,7 +23,6 @@ import {
   normalizeHookHeaders,
   normalizeWakePayload,
   readJsonBody,
-  resolveEffectiveHookTargetAgentId,
   resolveHookChannel,
   resolveHookDeliver,
   resolveHookIdempotencyKey,
@@ -282,16 +281,12 @@ export function createHooksRequestHandler(
         return true;
       }
       const targetAgentId = resolveHookTargetAgentId(hooksConfig, normalized.value.agentId);
-      const effectiveTargetAgentId = resolveEffectiveHookTargetAgentId(
-        hooksConfig,
-        normalized.value.agentId,
-      );
       const replayKey = buildHookReplayCacheKey({
         pathKey: "agent",
         token,
         idempotencyKey,
         dispatchScope: {
-          agentId: effectiveTargetAgentId,
+          agentId: targetAgentId ?? null,
           sessionKey:
             normalized.value.sessionKey ?? hooksConfig.sessionPolicy.defaultSessionKey ?? null,
           message: normalized.value.message,
@@ -312,7 +307,7 @@ export function createHooksRequestHandler(
       }
       const normalizedDispatchSessionKey = normalizeHookDispatchSessionKey({
         sessionKey: sessionKey.value,
-        targetAgentId: effectiveTargetAgentId,
+        targetAgentId,
       });
       const allowedPrefixes = hooksConfig.sessionPolicy.allowedSessionKeyPrefixes;
       if (
@@ -381,13 +376,9 @@ export function createHooksRequestHandler(
             return true;
           }
           const targetAgentId = resolveHookTargetAgentId(hooksConfig, mapped.action.agentId);
-          const effectiveTargetAgentId = resolveEffectiveHookTargetAgentId(
-            hooksConfig,
-            mapped.action.agentId,
-          );
           const normalizedDispatchSessionKey = normalizeHookDispatchSessionKey({
             sessionKey: sessionKey.value,
-            targetAgentId: effectiveTargetAgentId,
+            targetAgentId,
           });
           const allowedPrefixes = hooksConfig.sessionPolicy.allowedSessionKeyPrefixes;
           if (
@@ -402,7 +393,7 @@ export function createHooksRequestHandler(
             token,
             idempotencyKey,
             dispatchScope: {
-              agentId: effectiveTargetAgentId,
+              agentId: targetAgentId ?? null,
               sessionKey:
                 mapped.action.sessionKey ?? hooksConfig.sessionPolicy.defaultSessionKey ?? null,
               message: mapped.action.message,

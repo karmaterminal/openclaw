@@ -148,55 +148,14 @@ function onDiagnosticEventFromSharedState(listener) {
   };
 }
 
-function snapshotDiagnosticListeners(state) {
-  return state && state.listeners instanceof Set ? new Set(state.listeners) : null;
-}
-
-function removeAddedDiagnosticListeners(beforeListeners) {
-  const state = getDiagnosticEventsState(false);
-  if (!state || !(state.listeners instanceof Set)) {
-    return;
-  }
-  if (!beforeListeners) {
-    state.listeners.clear();
-    return;
-  }
-  for (const listener of state.listeners) {
-    if (!beforeListeners.has(listener)) {
-      state.listeners.delete(listener);
-    }
-  }
-}
-
-function trySubscribeDiagnosticEvents(diagnosticEvents, listener, beforeListeners) {
-  try {
-    const unsubscribe = diagnosticEvents.onDiagnosticEvent(listener);
-    if (typeof unsubscribe === "function") {
-      return unsubscribe;
-    }
-  } catch {
-    // Fall back to shared state if a stale dist chunk exposes a broken wrapper.
-  }
-  removeAddedDiagnosticListeners(beforeListeners);
-  return null;
-}
-
 function onDiagnosticEvent(listener) {
   const beforeState = getDiagnosticEventsState(false);
-  const beforeListeners = snapshotDiagnosticListeners(beforeState);
   const beforeSize = beforeState?.listeners?.size;
   const diagnosticEvents = loadDiagnosticEventsModule();
   if (!diagnosticEvents || typeof diagnosticEvents.onDiagnosticEvent !== "function") {
     return onDiagnosticEventFromSharedState(listener);
   }
-  const unsubscribeDiagnosticEvents = trySubscribeDiagnosticEvents(
-    diagnosticEvents,
-    listener,
-    beforeListeners,
-  );
-  if (!unsubscribeDiagnosticEvents) {
-    return onDiagnosticEventFromSharedState(listener);
-  }
+  const unsubscribeDiagnosticEvents = diagnosticEvents.onDiagnosticEvent(listener);
   const afterState = getDiagnosticEventsState(false);
   if (afterState && afterState.listeners.size > (beforeSize ?? 0)) {
     return unsubscribeDiagnosticEvents;
@@ -205,11 +164,8 @@ function onDiagnosticEvent(listener) {
   // diagnostic module in a separate graph from the active core emitter.
   const unsubscribeSharedState = onDiagnosticEventFromSharedState(listener);
   return () => {
-    try {
-      unsubscribeDiagnosticEvents();
-    } finally {
-      unsubscribeSharedState();
-    }
+    unsubscribeDiagnosticEvents();
+    unsubscribeSharedState();
   };
 }
 
@@ -335,11 +291,7 @@ function sanitizeJitiCachePathSegment(value) {
 
 function resolveJitiFsCacheTmpDir() {
   let tmpDir = os.tmpdir();
-  if (
-    process.env.TMPDIR &&
-    tmpDir === process.cwd() &&
-    !process.env.JITI_RESPECT_TMPDIR_ENV
-  ) {
+  if (process.env.TMPDIR && tmpDir === process.cwd() && !process.env.JITI_RESPECT_TMPDIR_ENV) {
     const originalTmpDir = process.env.TMPDIR;
     delete process.env.TMPDIR;
     try {
@@ -480,13 +432,10 @@ function normalizeDiagnosticEventsModule(mod) {
   if (typeof mod.onDiagnosticEvent === "function") {
     return mod;
   }
-  const fn = Object.values(mod).find(
-    (v) => typeof v === "function" && v.name === "onDiagnosticEvent",
-  );
-  if (fn) {
+  if (typeof mod.r === "function") {
     return {
       ...mod,
-      onDiagnosticEvent: fn,
+      onDiagnosticEvent: mod.r,
     };
   }
   return mod;

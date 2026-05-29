@@ -255,11 +255,11 @@ describe("workspace path resolution", () => {
         const { writeTool } = expectReadWriteEditTools(tools);
 
         await writeTool.execute("ws-write-symlink-parent", {
-          path: "memory/2026-05-20.md",
+          path: "memory/new-note.md",
           content: "remember this\n",
         });
 
-        await expect(fs.readFile(path.join(realDir, "2026-05-20.md"), "utf8")).resolves.toBe(
+        await expect(fs.readFile(path.join(realDir, "new-note.md"), "utf8")).resolves.toBe(
           "remember this\n",
         );
       });
@@ -272,7 +272,7 @@ describe("workspace path resolution", () => {
       await withTempDir("openclaw-ws-symlink-edit-", async (workspaceDir) => {
         const realDir = path.join(workspaceDir, "oc_system", "memory");
         const aliasDir = path.join(workspaceDir, "memory");
-        const targetPath = path.join(realDir, "2026-05-20.md");
+        const targetPath = path.join(realDir, "new-note.md");
         await fs.mkdir(realDir, { recursive: true });
         await fs.symlink(realDir, aliasDir);
         await fs.writeFile(targetPath, "old memory\n", "utf8");
@@ -282,7 +282,7 @@ describe("workspace path resolution", () => {
         const { editTool } = expectReadWriteEditTools(tools);
 
         await editTool.execute("ws-edit-symlink-parent", {
-          path: "memory/2026-05-20.md",
+          path: "memory/new-note.md",
           edits: [{ oldText: "old", newText: "new" }],
         });
 
