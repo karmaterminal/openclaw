@@ -18,7 +18,6 @@ import {
 export type SubagentSessionStoreCache = Map<string, Record<string, SessionEntry>>;
 
 export type SubagentSessionCompletion = {
-  startedAt?: number;
   endedAt: number;
   outcome: SubagentRunOutcome;
   reason: SubagentLifecycleEndedReason;
@@ -41,17 +40,6 @@ function isFreshForRun(
   }
   const terminalAt = terminalSessionTimestamp(sessionEntry);
   return terminalAt !== undefined && terminalAt >= notBeforeMs;
-}
-
-function freshSessionStartedAt(
-  sessionEntry: SessionEntry | undefined,
-  notBeforeMs: number | undefined,
-): number | undefined {
-  const startedAt = finiteTimestamp(sessionEntry?.startedAt);
-  if (startedAt === undefined) {
-    return undefined;
-  }
-  return notBeforeMs === undefined || startedAt >= notBeforeMs ? startedAt : undefined;
 }
 
 function findSessionEntryByKey(store: Record<string, SessionEntry>, sessionKey: string) {
@@ -94,7 +82,6 @@ export function resolveCompletionFromSessionEntry(
   opts?: { notBeforeMs?: number },
 ): SubagentSessionCompletion | null {
   const status = sessionEntry?.status;
-  const startedAt = freshSessionStartedAt(sessionEntry, opts?.notBeforeMs);
   const endedAt =
     finiteTimestamp(sessionEntry?.endedAt) ??
     finiteTimestamp(sessionEntry?.updatedAt) ??
@@ -105,7 +92,6 @@ export function resolveCompletionFromSessionEntry(
       return null;
     }
     return {
-      startedAt,
       endedAt,
       outcome: { status: "ok" },
       reason: SUBAGENT_ENDED_REASON_COMPLETE,
@@ -116,7 +102,6 @@ export function resolveCompletionFromSessionEntry(
       return null;
     }
     return {
-      startedAt,
       endedAt,
       outcome: { status: "timeout" },
       reason: SUBAGENT_ENDED_REASON_COMPLETE,
@@ -127,7 +112,6 @@ export function resolveCompletionFromSessionEntry(
       return null;
     }
     return {
-      startedAt,
       endedAt,
       outcome: { status: "error", error: "session completed before registry settled" },
       reason: SUBAGENT_ENDED_REASON_ERROR,
@@ -138,7 +122,6 @@ export function resolveCompletionFromSessionEntry(
       return null;
     }
     return {
-      startedAt,
       endedAt,
       outcome: { status: "error", error: "subagent run terminated" },
       reason: SUBAGENT_ENDED_REASON_KILLED,
@@ -149,7 +132,6 @@ export function resolveCompletionFromSessionEntry(
       return null;
     }
     return {
-      startedAt,
       endedAt,
       outcome: { status: "ok" },
       reason: SUBAGENT_ENDED_REASON_COMPLETE,
@@ -174,20 +156,4 @@ export function resolveSubagentSessionCompletion(params: {
     params.fallbackEndedAt,
     { notBeforeMs: params.notBeforeMs },
   );
-}
-
-export function resolveSubagentSessionStartedAt(params: {
-  childSessionKey: string;
-  notBeforeMs?: number;
-  storeCache?: SubagentSessionStoreCache;
-  cfg?: OpenClawConfig;
-}): number | undefined {
-  const sessionEntry = loadSubagentSessionEntry({
-    childSessionKey: params.childSessionKey,
-    storeCache: params.storeCache,
-    cfg: params.cfg,
-  });
-  return isFreshForRun(sessionEntry, params.notBeforeMs)
-    ? freshSessionStartedAt(sessionEntry, params.notBeforeMs)
-    : undefined;
 }

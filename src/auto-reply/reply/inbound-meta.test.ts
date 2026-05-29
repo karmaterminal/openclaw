@@ -25,9 +25,25 @@ vi.mock("../../channels/plugins/registry-loaded.js", () => ({
       : undefined,
 }));
 
-vi.mock("../../channels/registry.js", () => ({
-  normalizeAnyChannelId: (channelId?: string) => channelId?.trim().toLowerCase(),
-}));
+vi.mock("../../channels/registry.js", () => {
+  const normalizeChannel = (value?: string | null) => value?.trim().toLowerCase() || null;
+  return {
+    CHANNEL_IDS: [],
+    CHAT_CHANNEL_ALIASES: {},
+    CHAT_CHANNEL_ORDER: [],
+    formatChannelPrimerLine: () => "",
+    formatChannelSelectionLine: () => "",
+    getChatChannelMeta: () => null,
+    getRegisteredChannelPluginMeta: () => null,
+    listChatChannelAliases: () => [],
+    listChatChannels: () => [],
+    listRegisteredChannelPluginAliases: () => [],
+    listRegisteredChannelPluginIds: () => [],
+    normalizeAnyChannelId: normalizeChannel,
+    normalizeChannelId: normalizeChannel,
+    normalizeChatChannelId: normalizeChannel,
+  };
+});
 
 function parseInboundMetaPayload(text: string): Record<string, unknown> {
   const match = text.match(/```json\n([\s\S]*?)\n```/);
@@ -300,9 +316,7 @@ describe("buildInboundUserContextPrefix", () => {
       { sourceReplyDeliveryMode: "message_tool_only" },
     );
 
-    expect(text).toContain(
-      "Delivery: Final assistant text is not automatically delivered in this run. Use the `message` tool to send user-visible output.",
-    );
+    expect(text).toContain("Delivery: to send a message, use the `message` tool.");
     expect(text.indexOf("Delivery:")).toBeLessThan(text.indexOf("Conversation info"));
     expect(text).toContain("Conversation info (untrusted metadata):");
   });
