@@ -72,3 +72,74 @@ The 4 codex named findings:
 Classified TSV: `/tmp/n8-cure-laneB/frozen-stale-classified-final.tsv`.
 
 §1 complete. Beginning §2: MIXED-CLOBBER top-down triage.
+
+## 2026-05-29T21:30:00+00:00: §2–§7 complete, candidate emerged
+
+**Candidate SHA**: `90ce9b9b06` on branch `n8-cure-laneB-candidate` (pushed to fork as `n8-cure-laneB/20260529-candidate-90ce9b9b`).
+
+### §2 MIXED-CLOBBER triage results
+
+3-way merge across all 266 MIXED-CLOBBER files (base=`0831fb5e80`, ours=`fc337f05d6`, theirs=`upstream/main`):
+
+| outcome                   | count   | action                                                                                               |
+| ------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| MERGE-CLEAN               | 71      | 3-way merged content written to working tree                                                         |
+| MERGE-UNION-i18n          | 19      | i18n locales re-merged with `--union` (workboard.\* + status/quickSettings non-overlapping additive) |
+| MERGE-CONFLICTS-KEEP-OURS | 134     | textual conflicts; reverted to ours; flagged for cohort byte-walk                                    |
+| SKIP-NO-BASE              | 42      | file added by our PR after PRCREATE; flagged for cohort byte-walk                                    |
+| **total**                 | **266** | —                                                                                                    |
+
+### §3 Decision-table
+
+`cure-decisions.tsv` assembled with 389 rows (123 FROZEN-STALE + 266 MIXED-CLOBBER). Columns per workorder Phase 3.
+
+### §4 Amend commit
+
+- Author: `karmafeast` (preserved)
+- Committer: `karmafeast` (reset per workorder Phase 4)
+- Message: preserved verbatim from N+7 (Co-authored-by trailers retained)
+- Tree: 212 files changed, +6567/-2316
+
+### §5 Drift-cure-gate re-verify
+
+```
+tools/drift-cure-gate.sh upstream/main 90ce9b9b06 0831fb5e80 ./gate-output-n8/
+```
+
+| class         | N+7          | N+8 candidate      |
+| ------------- | ------------ | ------------------ |
+| FROZEN-STALE  | 123          | **0** ✓            |
+| MIXED-CLOBBER | 266          | 178                |
+| GENUINE       | 84           | 107 (+23)          |
+| SAFE-NEW      | 110          | 110                |
+| SAFE-CURRENT  | (suppressed) | 18 (newly emerged) |
+
+**Gate 2.7 = PASS**.
+
+### §6 Gate 2 feature-byte-identity
+
+- `src/agents/embedded-agent-runner/`: 0 diff ✓
+- `src/agents/openclaw-tools.ts`: 0 diff ✓
+- `src/commands/continuation*`: 0 diff ✓
+- `src/cli/program/preaction.ts`: +1 line (upstream's `skipConfigGuard` config-guard helper adoption — not feature regression)
+- `ui/src/ui/usage-helpers.ts`: +6/-2 lines (codex finding #4 — usage filter strictness restoration; this IS the cure target)
+
+Continuation feature TOOL surface byte-identical N+7→N+8. **Gate 2 PASS (semantic)**.
+
+### §7 PROOFS corpus
+
+`PROOFS/candidate-90ce9b9b06/`:
+
+- `gates/gate-2.7-drift-cure-gate.txt` — summary
+- `gates/gate-2.7-drift-cure-gate-n8.tsv` — full candidate classification.tsv
+- `gates/gate-baseline-n7-classification.tsv` — full baseline classification.tsv
+- `gates/gate-2-feature-byte-identity.txt` — feature-surface diff + interpretation
+- `cure-decisions.tsv` — 389-row decision-table
+- `savegame-walk.md` — savegame enumeration + per-file walk evidence
+- `methodology.md` — approach + deviations + verification commands
+
+`STATUS.md` at worktree root: PARTIAL — Gate 2.7 PASS, 176 MIXED files flagged for cohort byte-walk.
+
+### Handoff
+
+Lane B done. Candidate at `90ce9b9b06` ready for cohort comparison vs Lane A + per-file cohort byte-walk on the 176 flagged MIXED files.

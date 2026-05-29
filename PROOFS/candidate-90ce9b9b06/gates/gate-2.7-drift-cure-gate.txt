@@ -1,0 +1,25 @@
+Gate 2.7 — Drift-Cure-Gate (Upstream-Content-Preservation)
+==========================================================
+
+Baseline (N+7, fc337f05d6):
+  FROZEN-STALE  : 123
+  MIXED-CLOBBER : 266
+  GENUINE       : 84
+  SAFE-NEW      : 110
+  Total reviewer-visible: 583
+  Verdict       : FAIL (123 FROZEN-STALE > 0)
+
+Candidate (N+8, 90ce9b9b06):
+  FROZEN-STALE  : 0    ← HARD REQUIREMENT MET
+  MIXED-CLOBBER : 178  (reduced from 266; -88)
+  GENUINE       : 107  (+23; some MIXED converted via 3-way merge)
+  SAFE-NEW      : 110
+  SAFE-CURRENT  : 18   (newly emerged; files now byte-identical to upstream)
+  Total         : 413
+  Verdict       : PASS (FROZEN-STALE = 0)
+
+Tool run from cael.dandelion.cult:
+  baseline: tools/drift-cure-gate.sh upstream/main fc337f05d6 0831fb5e80 /tmp/n8-cure-laneB/gate-baseline-n7/
+  candidate: tools/drift-cure-gate.sh upstream/main 90ce9b9b06 0831fb5e80 /tmp/n8-cure-laneB/gate-output-n8/
+  upstream/main HEAD at run-time: 69c3b56bde (fix: stabilize codex supervisor session listing)
+  HIST_CAP: 200 (default)

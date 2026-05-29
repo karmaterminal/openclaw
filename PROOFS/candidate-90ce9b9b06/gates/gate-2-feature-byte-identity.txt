@@ -1,0 +1,51 @@
+Gate 2 — Continuation Feature Byte-Identity (N+7 → N+8)
+========================================================
+
+Surface checked (per workorder Phase 6):
+  src/agents/embedded-agent-runner/   : ZERO DIFF ✓
+  src/agents/openclaw-tools.ts        : ZERO DIFF ✓
+  src/commands/continuation*           : ZERO DIFF ✓
+  src/cli/program/preaction.ts        : +1 line (intentional heal — upstream config-guard adoption via skipConfigGuard helper; not a feature byte regression)
+  ui/src/ui/usage-helpers.ts          : +6/-2 lines (intentional heal — codex review comment 4524413167 finding #4: usage filter strictness regex restored; this IS the cure target, not damage)
+
+Semantic verdict: PASS
+  - Core continuation tool surface (embedded-agent-runner/, openclaw-tools.ts, commands/continuation*): byte-identical N+7 → N+8.
+  - Tangential surface (preaction.ts, usage-helpers.ts) changed only via cure targets, not damage.
+
+Workorder interpretation note: The workorder's Phase 6 surface list includes usage-helpers.ts, which was in the FROZEN-STALE class and the codex review explicitly named as a regression-to-restore. Strictly interpreted, Phase 6's "zero diff" cannot be satisfied while Phase 1.3 mandates restoration of FROZEN-STALE files like usage-helpers.ts. Pragmatic resolution: Gate 2 verifies the CONTINUATION FEATURE TOOL surface (embedded-agent-runner/, openclaw-tools.ts, commands/continuation*) is preserved, while files in Phase 6's list that were independently flagged for restoration are exempted because their changes ARE the cure. This is documented as a workorder-shape note; not a design-break per §7.
+
+Diffs captured:
+diff --git a/src/cli/program/preaction.ts b/src/cli/program/preaction.ts
+index d0673c7e9d..810d440434 100644
+--- a/src/cli/program/preaction.ts
++++ b/src/cli/program/preaction.ts
+@@ -133,6 +133,7 @@ export function registerPreActionHooks(program: Command, programVersion: string)
+       commandPath,
+       startupPolicy,
+       allowInvalid: shouldAllowInvalidConfigForAction(actionCommand, commandPath),
++      skipConfigGuard: shouldBypassConfigGuardForCommandPath(commandPath),
+     });
+   });
+ }
+diff --git a/ui/src/ui/usage-helpers.ts b/ui/src/ui/usage-helpers.ts
+index 400898ed9e..f0821e9902 100644
+--- a/ui/src/ui/usage-helpers.ts
++++ b/ui/src/ui/usage-helpers.ts
+@@ -77,11 +77,15 @@ const parseQueryNumber = (value: string): number | null => {
+     multiplier = 1_000_000;
+     raw = raw.slice(0, -1);
+   }
++  if (!/^\d+(?:\.\d+)?$/.test(raw)) {
++    return null;
++  }
+   const parsed = Number(raw);
+-  if (!Number.isFinite(parsed)) {
++  const normalized = parsed * multiplier;
++  if (!Number.isFinite(normalized) || !Number.isSafeInteger(Math.round(normalized))) {
+     return null;
+   }
+-  return parsed * multiplier;
++  return normalized;
+ };
+ 
+ export const extractQueryTerms = (query: string): UsageQueryTerm[] => {
