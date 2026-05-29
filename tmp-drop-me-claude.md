@@ -44,3 +44,31 @@ Savegame-class branch enumeration: 222 refs on origin. Top clusters by prefix-cl
 - `savegame/pr85651-shipped-2026-05-27-overnight-protect` — recent ship-savegame
 
 §0 complete. Beginning §1: per-FROZEN-STALE classification.
+
+## 2026-05-29T20:38:00+00:00: §1 FROZEN-STALE classification complete
+
+**Method**:
+
+1. Curated 24 load-bearing savegame branches (PR-presentation savegame stack + continuation-context-pressure-v2 cluster + savegame/pr85651-shipped-2026-05-27-overnight-protect) — fetched into refs/sg/\*.
+2. For each of 123 FROZEN-STALE files, grep'd 24 savegame blobs for high-signal feature-overlay keyword regex (20 keywords from workorder §1.1).
+3. Result: 112 NO-HIT (= UPSTREAM-EVOLUTION-MISS), 11 KEYWORD-HIT.
+
+**Cross-check** on the 11 hits (the workorder's §1.1 keyword-grep is noisy because several feature mechanisms have been merged upstream over time — `senderIsOwner`, `allowedDecisions`, `agents.defaults`, etc. all appear in current upstream/main):
+
+- For each candidate: grep upstream/main:file for the same keyword → ALL 11 also match upstream/main.
+- Compare blob hashes: 2/11 SG==HEAD (savegame blob identical to fc337f05d6), 9/11 DIFFER.
+- For the 9 DIFFER: check whether savegame blob exists in upstream history → 9/9 SG-IN-UPSTREAM-HISTORY (savegame is itself a historical upstream blob, just a different one than HEAD).
+- Verdict: **0/11 carry non-upstream feature overlay**. All 11 reclassified as UPSTREAM-EVOLUTION-MISS-confirmed-via-blob-check.
+
+**§1 final classification**: 123/123 FROZEN-STALE files → `git checkout upstream/main -- <file>` (mechanical restore, Layer B zero-false-positive guarantee).
+
+The 4 codex named findings:
+
+- `apps/macos/Sources/OpenClaw/NodeMode/MacNodeRuntime.swift` → FROZEN-STALE → upstream/main restore ✓
+- `ui/src/ui/controllers/config.ts` → FROZEN-STALE → upstream/main restore ✓
+- `ui/src/ui/usage-helpers.ts` → FROZEN-STALE → upstream/main restore ✓
+- `docs/gateway/configuration-reference.md` → MIXED-CLOBBER (2 dropped lines, commit e72621e566 `fix(hooks): enforce default hook agent allowlist`) → handled in §2
+
+Classified TSV: `/tmp/n8-cure-laneB/frozen-stale-classified-final.tsv`.
+
+§1 complete. Beginning §2: MIXED-CLOBBER top-down triage.
