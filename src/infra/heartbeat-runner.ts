@@ -522,6 +522,7 @@ function resolveHeartbeatSession(
   agentId?: string,
   heartbeat?: HeartbeatConfig,
   forcedSessionKey?: string,
+  opts?: { reason?: string },
 ) {
   const sessionCfg = cfg.session;
   const scope = sessionCfg?.scope ?? "per-sender";
@@ -545,9 +546,23 @@ function resolveHeartbeatSession(
     };
   }
 
-  // Guard: never route heartbeats to subagent sessions, regardless of entry path.
+  // Guard: never route heartbeats to subagent sessions, regardless of entry path —
+  // UNLESS the wake is a continuation-triggered wake (reason="continuation"). Subagent
+  // sessions that call continue_work() need their own wake to fire back into the same
+  // session, not redirect to main. Without this exemption, continue_work in subagents
+  // is a dead tool (the timer fires but the wake gets eaten). Tracking: #746.
   const forced = forcedSessionKey?.trim();
   if (forced && isSubagentSessionKey(forced)) {
+    if (opts?.reason === "continuation") {
+      // Continuation wake: route TO the subagent session so it takes another turn.
+      return {
+        sessionKey: forced,
+        storePath,
+        store,
+        entry: store[forced],
+        suppressOriginatingContext: true,
+      };
+    }
     return {
       sessionKey: mainSessionKey,
       storePath,
@@ -955,6 +970,7 @@ async function resolveHeartbeatPreflight(params: {
     params.agentId,
     params.heartbeat,
     params.forcedSessionKey,
+    { reason: params.reason },
   );
   const pendingEventEntries = peekSystemEventEntries(session.sessionKey);
   const dueCommitments = canHeartbeatDeliverCommitments(params.heartbeat)
@@ -1355,6 +1371,7 @@ export async function runHeartbeatOnce(opts: {
     agentId,
     heartbeat,
     opts.sessionKey,
+    { reason: opts.reason },
   );
   const HEARTBEAT_DEFER_WINDOW_MS = 30_000;
   const pendingFinalDeliveryText = recentSessionEntry?.pendingFinalDeliveryText;

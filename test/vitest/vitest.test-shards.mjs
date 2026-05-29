@@ -132,7 +132,6 @@ export const fullSuiteVitestShards = [
       "test/vitest/vitest.extension-provider-openai.config.ts",
       "test/vitest/vitest.extension-providers.config.ts",
       "test/vitest/vitest.extension-signal.config.ts",
-      "test/vitest/vitest.extension-slack.config.ts",
       "test/vitest/vitest.extension-telegram.config.ts",
       "test/vitest/vitest.extension-voice-call.config.ts",
       "test/vitest/vitest.extension-whatsapp.config.ts",
@@ -143,5 +142,10 @@ export const fullSuiteVitestShards = [
       "test/vitest/vitest.extensions.config.ts",
       "test/vitest/vitest.extension-misc.config.ts",
     ],
+  },
+  {
+    config: "test/vitest/vitest.full-extension-slack.config.ts",
+    name: "extension-slack",
+    projects: ["test/vitest/vitest.extension-slack.config.ts"],
   },
 ];

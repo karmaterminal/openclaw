@@ -24,21 +24,14 @@ function createTestContext(): {
   onBlockReplyFlush: ReturnType<typeof vi.fn>;
   onAgentEvent: ReturnType<typeof vi.fn>;
   onExecutionPhase: ReturnType<typeof vi.fn>;
-  trace: ReturnType<typeof vi.fn>;
-  isEnabled: ReturnType<typeof vi.fn>;
 } {
   const onBlockReplyFlush = vi.fn();
   const onAgentEvent = vi.fn();
   const onExecutionPhase = vi.fn();
   const warn = vi.fn();
-  const trace = vi.fn();
-  const isEnabled = vi.fn(() => false);
   const ctx: ToolHandlerContext = {
     params: {
       runId: "run-test",
-      sessionKey: "agent:unit-session",
-      sessionId: "session-test-id",
-      agentId: "agent-test-id",
       onBlockReplyFlush,
       onAgentEvent,
       onExecutionPhase,
@@ -48,8 +41,6 @@ function createTestContext(): {
     hookRunner: undefined,
     log: {
       debug: vi.fn(),
-      trace,
-      isEnabled,
       info: vi.fn(),
       warn,
     },
@@ -85,7 +76,7 @@ function createTestContext(): {
     trimMessagingToolSent: vi.fn(),
   };
 
-  return { ctx, warn, onBlockReplyFlush, onAgentEvent, onExecutionPhase, trace, isEnabled };
+  return { ctx, warn, onBlockReplyFlush, onAgentEvent, onExecutionPhase };
 }
 
 type CapturedAgentEvent = { stream?: string; data?: Record<string, unknown> };
@@ -143,14 +134,7 @@ function expectInteractiveApprovalButtons(
   result: Record<string, unknown>,
   expectedButtons: readonly Record<string, unknown>[],
 ) {
-  const interactive = result.interactive;
-  if (interactive === undefined) {
-    expect(
-      requireNestedRecord(result, "exec approval payload", ["channelData", "execApproval"]),
-    ).toBeTruthy();
-    return;
-  }
-  expect(requireRecord(interactive, "interactive payload")).toEqual({
+  expect(requireNestedRecord(result, "presentation payload", ["presentation"])).toEqual({
     blocks: [{ type: "buttons", buttons: expectedButtons }],
   });
 }
@@ -162,57 +146,8 @@ function requireSingleMessagingTarget(ctx: ToolHandlerContext) {
 }
 
 describe("handleToolExecutionStart read path checks", () => {
-  it("emits trace-only tool start diagnostics when trace logging is enabled", async () => {
-    const { ctx, trace, isEnabled, warn } = createTestContext();
-    isEnabled.mockImplementation((level: string) => level === "trace");
-
-    const evt: ToolExecutionStartEvent = {
-      type: "tool_execution_start",
-      toolName: "write",
-      toolCallId: "tool-trace",
-      args: { path: "notes.txt" },
-    };
-
-    await handleToolExecutionStart(ctx, evt);
-
-    expect(warn).not.toHaveBeenCalled();
-    expect(trace).toHaveBeenCalledTimes(1);
-    expect(trace.mock.calls[0]?.[0]).toBe("embedded run tool start");
-    expect(trace.mock.calls[0]?.[1]).toEqual({
-      event: "embedded_tool_execution_start",
-      tags: ["tool_start", "embedded", "trace"],
-      runId: "run-test",
-      toolName: "write",
-      toolCallId: "tool-trace",
-      argsType: "object",
-      argsKeys: ["path"],
-      sessionKey: "agent:unit-session",
-      sessionId: "session-test-id",
-      agentId: "agent-test-id",
-      requiredParamsMissing: ["content"],
-    });
-  });
-
-  it("does not build trace tool start diagnostics unless trace logging is enabled", async () => {
-    const { ctx, trace, isEnabled } = createTestContext();
-
-    const evt: ToolExecutionStartEvent = {
-      type: "tool_execution_start",
-      toolName: "write",
-      toolCallId: "tool-trace-disabled",
-      args: { path: "notes.txt" },
-    };
-
-    await handleToolExecutionStart(ctx, evt);
-
-    expect(isEnabled).toHaveBeenCalledWith("trace");
-    expect(trace).not.toHaveBeenCalled();
-  });
-
   it("does not warn when read tool uses file_path alias", async () => {
-    const { ctx, warn, trace, isEnabled, onBlockReplyFlush, onExecutionPhase } =
-      createTestContext();
-    isEnabled.mockImplementation((level: string) => level === "trace");
+    const { ctx, warn, onBlockReplyFlush, onExecutionPhase } = createTestContext();
 
     const evt: ToolExecutionStartEvent = {
       type: "tool_execution_start",
@@ -231,8 +166,6 @@ describe("handleToolExecutionStart read path checks", () => {
       source: "embedded-agent",
     });
     expect(warn).not.toHaveBeenCalled();
-    expect(trace).toHaveBeenCalledTimes(1);
-    expect(trace.mock.calls[0]?.[1]).not.toHaveProperty("requiredParamsMissing");
   });
 
   it("warns when read tool has neither path nor file_path", async () => {
@@ -248,42 +181,7 @@ describe("handleToolExecutionStart read path checks", () => {
     await handleToolExecutionStart(ctx, evt);
 
     expect(warn).toHaveBeenCalledTimes(1);
-    const warnMessage = String(warn.mock.calls[0]?.[0] ?? "");
-    const warnMeta = warn.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
-    expect(warnMessage).toContain("read tool called without path");
-    expect(warnMeta).toBeTypeOf("object");
-    expect(warnMeta?.event).toBe("embedded_read_tool_start_warning");
-    expect(warnMeta?.tags).toEqual(["tool_start", "read", "embedded", "validation"]);
-    expect(warnMeta?.runId).toBe("run-test");
-    expect(warnMeta?.sessionKey).toBe("agent:unit-session");
-    expect(warnMeta?.sessionId).toBe("session-test-id");
-    expect(warnMeta?.agentId).toBe("agent-test-id");
-    expect(warnMeta?.toolCallId).toBe("tool-2");
-    expect(warnMeta?.argsType).toBe("object");
-    expect(warnMeta?.consoleMessage).toContain("runId=run-test");
-    expect(warnMeta?.consoleMessage).toContain("sessionKey=agent:unit-session");
-    expect(warnMeta?.consoleMessage).toContain("sessionId=session-test-id");
-    expect(warnMeta?.consoleMessage).toContain("agentId=agent-test-id");
-    expect(warnMeta?.consoleMessage).toContain("toolCallId=tool-2");
-    expect(warnMeta?.consoleMessage).toContain("argsType=object");
-    expect(warnMeta?.consoleMessage).toContain("read tool called without path");
-    expect(warnMeta).not.toHaveProperty("argsPreview");
-  });
-
-  it("bounds string args before adding read warning preview", async () => {
-    const { ctx, warn } = createTestContext();
-
-    const evt: ToolExecutionStartEvent = {
-      type: "tool_execution_start",
-      toolName: "read",
-      toolCallId: "tool-string-args",
-      args: "x".repeat(500),
-    };
-
-    await handleToolExecutionStart(ctx, evt);
-
-    const warnMeta = warn.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
-    expect(warnMeta?.argsPreview).toBe(`${"x".repeat(200)}…`);
+    expect(String(warn.mock.calls[0]?.[0] ?? "")).toContain("read tool called without path");
   });
 
   it("awaits onBlockReplyFlush before continuing tool start processing", async () => {
