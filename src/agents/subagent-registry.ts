@@ -14,7 +14,6 @@ import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { removeInternalSessionEffectsTranscript } from "./internal-session-effects.js";
 import { isAbortedAgentStopReason } from "./run-termination.js";
 import type { ensureRuntimePluginsLoaded as ensureRuntimePluginsLoadedFn } from "./runtime-plugins.js";
-import type { SubagentRunOutcome } from "./subagent-announce-output.js";
 import {
   ensureCompletionState,
   ensureDeliveryState,
@@ -62,6 +61,7 @@ import {
   markSubagentRunPausedAfterYield,
   type RegisterSubagentRunParams,
 } from "./subagent-registry-run-manager.js";
+import { configureSubagentRegistrySpawnRuntime } from "./subagent-registry-spawn-runtime.js";
 import {
   getSubagentRunsSnapshotForRead,
   persistSubagentRunsToDisk,
@@ -427,11 +427,11 @@ function schedulePendingLifecycleError(params: {
     if (entry.endedReason === SUBAGENT_ENDED_REASON_COMPLETE || entry.outcome?.status === "ok") {
       return;
     }
-    const completionParams = {
+    void completeSubagentRun({
       runId: params.runId,
       endedAt: pending.endedAt,
       outcome: {
-        status: "error" as const,
+        status: "error",
         error: pending.error,
       },
       reason: SUBAGENT_ENDED_REASON_ERROR,
@@ -471,11 +471,11 @@ function schedulePendingLifecycleTimeout(params: {
     if (entry.outcome?.status === "ok") {
       return;
     }
-    const completionParams = {
+    void completeSubagentRun({
       runId: params.runId,
       endedAt: pending.endedAt,
       outcome: {
-        status: "timeout" as const,
+        status: "timeout",
       },
       reason: SUBAGENT_ENDED_REASON_COMPLETE,
       sendFarewell: true,
@@ -947,28 +947,29 @@ async function sweepSubagentRuns() {
             continue;
           }
 
-          await completeSubagentRunWithRecovery(
-            {
-              runId,
-              endedAt: now,
-              outcome: {
-                status: "error",
-                error: "subagent run lost active execution context",
-              },
-              reason: SUBAGENT_ENDED_REASON_ERROR,
-              sendFarewell: true,
-              accountId: entry.requesterOrigin?.accountId,
-              triggerCleanup: true,
+          await completeSubagentRun({
+            runId,
+            endedAt: now,
+            outcome: {
+              status: "error",
+              error: "subagent run lost active execution context",
             },
-            "sweeper-lost-context",
-          );
+            reason: SUBAGENT_ENDED_REASON_ERROR,
+            sendFarewell: true,
+            accountId: entry.requesterOrigin?.accountId,
+            triggerCleanup: true,
+          });
           continue;
         }
       }
 
+      // Keep-mode run entries survive sweep (they stay visible in status/history).
       if (!entry.archiveAtMs && entry.cleanup === "keep" && entry.spawnMode !== "session") {
         continue;
       }
+
+      // Session-mode runs have no archiveAtMs — apply absolute TTL after cleanup completes.
+      // Use cleanupCompletedAt (not endedAt) to avoid interrupting deferred cleanup flows.
       if (!entry.archiveAtMs) {
         if (
           typeof entry.cleanupCompletedAt === "number" &&
@@ -1111,18 +1112,21 @@ function ensureListener() {
             triggerCleanup: true,
             startedAt,
           },
-          "lifecycle-killed-event",
-        );
+          reason: SUBAGENT_ENDED_REASON_KILLED,
+          sendFarewell: true,
+          accountId: entry.requesterOrigin?.accountId,
+          triggerCleanup: true,
+        });
         return;
       }
       if (isBlockedLivenessState(livenessState)) {
         clearPendingLifecycleError(evt.runId);
         clearPendingLifecycleTimeout(evt.runId);
-        const blockedParams = {
+        await completeSubagentRun({
           runId: evt.runId,
           endedAt,
           outcome: {
-            status: "error" as const,
+            status: "error",
             error: formatBlockedLivenessError(error),
           },
           reason: SUBAGENT_ENDED_REASON_ERROR,
@@ -1156,10 +1160,10 @@ function ensureListener() {
       }
       clearPendingLifecycleError(evt.runId);
       clearPendingLifecycleTimeout(evt.runId);
-      const completionParams = {
+      await completeSubagentRun({
         runId: evt.runId,
         endedAt,
-        outcome: { status: "ok" as const },
+        outcome: { status: "ok" },
         reason: SUBAGENT_ENDED_REASON_COMPLETE,
         sendFarewell: true,
         accountId: entry.requesterOrigin?.accountId,
@@ -1203,6 +1207,11 @@ const subagentRunManager = createSubagentRunManager({
 configureSubagentRegistrySteerRuntime({
   replaceSubagentRunAfterSteer: (params) => subagentRunManager.replaceSubagentRunAfterSteer(params),
   finalizeInterruptedSubagentRun: async (params) => await finalizeInterruptedSubagentRun(params),
+});
+configureSubagentRegistrySpawnRuntime({
+  countActiveRunsForSession: (requesterSessionKey) =>
+    countActiveRunsForSession(requesterSessionKey),
+  registerSubagentRun: (params) => registerSubagentRun(params),
 });
 
 export function markSubagentRunForSteerRestart(runId: string) {
@@ -1262,12 +1271,16 @@ export const testing = {
     await sweepSubagentRuns();
   },
   setDepsForTest(overrides?: Partial<SubagentRegistryDeps>) {
-    subagentRegistryDeps = overrides
+    const nextDeps = overrides
       ? {
           ...defaultSubagentRegistryDeps,
           ...overrides,
         }
       : defaultSubagentRegistryDeps;
+    if (overrides?.persistSubagentRunsToDisk && !overrides.persistSubagentRunsToDiskOrThrow) {
+      nextDeps.persistSubagentRunsToDiskOrThrow = overrides.persistSubagentRunsToDisk;
+    }
+    subagentRegistryDeps = nextDeps;
   },
 } as const;
 
@@ -1313,21 +1326,18 @@ export async function finalizeInterruptedSubagentRun(params: {
     if (!entry || typeof entry.cleanupCompletedAt === "number") {
       continue;
     }
-    await completeSubagentRunWithRecovery(
-      {
-        runId,
-        endedAt,
-        outcome: {
-          status: "error",
-          error: params.error,
-        },
-        reason: SUBAGENT_ENDED_REASON_ERROR,
-        sendFarewell: true,
-        accountId: entry.requesterOrigin?.accountId,
-        triggerCleanup: true,
+    await completeSubagentRun({
+      runId,
+      endedAt,
+      outcome: {
+        status: "error",
+        error: params.error,
       },
-      "explicit-failed-mark",
-    );
+      reason: SUBAGENT_ENDED_REASON_ERROR,
+      sendFarewell: true,
+      accountId: entry.requesterOrigin?.accountId,
+      triggerCleanup: true,
+    });
     updated += 1;
   }
   return updated;
