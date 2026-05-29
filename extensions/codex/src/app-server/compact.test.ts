@@ -54,6 +54,7 @@ function startCompaction(sessionFile: string, options: { currentTokenCount?: num
     sessionKey: "agent:main:session-1",
     sessionFile,
     workspaceDir: tempDir,
+    trigger: "manual",
     ...options,
   });
 }
@@ -64,6 +65,7 @@ function startSandboxedCompaction(sessionFile: string) {
     sessionKey: "agent:main:session-1",
     sessionFile,
     workspaceDir: tempDir,
+    trigger: "manual",
     config: { agents: { defaults: { sandbox: { mode: "all" } } } },
   });
 }
@@ -74,6 +76,7 @@ function startNodeExecCompaction(sessionFile: string) {
     sessionKey: "agent:main:session-1",
     sessionFile,
     workspaceDir: tempDir,
+    trigger: "manual",
     config: { tools: { exec: { host: "node", node: "worker-1" } } },
   });
 }
@@ -278,6 +281,7 @@ describe("maybeCompactCodexAppServerSession", () => {
       sessionKey: "agent:main:session-1",
       sessionFile,
       workspaceDir: tempDir,
+      trigger: "manual",
       config: {
         agents: {
           defaults: {
@@ -313,6 +317,7 @@ describe("maybeCompactCodexAppServerSession", () => {
       sessionKey: "agent:sara:session-1",
       sessionFile,
       workspaceDir: tempDir,
+      trigger: "manual",
       config: {
         agents: {
           list: [
@@ -354,6 +359,7 @@ describe("maybeCompactCodexAppServerSession", () => {
       sessionKey: "agent:nik:session-1",
       sessionFile,
       workspaceDir: tempDir,
+      trigger: "manual",
       config: {
         agents: {
           defaults: {
@@ -402,6 +408,7 @@ describe("maybeCompactCodexAppServerSession", () => {
       sessionKey: "agent:lossless:session-1",
       sessionFile,
       workspaceDir: tempDir,
+      trigger: "manual",
       contextEngine,
       config: {
         plugins: {
@@ -455,6 +462,7 @@ describe("maybeCompactCodexAppServerSession", () => {
       sessionKey: "agent:lossless-child:session-1",
       sessionFile,
       workspaceDir: tempDir,
+      trigger: "manual",
       contextEngine,
       config: {
         plugins: {
@@ -511,6 +519,7 @@ describe("maybeCompactCodexAppServerSession", () => {
       sessionKey: "agent:main:session-1",
       sessionFile,
       workspaceDir: tempDir,
+      trigger: "manual",
       authProfileId: "openai-codex:runtime",
     });
 
