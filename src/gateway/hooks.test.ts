@@ -182,7 +182,7 @@ describe("gateway hooks helpers", () => {
     }
   });
 
-  test("resolveHookTargetAgentId preserves omitted default target intent", () => {
+  test("resolveHookTargetAgentId falls back to default for unknown agent ids", () => {
     const cfg = {
       hooks: { enabled: true, token: "secret" },
       agents: {
