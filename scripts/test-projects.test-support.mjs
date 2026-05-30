@@ -116,6 +116,7 @@ const EXTENSION_WHATSAPP_VITEST_CONFIG = "test/vitest/vitest.extension-whatsapp.
 const EXTENSION_ZALO_VITEST_CONFIG = "test/vitest/vitest.extension-zalo.config.ts";
 const EXTENSIONS_VITEST_CONFIG = "test/vitest/vitest.extensions.config.ts";
 const FULL_EXTENSIONS_VITEST_CONFIG = "test/vitest/vitest.full-extensions.config.ts";
+const FULL_AGENTIC_VITEST_CONFIG = "test/vitest/vitest.full-agentic.config.ts";
 const GATEWAY_CLIENT_VITEST_CONFIG = "test/vitest/vitest.gateway-client.config.ts";
 const GATEWAY_CORE_VITEST_CONFIG = "test/vitest/vitest.gateway-core.config.ts";
 const GATEWAY_METHODS_VITEST_CONFIG = "test/vitest/vitest.gateway-methods.config.ts";
@@ -626,6 +627,8 @@ const VITEST_NO_OUTPUT_RETRY_ENV_KEY = "OPENCLAW_VITEST_NO_OUTPUT_RETRY";
 export const DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS = String(
   DEFAULT_VITEST_NO_OUTPUT_TIMEOUT_MS,
 );
+export const FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS = "900000";
+export const QUIET_FULL_SUITE_VITEST_NO_OUTPUT_TIMEOUT_MS = "900000";
 const GATEWAY_SERVER_FULL_SUITE_TARGET_CHUNK_COUNT = 4;
 const GATEWAY_SERVER_BACKED_HTTP_TEST_TARGETS = new Set([
   "src/gateway/embeddings-http.test.ts",
@@ -1668,10 +1671,10 @@ function classifyTarget(arg, cwd) {
   if (relative.startsWith("src/commands/")) {
     return isCommandsLightTarget(relative) ? "commandLight" : "command";
   }
-  if (relative.startsWith("src/auto-reply/")) {
+  if (relative === "src/auto-reply" || relative.startsWith("src/auto-reply/")) {
     return "autoReply";
   }
-  if (relative.startsWith("src/agents/")) {
+  if (relative === "src/agents" || relative.startsWith("src/agents/")) {
     return "agent";
   }
   if (relative.startsWith("src/plugins/")) {
@@ -2116,7 +2119,11 @@ export function applyDefaultVitestNoOutputTimeout(specs, params = {}) {
       ...spec,
       env: {
         ...spec.env,
-        [VITEST_NO_OUTPUT_TIMEOUT_ENV_KEY]: DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
+        [VITEST_NO_OUTPUT_TIMEOUT_ENV_KEY]:
+          spec.config === FULL_EXTENSIONS_VITEST_CONFIG ||
+          spec.config === FULL_AGENTIC_VITEST_CONFIG
+            ? QUIET_FULL_SUITE_VITEST_NO_OUTPUT_TIMEOUT_MS
+            : DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
       },
     };
   });
