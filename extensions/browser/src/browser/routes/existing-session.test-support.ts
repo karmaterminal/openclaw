@@ -4,7 +4,7 @@ import {
   withBrowserNavigationPolicy,
 } from "../navigation-guard.js";
 import type { BrowserRouteContext } from "../server-context.js";
-import type { BrowserRequest, BrowserResponse } from "./types.js";
+import type { BrowserRequest } from "./types.js";
 
 export const existingSessionRouteState = {
   profileCtx: {
@@ -35,11 +35,7 @@ export function createExistingSessionAgentSharedModule() {
       withBrowserNavigationPolicy(ctx.state().resolved.ssrfPolicy),
     ),
     getPwAiModule: vi.fn(async () => null),
-    handleRouteError: vi.fn((_ctx: BrowserRouteContext, res: BrowserResponse, err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(400);
-      res.json({ error: message });
-    }),
+    handleRouteError: vi.fn(),
     readBody: vi.fn((req: BrowserRequest) => req.body ?? {}),
     requirePwAi: vi.fn(async () => {
       throw new Error("Playwright should not be used for existing-session tests");

@@ -71,7 +71,7 @@ export interface OpenClawCompactionMarkerInput {
   /** Workspace dir (CompactEmbeddedPiSessionParams.workspaceDir). */
   readonly workspaceDir: string;
   /** Compaction trigger from CompactEmbeddedPiSessionParams.trigger. */
-  readonly trigger?: "budget" | "overflow" | "manual";
+  readonly trigger?: "budget" | "overflow" | "manual" | "volitional";
   /** Optional caller-observed token count at compaction time. */
   readonly currentTokenCount?: number;
   /** Optional active SDK session id when the marker is written. */
@@ -109,7 +109,7 @@ export interface OpenClawCompactionMarker {
    * and the harness does not synchronously force it.
    */
   readonly compacted: false;
-  readonly trigger?: "budget" | "overflow" | "manual";
+  readonly trigger?: "budget" | "overflow" | "manual" | "volitional";
   readonly force?: boolean;
   readonly sdkSessionId?: string;
   readonly currentTokenCount?: number;
