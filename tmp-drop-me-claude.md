@@ -115,3 +115,16 @@ Method: blob-hash equality (git rev-parse --verify <ref>:<file>), the production
 ### Reconciliation hypothesis for the cohort's "50/87 / 37-gap" (flagged for cohort/figs adjudication, §A4.3):
 
 Most likely the "57% coverage" measured byte-identity-to-FROZEN-PR-head across a surface that INCLUDES shared/drifted files, where alt-path (careful-apply-onto-NEWER-upstream) legitimately carries current-upstream content that differs from PR-head's frozen bytes. That penalizes alt-path for being MORE upstream-correct, not less feature-complete. OR the number predates a gap-fill/force-with-lease re-push of the 5d12 ref. CANNOT distinguish without the cohort's original measurement recipe; surfaced as divergence-with-receipts, not as a verdict.
+
+---
+
+## §4 — Reconstruction (careful-apply forward-rebase) — COMPLETE
+
+`- 2026-05-30 (Phase 4): forward-rebase 8 atomic commits b352cb2d8e..5d127388df onto current upstream/main 4291e32777.`
+
+- Cherry-pick of all 8 atomic continuation commits onto fresh upstream: **exit 0, ZERO conflicts**, absorbing 32 commits of upstream drift. Candidate SHA **`ce144d00c2`** (branch `laneAP-reconstruct/20260530-0652Z`).
+- Reproduces alt-path coverage: 109/110 SAFE-NEW present, 108 byte-identical to PR-head, 1 absent (skill-tool-dispatch.runtime.ts).
+- **Gate 2.7 on reconstruction: FROZEN-STALE=0, MIXED-CLOBBER=0** (vs PR-head's 123 FROZEN-STALE). Careful-apply-onto-fresh-upstream kills the frozen-tree reverse-clobber at root — the structurally-correct cure per gates-runbook §"playbook".
+- Gate 2 (vs frozen PR-head): 43 primitive-cores differ = 29 pure-upstream-evolution (NOT loss) + 11 genuine 3-way-merge (feature+upstream) + 3 SAFE-NEW feature-diffs (flag). 0 feature losses. This is the Gate-2/Gate-2.7 DISJOINT-region tension concrete: a fresh-upstream candidate cannot be byte-identical to frozen-PR-head on shared files AND carry current upstream — it correctly chooses upstream.
+- **Reconciliation CONFIRMED (B.2 + Gate-2 evidence):** Gate-2-style byte-identity-to-frozen-PR-head measurement penalizes a correct fresh-upstream candidate on ~40 shared files by design. That is the most likely manufacture of the cohort's "50/87=57%". Feature-PRESENCE coverage is ~99%; frozen-byte-identity is the wrong metric for a fresh-upstream candidate.
+- Per canon §8.11 (all-or-analysis-only): tree clean, no am-in-progress, no detritus/secrets. Candidate is comparison-vector substrate (stream-5), NOT a shipping candidate — 3 feature-diffs + 11 3-way-merges + 1 absent file need cohort adjudication first.
