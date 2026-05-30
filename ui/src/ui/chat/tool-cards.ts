@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import { extractCanvasFromText } from "../../../../src/chat/canvas-render.js";
+import { t } from "../../i18n/index.ts";
 import { resolveCanvasIframeUrl } from "../canvas-url.ts";
 import { resolveEmbedSandbox, type EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
@@ -513,8 +514,10 @@ function renderCollapsedToolSummary(params: {
         ? html`<span class="chat-tool-msg-summary__names">${displayName}</span>`
         : nothing}
       ${isError
-        ? html`<span class="chat-tool-msg-summary__error-badge" aria-label="Tool returned an error"
-            >${icons.x}<span>Error</span></span
+        ? html`<span
+            class="chat-tool-msg-summary__error-badge"
+            aria-label=${t("chat.toolReturnedError")}
+            >${icons.x}<span>${t("chat.error")}</span></span
           >`
         : nothing}
     </button>
@@ -619,7 +622,7 @@ export function renderExpandedToolCardContent(
           <span>${display.label}</span>
           ${isError
             ? html`<span class="chat-tool-card__status-badge" role="status"
-                >${icons.x}<span>Error</span></span
+                >${icons.x}<span>${t("chat.error")}</span></span
               >`
             : nothing}
         </div>

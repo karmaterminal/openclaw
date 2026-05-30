@@ -1217,6 +1217,8 @@ export const it: TranslationMap = {
     settings: "Impostazioni chat",
     thinkingToggle: "Attiva/disattiva output di pensiero/elaborazione dell'assistente",
     toolCallsToggle: "Attiva/disattiva chiamate agli strumenti e risultati strumenti",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Modalità di scorrimento automatico",
     autoScrollAlways: "Sempre",
     autoScrollNearBottom: "Vicino al fondo",

@@ -115,6 +115,13 @@ function tableHasColumn(db: DatabaseSync, tableName: string, columnName: string)
   return rows.some((row) => row.name === columnName);
 }
 
+function tableExists(db: DatabaseSync, tableName: string): boolean {
+  const row = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`)
+    .get(tableName);
+  return row !== undefined;
+}
+
 function ensureColumn(db: DatabaseSync, tableName: string, columnSql: string): void {
   const columnName = columnSql.trim().split(/\s+/, 1)[0];
   if (!columnName || tableHasColumn(db, tableName, columnName)) {
@@ -123,15 +130,24 @@ function ensureColumn(db: DatabaseSync, tableName: string, columnSql: string): v
   db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnSql};`);
 }
 
+function ensurePreSchemaAdditiveStateColumns(db: DatabaseSync): void {
+  if (tableExists(db, "flow_runs")) {
+    ensureColumn(db, "flow_runs", "chain_id TEXT");
+  }
+}
+
 function ensureAdditiveStateColumns(db: DatabaseSync): void {
   ensureColumn(db, "node_pairing_pending", "client_id TEXT");
   ensureColumn(db, "node_pairing_pending", "client_mode TEXT");
   ensureColumn(db, "node_pairing_paired", "client_id TEXT");
   ensureColumn(db, "node_pairing_paired", "client_mode TEXT");
+  ensureColumn(db, "flow_runs", "chain_id TEXT");
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_flow_runs_chain_id ON flow_runs(chain_id);`);
 }
 
 function ensureSchema(db: DatabaseSync, pathname: string): void {
   assertSupportedSchemaVersion(db, pathname);
+  ensurePreSchemaAdditiveStateColumns(db);
   db.exec(OPENCLAW_STATE_SCHEMA_SQL);
   ensureAdditiveStateColumns(db);
   db.exec(`PRAGMA user_version = ${OPENCLAW_STATE_SCHEMA_VERSION};`);
