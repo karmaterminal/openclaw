@@ -193,8 +193,6 @@ export async function persistGatewaySessionLifecycleEvent(params: {
   await updateSessionStoreEntry({
     storePath: sessionEntry.storePath,
     sessionKey: sessionEntry.canonicalKey,
-    skipMaintenance: true,
-    takeCacheOwnership: true,
     update: async (entry) =>
       derivePersistedSessionLifecyclePatch({
         entry,

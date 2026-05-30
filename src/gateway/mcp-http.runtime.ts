@@ -1,4 +1,3 @@
-import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
@@ -28,7 +27,6 @@ export function resolveMcpLoopbackScopedTools(params: {
   currentMessageId: string | number | undefined;
   accountId: string | undefined;
   inboundEventKind: InboundEventKind | undefined;
-  sourceReplyDeliveryMode: SourceReplyDeliveryMode | undefined;
   senderIsOwner: boolean | undefined;
 }): { agentId: string | undefined; tools: McpLoopbackTool[] } {
   const scoped = resolveGatewayScopedTools({
@@ -40,7 +38,6 @@ export function resolveMcpLoopbackScopedTools(params: {
     currentMessageId: params.currentMessageId,
     accountId: params.accountId,
     inboundEventKind: params.inboundEventKind,
-    sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
     senderIsOwner: params.senderIsOwner,
     surface: "loopback",
     excludeToolNames: NATIVE_TOOL_EXCLUDE,
@@ -63,7 +60,6 @@ export class McpLoopbackToolCache {
     currentMessageId: string | number | undefined;
     accountId: string | undefined;
     inboundEventKind: InboundEventKind | undefined;
-    sourceReplyDeliveryMode: SourceReplyDeliveryMode | undefined;
     senderIsOwner: boolean | undefined;
   }): CachedScopedTools {
     const cacheKey = [
@@ -74,7 +70,6 @@ export class McpLoopbackToolCache {
       params.currentMessageId != null ? String(params.currentMessageId) : "",
       params.accountId ?? "",
       params.inboundEventKind ?? "",
-      params.sourceReplyDeliveryMode ?? "",
       params.senderIsOwner === true ? "owner" : "non-owner",
     ].join("\u0000");
     const now = Date.now();
@@ -92,7 +87,6 @@ export class McpLoopbackToolCache {
       currentMessageId: params.currentMessageId,
       accountId: params.accountId,
       inboundEventKind: params.inboundEventKind,
-      sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
       senderIsOwner: params.senderIsOwner,
     });
     const nextEntry: CachedScopedTools = {

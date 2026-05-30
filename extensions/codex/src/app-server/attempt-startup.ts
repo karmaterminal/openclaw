@@ -48,6 +48,7 @@ import {
   releaseLeasedSharedCodexAppServerClient,
 } from "./shared-client.js";
 import {
+  isCodexThreadStartRequestError,
   startOrResumeThread,
   type CodexAppServerThreadLifecycleBinding,
   type CodexContextEngineThreadBootstrapProjection,
@@ -96,6 +97,7 @@ export async function startCodexAttemptThread(params: {
   startupTimeoutMs: number;
   signal: AbortSignal;
   onStartupTimeout: () => void | Promise<void>;
+  retireSharedClientOnLogicalStartupError?: boolean;
   spawnedBy: EmbeddedRunAttemptParams["spawnedBy"];
 }): Promise<StartCodexAttemptThreadResult> {
   let pluginAppServer = params.appServer;
@@ -380,6 +382,7 @@ export async function startCodexAttemptThread(params: {
       shouldClearSharedClientAfterStartupRace(error) ||
       shouldClearSharedClientAfterStartupFailure({
         error,
+        retireLogicalStartupError: params.retireSharedClientOnLogicalStartupError === true,
         spawnedBy: params.spawnedBy,
       })
     ) {
@@ -400,10 +403,14 @@ function shouldClearSharedClientAfterStartupRace(error: unknown): boolean {
 
 function shouldClearSharedClientAfterStartupFailure(params: {
   error: unknown;
+  retireLogicalStartupError: boolean;
   spawnedBy: EmbeddedRunAttemptParams["spawnedBy"];
 }): boolean {
   if (!(params.error instanceof Error)) {
     return !params.spawnedBy;
+  }
+  if (isCodexThreadStartRequestError(params.error)) {
+    return params.retireLogicalStartupError;
   }
   if (params.error.message.includes("write EPIPE")) {
     return true;
