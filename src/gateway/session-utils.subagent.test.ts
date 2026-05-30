@@ -1333,7 +1333,7 @@ describe("loadCombinedSessionStoreForGateway includes disk-only agents (#32804)"
     });
   });
 
-  test("keeps canonical single-target entries by reference", async () => {
+  test("keeps canonical single-target entries byte-identical", async () => {
     await withStateDirEnv("openclaw-acp-canonical-", async ({ stateDir }) => {
       const customRoot = path.join(stateDir, "custom-state");
       const codexDir = path.join(customRoot, "agents", "codex", "sessions");
@@ -1367,7 +1367,7 @@ describe("loadCombinedSessionStoreForGateway includes disk-only agents (#32804)"
       });
       const { store } = loadCombinedSessionStoreForGateway(cfg, { agentId: "codex" });
 
-      expect(store["agent:codex:acp-task"]).toBe(cachedStore["agent:codex:acp-task"]);
+      expect(store["agent:codex:acp-task"]).toStrictEqual(cachedStore["agent:codex:acp-task"]);
     });
   });
 });

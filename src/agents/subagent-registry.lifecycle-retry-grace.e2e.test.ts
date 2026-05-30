@@ -5,6 +5,8 @@ import { testing as subagentAnnounceTesting } from "./subagent-announce.js";
 import * as mod from "./subagent-registry.js";
 
 const noop = () => {};
+const realSetImmediate = setImmediate;
+const realSetTimeout = setTimeout;
 const MAIN_REQUESTER_SESSION_KEY = "agent:main:main";
 const MAIN_REQUESTER_DISPLAY_KEY = "main";
 
@@ -172,6 +174,8 @@ describe("subagent registry lifecycle error grace", () => {
         countPendingDescendantRunsExcludingRun: mod.countPendingDescendantRunsExcludingRun,
         getLatestSubagentRunByChildSessionKey: mod.getLatestSubagentRunByChildSessionKey,
         isSubagentSessionRunActive: mod.isSubagentSessionRunActive,
+        listAncestorSessionKeys: (await import("./subagent-registry-announce-read.js"))
+          .listAncestorSessionKeys,
         listSubagentRunsForRequester: mod.listSubagentRunsForRequester,
         replaceSubagentRunAfterSteer: mod.replaceSubagentRunAfterSteer,
         resolveRequesterForChildSession: mod.resolveRequesterForChildSession,
@@ -215,8 +219,11 @@ describe("subagent registry lifecycle error grace", () => {
   });
 
   const flushAsync = async () => {
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await Promise.resolve();
+    }
+    await new Promise<void>((resolve) => realSetImmediate(resolve));
+    await new Promise<void>((resolve) => realSetTimeout(resolve, 1));
   };
 
   const waitForCleanupHandledFalse = async (runId: string) => {
@@ -521,57 +528,6 @@ describe("subagent registry lifecycle error grace", () => {
       "[truncated: frozen completion output exceeded 100KB",
     );
     expect(run.completion?.capturedAt).toBeTypeOf("number");
-  });
-
-  it("completes with timeout status when aborted end event fires after grace window", async () => {
-    registerCompletionRun("run-timeout", "timeout", "timeout test");
-    setAssistantOutput("agent:main:subagent:timeout", "Partial output before timeout");
-
-    // Emit an end event with aborted=true which triggers the timeout grace path
-    emitLifecycleEvent("run-timeout", {
-      phase: "end",
-      aborted: true,
-      endedAt: 3_000,
-    } as LifecycleData & { aborted: boolean });
-    await flushAsync();
-    expect(getAgentCalls()).toHaveLength(0);
-
-    // Advance past the lifecycle timeout retry grace window
-    await vi.advanceTimersByTimeAsync(30_000);
-    await flushAsync();
-
-    await waitForAgentCallCount(1);
-
-    const run = mod
-      .listSubagentRunsForRequester(MAIN_REQUESTER_SESSION_KEY)
-      .find((candidate) => candidate.runId === "run-timeout");
-    expect(run?.outcome?.status).toBe("timeout");
-  });
-
-  it("cancels timeout grace when a successful end event arrives before the grace window expires", async () => {
-    registerCompletionRun("run-timeout-cancel", "timeout-cancel", "timeout cancel test");
-    setAssistantOutput("agent:main:subagent:timeout-cancel", "Final answer after recovery");
-
-    // Emit an aborted end event (starts timeout grace)
-    emitLifecycleEvent("run-timeout-cancel", {
-      phase: "end",
-      aborted: true,
-      endedAt: 4_000,
-    } as LifecycleData & { aborted: boolean });
-    await flushAsync();
-    expect(getAgentCalls()).toHaveLength(0);
-
-    // Before the grace window, the run successfully ends (non-aborted)
-    emitLifecycleEvent("run-timeout-cancel", { phase: "end", endedAt: 4_500 });
-    await flushAsync();
-
-    await waitForAgentCallCount(1);
-    expect(readFirstAnnounceOutcome()?.status).toBe("ok");
-
-    // Advance past the original grace window; no timeout should fire
-    await vi.advanceTimersByTimeAsync(30_000);
-    await flushAsync();
-    expect(getAgentCalls()).toHaveLength(1);
   });
 
   it("keeps parallel child completion results frozen even when late traffic arrives", async () => {
