@@ -1215,6 +1215,8 @@ export const nl: TranslationMap = {
     settings: "Chatinstellingen",
     thinkingToggle: "Denken-/werken-output van assistent schakelen",
     toolCallsToggle: "Tool-aanroepen en toolresultaten schakelen",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Automatisch scrollen",
     autoScrollAlways: "Altijd",
     autoScrollNearBottom: "Bijna onderaan",

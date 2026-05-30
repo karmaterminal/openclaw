@@ -1213,6 +1213,8 @@ export const uk: TranslationMap = {
     settings: "Налаштування чату",
     thinkingToggle: "Перемкнути показ мислення/роботи асистента",
     toolCallsToggle: "Перемкнути виклики інструментів і результати інструментів",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Режим автопрокручування",
     autoScrollAlways: "Завжди",
     autoScrollNearBottom: "Біля низу",

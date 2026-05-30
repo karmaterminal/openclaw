@@ -25,7 +25,6 @@ type ScopedToolsCall = {
   currentThreadTs?: string;
   currentMessageId?: string | number;
   inboundEventKind?: string;
-  sourceReplyDeliveryMode?: string;
   senderIsOwner?: boolean;
   surface?: string;
   excludeToolNames?: Iterable<string>;
@@ -177,7 +176,6 @@ describe("mcp loopback server", () => {
         "x-openclaw-current-thread-ts": "42",
         "x-openclaw-current-message-id": "reply-message-1",
         "x-openclaw-inbound-event-kind": "room_event",
-        "x-openclaw-source-reply-delivery-mode": "message_tool_only",
       },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
     });
@@ -191,7 +189,6 @@ describe("mcp loopback server", () => {
     expect(call.currentThreadTs).toBe("42");
     expect(call.currentMessageId).toBe("reply-message-1");
     expect(call.inboundEventKind).toBe("room_event");
-    expect(call.sourceReplyDeliveryMode).toBe("message_tool_only");
     expect(call.surface).toBe("loopback");
     expect(Array.from(call.excludeToolNames ?? [])).toEqual([
       "read",
@@ -203,10 +200,10 @@ describe("mcp loopback server", () => {
     ]);
   });
 
-  it("keeps loopback tool cache entries separate by inbound event kind and delivery mode", async () => {
+  it("keeps loopback tool cache entries separate by inbound event kind", async () => {
     server = await startMcpLoopbackServer(0);
     const runtime = getActiveMcpLoopbackRuntime();
-    const sendToolsList = async (inboundEventKind: string, sourceReplyDeliveryMode?: string) =>
+    const sendToolsList = async (inboundEventKind: string) =>
       await sendRaw({
         port: server?.port ?? 0,
         token: runtime?.ownerToken,
@@ -215,21 +212,16 @@ describe("mcp loopback server", () => {
           "x-session-key": "agent:main:telegram:group:chat123",
           "x-openclaw-message-channel": "telegram",
           "x-openclaw-inbound-event-kind": inboundEventKind,
-          ...(sourceReplyDeliveryMode
-            ? { "x-openclaw-source-reply-delivery-mode": sourceReplyDeliveryMode }
-            : {}),
         },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
       });
 
     expect((await sendToolsList("user_request")).status).toBe(200);
     expect((await sendToolsList("room_event")).status).toBe(200);
-    expect((await sendToolsList("room_event", "message_tool_only")).status).toBe(200);
 
-    expect(resolveGatewayScopedToolsMock).toHaveBeenCalledTimes(3);
+    expect(resolveGatewayScopedToolsMock).toHaveBeenCalledTimes(2);
     expect(getScopedToolsCall(0).inboundEventKind).toBe("user_request");
     expect(getScopedToolsCall(1).inboundEventKind).toBe("room_event");
-    expect(getScopedToolsCall(2).sourceReplyDeliveryMode).toBe("message_tool_only");
   });
 
   it("adds empty properties for object schemas that omit properties", async () => {

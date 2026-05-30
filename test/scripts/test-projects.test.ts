@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import fg from "fast-glob";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
+  FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS,
+  QUIET_FULL_SUITE_VITEST_NO_OUTPUT_TIMEOUT_MS,
   applyDefaultMultiSpecVitestCachePaths,
   applyDefaultVitestNoOutputTimeout,
   applyParallelVitestCachePaths,
@@ -136,24 +137,6 @@ function hasGitGatewayFileListing(cwd: string): boolean {
     stdio: ["ignore", "pipe", "ignore"],
   });
   return result.status === 0 && result.stdout.trim().length > 0;
-}
-
-function withTinyGitRepo(files: Record<string, string>, test: (cwd: string) => void): void {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-test-projects-"));
-  try {
-    for (const [file, source] of Object.entries(files)) {
-      const absolute = path.join(cwd, file);
-      fs.mkdirSync(path.dirname(absolute), { recursive: true });
-      fs.writeFileSync(absolute, source);
-    }
-    const init = spawnSync("git", ["init"], { cwd, stdio: "ignore" });
-    expect(init.status).toBe(0);
-    const add = spawnSync("git", ["add", "."], { cwd, stdio: "ignore" });
-    expect(add.status).toBe(0);
-    test(cwd);
-  } finally {
-    fs.rmSync(cwd, { recursive: true, force: true });
-  }
 }
 
 describe("scripts/test-projects changed-target routing", () => {
@@ -433,6 +416,32 @@ describe("scripts/test-projects changed-target routing", () => {
     ]);
   });
 
+  it("routes the auto-reply directory root to the auto-reply shard", () => {
+    const plans = buildVitestRunPlans(["src/auto-reply"], process.cwd());
+
+    expect(plans).toEqual([
+      {
+        config: "test/vitest/vitest.auto-reply.config.ts",
+        forwardedArgs: [],
+        includePatterns: ["src/auto-reply/**/*.test.ts"],
+        watchMode: false,
+      },
+    ]);
+  });
+
+  it("routes the agents directory root to the agents shard", () => {
+    const plans = buildVitestRunPlans(["src/agents"], process.cwd());
+
+    expect(plans).toEqual([
+      {
+        config: "test/vitest/vitest.agents.config.ts",
+        forwardedArgs: [],
+        includePatterns: ["src/agents/**/*.test.ts"],
+        watchMode: false,
+      },
+    ]);
+  });
+
   it("routes browser extension changes to the browser extension lane", () => {
     const plans = buildVitestRunPlans(["--changed", "origin/main"], process.cwd(), () => [
       "extensions/browser/src/browser/cdp.helpers.ts",
@@ -454,22 +463,6 @@ describe("scripts/test-projects changed-target routing", () => {
         "test/helpers/poll.ts",
       ]),
     ).toStrictEqual([]);
-  });
-
-  it("routes imported shared test helpers through affected tests", () => {
-    let targets: string[] = [];
-    withTinyGitRepo(
-      {
-        "test/helpers/temp-dir.ts": "export const tempDir = 'x';\n",
-        "src/foo.test.ts":
-          "import { tempDir } from '../test/helpers/temp-dir.js';\nvoid tempDir;\n",
-      },
-      (cwd) => {
-        targets = resolveChangedTestTargetPlan(["test/helpers/temp-dir.ts"], { cwd }).targets;
-      },
-    );
-
-    expect(targets).toEqual(["src/foo.test.ts"]);
   });
 
   it("keeps the broad changed run available for shared test helpers", () => {
@@ -806,6 +799,17 @@ describe("scripts/test-projects changed-target routing", () => {
         "src/auto-reply/reply/effective-reply-route.test.ts",
       ],
     });
+  });
+
+  it("routes the top-level auto-reply target to the auto-reply shard", () => {
+    expect(buildVitestRunPlans(["src/auto-reply"], process.cwd())).toEqual([
+      {
+        config: "test/vitest/vitest.auto-reply.config.ts",
+        forwardedArgs: [],
+        includePatterns: ["src/auto-reply/**/*.test.ts"],
+        watchMode: false,
+      },
+    ]);
   });
 
   it("routes ACP command source files to ACP command regression tests", () => {
@@ -1341,6 +1345,7 @@ describe("scripts/test-projects full-suite sharding", () => {
         "test/vitest/vitest.full-agentic.config.ts",
         "test/vitest/vitest.full-auto-reply.config.ts",
         "test/vitest/vitest.full-extensions.config.ts",
+        "test/vitest/vitest.full-extension-slack.config.ts",
       ]);
     } finally {
       if (previousParallel === undefined) {
@@ -1527,7 +1532,6 @@ describe("scripts/test-projects full-suite sharding", () => {
       "test/vitest/vitest.extension-provider-openai.config.ts",
       "test/vitest/vitest.extension-providers.config.ts",
       "test/vitest/vitest.extension-signal.config.ts",
-      "test/vitest/vitest.extension-slack.config.ts",
       "test/vitest/vitest.extension-telegram.config.ts",
       "test/vitest/vitest.extension-voice-call.config.ts",
       "test/vitest/vitest.extension-whatsapp.config.ts",
@@ -1537,6 +1541,7 @@ describe("scripts/test-projects full-suite sharding", () => {
       "test/vitest/vitest.extension-media.config.ts",
       "test/vitest/vitest.extensions.config.ts",
       "test/vitest/vitest.extension-misc.config.ts",
+      "test/vitest/vitest.extension-slack.config.ts",
     ]);
 
     const gatewayPlans = plans.filter((plan) => plan.config === gatewayServerConfig);
@@ -1718,6 +1723,38 @@ describe("scripts/test-projects Vitest stall watchdog", () => {
     expect(spec?.env.OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS).toBe(
       DEFAULT_TEST_PROJECTS_VITEST_NO_OUTPUT_TIMEOUT_MS,
     );
+  });
+
+  it("uses a longer no-output timeout for quiet full-suite shards", () => {
+    const specs = applyDefaultVitestNoOutputTimeout(
+      [
+        {
+          config: "test/vitest/vitest.full-extensions.config.ts",
+          env: { PATH: "/usr/bin" },
+          includeFilePath: null,
+          includePatterns: null,
+          pnpmArgs: [],
+          watchMode: false,
+        },
+        {
+          config: "test/vitest/vitest.full-agentic.config.ts",
+          env: { PATH: "/usr/bin" },
+          includeFilePath: null,
+          includePatterns: null,
+          pnpmArgs: [],
+          watchMode: false,
+        },
+      ],
+      { env: { PATH: "/usr/bin" } },
+    );
+
+    expect(FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS).toBe(
+      QUIET_FULL_SUITE_VITEST_NO_OUTPUT_TIMEOUT_MS,
+    );
+    expect(specs.map((spec) => spec.env.OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS)).toEqual([
+      FULL_EXTENSIONS_VITEST_NO_OUTPUT_TIMEOUT_MS,
+      QUIET_FULL_SUITE_VITEST_NO_OUTPUT_TIMEOUT_MS,
+    ]);
   });
 
   it("keeps explicit watchdog settings and watch mode untouched", () => {

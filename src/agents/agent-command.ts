@@ -19,6 +19,7 @@ import {
   emitAgentEvent,
   registerAgentRunContext,
 } from "../infra/agent-events.js";
+import { runWithDiagnosticTraceparent } from "../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { buildOutboundSessionContext } from "../infra/outbound/session-context.js";
 import { parseStrictNonNegativeInteger } from "../infra/parse-finite-number.js";
@@ -67,6 +68,7 @@ import { isStoredCredentialCompatibleWithAuthProvider } from "./auth-profiles/or
 import { clearSessionAuthProfileOverride } from "./auth-profiles/session-override.js";
 import { ensureAuthProfileStore } from "./auth-profiles/store.js";
 import { createAgentAttemptLifecycleCallbacks } from "./command/attempt-callbacks.js";
+import { createAcpVisibleTextAccumulator } from "./command/attempt-execution.helpers.js";
 import {
   persistSessionEntry as persistSessionEntryBase,
   prependInternalEventContext,
@@ -454,16 +456,18 @@ async function prepareAgentCommandExecution(opts: AgentCommandOpts, runtime: Run
     sessionId: opts.sessionId,
     sessionKey: explicitSessionKey,
     agentId: agentIdOverride,
-    clone: false,
   });
 
-  const { sessionId, sessionKey, storePath, isNewSession, persistedThinking, persistedVerbose } =
-    sessionResolution;
-  const { sessionEntry: sessionEntryRaw, sessionStore } = createAgentCommandSessionWorkingCopy({
+  const {
+    sessionId,
     sessionKey,
-    sessionEntry: sessionResolution.sessionEntry,
-    sessionStore: sessionResolution.sessionStore,
-  });
+    sessionEntry: sessionEntryRaw,
+    sessionStore,
+    storePath,
+    isNewSession,
+    persistedThinking,
+    persistedVerbose,
+  } = sessionResolution;
   const sessionAgentId =
     agentIdOverride ??
     resolveSessionAgentId({
@@ -663,55 +667,57 @@ async function agentCommandInternal(
         }
 
         const acpImageAttachments = resolveInlineAgentImageAttachments(opts.images);
-        await acpManager.runTurn({
-          cfg,
-          sessionKey,
-          text: body,
-          attachments: acpImageAttachments.length > 0 ? acpImageAttachments : undefined,
-          mode: "prompt",
-          requestId: runId,
-          signal: opts.abortSignal,
-          onLifecycle: (event) => {
-            if (event.type === "prompt_submitted") {
-              attemptExecutionRuntime.emitAcpPromptSubmitted({
+        await runWithDiagnosticTraceparent(opts.traceparent, () =>
+          acpManager.runTurn({
+            cfg,
+            sessionKey,
+            text: body,
+            attachments: acpImageAttachments.length > 0 ? acpImageAttachments : undefined,
+            mode: "prompt",
+            requestId: runId,
+            signal: opts.abortSignal,
+            onLifecycle: (event) => {
+              if (event.type === "prompt_submitted") {
+                attemptExecutionRuntime.emitAcpPromptSubmitted({
+                  runId,
+                  sessionKey,
+                  at: event.at,
+                });
+              }
+            },
+            onEvent: (event) => {
+              if (event.type !== "text_delta") {
+                attemptExecutionRuntime.emitAcpRuntimeEvent({
+                  runId,
+                  sessionKey,
+                  event,
+                });
+              }
+              if (event.type === "done") {
+                stopReason = event.stopReason;
+                return;
+              }
+              if (event.type !== "text_delta") {
+                return;
+              }
+              if (event.stream && event.stream !== "output") {
+                return;
+              }
+              if (!event.text) {
+                return;
+              }
+              const visibleUpdate = visibleTextAccumulator.consume(event.text);
+              if (!visibleUpdate) {
+                return;
+              }
+              attemptExecutionRuntime.emitAcpAssistantDelta({
                 runId,
-                sessionKey,
-                at: event.at,
+                text: visibleUpdate.text,
+                delta: visibleUpdate.delta,
               });
-            }
-          },
-          onEvent: (event) => {
-            if (event.type !== "text_delta") {
-              attemptExecutionRuntime.emitAcpRuntimeEvent({
-                runId,
-                sessionKey,
-                event,
-              });
-            }
-            if (event.type === "done") {
-              stopReason = event.stopReason;
-              return;
-            }
-            if (event.type !== "text_delta") {
-              return;
-            }
-            if (event.stream && event.stream !== "output") {
-              return;
-            }
-            if (!event.text) {
-              return;
-            }
-            const visibleUpdate = visibleTextAccumulator.consume(event.text);
-            if (!visibleUpdate) {
-              return;
-            }
-            attemptExecutionRuntime.emitAcpAssistantDelta({
-              runId,
-              text: visibleUpdate.text,
-              delta: visibleUpdate.delta,
-            });
-          },
-        });
+            },
+          }),
+        );
       } catch (error) {
         const { toAcpRuntimeError } = await loadAcpRuntimeErrorsRuntime();
         const acpError = toAcpRuntimeError({
@@ -876,15 +882,7 @@ async function agentCommandInternal(
     }
 
     // Persist explicit /command overrides to the session store when we have a key.
-    const hasInitialSessionOverrides = Boolean(thinkOverride || verboseOverride);
-    const shouldPersistInitialSessionTouch =
-      opts.skipInitialSessionTouch !== true || hasInitialSessionOverrides;
-    if (
-      sessionStore &&
-      sessionKey &&
-      !suppressVisibleSessionEffects &&
-      shouldPersistInitialSessionTouch
-    ) {
+    if (sessionStore && sessionKey && !suppressVisibleSessionEffects) {
       const now = Date.now();
       const entry = sessionStore[sessionKey] ??
         sessionEntry ?? { sessionId, updatedAt: now, sessionStartedAt: now };
@@ -1366,7 +1364,6 @@ async function agentCommandInternal(
               model,
               result,
             }),
-          abortSignal: opts.abortSignal,
           run: async (providerOverride, modelOverride, runOptions) => {
             const isAutoFallbackPrimaryProbeCandidate =
               autoFallbackPrimaryProbe &&
@@ -1863,6 +1860,7 @@ export const testing = {
   resolveAgentRuntimeConfig,
   prepareAgentCommandExecution,
   resolveExplicitAgentCommandSessionKey,
+  createAcpVisibleTextAccumulator,
 };
 
 /** @deprecated Use `testing`. */

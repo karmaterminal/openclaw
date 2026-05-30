@@ -2610,16 +2610,16 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
           } satisfies PluginRuntime["config"];
         }
         if (prop === "llm") {
-          const llm = getRuntimeProperty();
+          const llm = Reflect.get(target, prop, receiver);
           return {
             complete: (params) =>
               withPluginRuntimePluginIdScope(pluginId, () => llm.complete(params)),
           } satisfies PluginRuntime["llm"];
         }
         if (prop !== "subagent") {
-          return getRuntimeProperty();
+          return Reflect.get(target, prop, receiver);
         }
-        const subagent = getRuntimeProperty();
+        const subagent = Reflect.get(target, prop, receiver);
         return {
           run: (params) => withPluginRuntimePluginIdScope(pluginId, () => subagent.run(params)),
           waitForRun: (params) =>

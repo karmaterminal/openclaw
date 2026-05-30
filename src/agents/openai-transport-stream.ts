@@ -2148,6 +2148,9 @@ export function buildOpenAIResponsesParams(
     }
   }
   applyOpenAIResponsesPayloadPolicy(params as Record<string, unknown>, payloadPolicy);
+  if (isCodexResponses) {
+    params.store = false;
+  }
   return sanitizeOpenAICodexResponsesParams(
     model,
     params as Record<string, unknown>,

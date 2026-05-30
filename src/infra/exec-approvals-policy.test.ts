@@ -317,7 +317,6 @@ describe("exec approvals policy helpers", () => {
     const executable = makeMockExecutableResolution({
       rawExecutable: "/usr/bin/echo",
       resolvedPath: "/usr/bin/echo",
-      resolvedRealPath: "/usr/bin/echo",
       executableName: "echo",
     });
     const result = evaluateExecAllowlist({

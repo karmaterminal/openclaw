@@ -40,6 +40,9 @@ const state = vi.hoisted(() => ({
   trajectoryRecordEventMock: vi.fn(),
   trajectoryFlushMock: vi.fn(async () => undefined),
   persistSessionEntryMock: vi.fn(async (..._args: unknown[]): Promise<unknown> => undefined),
+  prepareInternalSessionEffectsTranscriptMock: vi.fn(
+    async (..._args: unknown[]): Promise<string> => "/tmp/openclaw-internal-run.jsonl",
+  ),
   clearSessionAuthProfileOverrideMock: vi.fn(),
   isThinkingLevelSupportedMock: vi.fn((_args: unknown) => true),
   resolveThinkingDefaultMock: vi.fn((_args: unknown) => "low"),
@@ -50,8 +53,6 @@ const state = vi.hoisted(() => ({
     resolvedSkills: [],
     version: 0,
   })),
-  prepareInternalSessionEffectsTranscriptMock: vi.fn(),
-  removeInternalSessionEffectsTranscriptMock: vi.fn(),
   authProfileStoreMock: { profiles: {} } as { profiles: Record<string, unknown> },
   sessionEntryMock: undefined as unknown,
   sessionStoreMock: undefined as unknown,
@@ -228,8 +229,6 @@ vi.mock("../config/sessions/transcript-resolve.runtime.js", () => ({
 vi.mock("./internal-session-effects.js", () => ({
   prepareInternalSessionEffectsTranscript: (...args: unknown[]) =>
     state.prepareInternalSessionEffectsTranscriptMock(...args),
-  removeInternalSessionEffectsTranscript: (...args: unknown[]) =>
-    state.removeInternalSessionEffectsTranscriptMock(...args),
 }));
 
 vi.mock("../infra/agent-events.js", () => ({
@@ -327,6 +326,7 @@ vi.mock("./agent-scope.js", () => ({
 
 vi.mock("./auth-profiles.js", () => ({
   ensureAuthProfileStore: () => ({ profiles: {} }),
+  clearRuntimeAuthProfileStoreSnapshots: vi.fn(),
 }));
 
 vi.mock("./auth-profiles/store.js", () => ({
@@ -783,17 +783,6 @@ async function runBasicAgentCommand() {
   });
 }
 
-function setupSessionTouchStore(): void {
-  const sessionEntry: SessionEntry = {
-    sessionId: "session-1",
-    updatedAt: 1,
-    skillsSnapshot: { prompt: "", skills: [], version: 0 },
-  };
-  state.sessionEntryMock = sessionEntry;
-  state.sessionStoreMock = { "agent:main:main": sessionEntry };
-  state.storePathMock = "/tmp/openclaw-sessions.json";
-}
-
 function expectFallbackOverrideCalls(first: boolean, second: boolean) {
   expect(state.resolveEffectiveModelFallbacksMock).toHaveBeenCalledTimes(2);
   expectRecordFields(mockCallArg(state.resolveEffectiveModelFallbacksMock, 0), {
@@ -886,7 +875,6 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
     state.prepareInternalSessionEffectsTranscriptMock.mockResolvedValue(
       "/tmp/openclaw-internal-run.jsonl",
     );
-    state.removeInternalSessionEffectsTranscriptMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {

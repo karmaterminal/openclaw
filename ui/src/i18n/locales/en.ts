@@ -1201,6 +1201,8 @@ export const en: TranslationMap = {
     settings: "Chat settings",
     thinkingToggle: "Toggle assistant thinking/working output",
     toolCallsToggle: "Toggle tool calls and tool results",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Auto-scroll mode",
     autoScrollAlways: "Always",
     autoScrollNearBottom: "Near bottom",

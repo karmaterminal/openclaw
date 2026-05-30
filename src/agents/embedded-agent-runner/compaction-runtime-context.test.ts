@@ -213,6 +213,7 @@ describe("buildEmbeddedCompactionRuntimeContext", () => {
     });
   });
 
+
   it("keeps configured OpenAI provider while routing Codex auth to runtime provider (#86373)", () => {
     const result = resolveEmbeddedCompactionTarget({
       provider: "openai",
@@ -396,6 +397,6 @@ describe("buildEmbeddedCompactionRuntimeContext", () => {
       defaultProvider: "anthropic",
       defaultModel: "claude-opus-4-5",
     });
-    expect(result.provider).toBe("anthropic");
+    expect(result.provider).toBe("anthropic"    );
   });
 });

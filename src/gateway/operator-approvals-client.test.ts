@@ -107,7 +107,6 @@ describe("withOperatorApprovalsGatewayClient", () => {
 
   it("keeps device identity for remote shared-auth approval clients", async () => {
     bootstrapState.url = "wss://gateway.example/ws";
-    bootstrapState.urlSource = "config gateway.remote.url";
 
     await withOperatorApprovalsGatewayClient(
       {
@@ -121,9 +120,7 @@ describe("withOperatorApprovalsGatewayClient", () => {
     expect(clientState.options?.deviceIdentity).toBeUndefined();
   });
 
-  it("omits approval runtime token for explicit loopback gateway URL overrides", async () => {
-    bootstrapState.urlSource = "cli --url";
-
+  it("omits approval runtime token for explicit gateway URL overrides", async () => {
     await withOperatorApprovalsGatewayClient(
       {
         config: {} as never,

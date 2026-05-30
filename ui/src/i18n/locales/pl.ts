@@ -1215,6 +1215,8 @@ export const pl: TranslationMap = {
     settings: "Ustawienia czatu",
     thinkingToggle: "Przełącz wyświetlanie myślenia/pracy asystenta",
     toolCallsToggle: "Przełącz wyświetlanie wywołań narzędzi i wyników narzędzi",
+    toolReturnedError: "Tool returned an error",
+    error: "Error",
     autoScrollMode: "Tryb automatycznego przewijania",
     autoScrollAlways: "Zawsze",
     autoScrollNearBottom: "Blisko dołu",

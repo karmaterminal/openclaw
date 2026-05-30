@@ -289,15 +289,6 @@ function matchesAnyGlob(file, patterns) {
   return patterns.some((pattern) => path.matchesGlob(file, pattern));
 }
 
-function isUnitFastCandidateFile(file) {
-  return (
-    forcedUnitFastTestFileSet.has(file) ||
-    unitFastCandidateExactFileSet.has(file) ||
-    (matchesAnyGlob(file, unitFastCandidateGlobs) &&
-      !matchesAnyGlob(file, broadUnitFastCandidateSkipGlobs))
-  );
-}
-
 function walkFiles(directory, files = []) {
   let entries;
   try {

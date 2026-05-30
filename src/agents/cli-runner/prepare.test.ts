@@ -102,7 +102,6 @@ function createTestMcpLoopbackServerConfig(port: number) {
           "x-openclaw-current-thread-ts": "${OPENCLAW_MCP_CURRENT_THREAD_TS}",
           "x-openclaw-current-message-id": "${OPENCLAW_MCP_CURRENT_MESSAGE_ID}",
           "x-openclaw-inbound-event-kind": "${OPENCLAW_MCP_INBOUND_EVENT_KIND}",
-          "x-openclaw-source-reply-delivery-mode": "${OPENCLAW_MCP_SOURCE_REPLY_DELIVERY_MODE}",
         },
       },
     },
@@ -1155,7 +1154,6 @@ describe("shouldSkipLocalCliCredentialEpoch", () => {
         currentMessageId: undefined,
         accountId: undefined,
         inboundEventKind: undefined,
-        sourceReplyDeliveryMode: undefined,
       });
       expect(context.systemPrompt).toContain("## Memory Recall");
       expect(context.systemPrompt).toContain("tools=memory_search");
@@ -1307,7 +1305,6 @@ describe("shouldSkipLocalCliCredentialEpoch", () => {
         OPENCLAW_MCP_CURRENT_THREAD_TS: "42",
         OPENCLAW_MCP_CURRENT_MESSAGE_ID: "reply-message-1",
         OPENCLAW_MCP_INBOUND_EVENT_KIND: "room_event",
-        OPENCLAW_MCP_SOURCE_REPLY_DELIVERY_MODE: "message_tool_only",
       });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

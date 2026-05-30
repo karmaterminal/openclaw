@@ -35,6 +35,7 @@ type SessionStoreSnapshotCacheEntry = {
 type SerializedSessionStoreCacheEntry = {
   serialized: string;
   sizeBytes: number;
+  storedAt: number;
 };
 
 const DEFAULT_SESSION_STORE_TTL_MS = 45_000; // 45 seconds (between 30-60s)
@@ -312,7 +313,16 @@ function pruneSerializedSessionStoreCache(): void {
 
 export function getSerializedSessionStore(storePath: string): string | undefined {
   pruneSerializedSessionStoreCache();
-  return SESSION_STORE_SERIALIZED_CACHE.get(storePath)?.serialized;
+  const cached = SESSION_STORE_SERIALIZED_CACHE.get(storePath);
+  if (!cached) {
+    return undefined;
+  }
+  const ttlMs = getSessionStoreTtl();
+  if (isCacheEnabled(ttlMs) && Date.now() - cached.storedAt > ttlMs) {
+    deleteSerializedSessionStore(storePath);
+    return undefined;
+  }
+  return cached.serialized;
 }
 
 export function setSerializedSessionStore(
@@ -333,7 +343,11 @@ export function setSerializedSessionStore(
   if (maxEntries <= 0 || maxBytes <= 0 || sizeBytes > maxBytes) {
     return;
   }
-  SESSION_STORE_SERIALIZED_CACHE.set(storePath, { serialized, sizeBytes });
+  SESSION_STORE_SERIALIZED_CACHE.set(storePath, {
+    serialized,
+    sizeBytes,
+    storedAt: Date.now(),
+  });
   sessionStoreSerializedCacheBytes += sizeBytes;
   pruneSerializedSessionStoreCache();
 }
@@ -341,6 +355,7 @@ export function setSerializedSessionStore(
 export function dropSessionStoreObjectCache(storePath: string): void {
   bumpSessionStoreCacheVersion(storePath);
   SESSION_STORE_CACHE.delete(storePath);
+  SESSION_STORE_SERIALIZED_CACHE.delete(storePath);
 }
 
 export function dropSessionStoreSnapshotCache(storePath: string): void {
