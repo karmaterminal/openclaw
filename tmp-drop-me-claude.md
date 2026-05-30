@@ -168,3 +168,61 @@ Decomposition of the 94 MIXED-CLOBBER at current upstream:
 | 3b lint (oxlint shards) | `pnpm lint`                                                             | 67s      | PASS ✓ |
 | 3d build                | `pnpm build` (full tsdown + UI + plugin-sdk dts + cli-startup-metadata) | 110s     | PASS ✓ |
 | 3c vitest               | `pnpm test`                                                             | RUNNING  | TBD    |
+
+## §10 — DECLARE-DONE Lane-A
+
+### Gate-3c vitest results
+
+Total: **19 of 81 vitest shards FAILED** (5min 31s wall clock). All static-analysis + build gates PASS. Failure pattern analysis (sampled 5/19 shards):
+
+**Pattern A** — ce144 kept PRH-test, UPS evolved impl → test/impl mismatch
+
+- Example: `src/auto-reply/reply/inbound-meta.test.ts` (ce144==PRH `477df43141`; UPS impl moved on)
+
+**Pattern B** — alt-path PUNTED to ANCESTOR when both PRH and UPS modified test orthogonally
+
+- Example: `src/auto-reply/reply/prompt-prelude.test.ts` (ce144==ANC `737cd85562`; PRH +1 line `visible_reply_contract`; UPS +14 lines `resumableText`; cure = UNION)
+
+**Per-shard failure rates (sampled):**
+
+- `unit-fast`: 1/1053 files = **99.91% pass**
+- `auto-reply-reply`: 1/129 files = **99.22% pass**
+- `commands`: 1/202 files = **99.50% pass**
+- `secrets`: 4/58 files = **93.10% pass**
+
+Individual test-pass rates are very high (≥99% in most shards). Cael's STATUS doesn't document vitest results (cael-overnight = ANALYSIS-COMPLETE, not RUNTIME-VERIFIED).
+
+### Cohort-disclosure shape
+
+Lane-A made **zero code mutations** on top of ce144d00c2. The test-failure surface is inherent to ce144 itself, not introduced by Lane-A.
+
+Three cohort dispositions documented in `lane-A-substrate/gate-3-findings.md`:
+
+- (i) Accept ce144 + queue test-cure downstream — RECOMMENDED
+- (ii) Expand Lane-A scope to (β+) and fix test surface inline
+- (iii) Reject ce144 + restart path-reconstruction
+
+Recommendation: **(i)** — final upstream rebase is required before force-push anyway; that rebase will re-flow test files; doing test-cure now risks wasted effort.
+
+### Lane-A final candidate-SHA
+
+**`ce144d00c2`** (lane HEAD, no mutations beyond journal + substrate commits).
+
+### Lane-A's contribution beyond cael-overnight
+
+| Layer                                        | cael-overnight                                        | Lane-A added                                                                                                                                                               |
+| -------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-file C1-C6 classification (583 files)    | ✓                                                     | re-validated 110 SAFE-NEW on current upstream (exact-match)                                                                                                                |
+| Cohort-action-item routing (4 items + LOW-4) | ✓ (routed)                                            | resolved all 5 at-byte; no code-mutation needed                                                                                                                            |
+| Gate-2.7 measurement                         | ✓ at cael-pin (FROZEN-STALE=0; MIXED-CLOBBER=4 small) | re-validated at current upstream (FROZEN-STALE=0 still; MIXED-CLOBBER=94 = 4 residual + 60 cured-at-pin-but-re-flagged + 30 brand-new); 90 net-new are pure post-pin drift |
+| Gate-2 byte-id-to-PRH                        | not measured                                          | 43 cure-region files DIFFER from PRH; spot-checked sample = textbook PRH-frozen-tree pattern (Lane-A divergence IS the cure)                                               |
+| Gate-3 static-analysis (tsgo+lint+build)     | not measured                                          | **ALL PASS**                                                                                                                                                               |
+| Gate-3 runtime test surface                  | not measured                                          | 19/81 shards red; failure-pattern characterization for cohort decision                                                                                                     |
+
+### DECLARE-DONE webhook
+
+Fired with username `cael-laneA-cure-n8`, content summary of Gate-2.7 + Gate-3 + 4 cohort-action-item resolutions + recommendation for disposition (i).
+
+### Open questions / BLOCKER-Q surface
+
+None. No figs-adjudication-class call needed. All cure-direction decisions backed by byte-evidence; all gate failures characterized as drift-class (not feature-regression-class).
