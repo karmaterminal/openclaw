@@ -81,3 +81,37 @@ GITNEXUS_PATH   = enabled (1.6.5) ; ripgrep fallback armed
 ```
 
 READBACK COMPLETE. Beginning Phase 0.
+
+---
+
+## §1+§2 — Feature manifest + multi-SHA comparison — CORE FINDINGS
+
+`- 2026-05-30 (Phase 1/2): drift-cure-gate.sh upstream/main(4291e32777) vs fc337f05d6, PRC=b474.`
+
+### Gate-2.7 full 583-file census (at-dispatch, current upstream):
+
+- SAFE-NEW=110 (== manifest A=110 ✓ reconciles v2 §2.2)
+- FROZEN-STALE=123 (== cohort's 123 EXACTLY ✓ — Layer B baseline-free, stable across upstream advance)
+- MIXED-CLOBBER=143 (cohort earlier cited 253; DELTA=-110 is at-dispatch re-baseline drift, Layer C is upstream-HEAD-dependent — SURFACED per gates-runbook re-baseline canon, not silently absorbed)
+- GENUINE=207
+- Total 583 ✓. Gate exits FAIL on fc337f05d6 (123 FROZEN-STALE) — expected; fc337 is the frozen PR-head awaiting heal.
+
+### Multi-SHA comparison (§A3) — feature surface F=93 continuation-pattern files + 110 SAFE-NEW additions:
+
+Method: blob-hash equality (git rev-parse --verify <ref>:<file>), the production Gate-2 semantics. NOT diff-text, NOT grep.
+**BUG CAUGHT + FIXED mid-analysis** (honest deviation): initial blob() used bare `git rev-parse <ref>:<path>` which ECHOES the arg + exits nonzero on absent paths → absent files misclassified as present-different. Fixed to `git rev-parse --verify -q`; re-ran. All counts below are post-fix.
+
+**HEADLINE FINDING (high-confidence, blob-receipted) — CONTRADICTS cohort "50/87=57%, 37-gap":**
+
+- alt-path `5d127388df`: of 110 SAFE-NEW feature-additions, **109 PRESENT (108 byte-identical to PR-head), 1 ABSENT**. Of 93-file continuation-F: 87 IDENT, 6 DIFF, 0 ABSENT.
+- path-d `bd328fadd6`: of 110 SAFE-NEW, **109 PRESENT (109 byte-identical), 1 ABSENT** (same file).
+- ⇒ alt-path is ~99% feature-complete at blob level, NOT 57%. The "37-file regression gap" is NOT reproducible against this SHA.
+
+### Why the divergence (characterized, not asserted blind):
+
+1. The 1 ABSENT file `src/auto-reply/reply/skill-tool-dispatch.runtime.ts` is ABSENT in 5d12's newer-upstream base b352cb2d8e — upstream REFACTORED auto-reply/reply dispatch into the `dispatch-acp-*` family; PR-head's file was architecturally SUPERSEDED. Careful-apply correctly did NOT resurrect it. = ARCHITECTURE-DIVERGENCE class (benign), not regression. (§A4.1 stale-vs-elected: PR-head's file is inherited-stale; alt-path's omission is actively-correct.)
+2. The 6 DIFF compaction files (compact.ts/.types.ts, compaction-safeguard.ts, compact.hooks.harness.ts, compact.queued.ts, compaction-runtime-context.test.ts): alt-path & path-d INDEPENDENTLY CONVERGED on identical bytes for 5/6 (e.g. compact.types.ts both=97b89100, compaction-safeguard both=b158fe05) — distinct from BOTH upstream and frozen-PR-head. = correct feature+upstream merge (the intended drift-cure), NOT a clobber. Independent two-lane convergence ⇒ high-confidence per v2 §9.
+
+### Reconciliation hypothesis for the cohort's "50/87 / 37-gap" (flagged for cohort/figs adjudication, §A4.3):
+
+Most likely the "57% coverage" measured byte-identity-to-FROZEN-PR-head across a surface that INCLUDES shared/drifted files, where alt-path (careful-apply-onto-NEWER-upstream) legitimately carries current-upstream content that differs from PR-head's frozen bytes. That penalizes alt-path for being MORE upstream-correct, not less feature-complete. OR the number predates a gap-fill/force-with-lease re-push of the 5d12 ref. CANNOT distinguish without the cohort's original measurement recipe; surfaced as divergence-with-receipts, not as a verdict.
