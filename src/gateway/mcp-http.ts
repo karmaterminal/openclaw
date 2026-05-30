@@ -111,7 +111,6 @@ export async function startMcpLoopbackServer(port = 0): Promise<{
           currentMessageId: requestContext.currentMessageId,
           accountId: requestContext.accountId,
           inboundEventKind: requestContext.inboundEventKind,
-          sourceReplyDeliveryMode: requestContext.sourceReplyDeliveryMode,
           senderIsOwner: requestContext.senderIsOwner,
         });
 

@@ -198,7 +198,6 @@ export class AcpSessionManager {
     const acp = this.deps.readSessionEntry({
       cfg: params.cfg,
       sessionKey,
-      clone: false,
     })?.acp;
     if (acp) {
       return {
@@ -2033,8 +2032,6 @@ export class AcpSessionManager {
     await this.writeSessionMeta({
       cfg: params.cfg,
       sessionKey: params.sessionKey,
-      skipMaintenance: true,
-      takeCacheOwnership: true,
       mutate: (current, entry) => {
         if (!entry) {
           return null;
@@ -2099,16 +2096,12 @@ export class AcpSessionManager {
       entry: SessionEntry | undefined,
     ) => SessionAcpMeta | null | undefined;
     failOnError?: boolean;
-    skipMaintenance?: boolean;
-    takeCacheOwnership?: boolean;
   }): Promise<SessionEntry | null> {
     try {
       return await this.deps.upsertSessionMeta({
         cfg: params.cfg,
         sessionKey: params.sessionKey,
         mutate: params.mutate,
-        ...(params.skipMaintenance === true ? { skipMaintenance: true } : {}),
-        ...(params.takeCacheOwnership === true ? { takeCacheOwnership: true } : {}),
       });
     } catch (error) {
       if (params.failOnError) {
