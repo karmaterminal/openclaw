@@ -21,13 +21,6 @@ function normalizeTextField(value: unknown): string | undefined {
   return sanitizeInboundSystemTags(normalizeInboundTextNewlines(value));
 }
 
-function normalizeTrustedTextField(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  return normalizeInboundTextNewlines(value);
-}
-
 function normalizeMediaType(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -87,7 +80,6 @@ export function finalizeInboundContext<T extends Record<string, unknown>>(
   normalized.Transcript = normalizeTextField(normalized.Transcript);
   normalized.ThreadStarterBody = normalizeTextField(normalized.ThreadStarterBody);
   normalized.ThreadHistoryBody = normalizeTextField(normalized.ThreadHistoryBody);
-  normalized.GroupSystemPrompt = normalizeTrustedTextField(normalized.GroupSystemPrompt);
   if (Array.isArray(normalized.UntrustedContext)) {
     const normalizedUntrusted = normalized.UntrustedContext.map((entry) =>
       sanitizeInboundSystemTags(normalizeInboundTextNewlines(entry)),

@@ -284,7 +284,6 @@ export async function prepareCliRunContext(
           OPENCLAW_MCP_CURRENT_MESSAGE_ID:
             params.currentMessageId != null ? String(params.currentMessageId) : "",
           OPENCLAW_MCP_INBOUND_EVENT_KIND: params.currentInboundEventKind ?? "",
-          OPENCLAW_MCP_SOURCE_REPLY_DELIVERY_MODE: params.sourceReplyDeliveryMode ?? "",
         }
       : undefined,
     warn: (message) => cliBackendLog.warn(message),
@@ -362,7 +361,6 @@ export async function prepareCliRunContext(
           currentMessageId: params.currentMessageId,
           accountId: params.agentAccountId,
           inboundEventKind: params.currentInboundEventKind,
-          sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
           senderIsOwner: params.senderIsOwner,
         }).tools
       : [];
