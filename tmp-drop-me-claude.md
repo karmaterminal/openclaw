@@ -128,3 +128,34 @@ Most likely the "57% coverage" measured byte-identity-to-FROZEN-PR-head across a
 - Gate 2 (vs frozen PR-head): 43 primitive-cores differ = 29 pure-upstream-evolution (NOT loss) + 11 genuine 3-way-merge (feature+upstream) + 3 SAFE-NEW feature-diffs (flag). 0 feature losses. This is the Gate-2/Gate-2.7 DISJOINT-region tension concrete: a fresh-upstream candidate cannot be byte-identical to frozen-PR-head on shared files AND carry current upstream — it correctly chooses upstream.
 - **Reconciliation CONFIRMED (B.2 + Gate-2 evidence):** Gate-2-style byte-identity-to-frozen-PR-head measurement penalizes a correct fresh-upstream candidate on ~40 shared files by design. That is the most likely manufacture of the cohort's "50/87=57%". Feature-PRESENCE coverage is ~99%; frozen-byte-identity is the wrong metric for a fresh-upstream candidate.
 - Per canon §8.11 (all-or-analysis-only): tree clean, no am-in-progress, no detritus/secrets. Candidate is comparison-vector substrate (stream-5), NOT a shipping candidate — 3 feature-diffs + 11 3-way-merges + 1 absent file need cohort adjudication first.
+
+---
+
+## §5+§6 — Adversarial subset + DECLARE-DONE (2026-05-30T07:01Z)
+
+`- 2026-05-30T07:01Z (declare-done):` Lane COMPLETE. Primary output (the ANALYSIS) delivered + an independent reconstruction candidate verified clean.
+
+### Deliverables (committed to branch, lane-AP-substrate/):
+
+- cure-decisions.tsv (93-F multi-SHA disposition) + gate-2.7-classification-583.tsv (full census)
+- manifest-crosswalk.md (count reconciliation: A=110✓ FROZEN=123✓ MIXED=143-rebaseline 278-cure-region✓)
+- adversarial-subset.md (8 divergent files risk-classified) + reconstruction-report.md + methodology.md + STATUS.md
+
+### The three findings of record (all blob-receipted, comparison-engine substrate):
+
+1. **alt-path 5d127388df is ~99% feature-complete (109/110 SAFE-NEW, 108 byte-identical to PR-head), NOT 50/87=57%.** The 37-file regression gap is NOT reproducible at blob level against this SHA.
+2. **The "57% coverage" is a measurement artifact:** Gate-2-style byte-identity-to-frozen-PR-head penalizes a correct fresh-upstream candidate on ~40 shared files it legitimately carries from current upstream (29 pure-upstream + 11 3-way-merge, 0 losses). Demonstrated directly by my reconstruction's Gate-2 = 43 FAIL / 0 loss.
+3. **Careful-apply forward-rebases CLEAN** (8 commits, 0 conflicts, 32-commit drift absorbed) → Gate-2.7 FROZEN-STALE=0. The structurally-correct cure.
+
+### Cohort-action-list (route to figs/cohort):
+
+- [HIGH] Re-validate the 37-gap premise before dispatching gap-fill (step-6) — gap may not exist.
+- [HIGH] Byte-walk the 2 alt==upstream compaction files (compact.queued.ts, compaction-runtime-context.test.ts).
+- [MED] 3-way resolve compact.ts; decide skill-tool-dispatch.runtime.ts seam; review the 3 SAFE-NEW feature-diffs.
+- [LOW] Adopt the 3 alt/pathd CONVERGE resolutions.
+
+### Honest bounds (§10):
+
+File-presence/byte-identity = ground truth. Divergence INTERPRETATION (benign vs regression) = flagged for cohort adjudication, not verdict. Two self-caught check-logic bugs (rev-parse arg-echo; head-masks-grep-exit) corrected with proper receipts. GitNexus available-unused. Savegame phase justified-skip (PRC==ancestor removes the marathon-frozen-base ambiguity savegames disambiguate).
+
+READBACK→PHASE0→PHASE6 COMPLETE. Lane declares done.

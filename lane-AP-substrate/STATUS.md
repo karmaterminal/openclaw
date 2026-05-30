@@ -45,3 +45,16 @@ GITNEXUS      = available-unused (ripgrep/git-native sufficed)
 ## Comparison-engine surface (v2 §9 / §A3)
 
 This lane's cure-decisions.tsv + census provide stream-5 (alt-path opus-4-8) of the 6-stream synthesis. Convergence with path-d on 3/6 contested files = independent confirmation; divergence on the 2 alt==upstream files = the decisions surfaced for prince+RFC adjudication.
+
+---
+
+## FINAL (declare-done 2026-05-30T07:01Z)
+
+**Overall:** ANALYSIS-COMPLETE + reconstruction-CLEAN. Lane delivered primary analysis output AND a verified independent reconstruction candidate.
+
+- §3 reconstruction candidate: `ce144d00c2` @ `cael-dandelion-cult/20260530/alt-path-opus48-reconstruct-candidate` (PUSHED). Comparison-vector substrate, NOT shipping (cohort adjudication pending on 3 feature-diff + 11 3-way-merge + 1 absent).
+- Gate 2.7 on reconstruction: **FROZEN-STALE=0, MIXED-CLOBBER=0** (GENUINE=357, SAFE-NEW=109, total 466) → **PASS**. PR-head fc337f05d6 = 123 FROZEN-STALE FAIL. Careful-apply kills the reverse-clobber.
+- Gate 2 (vs frozen PR-head): 43 cores differ = 29 pure-upstream + 11 3-way-merge + 3 feature-diff, **0 losses** (cohort-justified divergence — the Gate-2/Gate-2.7 disjoint-region tension).
+- Per-§ ledger: §0 ✅ · §1 ✅ · §2 ✅ · §3(savegame) SKIPPED(justified) · §4(reconstruction) ✅ CLEAN · §5(adversarial) ✅ · §6(declare-done) ✅.
+- Journal commits: fd61dbea5e, 56627a7fe4, db89cf585c, + this = ≥3 ✓ (canon §8.4). Webhooks: 3 + declare-done. Issue #805: 2 comments.
+- budget: well within 444 (lane elapsed < 60 min).
