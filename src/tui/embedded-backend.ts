@@ -179,28 +179,6 @@ function resolveDeltaPayload(text: string, previousText: string | undefined) {
   return { deltaText: text.slice(previousText.length) };
 }
 
-function createQueuedRunReadiness() {
-  let resolve: (() => void) | undefined;
-  const promise = new Promise<void>((ready) => {
-    resolve = ready;
-  });
-  if (!resolve) {
-    throw new Error("Expected queue readiness resolver to be initialized");
-  }
-  const resolveReady = resolve;
-  let settled = false;
-  return {
-    promise,
-    markReady: () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      resolveReady();
-    },
-  };
-}
-
 async function waitForLocalRunShutdown(promises: Promise<void>[]): Promise<boolean> {
   if (promises.length === 0) {
     return true;
@@ -224,6 +202,28 @@ async function waitForLocalRunShutdown(promises: Promise<void>[]): Promise<boole
     clearTimeout(timeout);
   }
   return completed;
+}
+
+function createQueuedRunReadiness() {
+  let resolve: (() => void) | undefined;
+  const promise = new Promise<void>((ready) => {
+    resolve = ready;
+  });
+  if (!resolve) {
+    throw new Error("Expected queue readiness resolver to be initialized");
+  }
+  const resolveReady = resolve;
+  let settled = false;
+  return {
+    promise,
+    markReady: () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolveReady();
+    },
+  };
 }
 
 async function waitForQueuedLocalRun(previousRun: QueuedSessionRun, runId: string): Promise<void> {
@@ -342,10 +342,13 @@ export class EmbeddedTuiBackend implements TuiBackend {
     const abortableSessionRun = this.hasAbortableSessionRun(runScope);
     const stopCommand = abortableSessionRun && isChatStopCommandText(opts.message);
     const queuedAfter =
-      question || stopCommand ? undefined : this.findQueuedSessionRunPromise(runScope);
+      question || stopCommand ? undefined : this.findPendingSessionRunPromise(runScope);
     if (stopCommand) {
       this.abortSessionRuns(runScope);
       return { runId };
+    }
+    if (!question && !queuedAfter) {
+      this.abortSessionRuns(runScope);
     }
     const controller = new AbortController();
     const queuedRunReadiness = createQueuedRunReadiness();
@@ -643,13 +646,17 @@ export class EmbeddedTuiBackend implements TuiBackend {
     }
   }
 
-  private findQueuedSessionRunPromise(params: {
+  private findPendingSessionRunPromise(params: {
     sessionKey: string;
     agentId?: string;
   }): QueuedSessionRun | undefined {
     let queuedAfter: QueuedSessionRun | undefined;
     for (const [runId, run] of this.runs) {
-      if (this.isSameRunScope(run, params) && !run.isBtw) {
+      if (
+        this.isSameRunScope(run, params) &&
+        !run.isBtw &&
+        (run.finishing || run.lifecycleEnded)
+      ) {
         const promise = this.runPromises.get(runId);
         if (promise) {
           queuedAfter = { run, promise };
@@ -1030,7 +1037,8 @@ export class EmbeddedTuiBackend implements TuiBackend {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.emitChatError(params.runId, run, errorMessage);
     } finally {
-      this.runs.get(params.runId)?.markQueuedRunReady();
+      const run = this.runs.get(params.runId);
+      run?.markQueuedRunReady();
       this.runs.delete(params.runId);
     }
   }

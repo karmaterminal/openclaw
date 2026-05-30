@@ -450,10 +450,14 @@ function findConfiguredProviderModel(
 }
 
 function hasConfiguredFallbackSurface(params: {
+  provider: string;
   providerConfig: InlineProviderConfig | undefined;
   configuredModel: ReturnType<typeof findConfiguredProviderModel>;
   modelId: string;
 }): boolean {
+  if (normalizeProviderId(params.provider) === "openai" && params.modelId === "gpt-5.5") {
+    return true;
+  }
   if (params.modelId.startsWith("mock-")) {
     return true;
   }
@@ -932,7 +936,7 @@ function resolveConfiguredFallbackModel(params: {
     providerParams: providerConfig?.params,
     configuredParams: configuredModel?.params,
   });
-  if (!hasConfiguredFallbackSurface({ providerConfig, configuredModel, modelId })) {
+  if (!hasConfiguredFallbackSurface({ provider, providerConfig, configuredModel, modelId })) {
     return undefined;
   }
   const fallbackTransport = resolveProviderTransport({
@@ -962,6 +966,20 @@ function resolveConfiguredFallbackModel(params: {
     compat: configuredModel?.compat,
     reasoning: configuredModel?.reasoning,
   });
+  const openAiGpt55Defaults =
+    normalizeProviderId(provider) === "openai" && modelId === "gpt-5.5"
+      ? {
+          reasoning: true,
+          input: ["text", "image"] as Model["input"],
+          contextWindow: 1_000_000,
+          contextTokens: 272_000,
+          maxTokens: 128_000,
+          mediaInput: {
+            image: { maxSidePx: 6000, preferredSidePx: 2048, tokenMode: "detail" as const },
+          },
+          baseUrl: "https://api.openai.com/v1",
+        }
+      : undefined;
   return normalizeResolvedModel({
     provider,
     cfg,
@@ -974,25 +992,30 @@ function resolveConfiguredFallbackModel(params: {
           name: modelId,
           api: requestConfig.api ?? "openai-responses",
           provider,
-          baseUrl: requestConfig.baseUrl,
-          reasoning: fallbackReasoning,
-          input: resolveProviderModelInput({
-            provider,
-            modelId,
-            modelName: configuredModel?.name ?? modelId,
-            input: configuredModel?.input,
-          }),
+          baseUrl: requestConfig.baseUrl ?? openAiGpt55Defaults?.baseUrl,
+          reasoning: openAiGpt55Defaults?.reasoning ?? fallbackReasoning,
+          input:
+            openAiGpt55Defaults?.input ??
+            resolveProviderModelInput({
+              provider,
+              modelId,
+              modelName: configuredModel?.name ?? modelId,
+              input: configuredModel?.input,
+            }),
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextWindow:
+            openAiGpt55Defaults?.contextWindow ??
             configuredModel?.contextWindow ??
             providerConfig?.contextWindow ??
             providerConfig?.models?.[0]?.contextWindow ??
             DEFAULT_CONTEXT_TOKENS,
           contextTokens:
+            openAiGpt55Defaults?.contextTokens ??
             configuredModel?.contextTokens ??
             providerConfig?.contextTokens ??
             providerConfig?.models?.[0]?.contextTokens,
           maxTokens:
+            openAiGpt55Defaults?.maxTokens ??
             configuredModel?.maxTokens ??
             providerConfig?.maxTokens ??
             providerConfig?.models?.[0]?.maxTokens ??
@@ -1001,7 +1024,7 @@ function resolveConfiguredFallbackModel(params: {
           ...(requestTimeoutMs !== undefined ? { requestTimeoutMs } : {}),
           headers: requestConfig.headers,
           compat: configuredModel?.compat,
-          mediaInput: configuredModel?.mediaInput,
+          mediaInput: openAiGpt55Defaults?.mediaInput ?? configuredModel?.mediaInput,
         } as Model,
         providerRequest,
       ),

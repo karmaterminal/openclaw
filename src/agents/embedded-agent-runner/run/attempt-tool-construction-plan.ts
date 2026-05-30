@@ -19,6 +19,8 @@ const SHELL_CODING_TOOL_FACTORY_NAMES = new Set(["apply_patch", "exec", "process
 const OPENCLAW_TOOL_FACTORY_NAMES = new Set([
   "agents_list",
   "canvas",
+  "continue_delegate",
+  "continue_work",
   "cron",
   "gateway",
   "get_goal",
@@ -38,6 +40,7 @@ const OPENCLAW_TOOL_FACTORY_NAMES = new Set([
   "sessions_yield",
   "create_goal",
   "subagents",
+  "request_compaction",
   "tts",
   "update_goal",
   "update_plan",
