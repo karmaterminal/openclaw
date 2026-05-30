@@ -1,0 +1,468 @@
+class	dropped_lines	file	detail
+MIXED-CLOBBER	5	.crabbox.yaml	d9820e4098 fix(ci): disable crabbox on-demand fallback
+GENUINE	0	.gitignore	-
+GENUINE	0	.oxlintrc.json	-
+MIXED-CLOBBER	1	AGENTS.md	6f20f29688 fix(discord): carry reply typing feedback throu
+GENUINE	0	apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json	-
+GENUINE	0	apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift	-
+GENUINE	0	docs/automation/cron-jobs.md	-
+SAFE-NEW	0	docs/design/continue-work-signal-v2.md	-
+MIXED-CLOBBER	4	docs/gateway/configuration-reference.md	f93a558892 fix(plugins): ignore helper files in extension 
+MIXED-CLOBBER	11	docs/plugins/codex-harness-reference.md	3fbd2432b6 fix(codex): move stable context to developer in
+MIXED-CLOBBER	4	docs/plugins/codex-harness-runtime.md	3fbd2432b6 fix(codex): move stable context to developer in
+GENUINE	0	extensions/browser/src/browser/routes/existing-session.test-support.ts	-
+GENUINE	0	extensions/codex/src/app-server/attempt-startup.test.ts	-
+GENUINE	0	extensions/codex/src/app-server/attempt-startup.ts	-
+GENUINE	0	extensions/codex/src/app-server/event-projector.test.ts	-
+MIXED-CLOBBER	24	extensions/codex/src/app-server/run-attempt.ts	530351e394 fix(codex): stop injecting mirrored history int
+GENUINE	0	extensions/copilot/src/compaction-bridge.ts	-
+GENUINE	0	extensions/diagnostics-otel/api.ts	-
+SAFE-NEW	0	extensions/diagnostics-otel/src/continuation-tracer-adapter.test.ts	-
+SAFE-NEW	0	extensions/diagnostics-otel/src/continuation-tracer-adapter.ts	-
+GENUINE	0	extensions/diagnostics-otel/src/service.test.ts	-
+GENUINE	0	extensions/diagnostics-otel/src/service.ts	-
+GENUINE	0	extensions/discord/src/monitor/native-command.plugin-dispatch.test.ts	-
+GENUINE	0	extensions/discord/src/monitor/native-command.ts	-
+GENUINE	0	extensions/discord/src/voice/manager.e2e.test.ts	-
+GENUINE	0	extensions/matrix/src/matrix/sdk.test.ts	-
+GENUINE	0	extensions/matrix/src/matrix/sdk.ts	-
+GENUINE	0	extensions/memory-core/src/dreaming.test.ts	-
+GENUINE	0	extensions/memory-core/src/dreaming.ts	-
+GENUINE	0	extensions/msteams/src/monitor-handler.feedback-authz.test.ts	-
+GENUINE	0	extensions/msteams/src/monitor-handler.file-consent.test.ts	-
+GENUINE	0	extensions/qa-matrix/src/runners/contract/scenario-catalog.ts	-
+GENUINE	0	extensions/qa-matrix/src/runners/contract/scenarios.test.ts	-
+GENUINE	0	extensions/telegram/src/bot-handlers.runtime.ts	-
+MIXED-CLOBBER	18	extensions/zalo/src/outbound-media.ts	f91ddefbfb fix(zalo): bound hosted media expiry clocks
+MIXED-CLOBBER	4	npm-shrinkwrap.json	c635e560d0 build: update rastermill to 0.3.1
+MIXED-CLOBBER	4	package.json	b13529767b refactor: share inline image data URL sanitizer
+SAFE-NEW	0	packages/gateway-protocol/src/schema/agent.schema.test.ts	-
+GENUINE	0	packages/gateway-protocol/src/schema/agent.ts	-
+GENUINE	0	packages/memory-host-sdk/src/host/session-files.ts	-
+MIXED-CLOBBER	10	pnpm-lock.yaml	38a463fe93 fix(deps): remove sharp from root package
+MIXED-CLOBBER	20	scripts/e2e/parallels/npm-update-smoke.ts	53e8dc6a54 fix(scripts): stop parsing after option termina
+MIXED-CLOBBER	46	scripts/e2e/telegram-user-crabbox-proof.ts	e449392c4f fix(e2e): route telegram proof through pnpm run
+MIXED-CLOBBER	1	scripts/lib/plugin-sdk-doc-metadata.ts	b13529767b refactor: share inline image data URL sanitizer
+GENUINE	0	scripts/protocol-gen-swift.ts	-
+GENUINE	0	scripts/protocol-gen.ts	-
+SAFE-NEW	0	scripts/protocol-public-schema.ts	-
+GENUINE	0	scripts/release-check.ts	-
+MIXED-CLOBBER	145	scripts/test-projects.test-support.mjs	31f0635f4fd fix(test): route explicit source targets narro
+GENUINE	0	src/acp/control-plane/manager.core.ts	-
+GENUINE	0	src/acp/control-plane/manager.test.ts	-
+SAFE-NEW	0	src/agents/agent-command.test.ts	-
+MIXED-CLOBBER	119	src/agents/agent-command.ts	4decdf6245 [Fix] Deliver restart recovery replies (#86089)
+GENUINE	0	src/agents/agent-hooks/compaction-safeguard.ts	-
+GENUINE	0	src/agents/agent-tools-agent-config.test.ts	-
+MIXED-CLOBBER	12	src/agents/agent-tools.before-tool-call.e2e.test.ts	cc42367f3f fix(agents): cap plugin approval timeouts
+MIXED-CLOBBER	19	src/agents/agent-tools.before-tool-call.ts	cc42367f3f fix(agents): cap plugin approval timeouts
+MIXED-CLOBBER	1	src/agents/agent-tools.policy.ts	8eeaa45729 refactor: route model catalog imports to core p
+GENUINE	0	src/agents/agent-tools.read.ts	-
+GENUINE	0	src/agents/agent-tools.ts	-
+GENUINE	0	src/agents/agent-tools.workspace-paths.test.ts	-
+GENUINE	0	src/agents/apply-patch.test.ts	-
+MIXED-CLOBBER	11	src/agents/auth-profile-runtime-contract.test.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+GENUINE	0	src/agents/auth-profiles.resolve-auth-profile-order.does-not-prioritize-lastgood-round-robin-ordering.test.ts	-
+GENUINE	0	src/agents/auth-profiles/session-override.ts	-
+GENUINE	0	src/agents/cli-runner/helpers.ts	-
+MIXED-CLOBBER	9	src/agents/cli-runner/prepare.ts	a176b8ec2f perf(cli): compact resumed room-event prompts
+MIXED-CLOBBER	4	src/agents/command/attempt-execution.cli.test.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+GENUINE	0	src/agents/command/attempt-execution.helpers.ts	-
+MIXED-CLOBBER	3	src/agents/command/attempt-execution.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+GENUINE	0	src/agents/command/types.ts	-
+SAFE-NEW	0	src/agents/compaction-attribution.test.ts	-
+SAFE-NEW	0	src/agents/compaction-attribution.ts	-
+GENUINE	0	src/agents/embedded-agent-runner.e2e.test.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/compact-reasons.test.ts	-
+MIXED-CLOBBER	1	src/agents/embedded-agent-runner/compact-reasons.ts	de1dfab03e refactor: move terminal core into package (#882
+GENUINE	0	src/agents/embedded-agent-runner/compact.hooks.harness.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/compact.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/compact.types.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/context-engine-capabilities.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/context-engine-maintenance.ts	-
+MIXED-CLOBBER	83	src/agents/embedded-agent-runner/model.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+GENUINE	0	src/agents/embedded-agent-runner/run-state.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run.overflow-compaction.harness.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run.overflow-compaction.loop.test.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run.timeout-triggered-compaction.test.ts	-
+MIXED-CLOBBER	7	src/agents/embedded-agent-runner/run.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+GENUINE	0	src/agents/embedded-agent-runner/run/assistant-failover.test.ts	-
+MIXED-CLOBBER	1	src/agents/embedded-agent-runner/run/assistant-failover.ts	de1dfab03e refactor: move terminal core into package (#882
+GENUINE	0	src/agents/embedded-agent-runner/run/attempt-tool-construction-plan.test.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run/attempt-tool-construction-plan.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run/attempt.prompt-helpers.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run/attempt.session-lock.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run/attempt.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run/failover-policy.test.ts	-
+GENUINE	0	src/agents/embedded-agent-runner/run/failover-policy.ts	-
+MIXED-CLOBBER	1	src/agents/embedded-agent-runner/run/params.ts	a176b8ec2f perf(cli): compact resumed room-event prompts
+GENUINE	0	src/agents/embedded-agent-runner/runs.test.ts	-
+MIXED-CLOBBER	12	src/agents/embedded-agent-runner/runs.ts	27dce6c6bb refactor: share embedded run abort loop
+GENUINE	0	src/agents/embedded-agent-runner/system-prompt.ts	-
+GENUINE	0	src/agents/embedded-agent-subscribe.handlers.compaction.runtime.ts	-
+GENUINE	0	src/agents/embedded-agent-subscribe.handlers.compaction.test.ts	-
+GENUINE	0	src/agents/embedded-agent-subscribe.handlers.compaction.ts	-
+GENUINE	0	src/agents/embedded-agent-subscribe.handlers.tools.test.ts	-
+MIXED-CLOBBER	1	src/agents/live-model-switch.test.ts	ef88f0f949 perf(sessions): skip prompt hydration for metad
+MIXED-CLOBBER	6	src/agents/live-model-switch.ts	ef88f0f949 perf(sessions): skip prompt hydration for metad
+GENUINE	0	src/agents/model-fallback.test.ts	-
+MIXED-CLOBBER	1	src/agents/model-fallback.ts	de1dfab03e refactor: move terminal core into package (#882
+MIXED-CLOBBER	26	src/agents/model-selection.test.ts	86e33d6985 fix(models): preserve exact provider refs befor
+GENUINE	0	src/agents/openai-responses-payload-policy.test.ts	-
+MIXED-CLOBBER	3	src/agents/openai-responses-payload-policy.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+MIXED-CLOBBER	28	src/agents/openai-transport-stream.ts	941e04e9f3 fix: clamp configured OpenAI-compatible output 
+SAFE-NEW	0	src/agents/openclaw-tools.continuation-misconfig-warn.test.ts	-
+SAFE-NEW	0	src/agents/openclaw-tools.continuation-registration.test.ts	-
+GENUINE	0	src/agents/openclaw-tools.sessions-visibility.test.ts	-
+GENUINE	0	src/agents/openclaw-tools.subagents.sessions-spawn.test-harness.ts	-
+MIXED-CLOBBER	2	src/agents/openclaw-tools.ts	f90b8cffc7 perf: prefer built plugin public surfaces
+SAFE-NEW	0	src/agents/pi-tools.append.test.ts	-
+SAFE-NEW	0	src/agents/pi-tools.write.guard.test.ts	-
+SAFE-NEW	0	src/agents/pi-tools.write.message-truthfulness.test.ts	-
+GENUINE	0	src/agents/sandbox-media-paths.test.ts	-
+GENUINE	0	src/agents/sandbox/fs-bridge-mutation-helper.ts	-
+GENUINE	0	src/agents/sandbox/fs-bridge.shell.test.ts	-
+GENUINE	0	src/agents/sandbox/fs-bridge.ts	-
+GENUINE	0	src/agents/sandbox/fs-bridge.types.ts	-
+GENUINE	0	src/agents/sandbox/remote-fs-bridge.ts	-
+GENUINE	0	src/agents/session-write-lock.test.ts	-
+GENUINE	0	src/agents/session-write-lock.ts	-
+GENUINE	0	src/agents/subagent-announce-delivery.ts	-
+SAFE-NEW	0	src/agents/subagent-announce.chain-guard.test.ts	-
+SAFE-NEW	0	src/agents/subagent-announce.continuation-drain.test.ts	-
+SAFE-NEW	0	src/agents/subagent-announce.continuation.runtime.test.ts	-
+SAFE-NEW	0	src/agents/subagent-announce.continuation.runtime.ts	-
+SAFE-NEW	0	src/agents/subagent-announce.continuation.test.ts	-
+SAFE-NEW	0	src/agents/subagent-announce.crosssession-gate.test.ts	-
+GENUINE	0	src/agents/subagent-announce.format.e2e.test.ts	-
+GENUINE	0	src/agents/subagent-announce.registry.runtime.ts	-
+GENUINE	0	src/agents/subagent-announce.runtime.ts	-
+SAFE-NEW	0	src/agents/subagent-announce.silent-wake.test.ts	-
+SAFE-NEW	0	src/agents/subagent-announce.targeted-return.integration.test.ts	-
+GENUINE	0	src/agents/subagent-announce.test-support.ts	-
+GENUINE	0	src/agents/subagent-announce.test.ts	-
+GENUINE	0	src/agents/subagent-announce.timeout.test.ts	-
+GENUINE	0	src/agents/subagent-announce.ts	-
+GENUINE	0	src/agents/subagent-control.test.ts	-
+GENUINE	0	src/agents/subagent-registry-announce-read.ts	-
+GENUINE	0	src/agents/subagent-registry-helpers.ts	-
+GENUINE	0	src/agents/subagent-registry-lifecycle.ts	-
+GENUINE	0	src/agents/subagent-registry-queries.ts	-
+GENUINE	0	src/agents/subagent-registry-run-manager.ts	-
+GENUINE	0	src/agents/subagent-registry-runtime.ts	-
+SAFE-NEW	0	src/agents/subagent-registry-spawn-runtime.ts	-
+MIXED-CLOBBER	7	src/agents/subagent-registry-state.ts	5374c7a8a2 Persist subagent registry in SQLite (#88260)
+GENUINE	0	src/agents/subagent-registry.lifecycle-retry-grace.e2e.test.ts	-
+GENUINE	0	src/agents/subagent-registry.persistence.test.ts	-
+GENUINE	0	src/agents/subagent-registry.test.ts	-
+GENUINE	0	src/agents/subagent-registry.ts	-
+GENUINE	0	src/agents/subagent-registry.types.ts	-
+GENUINE	0	src/agents/subagent-spawn.test-helpers.ts	-
+GENUINE	0	src/agents/subagent-spawn.test.ts	-
+MIXED-CLOBBER	15	src/agents/subagent-spawn.ts	044f5a814e Expose subagent resolved model metadata (#80037
+GENUINE	0	src/agents/subagent-system-prompt.ts	-
+SAFE-NEW	0	src/agents/subagent-traceparent-handoff.ts	-
+SAFE-NEW	0	src/agents/system-prompt.continuation.test.ts	-
+GENUINE	0	src/agents/system-prompt.test.ts	-
+GENUINE	0	src/agents/system-prompt.ts	-
+GENUINE	0	src/agents/test-helpers/host-sandbox-fs-bridge.ts	-
+GENUINE	0	src/agents/tool-display-config.ts	-
+GENUINE	0	src/agents/tools-effective-inventory.test.ts	-
+MIXED-CLOBBER	3	src/agents/tools-effective-inventory.ts	8eeaa45729 refactor: route model catalog imports to core p
+SAFE-NEW	0	src/agents/tools/continuation-tools-registration.test.ts	-
+SAFE-NEW	0	src/agents/tools/continue-delegate-tool.crosssession-gate.test.ts	-
+SAFE-NEW	0	src/agents/tools/continue-delegate-tool.test.ts	-
+SAFE-NEW	0	src/agents/tools/continue-delegate-tool.ts	-
+SAFE-NEW	0	src/agents/tools/continue-work-tool.boundary.test.ts	-
+SAFE-NEW	0	src/agents/tools/continue-work-tool.test.ts	-
+SAFE-NEW	0	src/agents/tools/continue-work-tool.ts	-
+SAFE-NEW	0	src/agents/tools/request-compaction-tool.callsite-threading.test.ts	-
+SAFE-NEW	0	src/agents/tools/request-compaction-tool.classifier-emission.test.ts	-
+SAFE-NEW	0	src/agents/tools/request-compaction-tool.test.ts	-
+SAFE-NEW	0	src/agents/tools/request-compaction-tool.ts	-
+SAFE-NEW	0	src/agents/tools/request-compaction-tool.volitional-threading.test.ts	-
+GENUINE	0	src/agents/tools/session-status-tool.ts	-
+GENUINE	0	src/agents/tools/sessions-helpers.ts	-
+GENUINE	0	src/agents/tools/sessions-history-tool.ts	-
+GENUINE	0	src/agents/tools/sessions-list-tool.ts	-
+GENUINE	0	src/agents/utils/tools-manager.ts	-
+SAFE-NEW	0	src/auto-reply/continuation-delegate-store.ordering.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation-delegate-store.post-compaction-substrate.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation-delegate-store.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation-delegate-store.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/config.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/config.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/context-pressure.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/context-pressure.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/cross-session-targeting.nonexistent-target.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/cross-session-targeting.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-dispatch-post-compaction.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-dispatch.chain-depth-exhaustion.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-dispatch.cost-cap-exhaustion.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-dispatch.fanout-error-isolation.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-dispatch.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-dispatch.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-mid-run-compaction-survival.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-store.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/delegate-store.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/lazy.runtime.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/nonexistent-target-session-delivery.race.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/post-compaction-release.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/post-compaction-release.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/scheduler.onfire-throws.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/scheduler.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/scheduler.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/signal.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/signal.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/state.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/state.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/targeting-pure.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/targeting.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/trace-context-propagation.integration.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/types.mode-shape.test.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/types.ts	-
+SAFE-NEW	0	src/auto-reply/continuation/volatile-map-allowlist.test.ts	-
+GENUINE	0	src/auto-reply/get-reply-options.types.ts	-
+GENUINE	0	src/auto-reply/inbound-debounce.ts	-
+GENUINE	0	src/auto-reply/inbound.test.ts	-
+GENUINE	0	src/auto-reply/reply/abort-cutoff.runtime.ts	-
+SAFE-NEW	0	src/auto-reply/reply/agent-runner-execution.release-queued-compaction.test.ts	-
+MIXED-CLOBBER	11	src/auto-reply/reply/agent-runner-execution.test.ts	2b726457d8 fix(cli): persist first room-event session bind
+MIXED-CLOBBER	6	src/auto-reply/reply/agent-runner-execution.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+GENUINE	0	src/auto-reply/reply/agent-runner-memory.ts	-
+GENUINE	0	src/auto-reply/reply/agent-runner-session-reset.ts	-
+SAFE-NEW	0	src/auto-reply/reply/agent-runner.continuation-delegate-fire-span.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/agent-runner.continuation-span-uniformity.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/agent-runner.continuation-work-span.test.ts	-
+GENUINE	0	src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts	-
+MIXED-CLOBBER	79	src/auto-reply/reply/agent-runner.ts	4decdf6245 [Fix] Deliver restart recovery replies (#86089)
+GENUINE	0	src/auto-reply/reply/body.ts	-
+GENUINE	0	src/auto-reply/reply/commands-allowlist.test.ts	-
+GENUINE	0	src/auto-reply/reply/commands-gating.test.ts	-
+MIXED-CLOBBER	7	src/auto-reply/reply/commands-status.test.ts	3c91928bae fix(codex): refresh stale managed runtime plugi
+GENUINE	0	src/auto-reply/reply/commands-system-prompt.test.ts	-
+GENUINE	0	src/auto-reply/reply/commands-system-prompt.ts	-
+SAFE-NEW	0	src/auto-reply/reply/context-pressure.integration.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/context-pressure.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/cot-frame.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/cot-frame.ts	-
+GENUINE	0	src/auto-reply/reply/directive-handling.impl.ts	-
+GENUINE	0	src/auto-reply/reply/directive-handling.mixed-inline.test.ts	-
+GENUINE	0	src/auto-reply/reply/directive-handling.model.test.ts	-
+GENUINE	0	src/auto-reply/reply/directive-handling.persist.ts	-
+MIXED-CLOBBER	10	src/auto-reply/reply/followup-runner.test.ts	2b726457d8 fix(cli): persist first room-event session bind
+GENUINE	0	src/auto-reply/reply/followup-runner.ts	-
+GENUINE	0	src/auto-reply/reply/get-reply-run.media-only.test.ts	-
+MIXED-CLOBBER	1	src/auto-reply/reply/get-reply-run.ts	8eeaa45729 refactor: route model catalog imports to core p
+GENUINE	0	src/auto-reply/reply/inbound-context.ts	-
+GENUINE	0	src/auto-reply/reply/inbound-meta.test.ts	-
+GENUINE	0	src/auto-reply/reply/model-selection.ts	-
+SAFE-NEW	0	src/auto-reply/reply/normalize-reply.cot-frame.test.ts	-
+GENUINE	0	src/auto-reply/reply/normalize-reply.ts	-
+SAFE-NEW	0	src/auto-reply/reply/post-compaction-context-failure.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/post-compaction-delegate-dispatch.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/post-compaction-delegate-dispatch.ts	-
+MIXED-CLOBBER	19	src/auto-reply/reply/prompt-prelude.ts	a176b8ec2f perf(cli): compact resumed room-event prompts
+GENUINE	0	src/auto-reply/reply/queue/types.ts	-
+SAFE-NEW	0	src/auto-reply/reply/reply-delivery.cot-frame-leak.test.ts	-
+GENUINE	0	src/auto-reply/reply/reply-delivery.ts	-
+GENUINE	0	src/auto-reply/reply/reply-state.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/run-provenance.test.ts	-
+SAFE-NEW	0	src/auto-reply/reply/run-provenance.ts	-
+MIXED-CLOBBER	4	src/auto-reply/reply/session-reset-model.ts	348fabe04d perf(auto-reply): remove reset model duplicate 
+SAFE-NEW	0	src/auto-reply/reply/session-system-events.test.ts	-
+GENUINE	0	src/auto-reply/reply/session-system-events.ts	-
+SAFE-NEW	0	src/auto-reply/reply/session-updates.compaction.test.ts	-
+GENUINE	0	src/auto-reply/reply/session-updates.test.ts	-
+MIXED-CLOBBER	8	src/auto-reply/reply/session-updates.ts	?
+GENUINE	0	src/auto-reply/reply/session.test.ts	-
+GENUINE	0	src/auto-reply/reply/session.ts	-
+GENUINE	0	src/auto-reply/status.test.ts	-
+SAFE-NEW	0	src/auto-reply/tokens.continuation.test.ts	-
+GENUINE	0	src/auto-reply/tokens.test.ts	-
+GENUINE	0	src/auto-reply/tokens.ts	-
+GENUINE	0	src/auto-reply/types.ts	-
+GENUINE	0	src/cli/command-catalog.ts	-
+GENUINE	0	src/cli/command-path-policy.test.ts	-
+GENUINE	0	src/cli/config-cli.test.ts	-
+MIXED-CLOBBER	2	src/cli/config-cli.ts	de1dfab03e refactor: move terminal core into package (#882
+MIXED-CLOBBER	3	src/commands/agent.test.ts	4decdf6245 [Fix] Deliver restart recovery replies (#86089)
+GENUINE	0	src/commands/channel-setup/workspace-shadow-bypass.test.ts	-
+GENUINE	0	src/commands/doctor-legacy-config.migrations.test.ts	-
+GENUINE	0	src/commands/doctor-lint.test.ts	-
+GENUINE	0	src/commands/doctor-lint.ts	-
+MIXED-CLOBBER	1	src/commands/doctor-platform-notes.ts	de1dfab03e refactor: move terminal core into package (#882
+GENUINE	0	src/commands/models/list.list-command.forward-compat.test.ts	-
+GENUINE	0	src/commands/status-overview-rows.ts	-
+MIXED-CLOBBER	3	src/commands/status.command-report-data.ts	2c0f79d53a fix(status): tolerate invalid retained task cle
+SAFE-NEW	0	src/commands/status.continuation-banner.test.ts	-
+GENUINE	0	src/commands/status.test.ts	-
+GENUINE	0	src/config/cache-utils.ts	-
+GENUINE	0	src/config/io.write-config.test.ts	-
+GENUINE	0	src/config/schema.help.ts	-
+GENUINE	0	src/config/sessions.cache.test.ts	-
+GENUINE	0	src/config/sessions.test.ts	-
+MIXED-CLOBBER	4	src/config/sessions/artifacts.test.ts	8bf7bc5b5c fix(sessions): guard archive timestamp formatti
+MIXED-CLOBBER	2	src/config/sessions/artifacts.ts	d2f69ecc3b fix(migrate): guard report timestamp formatting
+GENUINE	0	src/config/sessions/session-file.ts	-
+GENUINE	0	src/config/sessions/store-cache.ts	-
+SAFE-NEW	0	src/config/sessions/store.continuation-merge.test.ts	-
+GENUINE	0	src/config/sessions/store.runtime.ts	-
+MIXED-CLOBBER	4	src/config/sessions/types.ts	4decdf6245 [Fix] Deliver restart recovery replies (#86089)
+GENUINE	0	src/config/types.agent-defaults.ts	-
+GENUINE	0	src/config/zod-schema.agent-defaults.ts	-
+SAFE-NEW	0	src/config/zod-schema.continuation.test.ts	-
+GENUINE	0	src/cron/isolated-agent/run.ts	-
+GENUINE	0	src/flows/channel-setup.status.test.ts	-
+GENUINE	0	src/flows/channel-setup.test.ts	-
+GENUINE	0	src/flows/doctor-lint-flow.ts	-
+MIXED-CLOBBER	20	src/gateway/chat-abort.ts	ca4a12381a fix(gateway): bound chat abort expiry registrat
+GENUINE	0	src/gateway/config-reload.test.ts	-
+GENUINE	0	src/gateway/hooks.test.ts	-
+GENUINE	0	src/gateway/mcp-http.loopback-runtime.ts	-
+GENUINE	0	src/gateway/mcp-http.request.ts	-
+GENUINE	0	src/gateway/mcp-http.runtime.ts	-
+GENUINE	0	src/gateway/mcp-http.ts	-
+GENUINE	0	src/gateway/probe.close-drain.test.ts	-
+GENUINE	0	src/gateway/server-methods/agent.test.ts	-
+GENUINE	0	src/gateway/server-methods/agent.ts	-
+GENUINE	0	src/gateway/server-methods/server-methods.test.ts	-
+GENUINE	0	src/gateway/server-plugins.test.ts	-
+GENUINE	0	src/gateway/server-restart-sentinel.ts	-
+GENUINE	0	src/gateway/server-startup-post-attach.test.ts	-
+GENUINE	0	src/gateway/server.auth.browser-hardening.test.ts	-
+GENUINE	0	src/gateway/server.chat.gateway-server-chat-b.test.ts	-
+MIXED-CLOBBER	19	src/gateway/server.hooks.test.ts	326db58229 fix(gateway): guard hook job timestamps
+MIXED-CLOBBER	14	src/gateway/server.impl.ts	24cff8a3bc perf(gateway): share model catalog module loade
+GENUINE	0	src/gateway/session-compaction-checkpoints.ts	-
+GENUINE	0	src/gateway/session-lifecycle-state.ts	-
+GENUINE	0	src/gateway/session-utils.fs.test.ts	-
+GENUINE	0	src/gateway/session-utils.fs.ts	-
+GENUINE	0	src/gateway/session-utils.subagent.test.ts	-
+MIXED-CLOBBER	4	src/gateway/session-utils.test.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+MIXED-CLOBBER	1	src/gateway/sessions-patch.test.ts	d92b3b5cc2 refactor: unify OpenAI provider identity
+GENUINE	0	src/gateway/sessions-patch.ts	-
+GENUINE	0	src/hooks/llm-slug-generator.ts	-
+SAFE-NEW	0	src/infra/chain-budget.test.ts	-
+SAFE-NEW	0	src/infra/chain-budget.ts	-
+SAFE-NEW	0	src/infra/continuation-tracer.test.ts	-
+SAFE-NEW	0	src/infra/continuation-tracer.ts	-
+GENUINE	0	src/infra/diagnostic-events.ts	-
+SAFE-NEW	0	src/infra/diagnostic-trace-context-pure.ts	-
+GENUINE	0	src/infra/diagnostic-trace-context.test.ts	-
+GENUINE	0	src/infra/diagnostic-trace-context.ts	-
+GENUINE	0	src/infra/fs-safe.ts	-
+GENUINE	0	src/infra/heartbeat-reason.test.ts	-
+GENUINE	0	src/infra/heartbeat-reason.ts	-
+SAFE-NEW	0	src/infra/heartbeat-runner.delegate-return.test.ts	-
+GENUINE	0	src/infra/heartbeat-runner.returns-default-unset.test.ts	-
+GENUINE	0	src/infra/heartbeat-runner.scheduler.test.ts	-
+MIXED-CLOBBER	3	src/infra/heartbeat-runner.ts	023a101b91 fix(heartbeat): tolerate invalid commitment due
+GENUINE	0	src/infra/heartbeat-wake.test.ts	-
+GENUINE	0	src/infra/heartbeat-wake.ts	-
+GENUINE	0	src/infra/jsonl-socket.test.ts	-
+GENUINE	0	src/infra/jsonl-socket.ts	-
+GENUINE	0	src/infra/outbound/message.ts	-
+GENUINE	0	src/infra/process-respawn.test.ts	-
+GENUINE	0	src/infra/process-respawn.ts	-
+GENUINE	0	src/infra/restart-sentinel.ts	-
+SAFE-NEW	0	src/infra/secure-random-chain-id.test.ts	-
+GENUINE	0	src/infra/secure-random.ts	-
+SAFE-NEW	0	src/infra/session-cost-usage.discoverAllSessions.test.ts	-
+GENUINE	0	src/infra/session-cost-usage.test.ts	-
+GENUINE	0	src/infra/session-cost-usage.ts	-
+GENUINE	0	src/infra/session-delivery-queue-recovery.ts	-
+GENUINE	0	src/infra/session-delivery-queue-storage.ts	-
+GENUINE	0	src/infra/session-delivery-queue.recovery.test.ts	-
+GENUINE	0	src/infra/session-delivery-queue.storage.test.ts	-
+GENUINE	0	src/infra/session-delivery-queue.ts	-
+SAFE-NEW	0	src/infra/session-keys.test.ts	-
+SAFE-NEW	0	src/infra/session-keys.ts	-
+SAFE-NEW	0	src/infra/substrate-capability-registry.test.ts	-
+SAFE-NEW	0	src/infra/substrate-capability-registry.ts	-
+GENUINE	0	src/infra/system-events.test.ts	-
+GENUINE	0	src/infra/system-events.ts	-
+SAFE-NEW	0	src/logging/diagnostic-continuation-queues.ts	-
+GENUINE	0	src/logging/diagnostic-stability.ts	-
+GENUINE	0	src/logging/diagnostic.test.ts	-
+GENUINE	0	src/logging/diagnostic.ts	-
+GENUINE	0	src/media/read-capability.ts	-
+GENUINE	0	src/plugin-sdk/diagnostic-runtime.ts	-
+GENUINE	0	src/plugin-sdk/file-access-runtime.ts	-
+GENUINE	0	src/plugin-sdk/root-alias.cjs	-
+GENUINE	0	src/plugins/commands.test.ts	-
+GENUINE	0	src/plugins/contracts/plugin-sdk-package-contract-guardrails.test.ts	-
+GENUINE	0	src/plugins/contracts/plugin-sdk-root-alias.test.ts	-
+GENUINE	0	src/plugins/install.npm-spec.test.ts	-
+MIXED-CLOBBER	45	src/plugins/loader.ts	6b41a0692f fix(plugins): preserve single-pass plugin env c
+SAFE-NEW	0	src/plugins/manifest-metadata-scan.cache.test.ts	-
+GENUINE	0	src/plugins/manifest-metadata-scan.ts	-
+GENUINE	0	src/plugins/plugin-graceful-init-failure.test.ts	-
+MIXED-CLOBBER	45	src/plugins/sdk-alias.test.ts	99ffd714ce refactor: extract markdown core package (#88265
+MIXED-CLOBBER	108	src/plugins/sdk-alias.ts	de1dfab03e refactor: move terminal core into package (#882
+MIXED-CLOBBER	2	src/plugins/session-entry-slot-keys.ts	4decdf6245 [Fix] Deliver restart recovery replies (#86089)
+GENUINE	0	src/plugins/wired-hooks-compaction.test.ts	-
+GENUINE	0	src/skills/runtime/tool-dispatch.ts	-
+GENUINE	0	src/state/openclaw-state-db.generated.d.ts	-
+GENUINE	0	src/state/openclaw-state-db.ts	-
+MIXED-CLOBBER	1	src/state/openclaw-state-schema.generated.ts	bc848b367f refactor: add shared sqlite state database
+MIXED-CLOBBER	1	src/state/openclaw-state-schema.sql	bc848b367f refactor: add shared sqlite state database
+GENUINE	0	src/status/status-message.ts	-
+MIXED-CLOBBER	1	src/status/status-text.ts	3c91928bae fix(codex): refresh stale managed runtime plugi
+GENUINE	0	src/tasks/task-boundaries.test.ts	-
+SAFE-NEW	0	src/tasks/task-flow-registry.store.sqlite.chain-id.test.ts	-
+GENUINE	0	src/tasks/task-flow-registry.store.sqlite.ts	-
+GENUINE	0	src/tasks/task-flow-registry.test.ts	-
+GENUINE	0	src/tasks/task-flow-registry.ts	-
+GENUINE	0	src/tasks/task-flow-registry.types.ts	-
+GENUINE	0	src/tasks/task-flow-runtime-internal.ts	-
+GENUINE	0	src/tui/embedded-backend.test.ts	-
+MIXED-CLOBBER	3	src/tui/embedded-backend.ts	a509c48f0e feat: add core session goals (#87469)
+GENUINE	0	src/tui/tui-pty-harness.e2e.test.ts	-
+GENUINE	0	src/tui/tui-session-actions.test.ts	-
+GENUINE	0	src/version.ts	-
+MIXED-CLOBBER	1	test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md	fcf2852f0f fix(codex): prevent post-tool edit stream timeo
+MIXED-CLOBBER	1	test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md	fcf2852f0f fix(codex): prevent post-tool edit stream timeo
+MIXED-CLOBBER	1	test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md	fcf2852f0f fix(codex): prevent post-tool edit stream timeo
+GENUINE	0	test/release-check.test.ts	-
+MIXED-CLOBBER	20	test/scripts/crabbox-wrapper.test.ts	022fd55bad fix(test): route crabbox changed tests
+GENUINE	0	test/scripts/install-sh.test.ts	-
+GENUINE	0	test/scripts/npm-telegram-live.test.ts	-
+GENUINE	0	test/scripts/openclaw-e2e-instance.test.ts	-
+GENUINE	0	test/scripts/test-install-sh-docker.test.ts	-
+MIXED-CLOBBER	209	test/scripts/test-projects.test.ts	022fd55bad9 fix(test): route crabbox changed tests
+GENUINE	0	test/vitest-scoped-config.test.ts	-
+GENUINE	0	test/vitest/vitest.agents-core.config.ts	-
+GENUINE	0	test/vitest/vitest.extension-slack.config.ts	-
+SAFE-NEW	0	test/vitest/vitest.full-extension-slack.config.ts	-
+GENUINE	0	test/vitest/vitest.test-shards.mjs	-
+SAFE-NEW	0	tmp-drop-me-claude.md	-
+MIXED-CLOBBER	65	tsdown.config.ts	8b92aca27f refactor: extract media understanding common pa
+GENUINE	0	ui/src/i18n/.i18n/raw-copy-baseline.json	-
+MIXED-CLOBBER	9	ui/src/i18n/locales/ar.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/de.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/en.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/es.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/fa.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/fr.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/id.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/it.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/ja-JP.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/ko.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/nl.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/pl.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/pt-BR.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/th.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/tr.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/uk.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/vi.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/zh-CN.ts	5435b453ca feat: expand workboard orchestration metadata (
+MIXED-CLOBBER	9	ui/src/i18n/locales/zh-TW.ts	5435b453ca feat: expand workboard orchestration metadata (
+GENUINE	0	ui/src/styles/components.css	-
+GENUINE	0	ui/src/ui/app-gateway-chat-load.node.test.ts	-
+GENUINE	0	ui/src/ui/app-gateway.node.test.ts	-
+GENUINE	0	ui/src/ui/app-gateway.sessions.node.test.ts	-
+GENUINE	0	ui/src/ui/app-gateway.ts	-
+MIXED-CLOBBER	2	ui/src/ui/chat/grouped-render.ts	462e315953 fix(ui): stop pulsing completed stream segments
+GENUINE	0	ui/src/ui/chat/tool-cards.ts	-
+GENUINE	0	ui/src/ui/views/usage-render-overview.test.ts	-
