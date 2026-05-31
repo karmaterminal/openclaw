@@ -444,6 +444,7 @@ export async function compactEmbeddedAgentSessionDirect(
       runId: params.runId ?? params.sessionId,
       agentDir: params.agentDir,
       agentId: fallbackAgentId,
+      sessionId: params.sessionId,
       sessionKey: fallbackSessionKey,
       prepareAgentHarnessRuntime: async ({ provider, model, agentHarnessRuntimeOverride }) => {
         await ensureSelectedAgentHarnessPlugin({
@@ -595,7 +596,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
     return fail(reason);
   }
   let runtimeModel = model;
-  let apiKeyInfo: Awaited<ReturnType<typeof getApiKeyForModel>> | null = null;
+  let apiKeyInfo: Awaited<ReturnType<typeof getApiKeyForModel>> | null;
   let hasRuntimeAuthExchange = false;
   try {
     apiKeyInfo = await getApiKeyForModel({
@@ -1147,7 +1148,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
 
       const { customTools } = splitSdkTools({
         tools: effectiveTools,
-        sandboxEnabled: !!sandbox?.enabled,
+        sandboxEnabled: Boolean(sandbox?.enabled),
         toolHookContext: {
           agentId: sessionAgentId,
           config: params.config,

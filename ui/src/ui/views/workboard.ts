@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { t } from "../../i18n/index.ts";
 import {
+  addWorkboardCardComment,
   archiveWorkboardCard,
   deleteWorkboardCard,
   dispatchWorkboard,
@@ -28,6 +29,7 @@ import { formatDateMs } from "../format.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import { icons } from "../icons.ts";
 import type { AgentsListResult, GatewaySessionRow } from "../types.ts";
+import "./workboard-3d-game.ts";
 
 type WorkboardProps = {
   host: object;
@@ -351,6 +353,7 @@ function resetDraft(state: WorkboardUiState) {
   state.draftAgentId = "";
   state.draftSessionKey = "";
   state.draftTemplateId = "";
+  state.draftCommentBody = "";
 }
 
 function openCreateModal(state: WorkboardUiState) {
@@ -404,6 +407,7 @@ function openEditModal(state: WorkboardUiState, card: WorkboardCard) {
   state.draftAgentId = card.agentId ?? "";
   state.draftSessionKey = card.sessionKey ?? "";
   state.draftTemplateId = card.metadata?.templateId ?? "";
+  state.draftCommentBody = "";
 }
 
 function applyTemplate(state: WorkboardUiState, templateId: WorkboardTemplateId) {
@@ -438,6 +442,28 @@ function renderGameArrow(
     >
       ${icons.arrowDown}
     </button>
+  `;
+}
+
+function gameCellLabel(state: WorkboardUiState, index: number) {
+  const label =
+    index === state.gamePlayerIndex
+      ? t("workboard.gameAgent")
+      : index === WORKBOARD_GAME_GOAL
+        ? t("workboard.gameLaunch")
+        : WORKBOARD_GAME_BLOCKERS.has(index)
+          ? t("workboard.gameBlockedCell")
+          : t("workboard.gameOpenCell");
+  return `${label} ${index + 1}`;
+}
+
+function renderAccessibleGameGrid(state: WorkboardUiState) {
+  return html`
+    <div class="workboard-game__accessible-grid" role="grid" aria-label=${t("workboard.gameBoard")}>
+      ${Array.from({ length: WORKBOARD_GAME_SIZE * WORKBOARD_GAME_SIZE }, (_, index) => {
+        return html`<span role="gridcell" aria-label=${gameCellLabel(state, index)}></span>`;
+      })}
+    </div>
   `;
 }
 
@@ -500,30 +526,16 @@ function renderGameModal(props: WorkboardProps) {
           <span>${t("workboard.gameMoves", { count: String(state.gameMoves) })}</span>
           <span>${t("workboard.gameWins", { count: String(state.gameWins) })}</span>
         </div>
-        <div class="workboard-game__grid" role="grid" aria-label=${t("workboard.gameBoard")}>
-          ${Array.from({ length: WORKBOARD_GAME_SIZE * WORKBOARD_GAME_SIZE }, (_, index) => {
-            const player = index === state.gamePlayerIndex;
-            const goal = index === WORKBOARD_GAME_GOAL;
-            const blocker = WORKBOARD_GAME_BLOCKERS.has(index);
-            return html`
-              <div
-                class="workboard-game__cell ${player ? "workboard-game__cell--player" : ""} ${goal
-                  ? "workboard-game__cell--goal"
-                  : ""} ${blocker ? "workboard-game__cell--blocker" : ""}"
-                role="gridcell"
-                aria-label=${player
-                  ? t("workboard.gameAgent")
-                  : goal
-                    ? t("workboard.gameLaunch")
-                    : blocker
-                      ? t("workboard.gameBlockedCell")
-                      : t("workboard.gameOpenCell")}
-              >
-                ${player ? "A" : goal ? "L" : blocker ? "" : ""}
-              </div>
-            `;
-          })}
-        </div>
+        <workboard-3d-game
+          class="workboard-game__scene"
+          board-size=${String(WORKBOARD_GAME_SIZE)}
+          goal-index=${String(WORKBOARD_GAME_GOAL)}
+          player-index=${String(state.gamePlayerIndex)}
+          blockers=${[...WORKBOARD_GAME_BLOCKERS].join(",")}
+          wins=${String(state.gameWins)}
+          aria-hidden="true"
+        ></workboard-3d-game>
+        ${renderAccessibleGameGrid(state)}
         <div class="workboard-game__controls" aria-label=${t("workboard.gameControls")}>
           ${renderGameArrow(
             t("workboard.gameMoveUp"),
@@ -560,6 +572,10 @@ function renderCardModal(props: WorkboardProps) {
     return nothing;
   }
   const editing = Boolean(state.editingCardId);
+  const editingCard = state.editingCardId
+    ? (state.cards.find((card) => card.id === state.editingCardId) ?? null)
+    : null;
+  const comments = editingCard?.metadata?.comments ?? [];
   return html`
     <div
       class="workboard-modal"
@@ -736,6 +752,51 @@ function renderCardModal(props: WorkboardProps) {
             />
           </label>
         </div>
+        ${editing
+          ? html`
+              <section
+                class="workboard-field workboard-field--wide"
+                aria-labelledby="workboard-card-comments-title"
+              >
+                <span id="workboard-card-comments-title">
+                  ${t("workboard.badgeComments", { count: String(comments.length) })}
+                </span>
+                ${comments.length
+                  ? html`
+                      <ol>
+                        ${comments.map((comment) => html`<li>${comment.body}</li>`)}
+                      </ol>
+                    `
+                  : nothing}
+                <textarea
+                  class="input workboard-comments__input"
+                  aria-labelledby="workboard-card-comments-title"
+                  maxlength="2000"
+                  .value=${state.draftCommentBody}
+                  @input=${(event: InputEvent) => {
+                    state.draftCommentBody = (event.currentTarget as HTMLTextAreaElement).value;
+                    props.onRequestUpdate?.();
+                  }}
+                ></textarea>
+                <div class="workboard-modal__actions">
+                  <button
+                    class="btn"
+                    type="button"
+                    ?disabled=${state.loading || !state.draftCommentBody.trim()}
+                    @click=${() => {
+                      void addWorkboardCardComment({
+                        host: props.host,
+                        client: props.client,
+                        requestUpdate: props.onRequestUpdate,
+                      });
+                    }}
+                  >
+                    ${icons.plus} ${t("common.create")}
+                  </button>
+                </div>
+              </section>
+            `
+          : nothing}
         <div class="workboard-modal__actions">
           <button class="btn primary" ?disabled=${state.loading || !state.draftTitle.trim()}>
             ${editing ? t("common.save") : t("common.create")}

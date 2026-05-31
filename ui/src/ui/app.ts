@@ -42,7 +42,14 @@ import {
 } from "./app-lifecycle.ts";
 import { initNativeBridge } from "./app-native-bridge.ts";
 import { createChatSession as createChatSessionInternal } from "./app-render.helpers.ts";
-import { renderApp } from "./app-render.ts";
+import {
+  loadSkillWorkshopQueueWidth,
+  loadSkillWorkshopMode,
+  loadSkillWorkshopReviewedKeys,
+  loadSkillWorkshopRevisionSessions,
+  loadSkillWorkshopUseCurrentChatForRevisions,
+  renderApp,
+} from "./app-render.ts";
 import {
   exportLogs as exportLogsInternal,
   handleActivityScroll as handleActivityScrollInternal,
@@ -70,6 +77,7 @@ import {
 } from "./app-tool-stream.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
+import { restoreChatComposerState } from "./chat/composer-persistence.ts";
 import { exportChatMarkdown } from "./chat/export.ts";
 import {
   createRealtimeTalkConversationState,
@@ -140,9 +148,10 @@ import type {
   ToolsCatalogResult,
   ToolsEffectiveResult,
 } from "./types.ts";
-import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./ui-types.ts";
+import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
+import type { SkillWorkshopProposal } from "./views/skill-workshop.ts";
 
 declare global {
   interface Window {
@@ -215,6 +224,7 @@ export class OpenClawApp extends LitElement {
   @state() hello: GatewayHelloOk | null = null;
   @state() lastError: string | null = null;
   @state() lastErrorCode: string | null = null;
+  @state() chatError: string | null = null;
   @state() eventLog: EventLogEntry[] = [];
   eventLogBuffer: EventLogEntry[] = [];
   toolStreamSyncTimer: number | null = null;
@@ -620,6 +630,42 @@ export class OpenClawApp extends LitElement {
   @state() skillCardLoadingKey: string | null = null;
   @state() skillCardErrors: Record<string, string> = {};
 
+  @state() skillWorkshopSelectedKey: string | null = null;
+  @state() skillWorkshopStatusFilter:
+    | "all"
+    | "pending"
+    | "applied"
+    | "rejected"
+    | "quarantined"
+    | "stale" = "all";
+  @state() skillWorkshopQuery = "";
+  @state() skillWorkshopFilePreviewKey: string | null = null;
+  @state() skillWorkshopFilePreviewQuery = "";
+  @state() skillWorkshopLoading = false;
+  @state() skillWorkshopLoaded = false;
+  @state() skillWorkshopError: string | null = null;
+  @state() skillWorkshopInspectingKey: string | null = null;
+  @state() skillWorkshopProposals: SkillWorkshopProposal[] = [];
+  @state() skillWorkshopReviewedKeys = loadSkillWorkshopReviewedKeys();
+  @state() skillWorkshopQueueWidth = loadSkillWorkshopQueueWidth();
+  @state() skillWorkshopMode: "board" | "today" = loadSkillWorkshopMode();
+  @state() skillWorkshopUseCurrentChatForRevisions = loadSkillWorkshopUseCurrentChatForRevisions();
+  @state() skillWorkshopRevisionSessions = loadSkillWorkshopRevisionSessions();
+  @state() skillWorkshopActionBusy: { key: string; action: "apply" | "revise" | "reject" } | null =
+    null;
+  @state() skillWorkshopActionNotice: { key: string; label: string; slug: string } | null = null;
+  @state() skillWorkshopRevisionKey: string | null = null;
+  @state() skillWorkshopRevisionDraft = "";
+  skillWorkshopActionNoticeTimer: ReturnType<typeof globalThis.setTimeout> | number | null = null;
+  @state() skillWorkshopChatHandoffActive = false;
+  skillWorkshopChatHandoffTimer: ReturnType<typeof globalThis.setTimeout> | number | null = null;
+  @state() skillWorkshopHandoff: {
+    key: string;
+    slug: string;
+    phase: "prepare" | "landing" | "error";
+  } | null = null;
+  skillWorkshopHandoffDismissTimer: ReturnType<typeof globalThis.setTimeout> | number | null = null;
+
   @state() healthLoading = false;
   @state() healthResult: HealthSummary | null = null;
   @state() healthError: string | null = null;
@@ -781,6 +827,18 @@ export class OpenClawApp extends LitElement {
     if (this.sessionSwitchFlashTimer !== null) {
       window.clearTimeout(this.sessionSwitchFlashTimer);
       this.sessionSwitchFlashTimer = null;
+    }
+    if (this.skillWorkshopActionNoticeTimer !== null) {
+      window.clearTimeout(this.skillWorkshopActionNoticeTimer);
+      this.skillWorkshopActionNoticeTimer = null;
+    }
+    if (this.skillWorkshopChatHandoffTimer !== null) {
+      window.clearTimeout(this.skillWorkshopChatHandoffTimer);
+      this.skillWorkshopChatHandoffTimer = null;
+    }
+    if (this.skillWorkshopHandoffDismissTimer !== null) {
+      window.clearTimeout(this.skillWorkshopHandoffDismissTimer);
+      this.skillWorkshopHandoffDismissTimer = null;
     }
     this.chatMobileControlsTrigger = null;
     handleDisconnected(this as unknown as Parameters<typeof handleDisconnected>[0]);
@@ -1158,6 +1216,7 @@ export class OpenClawApp extends LitElement {
     }
     if (!this.client || !this.connected) {
       this.lastError = "Gateway not connected";
+      this.chatError = this.lastError;
       return;
     }
     this.realtimeTalkActive = true;
@@ -1174,6 +1233,10 @@ export class OpenClawApp extends LitElement {
           this.realtimeTalkDetail = detail ?? null;
           if (status === "idle" || status === "error") {
             this.realtimeTalkActive = status !== "idle";
+          }
+          if (status === "error" && this.realtimeTalkDetail) {
+            this.lastError = this.realtimeTalkDetail;
+            this.chatError = this.realtimeTalkDetail;
           }
         },
         onTranscript: (entry) => {
@@ -1199,6 +1262,7 @@ export class OpenClawApp extends LitElement {
       this.realtimeTalkStatus = "error";
       this.realtimeTalkDetail = error instanceof Error ? error.message : String(error);
       this.lastError = this.realtimeTalkDetail;
+      this.chatError = this.realtimeTalkDetail;
     }
   }
 
@@ -1300,12 +1364,14 @@ export class OpenClawApp extends LitElement {
       gatewayUrl: nextGatewayUrl,
       token: nextToken,
     });
+    restoreChatComposerState(this, { preserveCurrent: true });
     this.connect();
   }
 
   handleGatewayUrlCancel() {
     this.pendingGatewayUrl = null;
     this.pendingGatewayToken = null;
+    restoreChatComposerState(this, { preserveCurrent: true });
   }
 
   private async maybeUpgradeSidebarToFullMessage(content: SidebarContent) {

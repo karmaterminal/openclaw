@@ -1546,7 +1546,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         "openclaw.model_call.response_bytes",
         {
           unit: "By",
-          description: "UTF-8 byte size of streamed model response events",
+          description:
+            "UTF-8 byte size of streamed model response events excluding accumulated partial snapshots",
         },
       );
       const modelCallTimeToFirstByteHistogram = meter.createHistogram(
@@ -3336,7 +3337,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               return;
             case "model.failover":
               recordModelFailover(evt, metadata);
-              return;
           }
         } catch (err) {
           ctx.logger.error(

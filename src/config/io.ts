@@ -19,6 +19,7 @@ import {
   shouldDeferShellEnvFallback,
   shouldEnableShellEnvFallback,
 } from "../infra/shell-env.js";
+import { createConfigValidationMetadataPluginIdScope } from "../plugins/channel-plugin-ids.js";
 import {
   loadInstalledPluginIndexInstallRecordsSync,
   resolveInstalledPluginIndexRecordsStorePath,
@@ -411,22 +412,22 @@ function resolveGatewayMode(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function collectEnvRefPaths(value: unknown, path: string, output: Map<string, string>): void {
+function collectEnvRefPaths(value: unknown, pathLocal: string, output: Map<string, string>): void {
   if (typeof value === "string") {
     if (containsEnvVarReference(value)) {
-      output.set(path, value);
+      output.set(pathLocal, value);
     }
     return;
   }
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
-      collectEnvRefPaths(item, `${path}[${index}]`, output);
+      collectEnvRefPaths(item, `${pathLocal}[${index}]`, output);
     });
     return;
   }
   if (isRecord(value)) {
     for (const [key, child] of Object.entries(value)) {
-      const childPath = path ? `${path}.${key}` : key;
+      const childPath = pathLocal ? `${pathLocal}.${key}` : key;
       collectEnvRefPaths(child, childPath, output);
     }
   }
@@ -1205,7 +1206,7 @@ function restoreAuthoredTildePathsForWrite(
 
   const out: Record<string, unknown> = { ...next };
   for (const [childKey, childValue] of Object.entries(out)) {
-    if (Object.prototype.hasOwnProperty.call(authored, childKey)) {
+    if (Object.hasOwn(authored, childKey)) {
       out[childKey] = restoreAuthoredTildePathsForWrite(
         childValue,
         authored[childKey],
@@ -1354,6 +1355,7 @@ export function createConfigIO(
   overrides: ConfigIoDeps & {
     pluginValidation?: "full" | "skip";
     preservedLegacyRootKeys?: readonly string[];
+    shellEnvFallback?: "load" | "defer";
   } = {},
 ) {
   const deps = normalizeDeps(overrides);
@@ -1376,7 +1378,11 @@ export function createConfigIO(
     applyConfigEnvVars(cfg, deps.env);
 
     const enabled = shouldEnableShellEnvFallback(deps.env) || cfg.env?.shellEnv?.enabled === true;
-    if (enabled && !shouldDeferShellEnvFallback(deps.env)) {
+    if (
+      enabled &&
+      overrides.shellEnvFallback !== "defer" &&
+      !shouldDeferShellEnvFallback(deps.env)
+    ) {
       loadShellEnvFallback({
         enabled: true,
         env: deps.env,
@@ -1644,11 +1650,15 @@ export function createConfigIO(
     return true;
   }
 
-  function loadConfig(): OpenClawConfig {
+  function loadConfigLocal(): OpenClawConfig {
     try {
       maybeLoadDotEnvForConfig(deps.env);
       if (!deps.fs.existsSync(configPath)) {
-        if (shouldEnableShellEnvFallback(deps.env) && !shouldDeferShellEnvFallback(deps.env)) {
+        if (
+          overrides.shellEnvFallback !== "defer" &&
+          shouldEnableShellEnvFallback(deps.env) &&
+          !shouldDeferShellEnvFallback(deps.env)
+        ) {
           loadShellEnvFallback({
             enabled: true,
             env: deps.env,
@@ -1724,6 +1734,10 @@ export function createConfigIO(
           workspaceDir: resolveAgentWorkspaceDir(metadataConfig, defaultAgentId),
           env: deps.env,
           allowWorkspaceScopedCurrent: true,
+          pluginIdScope: createConfigValidationMetadataPluginIdScope({
+            config: metadataConfig,
+            env: deps.env,
+          }),
         });
         return pluginMetadataSnapshot;
       };
@@ -1944,6 +1958,10 @@ export function createConfigIO(
           workspaceDir: resolveAgentWorkspaceDir(metadataConfig, defaultAgentId),
           env: deps.env,
           allowWorkspaceScopedCurrent: true,
+          pluginIdScope: createConfigValidationMetadataPluginIdScope({
+            config: metadataConfig,
+            env: deps.env,
+          }),
         });
         return pluginMetadataSnapshot;
       };
@@ -2047,12 +2065,12 @@ export function createConfigIO(
     }
   }
 
-  async function readConfigFileSnapshot(): Promise<ConfigFileSnapshot> {
+  async function readConfigFileSnapshotLocal(): Promise<ConfigFileSnapshot> {
     const result = await readConfigFileSnapshotInternal();
     return result.snapshot;
   }
 
-  async function readConfigFileSnapshotWithPluginMetadata(): Promise<ReadConfigFileSnapshotWithPluginMetadataResult> {
+  async function readConfigFileSnapshotWithPluginMetadataLocal(): Promise<ReadConfigFileSnapshotWithPluginMetadataResult> {
     const result = await readConfigFileSnapshotInternal();
     return {
       snapshot: result.snapshot,
@@ -2062,7 +2080,7 @@ export function createConfigIO(
     };
   }
 
-  async function promoteConfigSnapshotToLastKnownGood(
+  async function promoteConfigSnapshotToLastKnownGoodLocal(
     snapshot: ConfigFileSnapshot,
   ): Promise<boolean> {
     return await promoteConfigSnapshotToLastKnownGoodWithDeps({
@@ -2072,7 +2090,7 @@ export function createConfigIO(
     });
   }
 
-  async function recoverConfigFromLastKnownGood(params: {
+  async function recoverConfigFromLastKnownGoodLocal(params: {
     snapshot: ConfigFileSnapshot;
     reason: string;
   }): Promise<boolean> {
@@ -2083,7 +2101,9 @@ export function createConfigIO(
     });
   }
 
-  async function recoverConfigFromJsonRootSuffix(snapshot: ConfigFileSnapshot): Promise<boolean> {
+  async function recoverConfigFromJsonRootSuffixLocal(
+    snapshot: ConfigFileSnapshot,
+  ): Promise<boolean> {
     return await recoverConfigFromJsonRootSuffixWithDeps({
       deps,
       configPath,
@@ -2091,7 +2111,7 @@ export function createConfigIO(
     });
   }
 
-  async function readConfigFileSnapshotForWrite(): Promise<ReadConfigFileSnapshotForWriteResult> {
+  async function readConfigFileSnapshotForWriteLocal(): Promise<ReadConfigFileSnapshotForWriteResult> {
     const result = await readConfigFileSnapshotInternal();
     return {
       snapshot: result.snapshot,
@@ -2104,7 +2124,7 @@ export function createConfigIO(
     };
   }
 
-  async function readBestEffortConfig(): Promise<OpenClawConfig> {
+  async function readBestEffortConfigLocal(): Promise<OpenClawConfig> {
     const result = await readConfigFileSnapshotInternal();
     if (!result.snapshot.valid) {
       return result.snapshot.config;
@@ -2116,7 +2136,7 @@ export function createConfigIO(
     );
   }
 
-  async function readSourceConfigBestEffort(): Promise<OpenClawConfig> {
+  async function readSourceConfigBestEffortLocal(): Promise<OpenClawConfig> {
     maybeLoadDotEnvForConfig(deps.env);
     const exists = deps.fs.existsSync(configPath);
     if (!exists) {
@@ -2144,7 +2164,7 @@ export function createConfigIO(
     }
   }
 
-  async function writeConfigFile(
+  async function writeConfigFileLocal(
     cfg: OpenClawConfig,
     options: ConfigWriteOptions = {},
   ): Promise<InternalConfigWriteResult> {
@@ -2471,16 +2491,16 @@ export function createConfigIO(
   return {
     configPath,
     env: deps.env,
-    loadConfig,
-    readBestEffortConfig,
-    readSourceConfigBestEffort,
-    readConfigFileSnapshot,
-    readConfigFileSnapshotWithPluginMetadata,
-    readConfigFileSnapshotForWrite,
-    promoteConfigSnapshotToLastKnownGood,
-    recoverConfigFromLastKnownGood,
-    recoverConfigFromJsonRootSuffix,
-    writeConfigFile,
+    loadConfig: loadConfigLocal,
+    readBestEffortConfig: readBestEffortConfigLocal,
+    readSourceConfigBestEffort: readSourceConfigBestEffortLocal,
+    readConfigFileSnapshot: readConfigFileSnapshotLocal,
+    readConfigFileSnapshotWithPluginMetadata: readConfigFileSnapshotWithPluginMetadataLocal,
+    readConfigFileSnapshotForWrite: readConfigFileSnapshotForWriteLocal,
+    promoteConfigSnapshotToLastKnownGood: promoteConfigSnapshotToLastKnownGoodLocal,
+    recoverConfigFromLastKnownGood: recoverConfigFromLastKnownGoodLocal,
+    recoverConfigFromJsonRootSuffix: recoverConfigFromJsonRootSuffixLocal,
+    writeConfigFile: writeConfigFileLocal,
   };
 }
 
@@ -2558,9 +2578,13 @@ export function projectConfigOntoRuntimeSourceSnapshot(config: OpenClawConfig): 
 export function loadConfig(options?: {
   skipPluginValidation?: boolean;
   pin?: boolean;
+  skipShellEnvFallback?: boolean;
 }): OpenClawConfig {
   const loadFresh = () =>
-    createConfigIO(options?.skipPluginValidation ? { pluginValidation: "skip" } : {}).loadConfig();
+    createConfigIO({
+      ...(options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {}),
+      ...(options?.skipShellEnvFallback ? { shellEnvFallback: "defer" as const } : {}),
+    }).loadConfig();
   if (options?.pin === false) {
     return loadFresh();
   }
@@ -2573,6 +2597,7 @@ export function loadConfig(options?: {
 export function getRuntimeConfig(options?: {
   skipPluginValidation?: boolean;
   pin?: boolean;
+  skipShellEnvFallback?: boolean;
 }): OpenClawConfig {
   return loadConfig(options);
 }
@@ -2729,7 +2754,7 @@ export async function writeConfigFile(
   // never touched any plugin entry.
   let canonicalSourceConfig: OpenClawConfig = nextCfg;
   const envBeforeCanonicalRead = snapshotEnv(process.env);
-  let envAfterCanonicalRead = envBeforeCanonicalRead;
+  let envAfterCanonicalRead;
   try {
     const freshSnapshot = await io.readConfigFileSnapshot();
     if (freshSnapshot.exists && freshSnapshot.valid) {

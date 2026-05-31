@@ -1,43 +1,69 @@
 import { createHash } from "node:crypto";
-import * as fs from "node:fs";
-import path from "node:path";
-import {
-  ackJsonDurableQueueEntry,
-  ensureJsonDurableQueueDirs,
-  jsonDurableQueueEntryExists,
-  loadJsonDurableQueueEntry,
-  loadPendingJsonDurableQueueEntries,
-  moveJsonDurableQueueEntryToFailed,
-  readJsonDurableQueueEntry,
-  resolveJsonDurableQueueEntryPaths,
-  writeJsonDurableQueueEntry,
-} from "@openclaw/fs-safe/store";
 import type { ChatType } from "../channels/chat-type.js";
-import { resolveStateDir } from "../config/paths.js";
 import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
+import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
+import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
+import {
+  deleteDeliveryQueueEntry,
+  loadDeliveryQueueEntries,
+  loadDeliveryQueueEntry,
+  moveDeliveryQueueEntryToFailed,
+  updateDeliveryQueueEntry,
+  upsertDeliveryQueueEntry,
+  type DeliveryQueueRowMetadata,
+} from "./delivery-queue-sqlite.js";
 import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
+import {
+  executeSqliteQuerySync,
+  executeSqliteQueryTakeFirstSync,
+  getNodeSqliteKysely,
+} from "./kysely-sync.js";
 import { generateSecureUuid } from "./secure-random.js";
 
-const QUEUE_DIRNAME = "session-delivery-queue";
-const FAILED_DIRNAME = "failed";
-const TMP_SWEEP_MAX_AGE_MS = 5_000;
-const QUEUE_TEMP_PREFIX = ".session-delivery-queue";
+const QUEUE_NAME = "session";
 
+/** Default age threshold for purging failed entries (14 days). */
 export const DEFAULT_FAILED_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
-export const DEFAULT_QUEUE_DIR_MAX_FILES = 10_000;
 
-export class SessionDeliveryQueueOverflowError extends Error {
-  readonly kind = "session-delivery-queue-overflow" as const;
-  readonly count: number;
-  readonly maxFiles: number;
-  constructor(count: number, maxFiles: number) {
-    super(
-      `session-delivery-queue overflow: ${count} queued files at top level, soft-cap is ${maxFiles}`,
-    );
-    this.name = "SessionDeliveryQueueOverflowError";
-    this.count = count;
-    this.maxFiles = maxFiles;
-  }
+type DeliveryQueueDatabase = Pick<OpenClawStateKyselyDatabase, "delivery_queue_entries">;
+
+function openStateDatabaseForSession(stateDir?: string) {
+  return openOpenClawStateDatabase({
+    env: stateDir ? { ...process.env, OPENCLAW_STATE_DIR: stateDir } : process.env,
+  });
+}
+
+/**
+ * Prune failed session-delivery entries older than maxAgeMs.
+ * Returns scanned + removed counts for caller logging.
+ */
+export async function pruneFailedOlderThan(
+  maxAgeMs: number,
+  now: number = Date.now(),
+  stateDir?: string,
+): Promise<{ scanned: number; removed: number }> {
+  const cutoff = now - maxAgeMs;
+  const database = openStateDatabaseForSession(stateDir);
+  const queueDb = getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
+  const scannedRow = executeSqliteQueryTakeFirstSync(
+    database.db,
+    queueDb
+      .selectFrom("delivery_queue_entries")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("queue_name", "=", QUEUE_NAME)
+      .where("status", "=", "failed"),
+  ) as { count: number | bigint } | undefined;
+  const scanned = scannedRow ? Number(scannedRow.count) : 0;
+  const deleteResult = executeSqliteQuerySync(
+    database.db,
+    queueDb
+      .deleteFrom("delivery_queue_entries")
+      .where("queue_name", "=", QUEUE_NAME)
+      .where("status", "=", "failed")
+      .where("failed_at", "<", cutoff),
+  );
+  const removed = Number(deleteResult.numAffectedRows ?? 0n);
+  return { scanned, removed };
 }
 
 export type SessionDeliveryContext = {
@@ -125,12 +151,6 @@ export type QueuedSessionDelivery = QueuedSessionDeliveryPayload & {
   lastError?: string;
 };
 
-function getErrnoCode(err: unknown): string | null {
-  return err && typeof err === "object" && "code" in err
-    ? String((err as { code?: unknown }).code)
-    : null;
-}
-
 // Strip trailing whitespace per line and at end-of-string before hashing the
 // idempotency key, so same-intent keys that differ only by trailing whitespace
 // produce the same sha256 taskHash and the replay-dedupe path stays robust.
@@ -211,97 +231,39 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
   };
 }
 
-async function writeQueueEntry(filePath: string, entry: QueuedSessionDelivery): Promise<void> {
-  await writeJsonDurableQueueEntry({
-    filePath,
-    entry,
-    tempPrefix: QUEUE_TEMP_PREFIX,
-  });
-}
-
-async function readQueueEntry(filePath: string): Promise<QueuedSessionDelivery> {
-  return await readJsonDurableQueueEntry<QueuedSessionDelivery>(filePath);
-}
-
-export function resolveSessionDeliveryQueueDir(stateDir?: string): string {
-  const base = stateDir ?? resolveStateDir();
-  return path.join(base, QUEUE_DIRNAME);
-}
-
-function resolveFailedDir(stateDir?: string): string {
-  return path.join(resolveSessionDeliveryQueueDir(stateDir), FAILED_DIRNAME);
-}
-
-function resolveQueueEntryPaths(
-  id: string,
-  stateDir?: string,
-): {
-  jsonPath: string;
-  deliveredPath: string;
-} {
-  return resolveJsonDurableQueueEntryPaths(resolveSessionDeliveryQueueDir(stateDir), id);
-}
-
-export async function ensureSessionDeliveryQueueDir(stateDir?: string): Promise<string> {
-  const queueDir = resolveSessionDeliveryQueueDir(stateDir);
-  await ensureJsonDurableQueueDirs({
-    queueDir,
-    failedDir: resolveFailedDir(stateDir),
-  });
-  return queueDir;
-}
-
-export async function countQueuedFiles(queueDir: string): Promise<number> {
-  let entries: string[];
-  try {
-    entries = await fs.promises.readdir(queueDir);
-  } catch (err) {
-    if (getErrnoCode(err) === "ENOENT") {
-      return 0;
-    }
-    throw err;
-  }
-  let count = 0;
-  for (const entry of entries) {
-    if (entry.endsWith(".json") || entry.endsWith(".tmp") || entry.endsWith(".delivered")) {
-      count += 1;
-    }
-  }
-  return count;
+function queuedSessionDeliveryMetadata(entry: QueuedSessionDelivery): DeliveryQueueRowMetadata {
+  const route = entry.kind === "agentTurn" ? entry.route : undefined;
+  return {
+    entryKind: entry.kind,
+    sessionKey: entry.sessionKey,
+    channel: route?.channel ?? entry.deliveryContext?.channel,
+    target: route?.to ?? entry.deliveryContext?.to,
+    accountId: route?.accountId ?? entry.deliveryContext?.accountId,
+  };
 }
 
 export async function enqueueSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   stateDir?: string,
-  opts?: { maxQueuedFiles?: number },
 ): Promise<string> {
   const payload = normalizeQueuedTraceparent(params);
-  const queueDir = await ensureSessionDeliveryQueueDir(stateDir);
   const id = buildEntryId(payload.idempotencyKey);
-  const filePath = path.join(queueDir, `${id}.json`);
 
-  if (payload.idempotencyKey) {
-    if (await jsonDurableQueueEntryExists(filePath)) {
-      return id;
-    }
+  if (payload.idempotencyKey && loadDeliveryQueueEntry(QUEUE_NAME, id, stateDir)) {
+    return id;
   }
 
-  const maxQueuedFiles = opts?.maxQueuedFiles ?? DEFAULT_QUEUE_DIR_MAX_FILES;
-  if (Number.isFinite(maxQueuedFiles) && maxQueuedFiles > 0) {
-    const count = await countQueuedFiles(queueDir);
-    if (count >= maxQueuedFiles) {
-      console.warn(
-        `[session-delivery-queue] enqueue rejected: ${count} queued files at top level, soft-cap is ${maxQueuedFiles}`,
-      );
-      throw new SessionDeliveryQueueOverflowError(count, maxQueuedFiles);
-    }
-  }
-
-  await writeQueueEntry(filePath, {
+  const entry: QueuedSessionDelivery = {
     ...payload,
     id,
     enqueuedAt: Date.now(),
     retryCount: 0,
+  };
+  upsertDeliveryQueueEntry({
+    queueName: QUEUE_NAME,
+    entry,
+    metadata: queuedSessionDeliveryMetadata(entry),
+    stateDir,
   });
   return id;
 }
@@ -316,17 +278,12 @@ export async function enqueuePostCompactionDelegateDelivery(
     idempotencyKey?: string;
   },
   stateDir?: string,
-  opts?: { maxQueuedFiles?: number },
 ): Promise<string> {
-  return await enqueueSessionDelivery(
-    buildPostCompactionDelegateDeliveryPayload(params),
-    stateDir,
-    opts,
-  );
+  return await enqueueSessionDelivery(buildPostCompactionDelegateDeliveryPayload(params), stateDir);
 }
 
 export async function ackSessionDelivery(id: string, stateDir?: string): Promise<void> {
-  await ackJsonDurableQueueEntry(resolveQueueEntryPaths(id, stateDir));
+  deleteDeliveryQueueEntry(QUEUE_NAME, id, stateDir);
 }
 
 export async function failSessionDelivery(
@@ -334,84 +291,30 @@ export async function failSessionDelivery(
   error: string,
   stateDir?: string,
 ): Promise<void> {
-  const filePath = path.join(resolveSessionDeliveryQueueDir(stateDir), `${id}.json`);
-  const entry = await readQueueEntry(filePath);
-  entry.retryCount += 1;
-  entry.lastAttemptAt = Date.now();
-  entry.lastError = error;
-  await writeQueueEntry(filePath, entry);
+  updateDeliveryQueueEntry(QUEUE_NAME, id, stateDir, (entry) => {
+    const queued = entry as QueuedSessionDelivery;
+    return {
+      ...queued,
+      retryCount: queued.retryCount + 1,
+      lastAttemptAt: Date.now(),
+      lastError: error,
+    };
+  });
 }
 
 export async function loadPendingSessionDelivery(
   id: string,
   stateDir?: string,
 ): Promise<QueuedSessionDelivery | null> {
-  return await loadJsonDurableQueueEntry({
-    paths: resolveQueueEntryPaths(id, stateDir),
-    tempPrefix: QUEUE_TEMP_PREFIX,
-  });
+  return loadDeliveryQueueEntry(QUEUE_NAME, id, stateDir) as QueuedSessionDelivery | null;
 }
 
 export async function loadPendingSessionDeliveries(
   stateDir?: string,
 ): Promise<QueuedSessionDelivery[]> {
-  return await loadPendingJsonDurableQueueEntries({
-    queueDir: resolveSessionDeliveryQueueDir(stateDir),
-    tempPrefix: QUEUE_TEMP_PREFIX,
-    cleanupTmpMaxAgeMs: TMP_SWEEP_MAX_AGE_MS,
-  });
+  return loadDeliveryQueueEntries(QUEUE_NAME, stateDir) as QueuedSessionDelivery[];
 }
 
 export async function moveSessionDeliveryToFailed(id: string, stateDir?: string): Promise<void> {
-  await moveJsonDurableQueueEntryToFailed({
-    queueDir: resolveSessionDeliveryQueueDir(stateDir),
-    failedDir: resolveFailedDir(stateDir),
-    id,
-  });
-}
-
-export async function pruneFailedOlderThan(
-  maxAgeMs: number,
-  now: number,
-  stateDir?: string,
-): Promise<{ scanned: number; removed: number }> {
-  const failedDir = resolveFailedDir(stateDir);
-  let entries: string[];
-  try {
-    entries = await fs.promises.readdir(failedDir);
-  } catch (err) {
-    if (getErrnoCode(err) === "ENOENT") {
-      return { scanned: 0, removed: 0 };
-    }
-    throw err;
-  }
-
-  let scanned = 0;
-  let removed = 0;
-  for (const entry of entries) {
-    const filePath = path.join(failedDir, entry);
-    try {
-      const stat = await fs.promises.stat(filePath);
-      if (!stat.isFile()) {
-        continue;
-      }
-      scanned += 1;
-      if (now - stat.mtimeMs > maxAgeMs) {
-        try {
-          await fs.promises.unlink(filePath);
-          removed += 1;
-        } catch (unlinkErr) {
-          if (getErrnoCode(unlinkErr) !== "ENOENT") {
-            throw unlinkErr;
-          }
-        }
-      }
-    } catch (err) {
-      if (getErrnoCode(err) === "ENOENT") {
-        continue;
-      }
-      throw err;
-    }
-  }
-  return { scanned, removed };
+  moveDeliveryQueueEntryToFailed(QUEUE_NAME, id, stateDir);
 }

@@ -30,7 +30,7 @@ async function stopGatewayIfRunning(runtime: RuntimeEnv) {
     return;
   }
   const service = resolveGatewayService();
-  let loaded = false;
+  let loaded;
   try {
     loaded = await service.isLoaded({ env: process.env });
   } catch (err) {
@@ -149,6 +149,5 @@ export async function resetCommand(runtime: RuntimeEnv, opts: ResetOptions) {
     );
     await removeWorkspaceDirs(workspaceDirs, runtime, { dryRun });
     runtime.log(`Next: ${formatCliCommand("openclaw onboard --install-daemon")}`);
-    return;
   }
 }

@@ -133,6 +133,10 @@ import {
   dispatchPostCompactionDelegates,
   persistPendingPostCompactionDelegates,
 } from "./post-compaction-delegate-dispatch.js";
+import {
+  shouldWarnAboutPrivateMessageToolFinal,
+  warnPrivateMessageToolFinal,
+} from "./private-message-tool-final.js";
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import {
   enqueueFollowupRun,
@@ -145,6 +149,7 @@ import { createReplyMediaContext } from "./reply-media-paths.js";
 import { replyRunRegistry, type ReplyOperation } from "./reply-run-registry.js";
 import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-threading.js";
 import { admitReplyTurn, resolveReplyTurnKind } from "./reply-turn-admission.js";
+import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
 import { resolveSourceReplyVisibilityPolicy } from "./source-reply-delivery-mode.js";
 import { createTypingSignaler } from "./typing-mode.js";
@@ -270,13 +275,25 @@ function hasSuccessfulSideEffectDelivery(params: {
   didSendDeterministicApprovalPrompt?: boolean;
 }): boolean {
   return (
+    hasSuccessfulSourceReplyDelivery(params) ||
+    (params.successfulCronAdds ?? 0) > 0 ||
+    params.didSendDeterministicApprovalPrompt === true
+  );
+}
+
+function hasSuccessfulSourceReplyDelivery(params: {
+  blockReplyPipeline: { didStream: () => boolean; isAborted: () => boolean } | null;
+  directlySentBlockKeys?: Set<string>;
+  messagingToolSentTexts?: string[];
+  messagingToolSentMediaUrls?: string[];
+  messagingToolSentTargets?: unknown[];
+}): boolean {
+  return (
     (params.blockReplyPipeline?.didStream() && !params.blockReplyPipeline.isAborted()) ||
     (params.directlySentBlockKeys?.size ?? 0) > 0 ||
     hasNonEmptyStringArray(params.messagingToolSentTexts) ||
     hasNonEmptyStringArray(params.messagingToolSentMediaUrls) ||
-    hasCommittedMessagingTargetDeliveryEvidence(params.messagingToolSentTargets) ||
-    (params.successfulCronAdds ?? 0) > 0 ||
-    params.didSendDeterministicApprovalPrompt === true
+    hasCommittedMessagingTargetDeliveryEvidence(params.messagingToolSentTargets)
   );
 }
 
@@ -1032,7 +1049,7 @@ function buildPendingFinalDeliveryText(payloads: ReplyPayload[]): string {
   const text = payloads
     .filter((payload) => payload.isReasoning !== true)
     .map((payload) => payload.text)
-    .filter((text): text is string => Boolean(text))
+    .filter((textLocal): textLocal is string => Boolean(textLocal))
     .join("\n\n");
   return sanitizePendingFinalDeliveryText(text);
 }
@@ -1118,7 +1135,7 @@ function refreshSessionEntryFromStore(params: {
   }
 }
 
-export async function runReplyAgent(params: {
+export async function runReplyAgent(replyParams: {
   commandBody: string;
   transcriptCommandBody?: string;
   followupRun: FollowupRun;
@@ -1189,7 +1206,7 @@ export async function runReplyAgent(params: {
     resetTriggered,
     replyThreadingOverride,
     replyOperation: providedReplyOperation,
-  } = params;
+  } = replyParams;
 
   let activeSessionEntry = sessionEntry;
   const activeSessionStore = sessionStore;
@@ -1375,6 +1392,10 @@ export async function runReplyAgent(params: {
       : null;
 
   const replySessionKey = sessionKey ?? followupRun.run.sessionKey;
+  const replyRouteThreadId = resolveRoutedDeliveryThreadId({
+    ctx: sessionCtx,
+    sessionKey: replySessionKey,
+  });
   let replyOperation: ReplyOperation;
   if (providedReplyOperation) {
     replyOperation = providedReplyOperation;
@@ -1385,6 +1406,7 @@ export async function runReplyAgent(params: {
       sessionKey: replySessionKey ?? "",
       kind: replyTurnKind,
       resetTriggered: effectiveResetTriggered,
+      routeThreadId: replyRouteThreadId,
       upstreamAbortSignal: opts?.abortSignal,
     });
     if (admission.status === "skipped") {
@@ -1796,7 +1818,8 @@ export async function runReplyAgent(params: {
       fallbackAttempts,
       directlySentBlockKeys,
     } = runOutcome;
-    let { didLogHeartbeatStrip, autoCompactionCount } = runOutcome;
+    const { autoCompactionCount } = runOutcome;
+    let { didLogHeartbeatStrip } = runOutcome;
 
     if (
       shouldInjectGroupIntro &&
@@ -1967,6 +1990,13 @@ export async function runReplyAgent(params: {
       successfulCronAdds: runResult.successfulCronAdds,
       didSendDeterministicApprovalPrompt: runResult.didSendDeterministicApprovalPrompt,
     });
+    const successfulSourceReplyDelivery = hasSuccessfulSourceReplyDelivery({
+      blockReplyPipeline,
+      directlySentBlockKeys,
+      messagingToolSentTexts: runResult.messagingToolSentTexts,
+      messagingToolSentMediaUrls: runResult.messagingToolSentMediaUrls,
+      messagingToolSentTargets: runResult.messagingToolSentTargets,
+    });
     const returnSilentFallbackFailureIfNeeded = async (): Promise<ReplyPayload | undefined> => {
       const silentFallbackFailurePayload = buildSilentFallbackFailurePayload({
         fallbackTransition,
@@ -2052,7 +2082,7 @@ export async function runReplyAgent(params: {
 
     const hasQueuedDelegateWork =
       continuationFeatureEnabled &&
-      !!sessionKey &&
+      sessionKey &&
       (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
 
     // Drain any late tool/block deliveries before deciding there's "nothing to send".
@@ -2113,7 +2143,8 @@ export async function runReplyAgent(params: {
       hasDeliveredBlockStream || successfulSideEffectDelivery;
     // Track whether the agent reply was purely a continuation signal (stripped to empty).
     // Used later to suppress verbose/usage augmentation that would break silent continuation.
-    const wasSilentContinuation = replyPayloads.length === 0 && !!effectiveContinuationSignal;
+    const wasSilentContinuation =
+      replyPayloads.length === 0 && Boolean(effectiveContinuationSignal);
 
     if (
       replyPayloads.length === 0 ||
@@ -2320,9 +2351,12 @@ export async function runReplyAgent(params: {
     }
     // Skip verbose/usage augmentation for silent continuations — a bare
     // CONTINUE_WORK should produce no user-visible output.
+    const isHookBlockedRun = runResult.meta?.error?.kind === "hook_block";
+    const rawAssistantText = isHookBlockedRun
+      ? undefined
+      : (runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText);
     if (!wasSilentContinuation) {
       const prefixPayloads = [...prefixNotices];
-      const isHookBlockedRun = runResult.meta?.error?.kind === "hook_block";
       const rawUserText = isHookBlockedRun
         ? runResult.meta?.finalPromptText
         : (runResult.meta?.finalPromptText ??
@@ -2330,9 +2364,6 @@ export async function runReplyAgent(params: {
           sessionCtx.RawBody ??
           sessionCtx.BodyForAgent ??
           sessionCtx.Body);
-      const rawAssistantText = isHookBlockedRun
-        ? undefined
-        : (runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText);
       const traceAuthorized = followupRun.run.traceAuthorized === true;
       const executionTrace = mergeExecutionTrace({
         fallbackAttempts,
@@ -3020,7 +3051,7 @@ export async function runReplyAgent(params: {
     // unchanged pre-dispatch state. Without this the counter never advances
     // across hops and `maxChainLength` enforcement breaks.
     const toolDelegateChainStateChanged =
-      !!toolDelegateDispatchResult &&
+      toolDelegateDispatchResult &&
       (toolDelegateDispatchResult.dispatched > 0 || toolDelegateDispatchResult.rejected > 0);
     if (toolDelegateChainStateChanged && sessionKey && activeSessionEntry) {
       const { loadContinuationChainState } = await import("../continuation/lazy.runtime.js");
@@ -3052,9 +3083,30 @@ export async function runReplyAgent(params: {
         runtimePolicySessionKey,
         opts,
       });
-      const pendingText = sourceReplyPolicy.suppressDelivery
-        ? ""
-        : buildPendingFinalDeliveryText(finalPayloads);
+      const finalDeliveryText = buildPendingFinalDeliveryText(finalPayloads);
+      // #85714: warn only for unusually substantive private final text. In
+      // message_tool_only, no tool call can be intentional silence, and
+      // finalDeliveryText also includes verbose/status/usage metadata.
+      const assistantFinalText = rawAssistantText ?? "";
+      if (
+        shouldWarnAboutPrivateMessageToolFinal({
+          sourceReplyDeliveryMode: sourceReplyPolicy.sourceReplyDeliveryMode,
+          sendPolicyDenied: sourceReplyPolicy.sendPolicyDenied,
+          successfulSourceReplyDelivery,
+          finalText: assistantFinalText,
+        })
+      ) {
+        warnPrivateMessageToolFinal({
+          sessionKey,
+          channel:
+            sessionCtx.OriginatingChannel ??
+            sessionCtx.Surface ??
+            sessionCtx.Provider ??
+            activeSessionEntry?.channel,
+          finalTextLength: assistantFinalText.trim().length,
+        });
+      }
+      const pendingText = sourceReplyPolicy.suppressDelivery ? "" : finalDeliveryText;
       const agentId = followupRun.run.agentId;
       const heartbeatAgentCfg = agentId ? resolveAgentConfig(cfg, agentId)?.heartbeat : undefined;
       const heartbeatAckMaxChars = Math.max(

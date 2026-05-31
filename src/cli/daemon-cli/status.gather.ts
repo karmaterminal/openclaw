@@ -154,10 +154,7 @@ function coerceStatusConfig(value: unknown): OpenClawConfig {
 
 function hasOwnKey(value: unknown, key: string): boolean {
   return Boolean(
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.prototype.hasOwnProperty.call(value, key),
+    value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, key),
   );
 }
 
@@ -556,7 +553,9 @@ export async function gatherDaemonStatus(
   const staleUpdateLaunchdJobs =
     opts.deep && process.platform === "darwin"
       ? await loadLaunchdModule()
-          .then(({ findStaleOpenClawUpdateLaunchdJobs }) => findStaleOpenClawUpdateLaunchdJobs())
+          .then(({ findStaleOpenClawUpdateLaunchdJobs }) =>
+            findStaleOpenClawUpdateLaunchdJobs(serviceEnv),
+          )
           .catch(() => [])
       : [];
 

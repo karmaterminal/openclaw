@@ -21,6 +21,7 @@ import {
 import {
   getInstalledPluginRecord,
   extractPluginInstallRecordsFromInstalledPluginIndex,
+  hasMissingConfigPathActivationMetadata,
   isInstalledPluginEnabled,
   listInstalledPluginRecords,
   loadInstalledPluginIndexWithDiscovery,
@@ -441,7 +442,7 @@ export function loadPluginRegistrySnapshotWithMetadata(
   const disabledByEnv = hasEnvFlag(env, DISABLE_PERSISTED_PLUGIN_REGISTRY_ENV);
   const persistedReadsEnabled = !disabledByCaller && !disabledByEnv;
   const persistedInstallRecordReadsEnabled = !disabledByEnv;
-  let persistedIndex: InstalledPluginIndex | null = null;
+  let persistedIndex: InstalledPluginIndex | null;
   if (persistedInstallRecordReadsEnabled) {
     persistedIndex = readPersistedInstalledPluginIndexSync(params);
     if (persistedReadsEnabled && persistedIndex) {
@@ -475,6 +476,13 @@ export function loadPluginRegistrySnapshotWithMetadata(
           code: "persisted-registry-stale-source",
           message:
             "Persisted plugin registry contains diagnostics referencing missing paths; using derived plugin index. Run `openclaw plugins registry --refresh` to update the persisted registry.",
+        });
+      } else if (hasMissingConfigPathActivationMetadata(persistedIndex)) {
+        diagnostics.push({
+          level: "warn",
+          code: "persisted-registry-stale-source",
+          message:
+            "Persisted plugin registry is missing config-path startup metadata; using derived plugin index. Run `openclaw plugins registry --refresh` to update the persisted registry.",
         });
       } else if (hasStalePersistedPluginMetadata(persistedIndex)) {
         diagnostics.push({

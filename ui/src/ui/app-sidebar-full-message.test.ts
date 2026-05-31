@@ -5,9 +5,13 @@ import { useHermeticOpenclawEnv } from "../../../test/vitest/hermetic-openclaw-e
 import type { SidebarContent } from "./sidebar-content.ts";
 
 describe("OpenClawApp full-message sidebar upgrade", () => {
+  async function createApp() {
+    await import("./app.ts");
+    return document.createElement("openclaw-app") as import("./app.ts").OpenClawApp;
+  }
+
   useHermeticOpenclawEnv();
   it("uses string content returned by chat.message.get", async () => {
-    const { OpenClawApp } = await import("./app.ts");
     const content: SidebarContent = {
       kind: "markdown",
       content: "short\n...(truncated)...",
@@ -21,7 +25,7 @@ describe("OpenClawApp full-message sidebar upgrade", () => {
       ok: true,
       message: { role: "assistant", content: "full assistant text" },
     }));
-    const app = new OpenClawApp();
+    const app = await createApp();
     app.client = { request } as never;
 
     app.handleOpenSidebar(content);
@@ -42,7 +46,6 @@ describe("OpenClawApp full-message sidebar upgrade", () => {
   });
 
   it("updates canvas raw text from chat.message.get", async () => {
-    const { OpenClawApp } = await import("./app.ts");
     const content: SidebarContent = {
       kind: "canvas",
       docId: "preview-1",
@@ -59,7 +62,7 @@ describe("OpenClawApp full-message sidebar upgrade", () => {
       ok: true,
       message: { role: "assistant", text: "full canvas raw text" },
     }));
-    const app = new OpenClawApp();
+    const app = await createApp();
     app.client = { request } as never;
 
     app.handleOpenSidebar(content);

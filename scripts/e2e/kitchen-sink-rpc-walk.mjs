@@ -713,7 +713,9 @@ export async function stopGateway(child, options = {}) {
   }
   const teardownGraceMs = Math.max(0, options.teardownGraceMs ?? GATEWAY_TEARDOWN_GRACE_MS);
   const killGraceMs = Math.max(0, options.killGraceMs ?? GATEWAY_TEARDOWN_KILL_GRACE_MS);
-  const exited = new Promise((resolve) => child.once("exit", resolve));
+  const exited = new Promise((resolve) => {
+    child.once("exit", resolve);
+  });
   const waitForExit = async (ms) =>
     hasChildExited(child)
       ? true
@@ -1182,7 +1184,9 @@ async function sampleWindowsPidWithTasklist(pid, run) {
     if (!line) {
       return null;
     }
-    const [, processIdRaw, , , memoryRaw] = parseTasklistCsvLine(line);
+    const tasklistFields = parseTasklistCsvLine(line);
+    const processIdRaw = tasklistFields[1];
+    const memoryRaw = tasklistFields[4];
     const processId = Number.parseInt(processIdRaw ?? "", 10);
     const memoryKiB = Number.parseInt((memoryRaw ?? "").replace(/[^\d]/gu, ""), 10);
     if (!Number.isFinite(memoryKiB)) {

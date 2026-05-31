@@ -728,16 +728,7 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
           deviceRaw,
         });
         const device = controlUiAuthPolicy.device;
-
-        let {
-          authResult,
-          authOk,
-          authMethod,
-          sharedAuthOk,
-          bootstrapTokenCandidate,
-          deviceTokenCandidate,
-          deviceTokenCandidateSource,
-        } = await resolveConnectAuthState({
+        const connectAuthState = await resolveConnectAuthState({
           resolvedAuth,
           connectAuth: connectParams.auth,
           hasDeviceIdentity: Boolean(device),
@@ -747,6 +738,13 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
           rateLimiter: authRateLimiter,
           clientIp: browserRateLimitClientIp,
         });
+        const {
+          sharedAuthOk,
+          bootstrapTokenCandidate,
+          deviceTokenCandidate,
+          deviceTokenCandidateSource,
+        } = connectAuthState;
+        let { authResult, authOk, authMethod } = connectAuthState;
         const rejectUnauthorized = (failedAuth: GatewayAuthResult) => {
           const { authProvided, canRetryWithDeviceToken, recommendedNextStep } =
             resolveUnauthorizedHandshakeContext({
@@ -988,17 +986,23 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
           scopes,
           rateLimiter: authRateLimiter,
           clientIp: browserRateLimitClientIp,
-          verifyBootstrapToken: async ({ deviceId, publicKey, token, role, scopes }) =>
+          verifyBootstrapToken: async ({
+            deviceId,
+            publicKey,
+            token,
+            role: roleLocal,
+            scopes: scopesLocal,
+          }) =>
             await verifyDeviceBootstrapToken({
               deviceId,
               publicKey,
               token,
-              role,
-              scopes,
+              role: roleLocal,
+              scopes: scopesLocal,
             }),
-          verifyDeviceToken: async (params) =>
+          verifyDeviceToken: async (paramsLocal) =>
             await verifyDeviceToken({
-              ...params,
+              ...paramsLocal,
               requiredSharedGatewaySessionGeneration: getRequiredSharedGatewaySessionGeneration?.(),
             }),
         });
@@ -1116,6 +1120,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
           const clientAccessMetadata = {
             displayName: connectParams.client.displayName,
             remoteIp: reportedClientIp,
+            lastSeenAtMs: Date.now(),
+            lastSeenReason: "connect",
           };
           const requirePairing = async (
             reason: ConnectPairingRequiredReason,
@@ -1230,7 +1236,7 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
             const context = buildRequestContext();
             let approved: Awaited<ReturnType<typeof approveDevicePairing>> | undefined;
             let resolvedByConcurrentApproval = false;
-            let recoveryRequestId: string | undefined = pairing.request.requestId;
+            let recoveryRequestId: string | undefined;
             const resolveLivePendingRequestId = async (): Promise<string | undefined> => {
               const pendingList = await listDevicePairing();
               const exactPending = pendingList.pending.find(
@@ -1251,9 +1257,11 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
                   ? await approveBootstrapDevicePairing(
                       pairing.request.requestId,
                       boundBootstrapProfile,
+                      { accessMetadata: clientAccessMetadata },
                     )
                   : await approveDevicePairing(pairing.request.requestId, {
                       callerScopes: scopes,
+                      accessMetadata: clientAccessMetadata,
                     });
               if (approved?.status === "approved") {
                 if (allowSilentBootstrapPairing && boundBootstrapProfile) {
@@ -1763,10 +1771,10 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
             remoteIp: reportedClientIp,
           });
           const instanceIdRaw = connectParams.client.instanceId;
-          const instanceId = typeof instanceIdRaw === "string" ? instanceIdRaw.trim() : "";
+          const instanceIdLocal = typeof instanceIdRaw === "string" ? instanceIdRaw.trim() : "";
           const nodeIdsForPairing = new Set<string>([nodeSession.nodeId]);
-          if (instanceId) {
-            nodeIdsForPairing.add(instanceId);
+          if (instanceIdLocal) {
+            nodeIdsForPairing.add(instanceIdLocal);
           }
           for (const nodeId of nodeIdsForPairing) {
             void updatePairedNodeMetadata(nodeId, {

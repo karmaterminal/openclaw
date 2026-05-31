@@ -351,7 +351,9 @@ async function emitAndCaptureLog(
 }
 
 function flushDiagnosticEvents() {
-  return new Promise<void>((resolve) => setImmediate(resolve));
+  return new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
 }
 
 function emitTrustedModelCallCompletedWithContent(

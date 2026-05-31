@@ -53,6 +53,7 @@ import {
   safeRemoveAttachmentsDir,
 } from "./subagent-registry-helpers.js";
 import type { PendingFinalDeliveryPayload, SubagentRunRecord } from "./subagent-registry.types.js";
+import { resolveSubagentRunDeadlineMs } from "./subagent-run-timeout.js";
 import { deleteSubagentSessionForCleanup } from "./subagent-session-cleanup.js";
 
 type CaptureSubagentCompletionReply =
@@ -73,27 +74,6 @@ async function loadCleanupBrowserSessionsForLifecycleEnd(): Promise<
   BrowserCleanupModule["cleanupBrowserSessionsForLifecycleEnd"]
 > {
   return (await browserCleanupLoader.load()).cleanupBrowserSessionsForLifecycleEnd;
-}
-
-function resolveSubagentRunDeadlineMs(
-  entry: SubagentRunRecord,
-  observedStartedAt?: number,
-): number | undefined {
-  const timeoutSeconds = entry.runTimeoutSeconds;
-  if (
-    typeof timeoutSeconds !== "number" ||
-    !Number.isFinite(timeoutSeconds) ||
-    timeoutSeconds <= 0
-  ) {
-    return undefined;
-  }
-  const startedAt =
-    typeof observedStartedAt === "number" && Number.isFinite(observedStartedAt)
-      ? observedStartedAt
-      : typeof entry.startedAt === "number" && Number.isFinite(entry.startedAt)
-        ? entry.startedAt
-        : entry.createdAt;
-  return Number.isFinite(startedAt) ? startedAt + Math.floor(timeoutSeconds * 1000) : undefined;
 }
 
 function shouldPreservePublishedExplicitRunTimeout(params: { entry: SubagentRunRecord }): boolean {
@@ -822,29 +802,53 @@ export function createSubagentRegistryLifecycleController(params: {
     if (!entry) {
       return;
     }
+    if (entry.expectsCompletionMessage === false) {
+      clearPendingFinalDelivery(entry);
+      entry.wakeOnDescendantSettle = undefined;
+      const shouldDeleteAttachments = cleanup === "delete" || !entry.retainAttachmentsOnKeep;
+      if (shouldDeleteAttachments) {
+        await safeRemoveAttachmentsDir(entry);
+      }
+      completeCleanupBookkeeping({
+        runId,
+        entry,
+        cleanup,
+        completedAt: Date.now(),
+      });
+      return;
+    }
     if (didAnnounce) {
-      if (!options?.skipAnnounce) {
-        const delivery = ensureDeliveryState(entry);
-        const deliveredAt = delivery.deliveredAt ?? Date.now();
+      const delivery = ensureDeliveryState(entry);
+      const shouldCreditDelivery =
+        !options?.skipAnnounce ||
+        delivery.status === "delivered" ||
+        typeof delivery.announcedAt === "number";
+      if (shouldCreditDelivery) {
+        const deliveredAt = delivery.deliveredAt ?? delivery.announcedAt ?? Date.now();
         delivery.status = "delivered";
         delivery.deliveredAt = deliveredAt;
-        delivery.announcedAt = deliveredAt;
-        params.persist();
+        delivery.announcedAt = delivery.announcedAt ?? deliveredAt;
+        if (!options?.skipAnnounce) {
+          delivery.announcedAt = deliveredAt;
+          params.persist();
+        }
       }
       clearPendingFinalDelivery(entry);
-      const delivery = ensureDeliveryState(entry);
-      delivery.status = "delivered";
-      delivery.suspendedAt = undefined;
-      delivery.suspendedReason = undefined;
-      if (!options?.skipDeliveryStatus) {
+      const finalDelivery = ensureDeliveryState(entry);
+      if (shouldCreditDelivery) {
+        finalDelivery.status = "delivered";
+        finalDelivery.suspendedAt = undefined;
+        finalDelivery.suspendedReason = undefined;
+      }
+      if (shouldCreditDelivery && !options?.skipDeliveryStatus) {
         safeSetSubagentTaskDeliveryStatus({
           runId,
           childSessionKey: entry.childSessionKey,
           deliveryStatus: "delivered",
         });
       }
-      delivery.lastError = undefined;
-      delivery.lastDropReason = undefined;
+      finalDelivery.lastError = undefined;
+      finalDelivery.lastDropReason = undefined;
       entry.wakeOnDescendantSettle = undefined;
       const completion = ensureCompletionState(entry);
       completion.fallbackResultText = undefined;

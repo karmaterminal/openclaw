@@ -77,7 +77,7 @@ export function classifyCompactionReason(reason?: string): CompactionReasonCode 
   if (!text) {
     return "unknown";
   }
-  if (text.includes("nothing to compact")) {
+  if (text.includes("nothing to compact") || text.includes("no real conversation messages")) {
     return "no_compactable_entries";
   }
   if (text.includes("no real conversation messages")) {

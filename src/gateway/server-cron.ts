@@ -16,7 +16,7 @@ import { appendCronRunLog, resolveCronRunLogPruneOptions } from "../cron/run-log
 import type { CronServiceContract } from "../cron/service-contract.js";
 import { CronService } from "../cron/service.js";
 import { resolveCronSessionTargetSessionKey } from "../cron/session-target.js";
-import { resolveCronStorePath } from "../cron/store.js";
+import { resolveCronJobsStorePath } from "../cron/store.js";
 import type { CronJob } from "../cron/types.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { resolveMainScopedEventSessionKey } from "../infra/event-session-routing.js";
@@ -119,7 +119,7 @@ export function buildGatewayCronService(params: {
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
 }): GatewayCronState {
   const cronLogger = getChildLogger({ module: "cron" });
-  const storePath = resolveCronStorePath(params.cfg.cron?.store);
+  const storePath = resolveCronJobsStorePath(params.cfg.cron?.store);
   const cronEnabled = process.env.OPENCLAW_SKIP_CRON !== "1" && params.cfg.cron?.enabled !== false;
 
   const findAgentEntry = (cfg: OpenClawConfig, agentId: string) =>
@@ -170,42 +170,42 @@ export function buildGatewayCronService(params: {
     return { agentId, cfg: effectiveConfig };
   };
 
-  const resolveCronSessionKey = (params: {
+  const resolveCronSessionKey = (paramsValue: {
     runtimeConfig: OpenClawConfig;
     agentId: string;
     requestedSessionKey?: string | null;
   }) => {
-    const requested = params.requestedSessionKey?.trim();
+    const requested = paramsValue.requestedSessionKey?.trim();
     if (!requested) {
       return resolveAgentMainSessionKey({
-        cfg: params.runtimeConfig,
-        agentId: params.agentId,
+        cfg: paramsValue.runtimeConfig,
+        agentId: paramsValue.agentId,
       });
     }
     const candidate = toAgentStoreSessionKey({
-      agentId: params.agentId,
+      agentId: paramsValue.agentId,
       requestKey: requested,
-      mainKey: params.runtimeConfig.session?.mainKey,
+      mainKey: paramsValue.runtimeConfig.session?.mainKey,
     });
     const canonical = canonicalizeMainSessionAlias({
-      cfg: params.runtimeConfig,
-      agentId: params.agentId,
+      cfg: paramsValue.runtimeConfig,
+      agentId: paramsValue.agentId,
       sessionKey: candidate,
     });
     if (canonical !== "global") {
       const sessionAgentId = resolveAgentIdFromSessionKey(canonical);
-      if (normalizeAgentId(sessionAgentId) !== normalizeAgentId(params.agentId)) {
+      if (normalizeAgentId(sessionAgentId) !== normalizeAgentId(paramsValue.agentId)) {
         return resolveAgentMainSessionKey({
-          cfg: params.runtimeConfig,
-          agentId: params.agentId,
+          cfg: paramsValue.runtimeConfig,
+          agentId: paramsValue.agentId,
         });
       }
     }
     return (
       resolveMainScopedEventSessionKey({
-        cfg: params.runtimeConfig,
+        cfg: paramsValue.runtimeConfig,
         sessionKey: canonical,
-        agentId: params.agentId,
+        agentId: paramsValue.agentId,
       }) ?? canonical
     );
   };
@@ -253,25 +253,25 @@ export function buildGatewayCronService(params: {
     return { runtimeConfig, agentId, sessionKey };
   };
 
-  const resolveCronHeartbeatOverride = (params: {
+  const resolveCronHeartbeatOverride = (paramsLocal: {
     runtimeConfig: OpenClawConfig;
     agentId?: string;
     heartbeat?: AgentDefaultsConfig["heartbeat"];
   }) => {
-    if (!params.heartbeat) {
+    if (!paramsLocal.heartbeat) {
       return undefined;
     }
     const agentEntry =
-      params.agentId !== undefined
-        ? findAgentEntry(params.runtimeConfig, params.agentId)
+      paramsLocal.agentId !== undefined
+        ? findAgentEntry(paramsLocal.runtimeConfig, paramsLocal.agentId)
         : undefined;
     const agentHeartbeat =
       agentEntry && typeof agentEntry === "object" ? agentEntry.heartbeat : undefined;
     const baseHeartbeat = {
-      ...params.runtimeConfig.agents?.defaults?.heartbeat,
+      ...paramsLocal.runtimeConfig.agents?.defaults?.heartbeat,
       ...agentHeartbeat,
     };
-    const heartbeatOverride = { ...baseHeartbeat, ...params.heartbeat };
+    const heartbeatOverride = { ...baseHeartbeat, ...paramsLocal.heartbeat };
     return sanitizeCronHeartbeatOverride(heartbeatOverride);
   };
 
@@ -282,7 +282,6 @@ export function buildGatewayCronService(params: {
       agentId: agentId ?? defaultAgentId,
     });
   const sessionStorePath = resolveSessionStorePath(defaultAgentId);
-  const warnedLegacyWebhookJobs = new Set<string>();
 
   const runCronChangedHook = (evt: PluginHookCronChangedEvent) => {
     const hookRunner = getGlobalHookRunner();
@@ -462,9 +461,7 @@ export function buildGatewayCronService(params: {
           logger: cronLogger,
           resolveCronAgent,
           webhookToken: params.cfg.cron?.webhookToken,
-          legacyWebhook: params.cfg.cron?.webhook,
           globalFailureDestination: params.cfg.cron?.failureDestination,
-          warnedLegacyWebhookJobs,
         });
 
         void appendCronRunLog({

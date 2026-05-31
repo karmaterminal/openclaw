@@ -106,7 +106,7 @@ import {
   resolveQueuedReplyRuntimeConfig,
   resolveModelFallbackOptions,
 } from "./agent-runner-utils.js";
-import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
+import type { BlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveCurrentTurnImages } from "./current-turn-images.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import {
@@ -785,6 +785,7 @@ function collapseRepeatedFailureDetail(message: string): string {
 const SAFE_MISSING_API_KEY_PROVIDERS = new Set(["anthropic", "google", "openai"]);
 const EXTERNAL_RUN_FAILURE_DETAIL_MAX_CHARS = 900;
 const AGENT_FAILED_BEFORE_REPLY_TEXT = "Agent failed before reply:";
+const PREFLIGHT_COMPACTION_FAILURE_PREFIX = "Preflight compaction required but failed:";
 
 type ExternalRunFailureReply = {
   text: string;
@@ -845,6 +846,27 @@ function buildCodexAppServerFailureText(message: string): string | null {
     return "⚠️ Codex app-server stopped before confirming turn completion. OpenClaw did not replay the turn automatically because it may still be active; try again, or use /new if the session stays stuck.";
   }
   return null;
+}
+
+export function buildPreflightCompactionFailureText(
+  message: string,
+  options?: { includeDetails?: boolean },
+): string | null {
+  const normalizedMessage = collapseRepeatedFailureDetail(message);
+  if (!normalizedMessage.startsWith(PREFLIGHT_COMPACTION_FAILURE_PREFIX)) {
+    return null;
+  }
+  const reason = sanitizeUserFacingText(
+    normalizedMessage.slice(PREFLIGHT_COMPACTION_FAILURE_PREFIX.length),
+    { errorContext: true },
+  )
+    .trim()
+    .replace(/\s+/gu, " ");
+  const reasonSuffix = options?.includeDetails && reason ? ` Reason: ${reason}.` : "";
+  return (
+    "⚠️ Context is too large and auto-compaction could not recover this turn." +
+    `${reasonSuffix} Try again, use /compact, or use /new to start a fresh session.`
+  );
 }
 
 function buildCliBackendTimeoutFailureText(message: string): string | null {
@@ -968,6 +990,20 @@ export function buildKnownAgentRunFailureReplyPayload(params: {
     return markAgentRunFailureReplyPayload({
       text: resolveExternalRunFailureTextForConversation({
         text: BILLING_ERROR_USER_MESSAGE,
+        sessionCtx: params.sessionCtx,
+        isGenericRunnerFailure: false,
+        cfg: params.cfg,
+      }),
+    });
+  }
+
+  const preflightCompactionFailureText = buildPreflightCompactionFailureText(message, {
+    includeDetails: isVerboseFailureDetailEnabled(params.resolvedVerboseLevel),
+  });
+  if (preflightCompactionFailureText) {
+    return markAgentRunFailureReplyPayload({
+      text: resolveExternalRunFailureTextForConversation({
+        text: preflightCompactionFailureText,
         sessionCtx: params.sessionCtx,
         isGenericRunnerFailure: false,
         cfg: params.cfg,
@@ -1573,7 +1609,7 @@ export async function runAgentTurnWithFallback(params: {
   let autoCompactionCount = 0;
   // Track payloads sent directly (not via pipeline) during tool flush to avoid duplicates.
   const directlySentBlockKeys = new Set<string>();
-  let runnableRun = resolveRunAfterAutoFallbackPrimaryProbeRecheck({
+  const runnableRun = resolveRunAfterAutoFallbackPrimaryProbeRecheck({
     run: params.followupRun.run,
     entry: params.activeSessionStore?.[params.sessionKey ?? ""] ?? params.getActiveSessionEntry(),
     sessionKey: params.sessionKey,
@@ -1582,7 +1618,7 @@ export async function runAgentTurnWithFallback(params: {
     params.followupRun.run = runnableRun;
   }
   const runtimeConfig = resolveQueuedReplyRuntimeConfig(runnableRun.config);
-  let effectiveRun =
+  const effectiveRun =
     runtimeConfig === runnableRun.config
       ? runnableRun
       : {
@@ -1753,6 +1789,7 @@ export async function runAgentTurnWithFallback(params: {
   if (params.sessionKey) {
     registerAgentRunContext(runId, {
       sessionKey: params.sessionKey,
+      ...(params.followupRun.run.sessionId ? { sessionId: params.followupRun.run.sessionId } : {}),
       verboseLevel: params.resolvedVerboseLevel,
       isHeartbeat: params.isHeartbeat,
       isControlUiVisible: shouldSurfaceToControlUi,
@@ -1767,7 +1804,8 @@ export async function runAgentTurnWithFallback(params: {
   let continueWorkRequest: ContinueWorkRequest | undefined;
   let compactionTraceparent: string | undefined;
   let didResetAfterCompactionFailure = false;
-  let didRetryTransientHttpError = false;
+  let transientHttpRetriesRemaining = 1;
+  const consumeTransientHttpRetry = () => transientHttpRetriesRemaining-- > 0;
   let liveModelSwitchRetries = 0;
   let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
     params.getActiveSessionEntry()?.systemPromptReport,
@@ -2260,9 +2298,9 @@ export async function runAgentTurnWithFallback(params: {
                   },
                   transformResult:
                     params.followupRun.currentInboundEventKind === "room_event"
-                      ? (result) =>
+                      ? (resultLocal) =>
                           keepCliSessionBindingOnlyWhenReused({
-                            result,
+                            result: resultLocal,
                             existingSessionId: cliSessionBinding?.sessionId,
                             onDroppedReplacement: () => {
                               droppedCliSessionReplacement = true;
@@ -3143,8 +3181,7 @@ export async function runAgentTurnWithFallback(params: {
         };
       }
 
-      if (isTransientHttp && !didRetryTransientHttpError) {
-        didRetryTransientHttpError = true;
+      if (isTransientHttp && consumeTransientHttpRetry()) {
         // Retry the full runWithModelFallback() cycle — transient errors
         // (502/521/etc.) typically affect the whole provider, so falling
         // back to an alternate model first would not help. Instead we wait

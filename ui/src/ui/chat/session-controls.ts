@@ -54,6 +54,11 @@ const chatSessionPickerSearchControllers = new WeakMap<
   ChatSessionPickerSearchController
 >();
 
+function setChatError(state: AppViewState, error: string | null) {
+  state.lastError = error;
+  state.chatError = error;
+}
+
 export function renderChatSessionSelect(
   state: AppViewState,
   onSwitchSession: ChatSessionSwitchHandler = () => undefined,
@@ -857,6 +862,16 @@ function resolveThinkingTargetModel(state: AppViewState): {
   };
 }
 
+function sessionModelMatchesDefaults(
+  row: SessionsListResult["sessions"][number] | undefined,
+  defaults: SessionsListResult["defaults"] | undefined,
+): boolean {
+  return (
+    (!row?.modelProvider || row.modelProvider === defaults?.modelProvider) &&
+    (!row?.model || row.model === defaults?.model)
+  );
+}
+
 function buildThinkingOptions(
   levels: readonly GatewayThinkingLevelOption[],
   currentOverride: string,
@@ -895,7 +910,7 @@ function resolveThinkingLevelOptions(
   model: string | null,
   catalog: readonly ThinkingCatalogEntry[],
 ): GatewayThinkingLevelOption[] {
-  const sessionModelMatchesDefaults =
+  const sessionModelMatchesDefaultsLocal =
     (!activeRow?.modelProvider || activeRow.modelProvider === defaults?.modelProvider) &&
     (!activeRow?.model || activeRow.model === defaults?.model);
   const catalogEntry =
@@ -904,7 +919,7 @@ function resolveThinkingLevelOptions(
       : undefined;
   const explicitLevels =
     (activeRow?.thinkingLevels?.length ? activeRow.thinkingLevels : null) ??
-    (sessionModelMatchesDefaults && defaults?.thinkingLevels?.length
+    (sessionModelMatchesDefaultsLocal && defaults?.thinkingLevels?.length
       ? defaults.thinkingLevels
       : null);
   if (explicitLevels) {
@@ -915,7 +930,7 @@ function resolveThinkingLevelOptions(
   }
   const explicitLabels =
     (activeRow?.thinkingOptions?.length ? activeRow.thinkingOptions : null) ??
-    (sessionModelMatchesDefaults && defaults?.thinkingOptions?.length
+    (sessionModelMatchesDefaultsLocal && defaults?.thinkingOptions?.length
       ? defaults.thinkingOptions
       : null);
   if (catalogEntry?.reasoning === false) {
@@ -939,17 +954,22 @@ export function resolveChatThinkingSelectState(state: AppViewState): ChatThinkin
     typeof persisted === "string" && persisted.trim()
       ? (normalizeThinkLevel(persisted) ?? persisted.trim())
       : "";
+  const defaults = state.sessionsResult?.defaults;
   const { provider, model } = resolveThinkingTargetModel(state);
   const levels = resolveThinkingLevelOptions(
     activeRow,
-    state.sessionsResult?.defaults,
+    defaults,
     provider,
     model,
     state.chatModelCatalog ?? [],
   );
+  const defaultFromSessionDefaults =
+    (!activeRow || sessionModelMatchesDefaults(activeRow, defaults)) && defaults?.thinkingDefault
+      ? defaults.thinkingDefault
+      : undefined;
   const defaultLevel =
     activeRow?.thinkingDefault ??
-    state.sessionsResult?.defaults?.thinkingDefault ??
+    defaultFromSessionDefaults ??
     (provider && model
       ? resolveThinkingDefaultForModel({
           provider,
@@ -1013,22 +1033,22 @@ async function switchChatModel(state: AppViewState, nextModel: string): Promise<
   }
   const targetSessionKey = state.sessionKey;
   const prevOverride = state.chatModelOverrides[targetSessionKey];
-  state.lastError = null;
+  setChatError(state, null);
   // Write the override cache immediately so the picker stays in sync during the RPC round-trip.
   state.chatModelOverrides = {
     ...state.chatModelOverrides,
     [targetSessionKey]: createChatModelOverride(nextModel),
   };
   const client = state.client;
-  let switchPromise: Promise<boolean>;
+  const switchPromiseRef: { current?: Promise<boolean> } = {};
   const clearPendingSwitch = () => {
-    if (state.chatModelSwitchPromises?.[targetSessionKey] === switchPromise) {
+    if (state.chatModelSwitchPromises?.[targetSessionKey] === switchPromiseRef.current) {
       const nextSwitches = { ...state.chatModelSwitchPromises };
       delete nextSwitches[targetSessionKey];
       state.chatModelSwitchPromises = nextSwitches;
     }
   };
-  switchPromise = (async () => {
+  const switchPromise: Promise<boolean> = (async () => {
     try {
       await client.request("sessions.patch", {
         key: targetSessionKey,
@@ -1040,12 +1060,13 @@ async function switchChatModel(state: AppViewState, nextModel: string): Promise<
     } catch (err) {
       // Roll back so the picker reflects the actual server model.
       state.chatModelOverrides = { ...state.chatModelOverrides, [targetSessionKey]: prevOverride };
-      state.lastError = `Failed to set model: ${String(err)}`;
+      setChatError(state, `Failed to set model: ${String(err)}`);
       return false;
     } finally {
       clearPendingSwitch();
     }
   })();
+  switchPromiseRef.current = switchPromise;
   state.chatModelSwitchPromises = {
     ...state.chatModelSwitchPromises,
     [targetSessionKey]: switchPromise,
@@ -1086,7 +1107,7 @@ async function switchChatThinkingLevel(state: AppViewState, nextThinkingLevel: s
   if ((normalizedPrev ?? "") === (normalizedNext ?? "")) {
     return;
   }
-  state.lastError = null;
+  setChatError(state, null);
   patchSessionThinkingLevel(state, targetSessionKey, normalizedNext);
   state.chatThinkingLevel = normalizedNext ?? null;
   try {
@@ -1098,7 +1119,7 @@ async function switchChatThinkingLevel(state: AppViewState, nextThinkingLevel: s
   } catch (err) {
     patchSessionThinkingLevel(state, targetSessionKey, previousThinkingLevel);
     state.chatThinkingLevel = normalizedPrev ?? null;
-    state.lastError = `Failed to set thinking level: ${String(err)}`;
+    setChatError(state, `Failed to set thinking level: ${String(err)}`);
   }
 }
 
@@ -1301,7 +1322,7 @@ export function resolveSessionOptionGroups(
     if (hideCron && row.key !== sessionKey && isCronSessionKey(row.key)) {
       continue;
     }
-    const isSubagent = isSubagentSessionKey(row.key) || !!row.spawnedBy;
+    const isSubagent = isSubagentSessionKey(row.key) || Boolean(row.spawnedBy);
     if (isSubagent && row.key !== sessionKey) {
       continue;
     }

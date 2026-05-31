@@ -1,3 +1,4 @@
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
 import { getRuntimeConfig, selectApplicableRuntimeConfig } from "../config/config.js";
@@ -243,6 +244,18 @@ export function createOpenClawTools(
     trimmedRunSessionKey && isCronRunSessionKey(trimmedRunSessionKey)
       ? trimmedRunSessionKey
       : options?.agentSessionKey;
+  const mediaGenerationAsyncStartCallback = mediaGenerationAgentSessionKey
+    ? isCronRunSessionKey(mediaGenerationAgentSessionKey)
+      ? undefined
+      : options?.onYield
+    : options?.onYield;
+  const skillWorkshopSessionKey = normalizeOptionalString(
+    options?.runSessionKey ?? options?.agentSessionKey,
+  );
+  const skillWorkshopRunId = normalizeOptionalString(options?.runId);
+  const skillWorkshopMessageId = normalizeOptionalString(
+    options?.currentMessageId === undefined ? undefined : String(options.currentMessageId),
+  );
   const imageToolAgentDir = options?.agentDir;
   const imageTool = resolveImageToolFactoryAvailable({
     config: availabilityConfig ?? resolvedConfig,
@@ -276,7 +289,7 @@ export function createOpenClawTools(
         workspaceDir,
         sandbox,
         fsPolicy: options?.fsPolicy,
-        onAsyncTaskStarted: options?.onYield,
+        onAsyncTaskStarted: mediaGenerationAsyncStartCallback,
       })
     : null;
   options?.recordToolPrepStage?.("openclaw-tools:image-generate-tool");
@@ -290,7 +303,7 @@ export function createOpenClawTools(
         workspaceDir,
         sandbox,
         fsPolicy: options?.fsPolicy,
-        onAsyncTaskStarted: options?.onYield,
+        onAsyncTaskStarted: mediaGenerationAsyncStartCallback,
       })
     : null;
   options?.recordToolPrepStage?.("openclaw-tools:video-generate-tool");
@@ -304,7 +317,7 @@ export function createOpenClawTools(
         workspaceDir,
         sandbox,
         fsPolicy: options?.fsPolicy,
-        onAsyncTaskStarted: options?.onYield,
+        onAsyncTaskStarted: mediaGenerationAsyncStartCallback,
       })
     : null;
   options?.recordToolPrepStage?.("openclaw-tools:music-generate-tool");
@@ -480,6 +493,12 @@ export function createOpenClawTools(
             workspaceDir,
             config: resolvedConfig,
             agentId: sessionAgentId,
+            origin: {
+              agentId: sessionAgentId,
+              ...(skillWorkshopSessionKey ? { sessionKey: skillWorkshopSessionKey } : {}),
+              ...(skillWorkshopRunId ? { runId: skillWorkshopRunId } : {}),
+              ...(skillWorkshopMessageId ? { messageId: skillWorkshopMessageId } : {}),
+            },
           }),
         ]),
     ...(includeUpdatePlanTool ? [createUpdatePlanTool()] : []),
@@ -542,6 +561,12 @@ export function createOpenClawTools(
       sandboxed: options?.sandboxed,
       activeModelProvider: options?.modelProvider,
       activeModelId: options?.modelId,
+      activeDeliveryContext: {
+        channel: options?.agentChannel,
+        to: options?.currentChannelId ?? options?.agentTo,
+        accountId: options?.agentAccountId,
+        threadId: options?.currentThreadTs ?? options?.agentThreadId,
+      },
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
     // Continuation tools (continue_work / continue_delegate / request_compaction) register

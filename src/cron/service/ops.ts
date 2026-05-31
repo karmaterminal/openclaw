@@ -12,6 +12,8 @@ import { resolveCronDeliveryPlan, resolveFailureDestination } from "../delivery-
 import { createCronRunDiagnosticsFromError } from "../run-diagnostics.js";
 import { createCronExecutionId } from "../run-id.js";
 import type { CronJob, CronJobCreate, CronJobPatch } from "../types.js";
+import { normalizeCronRunErrorText } from "./execution-errors.js";
+import { failureNotificationDeliveryFromJobState } from "./failure-alerts.js";
 import {
   applyJobPatch,
   assertSupportedJobSpec,
@@ -44,12 +46,10 @@ import {
   armTimer,
   emit,
   executeJobCoreWithTimeout,
-  failureNotificationDeliveryFromJobState,
-  normalizeCronRunErrorText,
   runMissedJobs,
   stopTimer,
-  wake,
 } from "./timer.js";
+import { wake } from "./wake.js";
 
 const STARTUP_INTERRUPTED_ERROR = "cron: job interrupted by gateway restart";
 
@@ -309,7 +309,7 @@ function resolveJobLastRunStatus(job: CronJob): CronJobsLastRunStatusFilter {
 function sortJobs(jobs: CronJob[], sortBy: CronJobsSortBy, sortDir: CronSortDir) {
   const dir = sortDir === "desc" ? -1 : 1;
   return jobs.toSorted((a, b) => {
-    let cmp = 0;
+    let cmp;
     if (sortBy === "name") {
       const aName = typeof a.name === "string" ? a.name : "";
       const bName = typeof b.name === "string" ? b.name : "";

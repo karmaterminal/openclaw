@@ -1328,40 +1328,8 @@ describe("gateway server chat", () => {
     });
   });
 
-  test("chat.history applies gateway.webchat.chatHistoryMaxChars from config", async () => {
+  test("chat.history applies RPC maxChars", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
-      await writeGatewayConfig({
-        gateway: {
-          webchat: {
-            chatHistoryMaxChars: 5,
-          },
-        },
-      });
-      const sessionDir = await prepareMainHistoryHarness({ ws, createSessionDir });
-      await writeMainSessionTranscript(sessionDir, [
-        JSON.stringify({
-          message: {
-            role: "assistant",
-            content: [{ type: "text", text: "abcdefghij" }],
-            timestamp: Date.now(),
-          },
-        }),
-      ]);
-
-      const messages = await fetchHistoryMessages(ws);
-      expect(JSON.stringify(messages)).toContain("abcde\\n...(truncated)...");
-    });
-  });
-
-  test("chat.history prefers RPC maxChars over config", async () => {
-    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
-      await writeGatewayConfig({
-        gateway: {
-          webchat: {
-            chatHistoryMaxChars: 3,
-          },
-        },
-      });
       const sessionDir = await prepareMainHistoryHarness({ ws, createSessionDir });
       await writeMainSessionTranscript(sessionDir, [
         JSON.stringify({
@@ -1376,7 +1344,6 @@ describe("gateway server chat", () => {
       const messages = await fetchHistoryMessages(ws, { maxChars: 7 });
       const serialized = JSON.stringify(messages);
       expect(serialized).toContain("abcdefg\\n...(truncated)...");
-      expect(serialized).not.toContain("abc\\n...(truncated)...");
     });
   });
 
@@ -1611,6 +1578,43 @@ describe("gateway server chat", () => {
 
       const messages = await fetchHistoryMessages(ws, { maxChars: 3 });
       expect(messages).toStrictEqual([]);
+    });
+  });
+
+  test("chat.history backfills visible messages when raw tail is mostly silent", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      const sessionDir = await prepareMainHistoryHarness({ ws, createSessionDir });
+      const silentTail = Array.from({ length: 24 }, (_, index) =>
+        JSON.stringify({
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "NO_REPLY" }],
+            timestamp: Date.now() + index + 2,
+          },
+        }),
+      );
+      await writeMainSessionTranscript(sessionDir, [
+        JSON.stringify({
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "visible question" }],
+            timestamp: Date.now(),
+          },
+        }),
+        JSON.stringify({
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "visible answer" }],
+            timestamp: Date.now() + 1,
+          },
+        }),
+        ...silentTail,
+      ]);
+
+      const messages = await fetchHistoryMessages(ws, { limit: 2, maxChars: 100 });
+      expect(JSON.stringify(messages)).toContain("visible question");
+      expect(JSON.stringify(messages)).toContain("visible answer");
+      expect(JSON.stringify(messages)).not.toContain("NO_REPLY");
     });
   });
 
