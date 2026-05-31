@@ -307,11 +307,25 @@ export async function loadSubagentSpawnModuleForTest(params: {
     getSubagentDepthFromSessionStore: params.getSubagentDepthFromSessionStore ?? (() => 0),
   }));
 
+  const countActiveRunsForSessionImpl = params.countActiveRunsForSession ?? (() => 0);
+  const registerSubagentRunImpl =
+    params.registerSubagentRunMock ?? vi.fn((_record: Record<string, unknown>) => undefined);
+
   vi.doMock("./subagent-registry.js", () => ({
-    countActiveRunsForSession: params.countActiveRunsForSession ?? (() => 0),
-    registerSubagentRun:
-      params.registerSubagentRunMock ?? vi.fn((_record: Record<string, unknown>) => undefined),
+    countActiveRunsForSession: countActiveRunsForSessionImpl,
+    registerSubagentRun: registerSubagentRunImpl,
     resetSubagentRegistryForTests,
+  }));
+
+  // Cure-cycle (#826) moved the spawn-runtime entry points out of
+  // subagent-registry.js into a leaf module to break a types <-> targeting
+  // import cycle. subagent-spawn.ts now imports countActiveRunsForSession +
+  // registerSubagentRun from here, so the test mock must follow the new path
+  // or the registry gate and register hooks silently no-op.
+  vi.doMock("./subagent-registry-spawn-runtime.js", () => ({
+    countActiveRunsForSession: countActiveRunsForSessionImpl,
+    registerSubagentRun: registerSubagentRunImpl,
+    configureSubagentRegistrySpawnRuntime: () => undefined,
   }));
 
   const subagentSpawnModule = await import("./subagent-spawn.js");
