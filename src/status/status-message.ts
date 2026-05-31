@@ -954,7 +954,7 @@ export function buildStatusMessage(args: StatusArgs): string {
     `Execution: ${execution.label}`,
     `Runtime: ${agentRuntimeLabel}`,
     `Think: ${thinkLevel}`,
-    formatFastModeLabel(fastMode),
+    fastMode ? formatFastModeLabel(fastMode) : null,
     textVerbosity ? `Text: ${textVerbosity}` : null,
     verboseLabel,
     traceLabel,
