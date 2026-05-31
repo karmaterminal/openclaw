@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  QueuedSessionDelivery,
-  QueuedSessionDeliveryPayload,
-} from "../../infra/session-delivery-queue-storage.js";
+import type { QueuedSessionDeliveryPayload } from "../../infra/session-delivery-queue-storage.js";
 import {
   ackSessionDelivery as realAckSessionDelivery,
   enqueueSessionDelivery as realEnqueueSessionDelivery,

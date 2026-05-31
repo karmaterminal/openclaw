@@ -296,19 +296,19 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
                 return;
               }
               const code = classifyCompactionReason(result.reason);
-              const reason = result.reason ?? "";
+              const resolvedReason = result.reason ?? "";
               if (result.ok && isCompactionSkipCode(code)) {
                 log.info(
                   `[request_compaction:resolved-skip] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
-                    `diagId=${diagId} trigger=volitional outcome=skipped code=${code} reason=${reason}`,
+                    `diagId=${diagId} trigger=volitional outcome=skipped code=${code} reason=${resolvedReason}`,
                 );
                 return;
               }
               log.warn(
                 `[request_compaction:resolved-failure] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
-                  `diagId=${diagId} trigger=volitional outcome=failed code=${code} ok=${result.ok} compacted=${result.compacted} reason=${reason}`,
+                  `diagId=${diagId} trigger=volitional outcome=failed code=${code} ok=${result.ok} compacted=${result.compacted} reason=${resolvedReason}`,
               );
-              notifyFailure(code, reason);
+              notifyFailure(code, resolvedReason);
             },
             (err: unknown) => {
               const message = formatErrorMessage(err);

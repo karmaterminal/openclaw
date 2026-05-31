@@ -7,10 +7,7 @@ import {
   type StartSpanOptions,
   type Tracer,
 } from "../../infra/continuation-tracer.js";
-import type {
-  QueuedSessionDelivery,
-  QueuedSessionDeliveryPayload,
-} from "../../infra/session-delivery-queue-storage.js";
+import type { QueuedSessionDeliveryPayload } from "../../infra/session-delivery-queue-storage.js";
 import {
   ackSessionDelivery as realAckSessionDelivery,
   enqueueSessionDelivery as realEnqueueSessionDelivery,
