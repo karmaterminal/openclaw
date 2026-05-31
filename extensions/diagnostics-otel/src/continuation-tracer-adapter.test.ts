@@ -215,9 +215,9 @@ describe("continuation-tracer adapter :: returned Span behavior", () => {
     const setStatusCalls = recordedOnSpan.filter((c) => c.method === "setStatus");
     expect(setStatusCalls).toHaveLength(3);
     // OK = 1, ERROR = 2, UNSET = 0 in our mock.
-    expect((setStatusCalls[0]?.args[0] as { code: number }).code).toBe(1);
+    expect((setStatusCalls[0]?.args[0] as { code: number } | undefined)?.code).toBe(1);
     expect(setStatusCalls[1]?.args[0]).toEqual({ code: 2, message: "boom" });
-    expect((setStatusCalls[2]?.args[0] as { code: number }).code).toBe(0);
+    expect((setStatusCalls[2]?.args[0] as { code: number } | undefined)?.code).toBe(0);
   });
 
   it("recordException forwards Error instances directly", () => {
