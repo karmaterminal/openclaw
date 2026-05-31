@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 // Mock loadConfig + resolveGatewayPort the same way other openclaw-tools.* tests do,
 // so calls inside createOpenClawTools that read shared config don't reach the real
 // disk-backed loader.
-let mockConfig: Record<string, unknown> = {
+const mockConfig: Record<string, unknown> = {
   session: { mainKey: "main", scope: "per-sender" },
 };
 vi.mock("../config/config.js", async () => {

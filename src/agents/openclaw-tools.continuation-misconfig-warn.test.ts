@@ -38,7 +38,7 @@ vi.mock("../logging/subsystem.js", () => {
   };
 });
 
-let mockConfig: Record<string, unknown> = {
+const mockConfig: Record<string, unknown> = {
   session: { mainKey: "main", scope: "per-sender" },
 };
 

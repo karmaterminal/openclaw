@@ -62,7 +62,7 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
     if (flow) {
       flow.status = "failed";
     }
-    return { applied: !!flow };
+    return { applied: Boolean(flow) };
   }),
   deleteTaskFlowRecordById: vi.fn((flowId: string) => {
     mockFlows.delete(flowId);
@@ -108,7 +108,7 @@ describe("keeps PendingContinuationDelegate mode-only at runtime boundaries", ()
         const delegate = consumed[0];
         for (const field of RUNTIME_BOOLEAN_FIELDS) {
           expect(
-            Object.prototype.hasOwnProperty.call(delegate, field),
+            Object.hasOwn(delegate, field),
             `runtime PendingContinuationDelegate must not expose '${field}' (mode-only encoding)`,
           ).toBe(false);
         }
@@ -129,7 +129,7 @@ describe("keeps PendingContinuationDelegate mode-only at runtime boundaries", ()
       expect(delegate.mode).toBe("post-compaction");
       for (const field of RUNTIME_BOOLEAN_FIELDS) {
         expect(
-          Object.prototype.hasOwnProperty.call(delegate, field),
+          Object.hasOwn(delegate, field),
           `post-compaction runtime delegate must not expose '${field}'`,
         ).toBe(false);
       }
@@ -219,7 +219,7 @@ describe("continue_delegate tool descriptor exposes mode enum, not boolean flags
     // Must NOT expose boolean `silent` / `silentWake` parameters.
     for (const forbidden of ["silent", "silentWake"]) {
       expect(
-        Object.prototype.hasOwnProperty.call(properties, forbidden),
+        Object.hasOwn(properties, forbidden),
         `continue_delegate tool descriptor must not expose '${forbidden}' parameter (mode-only API surface)`,
       ).toBe(false);
     }
