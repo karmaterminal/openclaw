@@ -215,6 +215,25 @@ export async function releaseQueuedCompactionCompletion(params: {
   });
 }
 
+// Wraps releaseQueuedCompactionCompletion so post-compaction cleanup
+// errors (count-write / delegate dispatch / tracer emit) never flip the
+// caller's compaction-outcome signal. compactEmbeddedAgentSession has
+// already mutated session-snapshot truth on disk before we get here; if
+// release throws and the caller sees `{ ok: false, compacted: false }`,
+// the agent retries compaction on an already-compacted session (#816).
+export async function releaseQueuedCompactionTolerant(
+  params: Parameters<typeof releaseQueuedCompactionCompletion>[0],
+): Promise<void> {
+  try {
+    await releaseQueuedCompactionCompletion(params);
+  } catch (releaseErr) {
+    const reason = releaseErr instanceof Error ? releaseErr.message : String(releaseErr);
+    logVerbose(
+      `[request_compaction:post-compaction-release-failed] session=${params.sessionKey ?? "none"} reason=${reason}`,
+    );
+  }
+}
+
 type AgentTurnTimingSpan = {
   name: string;
   durationMs: number;
@@ -2437,7 +2456,7 @@ export async function runAgentTurnWithFallback(params: {
                                   traceparent: request.traceparent,
                                 });
                                 if (result.ok && result.compacted) {
-                                  await releaseQueuedCompactionCompletion({
+                                  await releaseQueuedCompactionTolerant({
                                     activeSessionStore: params.activeSessionStore,
                                     compactionResult: result,
                                     followupRun: params.followupRun,
