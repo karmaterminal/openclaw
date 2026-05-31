@@ -27,6 +27,7 @@ type ProviderAuthAliasCandidate = {
 
 const RETIRED_PROVIDER_AUTH_ALIASES: Readonly<Record<string, string>> = {
   [["openai", "codex"].join("-")]: "openai",
+  [["codex", "cli"].join("-")]: "openai",
 };
 
 const PROVIDER_AUTH_ALIAS_ORIGIN_PRIORITY: Readonly<Record<PluginOrigin, number>> = {
