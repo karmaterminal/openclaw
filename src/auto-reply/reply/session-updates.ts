@@ -272,10 +272,13 @@ export async function incrementCompactionCount(params: {
   }
   const incrementBy = Math.max(0, amount);
   const nextCount = (entry.compactionCount ?? 0) + incrementBy;
-  // Build update payload with compaction count and optionally updated token counts
+  // Build update payload with compaction count and optionally updated token counts.
+  // Reset lastContextPressureBand: compaction reduces context, so band-tracking
+  // history is stale; next pressure-check should start fresh.
   const updates: Partial<SessionEntry> = {
     compactionCount: nextCount,
     updatedAt: now,
+    lastContextPressureBand: undefined,
   };
   const explicitNewSessionFile = normalizeOptionalString(newSessionFile);
   const sessionIdChanged = Boolean(newSessionId && newSessionId !== entry.sessionId);
