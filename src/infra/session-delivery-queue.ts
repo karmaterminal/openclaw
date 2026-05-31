@@ -1,18 +1,16 @@
 export {
   ackSessionDelivery,
   buildPostCompactionDelegateDeliveryPayload,
-  countQueuedFiles,
+  countPendingSessionDeliveryEntries,
   DEFAULT_FAILED_MAX_AGE_MS,
-  DEFAULT_QUEUE_DIR_MAX_FILES,
+  DEFAULT_QUEUE_SIZE_CAP,
   enqueuePostCompactionDelegateDelivery,
   enqueueSessionDelivery,
-  ensureSessionDeliveryQueueDir,
   failSessionDelivery,
   loadPendingSessionDelivery,
   loadPendingSessionDeliveries,
   moveSessionDeliveryToFailed,
   pruneFailedOlderThan,
-  resolveSessionDeliveryQueueDir,
   SessionDeliveryQueueOverflowError,
 } from "./session-delivery-queue-storage.js";
 export type {

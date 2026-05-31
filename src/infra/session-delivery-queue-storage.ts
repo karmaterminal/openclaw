@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { ChatType } from "../channels/chat-type.js";
 import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
+import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
+import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
   deleteDeliveryQueueEntry,
   loadDeliveryQueueEntries,
@@ -11,9 +13,88 @@ import {
   type DeliveryQueueRowMetadata,
 } from "./delivery-queue-sqlite.js";
 import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
+import {
+  executeSqliteQuerySync,
+  executeSqliteQueryTakeFirstSync,
+  getNodeSqliteKysely,
+} from "./kysely-sync.js";
 import { generateSecureUuid } from "./secure-random.js";
 
 const QUEUE_NAME = "session";
+
+/** Maximum number of pending session-delivery entries before enqueue is rejected. */
+export const DEFAULT_QUEUE_SIZE_CAP = 10_000;
+
+/** Default age threshold for purging failed entries (14 days). */
+export const DEFAULT_FAILED_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+
+type DeliveryQueueDatabase = Pick<OpenClawStateKyselyDatabase, "delivery_queue_entries">;
+
+export class SessionDeliveryQueueOverflowError extends Error {
+  readonly kind = "session-delivery-queue-overflow" as const;
+  readonly count: number;
+  readonly maxEntries: number;
+  constructor(count: number, maxEntries: number) {
+    super(`session-delivery-queue overflow: ${count} pending entries, soft-cap is ${maxEntries}`);
+    this.name = "SessionDeliveryQueueOverflowError";
+    this.count = count;
+    this.maxEntries = maxEntries;
+  }
+}
+
+function openStateDatabaseForSession(stateDir?: string) {
+  return openOpenClawStateDatabase({
+    env: stateDir ? { ...process.env, OPENCLAW_STATE_DIR: stateDir } : process.env,
+  });
+}
+
+/** Count of pending session-delivery entries for overflow pre-check. */
+export function countPendingSessionDeliveryEntries(stateDir?: string): number {
+  const database = openStateDatabaseForSession(stateDir);
+  const queueDb = getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
+  const row = executeSqliteQueryTakeFirstSync(
+    database.db,
+    queueDb
+      .selectFrom("delivery_queue_entries")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("queue_name", "=", QUEUE_NAME)
+      .where("status", "=", "pending"),
+  ) as { count: number | bigint } | undefined;
+  return row ? Number(row.count) : 0;
+}
+
+/**
+ * Prune failed session-delivery entries older than maxAgeMs.
+ * Returns scanned + removed counts for caller logging.
+ */
+export async function pruneFailedOlderThan(
+  maxAgeMs: number,
+  now: number = Date.now(),
+  stateDir?: string,
+): Promise<{ scanned: number; removed: number }> {
+  const cutoff = now - maxAgeMs;
+  const database = openStateDatabaseForSession(stateDir);
+  const queueDb = getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
+  const scannedRow = executeSqliteQueryTakeFirstSync(
+    database.db,
+    queueDb
+      .selectFrom("delivery_queue_entries")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("queue_name", "=", QUEUE_NAME)
+      .where("status", "=", "failed"),
+  ) as { count: number | bigint } | undefined;
+  const scanned = scannedRow ? Number(scannedRow.count) : 0;
+  const deleteResult = executeSqliteQuerySync(
+    database.db,
+    queueDb
+      .deleteFrom("delivery_queue_entries")
+      .where("queue_name", "=", QUEUE_NAME)
+      .where("status", "=", "failed")
+      .where("enqueued_at", "<", cutoff),
+  );
+  const removed = Number(deleteResult.numAffectedRows ?? 0n);
+  return { scanned, removed };
+}
 
 type SessionDeliveryContext = {
   channel?: string;
@@ -194,12 +275,24 @@ function queuedSessionDeliveryMetadata(entry: QueuedSessionDelivery): DeliveryQu
 export async function enqueueSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   stateDir?: string,
+  opts?: { maxEntries?: number },
 ): Promise<string> {
   const payload = normalizeQueuedTraceparent(params);
   const id = buildEntryId(payload.idempotencyKey);
 
   if (payload.idempotencyKey && loadDeliveryQueueEntry(QUEUE_NAME, id, stateDir)) {
     return id;
+  }
+
+  const maxEntries = opts?.maxEntries ?? DEFAULT_QUEUE_SIZE_CAP;
+  if (Number.isFinite(maxEntries) && maxEntries > 0) {
+    const count = countPendingSessionDeliveryEntries(stateDir);
+    if (count >= maxEntries) {
+      console.warn(
+        `[session-delivery-queue] enqueue rejected: ${count} pending entries, soft-cap is ${maxEntries}`,
+      );
+      throw new SessionDeliveryQueueOverflowError(count, maxEntries);
+    }
   }
 
   const entry: QueuedSessionDelivery = {

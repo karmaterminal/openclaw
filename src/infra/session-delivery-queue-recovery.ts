@@ -10,6 +10,7 @@ import {
   loadPendingSessionDelivery,
   loadPendingSessionDeliveries,
   moveSessionDeliveryToFailed,
+  pruneFailedOlderThan,
   type QueuedSessionDelivery,
 } from "./session-delivery-queue-storage.js";
 
@@ -38,6 +39,41 @@ export const MAX_SESSION_DELIVERY_RETRIES = 5;
 const BACKOFF_MS: readonly number[] = [5_000, 25_000, 120_000, 600_000];
 const drainInProgress = new Map<string, boolean>();
 const entriesInProgress = new Set<string>();
+
+const FAILED_GC_AMORTIZATION_MS = 60_000;
+let lastGcAt = 0;
+
+// oxlint-disable-next-line eslint/no-underscore-dangle -- test-only reset hook
+export function __resetFailedGcWatermarkForTests(): void {
+  lastGcAt = 0;
+}
+
+async function maybePruneFailedRecords(opts: {
+  failedMaxAgeMs?: number;
+  stateDir?: string;
+  log: SessionDeliveryRecoveryLogger;
+  now: number;
+}): Promise<void> {
+  const { failedMaxAgeMs, stateDir, log, now } = opts;
+  if (failedMaxAgeMs == null || !(failedMaxAgeMs > 0)) {
+    return;
+  }
+  if (now - lastGcAt < FAILED_GC_AMORTIZATION_MS) {
+    return;
+  }
+  try {
+    const summary = await pruneFailedOlderThan(failedMaxAgeMs, now, stateDir);
+    if (summary.removed > 0) {
+      log.info(
+        `Session delivery failed prune: removed ${summary.removed} of ${summary.scanned} entries older than ${failedMaxAgeMs}ms`,
+      );
+    }
+  } catch (err) {
+    log.warn(`Session delivery failed prune error: ${formatErrorMessage(err)}`);
+  } finally {
+    lastGcAt = now;
+  }
+}
 
 function getErrnoCode(err: unknown): string | null {
   return err && typeof err === "object" && "code" in err
@@ -238,6 +274,12 @@ export async function recoverPendingSessionDeliveries(opts: {
   maxEnqueuedAt?: number;
   failedMaxAgeMs?: number;
 }): Promise<SessionDeliveryRecoverySummary> {
+  await maybePruneFailedRecords({
+    failedMaxAgeMs: opts.failedMaxAgeMs,
+    stateDir: opts.stateDir,
+    log: opts.log,
+    now: Date.now(),
+  });
   const pending = (await loadPendingSessionDeliveries(opts.stateDir)).filter(
     (entry) => opts.maxEnqueuedAt == null || entry.enqueuedAt <= opts.maxEnqueuedAt,
   );
