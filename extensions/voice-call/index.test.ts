@@ -4,6 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useHermeticOpenclawEnv } from "../../test/vitest/hermetic-openclaw-env.js";
 import type { OpenClawPluginApi } from "./api.js";
 import type { VoiceCallRuntime } from "./runtime-entry.js";
 import type { CallRecord } from "./src/types.js";
@@ -209,6 +210,7 @@ async function registerVoiceCallCli(
 }
 
 describe("voice-call plugin", () => {
+  useHermeticOpenclawEnv();
   beforeEach(() => {
     noopLogger.info.mockClear();
     noopLogger.warn.mockClear();

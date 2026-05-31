@@ -1,6 +1,7 @@
 import path from "node:path";
 import { Command } from "commander";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { useHermeticOpenclawEnv } from "../../../test/vitest/hermetic-openclaw-env.js";
 import { GATEWAY_SERVICE_RUNTIME_PID_ENV } from "../../daemon/constants.js";
 import { SUPERVISOR_HINT_ENV_VARS } from "../../infra/supervisor-markers.js";
 import { withEnvAsync } from "../../test-utils/env.js";
@@ -208,6 +209,7 @@ vi.mock("./run-loop.js", () => ({
 }));
 
 describe("gateway run option collisions", () => {
+  useHermeticOpenclawEnv();
   let addGatewayRunCommand: typeof import("./run-command.js").addGatewayRunCommand;
   let sharedProgram: Command;
 
