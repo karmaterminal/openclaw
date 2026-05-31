@@ -296,10 +296,12 @@ export async function incrementCompactionCount(params: {
         storePath,
         newSessionId,
       });
-    // SessionId rotated during compaction = new logical session epoch; roll
-    // sessionStartedAt forward to track the new session's lifetime separately
-    // from the prior one.
-    updates.sessionStartedAt = now;
+    // SessionId rotation handled by mergeSessionEntry policy: when sessionId
+    // changes, policy rolls sessionStartedAt to the merge-time updatedAt so
+    // sessionStartedAt === updatedAt holds for the new logical-session epoch.
+    // (Explicitly setting updates.sessionStartedAt here would short-circuit
+    // the policy + drift by ~1ms vs merge-time Date.now(), breaking the
+    // sessionStartedAt-equals-updatedAt invariant the rotation-test asserts.)
     updates.usageFamilyKey = entry.usageFamilyKey ?? sessionKey;
     updates.usageFamilySessionIds = Array.from(
       new Set([...(entry.usageFamilySessionIds ?? []), entry.sessionId, newSessionId]),
