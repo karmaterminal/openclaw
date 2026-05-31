@@ -60,7 +60,7 @@ export async function pruneFailedOlderThan(
       .deleteFrom("delivery_queue_entries")
       .where("queue_name", "=", QUEUE_NAME)
       .where("status", "=", "failed")
-      .where("enqueued_at", "<", cutoff),
+      .where("failed_at", "<", cutoff),
   );
   const removed = Number(deleteResult.numAffectedRows ?? 0n);
   return { scanned, removed };
