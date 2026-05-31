@@ -112,9 +112,6 @@ export function isUsageCountedSessionTranscriptFileName(fileName: string): boole
   if (isPrimarySessionTranscriptFileName(fileName)) {
     return true;
   }
-  if (isCheckpointSessionTranscriptFileName(fileName)) {
-    return true;
-  }
   return hasArchiveSuffix(fileName, "reset") || hasArchiveSuffix(fileName, "deleted");
 }
 
@@ -145,10 +142,6 @@ export function parseParentSessionIdFromCheckpointFileName(fileName: string): st
 export function parseUsageCountedSessionIdFromFileName(fileName: string): string | null {
   if (isPrimarySessionTranscriptFileName(fileName)) {
     return fileName.slice(0, -".jsonl".length);
-  }
-  const checkpointParentId = parseParentSessionIdFromCheckpointFileName(fileName);
-  if (checkpointParentId) {
-    return checkpointParentId;
   }
   for (const reason of ["reset", "deleted"] as const) {
     const marker = `.jsonl.${reason}.`;
