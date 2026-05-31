@@ -22,45 +22,15 @@ import { generateSecureUuid } from "./secure-random.js";
 
 const QUEUE_NAME = "session";
 
-/** Maximum number of pending session-delivery entries before enqueue is rejected. */
-export const DEFAULT_QUEUE_SIZE_CAP = 10_000;
-
 /** Default age threshold for purging failed entries (14 days). */
 export const DEFAULT_FAILED_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 type DeliveryQueueDatabase = Pick<OpenClawStateKyselyDatabase, "delivery_queue_entries">;
 
-export class SessionDeliveryQueueOverflowError extends Error {
-  readonly kind = "session-delivery-queue-overflow" as const;
-  readonly count: number;
-  readonly maxEntries: number;
-  constructor(count: number, maxEntries: number) {
-    super(`session-delivery-queue overflow: ${count} pending entries, soft-cap is ${maxEntries}`);
-    this.name = "SessionDeliveryQueueOverflowError";
-    this.count = count;
-    this.maxEntries = maxEntries;
-  }
-}
-
 function openStateDatabaseForSession(stateDir?: string) {
   return openOpenClawStateDatabase({
     env: stateDir ? { ...process.env, OPENCLAW_STATE_DIR: stateDir } : process.env,
   });
-}
-
-/** Count of pending session-delivery entries for overflow pre-check. */
-export function countPendingSessionDeliveryEntries(stateDir?: string): number {
-  const database = openStateDatabaseForSession(stateDir);
-  const queueDb = getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
-  const row = executeSqliteQueryTakeFirstSync(
-    database.db,
-    queueDb
-      .selectFrom("delivery_queue_entries")
-      .select((eb) => eb.fn.countAll<number>().as("count"))
-      .where("queue_name", "=", QUEUE_NAME)
-      .where("status", "=", "pending"),
-  ) as { count: number | bigint } | undefined;
-  return row ? Number(row.count) : 0;
 }
 
 /**
@@ -275,24 +245,12 @@ function queuedSessionDeliveryMetadata(entry: QueuedSessionDelivery): DeliveryQu
 export async function enqueueSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   stateDir?: string,
-  opts?: { maxEntries?: number },
 ): Promise<string> {
   const payload = normalizeQueuedTraceparent(params);
   const id = buildEntryId(payload.idempotencyKey);
 
   if (payload.idempotencyKey && loadDeliveryQueueEntry(QUEUE_NAME, id, stateDir)) {
     return id;
-  }
-
-  const maxEntries = opts?.maxEntries ?? DEFAULT_QUEUE_SIZE_CAP;
-  if (Number.isFinite(maxEntries) && maxEntries > 0) {
-    const count = countPendingSessionDeliveryEntries(stateDir);
-    if (count >= maxEntries) {
-      console.warn(
-        `[session-delivery-queue] enqueue rejected: ${count} pending entries, soft-cap is ${maxEntries}`,
-      );
-      throw new SessionDeliveryQueueOverflowError(count, maxEntries);
-    }
   }
 
   const entry: QueuedSessionDelivery = {

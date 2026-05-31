@@ -1,9 +1,7 @@
 export {
   ackSessionDelivery,
   buildPostCompactionDelegateDeliveryPayload,
-  countPendingSessionDeliveryEntries,
   DEFAULT_FAILED_MAX_AGE_MS,
-  DEFAULT_QUEUE_SIZE_CAP,
   enqueuePostCompactionDelegateDelivery,
   enqueueSessionDelivery,
   failSessionDelivery,
@@ -11,7 +9,6 @@ export {
   loadPendingSessionDeliveries,
   moveSessionDeliveryToFailed,
   pruneFailedOlderThan,
-  SessionDeliveryQueueOverflowError,
 } from "./session-delivery-queue-storage.js";
 export type {
   QueuedSessionDelivery,
