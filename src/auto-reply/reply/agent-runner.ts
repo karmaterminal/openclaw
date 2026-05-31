@@ -77,6 +77,7 @@ import {
   takeDelayedContinuationReservation,
 } from "../continuation-delegate-store.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
+import { checkContextPressure } from "../continuation/context-pressure.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import {
   registerContinuationTimerHandle,
@@ -1723,6 +1724,53 @@ export async function runReplyAgent(params: {
       });
 
     replyOperation.setPhase("running");
+
+    // Trigger D: check context pressure before the agent's model call and
+    // inject a [system:context-pressure] event when a threshold band is
+    // crossed. Runs after setPhase("running") for state-tracking reasons,
+    // but unconditionally before the actual provider request below.
+    if (activeSessionEntry && sessionKey) {
+      const { contextPressureThreshold, earlyWarningBand } =
+        resolveLiveContinuationRuntimeConfig(cfg);
+      const contextWindowTokens =
+        resolveContextTokensForModel({
+          cfg,
+          provider: followupRun.run.provider,
+          model: defaultModel,
+          contextTokensOverride: agentCfgContextTokens,
+          fallbackContextTokens: activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
+          allowAsyncLoad: false,
+        }) ?? DEFAULT_CONTEXT_TOKENS;
+      const pressureResult = checkContextPressure({
+        sessionEntry: activeSessionEntry,
+        sessionKey,
+        contextPressureThreshold,
+        contextWindowTokens,
+        earlyWarningBand,
+        postCompaction: preflightCompactionApplied,
+      });
+      if (pressureResult.fired && storePath) {
+        try {
+          await updateSessionStore(storePath, (store) => {
+            const resolved = resolveSessionStoreEntry({ store, sessionKey });
+            if (resolved.existing) {
+              store[resolved.normalizedKey] = {
+                ...resolved.existing,
+                lastContextPressureBand: pressureResult.band,
+              };
+              for (const legacyKey of resolved.legacyKeys) {
+                delete store[legacyKey];
+              }
+            }
+          });
+        } catch (err) {
+          defaultRuntime.log(
+            `context-pressure band persistence failed (non-fatal): ${String(err)}`,
+          );
+        }
+      }
+    }
+
     const runStartedAt = Date.now();
     await persistRestartRecoveryDeliveryContext();
     const runOutcome = await traceAgentPhase("reply.run_agent_turn", () =>
