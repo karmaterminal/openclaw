@@ -11,7 +11,7 @@
 import type {
   ContinuationCrossSessionTargetingPolicy,
   ContinuationDelegateFanoutMode,
-} from "./targeting.js";
+} from "./targeting-pure.js";
 
 // ---------------------------------------------------------------------------
 // Continuation signals — parsed from response text or captured from tool calls
