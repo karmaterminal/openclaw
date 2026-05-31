@@ -129,7 +129,6 @@ import { REPLY_RUN_STILL_SHUTTING_DOWN_TEXT } from "./get-reply-run-queue.js";
 import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-routing.js";
 import { sanitizePendingFinalDeliveryText } from "./pending-final-delivery.js";
 import { drainPendingToolTasks } from "./pending-tool-task-drain.js";
-import { readPostCompactionContext } from "./post-compaction-context.js";
 import {
   dispatchPostCompactionDelegates,
   persistPendingPostCompactionDelegates,
@@ -2351,9 +2350,12 @@ export async function runReplyAgent(params: {
     }
     // Skip verbose/usage augmentation for silent continuations — a bare
     // CONTINUE_WORK should produce no user-visible output.
+    const isHookBlockedRun = runResult.meta?.error?.kind === "hook_block";
+    const rawAssistantText = isHookBlockedRun
+      ? undefined
+      : (runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText);
     if (!wasSilentContinuation) {
       const prefixPayloads = [...prefixNotices];
-      const isHookBlockedRun = runResult.meta?.error?.kind === "hook_block";
       const rawUserText = isHookBlockedRun
         ? runResult.meta?.finalPromptText
         : (runResult.meta?.finalPromptText ??
@@ -2361,9 +2363,6 @@ export async function runReplyAgent(params: {
           sessionCtx.RawBody ??
           sessionCtx.BodyForAgent ??
           sessionCtx.Body);
-      const rawAssistantText = isHookBlockedRun
-        ? undefined
-        : (runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText);
       const traceAuthorized = followupRun.run.traceAuthorized === true;
       const executionTrace = mergeExecutionTrace({
         fallbackAttempts,

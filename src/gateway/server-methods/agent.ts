@@ -47,14 +47,6 @@ import {
 } from "../../agents/spawned-context.js";
 import { consumeSubagentTraceparentHandoff } from "../../agents/subagent-traceparent-handoff.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
-import {
-  resolveBareResetBootstrapFileAccess,
-  resolveBareSessionResetPromptState,
-} from "../../auto-reply/reply/session-reset-prompt.js";
-import {
-  buildSessionStartupContextPrelude,
-  shouldApplyStartupContext,
-} from "../../auto-reply/reply/startup-context.js";
 import type { ContinuationTrigger } from "../../auto-reply/types.js";
 import { agentCommandFromIngress } from "../../commands/agent.js";
 import {

@@ -66,7 +66,7 @@ export async function pruneFailedOlderThan(
   return { scanned, removed };
 }
 
-type SessionDeliveryContext = {
+export type SessionDeliveryContext = {
   channel?: string;
   to?: string;
   accountId?: string;
@@ -266,6 +266,20 @@ export async function enqueueSessionDelivery(
     stateDir,
   });
   return id;
+}
+
+export async function enqueuePostCompactionDelegateDelivery(
+  params: {
+    sessionKey: string;
+    delegate: SessionPostCompactionDelegate;
+    sequence: number;
+    compactionCount?: number;
+    deliveryContext?: SessionDeliveryContext;
+    idempotencyKey?: string;
+  },
+  stateDir?: string,
+): Promise<string> {
+  return await enqueueSessionDelivery(buildPostCompactionDelegateDeliveryPayload(params), stateDir);
 }
 
 export async function ackSessionDelivery(id: string, stateDir?: string): Promise<void> {
