@@ -1,9 +1,11 @@
 /* @vitest-environment jsdom */
 
 import { describe, expect, it, vi } from "vitest";
+import { useHermeticOpenclawEnv } from "../../../test/vitest/hermetic-openclaw-env.js";
 import type { SidebarContent } from "./sidebar-content.ts";
 
 describe("OpenClawApp full-message sidebar upgrade", () => {
+  useHermeticOpenclawEnv();
   it("uses string content returned by chat.message.get", async () => {
     const { OpenClawApp } = await import("./app.ts");
     const content: SidebarContent = {
