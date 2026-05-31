@@ -27,8 +27,9 @@ import { emitTrustedDiagnosticEvent } from "../../../infra/diagnostic-events.js"
 import { resolveDiagnosticModelContentCapturePolicy } from "../../../infra/diagnostic-llm-content.js";
 import {
   createChildDiagnosticTraceContext,
-  createDiagnosticTraceContextFromActiveScope,
+  createDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
+  getActiveDiagnosticTraceContext,
 } from "../../../infra/diagnostic-trace-context.js";
 import { isEmbeddedMode } from "../../../infra/embedded-mode.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
@@ -146,6 +147,7 @@ import {
 } from "../../embedded-agent-helpers.js";
 import { countActiveToolExecutions } from "../../embedded-agent-subscribe.handlers.tools.js";
 import { subscribeEmbeddedAgentSession } from "../../embedded-agent-subscribe.js";
+import { isCoreToolResultMediaTrustedName } from "../../embedded-agent-subscribe.tools.js";
 import { isTimeoutError } from "../../failover-error.js";
 import { runAgentEndSideEffects } from "../../harness/agent-end-side-effects.js";
 import { resolveHeartbeatPromptForSystemPrompt } from "../../heartbeat-system-prompt.js";
@@ -253,7 +255,6 @@ import {
   type EmbeddedAgentQueueHandle,
   markActiveEmbeddedRunAbandoned,
   setActiveEmbeddedRun,
-  updateActiveEmbeddedRunSessionFile,
   updateActiveEmbeddedRunSnapshot,
 } from "../runs.js";
 import { buildEmbeddedSandboxInfo, resolveEmbeddedSandboxInfoExecPolicy } from "../sandbox-info.js";
@@ -362,9 +363,7 @@ import {
   shouldRunLlmOutputHooksForAttempt,
 } from "./attempt.run-decisions.js";
 import {
-  acquireEmbeddedAttemptSessionFileOwner,
   EmbeddedAttemptSessionTakeoverError,
-  type EmbeddedAttemptSessionFileOwner,
   createEmbeddedAttemptSessionLockController,
   installPromptSubmissionLockRelease,
 } from "./attempt.session-lock.js";
@@ -481,6 +480,34 @@ export {
   resolveEmbeddedAgentStreamFn,
 };
 
+function collectTrustedPluginLocalMediaToolNames(params: {
+  tools: Array<{ name?: string }>;
+}): Set<string> {
+  const trusted = new Set<string>();
+  for (const tool of params.tools) {
+    const toolName = tool.name?.trim();
+    if (!toolName) {
+      continue;
+    }
+    const meta = getPluginToolMeta(tool as Parameters<typeof getPluginToolMeta>[0]);
+    if (meta?.trustedLocalMedia === true) {
+      trusted.add(toolName);
+    }
+  }
+  return trusted;
+}
+
+function collectTrustedLocalMediaToolNames(params: {
+  coreBuiltinToolNames: ReadonlySet<string>;
+  trustedPluginToolNames: ReadonlySet<string>;
+}): Set<string> {
+  return new Set([
+    ...[...params.coreBuiltinToolNames].filter((toolName) =>
+      isCoreToolResultMediaTrustedName(toolName),
+    ),
+    ...params.trustedPluginToolNames,
+  ]);
+}
 const MAX_BTW_SNAPSHOT_MESSAGES = 100;
 const PROMPT_TOOL_RESULT_AGGREGATE_CAP_MULTIPLIER = 4;
 
@@ -893,7 +920,6 @@ export async function runEmbeddedAttempt(
   let beforeAgentRunBlockedBy: string | undefined;
   // Releases the eager session lock if post-prompt code exits before cleanup.
   let releaseRetainedSessionLock: (() => Promise<void>) | undefined;
-  let retainedSessionFileOwner: EmbeddedAttemptSessionFileOwner | undefined;
   let bundleMcpRuntime: Awaited<ReturnType<typeof materializeBundleMcpToolsForRun>> | undefined;
   let bundleLspRuntime: Awaited<ReturnType<typeof createBundleLspToolRuntime>> | undefined;
   let toolSearchCatalogRef: ToolSearchCatalogRef | undefined;
@@ -1052,7 +1078,7 @@ export async function runEmbeddedAttempt(
       resolveContextEngineOwnerPluginId(activeContextEngine);
     const agentDir = params.agentDir ?? resolveAgentDir(params.config ?? {}, sessionAgentId);
     const diagnosticTrace = freezeDiagnosticTraceContext(
-      createDiagnosticTraceContextFromActiveScope(),
+      getActiveDiagnosticTraceContext() ?? createDiagnosticTraceContext(),
     );
     const runTrace = freezeDiagnosticTraceContext(
       createChildDiagnosticTraceContext(diagnosticTrace),
@@ -1067,6 +1093,8 @@ export async function runEmbeddedAttempt(
       ...((params.messageChannel ?? params.messageProvider)
         ? { channel: params.messageChannel ?? params.messageProvider }
         : {}),
+      ...(params.fireReason ? { fireReason: params.fireReason } : {}),
+      ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
       trace: runTrace,
     };
     emitTrustedDiagnosticEvent({
@@ -1230,6 +1258,9 @@ export async function runEmbeddedAttempt(
             recordToolPrepStage: (name) => corePluginToolStages.mark(name),
             onToolOutcome: params.onToolOutcome,
             skillsSnapshot: skillsSnapshotForRun,
+            continueWorkOpts: params.continueWorkOpts,
+            requestCompactionOpts: params.requestCompactionOpts,
+            drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
             onYield: (message) => {
               yieldDetected = true;
               yieldMessage = message;
@@ -1474,6 +1505,9 @@ export async function runEmbeddedAttempt(
       senderE164: params.senderE164,
       warn: (message) => log.warn(message),
     });
+    const trustedPluginLocalMediaToolNames = collectTrustedPluginLocalMediaToolNames({
+      tools: toolsEnabled ? [...tools, ...filteredBundledTools] : [],
+    });
     const normalizedBundledTools =
       filteredBundledTools.length > 0
         ? normalizeAgentRuntimeTools({
@@ -1489,23 +1523,12 @@ export async function runEmbeddedAttempt(
             runtimeHandle: getProviderRuntimeHandle(),
           })
         : filteredBundledTools;
-    const projectedUncompactedEffectiveTools = filterLocalModelLeanTools({
+    const uncompactedEffectiveTools = filterLocalModelLeanTools({
       tools: [...tools, ...normalizedBundledTools],
       config: params.config,
       agentId: sessionAgentId,
       preserveToolNames: localModelLeanPreserveToolNames,
     });
-    const uncompactedToolSchemaProjection = filterRuntimeCompatibleTools(
-      projectedUncompactedEffectiveTools,
-    );
-    logRuntimeToolSchemaQuarantine({
-      diagnostics: uncompactedToolSchemaProjection.diagnostics,
-      tools: projectedUncompactedEffectiveTools,
-      runId: params.runId,
-      sessionKey: params.sessionKey,
-      sessionId: params.sessionId,
-    });
-    const uncompactedEffectiveTools = [...uncompactedToolSchemaProjection.tools];
     let effectiveTools = uncompactedEffectiveTools;
     const catalogToolHookContext = {
       agentId: sessionAgentId,
@@ -1561,6 +1584,7 @@ export async function runEmbeddedAttempt(
           catalogRef: toolSearchCatalogRef,
           toolHookContext: catalogToolHookContext,
         });
+    toolSearchCatalogApplied = true;
     const projectedToolSearchTools = filterLocalModelLeanTools({
       tools: toolSearch.tools,
       config: params.config,
@@ -1828,6 +1852,7 @@ export async function runEmbeddedAttempt(
         bootstrapTruncationNotice,
         includeMemorySection: !activeContextEngine || activeContextEngine.info.id === "legacy",
         promptContribution,
+        continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true,
       },
       providerTransform: {
         provider: params.provider,
@@ -1884,11 +1909,6 @@ export async function runEmbeddedAttempt(
       compactionTimeoutMs,
     });
     await throwIfAttemptAbortSignalFiredAfterPrepCleanup();
-    retainedSessionFileOwner = await acquireEmbeddedAttemptSessionFileOwner({
-      sessionFile: params.sessionFile,
-      timeoutMs: sessionWriteLockOptions.maxHoldMs,
-      signal: params.abortSignal,
-    });
     const sessionLockController = await createEmbeddedAttemptSessionLockController({
       acquireSessionWriteLock,
       lockOptions: {
@@ -2098,6 +2118,10 @@ export async function runEmbeddedAttempt(
       const coreBuiltinToolNames = collectCoreBuiltinToolNames(uncompactedEffectiveTools, {
         isPluginTool: (tool) =>
           Boolean(getPluginToolMeta(tool as Parameters<typeof getPluginToolMeta>[0])),
+      });
+      const trustedLocalMediaToolNames = collectTrustedLocalMediaToolNames({
+        coreBuiltinToolNames,
+        trustedPluginToolNames: trustedPluginLocalMediaToolNames,
       });
       const clientToolNameConflicts = findClientToolNameConflicts({
         tools: clientTools ?? [],
@@ -3070,6 +3094,7 @@ export async function runEmbeddedAttempt(
           sessionId: params.sessionId,
           agentId: sessionAgentId,
           builtinToolNames,
+          trustedLocalMediaToolNames,
           internalEvents: params.internalEvents,
         }),
       );
@@ -4496,7 +4521,6 @@ export async function runEmbeddedAttempt(
               if (rotation.rotated) {
                 sessionIdUsed = rotation.sessionId ?? sessionIdUsed;
                 sessionFileUsed = rotation.sessionFile ?? sessionFileUsed;
-                updateActiveEmbeddedRunSessionFile(params.sessionId, sessionFileUsed);
                 log.info(
                   `[compaction] rotated active transcript after automatic compaction ` +
                     `(sessionKey=${params.sessionKey ?? params.sessionId})`,
@@ -5019,8 +5043,6 @@ export async function runEmbeddedAttempt(
         `failed to release retained session lock on attempt teardown: runId=${params.runId} ${String(releaseErr)}`,
       );
     }
-    retainedSessionFileOwner?.release();
-    retainedSessionFileOwner = undefined;
     emitDiagnosticRunCompleted?.(
       aborted ? "aborted" : "error",
       promptError ?? new Error("run exited before diagnostic completion"),

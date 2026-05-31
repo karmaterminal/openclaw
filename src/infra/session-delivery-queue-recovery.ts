@@ -13,14 +13,14 @@ import {
   type QueuedSessionDelivery,
 } from "./session-delivery-queue-storage.js";
 
-type SessionDeliveryRecoverySummary = {
+export type SessionDeliveryRecoverySummary = {
   recovered: number;
   failed: number;
   skippedMaxRetries: number;
   deferredBackoff: number;
 };
 
-type DeliverSessionDeliveryFn = (entry: QueuedSessionDelivery) => Promise<void>;
+export type DeliverSessionDeliveryFn = (entry: QueuedSessionDelivery) => Promise<void>;
 
 export interface SessionDeliveryRecoveryLogger {
   info(msg: string): void;
@@ -28,12 +28,12 @@ export interface SessionDeliveryRecoveryLogger {
   error(msg: string): void;
 }
 
-interface PendingSessionDeliveryDrainDecision {
+export interface PendingSessionDeliveryDrainDecision {
   match: boolean;
   bypassBackoff?: boolean;
 }
 
-const MAX_SESSION_DELIVERY_RETRIES = 5;
+export const MAX_SESSION_DELIVERY_RETRIES = 5;
 
 const BACKOFF_MS: readonly number[] = [5_000, 25_000, 120_000, 600_000];
 const drainInProgress = new Map<string, boolean>();
@@ -54,6 +54,23 @@ function createEmptyRecoverySummary(): SessionDeliveryRecoverySummary {
   };
 }
 
+function formatRetryBudgetExhaustedLog(entry: QueuedSessionDelivery): string | null {
+  if (entry.kind !== "postCompactionDelegate") {
+    return null;
+  }
+  return `[session-delivery-queue:retry-budget-exhausted] entry ${entry.id} hit retry cap before post-compaction delegate spawn for session ${entry.sessionKey}: ${entry.task}`;
+}
+
+function logRetryBudgetExhausted(
+  log: SessionDeliveryRecoveryLogger,
+  entry: QueuedSessionDelivery,
+): void {
+  const message = formatRetryBudgetExhaustedLog(entry);
+  if (message) {
+    log.warn(message);
+  }
+}
+
 function claimRecoveryEntry(entryId: string): boolean {
   if (entriesInProgress.has(entryId)) {
     return false;
@@ -66,7 +83,7 @@ function releaseRecoveryEntry(entryId: string): void {
   entriesInProgress.delete(entryId);
 }
 
-function computeSessionDeliveryBackoffMs(retryCount: number): number {
+export function computeSessionDeliveryBackoffMs(retryCount: number): number {
   if (retryCount <= 0) {
     return 0;
   }
@@ -143,6 +160,7 @@ export async function drainPendingSessionDeliveries(opts: {
   stateDir?: string;
   deliver: DeliverSessionDeliveryFn;
   selectEntry: (entry: QueuedSessionDelivery, now: number) => PendingSessionDeliveryDrainDecision;
+  failedMaxAgeMs?: number;
 }): Promise<void> {
   if (drainInProgress.get(opts.drainKey)) {
     opts.log.info(`${opts.logLabel}: already in progress for ${opts.drainKey}, skipping`);
@@ -171,6 +189,7 @@ export async function drainPendingSessionDeliveries(opts: {
           continue;
         }
         if (currentEntry.retryCount >= resolveSessionDeliveryMaxRetries(currentEntry)) {
+          logRetryBudgetExhausted(opts.log, currentEntry);
           try {
             await moveSessionDeliveryToFailed(currentEntry.id, opts.stateDir);
           } catch (err) {
@@ -217,6 +236,7 @@ export async function recoverPendingSessionDeliveries(opts: {
   stateDir?: string;
   maxRecoveryMs?: number;
   maxEnqueuedAt?: number;
+  failedMaxAgeMs?: number;
 }): Promise<SessionDeliveryRecoverySummary> {
   const pending = (await loadPendingSessionDeliveries(opts.stateDir)).filter(
     (entry) => opts.maxEnqueuedAt == null || entry.enqueuedAt <= opts.maxEnqueuedAt,
@@ -248,6 +268,7 @@ export async function recoverPendingSessionDeliveries(opts: {
       }
       if (currentEntry.retryCount >= resolveSessionDeliveryMaxRetries(currentEntry)) {
         summary.skippedMaxRetries += 1;
+        logRetryBudgetExhausted(opts.log, currentEntry);
         try {
           await moveSessionDeliveryToFailed(currentEntry.id, opts.stateDir);
         } catch (err) {

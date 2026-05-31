@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ChatType } from "../channels/chat-type.js";
+import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
 import {
   deleteDeliveryQueueEntry,
   loadDeliveryQueueEntries,
@@ -9,6 +10,7 @@ import {
   upsertDeliveryQueueEntry,
   type DeliveryQueueRowMetadata,
 } from "./delivery-queue-sqlite.js";
+import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 import { generateSecureUuid } from "./secure-random.js";
 
 const QUEUE_NAME = "session";
@@ -33,15 +35,36 @@ export type SessionDeliveryRoute = {
   chatType: ChatType;
 };
 
-export type QueuedSessionDeliveryPayload =
-  | ({
+export interface AttachmentRef {
+  kind: "blob-sha256";
+  sha256: string;
+  mediaType?: string;
+}
+
+type QueuedSessionDeliveryPayloadMetadata = {
+  /**
+   * W3C trace-context traceparent for chain-correlation runtime. This is the
+   * address-recipient shape; broadcast-mode surfaces use the same substrate
+   * with a different verb set.
+   */
+  traceparent?: string;
+  /**
+   * Descriptor-stub attachment references for sibling enrichment runtime.
+   * This is the address-recipient shape; broadcast mode uses the same substrate
+   * with a different verb set.
+   */
+  attachments?: AttachmentRef[];
+};
+
+export type QueuedSessionDeliveryPayload = (
+  | {
       kind: "systemEvent";
       sessionKey: string;
       text: string;
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
-    } & SessionDeliveryRetryPolicy)
-  | ({
+    }
+  | {
       kind: "agentTurn";
       sessionKey: string;
       message: string;
@@ -50,7 +73,24 @@ export type QueuedSessionDeliveryPayload =
       route?: SessionDeliveryRoute;
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
-    } & SessionDeliveryRetryPolicy);
+    }
+  | {
+      kind: "postCompactionDelegate";
+      sessionKey: string;
+      task: string;
+      createdAt: number;
+      firstArmedAt?: number;
+      silent?: boolean;
+      silentWake?: boolean;
+      targetSessionKey?: string;
+      targetSessionKeys?: string[];
+      fanoutMode?: "tree" | "all";
+      deliveryContext?: SessionDeliveryContext;
+      idempotencyKey?: string;
+    }
+) &
+  SessionDeliveryRetryPolicy &
+  QueuedSessionDeliveryPayloadMetadata;
 
 export type QueuedSessionDelivery = QueuedSessionDeliveryPayload & {
   id: string;
@@ -60,11 +100,84 @@ export type QueuedSessionDelivery = QueuedSessionDeliveryPayload & {
   lastError?: string;
 };
 
+// Strip trailing whitespace per line and at end-of-string before hashing the
+// idempotency key, so same-intent keys that differ only by trailing whitespace
+// produce the same sha256 taskHash and the replay-dedupe path stays robust.
+function canonicalizeIdempotencyKey(key: string): string {
+  return key.replace(/[ \t\r\f\v]+(?=\n|$)/g, "").replace(/\s+$/, "");
+}
+
 function buildEntryId(idempotencyKey?: string): string {
   if (!idempotencyKey) {
     return generateSecureUuid();
   }
-  return createHash("sha256").update(idempotencyKey).digest("hex");
+  return createHash("sha256").update(canonicalizeIdempotencyKey(idempotencyKey)).digest("hex");
+}
+
+function normalizeQueuedTraceparent(
+  payload: QueuedSessionDeliveryPayload,
+): QueuedSessionDeliveryPayload {
+  const normalizedTraceparent = normalizeDiagnosticTraceparent(payload.traceparent);
+  const normalizedPayload: QueuedSessionDeliveryPayload = { ...payload };
+  if (normalizedTraceparent) {
+    normalizedPayload.traceparent = normalizedTraceparent;
+  } else {
+    delete normalizedPayload.traceparent;
+  }
+  return normalizedPayload;
+}
+
+function buildPostCompactionDelegateIdempotencyKey(params: {
+  sessionKey: string;
+  delegate: SessionPostCompactionDelegate;
+  sequence: number;
+  compactionCount?: number;
+}): string {
+  const taskHash = createHash("sha256").update(params.delegate.task).digest("hex").slice(0, 16);
+  return [
+    "post-compaction-delegate",
+    params.sessionKey,
+    String(params.compactionCount ?? "unknown"),
+    String(params.delegate.firstArmedAt ?? params.delegate.createdAt),
+    String(params.sequence),
+    taskHash,
+  ].join(":");
+}
+
+export function buildPostCompactionDelegateDeliveryPayload(params: {
+  sessionKey: string;
+  delegate: SessionPostCompactionDelegate;
+  sequence: number;
+  compactionCount?: number;
+  deliveryContext?: SessionDeliveryContext;
+  idempotencyKey?: string;
+}): QueuedSessionDeliveryPayload {
+  return {
+    kind: "postCompactionDelegate",
+    sessionKey: params.sessionKey,
+    task: params.delegate.task,
+    createdAt: params.delegate.createdAt,
+    firstArmedAt: params.delegate.firstArmedAt ?? params.delegate.createdAt,
+    ...(params.delegate.silent != null ? { silent: params.delegate.silent } : {}),
+    ...(params.delegate.silentWake != null ? { silentWake: params.delegate.silentWake } : {}),
+    ...(params.delegate.targetSessionKey
+      ? { targetSessionKey: params.delegate.targetSessionKey }
+      : {}),
+    ...(params.delegate.targetSessionKeys && params.delegate.targetSessionKeys.length > 0
+      ? { targetSessionKeys: params.delegate.targetSessionKeys }
+      : {}),
+    ...(params.delegate.fanoutMode ? { fanoutMode: params.delegate.fanoutMode } : {}),
+    ...(params.delegate.traceparent ? { traceparent: params.delegate.traceparent } : {}),
+    ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+    idempotencyKey:
+      params.idempotencyKey ??
+      buildPostCompactionDelegateIdempotencyKey({
+        sessionKey: params.sessionKey,
+        delegate: params.delegate,
+        sequence: params.sequence,
+        compactionCount: params.compactionCount,
+      }),
+  };
 }
 
 function queuedSessionDeliveryMetadata(entry: QueuedSessionDelivery): DeliveryQueueRowMetadata {
@@ -82,14 +195,15 @@ export async function enqueueSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   stateDir?: string,
 ): Promise<string> {
-  const id = buildEntryId(params.idempotencyKey);
+  const payload = normalizeQueuedTraceparent(params);
+  const id = buildEntryId(payload.idempotencyKey);
 
-  if (params.idempotencyKey && loadDeliveryQueueEntry(QUEUE_NAME, id, stateDir)) {
+  if (payload.idempotencyKey && loadDeliveryQueueEntry(QUEUE_NAME, id, stateDir)) {
     return id;
   }
 
   const entry: QueuedSessionDelivery = {
-    ...params,
+    ...payload,
     id,
     enqueuedAt: Date.now(),
     retryCount: 0,
