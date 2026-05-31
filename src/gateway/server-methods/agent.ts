@@ -45,6 +45,7 @@ import {
   normalizeSpawnedRunMetadata,
   resolveIngressWorkspaceOverrideForSpawnedRun,
 } from "../../agents/spawned-context.js";
+import { consumeSubagentTraceparentHandoff } from "../../agents/subagent-traceparent-handoff.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import {
   resolveBareResetBootstrapFileAccess,
@@ -841,23 +842,6 @@ function readAgentRunTimeoutAttribution(meta: unknown) {
   };
 }
 
-function isGatewayAbortSignalReason(reason: unknown): boolean {
-  return reason === undefined || isAbortError(reason) || readErrorName(reason) === "TimeoutError";
-}
-
-function isGatewayAgentAbortRejection(error: unknown, signal: AbortSignal): boolean {
-  if (!signal.aborted) {
-    return false;
-  }
-  if (readErrorName(signal.reason) === "TimeoutError") {
-    return true;
-  }
-  if (!isGatewayAbortSignalReason(signal.reason)) {
-    return false;
-  }
-  return isAbortError(error) || readErrorName(error) === "TimeoutError";
-}
-
 function resolveGatewayAgentAbortStopReason(signal: AbortSignal): "rpc" | "timeout" {
   return readErrorName(signal.reason) === "TimeoutError" ? "timeout" : "rpc";
 }
@@ -951,7 +935,7 @@ function dispatchAgentRunFromGateway(params: {
       params.respond(true, payload, undefined, { runId: params.runId });
     })
     .catch((err) => {
-      const aborted = isGatewayAgentAbortRejection(err, params.abortController.signal);
+      const aborted = isAbortError(err);
       const renderedErr = formatForLog(err);
       if (shouldTrackTask) {
         tryFinalizeTrackedAgentTask({
@@ -1078,7 +1062,9 @@ export const agentHandlers: GatewayRequestHandlers = {
       voiceWakeTrigger?: string;
       drainsContinuationDelegateQueue?: boolean;
       continuationTrigger?: ContinuationTrigger;
+      traceparent?: string;
     };
+    const senderIsOwner = clientHasAdminScope(client);
     const allowModelOverride = resolveAllowModelOverrideFromClient(client);
     const canUseInternalRuntimeHandoff = resolveCanUseInternalRuntimeHandoff(client);
     const requestedModelOverride = Boolean(request.provider || request.model);
@@ -1513,6 +1499,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       }
       let resolvedSessionId = requestedSessionId;
       let sessionEntry: SessionEntry | undefined;
+      let sessionContinuationTraceparent: string | undefined;
       let bestEffortDeliver = requestedBestEffortDeliver ?? false;
       let cfgForAgent: OpenClawConfig | undefined;
       let resolvedSessionKey = requestedSessionKey;
@@ -1616,6 +1603,7 @@ export const agentHandlers: GatewayRequestHandlers = {
           canonicalKey,
         } = loadSessionEntry(requestedSessionKey, sessionLoadOptions);
         cfgForAgent = cfgLocal;
+        sessionContinuationTraceparent = entry?.continuationTraceparent;
         const sessionMaintenanceConfig = resolveMaintenanceConfigFromInput(
           cfgLocal.session?.maintenance,
         );
@@ -1890,8 +1878,12 @@ export const agentHandlers: GatewayRequestHandlers = {
                 recoveredSessionStartedAt !== undefined &&
                 freshEntry?.sessionStartedAt === undefined &&
                 freshEntry?.sessionId === entry?.sessionId
-                  ? { ...patchBuild.patch, sessionStartedAt: recoveredSessionStartedAt }
-                  : patchBuild.patch;
+                  ? {
+                      ...patchBuild.patch,
+                      sessionStartedAt: recoveredSessionStartedAt,
+                      continuationTraceparent: undefined,
+                    }
+                  : { ...patchBuild.patch, continuationTraceparent: undefined };
               const merged = mergeSessionEntry(freshEntry, effectivePatch);
               const sendPolicy =
                 request.deliver === true
@@ -2375,6 +2367,13 @@ export const agentHandlers: GatewayRequestHandlers = {
           }
           const execApprovalFollowupElevatedDefaults =
             execApprovalFollowupRuntimeHandoff?.bashElevated;
+          const inheritedTraceparent =
+            request.traceparent ??
+            consumeSubagentTraceparentHandoff({
+              idempotencyKey: idem,
+              sessionKey: resolvedSessionKey,
+            })?.traceparent ??
+            sessionContinuationTraceparent;
 
           dispatchAgentRunFromGateway({
             ingressOpts: {
@@ -2435,6 +2434,7 @@ export const agentHandlers: GatewayRequestHandlers = {
               cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd,
               drainsContinuationDelegateQueue: request.drainsContinuationDelegateQueue,
               continuationTrigger: request.continuationTrigger,
+              traceparent: inheritedTraceparent,
               abortSignal: activeRunAbort.controller.signal,
               onActiveModelSelected: ({ provider }) => {
                 updateChatRunProvider(context.chatAbortControllers, {
@@ -2455,6 +2455,7 @@ export const agentHandlers: GatewayRequestHandlers = {
                 sessionEntry,
               }),
               allowModelOverride,
+              senderIsOwner,
             },
             runId,
             dedupeKeys: agentDedupeKeys,
