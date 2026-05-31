@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resetContinuationTracer,
@@ -9,13 +7,11 @@ import {
   type StartSpanOptions,
   type Tracer,
 } from "../../infra/continuation-tracer.js";
-import type {
-  QueuedSessionDelivery,
-  QueuedSessionDeliveryPayload,
-} from "../../infra/session-delivery-queue-storage.js";
+import type { QueuedSessionDeliveryPayload } from "../../infra/session-delivery-queue-storage.js";
 import {
   ackSessionDelivery as realAckSessionDelivery,
   enqueueSessionDelivery as realEnqueueSessionDelivery,
+  loadPendingSessionDeliveries,
 } from "../../infra/session-delivery-queue-storage.js";
 import {
   enqueueSystemEvent,
@@ -415,21 +411,13 @@ describe("continuation cross-session targeting", () => {
 
       expect(result).toMatchObject({ enqueued: 1, delivered: 1 });
 
-      const queueDir = path.join(stateDir, "session-delivery-queue");
-      const entries = await fs.readdir(queueDir);
-      const jsonFiles = entries.filter((entry) => entry.endsWith(".json"));
-      const deliveredMarkers = entries.filter((entry) => entry.endsWith(".delivered"));
-
-      // Per #578/#580 fix: durable queue file must persist (NOT renamed to
-      // .delivered, NOT unlinked). The recovery loop on next gateway
+      // Per #578/#580 fix: durable queue entry must persist in the SQLite
+      // substrate (NOT acked/removed). The recovery loop on next gateway
       // restart picks it up via `recoverPendingRestartContinuationDeliveries`.
-      expect(jsonFiles).toHaveLength(1);
-      expect(deliveredMarkers).toHaveLength(0);
+      const persistedEntries = await loadPendingSessionDeliveries(stateDir);
+      expect(persistedEntries).toHaveLength(1);
 
-      const persistedPath = path.join(queueDir, jsonFiles[0]);
-      const persisted = JSON.parse(
-        await fs.readFile(persistedPath, "utf-8"),
-      ) as QueuedSessionDelivery;
+      const persisted = persistedEntries[0];
       expect(persisted.kind).toBe("systemEvent");
       expect(persisted.sessionKey).toBe("agent:main:other");
       expect(persisted.idempotencyKey).toBe("continuation-return:durable-test:0:agent:main:other");
@@ -454,10 +442,7 @@ describe("continuation cross-session targeting", () => {
         },
       );
 
-      const queueDir = path.join(stateDir, "session-delivery-queue");
-      expect((await fs.readdir(queueDir)).filter((entry) => entry.endsWith(".json"))).toHaveLength(
-        1,
-      );
+      expect(await loadPendingSessionDeliveries(stateDir)).toHaveLength(1);
 
       const drained = await drainFormattedSystemEvents({
         cfg: {},
@@ -466,7 +451,7 @@ describe("continuation cross-session targeting", () => {
         isNewSession: false,
       });
       expect(drained).toContain("live attached recipient");
-      expect((await fs.readdir(queueDir)).filter((entry) => entry.endsWith(".json"))).toEqual([]);
+      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
     });
   });
 
@@ -488,19 +473,8 @@ describe("continuation cross-session targeting", () => {
         },
       );
 
-      const queueDir = path.join(stateDir, "session-delivery-queue");
-      const entries = await fs.readdir(queueDir);
-      const jsonFiles = entries.filter((entry) => entry.endsWith(".json"));
-
-      expect(jsonFiles).toHaveLength(2);
-      const persisted: QueuedSessionDelivery[] = [];
-      for (const file of jsonFiles) {
-        persisted.push(
-          JSON.parse(
-            await fs.readFile(path.join(queueDir, file), "utf-8"),
-          ) as QueuedSessionDelivery,
-        );
-      }
+      const persisted = await loadPendingSessionDeliveries(stateDir);
+      expect(persisted).toHaveLength(2);
       expect(persisted.map((entry) => entry.sessionKey).toSorted()).toEqual([
         "agent:main:root",
         "agent:main:sibling",
