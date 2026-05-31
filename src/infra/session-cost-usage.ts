@@ -374,12 +374,18 @@ async function writeUsageCostCache(cachePath: string, cache: UsageCostCacheFile)
 
 async function listUsageCountedTranscriptFileStats(
   agentId?: string,
-  params?: { minMtimeMs?: number; sessionsDir?: string },
+  params?: { minMtimeMs?: number; sessionsDir?: string; includeCheckpoints?: boolean },
 ): Promise<UsageCostTranscriptFile[]> {
   const sessionsDir = params?.sessionsDir ?? resolveSessionTranscriptsDirForAgent(agentId);
   const entries = await fs.promises.readdir(sessionsDir, { withFileTypes: true }).catch(() => []);
+  const includeCheckpoints = params?.includeCheckpoints ?? false;
   const tasks = entries
-    .filter((entry) => entry.isFile() && isUsageCountedSessionTranscriptFileName(entry.name))
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        (isUsageCountedSessionTranscriptFileName(entry.name) ||
+          (includeCheckpoints && isCheckpointSessionTranscriptFileName(entry.name))),
+    )
     .map((entry) => async (): Promise<UsageCostTranscriptFile | undefined> => {
       const filePath = path.join(sessionsDir, entry.name);
       const stats = await fs.promises.stat(filePath).catch(() => null);
@@ -1900,6 +1906,7 @@ export async function discoverAllSessions(params?: {
 }): Promise<DiscoveredSession[]> {
   const files = await listUsageCountedTranscriptFileStats(params?.agentId, {
     minMtimeMs: params?.startMs,
+    includeCheckpoints: true,
   });
 
   const discovered = new Map<string, DiscoveredSession>();
