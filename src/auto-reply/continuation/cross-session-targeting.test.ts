@@ -13,11 +13,7 @@ import {
   enqueueSessionDelivery as realEnqueueSessionDelivery,
   loadPendingSessionDeliveries,
 } from "../../infra/session-delivery-queue-storage.js";
-import {
-  enqueueSystemEvent,
-  peekSystemEventEntries,
-  resetSystemEventsForTest,
-} from "../../infra/system-events.js";
+import { peekSystemEventEntries, resetSystemEventsForTest } from "../../infra/system-events.js";
 import { withTempDir } from "../../test-helpers/temp-dir.js";
 import { drainFormattedSystemEvents } from "../reply/session-system-events.js";
 import {
