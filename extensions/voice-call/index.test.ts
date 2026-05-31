@@ -210,6 +210,11 @@ async function registerVoiceCallCli(
 
 describe("voice-call plugin", () => {
   beforeEach(() => {
+    // Hermetic env: tests assume a non-CLI-only process so service.start() runs the
+    // runtime path. Host envs that export OPENCLAW_CLI=1 (e.g. running under the
+    // openclaw-gateway systemd unit) otherwise short-circuit isCliOnlyProcess()
+    // and falsely fail mock-call assertions. Cleared in afterEach via vi.unstubAllEnvs.
+    vi.stubEnv("OPENCLAW_CLI", "");
     noopLogger.info.mockClear();
     noopLogger.warn.mockClear();
     noopLogger.error.mockClear();
