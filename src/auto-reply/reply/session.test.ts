@@ -763,28 +763,6 @@ describe("initSessionState RawBody", () => {
         sessionId: existingSessionId,
         updatedAt: Date.now(),
         systemSent: true,
-        totalTokens: 64_000,
-        totalTokensFresh: false,
-        contextTokens: 128_000,
-        contextBudgetStatus: {
-          schemaVersion: 1,
-          source: "pre-prompt-estimate",
-          updatedAt: Date.now(),
-          provider: "anthropic",
-          model: "claude-sonnet-4.6",
-          route: "fits",
-          shouldCompact: false,
-          estimatedPromptTokens: 64_000,
-          contextTokenBudget: 128_000,
-          promptBudgetBeforeReserve: 112_000,
-          reserveTokens: 16_000,
-          effectiveReserveTokens: 16_000,
-          remainingPromptBudgetTokens: 48_000,
-          overflowTokens: 0,
-          toolResultReducibleChars: 0,
-          messageCount: 8,
-          unwindowedMessageCount: 8,
-        },
         skillsSnapshot: {
           prompt: "<available_skills><skill><name>stale</name></skill></available_skills>",
           skills: [{ name: "stale" }],
@@ -814,23 +792,12 @@ describe("initSessionState RawBody", () => {
     expect(result.resetTriggered).toBe(true);
     expect(result.sessionId).not.toBe(existingSessionId);
     expect(result.sessionEntry.skillsSnapshot).toBeUndefined();
-    expect(result.sessionEntry.totalTokens).toBeUndefined();
-    expect(result.sessionEntry.contextTokens).toBeUndefined();
-    expect(result.sessionEntry.contextBudgetStatus).toBeUndefined();
 
     const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
       string,
-      {
-        skillsSnapshot?: unknown;
-        totalTokens?: number;
-        contextTokens?: number;
-        contextBudgetStatus?: unknown;
-      }
+      { skillsSnapshot?: unknown }
     >;
     expect(store[sessionKey]?.skillsSnapshot).toBeUndefined();
-    expect(store[sessionKey]?.totalTokens).toBeUndefined();
-    expect(store[sessionKey]?.contextTokens).toBeUndefined();
-    expect(store[sessionKey]?.contextBudgetStatus).toBeUndefined();
   });
 
   it("drains stale system events when /new rotates an existing session", async () => {
@@ -2285,6 +2252,8 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
       thinkingLevel: "high",
       reasoningLevel: "low",
       label: "telegram-priority",
+      lastContextPressureBand: 95,
+      pendingPostCompactionDelegates: [{ task: "carry notes", createdAt: 1 }],
     } as const;
     const cases = [
       {
@@ -2328,7 +2297,18 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
       expect(result.isNewSession, testCase.name).toBe(true);
       expect(result.resetTriggered, testCase.name).toBe(true);
       expect(result.sessionId, testCase.name).not.toBe(existingSessionId);
-      expectEntryFields(result.sessionEntry, overrides, testCase.name);
+      // Feature: behavior overrides are preserved across /new and /reset, but
+      // pressure-band telemetry and pending post-compaction delegates MUST be
+      // cleared (continuation safety — stale band/queue from prior session
+      // would leak into the new one).
+      expect(result.sessionEntry, testCase.name).toMatchObject({
+        verboseLevel: "on",
+        thinkingLevel: "high",
+        reasoningLevel: "low",
+        label: "telegram-priority",
+      });
+      expect(result.sessionEntry.lastContextPressureBand, testCase.name).toBeUndefined();
+      expect(result.sessionEntry.pendingPostCompactionDelegates, testCase.name).toBeUndefined();
     }
   });
 
