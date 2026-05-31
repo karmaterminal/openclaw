@@ -15,7 +15,7 @@ import {
   parseDiagnosticTraceparent,
   resetDiagnosticTraceContextForTest,
 } from "../../infra/diagnostic-trace-context.js";
-import { type EmbeddedAgentRunResult } from "../embedded-agent.js";
+import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { FailoverError } from "../failover-error.js";
 import { persistCliTurnTranscript, runAgentAttempt } from "./attempt-execution.js";
 import { resolveClaudeCliProjectDirForWorkspace } from "./claude-cli-project-dir.js";

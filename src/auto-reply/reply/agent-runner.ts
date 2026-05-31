@@ -1135,7 +1135,7 @@ function refreshSessionEntryFromStore(params: {
   }
 }
 
-export async function runReplyAgent(params: {
+export async function runReplyAgent(replyParams: {
   commandBody: string;
   transcriptCommandBody?: string;
   followupRun: FollowupRun;
@@ -1206,7 +1206,7 @@ export async function runReplyAgent(params: {
     resetTriggered,
     replyThreadingOverride,
     replyOperation: providedReplyOperation,
-  } = params;
+  } = replyParams;
 
   let activeSessionEntry = sessionEntry;
   const activeSessionStore = sessionStore;
