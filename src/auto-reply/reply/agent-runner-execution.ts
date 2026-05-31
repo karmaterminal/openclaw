@@ -2426,7 +2426,7 @@ export async function runAgentTurnWithFallback(params: {
                   sessionKey: params.sessionKey,
                   milestone: "before_embedded_run",
                 });
-                const result = await agentTurnTiming.measure("embedded_run", () =>
+                const embeddedRunResult = await agentTurnTiming.measure("embedded_run", () =>
                   runEmbeddedAgent({
                     ...embeddedContext,
                     allowGatewaySubagentBinding: true,
@@ -2871,16 +2871,16 @@ export async function runAgentTurnWithFallback(params: {
                   }),
                 );
                 bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
-                  result.meta?.systemPromptReport,
+                  embeddedRunResult.meta?.systemPromptReport,
                 );
-                lifecycleBackstop.emit("end", result);
+                lifecycleBackstop.emit("end", embeddedRunResult);
                 const resultCompactionCount = Math.max(
                   0,
-                  result.meta?.agentMeta?.compactionCount ?? 0,
+                  embeddedRunResult.meta?.agentMeta?.compactionCount ?? 0,
                 );
                 attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
                 return {
-                  result,
+                  result: embeddedRunResult,
                   continueWorkRequest: attemptContinueWorkRequest,
                   compactionTraceparent: attemptCompactionTraceparent,
                 };
