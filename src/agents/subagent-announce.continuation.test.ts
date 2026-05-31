@@ -224,7 +224,9 @@ describe("subagent announce continuation chaining", () => {
       reply: "step complete\n[[CONTINUE_DELEGATE: do step 1]]",
       maxChainLength: 2,
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => {
+      setTimeout(r, 50);
+    });
 
     expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     expect(mocked.spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
@@ -239,7 +241,9 @@ describe("subagent announce continuation chaining", () => {
       reply: "step complete\n[[CONTINUE_DELEGATE: do step 2]]",
       maxChainLength: 2,
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => {
+      setTimeout(r, 50);
+    });
 
     expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     expect(mocked.spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
@@ -255,7 +259,9 @@ describe("subagent announce continuation chaining", () => {
       maxChainLength: 3,
       wakeOnReturn: true,
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => {
+      setTimeout(r, 50);
+    });
 
     expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     expect(mocked.spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
@@ -333,7 +339,9 @@ describe("subagent announce continuation chaining", () => {
       maxDelayMs: 10,
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 25);
+    });
     expect(mocked.registerContinuationTimerHandleMock).toHaveBeenCalledWith(
       "agent:main:main",
       expect.any(Object),
