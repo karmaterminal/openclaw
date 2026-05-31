@@ -136,3 +136,72 @@ export async function withEnvAsync<T>(
     snapshot.restore();
   }
 }
+
+/**
+ * Returns the current `OPENCLAW_*` environment-variable keys present in
+ * `process.env`. Used by hermetic-env helpers to discover seat-divergent
+ * systemd-unit injections (which vary between prince-seats: e.g. silas-seat
+ * exports 8 vars, cael-seat exports those 8 plus `OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS`).
+ */
+export function listOpenclawEnvKeys(env: NodeJS.ProcessEnv = process.env): string[] {
+  return Object.keys(env).filter((key) => key.startsWith("OPENCLAW_"));
+}
+
+/**
+ * Captures and clears all currently-set `OPENCLAW_*` environment variables
+ * for the lifetime of the returned handle. Call `.restore()` to put them back.
+ *
+ * Useful in `beforeEach` blocks for tests that exercise gateway/service-mode
+ * CLI paths, plugin runtime startup gates, or anything that reads systemd-unit
+ * env injections. Hermetic by construction across prince-seats with divergent
+ * systemd env sets — discovers and clears whatever's there rather than
+ * enumerating known keys.
+ *
+ * Example:
+ * ```ts
+ * import { captureHermeticOpenclawEnv } from "../../test-utils/env.js";
+ *
+ * describe("gateway CLI option collisions", () => {
+ *   let openclawEnvSnapshot: { restore: () => void };
+ *   beforeEach(() => {
+ *     openclawEnvSnapshot = captureHermeticOpenclawEnv();
+ *   });
+ *   afterEach(() => {
+ *     openclawEnvSnapshot.restore();
+ *   });
+ *   // ... tests run with no OPENCLAW_* host env leakage
+ * });
+ * ```
+ */
+export function captureHermeticOpenclawEnv(): { restore: () => void } {
+  const snapshot = captureEnv(listOpenclawEnvKeys());
+  for (const key of listOpenclawEnvKeys()) {
+    delete process.env[key];
+  }
+  return snapshot;
+}
+
+/**
+ * Runs `fn` synchronously with all `OPENCLAW_*` environment variables
+ * stripped, restoring them on exit (including on throw).
+ */
+export function withHermeticOpenclawEnv<T>(fn: () => T): T {
+  const snapshot = captureHermeticOpenclawEnv();
+  try {
+    return fn();
+  } finally {
+    snapshot.restore();
+  }
+}
+
+/**
+ * Async variant of `withHermeticOpenclawEnv`.
+ */
+export async function withHermeticOpenclawEnvAsync<T>(fn: () => Promise<T>): Promise<T> {
+  const snapshot = captureHermeticOpenclawEnv();
+  try {
+    return await fn();
+  } finally {
+    snapshot.restore();
+  }
+}

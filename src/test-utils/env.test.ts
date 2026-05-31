@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   captureEnv,
   captureFullEnv,
+  captureHermeticOpenclawEnv,
   createPathResolutionEnv,
+  listOpenclawEnvKeys,
   withEnv,
   withEnvAsync,
+  withHermeticOpenclawEnv,
+  withHermeticOpenclawEnvAsync,
   withPathResolutionEnv,
 } from "./env.js";
 
@@ -171,6 +175,137 @@ describe("env test utils", () => {
       expect(process.env.OPENCLAW_HOME).toBe("/srv/openclaw-home");
     } finally {
       restoreEnvKey("OPENCLAW_HOME", previousOpenClawHome);
+    }
+  });
+
+  it("listOpenclawEnvKeys returns only OPENCLAW_-prefixed keys present in env", () => {
+    const key = "OPENCLAW_ENV_TEST_LIST_KEY";
+    const noise = "NOT_AN_OPENCLAW_ENV_TEST";
+    const prevKey = process.env[key];
+    const prevNoise = process.env[noise];
+    process.env[key] = "set";
+    process.env[noise] = "set";
+
+    try {
+      const keys = listOpenclawEnvKeys();
+      expect(keys).toContain(key);
+      expect(keys).not.toContain(noise);
+      for (const k of keys) {
+        expect(k.startsWith("OPENCLAW_")).toBe(true);
+      }
+    } finally {
+      restoreEnvKey(key, prevKey);
+      restoreEnvKey(noise, prevNoise);
+    }
+  });
+
+  it("captureHermeticOpenclawEnv clears all OPENCLAW_* keys and restores them", () => {
+    const keyA = "OPENCLAW_ENV_TEST_HERMETIC_A";
+    const keyB = "OPENCLAW_ENV_TEST_HERMETIC_B";
+    const noise = "NOT_OPENCLAW_HERMETIC";
+    const prevA = process.env[keyA];
+    const prevB = process.env[keyB];
+    const prevNoise = process.env[noise];
+    process.env[keyA] = "a";
+    process.env[keyB] = "b";
+    process.env[noise] = "untouched";
+
+    try {
+      const snapshot = captureHermeticOpenclawEnv();
+      expect(process.env[keyA]).toBeUndefined();
+      expect(process.env[keyB]).toBeUndefined();
+      expect(process.env[noise]).toBe("untouched");
+      snapshot.restore();
+      expect(process.env[keyA]).toBe("a");
+      expect(process.env[keyB]).toBe("b");
+      expect(process.env[noise]).toBe("untouched");
+    } finally {
+      restoreEnvKey(keyA, prevA);
+      restoreEnvKey(keyB, prevB);
+      restoreEnvKey(noise, prevNoise);
+    }
+  });
+
+  it("captureHermeticOpenclawEnv discovers keys set by seat-divergent systemd-unit injections", () => {
+    // Simulates the cohort-FEC scenario from cael-seat: a seat exports an
+    // OPENCLAW_* var that lamp-NUC + silas-seat don't (e.g.
+    // OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS, caught by cael on PR #844).
+    // The hermetic helper must discover-and-clear it without enumeration.
+    const seatSpecificKey = "OPENCLAW_ENV_TEST_SEAT_SPECIFIC_SIM";
+    const prev = process.env[seatSpecificKey];
+    process.env[seatSpecificKey] = "seat-specific-value";
+
+    try {
+      const snapshot = captureHermeticOpenclawEnv();
+      expect(process.env[seatSpecificKey]).toBeUndefined();
+      snapshot.restore();
+      expect(process.env[seatSpecificKey]).toBe("seat-specific-value");
+    } finally {
+      restoreEnvKey(seatSpecificKey, prev);
+    }
+  });
+
+  it("withHermeticOpenclawEnv strips OPENCLAW_* only inside callback and restores after", () => {
+    const key = "OPENCLAW_ENV_TEST_WITH_HERMETIC";
+    const prev = process.env[key];
+    process.env[key] = "outside";
+
+    try {
+      const seen = withHermeticOpenclawEnv(() => process.env[key]);
+      expect(seen).toBeUndefined();
+      expect(process.env[key]).toBe("outside");
+    } finally {
+      restoreEnvKey(key, prev);
+    }
+  });
+
+  it("withHermeticOpenclawEnv restores keys when callback throws", () => {
+    const key = "OPENCLAW_ENV_TEST_WITH_HERMETIC_THROW";
+    const prev = process.env[key];
+    process.env[key] = "outside";
+
+    try {
+      expect(() =>
+        withHermeticOpenclawEnv(() => {
+          expect(process.env[key]).toBeUndefined();
+          throw new Error("boom");
+        }),
+      ).toThrow("boom");
+      expect(process.env[key]).toBe("outside");
+    } finally {
+      restoreEnvKey(key, prev);
+    }
+  });
+
+  it("withHermeticOpenclawEnvAsync restores keys when async callback throws", async () => {
+    const key = "OPENCLAW_ENV_TEST_WITH_HERMETIC_ASYNC_THROW";
+    const prev = process.env[key];
+    process.env[key] = "outside";
+
+    try {
+      await expect(
+        withHermeticOpenclawEnvAsync(async () => {
+          expect(process.env[key]).toBeUndefined();
+          throw new Error("async-boom");
+        }),
+      ).rejects.toThrow("async-boom");
+      expect(process.env[key]).toBe("outside");
+    } finally {
+      restoreEnvKey(key, prev);
+    }
+  });
+
+  it("withHermeticOpenclawEnvAsync clears OPENCLAW_* only inside async callback", async () => {
+    const key = "OPENCLAW_ENV_TEST_WITH_HERMETIC_ASYNC_OK";
+    const prev = process.env[key];
+    process.env[key] = "outside";
+
+    try {
+      const seen = await withHermeticOpenclawEnvAsync(async () => process.env[key]);
+      expect(seen).toBeUndefined();
+      expect(process.env[key]).toBe("outside");
+    } finally {
+      restoreEnvKey(key, prev);
     }
   });
 });
