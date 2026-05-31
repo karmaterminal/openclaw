@@ -220,6 +220,14 @@ describe("gateway run option collisions", () => {
   });
 
   beforeEach(() => {
+    // Hermetic env: host shells running under the openclaw-gateway systemd unit
+    // inherit OPENCLAW_SERVICE_MARKER and related markers, which trip the
+    // service-mode future-version-block branch before the --force branch the
+    // first sub-test exercises. Clear via vi.stubEnv so afterEach's implicit
+    // unstub restores the host env. The test that needs the marker re-sets it
+    // explicitly via process.env (and restores in finally) lower in this file.
+    vi.stubEnv("OPENCLAW_SERVICE_MARKER", "");
+    vi.stubEnv("OPENCLAW_SERVICE_KIND", "");
     resetRuntimeCapture();
     configState.cfg = {};
     configState.snapshot = { exists: false };
