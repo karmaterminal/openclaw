@@ -2082,7 +2082,7 @@ export async function runReplyAgent(params: {
 
     const hasQueuedDelegateWork =
       continuationFeatureEnabled &&
-      !!sessionKey &&
+      sessionKey &&
       (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
 
     // Drain any late tool/block deliveries before deciding there's "nothing to send".
@@ -2143,7 +2143,8 @@ export async function runReplyAgent(params: {
       hasDeliveredBlockStream || successfulSideEffectDelivery;
     // Track whether the agent reply was purely a continuation signal (stripped to empty).
     // Used later to suppress verbose/usage augmentation that would break silent continuation.
-    const wasSilentContinuation = replyPayloads.length === 0 && !!effectiveContinuationSignal;
+    const wasSilentContinuation =
+      replyPayloads.length === 0 && Boolean(effectiveContinuationSignal);
 
     if (
       replyPayloads.length === 0 ||
@@ -3050,7 +3051,7 @@ export async function runReplyAgent(params: {
     // unchanged pre-dispatch state. Without this the counter never advances
     // across hops and `maxChainLength` enforcement breaks.
     const toolDelegateChainStateChanged =
-      !!toolDelegateDispatchResult &&
+      toolDelegateDispatchResult &&
       (toolDelegateDispatchResult.dispatched > 0 || toolDelegateDispatchResult.rejected > 0);
     if (toolDelegateChainStateChanged && sessionKey && activeSessionEntry) {
       const { loadContinuationChainState } = await import("../continuation/lazy.runtime.js");

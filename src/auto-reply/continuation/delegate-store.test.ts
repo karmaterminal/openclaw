@@ -104,7 +104,7 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
       flow.updatedAt = params.updatedAt ?? flow.endedAt;
       flow.revision = flow.revision + 1;
     }
-    return { applied: !!flow };
+    return { applied: Boolean(flow) };
   }),
   deleteTaskFlowRecordById: vi.fn((flowId: string) => {
     mockFlows.delete(flowId);

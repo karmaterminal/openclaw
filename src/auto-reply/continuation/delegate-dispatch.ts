@@ -250,7 +250,7 @@ export async function dispatchToolDelegates(params: {
   let dispatched = 0;
   let rejected = delegatesOverLimit.length;
   let currentChainCount = chainState.currentChainCount;
-  let accumulatedTokens = chainState.accumulatedChainTokens;
+  const accumulatedTokens = chainState.accumulatedChainTokens;
   let currentChainId = chainState.chainId;
 
   for (const delegate of delegatesWithinLimit) {

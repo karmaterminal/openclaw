@@ -246,7 +246,7 @@ describe("continuation tool registration", { timeout: 240000 }, () => {
     // (Their on-disk back-compat lives in the Zod state schema, not the tool surface.)
     for (const forbidden of ["silent", "silentWake", "postCompaction"]) {
       expect(
-        Object.prototype.hasOwnProperty.call(properties, forbidden),
+        Object.hasOwn(properties, forbidden),
         `continue_delegate descriptor must not expose boolean compatibility field '${forbidden}'`,
       ).toBe(false);
     }

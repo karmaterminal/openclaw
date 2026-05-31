@@ -94,7 +94,7 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
     if (flow) {
       flow.status = "failed";
     }
-    return { applied: !!flow };
+    return { applied: Boolean(flow) };
   }),
   deleteTaskFlowRecordById: vi.fn((flowId: string) => {
     mockFlows.delete(flowId);
