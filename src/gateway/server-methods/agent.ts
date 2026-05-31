@@ -46,6 +46,15 @@ import {
   resolveIngressWorkspaceOverrideForSpawnedRun,
 } from "../../agents/spawned-context.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
+import {
+  resolveBareResetBootstrapFileAccess,
+  resolveBareSessionResetPromptState,
+} from "../../auto-reply/reply/session-reset-prompt.js";
+import {
+  buildSessionStartupContextPrelude,
+  shouldApplyStartupContext,
+} from "../../auto-reply/reply/startup-context.js";
+import type { ContinuationTrigger } from "../../auto-reply/types.js";
 import { agentCommandFromIngress } from "../../commands/agent.js";
 import {
   evaluateSessionFreshness,
@@ -1067,6 +1076,8 @@ export const agentHandlers: GatewayRequestHandlers = {
       inputProvenance?: InputProvenance;
       workspaceDir?: string;
       voiceWakeTrigger?: string;
+      drainsContinuationDelegateQueue?: boolean;
+      continuationTrigger?: ContinuationTrigger;
     };
     const allowModelOverride = resolveAllowModelOverrideFromClient(client);
     const canUseInternalRuntimeHandoff = resolveCanUseInternalRuntimeHandoff(client);
@@ -2422,6 +2433,8 @@ export const agentHandlers: GatewayRequestHandlers = {
                   internalEvents: request.internalEvents,
                 }),
               cleanupBundleMcpOnRunEnd: request.cleanupBundleMcpOnRunEnd,
+              drainsContinuationDelegateQueue: request.drainsContinuationDelegateQueue,
+              continuationTrigger: request.continuationTrigger,
               abortSignal: activeRunAbort.controller.signal,
               onActiveModelSelected: ({ provider }) => {
                 updateChatRunProvider(context.chatAbortControllers, {
