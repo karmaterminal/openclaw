@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   QueuedSessionDelivery,
@@ -8,6 +6,7 @@ import type {
 import {
   ackSessionDelivery as realAckSessionDelivery,
   enqueueSessionDelivery as realEnqueueSessionDelivery,
+  loadPendingSessionDeliveries,
 } from "../../infra/session-delivery-queue-storage.js";
 import {
   enqueueSystemEvent,
@@ -293,17 +292,10 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
 
       expect(result).toMatchObject({ enqueued: 1, delivered: 1 });
 
-      const queueDir = path.join(stateDir, "session-delivery-queue");
-      const entries = await fs.readdir(queueDir);
-      const jsonFiles = entries.filter((e) => e.endsWith(".json"));
-      const deliveredMarkers = entries.filter((e) => e.endsWith(".delivered"));
+      const persistedEntries = await loadPendingSessionDeliveries(stateDir);
+      expect(persistedEntries).toHaveLength(1);
 
-      expect(jsonFiles).toHaveLength(1);
-      expect(deliveredMarkers).toHaveLength(0);
-
-      const persisted = JSON.parse(
-        await fs.readFile(path.join(queueDir, jsonFiles[0]), "utf-8"),
-      ) as QueuedSessionDelivery;
+      const persisted = persistedEntries[0];
       expect(persisted.kind).toBe("systemEvent");
       expect(persisted.sessionKey).toBe("agent:main:never-existed");
     });

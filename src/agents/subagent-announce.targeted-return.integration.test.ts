@@ -1,8 +1,7 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drainFormattedSystemEvents } from "../auto-reply/reply/session-system-events.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { loadPendingSessionDeliveries } from "../infra/session-delivery-queue-storage.js";
 import type { QueuedSessionDelivery } from "../infra/session-delivery-queue-storage.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
 import { withTempDir } from "../test-helpers/temp-dir.js";
@@ -92,16 +91,7 @@ vi.mock("./subagent-announce.registry.runtime.js", () => registryRuntimeMock);
 const { runSubagentAnnounceFlow } = await import("./subagent-announce.js");
 
 async function readQueuedSystemEventDeliveries(stateDir: string): Promise<QueuedSessionDelivery[]> {
-  const queueDir = path.join(stateDir, "session-delivery-queue");
-  const entries = await fs.readdir(queueDir);
-  const jsonFiles = entries.filter((entry) => entry.endsWith(".json"));
-  return Promise.all(
-    jsonFiles.map(async (file) => {
-      return JSON.parse(
-        await fs.readFile(path.join(queueDir, file), "utf-8"),
-      ) as QueuedSessionDelivery;
-    }),
-  );
+  return loadPendingSessionDeliveries(stateDir);
 }
 
 describe("subagent announce targeted continuation return integration", () => {
@@ -157,14 +147,10 @@ describe("subagent announce targeted continuation return integration", () => {
       expect(runtimeErrorMock.mock.calls).toEqual([]);
       expect(didAnnounce).toBe(true);
 
-      const queueDir = path.join(stateDir, "session-delivery-queue");
-      const entries = await fs.readdir(queueDir);
-      const jsonFiles = entries.filter((entry) => entry.endsWith(".json"));
-      expect(jsonFiles).toHaveLength(1);
+      const persistedEntries = await loadPendingSessionDeliveries(stateDir);
+      expect(persistedEntries).toHaveLength(1);
 
-      const persisted = JSON.parse(
-        await fs.readFile(path.join(queueDir, jsonFiles[0]), "utf-8"),
-      ) as QueuedSessionDelivery;
+      const persisted = persistedEntries[0];
       if (persisted.kind !== "systemEvent") {
         throw new Error(`expected systemEvent delivery, received ${persisted.kind}`);
       }
