@@ -579,7 +579,7 @@ function resolveHeartbeatSession(
   // is a dead tool (the timer fires but the wake gets eaten). Tracking: #746.
   const forced = forcedSessionKey?.trim();
   if (forced && isSubagentSessionKey(forced)) {
-    if (opts?.reason === "continuation") {
+    if (isContinuationHeartbeatWakeReason(opts?.reason ?? "")) {
       // Continuation wake: route TO the subagent session so it takes another turn.
       return {
         sessionKey: forced,
