@@ -228,6 +228,11 @@ describe("gateway run option collisions", () => {
     // explicitly via process.env (and restores in finally) lower in this file.
     vi.stubEnv("OPENCLAW_SERVICE_MARKER", "");
     vi.stubEnv("OPENCLAW_SERVICE_KIND", "");
+    // OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS=1 bypasses the future-version
+    // guard before the marker/service-kind gates fire. Some prince-seats export
+    // this via their openclaw-gateway systemd unit (cael-seat caught it during
+    // cross-seat cosign-by-byte on PR #844), so stub it empty for hermeticity too.
+    vi.stubEnv("OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS", "");
     resetRuntimeCapture();
     configState.cfg = {};
     configState.snapshot = { exists: false };
