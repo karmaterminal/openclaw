@@ -834,6 +834,23 @@ function readAgentRunTimeoutAttribution(meta: unknown) {
   };
 }
 
+function isGatewayAbortSignalReason(reason: unknown): boolean {
+  return reason === undefined || isAbortError(reason) || readErrorName(reason) === "TimeoutError";
+}
+
+function isGatewayAgentAbortRejection(error: unknown, signal: AbortSignal): boolean {
+  if (!signal.aborted) {
+    return false;
+  }
+  if (readErrorName(signal.reason) === "TimeoutError") {
+    return true;
+  }
+  if (!isGatewayAbortSignalReason(signal.reason)) {
+    return false;
+  }
+  return isAbortError(error) || readErrorName(error) === "TimeoutError";
+}
+
 function resolveGatewayAgentAbortStopReason(signal: AbortSignal): "rpc" | "timeout" {
   return readErrorName(signal.reason) === "TimeoutError" ? "timeout" : "rpc";
 }
@@ -927,7 +944,11 @@ function dispatchAgentRunFromGateway(params: {
       params.respond(true, payload, undefined, { runId: params.runId });
     })
     .catch((err) => {
-      const aborted = isAbortError(err);
+      // Restored from upstream b4f69286fd (closes openclaw/openclaw#83962): match
+      // TimeoutError and signal.reason TimeoutError shapes so timed-out runs
+      // classify as timeout (not error) and keep dedupe.ok true. isAbortError
+      // alone matches only name="AbortError" and misses both shapes.
+      const aborted = isGatewayAgentAbortRejection(err, params.abortController.signal);
       const renderedErr = formatForLog(err);
       if (shouldTrackTask) {
         tryFinalizeTrackedAgentTask({
