@@ -462,14 +462,14 @@ describe("continuation-tracer :: emitContinuationWorkSpan helper", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
     emitContinuationWorkSpan({ chainId: undefined, chainStepRemaining: 0, delayMs: 1234.7 });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["delay.ms"]).toBe(1235);
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["delay.ms"]).toBe(1235);
   });
 
   it("clamps negative chainStepRemaining to 0", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
     emitContinuationWorkSpan({ chainId: undefined, chainStepRemaining: -3, delayMs: 0 });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["chain.step.remaining"]).toBe(0);
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["chain.step.remaining"]).toBe(0);
   });
 
   it("swallows tracer errors and forwards them to the log callback", () => {
@@ -633,7 +633,7 @@ describe("continuation-tracer :: emitContinuationDelegateSpan helper", () => {
       });
     }
     expect(
-      spans.map((s) => (s.options?.attributes as ContinuationSpanAttrs)["delegate.mode"]),
+      spans.map((s) => (s.options!.attributes as ContinuationSpanAttrs)["delegate.mode"]),
     ).toEqual(["normal", "silent", "silent-wake", "post-compaction"]);
   });
 
@@ -647,7 +647,7 @@ describe("continuation-tracer :: emitContinuationDelegateSpan helper", () => {
       delivery: "timer",
       reason: "y".repeat(200),
     });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["reason.preview"]).toBe(
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["reason.preview"]).toBe(
       "y".repeat(80),
     );
   });
@@ -1019,7 +1019,7 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () =>
       delayMs: 1_000,
       fireDeferredMs: 1_234.9, // floored to 1234
     });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["fire.deferred_ms"]).toBe(1234);
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["fire.deferred_ms"]).toBe(1234);
   });
 
   it("clamps negative fireDeferredMs to 0 (defense; should never happen in practice)", () => {
@@ -1032,7 +1032,7 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () =>
       delayMs: 0,
       fireDeferredMs: -3,
     });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["fire.deferred_ms"]).toBe(0);
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["fire.deferred_ms"]).toBe(0);
   });
 
   it("truncates reason.preview to 80 chars", () => {
@@ -1046,7 +1046,7 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () =>
       fireDeferredMs: 105,
       reason: "z".repeat(200),
     });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["reason.preview"]).toBe(
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["reason.preview"]).toBe(
       "z".repeat(80),
     );
   });
@@ -1061,7 +1061,7 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () =>
       delayMs: 0,
       fireDeferredMs: 1,
     });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["chain.step.remaining"]).toBe(0);
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["chain.step.remaining"]).toBe(0);
   });
 
   it("threads each delegateMode through unchanged", () => {
@@ -1077,7 +1077,7 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () =>
       });
     }
     expect(
-      spans.map((s) => (s.options?.attributes as ContinuationSpanAttrs)["delegate.mode"]),
+      spans.map((s) => (s.options!.attributes as ContinuationSpanAttrs)["delegate.mode"]),
     ).toEqual(["normal", "silent", "silent-wake"]);
   });
 
@@ -1091,7 +1091,7 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () =>
       delayMs: 0,
       fireDeferredMs: 0,
     });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["delegate.delivery"]).toBe(
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["delegate.delivery"]).toBe(
       "timer",
     );
   });
@@ -1507,14 +1507,14 @@ describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper",
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
     emitContinuationCompactionReleasedSpan({ releasedCount: 3.7 });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["compaction.released"]).toBe(3);
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["compaction.released"]).toBe(3);
   });
 
   it("clamps negative releasedCount to 0 (defense-in-depth)", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
     emitContinuationCompactionReleasedSpan({ releasedCount: -1 });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["compaction.released"]).toBe(0);
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["compaction.released"]).toBe(0);
   });
 
   it("swallows tracer errors and forwards them to the log callback", () => {
@@ -1644,7 +1644,7 @@ describe("continuation-tracer :: compaction.id cross-cutting attr", () => {
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
     emitContinuationCompactionReleasedSpan({ releasedCount: 1, compactionId: 1 });
-    expect((spans[0].options?.attributes as ContinuationSpanAttrs)["compaction.id"]).toBe(1);
+    expect((spans[0].options!.attributes as ContinuationSpanAttrs)["compaction.id"]).toBe(1);
   });
 
   it("compactionId 0 ordinal-valid: emits compaction.id: 0 (NOT clamped, NOT dropped)", () => {

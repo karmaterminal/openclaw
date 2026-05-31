@@ -145,7 +145,9 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
     const params = buildChainShardParams(5);
     await runSubagentAnnounceFlow(params);
     // Fire-and-forget spawn: flush microtasks
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
@@ -155,7 +157,9 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
   it("allows chain hop when the next shard reaches the configured boundary", async () => {
     const params = buildChainShardParams(9);
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
@@ -180,7 +184,9 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
     const params = buildChainShardParams(0);
     params.task = "Delegated task: do research";
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
@@ -194,7 +200,9 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
     drainSystemEventEntries(params.requesterSessionKey);
 
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).not.toHaveBeenCalled();
     expect(drainSystemEventEntries(params.requesterSessionKey).map((entry) => entry.text)).toEqual(
@@ -209,7 +217,9 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
     params.roundOneReply = "Research result.\n[[CONTINUE_DELEGATE: inspect tree | fanout=tree]]";
 
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
@@ -221,7 +231,9 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
 
     const params = buildChainShardParams(2);
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
@@ -263,7 +275,9 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
 
     const params = buildChainShardParams(1);
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
   });
@@ -338,7 +352,9 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
 
     const params = buildToolDelegateParams(9);
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
@@ -354,7 +370,9 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
     drainSystemEventEntries(params.requesterSessionKey);
 
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).not.toHaveBeenCalled();
     expect(drainSystemEventEntries(params.requesterSessionKey).map((entry) => entry.text)).toEqual(
@@ -371,7 +389,9 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
     const params = buildToolDelegateParams(1);
 
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
@@ -385,7 +405,9 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
 
     const params = buildToolDelegateParams(4);
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
@@ -398,7 +420,9 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
 
     const params = buildToolDelegateParams(10);
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).not.toHaveBeenCalled();
   });
@@ -408,7 +432,9 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
 
     const params = buildToolDelegateParams(15);
     await runSubagentAnnounceFlow(params);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
 
     expect(spawnSpy).not.toHaveBeenCalled();
   });
@@ -420,7 +446,9 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
     // hop 2 → next=3 = maxChainLength → allowed
     const paramsAllow = buildToolDelegateParams(2);
     await runSubagentAnnounceFlow(paramsAllow);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
     expect(spawnSpy).toHaveBeenCalledTimes(1);
 
     spawnSpy.mockClear();
@@ -428,7 +456,9 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
     // hop 3 → next=4 > maxChainLength → rejected
     const paramsReject = buildToolDelegateParams(3);
     await runSubagentAnnounceFlow(paramsReject);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 });
