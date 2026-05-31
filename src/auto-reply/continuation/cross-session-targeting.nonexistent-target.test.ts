@@ -165,7 +165,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
       return `delivery-${enqueued.length}`;
     });
     const ackSessionDelivery = vi.fn(async () => undefined);
-    const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>((text, opts) => {
+    const mockEnqueueSystemEvent = vi.fn<EnqueueSystemEvent>((text, opts) => {
       systemEvents.push({ text, sessionKey: opts.sessionKey });
       return true;
     });
@@ -182,7 +182,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
       {
         enqueueSessionDelivery,
         ackSessionDelivery,
-        enqueueSystemEvent,
+        enqueueSystemEvent: mockEnqueueSystemEvent,
         requestHeartbeatNow,
       },
     );
@@ -267,7 +267,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
 
   it("persists a durable queue file for a nonexistent target (real I/O)", async () => {
     await withTempDir({ prefix: "openclaw-nonexistent-target-" }, async (stateDir) => {
-      const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
+      const mockEnqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
       const requestHeartbeatNow = vi.fn();
 
       const result = await enqueueContinuationReturnDeliveries(
@@ -282,7 +282,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
         {
           enqueueSessionDelivery: realEnqueueSessionDelivery,
           ackSessionDelivery: realAckSessionDelivery,
-          enqueueSystemEvent,
+          enqueueSystemEvent: mockEnqueueSystemEvent,
           requestHeartbeatNow,
         },
       );

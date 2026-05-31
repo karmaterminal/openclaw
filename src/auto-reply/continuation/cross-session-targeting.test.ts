@@ -89,7 +89,7 @@ describe("continuation cross-session targeting", () => {
       return `delivery-${enqueued.length}`;
     });
     const ackSessionDelivery = vi.fn(async () => undefined);
-    const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>((text, opts) => {
+    const mockEnqueueSystemEvent = vi.fn<EnqueueSystemEvent>((text, opts) => {
       systemEvents.push({ text, sessionKey: opts.sessionKey });
       return true;
     });
@@ -106,7 +106,7 @@ describe("continuation cross-session targeting", () => {
       {
         enqueueSessionDelivery,
         ackSessionDelivery,
-        enqueueSystemEvent,
+        enqueueSystemEvent: mockEnqueueSystemEvent,
         requestHeartbeatNow,
       },
     );
@@ -299,7 +299,7 @@ describe("continuation cross-session targeting", () => {
       enqueued.push(payload);
       return `delivery-${enqueued.length}`;
     });
-    const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>((_text, opts) => {
+    const mockEnqueueSystemEvent = vi.fn<EnqueueSystemEvent>((_text, opts) => {
       systemEvents.push({ traceparent: opts.traceparent });
       return true;
     });
@@ -313,7 +313,7 @@ describe("continuation cross-session targeting", () => {
       {
         enqueueSessionDelivery,
         ackSessionDelivery: vi.fn(async () => undefined),
-        enqueueSystemEvent,
+        enqueueSystemEvent: mockEnqueueSystemEvent,
         requestHeartbeatNow: vi.fn(),
       },
     );
@@ -389,7 +389,7 @@ describe("continuation cross-session targeting", () => {
   // location until the recovery loop drains it post-restart.
   it("persists the durable queue file for non-attached recipients (no immediate ack)", async () => {
     await withTempDir({ prefix: "openclaw-targeting-durable-" }, async (stateDir) => {
-      const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
+      const mockEnqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
       const requestHeartbeatNow = vi.fn();
 
       const result = await enqueueContinuationReturnDeliveries(
@@ -404,7 +404,7 @@ describe("continuation cross-session targeting", () => {
         {
           enqueueSessionDelivery: realEnqueueSessionDelivery,
           ackSessionDelivery: realAckSessionDelivery,
-          enqueueSystemEvent,
+          enqueueSystemEvent: mockEnqueueSystemEvent,
           requestHeartbeatNow,
         },
       );
