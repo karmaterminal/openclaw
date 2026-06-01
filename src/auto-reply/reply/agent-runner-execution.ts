@@ -54,6 +54,7 @@ import { resolveOpenAIRuntimeProvider } from "../../agents/openai-routing.js";
 import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import {
+  resolveFreshSessionTotalTokens,
   resolveGroupSessionKey,
   resolveSessionStoreEntry,
   resolveSessionTranscriptPath,
@@ -232,6 +233,52 @@ export async function releaseQueuedCompactionTolerant(
       `[request_compaction:post-compaction-release-failed] session=${params.sessionKey ?? "none"} reason=${reason}`,
     );
   }
+}
+
+// Computes the context-usage ratio supplied to request-compaction-tool's
+// MIN_CONTEXT_THRESHOLD gate (request-compaction-tool.ts:208-228). Returns
+// null in two cases that both map to the consumer's [request_compaction:
+// context-unknown] rejection path (request-compaction-tool.ts:209):
+//   - totalTokens is missing, invalid, or known-stale (totalTokensFresh=false)
+//   - the context-window denominator cannot be resolved for this provider/model
+// Returning null is preferable to a synthetic ratio because the consumer
+// already distinguishes "unknown" from "below-threshold" with separate
+// rejection codes and operator-facing reasons (#817).
+export function computeRequestCompactionContextUsage(params: {
+  entry: SessionEntry | undefined;
+  cfg: OpenClawConfig | undefined;
+  provider: string;
+  model: string;
+}): number | null {
+  // Honor the canonical freshness contract: when the prior turn could not
+  // compute a fresh totalTokens snapshot (set in session-store.ts:253,280),
+  // the value is explicitly known-stale and consumers must refuse to use it
+  // for context-utilization gates. Matches the pattern in status-message.ts:
+  // 689-694 and sessions.ts:430-431 (#817).
+  const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
+  if (freshTotalTokens === undefined) {
+    return null;
+  }
+  // Resolve the context-window denominator via the canonical pipeline
+  // (session-entry → cfg/provider/model lookup) instead of a hardcoded 200K
+  // fallback. The 200K hardcode misreports utilization on 100K context
+  // models (under-fire) and 1M context models (over-fire). No other
+  // production caller in the codebase uses a ?? 200_000 shortcut here;
+  // they all route through resolveContextTokensForModel /
+  // resolveContextWindowInfo (#817).
+  const sessionWindow = params.entry?.contextTokens;
+  const contextWindow =
+    sessionWindow ??
+    resolveContextTokensForModel({
+      cfg: params.cfg,
+      provider: params.provider,
+      model: params.model,
+      allowAsyncLoad: false,
+    });
+  if (typeof contextWindow !== "number" || contextWindow <= 0) {
+    return null;
+  }
+  return freshTotalTokens / contextWindow;
 }
 
 type AgentTurnTimingSpan = {
@@ -2458,15 +2505,13 @@ export async function runAgentTurnWithFallback(params: {
                       runtimeConfig?.agents?.defaults?.continuation?.enabled === true
                         ? {
                             sessionId: params.followupRun.run.sessionId,
-                            getContextUsage: () => {
-                              const entry = params.getActiveSessionEntry();
-                              const totalTokens =
-                                (entry as { totalTokens?: number } | undefined)?.totalTokens ?? 0;
-                              const contextWindow =
-                                (entry as { contextTokens?: number } | undefined)?.contextTokens ??
-                                200_000;
-                              return contextWindow > 0 ? totalTokens / contextWindow : 0;
-                            },
+                            getContextUsage: () =>
+                              computeRequestCompactionContextUsage({
+                                entry: params.getActiveSessionEntry(),
+                                cfg: params.followupRun.run.config,
+                                provider,
+                                model,
+                              }),
                             triggerCompaction: async (request) => {
                               attemptCompactionTraceparent = request.traceparent;
                               try {
