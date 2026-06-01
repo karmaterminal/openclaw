@@ -16,6 +16,7 @@ import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.j
 import {
   consumeSelectedSystemEventEntries,
   peekSystemEventEntries,
+  resolveEventOwnerDowngrade,
   type SystemEvent,
 } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -146,7 +147,7 @@ export async function drainFormattedSystemEventBlock(params: {
       if (event.forceSenderIsOwnerFalse === true) {
         forceSenderIsOwnerFalse = true;
       }
-      const isUntrusted = event.forceSenderIsOwnerFalse === true;
+      const isUntrusted = resolveEventOwnerDowngrade(event);
       const prefix = isUntrusted ? "System (untrusted)" : "System";
       const timestamp = `[${formatSystemEventTimestamp(event.ts, params.cfg)}]`;
       const rendered = isUntrusted ? sanitizeInboundSystemTags(compacted) : compacted;
