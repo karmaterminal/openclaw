@@ -187,7 +187,15 @@ export const AgentParamsSchema = Type.Object(
     promptMode: Type.Optional(
       Type.Union([Type.Literal("full"), Type.Literal("minimal"), Type.Literal("none")]),
     ),
-    continuationTrigger: Type.Optional(Type.String({ enum: [...CONTINUATION_TRIGGER_VALUES] })),
+    continuationTrigger: internalProtocolField(
+      Type.Optional(
+        Type.String({
+          enum: [...CONTINUATION_TRIGGER_VALUES],
+          description:
+            "Internal continuation lifecycle metadata for internally-triggered turns; omitted from public generated protocol artifacts.",
+        }),
+      ),
+    ),
     extraSystemPrompt: Type.Optional(Type.String()),
     bootstrapContextMode: Type.Optional(
       Type.Union([Type.Literal("full"), Type.Literal("lightweight")]),
