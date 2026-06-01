@@ -1,6 +1,7 @@
 import AjvModule from "ajv";
 import { describe, expect, it } from "vitest";
 import { AgentParamsSchema } from "./agent.js";
+import { internalProtocolField, stripInternalProtocolFields } from "./internal-fields.js";
 const Ajv = (AjvModule as any).default ?? AjvModule;
 
 const ajv = new Ajv({ allErrors: true });
@@ -43,6 +44,30 @@ describe("AgentParamsSchema", () => {
 
     expect(properties.drainsContinuationDelegateQueue?.["x-openclaw-internal"]).toBe(true);
     expect(properties.traceparent?.["x-openclaw-internal"]).toBe(true);
+  });
+
+  it("omits runner-only knobs from public generated schema copies", () => {
+    const publicSchema = stripInternalProtocolFields(AgentParamsSchema);
+
+    expect(publicSchema).not.toBe(AgentParamsSchema);
+    if (!publicSchema) {
+      throw new Error("expected public AgentParams schema");
+    }
+    expect(publicSchema.properties).not.toHaveProperty("drainsContinuationDelegateQueue");
+    expect(publicSchema.properties).not.toHaveProperty("traceparent");
+    expect(AgentParamsSchema.properties).toHaveProperty("drainsContinuationDelegateQueue");
+    expect(AgentParamsSchema.properties).toHaveProperty("traceparent");
+  });
+
+  it("omits whole schemas marked internal", () => {
+    const publicSchema = stripInternalProtocolFields(
+      internalProtocolField({
+        type: "object",
+        properties: { secret: { type: "string" } },
+      }),
+    );
+
+    expect(publicSchema).toBeUndefined();
   });
 
   it("accepts params without drainsContinuationDelegateQueue (optional)", () => {

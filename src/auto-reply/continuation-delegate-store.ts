@@ -33,6 +33,7 @@ export {
   enqueuePendingDelegate,
   highestDelayedContinuationReservationHop,
   listDelayedContinuationReservations,
+  markPendingDelegateFailed,
   pendingDelegateCount,
   removeDelayedContinuationReservation,
   resetDelegateStoreForTests,

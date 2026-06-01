@@ -5,6 +5,7 @@ import {
   AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION,
 } from "../../../../src/agents/internal-event-contract.js";
 import { DIAGNOSTIC_TRACEPARENT_PATTERN } from "../../../../src/infra/diagnostic-trace-context-pure.js";
+import { internalProtocolField } from "./internal-fields.js";
 import { InputProvenanceSchema, NonEmptyString, SessionLabelString } from "./primitives.js";
 
 export const AgentGeneratedAttachmentSchema = Type.Object(
@@ -21,15 +22,6 @@ export const AgentGeneratedAttachmentSchema = Type.Object(
 );
 
 const CONTINUATION_TRIGGER_VALUES = ["work-wake", "delegate-return"] as const;
-const INTERNAL_PROTOCOL_FIELD = "x-openclaw-internal";
-
-function internalProtocolField<T extends object>(schema: T): T {
-  Object.defineProperty(schema, INTERNAL_PROTOCOL_FIELD, {
-    value: true,
-    enumerable: false,
-  });
-  return schema;
-}
 
 export const AgentInternalEventSchema = Type.Object(
   {
