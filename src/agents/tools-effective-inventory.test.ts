@@ -998,9 +998,10 @@ describe("resolveEffectiveToolInventory", () => {
     const createToolsMock = vi.fn<typeof createOpenClawCodingTools>(() => [
       mockTool({ name: "exec", label: "Exec", description: "Run shell commands" }),
     ]);
-    const { resolveEffectiveToolInventory } = await loadHarness({ createToolsMock });
+    const { resolveEffectiveToolInventory: resolveEffectiveToolInventoryLocal2 } =
+      await loadHarness({ createToolsMock });
 
-    resolveEffectiveToolInventory({
+    resolveEffectiveToolInventoryLocal2({
       cfg: { agents: { defaults: { continuation: { enabled: true } } } },
     });
 
@@ -1018,9 +1019,10 @@ describe("resolveEffectiveToolInventory", () => {
     const createToolsMock = vi.fn<typeof createOpenClawCodingTools>(() => [
       mockTool({ name: "exec", label: "Exec", description: "Run shell commands" }),
     ]);
-    const { resolveEffectiveToolInventory } = await loadHarness({ createToolsMock });
+    const { resolveEffectiveToolInventory: resolveEffectiveToolInventoryLocal1 } =
+      await loadHarness({ createToolsMock });
 
-    resolveEffectiveToolInventory({ cfg: {} });
+    resolveEffectiveToolInventoryLocal1({ cfg: {} });
 
     const passed = createToolsMock.mock.calls[0]?.[0];
     expect(passed?.requestCompactionOpts).toBeUndefined();
