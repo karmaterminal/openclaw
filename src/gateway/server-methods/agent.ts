@@ -947,6 +947,10 @@ function dispatchAgentRunFromGateway(params: {
       params.respond(true, payload, undefined, { runId: params.runId });
     })
     .catch((err: unknown) => {
+      // Restored from upstream b4f69286fd (closes openclaw/openclaw#83962): match
+      // TimeoutError and signal.reason TimeoutError shapes so timed-out runs
+      // classify as timeout (not error) and keep dedupe.ok true. isAbortError
+      // alone matches only name="AbortError" and misses both shapes.
       const aborted = isGatewayAgentAbortRejection(err, params.abortController.signal);
       const renderedErr = formatForLog(err);
       if (taskTracked) {
