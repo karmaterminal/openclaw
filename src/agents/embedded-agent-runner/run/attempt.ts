@@ -1559,7 +1559,15 @@ export async function runEmbeddedAttempt(
       agentId: sessionAgentId,
       preserveToolNames: localModelLeanPreserveToolNames,
     });
-    let effectiveTools = uncompactedEffectiveTools;
+    const uncompactedSchemaProjection = filterRuntimeCompatibleTools(uncompactedEffectiveTools);
+    logRuntimeToolSchemaQuarantine({
+      diagnostics: uncompactedSchemaProjection.diagnostics,
+      tools: uncompactedEffectiveTools,
+      runId: params.runId,
+      sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
+    });
+    let effectiveTools = [...uncompactedSchemaProjection.tools];
     const catalogToolHookContext = {
       agentId: sessionAgentId,
       config: params.config,
