@@ -1,0 +1,1 @@
+- 2026-06-01T00:26:11+00:00: §1 reads complete; starting byte-walk of 12 Codex findings. Tracking issue: https://github.com/karmaterminal/openclaw/issues/853
