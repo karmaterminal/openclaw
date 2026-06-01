@@ -42,6 +42,7 @@ describe("AgentParamsSchema", () => {
       { "x-openclaw-internal"?: boolean }
     >;
 
+    expect(properties.continuationTrigger?.["x-openclaw-internal"]).toBe(true);
     expect(properties.drainsContinuationDelegateQueue?.["x-openclaw-internal"]).toBe(true);
     expect(properties.traceparent?.["x-openclaw-internal"]).toBe(true);
   });
@@ -53,8 +54,10 @@ describe("AgentParamsSchema", () => {
     if (!publicSchema) {
       throw new Error("expected public AgentParams schema");
     }
+    expect(publicSchema.properties).not.toHaveProperty("continuationTrigger");
     expect(publicSchema.properties).not.toHaveProperty("drainsContinuationDelegateQueue");
     expect(publicSchema.properties).not.toHaveProperty("traceparent");
+    expect(AgentParamsSchema.properties).toHaveProperty("continuationTrigger");
     expect(AgentParamsSchema.properties).toHaveProperty("drainsContinuationDelegateQueue");
     expect(AgentParamsSchema.properties).toHaveProperty("traceparent");
   });
