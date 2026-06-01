@@ -3316,16 +3316,24 @@ describe("gateway agent handler", () => {
       primeMainAgentRun();
       const abortError = new Error("This operation was aborted");
       abortError.name = "AbortError";
-      mocks.agentCommand.mockRejectedValueOnce(abortError);
       const context = makeContext();
+      const runId = "task-registry-agent-run-abort-error";
+      // Abort the run's chat controller before the rejection bubbles so
+      // isGatewayAgentAbortRejection sees signal.aborted=true. Without this
+      // setup the test cannot distinguish operator-aborted runs from raw
+      // AbortError rejections that originate inside the agent itself.
+      mocks.agentCommand.mockImplementationOnce(() => {
+        context.chatAbortControllers.get(runId)?.controller.abort();
+        return Promise.reject(abortError);
+      });
 
       await invokeAgent(
         {
           message: "background cli task",
           sessionKey: "agent:main:main",
-          idempotencyKey: "task-registry-agent-run-abort-error",
+          idempotencyKey: runId,
         },
-        { context, reqId: "task-registry-agent-run-abort-error" },
+        { context, reqId: runId },
       );
 
       await waitForAssertion(() => {
@@ -3341,6 +3349,7 @@ describe("gateway agent handler", () => {
             runId: "task-registry-agent-run-abort-error",
             status: "timeout",
             summary: "aborted",
+            stopReason: "rpc",
           },
         );
       });
