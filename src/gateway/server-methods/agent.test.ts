@@ -2183,7 +2183,7 @@ describe("gateway agent handler", () => {
     resetTimeConfig();
   });
 
-  it("forwards continuationTrigger metadata to the ingress agent command", async () => {
+  it("forwards continuation metadata to the ingress agent command", async () => {
     primeMainAgentRun();
 
     await invokeAgent(
@@ -2192,6 +2192,7 @@ describe("gateway agent handler", () => {
         agentId: "main",
         sessionKey: "agent:main:main",
         continuationTrigger: "delegate-return",
+        drainsContinuationDelegateQueue: true,
         idempotencyKey: "test-continuation-trigger-forward",
       },
       { reqId: "continuation-trigger-1" },
@@ -2199,9 +2200,10 @@ describe("gateway agent handler", () => {
 
     await vi.waitFor(() => expect(mocks.agentCommand).toHaveBeenCalled());
     const call = mocks.agentCommand.mock.calls.at(-1)?.[0] as
-      | { continuationTrigger?: string }
+      | { continuationTrigger?: string; drainsContinuationDelegateQueue?: boolean }
       | undefined;
     expect(call?.continuationTrigger).toBe("delegate-return");
+    expect(call?.drainsContinuationDelegateQueue).toBe(true);
   });
 
   it.each([

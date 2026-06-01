@@ -484,6 +484,26 @@ export function consumePendingDelegates(sessionKey: string): PendingContinuation
   return delegates;
 }
 
+export function markPendingDelegateFailed(
+  delegate: Pick<PendingContinuationDelegate, "flowId" | "expectedRevision" | "task">,
+  blockedSummary: string,
+  currentStep = "Delegate spawn failed",
+): void {
+  if (!delegate.flowId || delegate.expectedRevision === undefined) {
+    log.warn(
+      "[continuation:delegate-fail-missing-flow] cannot mark consumed delegate failed because flow metadata is missing",
+    );
+    return;
+  }
+  failFlow({
+    flowId: delegate.flowId,
+    expectedRevision: delegate.expectedRevision,
+    currentStep,
+    blockedSummary,
+    updatedAt: Date.now(),
+  });
+}
+
 /**
  * Peek the soonest `dueAt` (createdAt + delayMs) across queued, unmatured
  * pending delegates for a session.

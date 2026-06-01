@@ -369,6 +369,37 @@ describe("runReplyAgent :: continuation.work span", () => {
     expect(attrs["chain.id"] as string).toMatch(UUID_REGEX);
   });
 
+  it("treats continue_work tool callbacks as accepted WORK signals", async () => {
+    vi.useFakeTimers();
+    const { tracer, spans } = createRecordingTracer();
+    setContinuationTracer(tracer);
+
+    const run = createContinuationRun({ sessionKey: "continuation-work-tool-callback" });
+    runEmbeddedAgentMock.mockImplementationOnce(async (args: unknown) => {
+      const options = args as {
+        continueWorkOpts?: {
+          requestContinuation?: (request: { reason: string; delaySeconds: number }) => void;
+        };
+      };
+      options.continueWorkOpts?.requestContinuation?.({
+        reason: "tool requested more work",
+        delaySeconds: 1,
+      });
+      return {
+        payloads: [{ text: "Working on it" }],
+        meta: { agentMeta: { usage: { input: 2, output: 3 } } },
+      };
+    });
+
+    await runWorkTurn(run, { [run.sessionKey]: run.sessionEntry }, "Working on it");
+
+    const workSpans = spans.filter((s) => s.name === "continuation.work");
+    expect(workSpans).toHaveLength(1);
+    expect(workSpans[0]?.attributes["delay.ms"]).toBe(1_000);
+    expect(workSpans[0]?.attributes["chain.step.remaining"]).toBe(1);
+    expect(run.sessionEntry.continuationChainCount).toBe(1);
+  });
+
   it("reuses chain.id across consecutive accepted steps (mint-at-0→1, reuse-for-step-2)", async () => {
     vi.useFakeTimers();
     const { tracer, spans } = createRecordingTracer();

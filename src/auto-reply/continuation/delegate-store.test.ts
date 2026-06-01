@@ -119,6 +119,7 @@ import {
   consumePendingDelegates,
   consumeStagedPostCompactionDelegates,
   enqueuePendingDelegate,
+  markPendingDelegateFailed,
   pendingDelegateCount,
   resetDelegateStoreForTests,
   stagePostCompactionDelegate,
@@ -469,6 +470,23 @@ describe("consumePendingDelegates — delayMs gating", () => {
     const matured = consumePendingDelegates("session-1");
     expect(matured).toHaveLength(1);
     expect(matured[0].task).toBe("no-delay");
+  });
+});
+
+describe("markPendingDelegateFailed", () => {
+  beforeEach(() => {
+    loggerRecords.length = 0;
+  });
+
+  it("emits a breadcrumb instead of silently dropping delegates missing flow metadata", () => {
+    markPendingDelegateFailed({ task: "missing metadata" }, "rejected");
+
+    const warns = loggerRecords.filter(
+      (record) =>
+        record.level === "warn" &&
+        record.message.includes("[continuation:delegate-fail-missing-flow]"),
+    );
+    expect(warns).toHaveLength(1);
   });
 });
 
