@@ -61,6 +61,10 @@ async function getReleaseQueuedCompactionCompletion() {
   return (await import("./agent-runner-execution.js")).releaseQueuedCompactionCompletion;
 }
 
+async function getReleaseQueuedCompactionTolerant() {
+  return (await import("./agent-runner-execution.js")).releaseQueuedCompactionTolerant;
+}
+
 function makeSessionEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
   return {
     sessionId: "session-id-default",
@@ -415,5 +419,158 @@ describe("releaseQueuedCompactionCompletion: happy-path dispatch (branch 4)", ()
     // resolved.existing was undefined, so refreshedSessionEntry falls back to
     // the original (pre-resolve) sessionEntry. This guards the `??` chain.
     expect(dispatchArg.sessionEntry).toBe(initialSessionEntry);
+  });
+});
+
+/**
+ * #816 regression: releaseQueuedCompactionTolerant must isolate release-side
+ * failures from the caller's compaction-outcome signal.
+ *
+ * compactEmbeddedAgentSession has already mutated session-snapshot truth on
+ * disk before release runs. If release throws and that throw flips the
+ * caller's outcome to `{ ok: false, compacted: false }`, the agent retries
+ * compaction on an already-compacted session — double-compaction risk.
+ *
+ * These tests force the downstream deps of releaseQueuedCompactionCompletion
+ * (incrementRunCompactionCount, dispatchPostCompactionDelegates, span emit)
+ * to throw. The tolerant wrapper must swallow + logVerbose + not re-throw.
+ */
+describe("releaseQueuedCompactionTolerant: error-isolation guard (#816)", () => {
+  it("resolves silently when the underlying release succeeds (happy-path passthrough)", async () => {
+    const tolerant = await getReleaseQueuedCompactionTolerant();
+    const sessionEntry = makeSessionEntry();
+    const activeSessionStore: Record<string, SessionEntry> = { [SESSION_KEY]: sessionEntry };
+
+    state.incrementRunCompactionCountMock.mockResolvedValue(1);
+    state.resolveSessionStoreEntryMock.mockReturnValue({
+      existing: sessionEntry,
+      legacyKeys: [],
+      normalizedKey: SESSION_KEY,
+    });
+    state.dispatchPostCompactionDelegatesMock.mockResolvedValue({ queuedDelegates: 0 });
+
+    await expect(
+      tolerant({
+        activeSessionStore,
+        compactionResult: { ok: true, compacted: true },
+        followupRun: makeFollowupRun(),
+        getActiveSessionEntry: () => sessionEntry,
+        sessionKey: SESSION_KEY,
+        storePath: STORE_PATH,
+        traceparent: TRACEPARENT,
+      }),
+    ).resolves.toBeUndefined();
+
+    // Success-path must NOT emit a release-failed verbose log.
+    const failedLogs = state.logVerboseMock.mock.calls.filter((call) =>
+      String(call[0]).includes("[request_compaction:post-compaction-release-failed]"),
+    );
+    expect(failedLogs).toHaveLength(0);
+    // Sanity: the underlying release did fire its happy-path deps.
+    expect(state.incrementRunCompactionCountMock).toHaveBeenCalledTimes(1);
+    expect(state.dispatchPostCompactionDelegatesMock).toHaveBeenCalledTimes(1);
+    expect(state.emitContinuationCompactionReleasedSpanMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("swallows Error thrown by incrementRunCompactionCount and logs the reason", async () => {
+    const tolerant = await getReleaseQueuedCompactionTolerant();
+    const sessionEntry = makeSessionEntry();
+    const activeSessionStore: Record<string, SessionEntry> = { [SESSION_KEY]: sessionEntry };
+
+    state.incrementRunCompactionCountMock.mockRejectedValue(new Error("session-store I/O failure"));
+
+    await expect(
+      tolerant({
+        activeSessionStore,
+        compactionResult: { ok: true, compacted: true },
+        followupRun: makeFollowupRun(),
+        getActiveSessionEntry: () => sessionEntry,
+        sessionKey: SESSION_KEY,
+        storePath: STORE_PATH,
+        traceparent: TRACEPARENT,
+      }),
+    ).resolves.toBeUndefined();
+
+    // Outer cleanup short-circuits at the increment throw; dispatch + span
+    // never run, but the tolerant wrapper must not re-throw.
+    expect(state.dispatchPostCompactionDelegatesMock).not.toHaveBeenCalled();
+    expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
+
+    const failedLogs = state.logVerboseMock.mock.calls.filter((call) =>
+      String(call[0]).includes("[request_compaction:post-compaction-release-failed]"),
+    );
+    expect(failedLogs).toHaveLength(1);
+    const msg = failedLogs[0]?.[0] as string;
+    expect(msg).toContain(`session=${SESSION_KEY}`);
+    expect(msg).toContain("reason=session-store I/O failure");
+  });
+
+  it("swallows Error thrown by dispatchPostCompactionDelegates and logs the reason", async () => {
+    const tolerant = await getReleaseQueuedCompactionTolerant();
+    const sessionEntry = makeSessionEntry();
+    const activeSessionStore: Record<string, SessionEntry> = { [SESSION_KEY]: sessionEntry };
+
+    state.incrementRunCompactionCountMock.mockResolvedValue(1);
+    state.resolveSessionStoreEntryMock.mockReturnValue({
+      existing: sessionEntry,
+      legacyKeys: [],
+      normalizedKey: SESSION_KEY,
+    });
+    state.dispatchPostCompactionDelegatesMock.mockRejectedValue(
+      new Error("delegate dispatch crashed"),
+    );
+
+    await expect(
+      tolerant({
+        activeSessionStore,
+        compactionResult: { ok: true, compacted: true },
+        followupRun: makeFollowupRun(),
+        getActiveSessionEntry: () => sessionEntry,
+        sessionKey: SESSION_KEY,
+        storePath: STORE_PATH,
+        traceparent: TRACEPARENT,
+      }),
+    ).resolves.toBeUndefined();
+
+    // increment succeeded, dispatch threw, span never ran.
+    expect(state.incrementRunCompactionCountMock).toHaveBeenCalledTimes(1);
+    expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
+
+    const failedLogs = state.logVerboseMock.mock.calls.filter((call) =>
+      String(call[0]).includes("[request_compaction:post-compaction-release-failed]"),
+    );
+    expect(failedLogs).toHaveLength(1);
+    const msg = failedLogs[0]?.[0] as string;
+    expect(msg).toContain("reason=delegate dispatch crashed");
+  });
+
+  it("coerces non-Error throws via String() so the verbose log still carries a reason", async () => {
+    const tolerant = await getReleaseQueuedCompactionTolerant();
+    const sessionEntry = makeSessionEntry();
+    const activeSessionStore: Record<string, SessionEntry> = { [SESSION_KEY]: sessionEntry };
+
+    // exercising non-Error throws on purpose (verifies String() coercion)
+    state.incrementRunCompactionCountMock.mockImplementation(() => {
+      throw "raw-string-thrown-by-store";
+    });
+
+    await expect(
+      tolerant({
+        activeSessionStore,
+        compactionResult: { ok: true, compacted: true },
+        followupRun: makeFollowupRun(),
+        getActiveSessionEntry: () => sessionEntry,
+        sessionKey: SESSION_KEY,
+        storePath: STORE_PATH,
+        traceparent: TRACEPARENT,
+      }),
+    ).resolves.toBeUndefined();
+
+    const failedLogs = state.logVerboseMock.mock.calls.filter((call) =>
+      String(call[0]).includes("[request_compaction:post-compaction-release-failed]"),
+    );
+    expect(failedLogs).toHaveLength(1);
+    const msg = failedLogs[0]?.[0] as string;
+    expect(msg).toContain("reason=raw-string-thrown-by-store");
   });
 });
