@@ -334,8 +334,11 @@ async function drainChildContinuationQueue(params: {
     ]);
     const { dispatchToolDelegates } = dispatchModule;
     const { loadContinuationChainState, persistContinuationChainState } = stateModule;
-    const { updateSessionStore, resolveStorePath, resolveAgentIdFromSessionKey } =
-      sessionStoreModule;
+    const {
+      updateSessionStore: updateSessionStoreLazy,
+      resolveStorePath: resolveStorePathLazy,
+      resolveAgentIdFromSessionKey: resolveAgentIdFromSessionKeyLazy,
+    } = sessionStoreModule;
     const childEntry = loadSessionEntryByKey(params.childSessionKey) as
       | ContinuationChainSource
       | undefined;
@@ -375,9 +378,9 @@ async function drainChildContinuationQueue(params: {
       // survives gateway restart and is observable by other readers of
       // the on-disk session entry.
       try {
-        const agentId = resolveAgentIdFromSessionKey(params.childSessionKey);
-        const storePath = resolveStorePath(cfg.session?.store, { agentId });
-        await updateSessionStore(storePath, (store) => {
+        const agentId = resolveAgentIdFromSessionKeyLazy(params.childSessionKey);
+        const storePath = resolveStorePathLazy(cfg.session?.store, { agentId });
+        await updateSessionStoreLazy(storePath, (store) => {
           const existing = store[params.childSessionKey];
           if (!existing) {
             return;
@@ -1011,7 +1014,6 @@ export async function runSubagentAnnounceFlow(params: {
             );
           }
         } else {
-          const nextChainHop = chainGuardResult.nextChainHop;
           const continuationStateRuntime = await loadContinuationStateRuntime();
 
           const doChainSpawn = async (timerTriggered = false) => {
@@ -1373,7 +1375,8 @@ export async function runSubagentAnnounceFlow(params: {
     // If this is a continuation delegate with silentAnnounce, deliver as internal
     // system event instead of channel announce. If wakeOnReturn, also wake parent.
     if (params.silentAnnounce) {
-      const { enqueueSystemEvent } = await import("../infra/system-events.js");
+      const { enqueueSystemEvent: enqueueSystemEventLazy } =
+        await import("../infra/system-events.js");
       const { createSubsystemLogger } = await import("../logging/subsystem.js");
       const continuationLog = createSubsystemLogger("continuation/announce");
 
@@ -1386,7 +1389,7 @@ export async function runSubagentAnnounceFlow(params: {
       // Inject completion as system event (invisible to channel).
       const enrichmentText =
         triggerMessage || `[continuation:enrichment-return] Delegate completed: ${taskLabel}`;
-      enqueueSystemEvent(enrichmentText, {
+      enqueueSystemEventLazy(enrichmentText, {
         sessionKey: targetRequesterSessionKey,
         trusted: true,
         ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
