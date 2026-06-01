@@ -104,7 +104,7 @@ export function extractContinuationSignal(params: {
     // Per karmaterminal/openclaw#623: prior shape included `text.slice(-60)`
     // of every payload via log.info, leaking PII / model output into normal-
     // info logs and creating high-volume log bloat.
-    const presenceMap = payloads.map((p, i) => `[${i}]text=${!!p.text}`).join(" ");
+    const presenceMap = payloads.map((p, i) => `[${i}]text=${Boolean(p.text)}`).join(" ");
     log.info(
       `[continuation:trace] payload-scan: count=${payloads.length} ` +
         `bracketIdx=${bracketPayloadIdx} ` +
