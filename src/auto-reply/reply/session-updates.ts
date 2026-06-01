@@ -320,7 +320,7 @@ export async function incrementCompactionCount(params: {
   } else if (incrementBy > 0) {
     updates.totalTokensFresh = false;
   }
-  sessionStore[sessionKey] = mergeSessionEntry(entry, updates);
+  sessionStore[sessionKey] = mergeSessionEntry(entry, updates, { now });
   if (storePath) {
     await updateSessionStore(
       storePath,
@@ -329,8 +329,10 @@ export async function incrementCompactionCount(params: {
         // sessionId/sessionStartedAt/other-fields on the first-turn case
         // (when on-disk store has no entry yet). canonical-primitive applies
         // policy-based merge semantics (e.g. sessionStartedAt-rotation when
-        // sessionId changes).
-        store[sessionKey] = mergeSessionEntry(store[sessionKey] ?? entry, updates);
+        // sessionId changes). Thread captured `now` through both merge call
+        // sites so updatedAt + sessionStartedAt share a single-source-of-truth
+        // timestamp and remain byte-identical when sessionId rotates.
+        store[sessionKey] = mergeSessionEntry(store[sessionKey] ?? entry, updates, { now });
       },
       { activeSessionKey: sessionKey },
     );

@@ -536,7 +536,7 @@ export function setSessionRuntimeModel(
 
 export type SessionEntryMergePolicy = "touch-activity" | "preserve-activity";
 
-type MergeSessionEntryOptions = {
+export type MergeSessionEntryOptions = {
   policy?: SessionEntryMergePolicy;
   now?: number;
 };
@@ -615,8 +615,9 @@ export function mergeSessionEntryWithPolicy(
 export function mergeSessionEntry(
   existing: SessionEntry | undefined,
   patch: Partial<SessionEntry>,
+  options?: MergeSessionEntryOptions,
 ): SessionEntry {
-  return mergeSessionEntryWithPolicy(existing, patch);
+  return mergeSessionEntryWithPolicy(existing, patch, options);
 }
 
 export function mergeSessionEntryPreserveActivity(
