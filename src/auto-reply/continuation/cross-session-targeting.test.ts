@@ -263,7 +263,7 @@ describe("continuation cross-session targeting", () => {
       return `delivery-${enqueued.length}`;
     });
     const ackSessionDelivery = vi.fn(async () => undefined);
-    const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>((_text, opts) => {
+    const mockEnqueueSystemEvent = vi.fn<EnqueueSystemEvent>((_text, opts) => {
       systemEvents.push({ sessionKey: opts.sessionKey, traceparent: opts.traceparent });
       return true;
     });
@@ -278,7 +278,7 @@ describe("continuation cross-session targeting", () => {
       {
         enqueueSessionDelivery,
         ackSessionDelivery,
-        enqueueSystemEvent,
+        enqueueSystemEvent: mockEnqueueSystemEvent,
         requestHeartbeatNow: vi.fn(),
       },
     );

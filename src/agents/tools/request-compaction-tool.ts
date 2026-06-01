@@ -278,7 +278,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           code,
           reason,
         });
-      let asyncCleanupRegistered: boolean = false;
+      let asyncCleanupRegistered = true;
       try {
         void opts
           .triggerCompaction(request)
@@ -323,7 +323,8 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           .finally(() => {
             pendingCompactionSessions.delete(sessionKey);
           });
-        asyncCleanupRegistered = true;
+      } catch {
+        asyncCleanupRegistered = false;
       } finally {
         if (!asyncCleanupRegistered) {
           pendingCompactionSessions.delete(sessionKey);
