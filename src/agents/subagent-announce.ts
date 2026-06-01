@@ -881,7 +881,9 @@ export async function runSubagentAnnounceFlow(params: {
         typeof childEntry?.inputTokens === "number" || typeof childEntry?.outputTokens === "number";
       if (!hasTokenData) {
         // Best-effort single retry — avoid blocking the announce hot path
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 150);
+        });
         childEntry = readSessionEntryByKey(params.childSessionKey, { refresh: true });
         const hasTokenDataRetry =
           typeof childEntry?.inputTokens === "number" ||

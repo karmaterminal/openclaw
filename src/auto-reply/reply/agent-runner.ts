@@ -1515,7 +1515,7 @@ export async function runReplyAgent(replyParams: {
     }
   };
   const prePreflightCompactionCount = activeSessionEntry?.compactionCount ?? 0;
-  let preflightCompactionApplied = false;
+  let preflightCompactionApplied!: boolean;
 
   const continuationFeatureEnabled = resolveLiveContinuationRuntimeConfig(cfg).enabled;
   const postCompactionDelegatesToPreserve: SessionPostCompactionDelegate[] = [];

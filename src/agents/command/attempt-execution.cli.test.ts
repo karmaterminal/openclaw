@@ -15,7 +15,7 @@ import {
   parseDiagnosticTraceparent,
   resetDiagnosticTraceContextForTest,
 } from "../../infra/diagnostic-trace-context.js";
-import { type EmbeddedAgentRunResult } from "../embedded-agent.js";
+import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { FailoverError } from "../failover-error.js";
 import { persistCliTurnTranscript, runAgentAttempt } from "./attempt-execution.js";
 import { resolveClaudeCliProjectDirForWorkspace } from "./claude-cli-project-dir.js";
@@ -1541,7 +1541,9 @@ describe("CLI attempt execution", () => {
 
       expect(activeTraceBeforeAwait).toEqual(inheritedTrace);
       expect(activeTraceAfterAwait).toEqual(inheritedTrace);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
       expect(diagnosticEvents[0]?.trace).toEqual(inheritedTrace);
     } finally {
       stopDiagnosticEvents();

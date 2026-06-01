@@ -14,7 +14,6 @@ import {
   registerSubagentTraceparentHandoff,
   resetSubagentTraceparentHandoffsForTests,
 } from "../../agents/subagent-traceparent-handoff.js";
-import { BARE_SESSION_RESET_PROMPT } from "../../auto-reply/reply/session-reset-prompt.js";
 import {
   getDetachedTaskLifecycleRuntime,
   resetDetachedTaskLifecycleRuntimeForTests,
