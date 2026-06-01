@@ -1132,6 +1132,7 @@ export async function runReplyAgent(params: {
   typingMode: TypingMode;
   resetTriggered?: boolean;
   replyThreadingOverride?: TemplateContext["ReplyThreading"];
+  isContinuationWake?: boolean;
   replyOperation?: ReplyOperation;
 }): Promise<ReplyPayload | ReplyPayload[] | undefined> {
   const {
