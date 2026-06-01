@@ -57,9 +57,13 @@ vi.mock("../auto-reply/continuation/state.js", async (importOriginal) => ({
 
 vi.mock("../auto-reply/continuation-delegate-store.js", () => ({
   consumePendingDelegates: vi.fn(() => []),
+  markPendingDelegateFailed: vi.fn(),
 }));
 
-import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
+import {
+  consumePendingDelegates,
+  markPendingDelegateFailed,
+} from "../auto-reply/continuation-delegate-store.js";
 import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
 import { resolveStorePath } from "../config/sessions.js";
 import { drainSystemEventEntries } from "../infra/system-events.js";
@@ -326,6 +330,7 @@ function buildToolDelegateParams(hopIndex: number): AnnounceFlowParams {
 }
 
 const mockedConsumePendingDelegates = vi.mocked(consumePendingDelegates);
+const mockedMarkPendingDelegateFailed = vi.mocked(markPendingDelegateFailed);
 
 describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
@@ -343,6 +348,7 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
   afterEach(() => {
     spawnSpy.mockRestore();
     mockedConsumePendingDelegates.mockReturnValue([]);
+    mockedMarkPendingDelegateFailed.mockClear();
     clearRuntimeConfigSnapshot();
   });
 
@@ -414,6 +420,22 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
     expect(spawnArgs.task).toContain("[continuation:chain-hop:5]");
   });
 
+  it("dispatches matured delayed tool delegates without charging a second delay", async () => {
+    mockedConsumePendingDelegates.mockReturnValue([
+      { task: "matured delayed tool task", delayMs: 60_000 },
+    ]);
+
+    const params = buildToolDelegateParams(1);
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(spawnArgs.task).toContain("matured delayed tool task");
+  });
+
   it("rejects tool delegate at maxChainLength+1 (next hop exceeds max)", async () => {
     // childChainHop=10, nextToolHop=11 > maxChainLength(10) → rejected
     mockedConsumePendingDelegates.mockReturnValue([{ task: "tool task beyond boundary" }]);
@@ -425,6 +447,11 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
     });
 
     expect(spawnSpy).not.toHaveBeenCalled();
+    expect(mockedMarkPendingDelegateFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ task: "tool task beyond boundary" }),
+      expect.stringContaining("chain length"),
+      "Delegate rejected",
+    );
   });
 
   it("rejects tool delegate well beyond maxChainLength", async () => {
@@ -437,6 +464,52 @@ describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
     });
 
     expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it("marks every over-cap consumed tool delegate failed", async () => {
+    const first = { task: "first over-cap delegate", flowId: "flow-1", expectedRevision: 2 };
+    const second = { task: "second over-cap delegate", flowId: "flow-2", expectedRevision: 4 };
+    mockedConsumePendingDelegates.mockReturnValue([first, second]);
+
+    const params = buildToolDelegateParams(10);
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(mockedMarkPendingDelegateFailed).toHaveBeenCalledWith(
+      first,
+      expect.stringContaining("chain length"),
+      "Delegate rejected",
+    );
+    expect(mockedMarkPendingDelegateFailed).toHaveBeenCalledWith(
+      second,
+      expect.stringContaining("chain length"),
+      "Delegate rejected",
+    );
+  });
+
+  it("marks forbidden consumed tool delegate spawn failed as rejected", async () => {
+    const delegate = { task: "forbidden spawned delegate", flowId: "flow-1", expectedRevision: 2 };
+    mockedConsumePendingDelegates.mockReturnValue([delegate]);
+    spawnSpy.mockResolvedValue({
+      status: "forbidden",
+      error: "policy denied",
+    });
+
+    const params = buildToolDelegateParams(1);
+    await runSubagentAnnounceFlow(params);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    expect(mockedMarkPendingDelegateFailed).toHaveBeenCalledWith(
+      delegate,
+      expect.stringContaining("forbidden"),
+      "Delegate rejected",
+    );
   });
 
   it("respects custom maxChainLength for tool delegates", async () => {

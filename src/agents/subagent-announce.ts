@@ -1,5 +1,8 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { consumePendingDelegates } from "../auto-reply/continuation-delegate-store.js";
+import {
+  consumePendingDelegates,
+  markPendingDelegateFailed,
+} from "../auto-reply/continuation-delegate-store.js";
 import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
@@ -1122,8 +1125,6 @@ export async function runSubagentAnnounceFlow(params: {
         const {
           maxChainLength: toolMaxChainLength,
           costCapTokens: toolCostCapTokens,
-          minDelayMs: toolMinDelayMs,
-          maxDelayMs: toolMaxDelayMs,
           crossSessionTargeting: toolCrossSessionTargeting,
         } = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
         const hopMatch = childTask.match(CONTINUATION_CHAIN_HOP_PATTERN);
@@ -1140,9 +1141,13 @@ export async function runSubagentAnnounceFlow(params: {
 
           if (nextToolHop > toolMaxChainLength) {
             const remaining = toolDelegates.length - toolDelegateIdx;
+            const summary = `Tool delegate rejected: chain length ${nextToolHop} exceeds maxChainLength ${toolMaxChainLength}.`;
             defaultRuntime.log(
               `[subagent-chain-hop] Tool delegate chain length ${nextToolHop} > ${toolMaxChainLength}, rejecting from ${params.childSessionKey}. ${remaining} delegate(s) dropped.`,
             );
+            for (const dropped of toolDelegates.slice(toolDelegateIdx)) {
+              markPendingDelegateFailed(dropped, summary, "Delegate rejected");
+            }
             break;
           }
 
@@ -1154,9 +1159,13 @@ export async function runSubagentAnnounceFlow(params: {
               : storedToolChainTokens + accumulatedChildTokens;
           if (toolCostCapTokens > 0 && parentChainTokensForTool > toolCostCapTokens) {
             const remaining = toolDelegates.length - toolDelegateIdx;
+            const summary = `Tool delegate rejected: cost cap exceeded (${parentChainTokensForTool} > ${toolCostCapTokens}).`;
             defaultRuntime.log(
               `[subagent-chain-hop] Tool delegate cost cap exceeded (${parentChainTokensForTool} > ${toolCostCapTokens}), rejecting from ${params.childSessionKey}. ${remaining} delegate(s) dropped.`,
             );
+            for (const dropped of toolDelegates.slice(toolDelegateIdx)) {
+              markPendingDelegateFailed(dropped, summary, "Delegate rejected");
+            }
             break;
           }
 
@@ -1165,11 +1174,8 @@ export async function runSubagentAnnounceFlow(params: {
             delegateMode === "silent" || delegateMode === "silent-wake" || parentWasSilent;
           const toolWake =
             delegateMode === "silent-wake" || (parentWasSilent && params.wakeOnReturn === true);
-          const toolDelayMs = toolDelegate.delayMs;
-          const continuationStateRuntime = await loadContinuationStateRuntime();
-
           const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
-          const doToolChainSpawn = async (timerTriggered = false) => {
+          const doToolChainSpawn = async () => {
             try {
               const rejectedByTargetingPolicy =
                 await rejectCrossSessionTargetingForSubagentDispatch({
@@ -1189,6 +1195,11 @@ export async function runSubagentAnnounceFlow(params: {
                   task: toolDelegate.task,
                 });
               if (rejectedByTargetingPolicy) {
+                markPendingDelegateFailed(
+                  toolDelegate,
+                  "Tool delegate rejected: cross-session targeting is disabled by policy.",
+                  "Delegate rejected",
+                );
                 return;
               }
               const { spawnSubagentDirect } = await loadSubagentSpawnRuntime();
@@ -1218,49 +1229,35 @@ export async function runSubagentAnnounceFlow(params: {
               );
               if (spawnResult.status === "accepted") {
                 defaultRuntime.log(
-                  `[subagent-chain-hop] ${timerTriggered ? "Timer: " : ""}Tool delegate (${nextToolHop}/${toolMaxChainLength}) from ${params.childSessionKey}: ${toolDelegate.task.slice(0, 80)}`,
+                  `[subagent-chain-hop] Tool delegate (${nextToolHop}/${toolMaxChainLength}) from ${params.childSessionKey}: ${toolDelegate.task.slice(0, 80)}`,
                 );
               } else {
+                markPendingDelegateFailed(
+                  toolDelegate,
+                  `Tool delegate spawn ${spawnResult.status}: delegation was not accepted.`,
+                  spawnResult.status === "forbidden"
+                    ? "Delegate rejected"
+                    : "Delegate spawn failed",
+                );
                 defaultRuntime.log(
                   `[subagent-chain-hop] Tool delegate spawn rejected (${spawnResult.status}) from ${params.childSessionKey}`,
                 );
               }
             } catch (err) {
+              markPendingDelegateFailed(toolDelegate, `Tool delegate spawn failed: ${String(err)}`);
               defaultRuntime.log(
                 `[subagent-chain-hop] Tool delegate spawn failed from ${params.childSessionKey}: ${String(err)}`,
               );
             }
           };
 
-          if (toolDelayMs && toolDelayMs > 0) {
-            const clampedDelay = Math.max(toolMinDelayMs, Math.min(toolMaxDelayMs, toolDelayMs));
-            continuationStateRuntime.retainContinuationTimerRef(targetRequesterSessionKey);
-            const timerHandle = setTimeout(() => {
-              try {
-                doToolChainSpawn(true).catch((err) => {
-                  defaultRuntime.log(
-                    `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
-                  );
-                });
-              } finally {
-                continuationStateRuntime.unregisterContinuationTimerHandle(
-                  targetRequesterSessionKey,
-                  timerHandle,
-                );
-              }
-            }, clampedDelay);
-            continuationStateRuntime.registerContinuationTimerHandle(
-              targetRequesterSessionKey,
-              timerHandle,
+          // consumePendingDelegates only returns delegates after createdAt + delayMs has matured;
+          // delayMs here is audit metadata, not another timer to charge against the task.
+          doToolChainSpawn().catch((err) => {
+            defaultRuntime.log(
+              `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
             );
-            timerHandle.unref();
-          } else {
-            doToolChainSpawn().catch((err) => {
-              defaultRuntime.log(
-                `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
-              );
-            });
-          }
+          });
 
           toolHopBase = nextToolHop;
           toolDelegateIdx += 1;

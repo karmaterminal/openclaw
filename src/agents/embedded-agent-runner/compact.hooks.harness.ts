@@ -79,6 +79,9 @@ export const resolveSessionAgentIdsMock = vi.fn(() => ({
 }));
 export const estimateTokensMock = vi.fn((_message?: unknown) => 10);
 export const resolveAgentHarnessPolicyMock = vi.fn(() => ({ runtime: "openclaw" }));
+export const resolveSelectedOpenAIRuntimeProviderMock = vi.fn(
+  (params: { provider: string }) => params.provider,
+);
 export const resolveContextWindowInfoMock = vi.fn(() => ({ tokens: 128_000 }));
 function createDefaultSessionMessages(): unknown[] {
   return [
@@ -330,6 +333,10 @@ export function resetCompactSessionStateMocks(): void {
   maybeCompactAgentHarnessSessionMock.mockResolvedValue(undefined);
   resolveAgentHarnessPolicyMock.mockReset();
   resolveAgentHarnessPolicyMock.mockReturnValue({ runtime: "openclaw" });
+  resolveSelectedOpenAIRuntimeProviderMock.mockReset();
+  resolveSelectedOpenAIRuntimeProviderMock.mockImplementation(
+    (params: { provider: string }) => params.provider,
+  );
   resolveContextWindowInfoMock.mockReset();
   resolveContextWindowInfoMock.mockReturnValue({ tokens: 128_000 });
   rotateTranscriptAfterCompactionMock.mockReset();
@@ -467,6 +474,15 @@ export async function loadCompactHooksHarness(): Promise<{
   vi.doMock("../harness/runtime-plugin.js", () => ({
     ensureSelectedAgentHarnessPlugin: vi.fn(async () => undefined),
   }));
+
+  vi.doMock("../openai-routing.js", async () => {
+    const actual =
+      await vi.importActual<typeof import("../openai-routing.js")>("../openai-routing.js");
+    return {
+      ...actual,
+      resolveSelectedOpenAIRuntimeProvider: resolveSelectedOpenAIRuntimeProviderMock,
+    };
+  });
 
   vi.doMock("../../plugins/provider-runtime.js", () => ({
     prepareProviderRuntimeAuth: vi.fn(async () => ({ resolvedApiKey: undefined })),

@@ -22,9 +22,12 @@ import {
 import { generateChainId } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { failFlow } from "../../tasks/task-flow-registry.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
-import { consumePendingDelegates, peekSoonestUnmaturedDelegateDueAt } from "./delegate-store.js";
+import {
+  consumePendingDelegates,
+  markPendingDelegateFailed,
+  peekSoonestUnmaturedDelegateDueAt,
+} from "./delegate-store.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
 import {
   registerContinuationTimerHandle,
@@ -160,16 +163,7 @@ function markDelegateFailed(
   delegate: { flowId?: string; expectedRevision?: number; task: string },
   summary: string,
 ): void {
-  if (!delegate.flowId || delegate.expectedRevision === undefined) {
-    return;
-  }
-  failFlow({
-    flowId: delegate.flowId,
-    expectedRevision: delegate.expectedRevision,
-    currentStep: "Delegate spawn failed",
-    blockedSummary: summary,
-    updatedAt: Date.now(),
-  });
+  markPendingDelegateFailed(delegate, summary);
 }
 
 export async function dispatchToolDelegates(params: {

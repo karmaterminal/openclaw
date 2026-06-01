@@ -339,9 +339,14 @@ export function resolveEffectiveToolInventory(
     modelHasVision: params.modelHasVision,
     requireExplicitMessageTarget: params.requireExplicitMessageTarget,
     disableMessageTool: params.disableMessageTool,
-    // Inventory-only path: register request_compaction when continuation is
-    // enabled so /status and the tools-effective endpoint reflect the full
-    // RFC §2.1 tool surface. Actual compaction only runs on runtime paths.
+    // Inventory-only path: register callback-backed continuation tools when
+    // enabled so /status and tools-effective reflect the full RFC §2.1 surface.
+    // Runtime side effects still only run on live runner paths.
+    continueWorkOpts: continuationEnabled
+      ? {
+          requestContinuation: () => undefined,
+        }
+      : undefined,
     requestCompactionOpts: continuationEnabled
       ? {
           sessionId: "<inventory-only>",
