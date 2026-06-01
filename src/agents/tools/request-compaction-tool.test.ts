@@ -90,7 +90,9 @@ describe("request_compaction tool", () => {
   }
 
   async function flushBackgroundCompaction(): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
   }
 
   beforeEach(() => {
@@ -608,8 +610,12 @@ describe("request_compaction tool", () => {
     // Reject the background compaction and flush microtasks (multiple ticks
     // because .then().finally() chains across two microtask boundaries).
     rejectCompaction(new Error("simulated background failure"));
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
 
     // After rejection, pending MUST be cleared — a new call must NOT return
     // `already_pending` (it WILL hit rate-limit since lastRequestMs was set

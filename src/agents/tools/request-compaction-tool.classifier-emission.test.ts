@@ -61,8 +61,12 @@ function buildOpts(overrides: Partial<RequestCompactionToolOpts> = {}): RequestC
 
 async function flushMicrotasks(): Promise<void> {
   // triggerCompaction is fire-and-forget (.then().finally()); settle the promise chain.
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+  await new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 }
 
 describe("request_compaction tool — classifier emission", () => {

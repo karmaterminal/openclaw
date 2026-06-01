@@ -185,7 +185,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         );
       }
 
-      const reason = readStringParam(params, "reason", { required: true }).slice(0, 1024);
+      const reasonText = readStringParam(params, "reason", { required: true }).slice(0, 1024);
       const traceparentRaw = readStringParam(params, "traceparent");
       const explicitTraceparent =
         traceparentRaw !== undefined ? normalizeDiagnosticTraceparent(traceparentRaw) : undefined;
@@ -250,7 +250,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       // by unrelated channel activity.
       log.info(
         `[request_compaction:enqueuing] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
-          `diagId=${diagId} trigger=volitional usage=${(contextUsage * 100).toFixed(1)}% reason=${reason}`,
+          `diagId=${diagId} trigger=volitional usage=${(contextUsage * 100).toFixed(1)}% reason=${reasonText}`,
       );
 
       // Fire-and-forget: compaction runs via the lane queue after the current
@@ -263,7 +263,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         ...(opts.runId ? { runId: opts.runId } : {}),
         diagId,
         trigger: "volitional",
-        reason,
+        reason: reasonText,
         contextUsage,
         requestedAtMs: now,
         ...traceContextFields,
@@ -278,7 +278,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           code,
           reason,
         });
-      let asyncCleanupRegistered = false;
+      let asyncCleanupRegistered: boolean = false;
       try {
         void opts
           .triggerCompaction(request)
@@ -335,7 +335,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         compactionRequestId: diagId,
         trigger: "volitional",
         contextUsage: Math.round(contextUsage * 100),
-        reason,
+        reason: reasonText,
         ...traceContextFields,
         note:
           "Compaction has been enqueued and will run after your turn completes. " +
