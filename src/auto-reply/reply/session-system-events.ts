@@ -146,7 +146,7 @@ export async function drainFormattedSystemEventBlock(params: {
       if (event.forceSenderIsOwnerFalse === true) {
         forceSenderIsOwnerFalse = true;
       }
-      const isUntrusted = event.trusted === false;
+      const isUntrusted = event.forceSenderIsOwnerFalse === true;
       const prefix = isUntrusted ? "System (untrusted)" : "System";
       const timestamp = `[${formatSystemEventTimestamp(event.ts, params.cfg)}]`;
       const rendered = isUntrusted ? sanitizeInboundSystemTags(compacted) : compacted;
