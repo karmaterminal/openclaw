@@ -65,12 +65,8 @@ describe("runEmbeddedAgent continuation opts forwarding (#868)", () => {
 
     const requestCompactionOpts = {
       sessionId: "session-868-compaction",
-      getContextUsage: () => ({
-        tokensUsed: 1000,
-        contextWindowTokens: 200000,
-        usageRatio: 0.005,
-      }),
-      triggerCompaction: async () => ({ accepted: true as const }),
+      getContextUsage: () => 0.005,
+      triggerCompaction: async () => ({ ok: true, compacted: true }),
     };
 
     await runEmbeddedAgent({
@@ -94,12 +90,8 @@ describe("runEmbeddedAgent continuation opts forwarding (#868)", () => {
     const continueWorkOpts = { requestContinuation: () => undefined };
     const requestCompactionOpts = {
       sessionId: "session-868-both",
-      getContextUsage: () => ({
-        tokensUsed: 0,
-        contextWindowTokens: 200000,
-        usageRatio: 0,
-      }),
-      triggerCompaction: async () => ({ accepted: true as const }),
+      getContextUsage: () => 0,
+      triggerCompaction: async () => ({ ok: true, compacted: true }),
     };
 
     await runEmbeddedAgent({
