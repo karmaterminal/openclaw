@@ -3101,7 +3101,6 @@ export async function runAgentTurnWithFallback(params: {
       if (isCompactionFailure && !didResetAfterCompactionFailure) {
         const didResetAfterCompactionFailureNow =
           (await params.resetSessionAfterCompactionFailure?.(message)) ?? false;
-        didResetAfterCompactionFailure = didResetAfterCompactionFailureNow;
         params.replyOperation?.fail("run_failed", err);
         return {
           kind: "final",

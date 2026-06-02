@@ -85,6 +85,7 @@ afterEach(() => {
 describe("continuation-tracer adapter :: tracer acquisition", () => {
   it("uses the dedicated 'openclaw.continuation' tracer scope", () => {
     createContinuationOtelTracerAdapter();
+    // oxlint-disable-next-line typescript/unbound-method -- mock-fn ref for jest-style assertion; vi.fn does not access `this`
     expect(trace.getTracer).toHaveBeenCalledWith(CONTINUATION_OTEL_TRACER_NAME);
     expect(CONTINUATION_OTEL_TRACER_NAME).toBe("openclaw.continuation");
   });
