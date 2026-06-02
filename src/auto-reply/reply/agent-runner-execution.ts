@@ -2469,9 +2469,18 @@ export async function runAgentTurnWithFallback(params: {
                     },
                     drainsContinuationDelegateQueue:
                       params.followupRun.run.drainsContinuationDelegateQueue,
+                    // Read from runtimeConfig (live snapshot) for source-consistency
+                    // with requestCompactionOpts below. Previously read from
+                    // params.followupRun.run.config (queue-time snapshot), which can
+                    // diverge from runtimeConfig when config hot-reloads between
+                    // queue-time and execution-time via resolveQueuedReplyRuntimeConfig
+                    // → selectApplicableRuntimeConfig. Asymmetric source-reads were
+                    // producing asymmetric undefined-vs-defined opts and tripping the
+                    // continuation-misconfig-warn guard at openclaw-tools.ts:624 on
+                    // the path where one source resolved enabled=true and the other
+                    // resolved enabled=false. Cael identified the desync at byte.
                     continueWorkOpts:
-                      params.followupRun.run.config?.agents?.defaults?.continuation?.enabled ===
-                      true
+                      runtimeConfig?.agents?.defaults?.continuation?.enabled === true
                         ? {
                             requestContinuation: (request) => {
                               attemptContinueWorkRequest = request;
