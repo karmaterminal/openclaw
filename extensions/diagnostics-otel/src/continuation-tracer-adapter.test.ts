@@ -85,7 +85,8 @@ afterEach(() => {
 describe("continuation-tracer adapter :: tracer acquisition", () => {
   it("uses the dedicated 'openclaw.continuation' tracer scope", () => {
     createContinuationOtelTracerAdapter();
-    expect(trace.getTracer).toHaveBeenCalledWith(CONTINUATION_OTEL_TRACER_NAME);
+    // oxlint-disable-next-line typescript/unbound-method -- vi.mock assertion pattern, no `this` access
+    expect(vi.mocked(trace.getTracer)).toHaveBeenCalledWith(CONTINUATION_OTEL_TRACER_NAME);
     expect(CONTINUATION_OTEL_TRACER_NAME).toBe("openclaw.continuation");
   });
 });
