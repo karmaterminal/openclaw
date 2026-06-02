@@ -2351,6 +2351,12 @@ export async function loadSessionUsageTimeSeries(params: {
     return null;
   }
 
+  if (params.maxPoints !== undefined && params.maxPoints !== null) {
+    if (!Number.isFinite(params.maxPoints) || params.maxPoints <= 0) {
+      return { sessionId: params.sessionId, points: [] };
+    }
+  }
+
   const points: SessionUsageTimePoint[] = [];
   let cumulativeTokens = 0;
   let cumulativeCost = 0;
@@ -2392,11 +2398,6 @@ export async function loadSessionUsageTimeSeries(params: {
   const sortedPoints = points.toSorted((a, b) => a.timestamp - b.timestamp);
 
   // Optionally downsample if too many points
-  if (params.maxPoints !== undefined && params.maxPoints !== null) {
-    if (!Number.isFinite(params.maxPoints) || params.maxPoints <= 0) {
-      return { sessionId: params.sessionId, points: [] };
-    }
-  }
   const maxPoints = params.maxPoints ?? 100;
   if (sortedPoints.length > maxPoints) {
     const step = Math.ceil(sortedPoints.length / maxPoints);

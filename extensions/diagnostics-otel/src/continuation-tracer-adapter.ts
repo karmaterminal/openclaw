@@ -72,7 +72,6 @@ function continuationStatusToOtel(status: ContinuationSpanStatus): SpanStatusCod
       return SpanStatusCode.OK;
     case "ERROR":
       return SpanStatusCode.ERROR;
-    case "UNSET":
     default:
       return SpanStatusCode.UNSET;
   }

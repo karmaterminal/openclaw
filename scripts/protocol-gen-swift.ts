@@ -641,7 +641,7 @@ async function generate() {
   }
 }
 
-generate().catch((err) => {
+generate().catch((err: unknown) => {
   console.error(err);
   process.exit(1);
 });

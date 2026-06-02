@@ -823,7 +823,6 @@ const ASYNC_DIAGNOSTIC_EVENT_TYPES = new Set<DiagnosticEventPayload["type"]>([
   "model.call.completed",
   "model.call.error",
   "run.progress",
-  "harness.run.started",
   "harness.run.completed",
   "harness.run.error",
   "context.assembled",
@@ -1154,6 +1153,10 @@ export function emitDiagnosticEvent(event: DiagnosticEventInput) {
 
 export function emitInternalDiagnosticEvent(event: DiagnosticEventInput) {
   emitDiagnosticEventWithTrust(event, false, { internal: true });
+}
+
+export function getInternalDiagnosticEventSequence(): number {
+  return getDiagnosticEventsState().seq;
 }
 
 export function emitTrustedDiagnosticEvent(event: DiagnosticEventInput) {

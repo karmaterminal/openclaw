@@ -42,14 +42,7 @@ import {
 } from "./app-lifecycle.ts";
 import { initNativeBridge } from "./app-native-bridge.ts";
 import { createChatSession as createChatSessionInternal } from "./app-render.helpers.ts";
-import {
-  loadSkillWorkshopQueueWidth,
-  loadSkillWorkshopMode,
-  loadSkillWorkshopReviewedKeys,
-  loadSkillWorkshopRevisionSessions,
-  loadSkillWorkshopUseCurrentChatForRevisions,
-  renderApp,
-} from "./app-render.ts";
+import { renderApp } from "./app-render.ts";
 import {
   exportLogs as exportLogsInternal,
   handleActivityScroll as handleActivityScrollInternal,
@@ -110,6 +103,7 @@ import {
   type ExecApprovalRequest,
 } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
+import type { SkillWorkshopState } from "./controllers/skill-workshop.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillSecurityVerdict,
@@ -151,7 +145,6 @@ import type {
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
-import type { SkillWorkshopProposal } from "./views/skill-workshop.ts";
 
 declare global {
   interface Window {
@@ -175,7 +168,6 @@ function resolveSidebarUnavailableReason(
       return "Full content is unavailable because the stored transcript entry is too large to return safely.";
     case "not_visible":
       return "Full content is unavailable because this transcript entry does not have a visible WebChat projection.";
-    case "not_found":
     default:
       return "Full content is no longer available for this transcript entry.";
   }
@@ -287,7 +279,7 @@ export class OpenClawApp extends LitElement {
   @state() sessionSwitchNotice: { id: number; text: string } | null = null;
   @state() sessionSwitchFlashKey: string | null = null;
   @state() chatSessionPickerOpen = false;
-  @state() chatSessionPickerSurface: "desktop" | "mobile" | null = null;
+  @state() chatSessionPickerSurface: "desktop" | "mobile" | "sidebar" | null = null;
   @state() chatSessionPickerQuery = "";
   @state() chatSessionPickerAppliedQuery = "";
   @state() chatSessionPickerLoading = false;
@@ -296,6 +288,12 @@ export class OpenClawApp extends LitElement {
   private sessionSwitchNoticeSeq = 0;
   private sessionSwitchNoticeTimer: number | null = null;
   private sessionSwitchFlashTimer: number | null = null;
+  chatComposerPersistTimer: ReturnType<typeof globalThis.setTimeout> | number | null = null;
+  chatComposerPersistSnapshot: {
+    sessionKey: string;
+    chatMessage: string;
+    chatQueue: ChatQueueItem[];
+  } | null = null;
   @state() chatQueue: ChatQueueItem[] = [];
   @state() chatQueueBySession: Record<string, ChatQueueItem[]> = {};
   @state() chatAttachments: ChatAttachment[] = [];
@@ -629,42 +627,23 @@ export class OpenClawApp extends LitElement {
   @state() skillCardContentKeys: Record<string, string> = {};
   @state() skillCardLoadingKey: string | null = null;
   @state() skillCardErrors: Record<string, string> = {};
-
-  @state() skillWorkshopSelectedKey: string | null = null;
-  @state() skillWorkshopStatusFilter:
-    | "all"
-    | "pending"
-    | "applied"
-    | "rejected"
-    | "quarantined"
-    | "stale" = "all";
-  @state() skillWorkshopQuery = "";
-  @state() skillWorkshopFilePreviewKey: string | null = null;
-  @state() skillWorkshopFilePreviewQuery = "";
   @state() skillWorkshopLoading = false;
   @state() skillWorkshopLoaded = false;
   @state() skillWorkshopError: string | null = null;
   @state() skillWorkshopInspectingKey: string | null = null;
-  @state() skillWorkshopProposals: SkillWorkshopProposal[] = [];
-  @state() skillWorkshopReviewedKeys = loadSkillWorkshopReviewedKeys();
-  @state() skillWorkshopQueueWidth = loadSkillWorkshopQueueWidth();
-  @state() skillWorkshopMode: "board" | "today" = loadSkillWorkshopMode();
-  @state() skillWorkshopUseCurrentChatForRevisions = loadSkillWorkshopUseCurrentChatForRevisions();
-  @state() skillWorkshopRevisionSessions = loadSkillWorkshopRevisionSessions();
-  @state() skillWorkshopActionBusy: { key: string; action: "apply" | "revise" | "reject" } | null =
-    null;
-  @state() skillWorkshopActionNotice: { key: string; label: string; slug: string } | null = null;
+  @state() skillWorkshopProposals: SkillWorkshopState["skillWorkshopProposals"] = [];
+  @state() skillWorkshopSelectedKey: string | null = null;
+  @state() skillWorkshopActionBusy: SkillWorkshopState["skillWorkshopActionBusy"] = null;
+  @state() skillWorkshopActionNotice: SkillWorkshopState["skillWorkshopActionNotice"] = null;
+  skillWorkshopActionNoticeTimer: ReturnType<typeof globalThis.setTimeout> | number | null = null;
   @state() skillWorkshopRevisionKey: string | null = null;
   @state() skillWorkshopRevisionDraft = "";
-  skillWorkshopActionNoticeTimer: ReturnType<typeof globalThis.setTimeout> | number | null = null;
-  @state() skillWorkshopChatHandoffActive = false;
-  skillWorkshopChatHandoffTimer: ReturnType<typeof globalThis.setTimeout> | number | null = null;
-  @state() skillWorkshopHandoff: {
-    key: string;
-    slug: string;
-    phase: "prepare" | "landing" | "error";
-  } | null = null;
-  skillWorkshopHandoffDismissTimer: ReturnType<typeof globalThis.setTimeout> | number | null = null;
+  @state() skillWorkshopStatusFilter: SkillWorkshopState["skillWorkshopStatusFilter"] = "pending";
+  @state() skillWorkshopQuery = "";
+  @state() skillWorkshopFilePreviewKey: string | null = null;
+  @state() skillWorkshopFilePreviewQuery = "";
+  @state() skillWorkshopQueueWidth = 360;
+  @state() skillWorkshopMode: SkillWorkshopState["skillWorkshopMode"] = "today";
 
   @state() healthLoading = false;
   @state() healthResult: HealthSummary | null = null;
@@ -749,6 +728,21 @@ export class OpenClawApp extends LitElement {
       this.chatSessionPickerSurface = null;
       return;
     }
+    const openComposerDetails = this.querySelectorAll<HTMLDetailsElement>(
+      ".chat-controls__inline-select[open], .agent-chat__talk-select[open], .agent-chat__talk-options-advanced[open]",
+    );
+    if (openComposerDetails.length > 0) {
+      e.preventDefault();
+      openComposerDetails.forEach((details) => {
+        details.open = false;
+      });
+      return;
+    }
+    if (this.realtimeTalkOptionsOpen) {
+      e.preventDefault();
+      this.realtimeTalkOptionsOpen = false;
+      return;
+    }
     if (!this.chatMobileControlsOpen) {
       return;
     }
@@ -757,6 +751,21 @@ export class OpenClawApp extends LitElement {
   };
   private chatMobileControlsPointerdownHandler = (e: Event) => {
     const path = e.composedPath();
+    this.querySelectorAll<HTMLDetailsElement>(
+      ".chat-controls__inline-select[open], .agent-chat__talk-select[open], .agent-chat__talk-options-advanced[open]",
+    ).forEach((details) => {
+      if (!path.includes(details)) {
+        details.open = false;
+      }
+    });
+    if (this.realtimeTalkOptionsOpen) {
+      const insideTalkOptions = Array.from(
+        this.querySelectorAll(".agent-chat__talk-options, [aria-label='Talk settings']"),
+      ).some((node) => path.includes(node));
+      if (!insideTalkOptions) {
+        this.realtimeTalkOptionsOpen = false;
+      }
+    }
     if (this.chatSessionPickerOpen) {
       const insidePicker = Array.from(this.querySelectorAll(".chat-controls__session-picker")).some(
         (node) => path.includes(node),
@@ -769,7 +778,9 @@ export class OpenClawApp extends LitElement {
     if (!this.chatMobileControlsOpen) {
       return;
     }
-    const wrapper = this.querySelector(".chat-mobile-controls-wrapper");
+    const wrapper =
+      this.querySelector(".chat-settings-popover-wrapper") ??
+      this.querySelector(".chat-mobile-controls-wrapper");
     if (wrapper && path.includes(wrapper)) {
       return;
     }
@@ -786,12 +797,6 @@ export class OpenClawApp extends LitElement {
       switch (action) {
         case "new-session":
           await createChatSessionInternal(this as unknown as AppViewState);
-          break;
-        case "toggle-focus":
-          this.applySettings({
-            ...this.settings,
-            chatFocusMode: !this.settings.chatFocusMode,
-          });
           break;
         case "export":
           exportChatMarkdown(this.chatMessages, this.assistantName);
@@ -827,18 +832,6 @@ export class OpenClawApp extends LitElement {
     if (this.sessionSwitchFlashTimer !== null) {
       window.clearTimeout(this.sessionSwitchFlashTimer);
       this.sessionSwitchFlashTimer = null;
-    }
-    if (this.skillWorkshopActionNoticeTimer !== null) {
-      window.clearTimeout(this.skillWorkshopActionNoticeTimer);
-      this.skillWorkshopActionNoticeTimer = null;
-    }
-    if (this.skillWorkshopChatHandoffTimer !== null) {
-      window.clearTimeout(this.skillWorkshopChatHandoffTimer);
-      this.skillWorkshopChatHandoffTimer = null;
-    }
-    if (this.skillWorkshopHandoffDismissTimer !== null) {
-      window.clearTimeout(this.skillWorkshopHandoffDismissTimer);
-      this.skillWorkshopHandoffDismissTimer = null;
     }
     this.chatMobileControlsTrigger = null;
     handleDisconnected(this as unknown as Parameters<typeof handleDisconnected>[0]);

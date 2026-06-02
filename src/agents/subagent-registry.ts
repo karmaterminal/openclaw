@@ -1175,7 +1175,7 @@ function ensureListener() {
         startedAt,
       };
       await completeSubagentRunWithRecovery(completionParams, "lifecycle-ok-event");
-    })().catch((err) => {
+    })().catch((err: unknown) => {
       log.warn("lifecycle event handler failed", { err, runId: evt.runId });
     });
   });

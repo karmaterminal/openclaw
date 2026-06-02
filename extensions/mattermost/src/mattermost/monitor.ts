@@ -2166,7 +2166,7 @@ export async function monitorMattermostProvider(opts: MonitorMattermostOpts = {}
         client,
         commands,
         log: (msg) => runtime.log?.(msg),
-      }).catch((err) => {
+      }).catch((err: unknown) => {
         runtime.error?.(`mattermost: slash cleanup failed: ${String(err)}`);
       });
     };

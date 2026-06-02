@@ -79,14 +79,14 @@ import { resolveOpenClawReferencePaths } from "../docs-path.js";
 import { ensureSessionHeader } from "../embedded-agent-helpers.js";
 import { pickFallbackThinkingLevel } from "../embedded-agent-helpers.js";
 import { coerceToFailoverError, describeFailoverError } from "../failover-error.js";
+import { resolveAgentHarnessPolicy } from "../harness/policy.js";
 import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
-import { resolveAgentHarnessPolicy } from "../harness/selection.js";
 import { resolveHeartbeatPromptForSystemPrompt } from "../heartbeat-system-prompt.js";
 import {
   applyAuthHeaderOverride,
   applyLocalNoAuthHeaderOverride,
-  formatMissingAuthError,
   getApiKeyForModel,
+  MissingProviderAuthError,
   resolveModelAuthMode,
 } from "../model-auth.js";
 import { isFallbackSummaryError, runWithModelFallback } from "../model-fallback.js";
@@ -111,7 +111,10 @@ import {
 } from "../session-write-lock.js";
 import { createAgentSession, estimateTokens, SessionManager } from "../sessions/index.js";
 import { detectRuntimeShell } from "../shell-utils.js";
-import { filterRuntimeCompatibleTools } from "../tool-schema-projection.js";
+import {
+  filterProviderNormalizableTools,
+  filterRuntimeCompatibleTools,
+} from "../tool-schema-projection.js";
 import { logRuntimeToolSchemaQuarantine } from "../tool-schema-quarantine.js";
 import {
   classifyCompactionReason,
@@ -609,7 +612,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
 
     if (!apiKeyInfo.apiKey) {
       if (apiKeyInfo.mode !== "aws-sdk") {
-        throw new Error(formatMissingAuthError(apiKeyInfo, runtimeModel.provider));
+        throw new MissingProviderAuthError(runtimeModel.provider, apiKeyInfo);
       }
     } else {
       const preparedAuth = await prepareProviderRuntimeAuth({
@@ -827,8 +830,18 @@ async function compactEmbeddedAgentSessionDirectOnce(
       modelApi: model.api,
       model,
     };
-    const tools = runtimePlan.tools.normalize(
+    const normalizableToolProjection = filterProviderNormalizableTools(
       toolsEnabled ? toolsRaw : [],
+    );
+    logRuntimeToolSchemaQuarantine({
+      diagnostics: normalizableToolProjection.diagnostics,
+      tools: toolsEnabled ? toolsRaw : [],
+      runId,
+      sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
+    });
+    const tools = runtimePlan.tools.normalize(
+      [...normalizableToolProjection.tools],
       runtimePlanModelContext,
     );
     const bundleMcpRuntime = toolsEnabled
@@ -873,9 +886,22 @@ async function compactEmbeddedAgentSessionDirectOnce(
       senderE164: params.senderE164,
       warn: (message) => log.warn(message),
     });
+    const normalizableBundledToolProjection = filterProviderNormalizableTools(filteredBundledTools);
+    if (normalizableBundledToolProjection.diagnostics.length > 0) {
+      logRuntimeToolSchemaQuarantine({
+        diagnostics: normalizableBundledToolProjection.diagnostics,
+        tools: filteredBundledTools,
+        runId,
+        sessionKey: params.sessionKey,
+        sessionId: params.sessionId,
+      });
+    }
     const normalizedBundledTools =
       filteredBundledTools.length > 0
-        ? runtimePlan.tools.normalize(filteredBundledTools, runtimePlanModelContext)
+        ? runtimePlan.tools.normalize(
+            [...normalizableBundledToolProjection.tools],
+            runtimePlanModelContext,
+          )
         : filteredBundledTools;
     const projectedEffectiveTools = [...tools, ...normalizedBundledTools];
     const toolSchemaProjection = filterRuntimeCompatibleTools(projectedEffectiveTools);

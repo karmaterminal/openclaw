@@ -490,7 +490,7 @@ export function createFollowupRunner(params: {
       let progressDeliveryChain: Promise<void> = Promise.resolve();
       const pendingProgressDeliveries = new Set<Promise<void>>();
       const enqueueProgressDelivery = (deliver: () => Promise<void>) => {
-        progressDeliveryChain = progressDeliveryChain.then(deliver).catch((err) => {
+        progressDeliveryChain = progressDeliveryChain.then(deliver).catch((err: unknown) => {
           logVerbose(`followup queue: progress delivery failed: ${formatErrorMessage(err)}`);
         });
         const task = progressDeliveryChain.finally(() => {
@@ -809,6 +809,7 @@ export function createFollowupRunner(params: {
                     userTurnTranscriptRecorder,
                     onUserMessagePersisted: notifyUserMessagePersisted,
                     currentInboundEventKind: queued.currentInboundEventKind,
+                    currentInboundAudio: queued.currentInboundAudio,
                     currentInboundContext: queued.currentInboundContext,
                     inputProvenance: run.inputProvenance,
                     provider: cliExecutionProvider,
@@ -906,6 +907,7 @@ export function createFollowupRunner(params: {
                 transcriptPrompt: queued.transcriptPrompt,
                 userTurnTranscriptRecorder,
                 currentInboundEventKind: queued.currentInboundEventKind,
+                currentInboundAudio: queued.currentInboundAudio,
                 currentInboundContext: queued.currentInboundContext,
                 extraSystemPrompt: run.extraSystemPrompt,
                 silentReplyPromptMode: run.silentReplyPromptMode,

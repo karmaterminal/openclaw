@@ -883,25 +883,28 @@ function dispatchAgentRunFromGateway(params: {
   taskTrackingMode: Exclude<GatewayAgentTaskTrackingMode, "plugin_subagent">;
 }) {
   const shouldTrackTask = params.taskTrackingMode === "cli";
+  let taskTracked = false;
   if (shouldTrackTask) {
     try {
-      createRunningTaskRun({
-        runtime: "cli",
-        sourceId: params.runId,
-        ownerKey: params.ingressOpts.sessionKey,
-        scopeKind: "session",
-        requesterOrigin: normalizeDeliveryContext({
-          channel: params.ingressOpts.channel,
-          to: params.ingressOpts.to,
-          accountId: params.ingressOpts.accountId,
-          threadId: params.ingressOpts.threadId,
+      taskTracked = Boolean(
+        createRunningTaskRun({
+          runtime: "cli",
+          sourceId: params.runId,
+          ownerKey: params.ingressOpts.sessionKey,
+          scopeKind: "session",
+          requesterOrigin: normalizeDeliveryContext({
+            channel: params.ingressOpts.channel,
+            to: params.ingressOpts.to,
+            accountId: params.ingressOpts.accountId,
+            threadId: params.ingressOpts.threadId,
+          }),
+          childSessionKey: params.ingressOpts.sessionKey,
+          runId: params.runId,
+          task: params.ingressOpts.message,
+          deliveryStatus: "not_applicable",
+          startedAt: Date.now(),
         }),
-        childSessionKey: params.ingressOpts.sessionKey,
-        runId: params.runId,
-        task: params.ingressOpts.message,
-        deliveryStatus: "not_applicable",
-        startedAt: Date.now(),
-      });
+      );
     } catch {
       // Best-effort only: background task tracking must not block agent runs.
     }
@@ -910,7 +913,7 @@ function dispatchAgentRunFromGateway(params: {
     .then((result) => {
       const aborted = result?.meta?.aborted === true;
       const timeoutAttribution = readAgentRunTimeoutAttribution(result?.meta);
-      if (shouldTrackTask) {
+      if (taskTracked) {
         tryFinalizeTrackedAgentTask({
           runId: params.runId,
           status: aborted ? "timed_out" : "succeeded",
@@ -943,14 +946,14 @@ function dispatchAgentRunFromGateway(params: {
       // Swift clients will typically treat the first res as the result and ignore this.
       params.respond(true, payload, undefined, { runId: params.runId });
     })
-    .catch((err) => {
+    .catch((err: unknown) => {
       // Restored from upstream b4f69286fd (closes openclaw/openclaw#83962): match
       // TimeoutError and signal.reason TimeoutError shapes so timed-out runs
       // classify as timeout (not error) and keep dedupe.ok true. isAbortError
       // alone matches only name="AbortError" and misses both shapes.
       const aborted = isGatewayAgentAbortRejection(err, params.abortController.signal);
       const renderedErr = formatForLog(err);
-      if (shouldTrackTask) {
+      if (taskTracked) {
         tryFinalizeTrackedAgentTask({
           runId: params.runId,
           status: aborted ? "timed_out" : resolveFailedTrackedAgentTaskStatus(err),
@@ -1212,6 +1215,7 @@ export const agentHandlers: GatewayRequestHandlers = {
             status: "accepted" as const,
             sessionKey,
             ...(dedupeSessionResolvesGlobal && dedupeAgentId ? { agentId: dedupeAgentId } : {}),
+            controlUiVisible: !suppressVisibleSessionEffects,
             acceptedAt,
             dedupeKeys: agentDedupeKeys,
             expiresAtMs: resolveAgentRunExpiresAtMs({
@@ -2217,6 +2221,7 @@ export const agentHandlers: GatewayRequestHandlers = {
         ownerDeviceId,
         providerId: activeModelProvider,
         authProviderId: activeAuthProvider,
+        controlUiVisible: !suppressVisibleSessionEffects,
         kind: "agent",
       });
       const existingRunAbort = context.chatAbortControllers.get(runId);
@@ -2271,6 +2276,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       };
       const acceptedDedupePayload = {
         ...accepted,
+        controlUiVisible: !suppressVisibleSessionEffects,
         dedupeKeys: agentDedupeKeys,
         ownerConnId,
         ownerDeviceId,

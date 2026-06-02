@@ -10,6 +10,7 @@ import type {
   ChatCompletionSystemMessageParam,
   ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions.js";
+import { createReasoningTagTextPartitioner } from "../../shared/text/reasoning-tag-text-partitioner.js";
 import { getEnvApiKey } from "../env-api-keys.js";
 import { calculateCost, clampThinkingLevel } from "../model-utils.js";
 import type {
@@ -244,6 +245,26 @@ export const streamOpenAICompletions: StreamFunction<
         }
         return thinkingBlock;
       };
+      const appendTextDelta = (delta: string) => {
+        const block = ensureTextBlock();
+        block.text += delta;
+        stream.push({
+          type: "text_delta",
+          contentIndex: getContentIndex(block),
+          delta,
+          partial: output,
+        });
+      };
+      const appendThinkingDelta = (thinkingSignature: string, delta: string) => {
+        const block = ensureThinkingBlock(thinkingSignature);
+        block.thinking += delta;
+        stream.push({
+          type: "thinking_delta",
+          contentIndex: getContentIndex(block),
+          delta,
+          partial: output,
+        });
+      };
       const ensureToolCallBlock = (toolCall: StreamingToolCallDelta) => {
         const streamIndex = typeof toolCall.index === "number" ? toolCall.index : undefined;
         let block = streamIndex !== undefined ? toolCallBlocksByIndex.get(streamIndex) : undefined;
@@ -280,6 +301,24 @@ export const streamOpenAICompletions: StreamFunction<
           toolCallBlocksById.set(toolCall.id, block);
         }
         return block;
+      };
+      const reasoningTagTextPartitioner = createReasoningTagTextPartitioner();
+      const appendPartitionedContent = (text: string, hasMirroredReasoning: boolean) => {
+        const routedDeltas = hasMirroredReasoning
+          ? reasoningTagTextPartitioner.push(text)
+          : reasoningTagTextPartitioner.pushVisible(text);
+        for (const delta of routedDeltas) {
+          if (delta.kind === "text") {
+            appendTextDelta(delta.text);
+          }
+        }
+      };
+      const flushPartitionedContent = () => {
+        for (const delta of reasoningTagTextPartitioner.flush()) {
+          if (delta.kind === "text") {
+            appendTextDelta(delta.text);
+          }
+        }
       };
 
       for await (const chunk of openaiStream) {
@@ -321,27 +360,13 @@ export const streamOpenAICompletions: StreamFunction<
         }
 
         if (choice.delta) {
-          if (
-            choice.delta.content !== null &&
-            choice.delta.content !== undefined &&
-            choice.delta.content.length > 0
-          ) {
-            const block = ensureTextBlock();
-            block.text += choice.delta.content;
-            stream.push({
-              type: "text_delta",
-              contentIndex: getContentIndex(block),
-              delta: choice.delta.content,
-              partial: output,
-            });
-          }
-
           // Some endpoints return reasoning in reasoning_content (llama.cpp),
           // or reasoning (other openai compatible endpoints)
           // Use the first non-empty reasoning field to avoid duplication
           // (e.g., chutes.ai returns both reasoning_content and reasoning with same content)
           const reasoningFields = ["reasoning_content", "reasoning", "reasoning_text"];
           const deltaFields = choice.delta as Record<string, unknown>;
+          const shouldEmitReasoning = Boolean(model.reasoning && options?.reasoningEffort);
           let foundReasoningField: string | null = null;
           for (const field of reasoningFields) {
             const value = deltaFields[field];
@@ -350,26 +375,30 @@ export const streamOpenAICompletions: StreamFunction<
               break;
             }
           }
-
           if (foundReasoningField) {
+            reasoningTagTextPartitioner.markStrict();
+          }
+          if (
+            choice.delta.content !== null &&
+            choice.delta.content !== undefined &&
+            choice.delta.content.length > 0
+          ) {
+            appendPartitionedContent(choice.delta.content, Boolean(foundReasoningField));
+          }
+
+          if (shouldEmitReasoning && foundReasoningField) {
             const delta = deltaFields[foundReasoningField];
             if (typeof delta === "string" && delta.length > 0) {
               const thinkingSignature =
                 model.provider === "opencode-go" && foundReasoningField === "reasoning"
                   ? "reasoning_content"
                   : foundReasoningField;
-              const block = ensureThinkingBlock(thinkingSignature);
-              block.thinking += delta;
-              stream.push({
-                type: "thinking_delta",
-                contentIndex: getContentIndex(block),
-                delta,
-                partial: output,
-              });
+              appendThinkingDelta(thinkingSignature, delta);
             }
           }
 
           if (choice?.delta?.tool_calls) {
+            flushPartitionedContent();
             for (const toolCall of choice.delta.tool_calls) {
               const block = ensureToolCallBlock(toolCall);
               if (!block.id && toolCall.id) {
@@ -412,6 +441,8 @@ export const streamOpenAICompletions: StreamFunction<
         }
       }
 
+      flushPartitionedContent();
+
       for (const block of blocks) {
         finishBlock(block);
       }
@@ -430,8 +461,14 @@ export const streamOpenAICompletions: StreamFunction<
       }
 
       const hasToolCalls = output.content.some((block) => block.type === "toolCall");
+      const hasVisibleText = output.content.some(
+        (block) => block.type === "text" && block.text.trim().length > 0,
+      );
       if (output.stopReason === "toolUse" && !hasToolCalls) {
         output.stopReason = "stop";
+      }
+      if (output.stopReason === "stop" && hasToolCalls && !hasVisibleText) {
+        output.stopReason = "toolUse";
       }
       if (hasToolCalls && output.stopReason !== "toolUse") {
         output.content = output.content.filter((block) => block.type !== "toolCall");

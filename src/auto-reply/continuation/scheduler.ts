@@ -219,7 +219,7 @@ export function scheduleDelegateContinuation(params: {
             silentWake: signal.silentWake,
             startedAt: chainState.chainStartedAt,
           })
-          .catch((err) => {
+          .catch((err: unknown) => {
             log.warn(
               `[continuation:delayed-spawn-failed] hop=${nextChainCount}/${config.maxChainLength} session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
             );
@@ -246,7 +246,7 @@ export function scheduleDelegateContinuation(params: {
       silentWake: signal.silentWake,
       startedAt: chainState.chainStartedAt,
     })
-    .catch((err) => {
+    .catch((err: unknown) => {
       log.warn(
         `[continuation:immediate-spawn-failed] hop=${nextChainCount}/${config.maxChainLength} session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
       );

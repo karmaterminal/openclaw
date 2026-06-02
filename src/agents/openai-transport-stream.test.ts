@@ -383,6 +383,84 @@ describe("openai transport stream", () => {
     });
   });
 
+  it("backfills Azure Responses completed message output when item events are absent", async () => {
+    const model = createAzureResponsesModel();
+    const output = createResponsesAssistantOutput(model);
+
+    await testing.processResponsesStream(
+      streamChunks([
+        {
+          type: "response.completed",
+          response: {
+            id: "resp-azure-completed-message",
+            status: "completed",
+            output: [
+              { type: "reasoning", id: "rs_123", summary: [] },
+              {
+                type: "message",
+                id: "msg_123",
+                role: "assistant",
+                content: [{ type: "text", text: "AZURE_RESPONSES_CANARY_OK" }],
+              },
+            ],
+          },
+        },
+      ]),
+      output,
+      { push: vi.fn() },
+      model,
+    );
+
+    expect(output.stopReason).toBe("stop");
+    expect(output.content).toEqual([
+      {
+        type: "text",
+        text: "AZURE_RESPONSES_CANARY_OK",
+        textSignature: '{"v":1,"id":"msg_123"}',
+      },
+    ]);
+  });
+
+  it("backfills Azure Responses completed function calls when item events are absent", async () => {
+    const model = createAzureResponsesModel();
+    const output = createResponsesAssistantOutput(model);
+
+    await testing.processResponsesStream(
+      streamChunks([
+        {
+          type: "response.completed",
+          response: {
+            id: "resp-azure-completed-tool",
+            status: "completed",
+            output: [
+              {
+                type: "function_call",
+                id: "fc_123",
+                call_id: "call_123",
+                name: "session_status",
+                arguments: '{"sessionKey":"current"}',
+              },
+            ],
+          },
+        },
+      ]),
+      output,
+      { push: vi.fn() },
+      model,
+    );
+
+    expect(output.stopReason).toBe("toolUse");
+    expect(output.content).toEqual([
+      {
+        type: "toolCall",
+        id: "call_123|fc_123",
+        name: "session_status",
+        arguments: { sessionKey: "current" },
+        partialJson: '{"sessionKey":"current"}',
+      },
+    ]);
+  });
+
   it("summarizes model payload tools with full names when requested", () => {
     const previous = process.env.OPENCLAW_DEBUG_MODEL_PAYLOAD;
     process.env.OPENCLAW_DEBUG_MODEL_PAYLOAD = "tools";
@@ -1216,6 +1294,9 @@ describe("openai transport stream", () => {
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: 256_000,
         maxTokens: 16_384,
+        compat: {
+          supportsReasoningEffort: true,
+        },
       } satisfies Model<"openai-completions">;
       const stream = createOpenAICompletionsTransportStreamFn()(
         model,
@@ -1224,7 +1305,7 @@ describe("openai transport stream", () => {
           messages: [{ role: "user", content: "Reply live-ok", timestamp: Date.now() }],
           tools: [],
         } as never,
-        { apiKey: "test-key" } as never,
+        { apiKey: "test-key", reasoningEffort: "high" } as never,
       );
 
       let doneReason: string | undefined;
@@ -1255,6 +1336,140 @@ describe("openai transport stream", () => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
     }
+  });
+
+  it("emits Qwen thinking streams when enabled without reasoning_effort support", async () => {
+    let capturedPayload: Record<string, unknown> | undefined;
+    const server = createServer((req, res) => {
+      let body = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        capturedPayload = JSON.parse(body) as Record<string, unknown>;
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify({
+            id: "chatcmpl-qwen-thinking",
+            object: "chat.completion",
+            model: "qwen3.5-32b",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  reasoning_content: "Need a Qwen answer.",
+                  content: "qwen-ok",
+                },
+                finish_reason: "stop",
+              },
+            ],
+          }),
+        );
+      });
+    });
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Missing loopback server address");
+      }
+      const model = {
+        id: "qwen3.5-32b",
+        name: "Qwen 3.5 32B",
+        api: "openai-completions",
+        provider: "qwen",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 131072,
+        maxTokens: 8192,
+        compat: {
+          thinkingFormat: "qwen",
+          supportsReasoningEffort: false,
+        },
+      } satisfies Model<"openai-completions">;
+      const stream = createOpenAICompletionsTransportStreamFn()(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "Reply qwen-ok", timestamp: Date.now() }],
+          tools: [],
+        } as never,
+        { apiKey: "test-key", reasoning: "medium" } as never,
+      );
+
+      let thinking = "";
+      let text = "";
+      for await (const event of stream as AsyncIterable<{ type: string; delta?: string }>) {
+        if (event.type === "thinking_delta") {
+          thinking += event.delta ?? "";
+        }
+        if (event.type === "text_delta") {
+          text += event.delta ?? "";
+        }
+      }
+
+      expect(capturedPayload?.enable_thinking).toBe(true);
+      expect(capturedPayload).not.toHaveProperty("reasoning_effort");
+      expect(thinking).toBe("Need a Qwen answer.");
+      expect(text).toBe("qwen-ok");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("does not emit thinking streams when reasoning is disabled", () => {
+    const model = {
+      id: "grok-4.20-beta-latest-reasoning",
+      name: "Grok 4.20 Beta Latest (Reasoning)",
+      api: "openai-completions",
+      provider: "xai",
+      baseUrl: "https://api.x.ai/v1",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 2_000_000,
+      maxTokens: 30_000,
+    } satisfies Model<"openai-completions">;
+
+    expect(
+      testing.shouldEmitOpenAICompletionsReasoningForModel(model, {
+        apiKey: "test-key",
+        reasoning: "off",
+      } as never),
+    ).toBe(false);
+  });
+
+  it("emits Z.ai thinking streams when enabled without reasoning_effort support", () => {
+    const model = {
+      id: "glm-4.7",
+      name: "GLM 4.7",
+      api: "openai-completions",
+      provider: "zai",
+      baseUrl: "",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128_000,
+      maxTokens: 8192,
+    } satisfies Model<"openai-completions">;
+
+    expect(
+      testing.shouldEmitOpenAICompletionsReasoningForModel(model, {
+        apiKey: "test-key",
+        reasoning: "medium",
+      } as never),
+    ).toBe(true);
   });
 
   it("preserves OpenAI-compatible error metadata on failed chat requests", async () => {
@@ -1852,6 +2067,148 @@ describe("openai transport stream", () => {
     expect(JSON.stringify(events)).not.toContain("DSML");
   });
 
+  it("recovers DeepSeek DSML parameter tool calls emitted as text", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+    const events: CapturedStreamEvent[] = [];
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-deepseek-dsml-tool",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content:
+                  '<｜DSML｜tool_calls>\n<｜DSML｜invoke name="session_status">\n<｜DSML｜parameter name="sessionKey" string="true">current</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>',
+              },
+              logprobs: null,
+              finish_reason: "stop",
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push: (event) => events.push(event as CapturedStreamEvent) },
+    );
+
+    expect(output.stopReason).toBe("toolUse");
+    expect(output.content).toEqual([
+      {
+        type: "toolCall",
+        id: "call_deepseek_dsml_1",
+        name: "session_status",
+        arguments: { sessionKey: "current" },
+        partialArgs: '{"sessionKey":"current"}',
+      },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("DSML");
+  });
+
+  it("recovers split DeepSeek DSML JSON tool calls emitted as text", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-deepseek-split-dsml-tool",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: { content: '<|DSML|tool_calls><|DSML|invoke name="read">' },
+              logprobs: null,
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-deepseek-split-dsml-tool",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: { content: '{"path":"/tmp/native.md"}</|DSML|invoke>' },
+              logprobs: null,
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-deepseek-split-dsml-tool",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: { content: "</|DSML|tool_calls>" },
+              logprobs: null,
+              finish_reason: "stop",
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.stopReason).toBe("toolUse");
+    expect(output.content).toEqual([
+      {
+        type: "toolCall",
+        id: "call_deepseek_dsml_1",
+        name: "read",
+        arguments: { path: "/tmp/native.md" },
+        partialArgs: '{"path":"/tmp/native.md"}',
+      },
+    ]);
+  });
+
+  it("does not recover malformed DeepSeek DSML tool calls", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-deepseek-malformed-dsml-tool",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content:
+                  '<｜DSML｜tool_calls>\n<｜DSML｜invoke name="session_status">\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>',
+              },
+              logprobs: null,
+              finish_reason: "stop",
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.stopReason).toBe("stop");
+    expect(output.content).toEqual([]);
+  });
+
   it("keeps OpenRouter thinking format for declared OpenRouter providers on custom proxy URLs", () => {
     const params = buildOpenAICompletionsParams(
       attachModelProviderRequestTransport(
@@ -2216,6 +2573,42 @@ describe("openai transport stream", () => {
     ) as { input?: Array<{ role?: string }> };
 
     expect(params.input?.[0]?.role).toBe("developer");
+  });
+
+  it("serializes Responses input messages with explicit message type and content parts", () => {
+    const params = buildOpenAIResponsesParams(
+      {
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        api: "openai-responses",
+        provider: "microsoft-foundry",
+        baseUrl: "https://example.services.ai.azure.com/api/projects/demo/openai/v1",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 200000,
+        maxTokens: 8192,
+      } satisfies Model<"openai-responses">,
+      {
+        systemPrompt: "system",
+        messages: [{ role: "user", content: "hello", timestamp: 1 }],
+        tools: [],
+      } as never,
+      undefined,
+    ) as { input?: unknown };
+
+    expect(params.input).toEqual([
+      {
+        type: "message",
+        role: "system",
+        content: [{ type: "input_text", text: "system" }],
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hello" }],
+      },
+    ]);
   });
 
   it("uses model maxTokens for Responses params when runtime maxTokens is omitted", () => {
@@ -3684,6 +4077,7 @@ describe("openai transport stream", () => {
     expect(params.instructions).toBe("Stable prefix\nDynamic suffix");
     expect(params.input).toEqual([
       {
+        type: "message",
         role: "user",
         content: [{ type: "input_text", text: " " }],
       },
@@ -4051,9 +4445,9 @@ describe("openai transport stream", () => {
         tools: [],
       } as never,
       undefined,
-    ) as { input?: Array<{ content?: string }> };
+    ) as { input?: Array<{ content?: Array<{ text?: string }> }> };
 
-    expect(params.input?.[0]?.content).toBe("Stable prefix\nDynamic suffix");
+    expect(params.input?.[0]?.content?.[0]?.text).toBe("Stable prefix\nDynamic suffix");
   });
 
   it("defaults responses tool schemas to strict on native OpenAI routes", () => {
@@ -6984,7 +7378,643 @@ describe("openai transport stream", () => {
     });
   });
 
-  it("strips tool call blocks when provider signals finish_reason stop", async () => {
+  it("keeps buffered visible text before following tool calls", async () => {
+    const model = {
+      id: "plain-openai-compatible",
+      name: "Plain OpenAI Compatible",
+      api: "openai-completions",
+      provider: "plain-openai-compatible",
+      baseUrl: "https://api.compat.test/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200000,
+      maxTokens: 8192,
+    } satisfies Model<"openai-completions">;
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-buffered-text-tool",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: { content: "Use <" },
+              logprobs: null,
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-buffered-text-tool",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_0",
+                    type: "function",
+                    function: { name: "exec", arguments: '{"command":"ls"}' },
+                  },
+                ],
+              },
+              logprobs: null,
+              finish_reason: "tool_calls" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.content[0]).toEqual({ type: "text", text: "Use <" });
+    expectRecordFields(output.content[1], {
+      type: "toolCall",
+      id: "call_0",
+      name: "exec",
+      arguments: { command: "ls" },
+    });
+  });
+
+  it("partitions inline reasoning tags out of OpenAI-compatible visible text", async () => {
+    const model = {
+      id: "MiniMax-M2.7",
+      name: "MiniMax M2.7",
+      api: "openai-completions",
+      provider: "minimax",
+      baseUrl: "https://api.minimax.test/v1",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200000,
+      maxTokens: 8192,
+    } satisfies Model<"openai-completions">;
+    const output = createAssistantOutput(model);
+    const events: CapturedStreamEvent[] = [];
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-reasoning-tags",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "Before <thi",
+              },
+              logprobs: null,
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-reasoning-tags",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "nk>private reasoning</think> after",
+                reasoning_content: "private reasoning",
+              },
+              logprobs: null,
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-reasoning-tags",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {},
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push: (event) => events.push(event as CapturedStreamEvent) },
+    );
+
+    const visibleText = output.content
+      .filter((block): block is { type: "text"; text: string } => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+    const thinkingText = output.content
+      .filter((block): block is { type: "thinking"; thinking: string } => block.type === "thinking")
+      .map((block) => block.thinking)
+      .join("");
+
+    expect(visibleText).toBe("Before  after");
+    expect(visibleText).not.toContain("private reasoning");
+    expect(thinkingText).toBe("private reasoning");
+    expect(events.filter((event) => event.type === "thinking_delta")).toHaveLength(1);
+  });
+
+  it("drops mirrored reasoning when disabled without recovering hidden reasoning tags", async () => {
+    const model = {
+      id: "MiniMax-M2.7",
+      name: "MiniMax M2.7",
+      api: "openai-completions",
+      provider: "minimax",
+      baseUrl: "https://api.minimax.test/v1",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200000,
+      maxTokens: 8192,
+    } satisfies Model<"openai-completions">;
+    const output = createAssistantOutput(model);
+    const events: CapturedStreamEvent[] = [];
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-reasoning-disabled",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "<think>private reasoning",
+              },
+              logprobs: null,
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-reasoning-disabled",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                reasoning_content: "private reasoning",
+              },
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push: (event) => events.push(event as CapturedStreamEvent) },
+      { emitReasoning: false },
+    );
+
+    const visibleText = output.content
+      .filter((block): block is { type: "text"; text: string } => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+
+    expect(visibleText).toBe("");
+    expect(output.content.some((block) => block.type === "thinking")).toBe(false);
+    expect(events.some((event) => event.type === "thinking_delta")).toBe(false);
+  });
+
+  it("keeps literal reasoning tag examples visible without mirrored reasoning", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-literal-tags",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "Use `<think>private</think>` only as an example.",
+              },
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.content).toContainEqual({
+      type: "text",
+      text: "Use `<think>private</think>` only as an example.",
+    });
+    expect(output.content.some((block) => block.type === "thinking")).toBe(false);
+  });
+
+  it("keeps prose mentions of unclosed reasoning tags visible without mirrored reasoning", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-literal-unclosed-tag",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "The <reasoning> tag is deprecated in this example.",
+              },
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.content).toContainEqual({
+      type: "text",
+      text: "The <reasoning> tag is deprecated in this example.",
+    });
+    expect(output.content.some((block) => block.type === "thinking")).toBe(false);
+  });
+
+  it("keeps prose mentions of unmatched close tags visible without mirrored reasoning", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-literal-close-tag",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "Use </think> to close the tag.",
+              },
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.content).toContainEqual({
+      type: "text",
+      text: "Use </think> to close the tag.",
+    });
+    expect(output.content.some((block) => block.type === "thinking")).toBe(false);
+  });
+
+  it("strips content-only reasoning tags from OpenAI-compatible visible text", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-content-only-tags",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "Before <think>private reasoning</think> after",
+              },
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.content).toContainEqual({
+      type: "text",
+      text: "Before  after",
+    });
+    expect(output.content.some((block) => block.type === "thinking")).toBe(false);
+  });
+
+  it("recovers fully wrapped unclosed OpenAI-compatible reasoning text", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-unclosed-tags",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "<think>Visible answer from a malformed local model",
+              },
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.content).toContainEqual({
+      type: "text",
+      text: "Visible answer from a malformed local model",
+    });
+  });
+
+  it("does not recover buffered reasoning tags after structured thinking content", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-structured-thinking",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "<think>private reasoning",
+              },
+              logprobs: null,
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-structured-thinking",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: { type: "reasoning", text: "private reasoning" },
+              },
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    const visibleText = output.content
+      .filter((block): block is { type: "text"; text: string } => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+    const thinkingText = output.content
+      .filter((block): block is { type: "thinking"; thinking: string } => block.type === "thinking")
+      .map((block) => block.thinking)
+      .join("");
+
+    expect(visibleText).toBe("");
+    expect(thinkingText).toBe("private reasoning");
+  });
+
+  it("keeps literal reasoning tag examples visible with mirrored reasoning", async () => {
+    const model = createDeepSeekCompletionsModel();
+    const output = createAssistantOutput(model);
+
+    await testing.processOpenAICompletionsStream(
+      streamChunks([
+        {
+          id: "chatcmpl-literal-tags",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "Use `<thi",
+              },
+              logprobs: null,
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-literal-tags",
+          object: "chat.completion.chunk" as const,
+          created: 1,
+          model: model.id,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "nk>private</think>` only as an example.",
+                reasoning_content: "Actual hidden reasoning.",
+              },
+              logprobs: null,
+              finish_reason: "stop" as const,
+            },
+          ],
+        },
+      ]),
+      output,
+      model,
+      { push() {} },
+    );
+
+    expect(output.content).toContainEqual({
+      type: "text",
+      text: "Use `<think>private</think>` only as an example.",
+    });
+    expect(output.content).toContainEqual({
+      type: "thinking",
+      thinking: "Actual hidden reasoning.",
+      thinkingSignature: "reasoning_content",
+    });
+  });
+
+  it("promotes silent tool calls when provider signals finish_reason stop", async () => {
+    const model = {
+      id: "qwen3.6-27b",
+      name: "Qwen 3.6 27B",
+      api: "openai-completions",
+      provider: "vllm",
+      baseUrl: "http://localhost:8000/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 131072,
+      maxTokens: 8192,
+    } satisfies Model<"openai-completions">;
+
+    const output = createAssistantOutput(model);
+    const stream = { push: () => {} };
+
+    const mockChunks = [
+      {
+        id: "chatcmpl-test",
+        object: "chat.completion.chunk" as const,
+        created: 1775425651,
+        model: "qwen3.6-27b",
+        choices: [
+          {
+            index: 0,
+            delta: { role: "assistant" as const, content: "" },
+            logprobs: null,
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: "chatcmpl-test",
+        object: "chat.completion.chunk" as const,
+        created: 1775425651,
+        model: "qwen3.6-27b",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_legit",
+                  function: { name: "bash", arguments: '{"cmd":"echo hi"}' },
+                },
+              ],
+            },
+            logprobs: null,
+            finish_reason: "stop",
+          },
+        ],
+      },
+    ] as const;
+
+    async function* mockStream() {
+      for (const chunk of mockChunks) {
+        yield chunk as never;
+      }
+    }
+
+    await testing.processOpenAICompletionsStream(mockStream(), output, model, stream);
+
+    expect(output.stopReason).toBe("toolUse");
+    const toolCalls = output.content.filter(
+      (block) => (block as { type?: string }).type === "toolCall",
+    );
+    expect(toolCalls).toHaveLength(1);
+  });
+
+  it("does not promote tool calls when provider omits final finish_reason", async () => {
+    const model = {
+      id: "qwen3.6-27b",
+      name: "Qwen 3.6 27B",
+      api: "openai-completions",
+      provider: "vllm",
+      baseUrl: "http://localhost:8000/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 131072,
+      maxTokens: 8192,
+    } satisfies Model<"openai-completions">;
+
+    const output = createAssistantOutput(model);
+    const stream = { push: () => {} };
+
+    const mockChunks = [
+      {
+        id: "chatcmpl-test",
+        object: "chat.completion.chunk" as const,
+        created: 1775425651,
+        model: "qwen3.6-27b",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_unfinished",
+                  function: { name: "bash", arguments: '{"cmd":"echo hi"}' },
+                },
+              ],
+            },
+            logprobs: null,
+            finish_reason: null,
+          },
+        ],
+      },
+    ] as const;
+
+    async function* mockStream() {
+      for (const chunk of mockChunks) {
+        yield chunk as never;
+      }
+    }
+
+    await testing.processOpenAICompletionsStream(mockStream(), output, model, stream);
+
+    expect(output.stopReason).toBe("stop");
+    expect(
+      output.content.filter((block) => (block as { type?: string }).type === "toolCall"),
+    ).toStrictEqual([]);
+  });
+
+  it("strips tool call blocks when provider signals finish_reason stop after visible text", async () => {
     const model = {
       id: "llama-3.3-70b",
       name: "Llama 3.3 70B",

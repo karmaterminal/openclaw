@@ -4,22 +4,10 @@ import type { SessionConfig } from "@github/copilot-sdk";
 
 // Compaction bridge for the GitHub Copilot agent runtime.
 //
-// Two responsibilities:
-//
-//   1. Shape `SessionConfig.infiniteSessions` from a typed options bag
-//      so attempt.ts can opt the SDK in to background auto-compaction
-//      at session creation. The SDK manages the actual compaction
-//      under the `infiniteSessions` config (background at
-//      `backgroundCompactionThreshold`, blocking at
-//      `bufferExhaustionThreshold`).
-//
-//   2. Write an OpenClaw-shaped JSON marker file at
-//      `<workspaceDir>/files/openclaw-compaction-<sessionId>-<ts>.json`
-//      whenever the host calls `harness.compact(params)`. Existing
-//      OpenClaw transcript readers look in `workspacePath/files/` for
-//      compaction artifacts; the marker keeps them informed even
-//      though the SDK now owns the actual context-window mechanics
-//      under infiniteSessions.
+// Shapes `SessionConfig.infiniteSessions` from a typed options bag so
+// attempt.ts can opt the SDK in to background auto-compaction at session
+// creation. The SDK manages the actual compaction under the `infiniteSessions`
+// config and the session-scoped history compaction RPC.
 //
 // Host back-pointers (NOT imported here to keep the package boundary
 // clean):

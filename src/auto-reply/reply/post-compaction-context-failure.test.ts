@@ -61,7 +61,7 @@ describe("post-compaction context failure logging", () => {
           // enqueueSystemEvent would be called here
         }
       })
-      .catch(async (err) => {
+      .catch(async (err: unknown) => {
         const log = createSubsystemLogger("continuation/post-compaction-context");
         log.warn(
           `[continuation:post-compaction-context-failed] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey} workspaceDir=${workspaceDir}`,
@@ -90,7 +90,7 @@ describe("post-compaction context failure logging", () => {
 
     await readPostCompactionContext(workspaceDir, cfg)
       .then(() => {})
-      .catch(async (err) => {
+      .catch(async (err: unknown) => {
         const log = createSubsystemLogger("continuation/post-compaction-context");
         log.warn(
           `[continuation:post-compaction-context-failed] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey} workspaceDir=${workspaceDir}`,
@@ -120,7 +120,7 @@ describe("post-compaction context failure logging", () => {
           // Success path - no logging expected
         }
       })
-      .catch(async (err) => {
+      .catch(async (err: unknown) => {
         const log = createSubsystemLogger("continuation/post-compaction-context");
         log.warn(
           `[continuation:post-compaction-context-failed] error=${err instanceof Error ? err.message : String(err)} session=${sessionKey} workspaceDir=${workspaceDir}`,

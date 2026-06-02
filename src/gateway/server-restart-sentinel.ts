@@ -376,7 +376,7 @@ async function deliverQueuedSessionDelivery(params: {
     },
   });
   if (dispatchError) {
-    throw dispatchError;
+    throw toLintErrorObject(dispatchError, "Non-Error thrown");
   }
 }
 
@@ -687,4 +687,18 @@ export function getLatestUpdateRestartSentinel(): RestartSentinelPayload | null 
 
 export function recordLatestUpdateRestartSentinel(payload: RestartSentinelPayload): void {
   latestUpdateRestartSentinel = cloneRestartSentinelPayload(payload);
+}
+
+function toLintErrorObject(value: unknown, fallbackMessage: string): Error {
+  if (value instanceof Error) {
+    return value;
+  }
+  if (typeof value === "string") {
+    return new Error(value);
+  }
+  const error = new Error(fallbackMessage, { cause: value });
+  if ((typeof value === "object" && value !== null) || typeof value === "function") {
+    Object.assign(error, value);
+  }
+  return error;
 }

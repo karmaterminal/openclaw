@@ -4,20 +4,16 @@ import { startHeartbeatRunner, type HeartbeatRunner } from "../infra/heartbeat-r
 import type { PluginMetadataRegistryView } from "../plugins/plugin-metadata-snapshot.types.js";
 import { isGatewayModelPricingEnabled } from "./model-pricing-config.js";
 import type { startGatewayMaintenanceTimers } from "./server-maintenance.js";
+import {
+  createNoopHeartbeatRunner,
+  type GatewayRuntimeServiceLogger,
+} from "./server-runtime-service-shared.js";
 export {
   startGatewayChannelHealthMonitor,
   startGatewayRuntimeServices,
   type GatewayChannelManager,
 } from "./server-runtime-startup-services.js";
 
-type GatewayRuntimeServiceLogger = {
-  child: (name: string) => {
-    info: (message: string) => void;
-    warn: (message: string) => void;
-    error: (message: string) => void;
-  };
-  error: (message: string) => void;
-};
 type GatewayPostReadyLogger = {
   warn: (message: string) => void;
 };
@@ -25,19 +21,14 @@ export type GatewayMaintenanceHandles = NonNullable<
   Awaited<ReturnType<typeof startGatewayMaintenanceTimers>>
 >;
 
-function createNoopHeartbeatRunner(): HeartbeatRunner {
-  return {
-    stop: () => {},
-    updateConfig: (_cfg: OpenClawConfig) => {},
-  };
-}
-
 /** Starts cron without making gateway startup wait for cron initialization. */
 export function startGatewayCronWithLogging(params: {
   cron: { start: () => Promise<void> };
   logCron: { error: (message: string) => void };
 }): void {
-  void params.cron.start().catch((err) => params.logCron.error(`failed to start: ${String(err)}`));
+  void params.cron
+    .start()
+    .catch((err: unknown) => params.logCron.error(`failed to start: ${String(err)}`));
 }
 
 function clearGatewayMaintenanceHandles(maintenance: GatewayMaintenanceHandles | null): void {
@@ -152,7 +143,7 @@ function recoverPendingOutboundDeliveries(params: {
       log: logRecovery,
       cfg: params.cfg,
     });
-  })().catch((err) => params.log.error(`Delivery recovery failed: ${String(err)}`));
+  })().catch((err: unknown) => params.log.error(`Delivery recovery failed: ${String(err)}`));
 }
 
 function recoverPendingSessionDeliveries(params: {
@@ -172,7 +163,9 @@ function recoverPendingSessionDeliveries(params: {
         log: logRecovery,
         maxEnqueuedAt: params.maxEnqueuedAt,
       });
-    })().catch((err) => params.log.error(`Session delivery recovery failed: ${String(err)}`));
+    })().catch((err: unknown) =>
+      params.log.error(`Session delivery recovery failed: ${String(err)}`),
+    );
   }, 1_250);
   timer.unref?.();
 }
@@ -202,7 +195,9 @@ function startGatewayModelPricingRefreshOnDemand(params: {
       stopRefresh();
       stopRefresh = undefined;
     }
-  })().catch((err) => params.log.error(`Model pricing refresh failed to start: ${String(err)}`));
+  })().catch((err: unknown) =>
+    params.log.error(`Model pricing refresh failed to start: ${String(err)}`),
+  );
   return () => {
     stopped = true;
     stopRefresh?.();

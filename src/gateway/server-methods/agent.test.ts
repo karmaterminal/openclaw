@@ -237,7 +237,10 @@ async function waitForAssertion(assertion: () => void, timeoutMs = 2_000, stepMs
       await waitForRealTimer(stepMs);
     }
   }
-  throw lastError ?? new Error("assertion did not pass in time");
+  throw toLintErrorObject(
+    lastError ?? new Error("assertion did not pass in time"),
+    "Non-Error thrown",
+  );
 }
 
 function requireValue<T>(value: T | null | undefined, message: string): T {
@@ -6755,3 +6758,17 @@ describe("gateway agent handler chat.abort integration", () => {
     );
   });
 });
+
+function toLintErrorObject(value: unknown, fallbackMessage: string): Error {
+  if (value instanceof Error) {
+    return value;
+  }
+  if (typeof value === "string") {
+    return new Error(value);
+  }
+  const error = new Error(fallbackMessage, { cause: value });
+  if ((typeof value === "object" && value !== null) || typeof value === "function") {
+    Object.assign(error, value);
+  }
+  return error;
+}

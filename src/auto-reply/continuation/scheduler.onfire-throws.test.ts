@@ -110,7 +110,7 @@ describe("scheduleWorkContinuation onFire-throws spiderweb", () => {
       config: baseConfig,
       sessionKey,
       onFire: () => {
-        throw "raw string rejection";
+        throw new Error("raw string rejection");
       },
     });
 

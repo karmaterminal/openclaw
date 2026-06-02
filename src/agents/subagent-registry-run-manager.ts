@@ -681,7 +681,12 @@ export function createSubagentRunManager(params: {
     params.runs.set(runId, entry);
     try {
       params.persistOrThrow();
-      createRunningTaskRun({
+    } catch (error) {
+      params.runs.delete(runId);
+      throw error;
+    }
+    try {
+      const task = createRunningTaskRun({
         runtime: "subagent",
         sourceId: runId,
         ownerKey: requesterSessionKey,
@@ -696,6 +701,11 @@ export function createSubagentRunManager(params: {
         startedAt: now,
         lastEventAt: now,
       });
+      if (!task) {
+        log.warn("Failed to persist background task for subagent run", {
+          runId: registerParams.runId,
+        });
+      }
     } catch (error) {
       params.runs.delete(runId);
       try {
@@ -804,7 +814,7 @@ export function createSubagentRunManager(params: {
             inFlightRunIds: params.endedHookInFlightRunIds,
             persist: () => params.persist(),
           });
-        void persistSubagentSessionTiming(entry).catch((err) => {
+        void persistSubagentSessionTiming(entry).catch((err: unknown) => {
           log.warn("failed to persist killed subagent session timing", {
             err,
             runId: entry.runId,

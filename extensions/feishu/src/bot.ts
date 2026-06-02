@@ -918,7 +918,7 @@ export async function handleFeishuMessage(params: {
           replyToMessageId: replyTargetMessageId,
           replyInThread: isGroup ? (groupSession?.replyInThread ?? false) : false,
           accountId: account.accountId,
-        }).catch((err) => {
+        }).catch((err: unknown) => {
           log(`feishu[${account.accountId}]: failed to send ACP init error reply: ${String(err)}`);
         });
         return;
@@ -1575,7 +1575,7 @@ export async function handleFeishuMessage(params: {
             turnResult.dispatched &&
             shouldSendNoVisibleReplyFallback({
               ...turnResult.dispatchResult,
-              failedCounts: dispatcher.getFailedCounts(),
+              failedCounts: dispatcher.getFailedCounts?.() ?? { tool: 0, block: 0, final: 0 },
             })
           ) {
             await ensureNoVisibleReplyFallback("broadcast-dispatch-complete-no-visible-reply");
@@ -1771,7 +1771,7 @@ export async function handleFeishuMessage(params: {
       if (
         shouldSendNoVisibleReplyFallback({
           ...dispatchResult,
-          failedCounts: dispatcher.getFailedCounts(),
+          failedCounts: dispatcher.getFailedCounts?.() ?? { tool: 0, block: 0, final: 0 },
         })
       ) {
         await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");

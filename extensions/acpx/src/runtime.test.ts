@@ -215,6 +215,7 @@ describe("AcpxRuntime fresh reset wrapper", () => {
       agent: "codex",
       mode: "persistent",
       model: "gpt-5.4",
+      sessionOptions: { model: "gpt-5.4" },
     });
   });
 
@@ -286,7 +287,7 @@ describe("AcpxRuntime fresh reset wrapper", () => {
       })
       .then(
         () => ({ status: "resolved" as const }),
-        (error) => ({ status: "rejected" as const, error }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
       );
 
     expect(outcome.status).toBe("rejected");
@@ -298,7 +299,12 @@ describe("AcpxRuntime fresh reset wrapper", () => {
       code: "ACP_SESSION_INIT_FAILED",
       message: expect.stringContaining("deployment missing"),
     });
-    expect(outcome.error.message).not.toContain("sk-testsecret1234567890");
+    const error = outcome.error;
+    expect(error).toBeInstanceOf(AcpRuntimeError);
+    if (!(error instanceof AcpRuntimeError)) {
+      throw new Error("expected AcpRuntimeError");
+    }
+    expect(error.message).not.toContain("sk-testsecret1234567890");
   });
 
   it("adds Codex wrapper stderr tail to generic first-turn failures", async () => {
@@ -614,7 +620,7 @@ describe("AcpxRuntime fresh reset wrapper", () => {
     );
   });
 
-  it("does not normalize model startup for non-Codex ACP agents", async () => {
+  it("passes model startup through sessionOptions for non-Codex ACP agents", async () => {
     const baseStore: TestSessionStore = {
       load: vi.fn(async () => undefined),
       save: vi.fn(async () => {}),
@@ -643,6 +649,7 @@ describe("AcpxRuntime fresh reset wrapper", () => {
       agent: "main",
       mode: "persistent",
       model: "openai/gpt-5.5",
+      sessionOptions: { model: "openai/gpt-5.5" },
     });
   });
 
@@ -689,6 +696,7 @@ describe("AcpxRuntime fresh reset wrapper", () => {
       agent: "codex",
       mode: "persistent",
       model: "gpt-5.5",
+      sessionOptions: { model: "gpt-5.5" },
     });
   });
 
@@ -723,6 +731,7 @@ describe("AcpxRuntime fresh reset wrapper", () => {
       mode: "persistent",
       model: "gpt-5.4/xhigh",
       thinking: "x-high",
+      sessionOptions: { model: "gpt-5.4/xhigh" },
     });
   });
 

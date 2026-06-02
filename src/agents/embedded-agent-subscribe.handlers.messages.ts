@@ -8,7 +8,6 @@ import {
 } from "../auto-reply/reply/reply-directives.js";
 import { splitTrailingDirective } from "../auto-reply/reply/streaming-directives.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
-import { emitAgentEvent } from "../infra/agent-events.js";
 import type { AssistantMessage } from "../llm/types.js";
 import { coerceChatContentText } from "../shared/chat-content.js";
 import {
@@ -784,19 +783,8 @@ export function handleMessageUpdate(
         mediaUrls,
         phase: deliveryPhase ?? assistantPhase,
       });
-      emitAgentEvent({
-        runId: ctx.params.runId,
-        stream: "assistant",
-        data,
-      });
-      void ctx.params.onAgentEvent?.({
-        stream: "assistant",
-        data,
-      });
+      ctx.emitAssistantStreamData(data, { emitPartialReply: true });
       ctx.state.emittedAssistantUpdate = true;
-      if (ctx.params.onPartialReply && ctx.state.shouldEmitPartialReplies) {
-        void ctx.params.onPartialReply(data);
-      }
     }
   }
 
@@ -819,7 +807,7 @@ export function handleMessageUpdate(
     const assistantMessageIndex = ctx.state.assistantMessageIndex;
     void Promise.resolve()
       .then(() => ctx.flushBlockReplyBuffer({ assistantMessageIndex, final: true }))
-      .catch((err) => {
+      .catch((err: unknown) => {
         ctx.log.debug(`text_end block reply flush failed: ${String(err)}`);
       });
   }
@@ -936,15 +924,7 @@ export function handleMessageEnd(
       mediaUrls,
       phase: assistantPhase,
     });
-    emitAgentEvent({
-      runId: ctx.params.runId,
-      stream: "assistant",
-      data,
-    });
-    void ctx.params.onAgentEvent?.({
-      stream: "assistant",
-      data,
-    });
+    ctx.emitAssistantStreamData(data);
     ctx.state.emittedAssistantUpdate = true;
     ctx.state.lastStreamedAssistantCleaned = cleanedText;
   }
@@ -1032,7 +1012,7 @@ export function handleMessageEnd(
         final: true,
       });
       if (isPromiseLike<void>(flushBlockReplyBufferResult)) {
-        void flushBlockReplyBufferResult.catch((err) => {
+        void flushBlockReplyBufferResult.catch((err: unknown) => {
           ctx.log.debug(`message_end block reply flush failed: ${String(err)}`);
         });
       }

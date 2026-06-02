@@ -111,11 +111,6 @@ import {
 import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
-function isOpenAIProvider(provider?: string) {
-  const normalized = normalizeOptionalLowercaseString(provider);
-  return normalized === "openai";
-}
-
 const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
 
 type GuardContainerMount = {
@@ -189,6 +184,10 @@ function createLazyExecTool(defaults?: ExecToolDefaults): AnyAgentTool {
       });
     },
     parameters: execSchema,
+    prepareBeforeToolCallParams: async (...args) =>
+      (await loadTool()).prepareBeforeToolCallParams?.(...args) ?? args[0],
+    finalizeBeforeToolCallParams: (params, preparedParams) =>
+      loadedTool?.finalizeBeforeToolCallParams?.(params, preparedParams) ?? params,
     execute: async (...args: Parameters<AnyAgentTool["execute"]>) =>
       (await loadTool()).execute(...args),
   } as AnyAgentTool;
@@ -459,6 +458,8 @@ export function createOpenClawCodingTools(options?: {
   currentThreadTs?: string;
   /** Current inbound message id for action fallbacks (e.g. Telegram react). */
   currentMessageId?: string | number;
+  /** True when the current inbound turn carried audio media. */
+  currentInboundAudio?: boolean;
   /** Group id for channel-level tool policy resolution. */
   groupId?: string | null;
   /** Group channel label (e.g. #general) for channel-level tool policy resolution. */
@@ -528,6 +529,8 @@ export function createOpenClawCodingTools(options?: {
   };
   /** Optional instrumentation callback for tool preparation stage timing. */
   recordToolPrepStage?: (name: string) => void;
+  /** Lower routine policy-removal audits for diagnostic-only tool probes. */
+  toolPolicyAuditLogLevel?: "info" | "debug";
   /** Live observer called after wrapped tool outcomes are recorded. */
   onToolOutcome?: ToolOutcomeObserver;
   /** Runtime-only resolved skill paths that the read tool may load under workspaceOnly. */
@@ -721,7 +724,6 @@ export function createOpenClawCodingTools(options?: {
   const applyPatchWorkspaceOnly = workspaceOnly || applyPatchConfig?.workspaceOnly !== false;
   const applyPatchEnabled =
     applyPatchConfig?.enabled !== false &&
-    isOpenAIProvider(options?.modelProvider) &&
     isApplyPatchAllowedForModel({
       modelProvider: options?.modelProvider,
       modelId: options?.modelId,
@@ -1020,6 +1022,7 @@ export function createOpenClawCodingTools(options?: {
           currentChannelId: options?.currentChannelId,
           currentThreadTs: options?.currentThreadTs,
           currentMessageId: options?.currentMessageId,
+          currentInboundAudio: options?.currentInboundAudio,
           modelProvider: options?.modelProvider,
           modelId: options?.modelId,
           replyToMode: options?.replyToMode,
@@ -1132,6 +1135,7 @@ export function createOpenClawCodingTools(options?: {
       },
       { policy: inheritedToolPolicy, label: "inherited tools", unavailableCoreToolReason },
     ],
+    auditLogLevel: options?.toolPolicyAuditLogLevel,
   });
   if (shouldInheritEffectiveToolAllowlist) {
     replaceWithEffectiveToolAllowlist(inheritedToolAllowlist, subagentFiltered);

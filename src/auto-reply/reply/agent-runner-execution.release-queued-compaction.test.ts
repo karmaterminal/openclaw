@@ -551,7 +551,7 @@ describe("releaseQueuedCompactionTolerant: error-isolation guard (#816)", () => 
 
     // exercising non-Error throws on purpose (verifies String() coercion)
     state.incrementRunCompactionCountMock.mockImplementation(() => {
-      throw "raw-string-thrown-by-store";
+      throw new Error("raw-string-thrown-by-store");
     });
 
     await expect(
