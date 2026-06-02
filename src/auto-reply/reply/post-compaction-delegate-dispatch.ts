@@ -775,7 +775,7 @@ export async function dispatchPostCompactionDelegates(
         log: defaultRecoveryLog,
         sessionKey: params.sessionKey,
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         deps.log(
           `Failed to drain queued post-compaction delegates for ${params.sessionKey}: ${String(
             err,

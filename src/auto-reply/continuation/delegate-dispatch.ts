@@ -116,7 +116,7 @@ function armHedgeTimer(
         ? { reservedDelegateSlots: params.reservedDelegateSlots }
         : {}),
       loadFreshChainState: params.loadFreshChainState,
-    }).catch((err) => {
+    }).catch((err: unknown) => {
       const errorMessage = formatErrorMessage(err);
       log.error(`[continuation:delegate-hedge-error] error=${errorMessage} session=${sessionKey}`);
       surfaceHedgeDispatchFailure(sessionKey, errorMessage);

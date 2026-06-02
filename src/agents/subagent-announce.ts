@@ -1092,7 +1092,7 @@ export async function runSubagentAnnounceFlow(params: {
             continuationStateRuntime.retainContinuationTimerRef(targetRequesterSessionKey);
             const timerHandle = setTimeout(() => {
               try {
-                doChainSpawn(true).catch((err) => {
+                doChainSpawn(true).catch((err: unknown) => {
                   defaultRuntime.log(
                     `[subagent-chain-hop] Unhandled bracket delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
                   );
@@ -1111,7 +1111,7 @@ export async function runSubagentAnnounceFlow(params: {
             timerHandle.unref();
           } else {
             // Fire-and-forget — don't block the announce flow
-            doChainSpawn().catch((err) => {
+            doChainSpawn().catch((err: unknown) => {
               defaultRuntime.log(
                 `[subagent-chain-hop] Unhandled bracket delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
               );
@@ -1253,7 +1253,7 @@ export async function runSubagentAnnounceFlow(params: {
 
           // consumePendingDelegates only returns delegates after createdAt + delayMs has matured;
           // delayMs here is audit metadata, not another timer to charge against the task.
-          doToolChainSpawn().catch((err) => {
+          doToolChainSpawn().catch((err: unknown) => {
             defaultRuntime.log(
               `[subagent-chain-hop] Unhandled tool delegate spawn error from ${params.childSessionKey}: ${String(err)}`,
             );
