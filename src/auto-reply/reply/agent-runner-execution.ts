@@ -2478,7 +2478,7 @@ export async function runAgentTurnWithFallback(params: {
                     // producing asymmetric undefined-vs-defined opts and tripping the
                     // continuation-misconfig-warn guard at openclaw-tools.ts:624 on
                     // the path where one source resolved enabled=true and the other
-                    // resolved enabled=false. Cael identified the desync at byte.
+                    // resolved enabled=false. Identified during code review.
                     continueWorkOpts:
                       runtimeConfig?.agents?.defaults?.continuation?.enabled === true
                         ? {

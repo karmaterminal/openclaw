@@ -133,7 +133,7 @@ export function createContinueDelegateTool(opts: { agentSessionKey?: string }): 
     name: "continue_delegate",
     description: [
       "Fire a background sub-agent that runs now, later, or at compaction, then returns visibly or silently.",
-      "Reach for this when you'd otherwise fan out parallel exec calls for independent byte-walks, sleep+poll in exec, or relay a hand-off through the parent — the gateway handles timing, chain-tracking, and delivery.",
+      "Reach for this when you'd otherwise fan out parallel exec calls for independent investigations, sleep+poll in exec, or relay a hand-off through the parent — the gateway handles timing, chain-tracking, and delivery.",
       "Call multiple times in one turn for parallel fan-out; the main session stays free.",
       'Use mode="silent-wake" for ambient enrichment that quietly returns to context and wakes you to act on it.',
       'Use mode="post-compaction" to stage working-state survival across the compaction seam (lich-protocol phylactery shape — what survives is what you elect to carry).',

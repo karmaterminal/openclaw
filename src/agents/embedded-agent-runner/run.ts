@@ -1546,16 +1546,17 @@ export async function runEmbeddedAgent(
           const rawAttempt = await runEmbeddedAttemptWithBackend({
             sessionId: activeSessionId,
             sessionKey: resolvedSessionKey,
-            // Forward continuation-tool callbacks so the prince-LLM main-session
+            // Forward continuation-tool callbacks so the main-session LLM
             // tool-schema includes continue_work + request_compaction. Without this,
             // createOpenClawTools fires the continuation-misconfig-warn guard at
             // openclaw-tools.ts:624 and only continue_delegate registers, leaving
             // continue_work + request_compaction absent from the LLM-callable
-            // function-tool-list at uncurse-tip. Empirically confirmed at byte from
-            // elliott + ronan seats at 7522d6c60f; see #868. The opts are constructed
-            // upstream at auto-reply/reply/agent-runner-execution.ts:2472 + :2504 and
-            // arrive here on the RunEmbeddedAgent params, but were not threaded
-            // through to the attempt layer.
+            // function-tool-list. Empirically confirmed by schema-inventory
+            // introspection at two deployed agent-host seats; see #868. The opts
+            // are constructed upstream at
+            // auto-reply/reply/agent-runner-execution.ts:2472 + :2504 and arrive
+            // here on the RunEmbeddedAgent params, but were not threaded through
+            // to the attempt layer.
             continueWorkOpts: params.continueWorkOpts,
             requestCompactionOpts: params.requestCompactionOpts,
             promptCacheKey: params.promptCacheKey,

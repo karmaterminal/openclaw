@@ -18,7 +18,7 @@
  * that site already gates on `if (result.ok && result.compacted)`. They are
  * defensive guards inside the helper. Testing them directly here means a future
  * refactor that drops either guard breaks these tests, which is the spiderweb
- * property the cohort asked for.
+ * property required for safety.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";

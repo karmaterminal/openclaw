@@ -319,7 +319,7 @@ export async function loadSubagentSpawnModuleForTest(params: {
     resetSubagentRegistryForTests,
   }));
 
-  // Cure-cycle (#826) moved the spawn-runtime entry points out of
+  // Refactor (#826) moved the spawn-runtime entry points out of
   // subagent-registry.js into a leaf module to break a types <-> targeting
   // import cycle. subagent-spawn.ts now imports countActiveRunsForSession +
   // registerSubagentRun from here, so the test mock must follow the new path
