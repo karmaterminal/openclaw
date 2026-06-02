@@ -18,6 +18,8 @@ type HookRunner = Pick<SubagentLifecycleHookRunner, "hasHooks"> &
   >;
 type SubagentSpawnModuleForTest = Awaited<typeof import("./subagent-spawn.js")> & {
   resetSubagentRegistryForTests: MockFn;
+  consumeSubagentTraceparentHandoff: typeof import("./subagent-traceparent-handoff.js").consumeSubagentTraceparentHandoff;
+  resetSubagentTraceparentHandoffsForTests: typeof import("./subagent-traceparent-handoff.js").resetSubagentTraceparentHandoffsForTests;
 };
 
 export function createSubagentSpawnTestConfig(
@@ -335,8 +337,18 @@ export async function loadSubagentSpawnModuleForTest(params: {
   }));
 
   const subagentSpawnModule = await import("./subagent-spawn.js");
+  // Re-import traceparent-handoff module AFTER vi.resetModules() so the
+  // returned consume/reset functions reference the same module instance the
+  // SUT writes to (registerSubagentTraceparentHandoff in subagent-spawn.ts).
+  // The test-file's file-top import is stale post-reset and would consume from
+  // a different in-memory Map than the SUT registers into — returning
+  // undefined and silently failing the traceparent-handoff test.
+  const traceparentHandoffModule = await import("./subagent-traceparent-handoff.js");
   return {
     ...subagentSpawnModule,
     resetSubagentRegistryForTests,
+    consumeSubagentTraceparentHandoff: traceparentHandoffModule.consumeSubagentTraceparentHandoff,
+    resetSubagentTraceparentHandoffsForTests:
+      traceparentHandoffModule.resetSubagentTraceparentHandoffsForTests,
   };
 }

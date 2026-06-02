@@ -6,10 +6,6 @@ import {
   installSessionStoreCaptureMock,
   loadSubagentSpawnModuleForTest,
 } from "./subagent-spawn.test-helpers.js";
-import {
-  consumeSubagentTraceparentHandoff,
-  resetSubagentTraceparentHandoffsForTests,
-} from "./subagent-traceparent-handoff.js";
 import { installAcceptedSubagentGatewayMock } from "./test-helpers/subagent-gateway.js";
 
 const hoisted = vi.hoisted(() => ({
@@ -25,6 +21,8 @@ const hoisted = vi.hoisted(() => ({
 
 let resetSubagentRegistryForTests: typeof import("./subagent-registry.js").resetSubagentRegistryForTests;
 let spawnSubagentDirect: typeof import("./subagent-spawn.js").spawnSubagentDirect;
+let consumeSubagentTraceparentHandoff: typeof import("./subagent-traceparent-handoff.js").consumeSubagentTraceparentHandoff;
+let resetSubagentTraceparentHandoffsForTests: typeof import("./subagent-traceparent-handoff.js").resetSubagentTraceparentHandoffsForTests;
 
 function createConfigOverride(overrides?: Record<string, unknown>) {
   return createSubagentSpawnTestConfig(os.tmpdir(), {
@@ -65,7 +63,12 @@ function firstRegisteredSubagentRun(): Record<string, unknown> {
 
 describe("spawnSubagentDirect seam flow", () => {
   beforeAll(async () => {
-    ({ resetSubagentRegistryForTests, spawnSubagentDirect } = await loadSubagentSpawnModuleForTest({
+    ({
+      resetSubagentRegistryForTests,
+      spawnSubagentDirect,
+      consumeSubagentTraceparentHandoff,
+      resetSubagentTraceparentHandoffsForTests,
+    } = await loadSubagentSpawnModuleForTest({
       callGatewayMock: hoisted.callGatewayMock,
       getRuntimeConfig: () => hoisted.configOverride,
       loadSessionStoreMock: hoisted.loadSessionStoreMock,
