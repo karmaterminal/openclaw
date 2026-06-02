@@ -5,7 +5,7 @@
 // the two bounded-resurrection guards in the lich protocol (the first
 // being chain-depth, covered in the sibling test file). Where chain-depth
 // counts HOPS, cost-cap counts TOKENS. A long chain of cheap delegates
-// might never hit chain-depth but could still burn through the cohort's
+// might never hit chain-depth but could still burn through the user's
 // token budget; the cost-cap is the financial-pressure brake.
 //
 // ARCHITECTURAL CANON (from delegate-dispatch.ts):

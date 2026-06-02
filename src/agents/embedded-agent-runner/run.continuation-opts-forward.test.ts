@@ -13,13 +13,13 @@ import {
 // and requestCompactionOpts into the attempt-layer params so that
 // createOpenClawCodingTools (which calls createOpenClawTools) gets the
 // callbacks. Without forwarding, the warn-guard at openclaw-tools.ts:624
-// fires and only continue_delegate registers in the prince-LLM main-session
+// fires and only continue_delegate registers in the main-session LLM
 // tool-schema — continue_work + request_compaction are absent from the
 // LLM-callable function-tool-list even though they are configured.
 //
-// Empirically confirmed at byte at uncurse-tip 7522d6c60f from elliott + ronan
-// seats: schema-inventory introspection shows continue_delegate present,
-// continue_work + request_compaction absent. Upstream caller
+// Empirically confirmed via schema-inventory introspection at two deployed
+// agent-host seats: continue_delegate present, continue_work +
+// request_compaction absent. Upstream caller
 // auto-reply/reply/agent-runner-execution.ts:2472+2504 constructs the opts
 // based on agents.defaults.continuation.enabled; this regression test pins
 // the run.ts forwarding so the configured opts survive the trip to the
