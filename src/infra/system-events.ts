@@ -194,7 +194,7 @@ function areDeliveryContextsEqual(left?: DeliveryContext, right?: DeliveryContex
   return channelRouteDedupeKey(left) === channelRouteDedupeKey(right);
 }
 
-function resolveEventOwnerDowngrade(
+export function resolveEventOwnerDowngrade(
   event: Pick<SystemEvent, "forceSenderIsOwnerFalse" | "trusted">,
 ): boolean {
   return event.forceSenderIsOwnerFalse ?? event.trusted === false;
