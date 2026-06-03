@@ -398,7 +398,7 @@ describe("checkContextPressure", () => {
     expect(events[0]).toMatch(/100k/);
   });
 
-  it("uses evacuation language at sub-95% bands", () => {
+  it("uses post-compaction-staging language at sub-95% bands", () => {
     const entry = makeSessionEntry({ totalTokens: 85_000, totalTokensFresh: true });
     checkContextPressure({
       sessionEntry: entry,
@@ -408,7 +408,11 @@ describe("checkContextPressure", () => {
     });
     const events = peekSystemEvents(SESSION_KEY);
     expect(events.length).toBeGreaterThan(0);
-    expect(events[0]).toMatch(/evacuat/i);
+    // Per PR #887 (commit 36265d02093) urgency-text upgrade: sub-95% bands name
+    // continue_delegate(mode='post-compaction') for staging working-state survival,
+    // rather than the legacy "evacuat" wording. Test pins post-cure wording.
+    expect(events[0]).toMatch(/post-compaction/);
+    expect(events[0]).toMatch(/working-state survival/);
     expect(events[0]).not.toMatch(/imminent/i);
   });
 
