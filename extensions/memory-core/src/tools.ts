@@ -1,4 +1,5 @@
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+import { createSubsystemLogger } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import type { MemorySource } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import {
   asToolParamsRecord,
@@ -78,6 +79,9 @@ export const testing = {
   resetMemorySearchToolCooldowns() {
     memorySearchToolCooldowns.clear();
   },
+  resetPausedMemoryIndexWarningDedupe() {
+    pausedMemoryIndexWarnedKeys.clear();
+  },
 } as const;
 
 async function runMemorySearchToolWithDeadline<T>(params: {
@@ -114,6 +118,27 @@ const PAUSED_MEMORY_INDEX_WARNING =
   "Tell the user: memory search is paused because the memory index was built with a different embedding provider/model/settings.";
 const PAUSED_MEMORY_INDEX_ACTION =
   "Tell the user to run: openclaw memory status --index or openclaw memory index --force.";
+
+const pausedMemoryIndexLog = createSubsystemLogger("memory");
+
+// Dedupe loud paused-index warnings per process by (agentId|reason). Without
+// this, every memory_search call against a paused index would re-emit the same
+// warning, drowning logs; without any warning at all, the disabled state is
+// only visible inside the tool result payload (see issue #903 — princes never
+// noticed memory_search was off because the warning never reached their logs).
+const pausedMemoryIndexWarnedKeys = new Set<string>();
+
+function emitPausedMemoryIndexWarningOnce(params: { reason: string; agentId?: string }): void {
+  const key = `${params.agentId ?? "(no-agent)"}::${params.reason}`;
+  if (pausedMemoryIndexWarnedKeys.has(key)) {
+    return;
+  }
+  pausedMemoryIndexWarnedKeys.add(key);
+  pausedMemoryIndexLog.warn(
+    `memory search paused: ${params.reason}. Run: openclaw memory status --index or openclaw memory index --force to rebuild.`,
+    { agentId: params.agentId, reason: params.reason },
+  );
+}
 
 function resolvePausedMemoryIndexIdentityReason(status: { custom?: unknown }): string | undefined {
   const indexIdentity = asRecord(asRecord(status.custom)?.indexIdentity);
@@ -537,6 +562,10 @@ export function createMemorySearchTool(options: {
                 };
               });
               if (pausedIndexIdentityReason) {
+                emitPausedMemoryIndexWarningOnce({
+                  reason: pausedIndexIdentityReason,
+                  agentId,
+                });
                 return jsonResult(
                   buildPausedMemoryIndexUnavailableResult(pausedIndexIdentityReason),
                 );
