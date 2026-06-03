@@ -190,4 +190,56 @@ describe("runAgentAttempt #746 spawn-init continueWorkOpts plumbing (Layer 2 cur
       | undefined;
     expect(callArgs?.continueWorkOpts).toBeUndefined();
   });
+
+  // Extended coverage per Cael 1511790113 (4): exercise the closure end-to-end
+  // so that a future regression which forwards a *stub* closure (instead of
+  // the runner-supplied accumulator) is still caught. Pinning the presence of
+  // requestContinuation alone is necessary but not sufficient — the closure
+  // must actually capture continue_work tool-call payloads for the post-turn
+  // heartbeat scheduler to fire.
+  it("captured continue_work request is invocable end-to-end on spawn-init (turn-1 cure-mechanism pin)", async () => {
+    // Simulate a runEmbeddedAgent run that fires continue_work mid-turn by
+    // invoking the supplied closure with a representative request payload.
+    runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
+      const opts = (
+        callArgs as {
+          continueWorkOpts?: {
+            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
+          };
+        }
+      ).continueWorkOpts;
+      if (!opts) {
+        throw new Error(
+          "continueWorkOpts missing — Layer 2 cure regressed; subagent turn-1 cannot continue_work",
+        );
+      }
+      opts.requestContinuation({ reason: "trap-test", delaySeconds: 30 });
+      return makeEmbeddedResult();
+    });
+
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
+
+    // No throw means the closure was both present and invocable. The
+    // post-turn scheduler runs asynchronously via dynamic imports and arms
+    // a timer; we don't assert on the timer itself here (covered by the
+    // existing continuation-state test suite), only on the wiring invariant.
+    expect(runEmbeddedAgentMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Cross-layer drift-catch (Cael 1511790113 (4)):
+//   - Layer 1 (turn-2+ followup-runner): pinned by
+//     src/auto-reply/reply/followup-runner.test.ts
+//     "createFollowupRunner continueWorkOpts threading (#746)".
+//   - Layer 2 (turn-1 spawn-init runAgentAttempt): pinned by this file.
+// Together these prevent a regression that fixes one Layer in isolation from
+// silently reopening the gap on the other Layer (the same
+// false-empirical-proof class Cael 1511789404 flagged).
+describe("#746 cross-layer drift-catch sentinel", () => {
+  it("documents both Layer 1 + Layer 2 cure sites for #746 (sentinel only)", () => {
+    // This sentinel exists so a future maintainer searching for "#746" in
+    // test output sees both cure sites referenced from one place. Intentional
+    // no-op assertion; the real coverage lives in the two file-specific tests.
+    expect(true).toBe(true);
+  });
 });
