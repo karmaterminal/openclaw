@@ -1832,6 +1832,7 @@ describe("matrix monitor handler pairing account scope", () => {
       {
         sessionKey: "agent:ops:main",
         contextKey: "matrix:reaction:add:!room:example.org:$msg1:@user:example.org:👍",
+        forceSenderIsOwnerFalse: true,
       },
     );
   });
@@ -1894,6 +1895,7 @@ describe("matrix monitor handler pairing account scope", () => {
       {
         sessionKey: "agent:bound:session-1",
         contextKey: "matrix:reaction:add:!room:example.org:$reply1:@user:example.org:🎯",
+        forceSenderIsOwnerFalse: true,
       },
     );
   });
@@ -1938,6 +1940,7 @@ describe("matrix monitor handler pairing account scope", () => {
       {
         sessionKey: "agent:ops:main",
         contextKey: "matrix:reaction:add:!dm:example.org:$reply1:@user:example.org:🎯",
+        forceSenderIsOwnerFalse: true,
       },
     );
   });
@@ -1976,6 +1979,7 @@ describe("matrix monitor handler pairing account scope", () => {
       {
         sessionKey: "agent:ops:main:thread:$root",
         contextKey: "matrix:reaction:add:!room:example.org:$root:@user:example.org:🧵",
+        forceSenderIsOwnerFalse: true,
       },
     );
   });

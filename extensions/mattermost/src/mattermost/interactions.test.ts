@@ -886,6 +886,7 @@ describe("createMattermostInteractionHandler", () => {
       {
         sessionKey: "session:thread:root-9",
         contextKey: "mattermost:interaction:post-1:approve",
+        forceSenderIsOwnerFalse: true,
       },
     );
     expect(dispatchButtonClick).toHaveBeenCalledWith({
