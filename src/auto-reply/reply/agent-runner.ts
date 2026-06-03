@@ -2748,12 +2748,13 @@ export async function runReplyAgent(replyParams: {
                   );
                   return true;
                 }
+                const reasonText = spawnResult.error ?? "delegation was not accepted.";
                 defaultRuntime.log(
-                  `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
+                  `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey} reason=${reasonText}`,
                 );
-                dispatchSpan?.setStatus("ERROR", spawnResult.status);
+                dispatchSpan?.setStatus("ERROR", reasonText);
                 enqueueSystemEvent(
-                  `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${task}`,
+                  `[continuation] DELEGATE spawn ${spawnResult.status}: ${reasonText} Use sessions_spawn manually. Original task: ${task}`,
                   { sessionKey, trusted: true },
                 );
                 return false;
