@@ -62,9 +62,9 @@ function isBareMissingModuleSpecifier(text: string): boolean {
 
 function hasExternalDistArtifactPath(text: string): boolean {
   const candidates = [
-    ...text.matchAll(/file:\/\/(\/[^\s)]+[\/\\]dist(?:-runtime)?[\/\\][^\s)]*)/gu),
+    ...text.matchAll(/file:\/\/(\/[^\s)]+[/\\]dist(?:-runtime)?[/\\][^\s)]*)/gu),
     ...text.matchAll(/(\b[A-Za-z]:\\[^\s)]+\\dist(?:-runtime)?\\[^\s)]*)/gu),
-    ...text.matchAll(/(\/[^\s)]+[\/\\]dist(?:-runtime)?[\/\\][^\s)]*)/gu),
+    ...text.matchAll(/(\/[^\s)]+[/\\]dist(?:-runtime)?[/\\][^\s)]*)/gu),
   ];
   return candidates.some((match) => {
     const candidate = match[1];

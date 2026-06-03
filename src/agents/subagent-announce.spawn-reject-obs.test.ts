@@ -242,7 +242,7 @@ describe("subagent-announce tool-delegate rejection observability (PR #889 / #87
     expect(rejectionLogs[0]).toContain("(forbidden)");
 
     expect(mockedMarkPendingDelegateFailed).toHaveBeenCalledTimes(1);
-    const summaryArg = String(mockedMarkPendingDelegateFailed.mock.calls[0][1]);
+    const summaryArg = mockedMarkPendingDelegateFailed.mock.calls[0][1];
     expect(summaryArg).toContain(REASON);
     expect(summaryArg).toContain("forbidden");
     // Reason text must replace the canned "delegation was not accepted." string
@@ -268,7 +268,7 @@ describe("subagent-announce tool-delegate rejection observability (PR #889 / #87
     expect(rejectionLogs[0]).toContain("reason=delegation was not accepted.");
 
     expect(mockedMarkPendingDelegateFailed).toHaveBeenCalledTimes(1);
-    const summaryArg = String(mockedMarkPendingDelegateFailed.mock.calls[0][1]);
+    const summaryArg = mockedMarkPendingDelegateFailed.mock.calls[0][1];
     expect(summaryArg).toContain("delegation was not accepted.");
     expect(mockedMarkPendingDelegateFailed.mock.calls[0][2]).toBe("Delegate rejected");
   });

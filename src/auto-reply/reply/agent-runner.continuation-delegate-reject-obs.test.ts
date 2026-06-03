@@ -7,7 +7,6 @@ import {
   abortEmbeddedAgentRun,
   isEmbeddedAgentRunActive,
 } from "../../agents/embedded-agent-runner/runs.js";
-import { createContinueDelegateTool } from "../../agents/tools/continue-delegate-tool.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import {
@@ -23,10 +22,6 @@ import {
   clearMemoryPluginState,
   registerMemoryFlushPlanResolver,
 } from "../../plugins/memory-state.js";
-import {
-  clearDelayedContinuationReservations,
-  enqueuePendingDelegate,
-} from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { __testing as replyRunRegistryTesting } from "./reply-run-registry.js";
@@ -226,8 +221,6 @@ afterEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   resetContinuationTracer();
 });
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function createContinuationRun(params?: {
   sessionKey?: string;
