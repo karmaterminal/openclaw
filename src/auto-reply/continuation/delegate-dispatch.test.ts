@@ -525,6 +525,35 @@ describe("tool delegate dispatch contract", () => {
 
     expect(mockFlows.get(queuedBefore[5])?.status).toBe("failed");
   });
+
+  it("surfaces SpawnSubagentResult.error in the rejection log + system event (closes #871)", async () => {
+    const sessionKey = "session-delegate-error-surface";
+    enqueuePendingDelegate(sessionKey, { task: "sixth-delegate" });
+    const capMessage =
+      "sessions_spawn has reached max active children for this session (5/5)";
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "forbidden",
+      error: capMessage,
+    });
+
+    const queuedBefore = [...mockFlows.values()]
+      .filter((f) => f.ownerKey === sessionKey && f.status === "queued")
+      .map((f) => f.flowId as string);
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.rejected).toBe(1);
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining(capMessage),
+      { sessionKey, trusted: true },
+    );
+    expect(mockFlows.get(queuedBefore[0])?.status).toBe("failed");
+  });
 });
 
 describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => {

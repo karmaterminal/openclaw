@@ -362,12 +362,13 @@ export async function dispatchToolDelegates(params: {
         currentChainCount = nextHop;
         currentChainId = dispatchChainId;
       } else {
-        const summary = `DELEGATE spawn ${result.status}: delegation was not accepted.`;
+        const reasonText = result.error ?? "delegation was not accepted.";
+        const summary = `DELEGATE spawn ${result.status}: ${reasonText}`;
         log.info(
-          `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+          `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} reason=${reasonText} task=${delegate.task.slice(0, 80)}`,
         );
         markDelegateFailed(delegate, summary);
-        dispatchSpan.setStatus("ERROR", result.status);
+        dispatchSpan.setStatus("ERROR", reasonText);
         enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
           sessionKey,
           trusted: true,

@@ -2749,11 +2749,11 @@ export async function runReplyAgent(replyParams: {
                   return true;
                 }
                 defaultRuntime.log(
-                  `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}`,
+                  `DELEGATE spawn rejected (${spawnResult.status}) for session ${sessionKey}: ${spawnResult.error ?? "no reason given"}`,
                 );
-                dispatchSpan?.setStatus("ERROR", spawnResult.status);
+                dispatchSpan?.setStatus("ERROR", spawnResult.error ?? spawnResult.status);
                 enqueueSystemEvent(
-                  `[continuation] DELEGATE spawn ${spawnResult.status}: delegation was not accepted. Use sessions_spawn manually. Original task: ${task}`,
+                  `[continuation] DELEGATE spawn ${spawnResult.status}: ${spawnResult.error ?? "delegation was not accepted."} Use sessions_spawn manually. Original task: ${task}`,
                   { sessionKey, trusted: true },
                 );
                 return false;
