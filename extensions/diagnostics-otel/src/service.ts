@@ -27,7 +27,11 @@ import {
   ATTR_GEN_AI_SYSTEM_INSTRUCTIONS,
   ATTR_GEN_AI_TOOL_DEFINITIONS,
 } from "@opentelemetry/semantic-conventions/incubating";
-import { waitForDiagnosticEventsDrained } from "openclaw/plugin-sdk/diagnostic-runtime";
+import {
+  resetContinuationTracer,
+  setContinuationTracer,
+  waitForDiagnosticEventsDrained,
+} from "openclaw/plugin-sdk/diagnostic-runtime";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
 import type {
   DiagnosticEventMetadata,
@@ -41,6 +45,7 @@ import {
   isValidDiagnosticTraceId,
   redactSensitiveText,
 } from "../api.js";
+import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
 
 const DEFAULT_SERVICE_NAME = "openclaw";
 const DROPPED_OTEL_ATTRIBUTE_KEYS = new Set([
@@ -1071,6 +1076,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
     currentUnregisterUnhandledRejectionHandler?.();
     currentUnsubscribe?.();
     currentStopActiveTrustedSpans?.();
+    if (currentSdk) {
+      resetContinuationTracer();
+    }
     if (currentLogProvider) {
       await currentLogProvider.shutdown().catch(() => undefined);
     }
@@ -1212,6 +1220,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
 
         try {
           sdk.start();
+          if (tracesEnabled) {
+            setContinuationTracer(createContinuationOtelTracerAdapter());
+          }
         } catch (err) {
           emitForSignals(
             [
