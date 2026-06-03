@@ -362,12 +362,13 @@ export async function dispatchToolDelegates(params: {
         currentChainCount = nextHop;
         currentChainId = dispatchChainId;
       } else {
-        const summary = `DELEGATE spawn ${result.status}: delegation was not accepted.`;
+        const reasonText = result.error ?? "delegation was not accepted.";
+        const summary = `DELEGATE spawn ${result.status}: ${reasonText}`;
         log.info(
-          `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+          `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} reason=${reasonText} task=${delegate.task.slice(0, 80)}`,
         );
         markDelegateFailed(delegate, summary);
-        dispatchSpan.setStatus("ERROR", result.status);
+        dispatchSpan.setStatus("ERROR", reasonText);
         enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
           sessionKey,
           trusted: true,
@@ -563,10 +564,10 @@ export async function dispatchStagedPostCompactionDelegates(
         continue;
       }
       postCompactionLog.warn(
-        `[continuation:post-compaction-spawn-rejected] status=${spawnResult.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+        `[continuation:post-compaction-spawn-rejected] status=${spawnResult.status} session=${sessionKey} reason=${spawnResult.error ?? "not accepted"} task=${delegate.task.slice(0, 80)}`,
       );
       enqueueSystemEvent(
-        `[continuation] Post-compaction delegate spawn ${spawnResult.status}: delegation was not accepted. Task: ${delegate.task}`,
+        `[continuation] Post-compaction delegate spawn ${spawnResult.status}: ${spawnResult.error ?? "delegation was not accepted."}. Task: ${delegate.task}`,
         { sessionKey, trusted: true },
       );
       failed++;
