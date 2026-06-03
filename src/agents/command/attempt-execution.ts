@@ -13,6 +13,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { runWithDiagnosticTraceparent } from "../../infra/diagnostic-trace-context.js";
 import { readErrorName } from "../../infra/errors.js";
+import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
@@ -41,6 +42,7 @@ import { buildAgentRuntimeAuthPlan } from "../runtime-plan/auth.js";
 import type { AgentMessage } from "../runtime/index.js";
 import { acquireSessionWriteLock, resolveSessionWriteLockOptions } from "../session-write-lock.js";
 import { buildUsageWithNoCost } from "../stream-message-shared.js";
+import type { ContinueWorkRequest } from "../tools/continue-work-tool.js";
 import {
   buildClaudeCliFallbackContextPrelude,
   claudeCliSessionTranscriptHasContent,
@@ -389,7 +391,7 @@ export async function persistCliTurnTranscript(params: {
   });
 }
 
-export function runAgentAttempt(params: {
+export async function runAgentAttempt(params: {
   providerOverride: string;
   modelOverride: string;
   originalProvider: string;
@@ -645,7 +647,27 @@ export function runAgentAttempt(params: {
     });
   }
 
-  return runWithDiagnosticTraceparent(params.opts.traceparent, () =>
+  // --- continuation: spawn-init / turn-1 continueWorkOpts plumbing (#746) ---
+  // Construct the closure that captures continue_work tool requests fired
+  // during this attempt, then surface the runEmbeddedAgent result while
+  // post-processing the captured request to schedule the next-turn
+  // heartbeat-wake. Mirrors the followup-runner pattern at
+  // src/auto-reply/reply/followup-runner.ts (#892 cure). Without this wiring,
+  // openclaw-tools.ts:592 evaluates options?.continueWorkOpts as undefined on
+  // the spawn-init code path and continue_work never registers in the
+  // subagent's turn-1 tool-list — chicken-and-egg with the followup-runner
+  // cure that only fires on turn-2+.
+  const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
+  let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
+  const continueWorkOpts = continuationEnabled
+    ? {
+        requestContinuation: (request: ContinueWorkRequest) => {
+          attemptContinueWorkRequest = request;
+        },
+      }
+    : undefined;
+
+  const embeddedRunResult = await runWithDiagnosticTraceparent(params.opts.traceparent, () =>
     runEmbeddedAgent({
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,
@@ -712,8 +734,124 @@ export function runAgentAttempt(params: {
       onUserMessagePersisted: params.onUserMessagePersisted,
       bootstrapPromptWarningSignaturesSeen,
       bootstrapPromptWarningSignature,
+      continueWorkOpts,
     }),
   );
+
+  // Post-turn: if continue_work fired during this attempt, schedule the next
+  // turn via heartbeat-wake. Mirrors the followup-runner heartbeat-scheduler
+  // block; we keep this guarded by sessionKey + continuation.enabled and use
+  // dynamic imports to keep the static graph free of the continuation-runtime
+  // dependency on the spawn-init path.
+  if (attemptContinueWorkRequest && continuationEnabled && params.sessionKey) {
+    try {
+      await scheduleSpawnInitContinueWorkWake({
+        sessionKey: params.sessionKey,
+        sessionEntry: params.sessionStore?.[params.sessionKey] ?? params.sessionEntry,
+        runId: params.runId,
+        request: attemptContinueWorkRequest,
+        cfg: params.cfg,
+        runResult: embeddedRunResult,
+      });
+    } catch (err) {
+      // Persistence/scheduling failure must not break the attempt itself —
+      // mirrors followup-runner's defensive logging.
+      log.warn(
+        `[attempt-execution] failed to schedule continue_work wake for ${sanitizeForLog(params.sessionKey)}: ${sanitizeForLog(String(err))}`,
+      );
+    }
+  }
+
+  return embeddedRunResult;
+}
+
+/**
+ * Schedule a continue_work-triggered heartbeat-wake for the spawn-init /
+ * turn-1 path. Loads chain state, enforces maxChainLength + delay clamps,
+ * persists advancement, and arms the timer that fires requestHeartbeatNow.
+ * Behaviour mirrors the followup-runner block introduced by PR #892 for
+ * turn-2+ symmetry. Kept here as a local helper so the spawn-init path
+ * stays single-sourced for the cure.
+ */
+async function scheduleSpawnInitContinueWorkWake(params: {
+  sessionKey: string;
+  sessionEntry: SessionEntry | undefined;
+  runId: string;
+  request: ContinueWorkRequest;
+  cfg: OpenClawConfig;
+  runResult: EmbeddedAgentRunResult;
+}): Promise<void> {
+  const [
+    { resolveLiveContinuationRuntimeConfig },
+    {
+      loadContinuationChainState,
+      persistContinuationChainState,
+      retainContinuationTimerRef,
+      registerContinuationTimerHandle,
+      unregisterContinuationTimerHandle,
+    },
+    { enqueueSystemEvent },
+  ] = await Promise.all([
+    import("../../auto-reply/continuation/config.js"),
+    import("../../auto-reply/continuation/state.js"),
+    import("../../infra/system-events.js"),
+  ]);
+
+  const continuationConfig = resolveLiveContinuationRuntimeConfig(params.cfg);
+  const { maxChainLength, minDelayMs, maxDelayMs, defaultDelayMs } = continuationConfig;
+
+  const tailUsage = params.runResult.meta?.agentMeta?.usage;
+  const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
+  const chainState = loadContinuationChainState(params.sessionEntry, turnTokens);
+  const currentChainCount = chainState.currentChainCount;
+
+  if (currentChainCount >= maxChainLength) {
+    log.info(
+      `[attempt-execution] continue_work cap reached for ${sanitizeForLog(params.sessionKey)}: ${currentChainCount}/${maxChainLength}`,
+    );
+    return;
+  }
+
+  const nextChainCount = currentChainCount + 1;
+  const requestedDelayMs = params.request.delaySeconds * 1000;
+  const clampedDelay = Math.max(
+    minDelayMs,
+    Math.min(maxDelayMs, requestedDelayMs || defaultDelayMs),
+  );
+
+  persistContinuationChainState({
+    sessionEntry: params.sessionEntry,
+    count: nextChainCount,
+    startedAt: chainState.chainStartedAt,
+    tokens: chainState.accumulatedChainTokens,
+  });
+
+  retainContinuationTimerRef(params.sessionKey);
+  const sessionKey = params.sessionKey;
+  const reason = params.request.reason;
+  const parentRunId = params.runId;
+  const timerHandle = setTimeout(() => {
+    try {
+      log.info(
+        `[attempt-execution] continue_work timer fired for session ${sanitizeForLog(sessionKey)}`,
+      );
+      enqueueSystemEvent(
+        `[continuation:wake] Turn ${nextChainCount}/${maxChainLength}. ` +
+          `The agent elected to continue working.` +
+          (reason ? ` Reason: ${reason}` : ""),
+        { sessionKey, trusted: true },
+      );
+      requestHeartbeatNow({
+        sessionKey,
+        reason: "continuation",
+        parentRunId,
+      });
+    } finally {
+      unregisterContinuationTimerHandle(sessionKey, timerHandle);
+    }
+  }, clampedDelay);
+  registerContinuationTimerHandle(sessionKey, timerHandle);
+  timerHandle.unref();
 }
 
 export function buildAcpResult(params: {
