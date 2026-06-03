@@ -136,3 +136,37 @@ describe("checkContextPressure", () => {
     expect(escalated).not.toBeNull();
   });
 });
+
+// PR #714 follow-up: urgency-text upgrade names BOTH `continue_delegate(mode='post-compaction')`
+// AND `request_compaction(reason='...')` with concrete tool-call shapes, closing the
+// "3 lifeboats, 0 compactions" anti-pattern (figs `1505xxx` 2026-05-20 case where a prince
+// staged three post-compaction lifeboats without ever firing request_compaction() because
+// the warning told the model to PREPARE-FOR but never to TRIGGER).
+describe("checkContextPressure — urgency-text names both tool-calls (#714 follow-up)", () => {
+  const base = {
+    sessionKey: "urgency-test-session",
+    contextWindow: 200_000,
+    threshold: 0.8,
+  };
+
+  it("band 95 names continue_delegate(mode='post-compaction') AND request_compaction()", () => {
+    const result = checkContextPressure({ ...base, totalTokens: 192_000 });
+    expect(result).toContain("continue_delegate(mode='post-compaction'");
+    expect(result).toContain("request_compaction(reason=");
+    expect(result).toContain("COMPACTION IMMINENT");
+    expect(result).toContain("Both are tool calls you can make right now, this turn");
+  });
+
+  it("band 90 names continue_delegate(mode='post-compaction') AND request_compaction()", () => {
+    const result = checkContextPressure({ ...base, totalTokens: 182_000 });
+    expect(result).toContain("continue_delegate(mode='post-compaction'");
+    expect(result).toContain("request_compaction(reason=");
+    expect(result).toContain("nearly full");
+  });
+
+  it("band 80 (threshold) names continue_delegate(mode='post-compaction')", () => {
+    const result = checkContextPressure({ ...base, totalTokens: 160_000 });
+    expect(result).toContain("continue_delegate(mode='post-compaction'");
+    expect(result).toContain("stage working-state");
+  });
+});
