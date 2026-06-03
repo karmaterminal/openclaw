@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AGENT_MAX_CONCURRENT,
   DEFAULT_SUBAGENT_ARCHIVE_AFTER_MINUTES,
+  DEFAULT_SUBAGENT_MAX_CHILDREN_PER_AGENT,
   DEFAULT_SUBAGENT_MAX_CONCURRENT,
   resolveAgentMaxConcurrent,
   resolveSubagentMaxConcurrent,
@@ -55,5 +56,16 @@ describe("agent concurrency defaults", () => {
     expect(cfg.agents?.defaults?.subagents?.archiveAfterMinutes).toBe(
       DEFAULT_SUBAGENT_ARCHIVE_AFTER_MINUTES,
     );
+  });
+
+  // cure #871: the maxChildrenPerAgent default deterministically bit 6+ delegate
+  // fanout patterns at the prior value of 5 (PROOFS R-CD-CHAINED-DEPTH-2/Chain-3
+  // at 4896c3129b). 20 gives ~4x headroom over the empirical bite-threshold for
+  // prince-fanout patterns while keeping unbounded explosion in check.
+  it("pins maxChildrenPerAgent default at 20 (cure #871: prince-fanout headroom)", () => {
+    expect(DEFAULT_SUBAGENT_MAX_CHILDREN_PER_AGENT).toBe(20);
+    // Sanity guard: not so high that a misconfigured agent could runaway-fork.
+    // 20 is the figs-aligned canon; anything > 100 should make us pause and ask why.
+    expect(DEFAULT_SUBAGENT_MAX_CHILDREN_PER_AGENT).toBeLessThanOrEqual(100);
   });
 });

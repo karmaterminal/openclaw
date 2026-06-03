@@ -1077,7 +1077,9 @@ export async function runSubagentAnnounceFlow(params: {
                 );
               } else {
                 defaultRuntime.log(
-                  `[subagent-chain-hop] Spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
+                  spawnResult.error
+                    ? `[subagent-chain-hop] Spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)} — ${spawnResult.error}`
+                    : `[subagent-chain-hop] Spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${chainTask.slice(0, 80)}`,
                 );
               }
             } catch (err) {
@@ -1234,13 +1236,17 @@ export async function runSubagentAnnounceFlow(params: {
               } else {
                 markPendingDelegateFailed(
                   toolDelegate,
-                  `Tool delegate spawn ${spawnResult.status}: delegation was not accepted.`,
+                  spawnResult.error
+                    ? `Tool delegate spawn ${spawnResult.status}: ${spawnResult.error}`
+                    : `Tool delegate spawn ${spawnResult.status}: delegation was not accepted.`,
                   spawnResult.status === "forbidden"
                     ? "Delegate rejected"
                     : "Delegate spawn failed",
                 );
                 defaultRuntime.log(
-                  `[subagent-chain-hop] Tool delegate spawn rejected (${spawnResult.status}) from ${params.childSessionKey}`,
+                  spawnResult.error
+                    ? `[subagent-chain-hop] Tool delegate spawn rejected (${spawnResult.status}) from ${params.childSessionKey}: ${spawnResult.error}`
+                    : `[subagent-chain-hop] Tool delegate spawn rejected (${spawnResult.status}) from ${params.childSessionKey}`,
                 );
               }
             } catch (err) {
