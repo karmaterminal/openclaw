@@ -253,10 +253,10 @@ export const AgentDefaultsSchema = z
           .number()
           .int()
           .min(1)
-          .max(20)
+          .max(10000)
           .optional()
           .describe(
-            "Maximum number of active children a single agent session can spawn (default: 5).",
+            "Maximum number of active children a single agent session can spawn (default: 5). The schema-ceiling (10000) is intentionally large to permit fleet-multi-agent profiles to opt into wide fan-out via openclaw.json without source-edit; the conservative default (5) preserves the single-agent safety-floor. Pair with `agents.defaults.continuation.maxDelegatesPerTurn`, `maxChainLength`, and `costCapTokens` for runaway-safety.",
           ),
         archiveAfterMinutes: z.number().int().min(0).optional(),
         model: AgentModelSchema.optional(),

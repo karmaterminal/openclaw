@@ -916,6 +916,7 @@ Operational notes:
 - There is no `generationGuardTolerance` setting. Delayed work is not cancelled by unrelated channel noise.
 - tool-path delegate durability is unconditional; there is no delegate-store switch.
 - all shipped continuation runtime values are read at use time; changes take effect at the next enforcement point.
+- `agents.defaults.subagents.maxChildrenPerAgent` (default: 5) gates how many active child sessions a single agent session may spawn at one time via `sessions_spawn` or `continue_delegate` (per-session children floor). It is independent from `continuation.maxDelegatesPerTurn` (per-turn delegate fan-out budget), `continuation.maxChainLength` (recursion guard), and `continuation.costCapTokens` (per-chain token leash). The schema-ceiling (10000) is intentionally large to permit fleet-multi-agent profiles to opt into wide fan-out via `openclaw.json` without source-edit; the conservative default preserves single-agent safety-floor. Read at spawn-time (`src/agents/subagent-spawn.ts`), so a config-reload changes the next spawn-attempt without restarting the gateway. Recommendation for wide-fanout: raise via `openclaw.json` rather than source-edit so the safety-default remains the canonical floor for operators who do not opt in.
 
 ### 5.2 Human-user profiles
 
@@ -954,12 +955,15 @@ agents:
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
       earlyWarningBand: 0.3125
+    subagents:
+      maxChildrenPerAgent: 1000
 ```
 
 This profile is suitable for multiple persistent agents in shared channels. In that environment:
 
 - `maxDelegatesPerTurn: 20` enables wide fan-out;
-- `costCapTokens: 1000000` preserves a budget ceiling while permitting broad but shallow work.
+- `costCapTokens: 1000000` preserves a budget ceiling while permitting broad but shallow work;
+- `subagents.maxChildrenPerAgent: 1000` raises the per-session children cap above the conservative default (5) so fleet-multi-agent cohorts can sustain wide-fanout sensor patterns and prince-cohort PROOFS-distribute cycles without hitting the per-session children floor. The continuation token-budget (`costCapTokens`) and chain-length (`maxChainLength`) remain the primary runaway-safety mechanisms; the per-session children cap is a complementary floor.
 
 Adjust fan-out and budget based on the activity level and agent count in the target channel.
 
