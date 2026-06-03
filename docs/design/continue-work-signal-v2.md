@@ -954,12 +954,15 @@ agents:
       maxDelayMs: 300000
       contextPressureThreshold: 0.8
       earlyWarningBand: 0.3125
+    subagents:
+      maxChildrenPerAgent: 1000
 ```
 
 This profile is suitable for multiple persistent agents in shared channels. In that environment:
 
 - `maxDelegatesPerTurn: 20` enables wide fan-out;
 - `costCapTokens: 1000000` preserves a budget ceiling while permitting broad but shallow work.
+- `subagents.maxChildrenPerAgent: 1000` raises per-session children-cap headroom for sustained PROOFS-distribute / fleet-deploy / distributed-investigation patterns. Token-budget (`costCapTokens`) and chain-length (`maxChainLength`) remain the primary runaway-safety guards; per-session children-cap complements them as a pressure-relief floor.
 
 Adjust fan-out and budget based on the activity level and agent count in the target channel.
 
