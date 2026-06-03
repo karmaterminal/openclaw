@@ -253,10 +253,10 @@ export const AgentDefaultsSchema = z
           .number()
           .int()
           .min(1)
-          .max(20)
+          .max(10000)
           .optional()
           .describe(
-            "Maximum number of active children a single agent session can spawn (default: 5).",
+            "Maximum number of active children a single agent session can spawn (default: 5). Override in openclaw.json to permit wide continuation-delegate fanout patterns.",
           ),
         archiveAfterMinutes: z.number().int().min(0).optional(),
         model: AgentModelSchema.optional(),
