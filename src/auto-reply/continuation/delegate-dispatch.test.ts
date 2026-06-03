@@ -525,6 +525,60 @@ describe("tool delegate dispatch contract", () => {
 
     expect(mockFlows.get(queuedBefore[5])?.status).toBe("failed");
   });
+
+  it("surfaces spawnSubagentDirect result.error in journal log + system event (#871)", async () => {
+    // Cures opaque `status=forbidden` collapse at the delegate-dispatch boundary.
+    // When spawnSubagentDirect returns `{status:"forbidden", error:"<reason>"}`,
+    // the caller-side journal-line + system-event MUST include the reason text
+    // so princes can self-diagnose which specific forbidden shape fired without
+    // a source-walk. Cures karmaterminal/openclaw#871.
+    const sessionKey = "session-871-surface-reason";
+    enqueuePendingDelegate(sessionKey, { task: "reason-bearing" });
+    const reason = "sessions_spawn has reached max active children for this session (5/5)";
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "forbidden",
+      error: reason,
+    });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.rejected).toBe(1);
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(expect.stringContaining(reason), {
+      sessionKey,
+      trusted: true,
+    });
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining(`DELEGATE spawn forbidden: ${reason}`),
+      { sessionKey, trusted: true },
+    );
+  });
+
+  it("falls back to generic summary when spawn returns forbidden without error text (#871)", async () => {
+    // Backstop: pre-#871 callsites that emit `{status:"forbidden"}` with no
+    // error field continue to render the prior generic phrasing — the cure
+    // adds reason-surfacing without breaking the no-reason path.
+    const sessionKey = "session-871-fallback-no-reason";
+    enqueuePendingDelegate(sessionKey, { task: "no-reason" });
+    spawnSubagentDirectMock.mockResolvedValueOnce({ status: "forbidden" });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey },
+      maxChainLength: 10,
+    });
+
+    expect(result.rejected).toBe(1);
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining("DELEGATE spawn forbidden: delegation was not accepted."),
+      { sessionKey, trusted: true },
+    );
+  });
 });
 
 describe("dispatchToolDelegates — TaskFlow status after spawn failure", () => {

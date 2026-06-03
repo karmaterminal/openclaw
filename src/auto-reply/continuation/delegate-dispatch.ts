@@ -362,12 +362,22 @@ export async function dispatchToolDelegates(params: {
         currentChainCount = nextHop;
         currentChainId = dispatchChainId;
       } else {
-        const summary = `DELEGATE spawn ${result.status}: delegation was not accepted.`;
+        // Surface result.error (when present) so callers can self-diagnose which
+        // specific `{status:"forbidden", error: "..."}` shape from
+        // spawnSubagentDirect fired (e.g. maxChildrenPerAgent cap, depth cap,
+        // requireAgentId, sandbox-policy, allowAgents policy, cwd-policy, ...).
+        // Without this, every forbidden return collapses to opaque
+        // `status=forbidden` at the dispatch boundary. Cures karmaterminal/openclaw#871.
+        const reasonText =
+          typeof result.error === "string" && result.error.length > 0
+            ? result.error
+            : "delegation was not accepted.";
+        const summary = `DELEGATE spawn ${result.status}: ${reasonText}`;
         log.info(
-          `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+          `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} reason=${reasonText} task=${delegate.task.slice(0, 80)}`,
         );
         markDelegateFailed(delegate, summary);
-        dispatchSpan.setStatus("ERROR", result.status);
+        dispatchSpan.setStatus("ERROR", reasonText);
         enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
           sessionKey,
           trusted: true,
