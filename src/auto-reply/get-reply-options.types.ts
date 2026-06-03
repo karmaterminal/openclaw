@@ -53,6 +53,8 @@ export type GetReplyOptions = {
   runId?: string;
   /** Parent run id when this run was spawned by a previous agent turn. */
   parentRunId?: string;
+  /** Stable provider prompt-cache affinity key; distinct from run id/idempotency. */
+  promptCacheKey?: string;
   /** Abort signal for the underlying agent run. */
   abortSignal?: AbortSignal;
   /** Optional inbound images (used for webchat attachments). */

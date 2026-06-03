@@ -1005,7 +1005,11 @@ function buildExternalRunFailureReply(
 }
 
 function markAgentRunFailureReplyPayload<T extends ReplyPayload>(payload: T): T {
-  return markReplyPayloadForSourceSuppressionDelivery(payload);
+  const marked = markReplyPayloadForSourceSuppressionDelivery(payload);
+  if (!isSilentReplyText(marked.text, SILENT_REPLY_TOKEN)) {
+    marked.isError = true;
+  }
+  return marked;
 }
 
 export function buildKnownAgentRunFailureReplyPayload(params: {
@@ -1058,7 +1062,7 @@ export function buildKnownAgentRunFailureReplyPayload(params: {
       text: resolveExternalRunFailureTextForConversation({
         text: buildRateLimitCooldownMessage(params.err),
         sessionCtx: params.sessionCtx,
-        isGenericRunnerFailure: true,
+        isGenericRunnerFailure: false,
         cfg: params.cfg,
       }),
     });
@@ -1069,7 +1073,7 @@ export function buildKnownAgentRunFailureReplyPayload(params: {
       text: resolveExternalRunFailureTextForConversation({
         text: rateLimitOrOverloadedCopy,
         sessionCtx: params.sessionCtx,
-        isGenericRunnerFailure: true,
+        isGenericRunnerFailure: false,
         cfg: params.cfg,
       }),
     });
@@ -2421,6 +2425,7 @@ export async function runAgentTurnWithFallback(params: {
                 hasRepliedRef: params.opts?.hasRepliedRef,
                 provider,
                 runId,
+                promptCacheKey: params.opts?.promptCacheKey,
                 allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
                 model,
               });
@@ -3291,9 +3296,7 @@ export async function runAgentTurnWithFallback(params: {
       const userVisibleFallbackText = resolveExternalRunFailureTextForConversation({
         text: fallbackText,
         sessionCtx: params.sessionCtx,
-        isGenericRunnerFailure:
-          externalRunFailureReply?.isGenericRunnerFailure ??
-          (isRateLimit || Boolean(rateLimitOrOverloadedCopy)),
+        isGenericRunnerFailure: externalRunFailureReply?.isGenericRunnerFailure ?? false,
         cfg: params.followupRun.run.config,
       });
 
@@ -3422,7 +3425,12 @@ export async function runAgentTurnWithFallback(params: {
       if (formattedErrorCandidate) {
         runResult.payloads = [
           markAgentRunFailureReplyPayload({
-            text: formattedErrorCandidate,
+            text: resolveExternalRunFailureTextForConversation({
+              text: formattedErrorCandidate,
+              sessionCtx: params.sessionCtx,
+              isGenericRunnerFailure: false,
+              cfg: params.followupRun.run.config,
+            }),
             isError: true,
           }),
         ];

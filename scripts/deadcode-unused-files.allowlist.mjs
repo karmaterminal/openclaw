@@ -10,8 +10,8 @@ export const KNIP_UNUSED_FILE_ALLOWLIST = [
   // shape; reinstate setContinuationTracer(createContinuationOtelTracerAdapter())
   // install-call after sdk.start().
   "extensions/diagnostics-otel/src/continuation-tracer-adapter.ts",
-  // Per-agent SQLite scaffold is intentionally landed before runtime migration
-  // callers so the schema and scoped cache API can be reviewed together.
+  // Per-agent SQLite scaffold is intentionally ahead of mainline runtime callers.
+  // The pending SQLite session/runtime branch wires these files into production.
   "src/agents/cache/agent-cache-store.sqlite.ts",
   "src/agents/cache/agent-cache-store.ts",
   // Continuation-rail post-compaction release helper, extracted for testability
