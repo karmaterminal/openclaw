@@ -165,6 +165,16 @@ describe("clampDelayMs", () => {
     expect(clampDelayMs(undefined, config)).toBe(15_000);
   });
 
+  it("treats an explicit zero as a real 0 → clamps up to minDelayMs, NOT defaultDelayMs (#918 codex P2)", () => {
+    // Contract anchor for the continue_work zero-delay finding
+    // (followup-runner.ts:1198 + spawn-init duplicate): an explicit/omitted
+    // `delaySeconds=0` resolves to `0 * 1000 = 0`, which must clamp UP to the
+    // 5s minimum (matching the continue_work tool result), never fall back to
+    // the 15s default via a `|| defaultDelayMs` falsy check. Both schedulers now
+    // route through this helper so the tool result and wake timing can't drift.
+    expect(clampDelayMs(0, config)).toBe(5_000);
+  });
+
   it("clamps below minimum", () => {
     expect(clampDelayMs(1_000, config)).toBe(5_000);
   });

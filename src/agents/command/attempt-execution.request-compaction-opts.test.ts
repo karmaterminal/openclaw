@@ -47,9 +47,29 @@ import { runAgentAttempt } from "./attempt-execution.js";
 
 const runEmbeddedAgentMock = vi.hoisted(() => vi.fn());
 const runCliAgentMock = vi.hoisted(() => vi.fn());
+const releaseQueuedCompactionTolerantMock = vi.hoisted(() => vi.fn());
+const compactEmbeddedAgentSessionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../cli-runner.js", () => ({
   runCliAgent: runCliAgentMock,
+}));
+
+// Spy on the post-compaction release while keeping the rest of the module real
+// (computeRequestCompactionContextUsage is used by the closure under test).
+vi.mock("../../auto-reply/reply/agent-runner-execution.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../auto-reply/reply/agent-runner-execution.js")
+  >("../../auto-reply/reply/agent-runner-execution.js");
+  return {
+    ...actual,
+    releaseQueuedCompactionTolerant: releaseQueuedCompactionTolerantMock,
+  };
+});
+
+// Intercept the dynamic import inside triggerCompaction so the closure can be
+// driven without performing a real compaction.
+vi.mock("../embedded-agent-runner/compact.queued.js", () => ({
+  compactEmbeddedAgentSession: compactEmbeddedAgentSessionMock,
 }));
 
 vi.mock("../model-selection.js", () => ({
@@ -235,6 +255,69 @@ describe("runAgentAttempt #917 spawn-init requestCompactionOpts plumbing (sister
     // at agent-runner-execution.ts:252-287).
     const result = callArgs?.requestCompactionOpts?.getContextUsage();
     expect(result === null || typeof result === "number").toBe(true);
+  });
+
+  // Half-cure-gap codex P2 (#918's own cure-file, attempt-execution.ts:730):
+  // a successful turn-1 / spawn-init volitional compaction must run the
+  // `releaseQueuedCompactionTolerant` step used by the followup path so staged
+  // `continue_delegate(mode="post-compaction")` work is dispatched. Pre-cure
+  // the spawn-init triggerCompaction returned immediately and the delegates
+  // stayed queued.
+  it("triggerCompaction releases queued post-compaction delegates after a successful compaction", async () => {
+    releaseQueuedCompactionTolerantMock.mockReset();
+    compactEmbeddedAgentSessionMock.mockReset();
+    const compactionResult = { ok: true, compacted: true, reason: undefined };
+    compactEmbeddedAgentSessionMock.mockResolvedValue(compactionResult);
+
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
+    const triggerCompaction = (
+      runEmbeddedAgentMock.mock.calls[0]?.[0] as {
+        requestCompactionOpts?: {
+          triggerCompaction: (req: { trigger: string; runId?: string }) => Promise<unknown>;
+        };
+      }
+    )?.requestCompactionOpts?.triggerCompaction;
+    expect(typeof triggerCompaction).toBe("function");
+
+    const result = await triggerCompaction!({ trigger: "volitional", runId: "run-917-trap" });
+    expect(result).toEqual({ ok: true, compacted: true, reason: undefined });
+
+    expect(releaseQueuedCompactionTolerantMock).toHaveBeenCalledTimes(1);
+    const releaseArgs = releaseQueuedCompactionTolerantMock.mock.calls[0]?.[0] as {
+      compactionResult?: unknown;
+      sessionKey?: string;
+      storePath?: string;
+      followupRun?: { run?: { config?: unknown; sessionId?: string; workspaceDir?: string } };
+    };
+    expect(releaseArgs.compactionResult).toBe(compactionResult);
+    expect(releaseArgs.sessionKey).toBe(sessionKey);
+    expect(releaseArgs.storePath).toBe(storePath);
+    // The synthesized FollowupRun carries the fields the dispatch path reads.
+    expect(releaseArgs.followupRun?.run?.config).toBeDefined();
+    expect(releaseArgs.followupRun?.run?.sessionId).toBe(sessionEntry.sessionId);
+    expect(releaseArgs.followupRun?.run?.workspaceDir).toBe(tmpDir);
+  });
+
+  it("triggerCompaction does NOT release when compaction did not apply", async () => {
+    releaseQueuedCompactionTolerantMock.mockReset();
+    compactEmbeddedAgentSessionMock.mockReset();
+    compactEmbeddedAgentSessionMock.mockResolvedValue({
+      ok: true,
+      compacted: false,
+      reason: "below-threshold",
+    });
+
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
+    const triggerCompaction = (
+      runEmbeddedAgentMock.mock.calls[0]?.[0] as {
+        requestCompactionOpts?: {
+          triggerCompaction: (req: { trigger: string }) => Promise<unknown>;
+        };
+      }
+    )?.requestCompactionOpts?.triggerCompaction;
+
+    await triggerCompaction!({ trigger: "volitional" });
+    expect(releaseQueuedCompactionTolerantMock).not.toHaveBeenCalled();
   });
 });
 
