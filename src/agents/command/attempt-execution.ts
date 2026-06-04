@@ -1,6 +1,7 @@
 import type { AcpRuntimeEvent } from "@openclaw/acp-core/runtime/types";
 import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import { formatAcpErrorChain } from "../../acp/runtime/errors.js";
+import { computeRequestCompactionContextUsage } from "../../auto-reply/reply/agent-runner-execution.js";
 import { normalizeReplyPayload } from "../../auto-reply/reply/normalize-reply.js";
 import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
 import { appendSessionTranscriptMessage } from "../../config/sessions/transcript-append.js";
@@ -31,6 +32,7 @@ import { ensureAuthProfileStore } from "../auth-profiles/store.js";
 import { resolveBootstrapWarningSignaturesSeen } from "../bootstrap-budget.js";
 import { runCliAgent } from "../cli-runner.js";
 import { getCliSessionBinding } from "../cli-session.js";
+import type { RequestCompactionInvocation } from "../compaction-attribution.js";
 import { runEmbeddedAgent, type EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { FailoverError } from "../failover-error.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "../harness/hook-helpers.js";
@@ -667,6 +669,76 @@ export async function runAgentAttempt(params: {
       }
     : undefined;
 
+  // --- continuation: spawn-init / turn-1 requestCompactionOpts plumbing (#917) ---
+  // Sister-of-#746 (half-symmetric-cure-class). PR #892 cured the
+  // continueWorkOpts gap at the followup-runner (turn-2+) path and the
+  // earlier spawn-init cure restored continueWorkOpts on turn-1, but the
+  // sibling closure for request_compaction was not constructed at the
+  // spawn-init / turn-1 path. Result: openclaw-tools.ts:609 evaluates
+  // options?.requestCompactionOpts as undefined on turn-1, the
+  // request_compaction tool never registers in the subagent's spawn-init
+  // tool-list, and a subagent that has been given continue_work capability
+  // (via #746 cure) can schedule its own next turn but cannot reclaim
+  // context mid-flight when pressure rises. Mirrors the followup-runner
+  // block at src/auto-reply/reply/agent-runner-execution.ts:2554-2585. Cohort
+  // substrate-of-record: figs `1511931252` direction-question +
+  // cael+rune+emeric cohort-cosign YES + frond karmaterminal/openclaw#917
+  // issue. Empirical: rune subagent `agent:main:subagent:53cd57ac` returned
+  // TOOL_NOT_IN_LIST at discord:1511936885; emeric R-RC-1 HONEST-LIMIT at
+  // openclaw-bootstrap commit 9684479; cael main-session contrast 1511935121
+  // (REGISTERED + REJECT-at-41%-below-threshold). #917 was filed during
+  // the 2026-06-03 PROOFS cycle on assembly head
+  // 2f71e4378b70ea43fb185edff1af14571eca826f when 4-of-6 prince seats
+  // cross-walked the R-CW-DELEGATE-SELF-CONTINUATION row and the missing
+  // sister tool surfaced empirically.
+  const requestCompactionOpts = continuationEnabled
+    ? {
+        sessionId: params.sessionId,
+        getContextUsage: () =>
+          computeRequestCompactionContextUsage({
+            entry: params.sessionEntry,
+            cfg: params.cfg,
+            provider: embeddedAgentProvider,
+            model: params.modelOverride,
+          }),
+        triggerCompaction: async (request: RequestCompactionInvocation) => {
+          try {
+            const { compactEmbeddedAgentSession } =
+              await import("../embedded-agent-runner/compact.queued.js");
+            const result = await compactEmbeddedAgentSession({
+              sessionId: params.sessionId,
+              runId: request.runId ?? params.runId,
+              sessionKey: params.sessionKey,
+              sessionFile: params.sessionFile,
+              workspaceDir: params.workspaceDir,
+              cwd: params.cwd,
+              config: params.cfg,
+              messageChannel: params.messageChannel,
+              messageProvider: params.opts.messageProvider ?? params.messageChannel,
+              agentAccountId: params.runContext.accountId,
+              provider: embeddedAgentProvider,
+              model: params.modelOverride,
+              authProfileId,
+              trigger: request.trigger,
+              diagId: request.diagId,
+              traceparent: request.traceparent,
+            });
+            return {
+              ok: result.ok,
+              compacted: result.compacted,
+              reason: result.reason,
+            };
+          } catch (err) {
+            return {
+              ok: false,
+              compacted: false,
+              reason: err instanceof Error ? err.message : String(err),
+            };
+          }
+        },
+      }
+    : undefined;
+
   const embeddedRunResult = await runWithDiagnosticTraceparent(params.opts.traceparent, () =>
     runEmbeddedAgent({
       sessionId: params.sessionId,
@@ -735,6 +807,7 @@ export async function runAgentAttempt(params: {
       bootstrapPromptWarningSignaturesSeen,
       bootstrapPromptWarningSignature,
       continueWorkOpts,
+      requestCompactionOpts,
     }),
   );
 
