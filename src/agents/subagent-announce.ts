@@ -194,6 +194,7 @@ type ContinuationChainState = {
   currentChainCount: number;
   chainStartedAt: number;
   accumulatedChainTokens: number;
+  chainId?: string;
 };
 
 type ContinuationDispatchContext = {
@@ -227,6 +228,7 @@ type ContinuationChainSource = {
   continuationChainCount?: number;
   continuationChainStartedAt?: number;
   continuationChainTokens?: number;
+  continuationChainId?: string;
 };
 
 type ContinuationStateModule = {
@@ -239,6 +241,7 @@ type ContinuationStateModule = {
     count: number;
     startedAt: number;
     tokens: number;
+    chainId?: string;
   }) => void;
 };
 
@@ -376,6 +379,9 @@ async function drainChildContinuationQueue(params: {
         count: advanced.currentChainCount,
         startedAt: advanced.chainStartedAt,
         tokens: advanced.accumulatedChainTokens,
+        // Carry the advanced/minted chain id so a later child drain reloads it
+        // instead of re-minting a fresh one (stable chain correlation).
+        ...(advanced.chainId ? { chainId: advanced.chainId } : {}),
       });
       // Durable write through the session store so the advanced state
       // survives gateway restart and is observable by other readers of
@@ -393,6 +399,9 @@ async function drainChildContinuationQueue(params: {
             continuationChainCount: advanced.currentChainCount,
             continuationChainStartedAt: advanced.chainStartedAt,
             continuationChainTokens: advanced.accumulatedChainTokens,
+            // Persist the chain id to disk too so it survives gateway restart /
+            // cache eviction and the next drain does not re-mint a fresh id.
+            ...(advanced.chainId ? { continuationChainId: advanced.chainId } : {}),
           };
         });
       } catch (writeErr) {

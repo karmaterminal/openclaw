@@ -1,8 +1,12 @@
 import type { AcpRuntimeEvent } from "@openclaw/acp-core/runtime/types";
 import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import { formatAcpErrorChain } from "../../acp/runtime/errors.js";
-import { computeRequestCompactionContextUsage } from "../../auto-reply/reply/agent-runner-execution.js";
+import {
+  computeRequestCompactionContextUsage,
+  releaseQueuedCompactionTolerant,
+} from "../../auto-reply/reply/agent-runner-execution.js";
 import { normalizeReplyPayload } from "../../auto-reply/reply/normalize-reply.js";
+import type { FollowupRun } from "../../auto-reply/reply/queue/types.js";
 import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
 import { appendSessionTranscriptMessage } from "../../config/sessions/transcript-append.js";
 import {
@@ -723,6 +727,61 @@ export async function runAgentAttempt(params: {
               diagId: request.diagId,
               traceparent: request.traceparent,
             });
+            if (result.ok && result.compacted) {
+              // Mirror the followup-runner triggerCompaction release
+              // (agent-runner-execution.ts:2591). A successful turn-1 /
+              // spawn-init volitional compaction must dispatch any staged
+              // `continue_delegate(mode="post-compaction")` work; without this
+              // the staged delegates stay queued and only the followup
+              // (turn-2+) path would ever drain them — the half-cure-gap codex
+              // flagged on #918's own cure-file. `releaseQueuedCompactionTolerant`
+              // degrades gracefully (logs + returns) when sessionKey/sessionStore
+              // are absent, so this is safe on the suppressVisibleSessionEffects
+              // path where both are undefined.
+              const releaseOriginatingTo = params.opts.replyTo ?? params.opts.to;
+              const releaseMessageProvider = params.opts.messageProvider ?? params.messageChannel;
+              const compactionReleaseFollowupRun: FollowupRun = {
+                prompt: effectivePrompt,
+                enqueuedAt: Date.now(),
+                ...(params.runContext.messageChannel
+                  ? { originatingChannel: params.runContext.messageChannel }
+                  : {}),
+                ...(releaseOriginatingTo ? { originatingTo: releaseOriginatingTo } : {}),
+                ...(params.runContext.accountId
+                  ? { originatingAccountId: params.runContext.accountId }
+                  : {}),
+                ...(params.opts.threadId != null
+                  ? { originatingThreadId: params.opts.threadId }
+                  : {}),
+                run: {
+                  agentId: params.sessionAgentId,
+                  agentDir: params.agentDir,
+                  sessionId: params.sessionId,
+                  ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+                  sessionFile: params.sessionFile,
+                  workspaceDir: params.workspaceDir,
+                  ...(params.cwd ? { cwd: params.cwd } : {}),
+                  config: params.cfg,
+                  provider: embeddedAgentProvider,
+                  model: params.modelOverride,
+                  ...(releaseMessageProvider ? { messageProvider: releaseMessageProvider } : {}),
+                  ...(params.runContext.accountId
+                    ? { agentAccountId: params.runContext.accountId }
+                    : {}),
+                  timeoutMs: params.timeoutMs,
+                  blockReplyBreak: "message_end",
+                },
+              };
+              await releaseQueuedCompactionTolerant({
+                ...(params.sessionStore ? { activeSessionStore: params.sessionStore } : {}),
+                compactionResult: result,
+                followupRun: compactionReleaseFollowupRun,
+                getActiveSessionEntry: () => params.sessionEntry,
+                ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+                ...(params.storePath ? { storePath: params.storePath } : {}),
+                ...(request.traceparent ? { traceparent: request.traceparent } : {}),
+              });
+            }
             return {
               ok: result.ok,
               compacted: result.compacted,
@@ -855,7 +914,7 @@ async function scheduleSpawnInitContinueWorkWake(params: {
   runResult: EmbeddedAgentRunResult;
 }): Promise<void> {
   const [
-    { resolveLiveContinuationRuntimeConfig },
+    { resolveLiveContinuationRuntimeConfig, clampDelayMs },
     {
       loadContinuationChainState,
       persistContinuationChainState,
@@ -871,7 +930,7 @@ async function scheduleSpawnInitContinueWorkWake(params: {
   ]);
 
   const continuationConfig = resolveLiveContinuationRuntimeConfig(params.cfg);
-  const { maxChainLength, minDelayMs, maxDelayMs, defaultDelayMs } = continuationConfig;
+  const { maxChainLength } = continuationConfig;
 
   const tailUsage = params.runResult.meta?.agentMeta?.usage;
   const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
@@ -886,11 +945,15 @@ async function scheduleSpawnInitContinueWorkWake(params: {
   }
 
   const nextChainCount = currentChainCount + 1;
+  // Treat an explicit zero-delay continue_work as a real 0 (clamped up to
+  // `minDelayMs`), matching what the continue_work tool reports via
+  // `clampDelayMs(delaySeconds * 1000, config)`. The prior `|| defaultDelayMs`
+  // expression treated 0 as falsy and substituted `defaultDelayMs` (15s),
+  // making an omitted/zero delay wake at 15s instead of the reported 5s
+  // minimum. Routed through the canonical `clampDelayMs` helper so the
+  // scheduler and the tool result can never drift again.
   const requestedDelayMs = params.request.delaySeconds * 1000;
-  const clampedDelay = Math.max(
-    minDelayMs,
-    Math.min(maxDelayMs, requestedDelayMs || defaultDelayMs),
-  );
+  const clampedDelay = clampDelayMs(requestedDelayMs, continuationConfig);
 
   persistContinuationChainState({
     sessionEntry: params.sessionEntry,

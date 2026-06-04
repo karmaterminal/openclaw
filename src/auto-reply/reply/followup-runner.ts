@@ -1121,6 +1121,11 @@ export function createFollowupRunner(params: {
             count: dispatchResult.chainState.currentChainCount,
             startedAt: dispatchResult.chainState.chainStartedAt,
             tokens: dispatchResult.chainState.accumulatedChainTokens,
+            // Carry the advanced/minted chain id so the next drain reloads it
+            // instead of re-minting a fresh one (stable chain correlation).
+            ...(dispatchResult.chainState.chainId
+              ? { chainId: dispatchResult.chainState.chainId }
+              : {}),
           });
           // The in-memory mutation above is orphaned for disk. The followup
           // path's only durable writer is `persistRunSessionUsage`
@@ -1145,6 +1150,12 @@ export function createFollowupRunner(params: {
                     continuationChainCount: dispatchResult.chainState.currentChainCount,
                     continuationChainStartedAt: dispatchResult.chainState.chainStartedAt,
                     continuationChainTokens: dispatchResult.chainState.accumulatedChainTokens,
+                    // Persist the chain id to disk too so it survives gateway
+                    // restart / cache eviction and the next drain does not
+                    // re-mint a fresh id.
+                    ...(dispatchResult.chainState.chainId
+                      ? { continuationChainId: dispatchResult.chainState.chainId }
+                      : {}),
                   };
                   for (const legacyKey of resolved.legacyKeys) {
                     delete store[legacyKey];
@@ -1171,9 +1182,10 @@ export function createFollowupRunner(params: {
         runtimeConfig?.agents?.defaults?.continuation?.enabled === true &&
         sessionKey
       ) {
-        const { resolveLiveContinuationRuntimeConfig } = await import("../continuation/config.js");
+        const { resolveLiveContinuationRuntimeConfig, clampDelayMs } =
+          await import("../continuation/config.js");
         const continuationConfig = resolveLiveContinuationRuntimeConfig(runtimeConfig);
-        const { maxChainLength, minDelayMs, maxDelayMs, defaultDelayMs } = continuationConfig;
+        const { maxChainLength } = continuationConfig;
 
         // Load chain state to check cap.
         const { loadContinuationChainState, persistContinuationChainState } =
@@ -1191,11 +1203,15 @@ export function createFollowupRunner(params: {
           );
         } else {
           const nextChainCount = currentChainCount + 1;
+          // Treat an explicit zero-delay continue_work as a real 0 (clamped up
+          // to `minDelayMs`), matching what the continue_work tool reports via
+          // `clampDelayMs(delaySeconds * 1000, config)`. The prior
+          // `|| defaultDelayMs` expression treated 0 as falsy and substituted
+          // `defaultDelayMs` (15s), so an omitted/zero delay woke at 15s instead
+          // of the reported 5s minimum. Routed through the canonical
+          // `clampDelayMs` helper so the scheduler and tool result can't drift.
           const requestedDelayMs = attemptContinueWorkRequest.delaySeconds * 1000;
-          const clampedDelay = Math.max(
-            minDelayMs,
-            Math.min(maxDelayMs, requestedDelayMs || defaultDelayMs),
-          );
+          const clampedDelay = clampDelayMs(requestedDelayMs, continuationConfig);
 
           // Persist advanced chain state.
           persistContinuationChainState({
