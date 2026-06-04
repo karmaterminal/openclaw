@@ -1,6 +1,7 @@
 import type { AcpRuntimeEvent } from "@openclaw/acp-core/runtime/types";
 import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import { formatAcpErrorChain } from "../../acp/runtime/errors.js";
+import { computeRequestCompactionContextUsage } from "../../auto-reply/reply/agent-runner-execution.js";
 import { normalizeReplyPayload } from "../../auto-reply/reply/normalize-reply.js";
 import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
 import { appendSessionTranscriptMessage } from "../../config/sessions/transcript-append.js";
@@ -31,6 +32,7 @@ import { ensureAuthProfileStore } from "../auth-profiles/store.js";
 import { resolveBootstrapWarningSignaturesSeen } from "../bootstrap-budget.js";
 import { runCliAgent } from "../cli-runner.js";
 import { getCliSessionBinding } from "../cli-session.js";
+import type { RequestCompactionInvocation } from "../compaction-attribution.js";
 import { runEmbeddedAgent, type EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { FailoverError } from "../failover-error.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "../harness/hook-helpers.js";
@@ -667,6 +669,59 @@ export async function runAgentAttempt(params: {
       }
     : undefined;
 
+  // --- continuation: spawn-init / turn-1 requestCompactionOpts plumbing (#917) ---
+  // Mirrors the continueWorkOpts block above. Without this wiring,
+  // openclaw-tools.ts:609 evaluates options?.requestCompactionOpts as undefined on
+  // the spawn-init code path and request_compaction never registers in the
+  // subagent's turn-1 tool-list — sister gap to #746.
+  let attemptCompactionTraceparent: string | undefined;
+  const requestCompactionOpts = continuationEnabled
+    ? {
+        sessionId: params.sessionId,
+        getContextUsage: () => {
+          return computeRequestCompactionContextUsage({
+            entry: params.sessionEntry,
+            cfg: params.cfg,
+            provider: embeddedAgentProvider,
+            model: params.modelOverride ?? "",
+          });
+        },
+        triggerCompaction: async (request: RequestCompactionInvocation) => {
+          attemptCompactionTraceparent = request.traceparent;
+          try {
+            const { compactEmbeddedAgentSession } =
+              await import("../embedded-agent-runner/compact.queued.js");
+            const result = await compactEmbeddedAgentSession({
+              sessionId: params.sessionId,
+              runId: request.runId ?? params.runId,
+              sessionKey: params.sessionKey ?? "",
+              sessionFile: params.sessionFile,
+              workspaceDir: params.workspaceDir,
+              config: params.cfg,
+              messageProvider: params.opts.messageProvider ?? params.messageChannel,
+              provider: embeddedAgentProvider,
+              model: params.modelOverride ?? "",
+              authProfileId,
+              trigger: request.trigger,
+              diagId: request.diagId,
+              traceparent: request.traceparent,
+            });
+            return {
+              ok: result.ok,
+              compacted: result.compacted,
+              reason: result.reason,
+            };
+          } catch (err) {
+            return {
+              ok: false,
+              compacted: false,
+              reason: `spawn-init compaction failed: ${readErrorName(err)}`,
+            };
+          }
+        },
+      }
+    : undefined;
+
   const embeddedRunResult = await runWithDiagnosticTraceparent(params.opts.traceparent, () =>
     runEmbeddedAgent({
       sessionId: params.sessionId,
@@ -735,6 +790,7 @@ export async function runAgentAttempt(params: {
       bootstrapPromptWarningSignaturesSeen,
       bootstrapPromptWarningSignature,
       continueWorkOpts,
+      requestCompactionOpts,
     }),
   );
 
