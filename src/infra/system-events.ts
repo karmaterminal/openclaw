@@ -7,6 +7,7 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import { channelRouteDedupeKey } from "../plugin-sdk/channel-route.js";
+import { sanitizeInboundSystemTags } from "../security/system-tags.js";
 import { resolveGlobalMap } from "../shared/global-singleton.js";
 import {
   mergeDeliveryContext,
@@ -138,7 +139,19 @@ function applyContextKeyPolicy(entry: SessionQueue, incomingContextKey: string |
 export function enqueueSystemEvent(text: string, options: SystemEventOptions) {
   const key = requireSessionKey(options.sessionKey);
   const entry = getOrCreateSessionQueue(key);
-  const cleaned = text.trim();
+  // Untrusted producers (channel/plugin payloads downgraded via
+  // `forceSenderIsOwnerFalse`/legacy `trusted:false`) get their nested
+  // system-marker spoofs neutralized at the queue boundary, restoring the
+  // guard removed in b7273f36d7. This is defense-in-depth alongside the
+  // drain-layer sanitizer (`session-system-events.ts`): even if a queued
+  // entry is later rendered via an alternate drain/heartbeat path that does
+  // not re-apply the trust-gated sanitizer, a stored spoof can never reach a
+  // prompt. Trusted-internal enrichment (OCR/transcripts/continuation) is
+  // preserved verbatim by deliberate design — see the trusted-default
+  // regression anchors in system-events.test.ts. The drain-layer sanitizer is
+  // idempotent, so double-sanitizing the untrusted path is a no-op.
+  const rawText = resolveEventOwnerDowngrade(options) ? sanitizeInboundSystemTags(text) : text;
+  const cleaned = rawText.trim();
   if (!cleaned) {
     return false;
   }

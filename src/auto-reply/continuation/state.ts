@@ -169,14 +169,15 @@ export function loadContinuationChainState(
 
 /**
  * Persist continuation chain metadata to the session entry.
- * Called after scheduling to keep chain depth, start time, and token cost
- * in sync with the session store.
+ * Called after scheduling to keep chain depth, start time, token cost, and the
+ * stable chain id in sync with the session store.
  */
 export function persistContinuationChainState(params: {
   sessionEntry?: SessionEntry;
   count: number;
   startedAt: number;
   tokens: number;
+  chainId?: string;
 }): void {
   if (!params.sessionEntry) {
     return;
@@ -184,6 +185,17 @@ export function persistContinuationChainState(params: {
   params.sessionEntry.continuationChainCount = params.count;
   params.sessionEntry.continuationChainStartedAt = params.startedAt;
   params.sessionEntry.continuationChainTokens = params.tokens;
+  // Persist the chain id alongside depth/start/tokens so the stable chain
+  // correlation survives across drains. `loadContinuationChainState` reads
+  // `continuationChainId` back on later hops; without writing it here, callers
+  // that persist an advanced `chainState` (the delegate-drain on the followup
+  // and subagent-announce paths) dropped the minted id and the next drain
+  // re-minted a fresh one, breaking multi-hop trace correlation. Written only
+  // when provided so callers that don't carry a chain id (e.g. continue_work)
+  // keep whatever id is already on the entry.
+  if (params.chainId !== undefined) {
+    params.sessionEntry.continuationChainId = params.chainId;
+  }
 }
 
 // ---------------------------------------------------------------------------

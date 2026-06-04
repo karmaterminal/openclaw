@@ -209,4 +209,49 @@ describe("persistContinuationChainState", () => {
       }),
     ).not.toThrow();
   });
+
+  it("persists the chain id alongside depth/start/tokens when provided (#918 codex P2)", () => {
+    // Regression anchor for the codex finding (state.ts:186): the delegate-drain
+    // callers persist an advanced `chainState` carrying the minted chain id;
+    // without writing `continuationChainId` here it was dropped and the next
+    // drain re-minted a fresh id, breaking stable multi-hop chain correlation.
+    const sessionEntry = { sessionId: "session", updatedAt: 1 };
+
+    persistContinuationChainState({
+      sessionEntry,
+      count: 2,
+      startedAt: 1_700_000_000_000,
+      tokens: 42_000,
+      chainId: "chain-abc",
+    });
+
+    expect(sessionEntry).toMatchObject({
+      continuationChainCount: 2,
+      continuationChainStartedAt: 1_700_000_000_000,
+      continuationChainTokens: 42_000,
+      continuationChainId: "chain-abc",
+    });
+    // The reader surfaces a persisted `continuationChainId` back as `chainId`
+    // on the next hop — the round-trip the drain-drop broke.
+    expect(loadContinuationChainState({ continuationChainId: "chain-abc" }).chainId).toBe(
+      "chain-abc",
+    );
+  });
+
+  it("preserves an existing chain id when chainId is omitted (no clobber)", () => {
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: 1,
+      continuationChainId: "chain-existing",
+    };
+
+    persistContinuationChainState({
+      sessionEntry,
+      count: 5,
+      startedAt: 1_700_000_000_000,
+      tokens: 10,
+    });
+
+    expect(sessionEntry.continuationChainId).toBe("chain-existing");
+  });
 });

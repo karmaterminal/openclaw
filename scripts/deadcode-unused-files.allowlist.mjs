@@ -2,14 +2,6 @@
 // generated/build inputs, manifest-discovered plugin surfaces, live-test
 // helpers, or package bridge files that static production scanning cannot see.
 export const KNIP_UNUSED_FILE_ALLOWLIST = [
-  // HEAD-only continuation-rail OTel optimization adapter; service.ts taken
-  // wholesale from upstream during Strategy-B merge (HEAD's
-  // scheduleTrackedRunSpanFinalize vs upstream's completeTrackedLifecycleSpan +
-  // retainedSpanContext were too entangled for clean port). TODO: fresh-window
-  // cohort-cosign re-port HEAD-only OTel optimizations into upstream service.ts
-  // shape; reinstate setContinuationTracer(createContinuationOtelTracerAdapter())
-  // install-call after sdk.start().
-  "extensions/diagnostics-otel/src/continuation-tracer-adapter.ts",
   // Per-agent SQLite scaffold is intentionally ahead of mainline runtime callers.
   // The pending SQLite session/runtime branch wires these files into production.
   "src/agents/cache/agent-cache-store.sqlite.ts",
