@@ -976,7 +976,9 @@ export function assertExpectedKitchenSinkToolEntries(
         source: entry?.source,
       }));
     if (wrongProvenance.length > 0) {
-      throw new Error(`${label} plugin provenance mismatch: ${JSON.stringify(wrongProvenance)}`);
+      throw new Error(
+        `${label} plugin provenance mismatch: ${JSON.stringify(wrongProvenance)}`,
+      );
     }
   }
   return ids;
