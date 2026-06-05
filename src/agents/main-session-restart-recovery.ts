@@ -56,7 +56,7 @@ function shouldSkipMainRecovery(
     return true;
   }
 
-  if (danglingChannelIds && danglingChannelIds.size > 0) {
+  if (danglingChannelIds) {
     const deliveryContext =
       normalizeDeliveryContext(entry.pendingFinalDeliveryContext) ??
       normalizeDeliveryContext(entry.restartRecoveryDeliveryContext) ??
