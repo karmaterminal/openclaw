@@ -139,4 +139,42 @@ describe("createOpenClawTools — silent partial-registration guard (karmatermin
 
     expect(warnSpy).not.toHaveBeenCalled();
   });
+
+  // karmaterminal/openclaw#923 — inventoryOnly flag for inventory-build callsites
+  // (gateway/tool-resolution.ts + skills/runtime/tool-dispatch.ts) that build the
+  // tool catalog for inspection/dispatch lookup rather than for live execution.
+  // The L627 warning is informational noise at those callsites since they don't
+  // intend to execute the tools anyway; inventoryOnly: true suppresses it.
+  it("does NOT warn when continuation.enabled=true but inventoryOnly: true is set (karmaterminal/openclaw#923 — inventory-build callsites)", () => {
+    createOpenClawTools({
+      agentSessionKey: "main",
+      disablePluginTools: true,
+      disableMessageTool: true,
+      config: {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: { defaults: { continuation: { enabled: true } } },
+      } as never,
+      inventoryOnly: true,
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("DOES warn when inventoryOnly is false (default) and callbacks missing — preserves prior behavior at non-inventory callsites", () => {
+    createOpenClawTools({
+      agentSessionKey: "main",
+      disablePluginTools: true,
+      disableMessageTool: true,
+      config: {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: { defaults: { continuation: { enabled: true } } },
+      } as never,
+      inventoryOnly: false,
+    });
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message] = warnSpy.mock.calls[0];
+    expect(message).toContain("continuation.enabled=true");
+    expect(message).toContain("inventoryOnly: true");
+  });
 });
