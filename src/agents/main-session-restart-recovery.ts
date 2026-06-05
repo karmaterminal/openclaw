@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { sanitizePendingFinalDeliveryText } from "../auto-reply/reply/pending-final-delivery.js";
+import { scanStalePluginConfig } from "../commands/doctor/shared/stale-plugin-config.js";
 import { resolveStateDir } from "../config/paths.js";
 import {
   type SessionEntry,
@@ -21,6 +22,7 @@ import { callGateway } from "../gateway/call.js";
 import { readSessionMessagesAsync } from "../gateway/session-utils.fs.js";
 import { resolveGatewaySessionStoreTarget } from "../gateway/session-utils.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { normalizePluginId } from "../plugins/config-state.js";
 import { CommandLane } from "../process/lanes.js";
 import { isAcpSessionKey, isCronSessionKey, isSubagentSessionKey } from "../routing/session-key.js";
 import { resolveSendPolicy } from "../sessions/send-policy.js";
@@ -42,13 +44,33 @@ const UNRESUMABLE_SESSION_NOTICE =
   "I was interrupted by a gateway restart and couldn't safely resume the previous turn. " +
   "Please send that last request again and I'll pick it up cleanly.";
 
-function shouldSkipMainRecovery(entry: SessionEntry, sessionKey: string): boolean {
+function shouldSkipMainRecovery(
+  entry: SessionEntry,
+  sessionKey: string,
+  danglingChannelIds?: Set<string>,
+): boolean {
   if (typeof entry.spawnDepth === "number" && entry.spawnDepth > 0) {
     return true;
   }
   if (entry.subagentRole != null) {
     return true;
   }
+
+  if (danglingChannelIds && danglingChannelIds.size > 0) {
+    const deliveryContext =
+      normalizeDeliveryContext(entry.pendingFinalDeliveryContext) ??
+      normalizeDeliveryContext(entry.restartRecoveryDeliveryContext) ??
+      deliveryContextFromSession(entry);
+
+    const channel = normalizeOptionalString(deliveryContext?.channel);
+    if (channel) {
+      const normalizedChannel = normalizePluginId(channel);
+      if (normalizedChannel && danglingChannelIds.has(normalizedChannel)) {
+        return true;
+      }
+    }
+  }
+
   return (
     isSubagentSessionKey(sessionKey) || isCronSessionKey(sessionKey) || isAcpSessionKey(sessionKey)
   );
@@ -519,13 +541,24 @@ async function recoverStore(params: {
     return result;
   }
 
+  let danglingChannelIds: Set<string> | undefined;
+  if (params.cfg) {
+    const staleHits = scanStalePluginConfig(params.cfg);
+    danglingChannelIds = new Set(
+      staleHits
+        .filter((h) => h.surface === "channel")
+        .map((h) => normalizePluginId(h.pluginId))
+        .filter((id): id is string => Boolean(id)),
+    );
+  }
+
   for (const [sessionKey, entry] of Object.entries(store).toSorted(([a], [b]) =>
     a.localeCompare(b),
   )) {
     if (!entry || entry.status !== "running" || entry.abortedLastRun !== true) {
       continue;
     }
-    if (shouldSkipMainRecovery(entry, sessionKey)) {
+    if (shouldSkipMainRecovery(entry, sessionKey, danglingChannelIds)) {
       result.skipped++;
       continue;
     }
