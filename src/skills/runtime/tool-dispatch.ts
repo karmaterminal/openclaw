@@ -193,6 +193,13 @@ export function resolveSkillDispatchTools(params: {
     pluginToolDenylist: collectExplicitDenylist(explicitPolicyList),
     inheritedToolAllowlist,
     inheritedToolDenylist: collectExplicitDenylist(explicitPolicyList),
+    // Skills runtime tool-dispatch builds the tool surface to look up + invoke
+    // a single skill-command, NOT to register the full continuation tool set
+    // for active-turn execution. Declaring inventory intent here suppresses
+    // the openclaw-tools.ts L627 callback-supply warning that would otherwise
+    // fire informationally on every skills-dispatch call. See
+    // karmaterminal/openclaw#923.
+    inventoryOnly: true,
   });
   const policyFiltered = applyToolPolicyPipeline({
     tools,

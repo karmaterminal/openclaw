@@ -198,6 +198,22 @@ export function createOpenClawTools(
       getContextUsage: () => number | null;
       triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
     };
+    /**
+     * Inventory-only mode: caller is building the tool surface for catalog /
+     * schema / dispatch lookup purposes, NOT to execute the tools. When true,
+     * the L627 "neither continueWorkOpts nor requestCompactionOpts supplied"
+     * warning is suppressed (callers that don't intend to execute tools have
+     * no reason to supply runtime callbacks). Tool registration logic itself
+     * is unchanged — continue_work / request_compaction are still gated on
+     * their respective callback options as before.
+     *
+     * Set to `true` at callers like `src/gateway/tool-resolution.ts` and
+     * `src/skills/runtime/tool-dispatch.ts` that build the tool catalog for
+     * inspection/dispatch routing rather than for live execution.
+     *
+     * See karmaterminal/openclaw#923 for the empirical convergence + cure-direction.
+     */
+    inventoryOnly?: boolean;
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;
@@ -621,13 +637,16 @@ export function createOpenClawTools(
   if (
     options?.config?.agents?.defaults?.continuation?.enabled === true &&
     !options?.continueWorkOpts &&
-    !options?.requestCompactionOpts
+    !options?.requestCompactionOpts &&
+    !options?.inventoryOnly
   ) {
     log.warn(
       "continuation.enabled=true but neither continueWorkOpts nor requestCompactionOpts " +
         "were supplied — only continue_delegate will register. Was this intentional? " +
         "If callers expect the full continuation tool set, the runner must supply both " +
-        "callbacks. If only delegate-fan-out is intended, this warn is informational.",
+        "callbacks. If only delegate-fan-out is intended, this warn is informational. " +
+        "(Inventory/catalog/dispatch callers should pass inventoryOnly: true to suppress " +
+        "this warning — see karmaterminal/openclaw#923.)",
       {
         agentSessionKey: options?.agentSessionKey,
         runSessionKey: options?.runSessionKey,

@@ -179,6 +179,12 @@ export function resolveGatewayScopedTools(params: {
     pluginToolDenylist: explicitDenylist,
     inheritedToolAllowlist,
     inheritedToolDenylist,
+    // Gateway tool-resolution builds the tool surface for catalog/dispatch
+    // lookup, NOT to execute the tools. Declaring inventory intent here
+    // suppresses the openclaw-tools.ts L627 callback-supply warning that
+    // would otherwise fire informationally on every gateway-tool-resolve
+    // call. See karmaterminal/openclaw#923.
+    inventoryOnly: true,
   });
 
   const policyFiltered = applyToolPolicyPipeline({
