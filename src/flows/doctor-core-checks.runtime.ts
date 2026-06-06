@@ -29,6 +29,7 @@ import {
   type RuntimeToolSchemaDiagnostic,
 } from "../agents/tool-schema-projection.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import { buildInventoryContinuationToolOpts } from "../agents/tools/continuation-inventory-opts.js";
 import { collectUnavailableAgentSkills } from "../commands/doctor-skills-core.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { formatErrorMessage } from "../infra/errors.js";
@@ -696,6 +697,9 @@ function collectAgentRuntimeToolSchemaFindings(params: {
       allowGatewaySubagentBinding: true,
       emitBeforeToolCallDiagnostics: false,
       toolPolicyAuditLogLevel: "debug",
+      ...buildInventoryContinuationToolOpts(
+        params.cfg.agents?.defaults?.continuation?.enabled === true,
+      ),
     });
   } catch (error) {
     return [agentRuntimeToolLoadFailureFinding({ agentId: params.agentId, error })];
