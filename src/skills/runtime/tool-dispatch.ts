@@ -24,6 +24,7 @@ import {
   replaceWithEffectiveToolAllowlist,
   resolveToolProfilePolicy,
 } from "../../agents/tool-policy.js";
+import { buildInventoryContinuationToolOpts } from "../../agents/tools/continuation-inventory-opts.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
@@ -193,13 +194,15 @@ export function resolveSkillDispatchTools(params: {
     pluginToolDenylist: collectExplicitDenylist(explicitPolicyList),
     inheritedToolAllowlist,
     inheritedToolDenylist: collectExplicitDenylist(explicitPolicyList),
-    // Skills runtime tool-dispatch builds the tool surface to look up + invoke
-    // a single skill-command, NOT to register the full continuation tool set
-    // for active-turn execution. Declaring inventory intent here suppresses
-    // the openclaw-tools.ts L627 callback-supply warning that would otherwise
-    // fire informationally on every skills-dispatch call. See
-    // karmaterminal/openclaw#923.
-    inventoryOnly: true,
+    // Skills runtime tool-dispatch builds the tool catalog to look up + invoke a
+    // single skill-command, not to register the full continuation tool set for
+    // active-turn execution. Register continue_work + request_compaction via inert
+    // stub callbacks so the catalog reflects the full continuation surface and the
+    // openclaw-tools.ts partial-registration warning is satisfied honestly (not
+    // suppressed). See karmaterminal/openclaw#923.
+    ...buildInventoryContinuationToolOpts(
+      params.cfg?.agents?.defaults?.continuation?.enabled === true,
+    ),
   });
   const policyFiltered = applyToolPolicyPipeline({
     tools,

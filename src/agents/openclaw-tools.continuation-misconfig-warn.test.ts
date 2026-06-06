@@ -60,6 +60,7 @@ vi.mock("../plugins/tools.js", async () => {
 });
 
 import { createOpenClawTools } from "./openclaw-tools.js";
+import { buildInventoryContinuationToolOpts } from "./tools/continuation-inventory-opts.js";
 
 function buildContinueWorkOpts() {
   return {
@@ -140,12 +141,12 @@ describe("createOpenClawTools — silent partial-registration guard (karmatermin
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  // karmaterminal/openclaw#923 — inventoryOnly flag for inventory-build callsites
-  // (gateway/tool-resolution.ts + skills/runtime/tool-dispatch.ts) that build the
-  // tool catalog for inspection/dispatch lookup rather than for live execution.
-  // The L627 warning is informational noise at those callsites since they don't
-  // intend to execute the tools anyway; inventoryOnly: true suppresses it.
-  it("does NOT warn when continuation.enabled=true but inventoryOnly: true is set (karmaterminal/openclaw#923 — inventory-build callsites)", () => {
+  // karmaterminal/openclaw#923 — inventory/catalog callsites (gateway
+  // tool-resolution, skills tool-dispatch, tools-effective-inventory) register
+  // the continuation tools via stub callbacks (buildInventoryContinuationToolOpts)
+  // so the catalog reflects the full surface AND the partial-registration warning
+  // is satisfied HONESTLY (callbacks ARE supplied) rather than suppressed by a flag.
+  it("does NOT warn when continuation.enabled=true and stub inventory callbacks are supplied (karmaterminal/openclaw#923 — register honestly, not suppress)", () => {
     createOpenClawTools({
       agentSessionKey: "main",
       disablePluginTools: true,
@@ -154,14 +155,14 @@ describe("createOpenClawTools — silent partial-registration guard (karmatermin
         session: { mainKey: "main", scope: "per-sender" },
         agents: { defaults: { continuation: { enabled: true } } },
       } as never,
-      inventoryOnly: true,
+      ...buildInventoryContinuationToolOpts(true),
     });
 
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it("DOES warn when inventoryOnly is false (default) and callbacks missing — preserves prior behavior at non-inventory callsites", () => {
-    createOpenClawTools({
+  it("registers continue_work + request_compaction when stub inventory callbacks are supplied (catalog reflects full surface)", () => {
+    const tools = createOpenClawTools({
       agentSessionKey: "main",
       disablePluginTools: true,
       disableMessageTool: true,
@@ -169,12 +170,12 @@ describe("createOpenClawTools — silent partial-registration guard (karmatermin
         session: { mainKey: "main", scope: "per-sender" },
         agents: { defaults: { continuation: { enabled: true } } },
       } as never,
-      inventoryOnly: false,
+      ...buildInventoryContinuationToolOpts(true),
     });
 
-    expect(warnSpy).toHaveBeenCalledOnce();
-    const [message] = warnSpy.mock.calls[0];
-    expect(message).toContain("continuation.enabled=true");
-    expect(message).toContain("inventoryOnly: true");
+    const names = tools.map((t) => t.name);
+    expect(names).toContain("continue_work");
+    expect(names).toContain("continue_delegate");
+    expect(names).toContain("request_compaction");
   });
 });

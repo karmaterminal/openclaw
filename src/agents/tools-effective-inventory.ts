@@ -27,6 +27,7 @@ import type {
   EffectiveToolInventoryResult,
   ResolveEffectiveToolInventoryParams,
 } from "./tools-effective-inventory.types.js";
+import { buildInventoryContinuationToolOpts } from "./tools/continuation-inventory-opts.js";
 
 export {
   buildEffectiveToolInventoryEntries,
@@ -339,25 +340,10 @@ export function resolveEffectiveToolInventory(
     modelHasVision: params.modelHasVision,
     requireExplicitMessageTarget: params.requireExplicitMessageTarget,
     disableMessageTool: params.disableMessageTool,
-    // Inventory-only path: register callback-backed continuation tools when
+    // Inventory-only path: register continuation tools via stub callbacks when
     // enabled so /status and tools-effective reflect the full RFC §2.1 surface.
     // Runtime side effects still only run on live runner paths.
-    continueWorkOpts: continuationEnabled
-      ? {
-          requestContinuation: () => undefined,
-        }
-      : undefined,
-    requestCompactionOpts: continuationEnabled
-      ? {
-          sessionId: "<inventory-only>",
-          getContextUsage: () => null,
-          triggerCompaction: async () => ({
-            ok: false,
-            compacted: false,
-            reason: "inventory-only path",
-          }),
-        }
-      : undefined,
+    ...buildInventoryContinuationToolOpts(continuationEnabled),
   });
   const projectedInventory = buildRuntimeCompatibleToolInventory({
     tools: effectiveTools,

@@ -23,6 +23,7 @@ import {
   resolveToolProfilePolicy,
 } from "../agents/tool-policy.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import { buildInventoryContinuationToolOpts } from "../agents/tools/continuation-inventory-opts.js";
 import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -179,12 +180,14 @@ export function resolveGatewayScopedTools(params: {
     pluginToolDenylist: explicitDenylist,
     inheritedToolAllowlist,
     inheritedToolDenylist,
-    // Gateway tool-resolution builds the tool surface for catalog/dispatch
-    // lookup, NOT to execute the tools. Declaring inventory intent here
-    // suppresses the openclaw-tools.ts L627 callback-supply warning that
-    // would otherwise fire informationally on every gateway-tool-resolve
-    // call. See karmaterminal/openclaw#923.
-    inventoryOnly: true,
+    // Gateway tool-resolution builds the tool catalog for dispatch lookup, not
+    // for live execution. Register continue_work + request_compaction via inert
+    // stub callbacks so the catalog reflects the full continuation surface and
+    // the openclaw-tools.ts partial-registration warning is satisfied honestly
+    // (not suppressed). See karmaterminal/openclaw#923.
+    ...buildInventoryContinuationToolOpts(
+      params.cfg?.agents?.defaults?.continuation?.enabled === true,
+    ),
   });
 
   const policyFiltered = applyToolPolicyPipeline({
