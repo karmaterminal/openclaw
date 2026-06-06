@@ -76,6 +76,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { CommandLane } from "../../process/lanes.js";
 import { defaultRuntime } from "../../runtime.js";
+import { shouldPreserveUserFacingSessionStateForInputProvenance } from "../../sessions/input-provenance.js";
 import {
   isMarkdownCapableMessageChannel,
   resolveMessageChannel,
@@ -1665,6 +1666,9 @@ export async function runAgentTurnWithFallback(params: {
           ...runnableRun,
           config: runtimeConfig,
         };
+  const preserveUserFacingSessionState = shouldPreserveUserFacingSessionStateForInputProvenance(
+    effectiveRun.inputProvenance,
+  );
   const resolveRunForFallbackCandidate = (provider: string, model: string): FollowupRun["run"] => {
     const probe = effectiveRun.autoFallbackPrimaryProbe;
     const isPrimaryProbeCandidate = probe && provider === probe.provider && model === probe.model;
@@ -1884,6 +1888,7 @@ export async function runAgentTurnWithFallback(params: {
     if (
       !params.sessionKey ||
       !params.activeSessionStore ||
+      preserveUserFacingSessionState ||
       (provider === effectiveRun.provider && model === effectiveRun.model)
     ) {
       return undefined;
@@ -1995,6 +2000,9 @@ export async function runAgentTurnWithFallback(params: {
     provider: string;
     model: string;
   }): Promise<void> => {
+    if (preserveUserFacingSessionState) {
+      return;
+    }
     const probe = effectiveRun.autoFallbackPrimaryProbe;
     if (!probe) {
       return;
