@@ -2904,14 +2904,6 @@ export async function runReplyAgent(replyParams: {
                   log: (message) => defaultRuntime.log(message),
                 });
                 defaultRuntime.log(`WORK timer fired for session ${sessionKey}`);
-                enqueueSystemEvent(
-                  `[continuation:wake] Turn ${nextChainCount}/${maxChainLength}. ` +
-                    `Chain started at ${new Date(chainStartedAt).toISOString()}. ` +
-                    `Accumulated tokens: ${accumulatedChainTokens}. ` +
-                    `The agent elected to continue working.` +
-                    (continuationWorkReason ? ` Reason: ${continuationWorkReason}` : ""),
-                  { sessionKey, trusted: true },
-                );
                 dispatchContinuationWork({ sessionKey, parentRunId: runId });
               } finally {
                 unregisterContinuationTimerHandle(sessionKey, timerHandle);

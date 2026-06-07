@@ -11,11 +11,15 @@ import type { OpenClawConfig } from "../config/config.js";
 import { resolveMainSessionKey } from "../config/sessions.js";
 import { runHeartbeatOnce } from "./heartbeat-runner.js";
 import { installHeartbeatRunnerTestRuntime } from "./heartbeat-runner.test-harness.js";
-import { withTempHeartbeatSandbox } from "./heartbeat-runner.test-utils.js";
+import { type HeartbeatReplySpy, withTempHeartbeatSandbox } from "./heartbeat-runner.test-utils.js";
+import { setHeartbeatsEnabled } from "./heartbeat-wake.js";
 import { resetSystemEventsForTest } from "./system-events.js";
 
 installHeartbeatRunnerTestRuntime();
-afterEach(() => resetSystemEventsForTest());
+afterEach(() => {
+  resetSystemEventsForTest();
+  setHeartbeatsEnabled(true);
+});
 
 const SUBAGENT_KEY = "agent:main:subagent:continuation-4b8c269e";
 
@@ -135,6 +139,102 @@ describe("subagent continue_work re-drive (#952)", () => {
       expect(replySpy).toHaveBeenCalledTimes(1);
       const [replyParams] = replySpy.mock.calls[0] as [{ SessionKey?: string }];
       expect(replyParams?.SessionKey).toBe(mainSessionKey);
+    });
+  });
+});
+
+describe("subagent continue_work re-drive: decoupled from heartbeat-eligibility + active-hours (#952)", () => {
+  async function driveAndAssertRan(
+    cfg: OpenClawConfig,
+    replySpy: HeartbeatReplySpy,
+  ): Promise<void> {
+    const result = await runHeartbeatOnce({
+      cfg,
+      sessionKey: SUBAGENT_KEY,
+      reason: "continuation",
+      intent: "immediate",
+      deps: {
+        getReplyFromConfig: replySpy,
+        whatsapp: vi.fn().mockResolvedValue({ messageId: "m1", toJid: "jid" }),
+        getQueueSize: () => 0,
+        isReplyRunActive: () => false,
+        // Epoch (1970-01-01 00:00 UTC) is outside a 09:00-17:00 window.
+        nowMs: () => 0,
+      },
+    });
+    expect(result.status).toBe("ran");
+    expect(replySpy).toHaveBeenCalledTimes(1);
+    const [replyParams] = replySpy.mock.calls[0] as [{ SessionKey?: string }];
+    expect(replyParams?.SessionKey).toBe(SUBAGENT_KEY);
+  }
+
+  it("runs hop-2 when heartbeats are globally disabled", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath, replySpy }) => {
+      const cfg: OpenClawConfig = {
+        agents: {
+          defaults: { workspace: tmpDir, heartbeat: { every: "5m", target: "whatsapp" } },
+        },
+        channels: { whatsapp: { allowFrom: ["*"] } },
+        session: { store: storePath },
+      };
+      await seedStore(storePath, resolveMainSessionKey(cfg));
+      replySpy.mockResolvedValue({ text: "hop-2 ran" });
+      setHeartbeatsEnabled(false);
+      await driveAndAssertRan(cfg, replySpy);
+    });
+  });
+
+  it("runs hop-2 when explicit heartbeat agents exclude the parent agent", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath, replySpy }) => {
+      const cfg: OpenClawConfig = {
+        agents: {
+          defaults: { workspace: tmpDir },
+          // Explicit heartbeat agent list that does NOT include `main`.
+          list: [{ id: "scribe", heartbeat: { every: "5m", target: "whatsapp" } }],
+        },
+        channels: { whatsapp: { allowFrom: ["*"] } },
+        session: { store: storePath },
+      };
+      await seedStore(storePath, resolveMainSessionKey(cfg));
+      replySpy.mockResolvedValue({ text: "hop-2 ran" });
+      await driveAndAssertRan(cfg, replySpy);
+    });
+  });
+
+  it("runs hop-2 with a zero/invalid heartbeat interval", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath, replySpy }) => {
+      const cfg: OpenClawConfig = {
+        agents: {
+          defaults: { workspace: tmpDir, heartbeat: { every: "0", target: "whatsapp" } },
+        },
+        channels: { whatsapp: { allowFrom: ["*"] } },
+        session: { store: storePath },
+      };
+      await seedStore(storePath, resolveMainSessionKey(cfg));
+      replySpy.mockResolvedValue({ text: "hop-2 ran" });
+      await driveAndAssertRan(cfg, replySpy);
+    });
+  });
+
+  it("runs hop-2 outside active-hours", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath, replySpy }) => {
+      const cfg: OpenClawConfig = {
+        agents: {
+          defaults: {
+            workspace: tmpDir,
+            heartbeat: {
+              every: "5m",
+              target: "whatsapp",
+              activeHours: { start: "09:00", end: "17:00", timezone: "UTC" },
+            },
+          },
+        },
+        channels: { whatsapp: { allowFrom: ["*"] } },
+        session: { store: storePath },
+      };
+      await seedStore(storePath, resolveMainSessionKey(cfg));
+      replySpy.mockResolvedValue({ text: "hop-2 ran" });
+      await driveAndAssertRan(cfg, replySpy);
     });
   });
 });

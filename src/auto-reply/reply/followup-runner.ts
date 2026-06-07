@@ -26,7 +26,6 @@ import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { shouldPreserveUserFacingSessionStateForInputProvenance } from "../../sessions/input-provenance.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
@@ -1242,14 +1241,6 @@ export function createFollowupRunner(params: {
             try {
               defaultRuntime.log(
                 `[followup-runner] continue_work timer fired for session ${sessionKey}`,
-              );
-              enqueueSystemEvent(
-                `[continuation:wake] Turn ${nextChainCount}/${maxChainLength}. ` +
-                  `The agent elected to continue working.` +
-                  (attemptContinueWorkRequest!.reason
-                    ? ` Reason: ${attemptContinueWorkRequest!.reason}`
-                    : ""),
-                { sessionKey, trusted: true },
               );
               dispatchContinuationWork({ sessionKey, parentRunId: runId });
             } finally {

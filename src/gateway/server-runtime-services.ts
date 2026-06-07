@@ -207,10 +207,8 @@ function recoverPendingContinuationWork(params: { log: GatewayRuntimeServiceLogg
         await import("../auto-reply/continuation/continue-work-dispatch.js");
       const logRecovery = params.log.child("continuation-work-recovery");
       const summary = recoverWork({ log: (message) => logRecovery.info(message) });
-      if (summary.sessions > 0 || summary.dispatched > 0 || summary.purged > 0) {
-        logRecovery.info(
-          `replayed sessions=${summary.sessions} dispatched=${summary.dispatched} purged=${summary.purged}`,
-        );
+      if (summary.sessions > 0 || summary.dispatched > 0) {
+        logRecovery.info(`replayed sessions=${summary.sessions} dispatched=${summary.dispatched}`);
       }
     })().catch((err: unknown) =>
       params.log.error(`Continuation work recovery failed: ${String(err)}`),

@@ -4,34 +4,28 @@
  * `continue_work` lets an agent elect to take ANOTHER turn in its OWN session,
  * now or after a delay. It was historically a VOLATILE `setTimeout` that fired
  * `requestHeartbeatNow` — lost on gateway restart, and (for a subagent spawned
- * by `continue_delegate`) silently dropped when the child session-store entry
- * was deleted by cleanup before the wake landed: hops 2+ never ran (#952).
+ * by `continue_delegate`) silently dropped when the wake was never serviced or
+ * the child session was torn down before it landed: hops 2+ never ran (#952).
  *
  * This store persists each election as a `continuation_work` TaskFlow task so it
- * (a) survives gateway restart — boot recovery replays the un-dispatched
- * election — and (b) gives subagent cleanup a durable "a same-session
- * continuation is still pending" signal that keeps the child session alive until
- * the elected turn has run. Mirrors the `continuation_delegate` store, but the
- * dispatch target is RE-ENTRY of the SAME session (driven directly through
- * `runHeartbeatOnce` at the elected offset, decoupled from the periodic
- * heartbeat scheduler — see continue-work-dispatch.ts), NOT a new
- * `spawnSubagentDirect` child.
+ * (a) survives gateway restart — boot recovery replays it — and (b) gives
+ * subagent cleanup a durable "a same-session continuation is still pending"
+ * signal that keeps the child session alive until the elected turn has run.
+ * Mirrors the `continuation_delegate` store, but the dispatch target is RE-ENTRY
+ * of the SAME session (driven directly through `runHeartbeatOnce` at the elected
+ * offset, decoupled from the periodic heartbeat scheduler — see
+ * continue-work-dispatch.ts), NOT a new `spawnSubagentDirect` child.
  *
- * Lifecycle — at most one task per session; `enqueueContinuationWork` upserts:
- *   queued   election recorded; pins the session until `dueAt = electedAt +
- *            delayMs` and its turn has been dispatched. The durable, restart-safe
- *            state: boot recovery re-arms / fires it.
- *   running  turn dispatched (`runHeartbeatOnce` driven); the re-entered turn
- *            is in flight. Pins the session through the dispatch→turn handoff
- *            window (bounded by `CONTINUATION_WORK_HANDOFF_GRACE_MS`); a live
- *            reply run on the session is the longer-turn backstop in the gate.
- *            NOT restart-durable on purpose — a `running` task seen at boot is an
- *            orphan whose wake either already ran or was lost, so recovery purges
- *            it rather than re-firing (re-firing would double-drive a turn).
- *   deleted  released by the next election's upsert, by subagent cleanup, or by
- *            boot recovery purging an orphaned `running`.
+ * Lifecycle is intentionally QUEUED-ONLY (no transient "claimed/running" state
+ * that could orphan): the election stays `queued` from enqueue until its turn
+ * actually RUNS, at which point dispatch deletes it. So a busy session, a
+ * crash, or a restart mid-dispatch can never silently drop the election — it is
+ * always either durably queued (re-driven by boot recovery) or already run.
+ *   queued     election pending; pins the session and is re-driven by recovery.
+ *   (deleted)  the turn ran (or the election was superseded by a re-election's
+ *              upsert, cancelled by cleanup, or given up after a loud failure).
  *
- * RFC: docs/design/continue-work-signal-v2.md §5 (durable continue_work, #956).
+ * RFC: docs/design/continue-work-signal-v2.md §2.3/§3.1 (durable continue_work).
  */
 
 import { z } from "zod";
@@ -44,36 +38,24 @@ import {
   failFlow,
   listTaskFlowRecords,
   listTaskFlowsForOwnerKey,
-  updateFlowRecordByIdExpectedRevision,
 } from "../../tasks/task-flow-runtime-internal.js";
 
 const log = createSubsystemLogger("continuation/continue-work-store");
 
 export const CONTINUATION_WORK_CONTROLLER_ID = "core/continuation-work";
 
-// How long a `running` (dispatched, turn-in-flight) task keeps pinning the
-// session after dispatch. It only needs to cover the window between driving the
-// turn (`runHeartbeatOnce`) and the re-entered reply run registering active
-// (sub-second to a few seconds), during which the reply-active signal is briefly
-// false. A longer in-flight turn is held by the live-reply-run backstop in the
-// subagent cleanup gate, not by this grace. Generous so a momentarily-busy
-// gateway cannot strand the handoff and reopen #952, yet bounded so a dropped
-// turn cannot pin a child session forever.
-export const CONTINUATION_WORK_HANDOFF_GRACE_MS = 60_000;
-
 const ContinuationWorkStateSchema = z.object({
   kind: z.literal("continuation_work"),
   hop: z.number().int().positive(),
   delayMs: z.number().int().nonnegative().optional(),
   electedAt: z.number().int().nonnegative(),
-  dispatchedAt: z.number().int().nonnegative().optional(),
   reason: z.string().optional(),
   traceparent: z.string().optional(),
 });
 
 type ContinuationWorkState = z.infer<typeof ContinuationWorkStateSchema>;
 
-export type PendingContinuationWork = {
+export type ClaimedContinuationWork = {
   flowId: string;
   hop: number;
   reason?: string;
@@ -129,7 +111,7 @@ function buildGoal(hop: number, reason: string | undefined): string {
  * woken turn replaces the prior task in a single synchronous call, so the
  * subagent cleanup gate never observes a zero-pending gap mid-chain (which would
  * delete the child session and strand the next hop — #952). The replace also
- * finalizes the prior `running` task, so a session never accumulates stale rows.
+ * finalizes the prior election, so a session never accumulates stale rows.
  */
 export function enqueueContinuationWork(
   sessionKey: string,
@@ -157,21 +139,19 @@ export function enqueueContinuationWork(
 }
 
 /**
- * Claim matured `queued` elections for a session and mark them `running`.
- *
- * `queued` tasks whose `dueAt` has passed are claimed → `running` so the gate
- * keeps pinning the session across the dispatch→re-entry handoff. Returns the
- * elections whose claim was applied so the caller drives exactly one
- * continuation turn per claim (concurrency-safe via expected-revision CAS).
- * Already-`running` tasks are NOT re-claimed: driving a turn is not idempotent,
- * so a dispatched election is consumed exactly once.
+ * Return the session's matured `queued` elections to drive — WITHOUT mutating
+ * them. The election stays queued (durable, restart-safe, session-pinning)
+ * until `finalizeDispatchedContinuationWork` deletes it once its turn has run.
+ * Peeking (not claiming-to-running) is what makes the dispatch lossless: a busy
+ * retry or a crash mid-drive leaves the election durably queued, so recovery
+ * re-drives it instead of finding an orphaned half-consumed task (#952).
  */
-export function consumeMaturedContinuationWork(
+export function claimMaturedContinuationWork(
   sessionKey: string,
   options: { now?: number } = {},
-): PendingContinuationWork[] {
+): ClaimedContinuationWork[] {
   const now = options.now ?? Date.now();
-  const claimed: PendingContinuationWork[] = [];
+  const matured: ClaimedContinuationWork[] = [];
   for (const flow of listContinuationWorkFlows(sessionKey)) {
     if (flow.status !== "queued") {
       continue;
@@ -184,57 +164,40 @@ export function consumeMaturedContinuationWork(
     if (now < dueAt(state)) {
       continue;
     }
-    const result = updateFlowRecordByIdExpectedRevision({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      patch: {
-        status: "running",
-        currentStep: "Dispatched continuation re-entry wake",
-        stateJson: { ...state, dispatchedAt: now },
-        updatedAt: now,
-      },
-    });
-    if (!result.applied) {
-      continue;
-    }
-    claimed.push({
+    matured.push({
       flowId: flow.flowId,
       hop: state.hop,
       ...(state.reason ? { reason: state.reason } : {}),
       ...(state.traceparent ? { traceparent: state.traceparent } : {}),
     });
   }
-  return claimed;
+  return matured;
+}
+
+/**
+ * Delete a dispatched election once its turn has run (or it is being given up).
+ * Idempotent and keyed by `flowId`: a re-election (upsert) or cleanup cancel
+ * replaces the row with a new `flowId`, so finalizing the old id is a safe
+ * no-op and never deletes a fresh election.
+ */
+export function finalizeDispatchedContinuationWork(flowId: string): void {
+  deleteTaskFlowRecordById(flowId);
 }
 
 /**
  * True while a same-session `continue_work` continuation is still pending for
- * the session — read by subagent cleanup to defer teardown so the wake can
- * re-enter the (kept-alive) session as a heartbeat turn (#952). A `queued` task
- * always pins (the durable election, possibly far-future `dueAt`); a `running`
- * task pins only within the post-dispatch handoff grace, after which the gate's
- * live-reply-run backstop owns a longer in-flight turn.
+ * the session — read by subagent cleanup to defer teardown so the elected turn
+ * can re-enter the (kept-alive) session (#952). Any `queued` election pins:
+ * the election stays queued across the elected delay, the dispatch, busy
+ * retries, and (on restart) until recovery re-drives and finalizes it.
  */
-export function hasPendingContinuationWork(sessionKey: string, now = Date.now()): boolean {
-  for (const flow of listContinuationWorkFlows(sessionKey)) {
-    if (flow.status === "queued") {
-      return true;
-    }
-    if (flow.status !== "running") {
-      continue;
-    }
-    const state = decodeState(flow);
-    const dispatchedAt = state?.dispatchedAt ?? flow.updatedAt;
-    if (now - dispatchedAt <= CONTINUATION_WORK_HANDOFF_GRACE_MS) {
-      return true;
-    }
-  }
-  return false;
+export function hasPendingContinuationWork(sessionKey: string): boolean {
+  return listContinuationWorkFlows(sessionKey).some((flow) => flow.status === "queued");
 }
 
 /**
  * Soonest `dueAt` across the session's queued, not-yet-matured elections, used
- * by boot recovery to re-arm a hedge timer that fires the wake at maturity
+ * by boot recovery to re-arm a hedge timer that fires the turn at maturity
  * (e.g. `continue_work(3600s)` elected before a restart still fires on time).
  */
 export function peekSoonestUnmaturedContinuationWorkDueAt(
@@ -261,35 +224,10 @@ export function peekSoonestUnmaturedContinuationWorkDueAt(
   return soonest;
 }
 
-/**
- * Delete the session's already-dispatched (`running`) elections.
- *
- * Used by boot recovery: a `running` task seen at startup is an orphan — the
- * process that fired its wake is gone, so the wake either already drove its turn
- * (and the chain advanced or ended) or was lost. Either way it must not be
- * re-fired (a re-fire would double-drive a turn / restart a finished chain), so
- * recovery purges it. `queued` elections are left untouched for re-arming.
- * Returns the number of orphaned `running` tasks purged.
- */
-export function purgeOrphanedRunningContinuationWork(sessionKey: string): number {
-  let purged = 0;
-  for (const flow of listContinuationWorkFlows(sessionKey)) {
-    if (flow.status !== "running") {
-      continue;
-    }
-    deleteTaskFlowRecordById(flow.flowId);
-    purged += 1;
-  }
-  return purged;
-}
-
-/** Session keys carrying a queued/running election, for boot-time replay. */
+/** Session keys carrying a queued election, for boot-time replay. */
 export function listPendingContinuationWorkSessionKeysForRecovery(): string[] {
   const sessionKeys = listTaskFlowRecords()
-    .filter(
-      (flow) =>
-        isContinuationWorkFlow(flow) && (flow.status === "queued" || flow.status === "running"),
-    )
+    .filter((flow) => isContinuationWorkFlow(flow) && flow.status === "queued")
     .map((flow) => flow.ownerKey);
   return [...new Set(sessionKeys)].toSorted();
 }

@@ -941,13 +941,11 @@ async function scheduleSpawnInitContinueWorkWake(params: {
       registerContinuationTimerHandle,
       unregisterContinuationTimerHandle,
     },
-    { enqueueSystemEvent },
     { enqueueContinuationWork },
     { dispatchContinuationWork },
   ] = await Promise.all([
     import("../../auto-reply/continuation/config.js"),
     import("../../auto-reply/continuation/state.js"),
-    import("../../infra/system-events.js"),
     import("../../auto-reply/continuation/continue-work-store.js"),
     import("../../auto-reply/continuation/continue-work-dispatch.js"),
   ]);
@@ -998,18 +996,11 @@ async function scheduleSpawnInitContinueWorkWake(params: {
 
   retainContinuationTimerRef(params.sessionKey);
   const sessionKey = params.sessionKey;
-  const reason = params.request.reason;
   const parentRunId = params.runId;
   const timerHandle = setTimeout(() => {
     try {
       log.info(
         `[attempt-execution] continue_work timer fired for session ${sanitizeForLog(sessionKey)}`,
-      );
-      enqueueSystemEvent(
-        `[continuation:wake] Turn ${nextChainCount}/${maxChainLength}. ` +
-          `The agent elected to continue working.` +
-          (reason ? ` Reason: ${reason}` : ""),
-        { sessionKey, trusted: true },
       );
       dispatchContinuationWork({ sessionKey, parentRunId });
     } finally {

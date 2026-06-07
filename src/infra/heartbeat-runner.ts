@@ -1355,18 +1355,29 @@ export async function runHeartbeatOnce(opts: {
     source: opts.source,
     mergeRequestedHeartbeat: opts.source === "cron",
   });
-  if (!areHeartbeatsEnabled()) {
-    return { status: "skipped", reason: "disabled" };
-  }
-  if (!isHeartbeatEnabledForAgent(cfg, agentId)) {
-    return { status: "skipped", reason: "disabled" };
-  }
-  if (!resolveHeartbeatIntervalMs(cfg, undefined, heartbeat)) {
-    return { status: "skipped", reason: "disabled" };
+  // A continue_work re-entry is an explicit, budgeted agent election (gated by
+  // continuation.enabled + chain/cost budgets upstream), NOT a periodic
+  // heartbeat. It must reach the universal per-session turn-grant
+  // (getReplyFromConfig) regardless of whether periodic heartbeats are enabled
+  // for the parent agent or whether the seat is inside active-hours — otherwise
+  // an elected same-session turn is silently dropped on quiet/heartbeat-disabled
+  // seats (#952). The busy/lane/active-reply guards below still apply (a turn
+  // must not run concurrently with another on the same session). Fix #952.
+  const isContinuationReentry = isContinuationHeartbeatWakeReason(opts.reason ?? "");
+  if (!isContinuationReentry) {
+    if (!areHeartbeatsEnabled()) {
+      return { status: "skipped", reason: "disabled" };
+    }
+    if (!isHeartbeatEnabledForAgent(cfg, agentId)) {
+      return { status: "skipped", reason: "disabled" };
+    }
+    if (!resolveHeartbeatIntervalMs(cfg, undefined, heartbeat)) {
+      return { status: "skipped", reason: "disabled" };
+    }
   }
 
   const startedAt = opts.deps?.nowMs?.() ?? Date.now();
-  if (!isWithinActiveHours(cfg, heartbeat, startedAt)) {
+  if (!isContinuationReentry && !isWithinActiveHours(cfg, heartbeat, startedAt)) {
     return { status: "skipped", reason: "quiet-hours" };
   }
 
