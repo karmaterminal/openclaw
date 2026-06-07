@@ -84,9 +84,11 @@ vi.mock("../../tasks/task-flow-runtime-internal.js", () => ({
   }),
 }));
 
-const heartbeatMocks = vi.hoisted(() => ({ requestHeartbeatNow: vi.fn() }));
-vi.mock("../../infra/heartbeat-wake.js", () => ({
-  requestHeartbeatNow: heartbeatMocks.requestHeartbeatNow,
+const heartbeatMocks = vi.hoisted(() => ({
+  runHeartbeatOnce: vi.fn(async () => ({ status: "ran" as const, durationMs: 0 })),
+}));
+vi.mock("../../infra/heartbeat-runner.js", () => ({
+  runHeartbeatOnce: heartbeatMocks.runHeartbeatOnce,
 }));
 
 const configMocks = vi.hoisted(() => ({ enabled: true }));
@@ -111,7 +113,7 @@ beforeEach(() => {
   mockFlows.clear();
   flowIdCounter = 0;
   configMocks.enabled = true;
-  heartbeatMocks.requestHeartbeatNow.mockReset();
+  heartbeatMocks.runHeartbeatOnce.mockClear();
   vi.useFakeTimers();
   vi.setSystemTime(T0);
 });
@@ -121,14 +123,17 @@ afterEach(() => {
 });
 
 describe("dispatchContinuationWork", () => {
-  it("fires a single continuation heartbeat wake for a matured election", () => {
+  it("drives a single continuation turn promptly for a matured election", () => {
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 });
     const fired = dispatchContinuationWork({ sessionKey: SESSION, parentRunId: "run-1" });
     expect(fired).toBe(1);
-    expect(heartbeatMocks.requestHeartbeatNow).toHaveBeenCalledTimes(1);
-    expect(heartbeatMocks.requestHeartbeatNow).toHaveBeenCalledWith({
+    // Drives the per-session executor directly, NOT requestHeartbeatNow (the
+    // dormant-scheduler doorbell). #952.
+    expect(heartbeatMocks.runHeartbeatOnce).toHaveBeenCalledTimes(1);
+    expect(heartbeatMocks.runHeartbeatOnce).toHaveBeenCalledWith({
       sessionKey: SESSION,
       reason: "continuation",
+      intent: "immediate",
       parentRunId: "run-1",
     });
     expect(statusOf(SESSION)).toBe("running");
@@ -137,7 +142,7 @@ describe("dispatchContinuationWork", () => {
   it("does not fire when the election has not matured", () => {
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 60_000, electedAt: T0 });
     expect(dispatchContinuationWork({ sessionKey: SESSION })).toBe(0);
-    expect(heartbeatMocks.requestHeartbeatNow).not.toHaveBeenCalled();
+    expect(heartbeatMocks.runHeartbeatOnce).not.toHaveBeenCalled();
   });
 });
 
@@ -151,12 +156,12 @@ describe("recoverPendingContinuationWork (restart durability, #952/#956)", () =>
     expect(summary.sessions).toBe(1);
     expect(summary.dispatched).toBe(0);
     // Not yet due: no wake at recovery time.
-    expect(heartbeatMocks.requestHeartbeatNow).not.toHaveBeenCalled();
+    expect(heartbeatMocks.runHeartbeatOnce).not.toHaveBeenCalled();
     expect(statusOf(SESSION)).toBe("queued");
 
     // Advance to the elected maturity: the re-armed hedge fires the turn.
     vi.advanceTimersByTime(60 * 60_000);
-    expect(heartbeatMocks.requestHeartbeatNow).toHaveBeenCalledTimes(1);
+    expect(heartbeatMocks.runHeartbeatOnce).toHaveBeenCalledTimes(1);
     expect(statusOf(SESSION)).toBe("running");
   });
 
@@ -164,7 +169,7 @@ describe("recoverPendingContinuationWork (restart durability, #952/#956)", () =>
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 - 5_000 });
     const summary = recoverPendingContinuationWork({ now: T0 });
     expect(summary.dispatched).toBe(1);
-    expect(heartbeatMocks.requestHeartbeatNow).toHaveBeenCalledTimes(1);
+    expect(heartbeatMocks.runHeartbeatOnce).toHaveBeenCalledTimes(1);
   });
 
   it("purges an orphaned running election instead of re-firing it (no double-turn)", () => {
@@ -174,7 +179,7 @@ describe("recoverPendingContinuationWork (restart durability, #952/#956)", () =>
     const summary = recoverPendingContinuationWork({ now: T0 });
     expect(summary.purged).toBe(1);
     expect(summary.dispatched).toBe(0);
-    expect(heartbeatMocks.requestHeartbeatNow).not.toHaveBeenCalled();
+    expect(heartbeatMocks.runHeartbeatOnce).not.toHaveBeenCalled();
     expect(statusOf(SESSION)).toBeUndefined();
   });
 
@@ -183,6 +188,6 @@ describe("recoverPendingContinuationWork (restart durability, #952/#956)", () =>
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 - 5_000 });
     const summary = recoverPendingContinuationWork({ now: T0 });
     expect(summary).toEqual({ sessions: 0, dispatched: 0, purged: 0 });
-    expect(heartbeatMocks.requestHeartbeatNow).not.toHaveBeenCalled();
+    expect(heartbeatMocks.runHeartbeatOnce).not.toHaveBeenCalled();
   });
 });

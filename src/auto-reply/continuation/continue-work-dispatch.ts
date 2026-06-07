@@ -1,22 +1,30 @@
 /**
- * Continuation work dispatch — wake dispatch + restart recovery for the durable
- * `continue_work` re-entry (#952, #956).
+ * Continuation work dispatch — prompt same-session re-drive + restart recovery
+ * for the durable `continue_work` re-entry (#952, #956).
  *
- * `continue_work` re-enters the SAME session for another turn via the existing
- * heartbeat-wake path (`requestHeartbeatNow({ reason: "continuation" })`, routed
- * back to the session by the #746 exemption) — it never spawns a subagent.
+ * `continue_work` re-enters the SAME session for another turn. At the elected
+ * offset it must drive that turn PROMPTLY (RFC §2.3/§3.1) — it must NOT wait for
+ * the next periodic heartbeat tick (which on a quiet seat can be ~0 in 30 min =
+ * "wait forever"). The precursor implementation rang `requestHeartbeatNow()`,
+ * but that is the heartbeat "parent doorbell" (RFC §4.4): the wake is serviced
+ * only by the periodic heartbeat scheduler, whose targeted path drops a wake
+ * whose agent is not currently scheduled (`run()` returns `disabled` when
+ * `state.agents` is empty). On a seat with no/sparse heartbeat agents the
+ * subagent continuation wake was a silent no-op and hop-2 never re-entered.
  *
- * The three election sites (turn-1 spawn-init, main agent-runner, follow-up
- * runner) each persist their election as a durable `continuation_work` task via
- * `enqueueContinuationWork`, then drive their in-process `setTimeout` through
- * `dispatchContinuationWork`. The volatile timer is only the in-process
- * scheduler; the durable task is the source of truth, so after a gateway restart
- * `recoverPendingContinuationWork` replays the un-dispatched election — the
- * capability the old volatile-only path lacked (lost on restart; dropped when
- * subagent cleanup deleted the session before the wake landed — #952).
+ * So dispatch drives the elected turn DIRECTLY through `runHeartbeatOnce` (the
+ * per-session turn executor), decoupled from the periodic scheduler. The #746
+ * routing exemption re-enters the same (subagent) session and the reply path
+ * runs the turn as a `work-wake` continuation. The durable `continuation_work`
+ * task remains the persistence layer: it pins the session via the cleanup gate
+ * so the re-drive lands on a live session, and `recoverPendingContinuationWork`
+ * replays an un-dispatched election after a gateway restart.
  */
 
-import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
+import { formatErrorMessage } from "../../infra/errors.js";
+import { runHeartbeatOnce } from "../../infra/heartbeat-runner.js";
+import { isRetryableHeartbeatBusySkipReason } from "../../infra/heartbeat-wake.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
 import {
   consumeMaturedContinuationWork,
@@ -30,14 +38,67 @@ import {
   unregisterContinuationTimerHandle,
 } from "./state.js";
 
+const log = createSubsystemLogger("continuation/continue-work-dispatch");
+
+// The re-drive retries only while the target session is transiently busy (an
+// active reply run or a busy lane at the elected instant). Bounded so a session
+// that never frees cannot re-drive forever; the durable election's `running`
+// state pins the session across these retries (and the cleanup gate keeps it
+// alive), so a brief busy window cannot strand hop-2.
+const CONTINUATION_TURN_RETRY_MS = 1_000;
+const CONTINUATION_TURN_MAX_RETRIES = 8;
+
 /**
- * Fire the heartbeat re-entry wake for every matured election on a session.
+ * Drive the elected continuation turn PROMPTLY for the session, decoupled from
+ * the periodic heartbeat scheduler.
  *
- * Claims matured `queued` `continuation_work` tasks (queued→running) and fires
- * one `requestHeartbeatNow({ reason: "continuation" })` per claim. The #746
- * exemption routes that wake back to the same session for a fresh turn. The
- * claim is an expected-revision CAS, so a duplicate timer (e.g. the in-process
- * timer racing a recovery hedge) dispatches zero extra wakes.
+ * Invokes `runHeartbeatOnce` directly (not `requestHeartbeatNow`): the per-run
+ * executor re-enters the session — the #746 exemption keeps a subagent wake on
+ * its own session — and runs a `work-wake` continuation turn even when no
+ * heartbeat agent is scheduled. A retryable busy skip (the session is mid-turn
+ * or its lane is briefly busy at the elected instant) re-drives after a short
+ * delay, bounded, mirroring the wake layer's retry without depending on it.
+ */
+function driveContinuationTurn(params: {
+  sessionKey: string;
+  parentRunId?: string;
+  attempt?: number;
+}): void {
+  const attempt = params.attempt ?? 0;
+  void runHeartbeatOnce({
+    sessionKey: params.sessionKey,
+    reason: "continuation",
+    intent: "immediate",
+    ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
+  })
+    .then((result) => {
+      if (
+        result.status === "skipped" &&
+        isRetryableHeartbeatBusySkipReason(result.reason) &&
+        attempt < CONTINUATION_TURN_MAX_RETRIES
+      ) {
+        const retry = setTimeout(() => {
+          driveContinuationTurn({ ...params, attempt: attempt + 1 });
+        }, CONTINUATION_TURN_RETRY_MS);
+        retry.unref();
+      }
+    })
+    .catch((err: unknown) => {
+      log.warn(
+        `[continuation:work-drive-failed] session=${params.sessionKey} attempt=${attempt}: ${formatErrorMessage(err)}`,
+      );
+    });
+}
+
+/**
+ * Drive the elected continuation turn for every matured election on a session.
+ *
+ * Claims matured `queued` `continuation_work` tasks (queued→running) and drives
+ * the continuation turn PROMPTLY via `runHeartbeatOnce` (not the periodic
+ * heartbeat scheduler). One election per session (the store upserts), so a
+ * single drive re-enters the session for the elected turn. The claim is an
+ * expected-revision CAS, so a duplicate timer (e.g. the in-process timer racing
+ * a recovery hedge) drives zero extra turns.
  */
 export function dispatchContinuationWork(params: {
   sessionKey: string;
@@ -46,12 +107,9 @@ export function dispatchContinuationWork(params: {
 }): number {
   const now = params.now ?? Date.now();
   const matured = consumeMaturedContinuationWork(params.sessionKey, { now });
-  // One election per session (the store upserts), and `requestHeartbeatNow`
-  // coalesces, so a single wake re-enters the session for the elected turn.
   if (matured.length > 0) {
-    requestHeartbeatNow({
+    driveContinuationTurn({
       sessionKey: params.sessionKey,
-      reason: "continuation",
       ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
     });
   }

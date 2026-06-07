@@ -12,14 +12,16 @@
  * election — and (b) gives subagent cleanup a durable "a same-session
  * continuation is still pending" signal that keeps the child session alive until
  * the elected turn has run. Mirrors the `continuation_delegate` store, but the
- * dispatch target is RE-ENTRY of the SAME session (a heartbeat wake), NOT a new
+ * dispatch target is RE-ENTRY of the SAME session (driven directly through
+ * `runHeartbeatOnce` at the elected offset, decoupled from the periodic
+ * heartbeat scheduler — see continue-work-dispatch.ts), NOT a new
  * `spawnSubagentDirect` child.
  *
  * Lifecycle — at most one task per session; `enqueueContinuationWork` upserts:
  *   queued   election recorded; pins the session until `dueAt = electedAt +
- *            delayMs` and its wake has been dispatched. The durable, restart-safe
+ *            delayMs` and its turn has been dispatched. The durable, restart-safe
  *            state: boot recovery re-arms / fires it.
- *   running  wake dispatched (`requestHeartbeatNow` fired); the re-entered turn
+ *   running  turn dispatched (`runHeartbeatOnce` driven); the re-entered turn
  *            is in flight. Pins the session through the dispatch→turn handoff
  *            window (bounded by `CONTINUATION_WORK_HANDOFF_GRACE_MS`); a live
  *            reply run on the session is the longer-turn backstop in the gate.
@@ -49,16 +51,14 @@ const log = createSubsystemLogger("continuation/continue-work-store");
 
 export const CONTINUATION_WORK_CONTROLLER_ID = "core/continuation-work";
 
-// How long a `running` (dispatched, wake-in-flight) task keeps pinning the
-// session after dispatch. It only needs to cover the `requestHeartbeatNow`
-// coalesce + heartbeat re-entry startup window (sub-second to a few seconds),
-// during which `hasPendingHeartbeatWakeForSession` is briefly false (the wake is
-// dequeued before the reply run registers active) — so neither the pending-wake
-// nor the reply-active signal can be trusted to bridge it. A longer in-flight
-// turn is held by the live-reply-run backstop in the subagent cleanup gate, not
-// by this grace. Generous so a momentarily-busy gateway cannot strand the
-// handoff and reopen #952, yet bounded so a dropped wake cannot pin a child
-// session forever.
+// How long a `running` (dispatched, turn-in-flight) task keeps pinning the
+// session after dispatch. It only needs to cover the window between driving the
+// turn (`runHeartbeatOnce`) and the re-entered reply run registering active
+// (sub-second to a few seconds), during which the reply-active signal is briefly
+// false. A longer in-flight turn is held by the live-reply-run backstop in the
+// subagent cleanup gate, not by this grace. Generous so a momentarily-busy
+// gateway cannot strand the handoff and reopen #952, yet bounded so a dropped
+// turn cannot pin a child session forever.
 export const CONTINUATION_WORK_HANDOFF_GRACE_MS = 60_000;
 
 const ContinuationWorkStateSchema = z.object({
@@ -161,10 +161,10 @@ export function enqueueContinuationWork(
  *
  * `queued` tasks whose `dueAt` has passed are claimed → `running` so the gate
  * keeps pinning the session across the dispatch→re-entry handoff. Returns the
- * elections whose claim was applied so the caller fires exactly one
- * `requestHeartbeatNow` per claim (concurrency-safe via expected-revision CAS).
- * Already-`running` tasks are NOT re-claimed: a wake is not idempotent, so a
- * dispatched election is consumed exactly once.
+ * elections whose claim was applied so the caller drives exactly one
+ * continuation turn per claim (concurrency-safe via expected-revision CAS).
+ * Already-`running` tasks are NOT re-claimed: driving a turn is not idempotent,
+ * so a dispatched election is consumed exactly once.
  */
 export function consumeMaturedContinuationWork(
   sessionKey: string,
