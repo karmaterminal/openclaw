@@ -1,5 +1,9 @@
 // Tests heartbeat runner scheduling and timer cleanup.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  hasContinuationWakeDispatching,
+  resetContinuationStateForTests,
+} from "../auto-reply/continuation/state.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { startHeartbeatRunner } from "./heartbeat-runner.js";
 import { computeNextHeartbeatPhaseDueMs, resolveHeartbeatPhaseMs } from "./heartbeat-schedule.js";
@@ -165,6 +169,7 @@ describe("startHeartbeatRunner", () => {
 
   afterEach(() => {
     resetHeartbeatWakeStateForTests();
+    resetContinuationStateForTests();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -497,6 +502,146 @@ describe("startHeartbeatRunner", () => {
         sessionKey: "agent:ops:discord:channel:alerts",
       },
     });
+
+    runner.stop();
+  });
+
+  it("sets the continuation wake dispatching marker under the wake's session key for the whole turn (#952)", async () => {
+    useFakeHeartbeatTime();
+    const childSessionKey = "agent:main:subagent:child";
+    // The marker must be live the entire time `run` is executing (the window
+    // that spans pendingWakes.clear → reply-run-active). Capture it from inside
+    // the injected runOnce, which `run` invokes with the routed session key —
+    // the SAME key subagent cleanup queries via entry.childSessionKey.
+    let markerDuringRun: boolean | undefined;
+    let sessionKeyDuringRun: string | undefined;
+    const runSpy = vi.fn().mockImplementation(async (opts: { sessionKey?: string }) => {
+      sessionKeyDuringRun = opts.sessionKey;
+      markerDuringRun = hasContinuationWakeDispatching(childSessionKey);
+      return { status: "ran", durationMs: 1 } as const;
+    });
+
+    const runner = startHeartbeatRunner({
+      cfg: heartbeatConfig([{ id: "main", heartbeat: { every: "30m" } }]),
+      runOnce: runSpy,
+      stableSchedulerSeed: TEST_SCHEDULER_SEED,
+    });
+
+    // Drive the REAL wake dispatcher → REAL registered wakeHandler (no mirrored
+    // stand-in): a continue_work continuation wake targeting the child session.
+    requestHeartbeat({
+      source: "other",
+      intent: "immediate",
+      reason: "continuation",
+      agentId: "main",
+      sessionKey: childSessionKey,
+      coalesceMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(runSpy).toHaveBeenCalledTimes(1);
+    expect(sessionKeyDuringRun).toBe(childSessionKey);
+    // Production wakeHandler set the marker (first synchronous statement) keyed
+    // by the wake's session key, and it was still live while `run` executed.
+    expect(markerDuringRun).toBe(true);
+    // The finally released it once the handler returned — no leaked retention.
+    expect(hasContinuationWakeDispatching(childSessionKey)).toBe(false);
+
+    runner.stop();
+  });
+
+  it("does not set the dispatching marker for a non-continuation targeted wake (#952)", async () => {
+    useFakeHeartbeatTime();
+    const childSessionKey = "agent:main:subagent:child";
+    let markerDuringRun: boolean | undefined;
+    const runSpy = vi.fn().mockImplementation(async () => {
+      markerDuringRun = hasContinuationWakeDispatching(childSessionKey);
+      return { status: "ran", durationMs: 1 } as const;
+    });
+
+    const runner = startHeartbeatRunner({
+      cfg: heartbeatConfig([{ id: "main", heartbeat: { every: "30m" } }]),
+      runOnce: runSpy,
+      stableSchedulerSeed: TEST_SCHEDULER_SEED,
+    });
+
+    // A plain (non-continuation) wake must not pin the child session.
+    requestHeartbeat({
+      source: "cron",
+      intent: "event",
+      reason: "cron:job-123",
+      agentId: "main",
+      sessionKey: childSessionKey,
+      coalesceMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(runSpy).toHaveBeenCalledTimes(1);
+    expect(markerDuringRun).toBe(false);
+    expect(hasContinuationWakeDispatching(childSessionKey)).toBe(false);
+
+    runner.stop();
+  });
+
+  it("keeps a position>=2 continuation wake marked for the whole earlier-wake turn in a coalesced batch (#952)", async () => {
+    useFakeHeartbeatTime();
+    const firstSessionKey = "agent:main:subagent:first";
+    const continuationSessionKey = "agent:main:subagent:second";
+
+    // The race the per-handler mark missed: in a coalesced batch the dispatcher
+    // runs each wake's full turn sequentially, so a continuation wake at batch
+    // position >= 2 has an `await` (every earlier wake's turn) between
+    // `pendingWakes.clear()` and its own handler. The batch-dispatch hook marks
+    // the WHOLE batch at dequeue, so the continuation session reads pending the
+    // entire time the FIRST wake's turn runs. Capture the marker from inside the
+    // first wake's runOnce — exactly when a cleanup recheck poll could observe.
+    let markerDuringFirstTurn: boolean | undefined;
+    let markerDuringContinuationTurn: boolean | undefined;
+    const runSpy = vi.fn().mockImplementation(async (opts: { sessionKey?: string }) => {
+      if (opts.sessionKey === firstSessionKey) {
+        markerDuringFirstTurn = hasContinuationWakeDispatching(continuationSessionKey);
+      } else if (opts.sessionKey === continuationSessionKey) {
+        markerDuringContinuationTurn = hasContinuationWakeDispatching(continuationSessionKey);
+      }
+      return { status: "ran", durationMs: 1 } as const;
+    });
+
+    const runner = startHeartbeatRunner({
+      cfg: heartbeatConfig([{ id: "main", heartbeat: { every: "30m" } }]),
+      runOnce: runSpy,
+      stableSchedulerSeed: TEST_SCHEDULER_SEED,
+    });
+
+    // Two distinct-session wakes coalesce into ONE batch (same 0ms timer): a
+    // plain manual wake first (never deferred), then the continuation wake at
+    // batch position 2. Drives the REAL dispatcher + REAL registered hook.
+    requestHeartbeat({
+      source: "manual",
+      intent: "manual",
+      reason: "manual",
+      agentId: "main",
+      sessionKey: firstSessionKey,
+      coalesceMs: 0,
+    });
+    requestHeartbeat({
+      source: "other",
+      intent: "immediate",
+      reason: "continuation",
+      agentId: "main",
+      sessionKey: continuationSessionKey,
+      coalesceMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(runSpy).toHaveBeenCalledTimes(2);
+    // The position-2 continuation wake was already pending while the first
+    // wake's turn ran — closing the all-false window. Without the batch hook the
+    // mark would only land when the continuation handler runs (after the first
+    // turn), so this reads false → mutation check.
+    expect(markerDuringFirstTurn).toBe(true);
+    expect(markerDuringContinuationTurn).toBe(true);
+    // The continuation handler's finally released its mark; nothing leaked.
+    expect(hasContinuationWakeDispatching(continuationSessionKey)).toBe(false);
 
     runner.stop();
   });

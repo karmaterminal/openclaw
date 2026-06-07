@@ -51,6 +51,28 @@ const ALLOWLIST = [
       "Reset to empty on process restart; pending delegate records remain in TaskFlow and rebuild timer state when scheduling resumes.",
   },
   {
+    file: "src/auto-reply/continuation/state.ts",
+    symbol: "continuationWorkWakeTimerHandles",
+    owner: "continuation timer registry",
+    purpose:
+      "Tracks the live setTimeout handles for same-session continue_work wakes only, so subagent cleanup can defer teardown while a continuation wake is still armed (#952) without being tripped by delegate-hedge timers.",
+    safeVolatileClassification:
+      "A per-session subset of continuationTimerHandles holding the same Node timeout handles; persisting it would be meaningless because the handles are process-local.",
+    restartContract:
+      "Lost on process restart; the durable continue_work intent lives in the session store and TaskFlow, and the next scheduling pass re-arms the wake.",
+  },
+  {
+    file: "src/auto-reply/continuation/state.ts",
+    symbol: "continuationWakeDispatching",
+    owner: "continuation timer registry",
+    purpose:
+      "Per-session ref count set synchronously while the heartbeat wake handler dispatches a continue_work turn, so subagent cleanup defers across the same tick the timer ref releases and the dispatcher clears its queued wake but the reply run is not yet active (#952).",
+    safeVolatileClassification:
+      "An in-process ref count tied to the lifetime of a single wake handler invocation; it has no meaning without that live call stack and is bounded by the cleanup leak-guard hard-expiry.",
+    restartContract:
+      "Lost on process restart; the durable continue_work intent lives in the session store and TaskFlow, and the next scheduling pass re-arms the wake.",
+  },
+  {
     file: "src/auto-reply/continuation/delegate-dispatch.ts",
     symbol: "hedgeTimers",
     owner: "continuation delegate dispatcher",

@@ -1,14 +1,23 @@
 // Exercises heartbeat wake coalescing, retries, and skip handling.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clearContinuationWakeDispatching,
+  hasContinuationWakeDispatching,
+  markContinuationWakeDispatching,
+  resetContinuationStateForTests,
+} from "../auto-reply/continuation/state.js";
+import {
   HEARTBEAT_SKIP_CRON_IN_PROGRESS,
   HEARTBEAT_SKIP_LANES_BUSY,
   HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT,
+  type HeartbeatBatchWake,
   hasHeartbeatWakeHandler,
   hasPendingHeartbeatWake,
+  hasPendingHeartbeatWakeForSession,
   requestHeartbeat,
   requestHeartbeatNow,
   resetHeartbeatWakeStateForTests,
+  setHeartbeatBatchDispatchHook,
   setHeartbeatWakeHandler,
 } from "./heartbeat-wake.js";
 
@@ -467,5 +476,138 @@ describe("heartbeat-wake", () => {
         sessionKey: "agent:main:forum:group:-1001",
       },
     ]);
+  });
+
+  it("reports a pending heartbeat wake targeting a specific session (#952)", () => {
+    vi.useFakeTimers();
+    setHeartbeatWakeHandler(vi.fn().mockResolvedValue({ status: "skipped", reason: "disabled" }));
+
+    const childSessionKey = "agent:main:subagent:child";
+    expect(hasPendingHeartbeatWakeForSession(childSessionKey)).toBe(false);
+
+    requestHeartbeatNow({
+      reason: "continuation",
+      agentId: "main",
+      sessionKey: childSessionKey,
+      coalesceMs: 200,
+    });
+
+    expect(hasPendingHeartbeatWakeForSession(childSessionKey)).toBe(true);
+    // A different session's wake must not be confused for this child's.
+    expect(hasPendingHeartbeatWakeForSession("agent:main:subagent:other")).toBe(false);
+  });
+
+  it("a continuation wake handler's dispatching marker spans the pendingWakes.clear→active gap (#952)", async () => {
+    vi.useFakeTimers();
+    resetContinuationStateForTests();
+    const childSessionKey = "agent:main:subagent:child";
+
+    // Mirror heartbeat-runner's wakeHandler contract: set the dispatching marker
+    // as the FIRST synchronous statement (before any await) and clear in finally.
+    // The dispatcher invokes active(wakeOpts) synchronously right after
+    // pendingWakes.clear(), so the marker is already live by the time the handler
+    // body runs — exactly when a continuation-defer recheck poll could observe
+    // state. This drives the REAL dispatcher (not a manufactured overlap).
+    let gapSignals: { queued: boolean; dispatching: boolean } | undefined;
+    setHeartbeatWakeHandler(async (opts) => {
+      const key = opts.sessionKey ?? "";
+      markContinuationWakeDispatching(key);
+      try {
+        await Promise.resolve();
+        // pendingWakes was already cleared by the dispatcher, yet the marker
+        // keeps the continuation pending — closing the all-false race window.
+        gapSignals = {
+          queued: hasPendingHeartbeatWakeForSession(childSessionKey),
+          dispatching: hasContinuationWakeDispatching(childSessionKey),
+        };
+        return { status: "ran", durationMs: 0 };
+      } finally {
+        clearContinuationWakeDispatching(key);
+      }
+    });
+
+    requestHeartbeatNow({
+      reason: "continuation",
+      agentId: "main",
+      sessionKey: childSessionKey,
+      coalesceMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(gapSignals).toEqual({ queued: false, dispatching: true });
+    // The marker is released once the handler returns.
+    expect(hasContinuationWakeDispatching(childSessionKey)).toBe(false);
+    resetContinuationStateForTests();
+  });
+
+  it("releases batch-marked continuation marks for wakes whose handler never runs when an earlier wake throws (#952)", async () => {
+    vi.useFakeTimers();
+    resetContinuationStateForTests();
+    const firstSessionKey = "agent:main:subagent:first";
+    const continuationSessionKey = "agent:main:subagent:second";
+
+    // Register the batch-dispatch hook exactly as heartbeat-runner does: mark
+    // every continuation wake at dequeue, and return a release that clears marks
+    // for wakes the batch loop never reached. The dispatcher calls this release
+    // in its finally with the wakes whose handler ran.
+    setHeartbeatBatchDispatchHook((batch) => {
+      const marked: Array<{ wake: HeartbeatBatchWake; sessionKey: string }> = [];
+      for (const batchWake of batch) {
+        if (batchWake.reason !== "continuation") {
+          continue;
+        }
+        const sessionKey = batchWake.sessionKey ?? "";
+        if (!sessionKey) {
+          continue;
+        }
+        markContinuationWakeDispatching(sessionKey);
+        marked.push({ wake: batchWake, sessionKey });
+      }
+      return (handled) => {
+        for (const entry of marked) {
+          if (!handled.has(entry.wake)) {
+            clearContinuationWakeDispatching(entry.sessionKey);
+          }
+        }
+      };
+    });
+
+    // The first wake's handler rejects → the dispatcher's catch re-queues the
+    // batch and the position-2 continuation wake's handler is never invoked this
+    // round, so its mark cannot be cleared by a handler finally.
+    let markerWhileFirstHandlerRan: boolean | undefined;
+    setHeartbeatWakeHandler(async (opts) => {
+      if (opts.sessionKey === firstSessionKey) {
+        markerWhileFirstHandlerRan = hasContinuationWakeDispatching(continuationSessionKey);
+        throw new Error("boom");
+      }
+      return { status: "ran", durationMs: 0 };
+    });
+
+    requestHeartbeat({
+      source: "manual",
+      intent: "manual",
+      reason: "manual",
+      agentId: "main",
+      sessionKey: firstSessionKey,
+      coalesceMs: 0,
+    });
+    requestHeartbeat({
+      source: "other",
+      intent: "immediate",
+      reason: "continuation",
+      agentId: "main",
+      sessionKey: continuationSessionKey,
+      coalesceMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(1);
+
+    // The continuation wake was marked at dequeue (live while the first handler
+    // ran), and although its own handler never ran, the per-batch release cleared
+    // it — no leaked marker pinning the child session for the leak-guard window.
+    expect(markerWhileFirstHandlerRan).toBe(true);
+    expect(hasContinuationWakeDispatching(continuationSessionKey)).toBe(false);
+
+    resetContinuationStateForTests();
   });
 });

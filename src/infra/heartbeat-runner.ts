@@ -25,6 +25,10 @@ import { resolveAgentHarnessPolicy } from "../agents/harness/policy.js";
 import { resolveModelRefFromString, type ModelRef } from "../agents/model-selection.js";
 import { resolvePersistedSessionRuntimeId } from "../agents/session-runtime-compat.js";
 import { DEFAULT_HEARTBEAT_FILENAME } from "../agents/workspace.js";
+import {
+  clearContinuationWakeDispatching,
+  markContinuationWakeDispatching,
+} from "../auto-reply/continuation/state.js";
 import { resolveHeartbeatReplyPayload } from "../auto-reply/heartbeat-reply-payload.js";
 import {
   getHeartbeatToolNotificationText,
@@ -128,6 +132,7 @@ import {
   HEARTBEAT_SKIP_CRON_IN_PROGRESS,
   HEARTBEAT_SKIP_LANES_BUSY,
   HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT,
+  type HeartbeatBatchWake,
   type HeartbeatRunResult,
   type HeartbeatWakeHandler,
   type HeartbeatWakeIntent,
@@ -135,6 +140,7 @@ import {
   type HeartbeatWakeSource,
   isRetryableHeartbeatBusySkipReason,
   requestHeartbeat,
+  setHeartbeatBatchDispatchHook,
   setHeartbeatsEnabled,
   setHeartbeatWakeHandler,
 } from "./heartbeat-wake.js";
@@ -2623,17 +2629,69 @@ export function startHeartbeatRunner(opts: {
     }
   };
 
-  const wakeHandler: HeartbeatWakeHandler = async (params: HeartbeatWakeRequest) =>
-    run({
-      reason: params.reason,
-      agentId: params.agentId,
-      sessionKey: params.sessionKey,
-      parentRunId: params.parentRunId,
-      heartbeat: params.heartbeat,
-      source: params.source,
-      intent: params.intent,
-    });
+  const wakeHandler: HeartbeatWakeHandler = async (params: HeartbeatWakeRequest) => {
+    // The batch-dispatch hook (registered below) marks this continuation wake
+    // synchronously when the dispatcher dequeues the coalesced batch — before
+    // this handler runs — so even a position >= 2 wake is already pending while
+    // earlier wakes' turns await. Here we only RELEASE this wake's marker once
+    // its own turn finishes; the hook's per-batch release covers a wake whose
+    // handler never ran (an earlier wake threw). Keyed by the wake's target
+    // session — the same forced/routed child session key the cleanup predicate
+    // queries via `entry.childSessionKey`. If this turn arms hop N+1's
+    // continue_work timer, `workWakeTimerArmed` flips true before we release →
+    // continuous coverage. Fix #952.
+    const dispatchingSessionKey = isContinuationHeartbeatWakeReason(params.reason ?? "")
+      ? normalizeOptionalString(params.sessionKey)
+      : undefined;
+    try {
+      return await run({
+        reason: params.reason,
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        parentRunId: params.parentRunId,
+        heartbeat: params.heartbeat,
+        source: params.source,
+        intent: params.intent,
+      });
+    } finally {
+      if (dispatchingSessionKey) {
+        clearContinuationWakeDispatching(dispatchingSessionKey);
+      }
+    }
+  };
   const disposeWakeHandler = setHeartbeatWakeHandler(wakeHandler);
+  // Mark EVERY continuation wake in a coalesced batch the instant the dispatcher
+  // dequeues it (before any handler runs), so a continuation wake at batch
+  // position >= 2 — whose handler only runs after earlier wakes' multi-second
+  // turns await — is never momentarily all-false to a subagent-cleanup recheck.
+  // Each marked wake is released by its own handler's finally above; the returned
+  // release clears any wake whose handler never ran (an earlier wake threw).
+  // Balanced: one mark at dequeue, one clear per continuation wake. Fix #952.
+  const disposeBatchDispatchHook = setHeartbeatBatchDispatchHook((batch) => {
+    const marked: Array<{ wake: HeartbeatBatchWake; sessionKey: string }> = [];
+    for (const wake of batch) {
+      if (!isContinuationHeartbeatWakeReason(wake.reason)) {
+        continue;
+      }
+      const sessionKey = normalizeOptionalString(wake.sessionKey);
+      if (!sessionKey) {
+        continue;
+      }
+      markContinuationWakeDispatching(sessionKey);
+      marked.push({ wake, sessionKey });
+    }
+    // Always hand back the release (no-op over an empty list when nothing was
+    // marked). The dispatcher calls it in finally with the wakes it handed off;
+    // handlers that ran already cleared their own mark, so only wakes the batch
+    // loop never reached are released here.
+    return (handled) => {
+      for (const entry of marked) {
+        if (!handled.has(entry.wake)) {
+          clearContinuationWakeDispatching(entry.sessionKey);
+        }
+      }
+    };
+  });
   updateConfig(state.cfg);
 
   const cleanup = () => {
@@ -2642,6 +2700,7 @@ export function startHeartbeatRunner(opts: {
     }
     state.stopped = true;
     disposeWakeHandler();
+    disposeBatchDispatchHook();
     if (state.timer) {
       clearTimeout(state.timer);
     }

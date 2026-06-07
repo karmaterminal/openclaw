@@ -11,10 +11,14 @@ vi.mock("./delegate-store.js", () => ({
 }));
 
 import {
+  clearContinuationWakeDispatching,
   clearTrackedContinuationTimers,
+  hasContinuationWakeDispatching,
   hasDelegatePending,
   hasLiveContinuationTimerRefs,
+  hasLiveContinuationWorkWakeTimerRefs,
   loadContinuationChainState,
+  markContinuationWakeDispatching,
   persistContinuationChainState,
   registerContinuationTimerHandle,
   releaseContinuationTimerRef,
@@ -159,6 +163,69 @@ describe("continuation timer state", () => {
 
     await vi.advanceTimersByTimeAsync(0);
     expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
+  });
+
+  it("tracks work-wake refs separately from delegate refs (#952)", () => {
+    const sessionKey = "typed-refs";
+    const delegateHandle = setTimeout(() => undefined, 1_000);
+
+    // A delegate-hedge timer must NOT register as a continue_work work-wake ref:
+    // cleanup only defers for same-session continue_work, not delegate hedges.
+    retainContinuationTimerRef(sessionKey);
+    registerContinuationTimerHandle(sessionKey, delegateHandle);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
+    expect(hasLiveContinuationWorkWakeTimerRefs(sessionKey)).toBe(false);
+
+    const workWakeHandle = setTimeout(() => undefined, 1_000);
+    retainContinuationTimerRef(sessionKey);
+    registerContinuationTimerHandle(sessionKey, workWakeHandle, "work-wake");
+    expect(hasLiveContinuationWorkWakeTimerRefs(sessionKey)).toBe(true);
+
+    // Releasing the work-wake handle clears the typed signal while the delegate
+    // ref remains on the shared tracker.
+    expect(unregisterContinuationTimerHandle(sessionKey, workWakeHandle)).toBe(true);
+    expect(hasLiveContinuationWorkWakeTimerRefs(sessionKey)).toBe(false);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
+
+    expect(unregisterContinuationTimerHandle(sessionKey, delegateHandle)).toBe(true);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
+    clearTimeout(delegateHandle);
+    clearTimeout(workWakeHandle);
+  });
+
+  it("ref-counts the continuation wake dispatching marker (#952)", () => {
+    const sessionKey = "agent:main:subagent:child";
+    expect(hasContinuationWakeDispatching(sessionKey)).toBe(false);
+
+    // Overlapping dispatch (two handlers for the same child in one batch) must
+    // not let the first finally clear the marker out from under the second.
+    markContinuationWakeDispatching(sessionKey);
+    markContinuationWakeDispatching(sessionKey);
+    expect(hasContinuationWakeDispatching(sessionKey)).toBe(true);
+
+    clearContinuationWakeDispatching(sessionKey);
+    expect(hasContinuationWakeDispatching(sessionKey)).toBe(true);
+
+    clearContinuationWakeDispatching(sessionKey);
+    expect(hasContinuationWakeDispatching(sessionKey)).toBe(false);
+
+    // Over-release is a no-op (stays cleared, never goes negative).
+    clearContinuationWakeDispatching(sessionKey);
+    expect(hasContinuationWakeDispatching(sessionKey)).toBe(false);
+  });
+
+  it("drops the dispatching marker on explicit session reset (#952)", () => {
+    const sessionKey = "agent:main:subagent:child";
+    markContinuationWakeDispatching(sessionKey);
+    expect(hasContinuationWakeDispatching(sessionKey)).toBe(true);
+
+    // /new, /reset abandons the chain — the marker must not pin the new session.
+    clearTrackedContinuationTimers(sessionKey);
+    expect(hasContinuationWakeDispatching(sessionKey)).toBe(false);
+
+    // A late finally from the in-flight handler is a harmless no-op decrement.
+    clearContinuationWakeDispatching(sessionKey);
+    expect(hasContinuationWakeDispatching(sessionKey)).toBe(false);
   });
 });
 

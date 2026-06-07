@@ -1005,7 +1005,7 @@ async function scheduleSpawnInitContinueWorkWake(params: {
       unregisterContinuationTimerHandle(sessionKey, timerHandle);
     }
   }, clampedDelay);
-  registerContinuationTimerHandle(sessionKey, timerHandle);
+  registerContinuationTimerHandle(sessionKey, timerHandle, "work-wake");
   timerHandle.unref();
 }
 

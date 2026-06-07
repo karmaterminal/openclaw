@@ -2907,7 +2907,7 @@ export async function runReplyAgent(replyParams: {
                 unregisterContinuationTimerHandle(sessionKey, timerHandle);
               }
             }, clampedDelay);
-            registerContinuationTimerHandle(sessionKey, timerHandle);
+            registerContinuationTimerHandle(sessionKey, timerHandle, "work-wake");
             timerHandle.unref();
           }
         }

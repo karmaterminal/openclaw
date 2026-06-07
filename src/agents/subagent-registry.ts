@@ -3,6 +3,12 @@
  *
  * Owns registration, lifecycle, delivery retry, steering, orphan recovery, persistence, and cleanup for child runs.
  */
+import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
+import {
+  hasContinuationWakeDispatching,
+  hasLiveContinuationWorkWakeTimerRefs,
+} from "../auto-reply/continuation/state.js";
+import { replyRunRegistry } from "../auto-reply/reply/reply-run-registry.js";
 import type { cleanupBrowserSessionsForLifecycleEnd } from "../browser-lifecycle-cleanup.js";
 import { getRuntimeConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -10,6 +16,7 @@ import type { ResolveContextEngineOptions } from "../context-engine/registry.js"
 import type { ContextEngine, SubagentEndReason } from "../context-engine/types.js";
 import { callGateway } from "../gateway/call.js";
 import { getAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
+import { hasPendingHeartbeatWakeForSession } from "../infra/heartbeat-wake.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { formatBlockedLivenessError, isBlockedLivenessState } from "../shared/agent-liveness.js";
 import { createLazyImportLoader, createLazyPromiseLoader } from "../shared/lazy-promise.js";
@@ -40,6 +47,7 @@ import {
   SUBAGENT_ENDED_REASON_KILLED,
   type SubagentLifecycleEndedReason,
 } from "./subagent-lifecycle-events.js";
+import { buildContinuationCleanupDeferralResolver } from "./subagent-registry-cleanup.js";
 import {
   emitSubagentEndedHookOnce,
   resolveLifecycleOutcomeFromRunOutcome,
@@ -208,6 +216,27 @@ let restoreAttempted = false;
 const ORPHAN_RECOVERY_DEBOUNCE_MS = 1_000;
 let lastOrphanRecoveryScheduleAt = 0;
 const SUBAGENT_ANNOUNCE_TIMEOUT_MS = 120_000;
+// How often to re-check a continuation-deferred subagent for cleanup. The chain
+// end (last hop arming no new wake) has no completion event for the deferred
+// run, so cleanup polls until the continuation signals clear. Fix #952.
+const CONTINUATION_CLEANUP_RECHECK_MS = 5_000;
+// Leak guard buffer added on top of the configured continuation maxDelayMs: if a
+// continue_work timer ref is somehow stuck (no active hop, no pending wake, no
+// progress) past one max-delay window plus this buffer, give up retaining the
+// session so a leaked ref can't pin it forever. Fix #952.
+const CONTINUATION_RETENTION_BUFFER_MS = 60_000;
+
+// Composed once: the predicate sources are process-global singletons, and the
+// closure defers all reads to cleanup time (safe across bootstrap cycles).
+const resolveContinuationCleanupDeferral = buildContinuationCleanupDeferralResolver({
+  hasLiveWorkWakeTimer: (sessionKey) => hasLiveContinuationWorkWakeTimerRefs(sessionKey),
+  hasPendingHeartbeatWake: (sessionKey) => hasPendingHeartbeatWakeForSession(sessionKey),
+  isReplyRunActive: (sessionKey) => replyRunRegistry.isActive(sessionKey),
+  hasContinuationWakeDispatching: (sessionKey) => hasContinuationWakeDispatching(sessionKey),
+  resolveRetentionHardExpiryMs: () =>
+    resolveContinuationRuntimeConfig().maxDelayMs + CONTINUATION_RETENTION_BUFFER_MS,
+  recheckDelayMs: CONTINUATION_CLEANUP_RECHECK_MS,
+});
 /**
  * Embedded runs can emit transient lifecycle `error` events while provider/model
  * retry is still in progress. Defer terminal error cleanup briefly so a
@@ -601,6 +630,7 @@ const subagentLifecycleController = createSubagentRegistryLifecycleController({
   cleanupBrowserSessionsForLifecycleEnd: (args) =>
     subagentRegistryDeps.cleanupBrowserSessionsForLifecycleEnd(args),
   runSubagentAnnounceFlow: (params) => subagentRegistryDeps.runSubagentAnnounceFlow(params),
+  resolveContinuationCleanupDeferral,
   warn: (message, meta) => log.warn(message, meta),
 });
 

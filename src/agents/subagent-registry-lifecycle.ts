@@ -42,6 +42,7 @@ import {
   type SubagentLifecycleEndedReason,
 } from "./subagent-lifecycle-events.js";
 import {
+  type ContinuationCleanupDeferralResolver,
   resolveCleanupCompletionReason,
   resolveDeferredCleanupDecision,
 } from "./subagent-registry-cleanup.js";
@@ -146,9 +147,21 @@ export function createSubagentRegistryLifecycleController(params: {
   captureSubagentCompletionReply: CaptureSubagentCompletionReply;
   cleanupBrowserSessionsForLifecycleEnd?: typeof cleanupBrowserSessionsForLifecycleEnd;
   runSubagentAnnounceFlow: RunSubagentAnnounceFlow;
+  /**
+   * Returns a `defer-continuation` decision while a same-session `continue_work`
+   * continuation is still pending for the child, otherwise `undefined` to clean
+   * up normally. Optional so tests/non-continuation callers default to no
+   * deferral. Fix #952.
+   */
+  resolveContinuationCleanupDeferral?: ContinuationCleanupDeferralResolver;
   warn(message: string, meta?: Record<string, unknown>): void;
 }) {
   const scheduledResumeTimers = new Set<ReturnType<typeof setTimeout>>();
+  // Per-run recheck timers for continuation-deferred cleanup. Keyed by runId so
+  // a fresh defer replaces (rather than stacks) the pending recheck. Fix #952.
+  const continuationDeferTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const resolveContinuationDeferral: ContinuationCleanupDeferralResolver =
+    params.resolveContinuationCleanupDeferral ?? (() => undefined);
 
   const scheduleResumeSubagentRun = (runId: string, entry: SubagentRunRecord, delayMs: number) => {
     const timer = setTimeout(() => {
@@ -167,6 +180,37 @@ export function createSubagentRegistryLifecycleController(params: {
       clearTimeout(timer);
     }
     scheduledResumeTimers.clear();
+    for (const timer of continuationDeferTimers.values()) {
+      clearTimeout(timer);
+    }
+    continuationDeferTimers.clear();
+  };
+
+  const clearContinuationDeferTimer = (runId: string) => {
+    const timer = continuationDeferTimers.get(runId);
+    if (timer) {
+      clearTimeout(timer);
+      continuationDeferTimers.delete(runId);
+    }
+  };
+
+  // Re-attempt cleanup after a delay while a continuation is still pending.
+  // Replaces any existing recheck for the run so deferrals can't stack timers.
+  const scheduleContinuationDeferRecheck = (
+    runId: string,
+    entry: SubagentRunRecord,
+    delayMs: number,
+  ) => {
+    clearContinuationDeferTimer(runId);
+    const timer = setTimeout(() => {
+      continuationDeferTimers.delete(runId);
+      if (params.runs.get(runId) !== entry || entry.cleanupCompletedAt) {
+        return;
+      }
+      startSubagentAnnounceCleanupFlow(runId, entry);
+    }, delayMs);
+    timer.unref?.();
+    continuationDeferTimers.set(runId, timer);
   };
 
   const maskRunId = (runId: string): string => {
@@ -950,6 +994,12 @@ export function createSubagentRegistryLifecycleController(params: {
       return;
     }
 
+    if (deferredDecision.kind !== "retry") {
+      // `defer-continuation` is produced by the start-flow continuation gate,
+      // never by `resolveDeferredCleanupDecision`; this guard keeps the retry
+      // tail's narrowing exhaustive over the shared decision union. Fix #952.
+      return;
+    }
     markPendingFinalDelivery({
       entry,
       error: didAnnounce ? undefined : "announce deferred or direct delivery failed",
@@ -964,6 +1014,22 @@ export function createSubagentRegistryLifecycleController(params: {
   };
 
   const startSubagentAnnounceCleanupFlow = (runId: string, entry: SubagentRunRecord): boolean => {
+    // Gate BEFORE the announce/delete/didAnnounce fast paths: while a
+    // same-session continue_work continuation is still pending for this child,
+    // tearing the run down now would delete the session store entry that the
+    // continuation wake re-enters as a heartbeat turn (stranding hops 2+).
+    // Keep the run record AND its session alive, then re-check until the chain
+    // settles (or the leak-guard expiry). The deferred announce/cleanup runs
+    // once the chain ends, by which point `refreshFrozenResultFromSession` has
+    // already folded the latest hop's reply into the frozen result. Fix #952.
+    if (!entry.cleanupCompletedAt && !entry.cleanupHandled) {
+      const deferral = resolveContinuationDeferral(entry, Date.now());
+      if (deferral?.kind === "defer-continuation") {
+        scheduleContinuationDeferRecheck(runId, entry, deferral.delayMs);
+        return true;
+      }
+    }
+    clearContinuationDeferTimer(runId);
     if (typeof entry.delivery?.announcedAt === "number" || entry.delivery?.status === "delivered") {
       if (!beginSubagentCleanup(runId)) {
         return false;

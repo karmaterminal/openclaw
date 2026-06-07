@@ -61,6 +61,33 @@ export type HeartbeatWakeRequest = {
 
 export type HeartbeatWakeHandler = (opts: HeartbeatWakeRequest) => Promise<HeartbeatRunResult>;
 
+/**
+ * Minimal view of one dequeued wake handed to the batch-dispatch hook. The hook
+ * sees EVERY wake in a coalesced batch the instant `pendingWakes` is cleared,
+ * before any handler runs, so it can synchronously mark cross-cutting per-wake
+ * state (continuation-dispatching) for the whole batch at once. This closes the
+ * window for a wake at batch position >= 2 whose own handler only runs after
+ * earlier wakes' multi-second turns await. Fix #952.
+ */
+export type HeartbeatBatchWake = {
+  reason: string;
+  sessionKey?: string;
+};
+
+/**
+ * Returned by the batch-dispatch hook and called by the dispatcher in its
+ * finally with the wakes whose handler was actually invoked (each such handler
+ * owns clearing its own mark). The hook releases marks for any wake it marked
+ * but whose handler never ran — e.g. an earlier wake rejected and broke the
+ * batch loop — so mark/clear stays balanced without leaning on the cleanup
+ * leak-guard. Fix #952.
+ */
+export type HeartbeatBatchDispatchRelease = (handled: ReadonlySet<HeartbeatBatchWake>) => void;
+
+export type HeartbeatBatchDispatchHook = (
+  batch: ReadonlyArray<HeartbeatBatchWake>,
+) => HeartbeatBatchDispatchRelease | void;
+
 let heartbeatsEnabled = true;
 
 export function setHeartbeatsEnabled(enabled: boolean) {
@@ -86,6 +113,7 @@ type PendingWakeReason = {
 
 let handler: HeartbeatWakeHandler | null = null;
 let handlerGeneration = 0;
+let batchDispatchHook: HeartbeatBatchDispatchHook | null = null;
 const pendingWakes = new Map<string, PendingWakeReason>();
 let scheduled = false;
 let running = false;
@@ -233,7 +261,18 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
 
       const pendingBatch = Array.from(pendingWakes.values());
       pendingWakes.clear();
+      // Mark cross-cutting per-wake state for the WHOLE batch synchronously here
+      // — the same tick `pendingWakes.clear()` drops the queued-wake signal — so
+      // a continuation wake at batch position >= 2 (whose handler only runs after
+      // earlier wakes' multi-second turns await) is never momentarily all-false
+      // to a subagent-cleanup recheck. Marks are released per-handler; the
+      // returned release covers wakes never handled (an earlier wake threw and
+      // broke the loop). Fix #952.
+      const releaseBatchDispatch = batchDispatchHook?.(pendingBatch);
       running = true;
+      // Wakes handed off to a handler — that handler owns clearing its own mark,
+      // so the batch release must skip them and only clear un-run wakes. Fix #952.
+      const handledWakes = new Set<PendingWakeReason>();
       try {
         for (const pendingWake of pendingBatch) {
           const wakeOpts = {
@@ -245,6 +284,7 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
             ...(pendingWake.parentRunId ? { parentRunId: pendingWake.parentRunId } : {}),
             ...(pendingWake.heartbeat ? { heartbeat: pendingWake.heartbeat } : {}),
           };
+          handledWakes.add(pendingWake);
           const res = await active(wakeOpts);
           if (res.status === "skipped" && isRetryableHeartbeatBusySkipReason(res.reason)) {
             // The target runtime is busy; retry this wake target soon.
@@ -276,6 +316,10 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
         schedule(DEFAULT_RETRY_MS, "retry");
       } finally {
         running = false;
+        // Clear marks for any batched wake whose handler never ran (an earlier
+        // wake rejected and broke the loop); their retry re-marks next round.
+        // Fix #952.
+        releaseBatchDispatch?.(handledWakes);
         if (pendingWakes.size > 0 || scheduled) {
           schedule(delay, "normal");
         }
@@ -324,6 +368,24 @@ export function setHeartbeatWakeHandler(next: HeartbeatWakeHandler | null): () =
     }
     handlerGeneration += 1;
     handler = null;
+  };
+}
+
+/**
+ * Register (or clear) the batch-dispatch hook invoked synchronously the instant
+ * a coalesced wake batch is dequeued (right after `pendingWakes.clear()`, before
+ * any handler runs). Lets a higher layer mark cross-cutting per-wake state for
+ * EVERY wake in the batch at once, closing the position >= 2 window (Fix #952).
+ * Returns a disposer; like `setHeartbeatWakeHandler`, a stale disposer is a
+ * no-op so an old runner's cleanup cannot clear a newer runner's hook. Default
+ * null = no-op.
+ */
+export function setHeartbeatBatchDispatchHook(next: HeartbeatBatchDispatchHook | null): () => void {
+  batchDispatchHook = next;
+  return () => {
+    if (batchDispatchHook === next) {
+      batchDispatchHook = null;
+    }
   };
 }
 
@@ -379,6 +441,25 @@ export function hasPendingHeartbeatWake() {
   return pendingWakes.size > 0 || Boolean(timer) || scheduled;
 }
 
+/**
+ * True when a heartbeat wake targeting a specific session is still queued
+ * (coalescing, not yet dispatched). Used by subagent cleanup to detect a
+ * `continue_work` continuation wake that has fired its timer but whose
+ * heartbeat turn has not run yet, so teardown can be deferred. Fix #952.
+ */
+export function hasPendingHeartbeatWakeForSession(sessionKey: string): boolean {
+  const normalized = normalizeWakeTarget(sessionKey);
+  if (!normalized) {
+    return false;
+  }
+  for (const pending of pendingWakes.values()) {
+    if (pending.sessionKey === normalized) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function resetHeartbeatWakeStateForTests() {
   if (timer) {
     clearTimeout(timer);
@@ -391,4 +472,5 @@ export function resetHeartbeatWakeStateForTests() {
   running = false;
   handlerGeneration += 1;
   handler = null;
+  batchDispatchHook = null;
 }
