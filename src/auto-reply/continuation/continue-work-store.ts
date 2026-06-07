@@ -12,8 +12,8 @@
  * subagent cleanup a durable "a same-session continuation is still pending"
  * signal that keeps the child session alive until the elected turn has run.
  * Mirrors the `continuation_delegate` store, but the dispatch target is RE-ENTRY
- * of the SAME session (driven directly through `runHeartbeatOnce` at the elected
- * offset, decoupled from the periodic heartbeat scheduler — see
+ * of the SAME session (driven directly through the universal per-session turn
+ * executor at the elected offset, decoupled from the heartbeat substrate — see
  * continue-work-dispatch.ts), NOT a new `spawnSubagentDirect` child.
  *
  * Lifecycle is intentionally QUEUED-ONLY (no transient "claimed/running" state

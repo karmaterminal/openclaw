@@ -17,8 +17,7 @@ vi.mock("../../logging/subsystem.js", () => {
   return { createSubsystemLogger: () => logger };
 });
 
-// In-memory TaskFlow registry so the real store survives a "restart" (the map
-// stands in for durable SQLite rows that persist across the process boundary).
+// In-memory TaskFlow registry so the real store survives a "restart".
 type MockFlow = {
   flowId: string;
   syncMode: "managed";
@@ -73,17 +72,23 @@ vi.mock("../../tasks/task-flow-runtime-internal.js", () => ({
   }),
 }));
 
-const heartbeatMocks = vi.hoisted(() => ({
-  runHeartbeatOnce: vi.fn(
-    async (): Promise<
-      | { status: "ran"; durationMs: number }
-      | { status: "skipped"; reason: string }
-      | { status: "failed"; reason: string }
-    > => ({ status: "ran", durationMs: 0 }),
+// The FULLY-DIRECT executor: dispatch must drive getReplyFromConfig, never
+// runHeartbeatOnce / requestHeartbeatNow. Mock the universal executor.
+const replyMocks = vi.hoisted(() => ({
+  getReplyFromConfig: vi.fn(
+    async (_ctx: unknown, _opts: unknown): Promise<{ text: string } | undefined> => ({
+      text: "hop ran",
+    }),
   ),
 }));
-vi.mock("../../infra/heartbeat-runner.js", () => ({
-  runHeartbeatOnce: heartbeatMocks.runHeartbeatOnce,
+vi.mock("../reply/get-reply.js", () => ({
+  getReplyFromConfig: replyMocks.getReplyFromConfig,
+}));
+
+// Concurrency guard is the SESSION's own active reply run only.
+const replyRunMocks = vi.hoisted(() => ({ isActive: vi.fn((_key: string) => false) }));
+vi.mock("../reply/reply-run-registry.js", () => ({
+  replyRunRegistry: { isActive: replyRunMocks.isActive },
 }));
 
 const systemEventMocks = vi.hoisted(() => ({
@@ -112,7 +117,6 @@ const T0 = 1_700_000_000_000;
 function statusOf(sessionKey: string): string | undefined {
   return [...mockFlows.values()].find((f) => f.ownerKey === sessionKey)?.status;
 }
-
 function flowCount(sessionKey: string): number {
   return [...mockFlows.values()].filter((f) => f.ownerKey === sessionKey).length;
 }
@@ -121,8 +125,10 @@ beforeEach(() => {
   mockFlows.clear();
   flowIdCounter = 0;
   configMocks.enabled = true;
-  heartbeatMocks.runHeartbeatOnce.mockReset();
-  heartbeatMocks.runHeartbeatOnce.mockResolvedValue({ status: "ran", durationMs: 0 });
+  replyMocks.getReplyFromConfig.mockReset();
+  replyMocks.getReplyFromConfig.mockResolvedValue({ text: "hop ran" });
+  replyRunMocks.isActive.mockReset();
+  replyRunMocks.isActive.mockReturnValue(false);
   systemEventMocks.enqueueSystemEvent.mockClear();
   vi.useFakeTimers();
   vi.setSystemTime(T0);
@@ -132,66 +138,97 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("dispatchContinuationWork", () => {
-  it("drives the turn directly (not requestHeartbeatNow), injects the wake event, finalizes on ran", async () => {
+describe("dispatchContinuationWork (fully-direct, off heartbeat substrate #952)", () => {
+  it("drives getReplyFromConfig for the subagent, injects the wake event, finalizes on completion", async () => {
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0, reason: "keep going" });
     const fired = dispatchContinuationWork({ sessionKey: SESSION, parentRunId: "run-1" });
     expect(fired).toBe(1);
+
     // BLOCKING3: the [continuation:wake] context is injected at dispatch.
     expect(systemEventMocks.enqueueSystemEvent).toHaveBeenCalledTimes(1);
     const [wakeText, wakeOpts] = systemEventMocks.enqueueSystemEvent.mock.calls[0];
     expect(wakeText).toContain("[continuation:wake] Turn 2/200");
     expect(wakeText).toContain("Reason: keep going");
     expect(wakeOpts).toEqual({ sessionKey: SESSION, trusted: true });
-    // Drives the per-session executor directly with intent immediate.
-    expect(heartbeatMocks.runHeartbeatOnce).toHaveBeenCalledWith({
-      sessionKey: SESSION,
-      reason: "continuation",
-      intent: "immediate",
-      parentRunId: "run-1",
-    });
-    // On a successful turn the election is finalized (deleted).
+
     await vi.advanceTimersByTimeAsync(0);
+    // Drove the UNIVERSAL executor for the SUBAGENT session (not runHeartbeatOnce).
+    expect(replyMocks.getReplyFromConfig).toHaveBeenCalledTimes(1);
+    const [ctx, opts] = replyMocks.getReplyFromConfig.mock.calls[0] as [
+      { SessionKey?: string; Body?: string },
+      { continuationTrigger?: string; parentRunId?: string },
+    ];
+    expect(ctx.SessionKey).toBe(SESSION);
+    expect(opts.continuationTrigger).toBe("work-wake");
+    expect(opts.parentRunId).toBe("run-1");
+    // Finalized on completion.
+    expect(flowCount(SESSION)).toBe(0);
+  });
+
+  it("runs hop-2 even when the PARENT main lane is busy (no CommandLane gate — distinguishes the cut)", async () => {
+    // The fully-direct path has NO CommandLane.Main check; only the session's own
+    // reply run matters. A busy parent lane must NOT block hop-2.
+    replyRunMocks.isActive.mockImplementation((key: string) => key !== SESSION && false);
+    enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 });
+    dispatchContinuationWork({ sessionKey: SESSION });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(replyMocks.getReplyFromConfig).toHaveBeenCalledTimes(1);
     expect(flowCount(SESSION)).toBe(0);
   });
 
   it("does not drive when the election has not matured", () => {
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 60_000, electedAt: T0 });
     expect(dispatchContinuationWork({ sessionKey: SESSION })).toBe(0);
-    expect(heartbeatMocks.runHeartbeatOnce).not.toHaveBeenCalled();
-    expect(systemEventMocks.enqueueSystemEvent).not.toHaveBeenCalled();
+    expect(replyMocks.getReplyFromConfig).not.toHaveBeenCalled();
   });
 
-  it("is LOSSLESS across a busy retry: election stays queued until the turn runs (#952 BLOCKING2)", async () => {
-    heartbeatMocks.runHeartbeatOnce
-      .mockResolvedValueOnce({ status: "skipped", reason: "requests-in-flight" })
-      .mockResolvedValueOnce({ status: "ran", durationMs: 0 });
+  it("is LOSSLESS while the session's OWN run is active: election stays queued, retries, then runs", async () => {
+    replyRunMocks.isActive
+      .mockReturnValueOnce(true) // first drive: session busy with its own turn
+      .mockReturnValue(false); // retry: idle
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 });
 
     dispatchContinuationWork({ sessionKey: SESSION });
     await vi.advanceTimersByTimeAsync(0);
-    // Busy skip => election NOT consumed; it stays durably queued (restart-safe).
+    // Busy => not driven yet; election stays durably queued (restart-safe).
+    expect(replyMocks.getReplyFromConfig).not.toHaveBeenCalled();
     expect(statusOf(SESSION)).toBe("queued");
-    expect(flowCount(SESSION)).toBe(1);
 
-    // The retry fires and the turn runs; only now is the election finalized.
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(heartbeatMocks.runHeartbeatOnce).toHaveBeenCalledTimes(2);
+    expect(replyMocks.getReplyFromConfig).toHaveBeenCalledTimes(1);
     expect(flowCount(SESSION)).toBe(0);
   });
 
   it("keeps the election durably queued after the busy-retry budget (never silently lost)", async () => {
-    heartbeatMocks.runHeartbeatOnce.mockResolvedValue({
-      status: "skipped",
-      reason: "requests-in-flight",
-    });
+    replyRunMocks.isActive.mockReturnValue(true);
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 });
     dispatchContinuationWork({ sessionKey: SESSION });
-    // Exhaust the retry budget (30 x 2s) plus margin.
     await vi.advanceTimersByTimeAsync(2_000 * 35);
-    // Still queued => boot recovery will re-drive it; not silently dropped.
+    expect(replyMocks.getReplyFromConfig).not.toHaveBeenCalled();
     expect(statusOf(SESSION)).toBe("queued");
-    expect(flowCount(SESSION)).toBe(1);
+  });
+
+  it("retries on admission-skip (undefined result + session now active), not finalize", async () => {
+    // Drive #1: session idle at pre-check, but getReplyFromConfig returns
+    // undefined AND the session is now active => admission-skipped, not run.
+    // Drive #2: idle and runs.
+    replyRunMocks.isActive
+      .mockReturnValueOnce(false) // pre-check #1: idle -> drive
+      .mockReturnValueOnce(true) // post-call #1: active -> admission-skip
+      .mockReturnValue(false); // pre-check #2: idle -> drive + run
+    replyMocks.getReplyFromConfig
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue({ text: "hop ran" });
+    enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 });
+
+    dispatchContinuationWork({ sessionKey: SESSION });
+    await vi.advanceTimersByTimeAsync(0);
+    // Admission-skipped => NOT finalized; election stays durably queued.
+    expect(statusOf(SESSION)).toBe("queued");
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(replyMocks.getReplyFromConfig).toHaveBeenCalledTimes(2);
+    expect(flowCount(SESSION)).toBe(0);
   });
 });
 
@@ -200,10 +237,9 @@ describe("recoverPendingContinuationWork (restart durability, #952)", () => {
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 - 5_000 });
     const summary = recoverPendingContinuationWork({ now: T0 });
     expect(summary.dispatched).toBe(1);
-    expect(heartbeatMocks.runHeartbeatOnce).toHaveBeenCalledTimes(1);
-    // BLOCKING3: a recovered turn gets the [continuation:wake] context too.
     expect(systemEventMocks.enqueueSystemEvent).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(0);
+    expect(replyMocks.getReplyFromConfig).toHaveBeenCalledTimes(1);
     expect(flowCount(SESSION)).toBe(0);
   });
 
@@ -212,11 +248,11 @@ describe("recoverPendingContinuationWork (restart durability, #952)", () => {
     const summary = recoverPendingContinuationWork({ now: T0 });
     expect(summary.sessions).toBe(1);
     expect(summary.dispatched).toBe(0);
-    expect(heartbeatMocks.runHeartbeatOnce).not.toHaveBeenCalled();
-    expect(statusOf(SESSION)).toBe("queued");
+    expect(replyMocks.getReplyFromConfig).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(60 * 60_000);
-    expect(heartbeatMocks.runHeartbeatOnce).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(replyMocks.getReplyFromConfig).toHaveBeenCalledTimes(1);
   });
 
   it("honors the continuation deny-gate (disabled => no replay)", () => {
@@ -224,6 +260,6 @@ describe("recoverPendingContinuationWork (restart durability, #952)", () => {
     enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: T0 - 5_000 });
     const summary = recoverPendingContinuationWork({ now: T0 });
     expect(summary).toEqual({ sessions: 0, dispatched: 0 });
-    expect(heartbeatMocks.runHeartbeatOnce).not.toHaveBeenCalled();
+    expect(replyMocks.getReplyFromConfig).not.toHaveBeenCalled();
   });
 });

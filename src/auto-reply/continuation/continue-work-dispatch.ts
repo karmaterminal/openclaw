@@ -5,23 +5,26 @@
  * `continue_work` re-enters the SAME session for another turn. At the elected
  * offset it must drive that turn PROMPTLY (RFC §2.3/§3.1) — it must NOT wait for
  * the next periodic heartbeat tick (which on a quiet seat can be ~0 in 30 min =
- * "wait forever"). The precursor rang `requestHeartbeatNow()` (RFC §4.4's
- * heartbeat "parent doorbell"): that wake is serviced only by the periodic
- * heartbeat scheduler, whose handler drops a wake whose agent is not currently
- * scheduled (`run()` returns `disabled` when `state.agents` is empty). On a seat
- * with no/sparse heartbeat agents the subagent continuation wake was a silent
- * no-op and hop-2 never re-entered.
+ * "wait forever"), and it must NOT be silently dropped by any heartbeat gate.
  *
- * So dispatch drives the elected turn DIRECTLY through `runHeartbeatOnce` (the
- * per-session turn executor) — NEVER `requestHeartbeatNow`. The #746 routing
- * exemption keeps a subagent wake on its own session and the reply path runs a
- * `work-wake` continuation turn. Continuation re-entry is exempted from
- * `runHeartbeatOnce`'s heartbeat-eligibility / active-hours gates (it is an
- * explicit budgeted election, not a periodic heartbeat), and the per-agent
- * scheduler-deferral gate (`evaluateWakeDeferral`) lives in the bypassed `run()`
- * handler — so the drive is not gated by any heartbeat-enablement, active-hours,
- * or scheduler-cadence check. Remaining busy/lane skips are retryable and are
- * retried here (the session must not run two turns at once).
+ * Earlier attempts routed through the heartbeat substrate (`requestHeartbeatNow`
+ * then a de-gated `runHeartbeatOnce`). Both fail on real seats: the wake handler
+ * drops a wake whose agent is not scheduled (`state.agents` empty), and
+ * `runHeartbeatOnce` itself has ~13 silent `skipped` returns — heartbeat
+ * enablement, active-hours, AND cross-session lane gates like
+ * `if (getSize(CommandLane.Main) > 0)` that fire whenever the PARENT's main lane
+ * has anything queued. None of those belong to a subagent's elected turn.
+ *
+ * So dispatch drives the turn FULLY DIRECTLY through `getReplyFromConfig` — the
+ * universal per-session turn executor — NEVER `requestHeartbeatNow` and NEVER
+ * `runHeartbeatOnce`. We set `SessionKey` to the electing (subagent) session
+ * ourselves (no #746 routing needed) and run a `work-wake` continuation turn,
+ * bypassing the entire heartbeat skip-gate gauntlet. The only concurrency guard
+ * kept is the session's OWN active reply run (`replyRunRegistry.isActive`) — a
+ * session must not run two turns at once — which is retried here; the parent's
+ * lanes are irrelevant. `getReplyFromConfig` loads the session from the store by
+ * key, so the retain/cleanup gate (keeping `store[forced]` alive) stays a
+ * required companion.
  *
  * The durable `continuation_work` task is the persistence layer: it stays
  * `queued` (pinning the session via the cleanup gate) until the turn actually
@@ -31,10 +34,9 @@
  */
 
 import { formatErrorMessage } from "../../infra/errors.js";
-import { runHeartbeatOnce } from "../../infra/heartbeat-runner.js";
-import { isRetryableHeartbeatBusySkipReason } from "../../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { replyRunRegistry } from "../reply/reply-run-registry.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
 import {
   claimMaturedContinuationWork,
@@ -50,14 +52,20 @@ import {
 
 const log = createSubsystemLogger("continuation/continue-work-dispatch");
 
-// The re-drive retries only while the target session is transiently busy (an
-// active reply run or a busy lane at the elected instant). Bounded so a brief
-// busy window is absorbed (the election stays durably queued the whole time, so
-// a restart re-drives it), yet a persistently-busy session does not spin
-// forever: after the budget it stays durably queued for boot recovery, logged
-// loudly. ~60s covers a hop that started a hair before the elected instant.
+// The re-drive retries only while the SESSION'S OWN reply run is active at the
+// elected instant (not the parent's lanes — that cross-session coupling is
+// exactly what dropped hop-2 on a busy seat). Bounded so a brief busy window is
+// absorbed (the election stays durably queued the whole time, so a restart
+// re-drives it), yet a persistently-busy session does not spin forever: after
+// the budget it stays durably queued for boot recovery, logged loudly.
 const CONTINUATION_TURN_RETRY_MS = 2_000;
 const CONTINUATION_TURN_MAX_RETRIES = 30;
+
+// The re-entered turn's prompt body. The substantive "continue your work"
+// context arrives as the drained `[continuation:wake]` system event; this is the
+// turn's user-message slot.
+const CONTINUATION_TURN_BODY =
+  "Continue your work. You elected to take another turn — see the continuation wake note above.";
 
 function buildWakeEventText(hop: number, maxChainLength: number, reason?: string): string {
   return (
@@ -67,16 +75,19 @@ function buildWakeEventText(hop: number, maxChainLength: number, reason?: string
 }
 
 /**
- * Drive the elected continuation turn PROMPTLY for the session, decoupled from
- * the periodic heartbeat scheduler.
+ * Drive the elected continuation turn FULLY DIRECTLY through the universal
+ * per-session executor (`getReplyFromConfig`), bypassing the heartbeat
+ * substrate entirely — no `requestHeartbeatNow`, no `runHeartbeatOnce`, no
+ * heartbeat skip gates. `SessionKey` is the electing session, so the turn runs
+ * for it (loaded from `store[forced]`, kept alive by the cleanup gate).
  *
- * On a successful turn the election is deleted. A retryable busy skip (the
- * session is mid-turn or its lane is briefly busy at the elected instant)
- * re-drives after a short delay, bounded; the election stays durably queued
- * across retries so a restart re-drives it. After the retry budget the election
- * is LEFT queued (boot recovery re-drives — never silently lost), logged loudly.
- * A non-retryable skip / failure releases the election (loud give-up) so the
- * session can be torn down instead of pinning forever.
+ * Concurrency: the SESSION'S OWN active reply run is the only guard — a session
+ * must not run two turns at once — checked before driving and retried (bounded);
+ * the election stays durably queued across retries so a restart re-drives it.
+ * After the budget the election is LEFT queued for boot recovery (never silently
+ * lost), logged loudly. The turn completing (with or without visible output)
+ * finalizes the election; an unexpected throw releases it (loud) so the session
+ * is not pinned forever.
  */
 function driveContinuationTurn(params: {
   sessionKey: string;
@@ -86,50 +97,60 @@ function driveContinuationTurn(params: {
   attempt?: number;
 }): void {
   const attempt = params.attempt ?? 0;
-  void runHeartbeatOnce({
-    sessionKey: params.sessionKey,
-    reason: "continuation",
-    intent: "immediate",
-    ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
-  })
-    .then((result) => {
-      if (result.status === "ran") {
-        finalizeDispatchedContinuationWork(params.flowId);
-        return;
-      }
-      const retryable =
-        result.status === "skipped" && isRetryableHeartbeatBusySkipReason(result.reason);
-      if (retryable && attempt < CONTINUATION_TURN_MAX_RETRIES) {
-        log.info(
-          `[continuation:work-busy-retry] session=${params.sessionKey} flow=${params.flowId} attempt=${attempt} reason=${result.reason}`,
-        );
-        const retry = setTimeout(() => {
-          driveContinuationTurn({ ...params, attempt: attempt + 1 });
-        }, CONTINUATION_TURN_RETRY_MS);
-        retry.unref();
-        return;
-      }
-      if (retryable) {
-        // Persistently busy: leave the election durably queued so boot recovery
-        // re-drives it (never silently lost). Loud so a stuck session surfaces.
-        log.warn(
-          `[continuation:work-busy-exhausted] session=${params.sessionKey} flow=${params.flowId} attempts=${attempt} reason=${result.reason} (kept queued for recovery)`,
-        );
-        return;
-      }
-      // Non-retryable skip / failure: release the election so the session is not
-      // pinned forever. Loud — a continuation re-entry should not skip here.
-      log.warn(
-        `[continuation:work-drive-gaveup] session=${params.sessionKey} flow=${params.flowId} attempts=${attempt} status=${result.status} reason=${result.reason}`,
+  // Retry while the session is transiently busy with its OWN turn (never the
+  // parent's Main lane — the gate that killed hop-2 on a busy seat). The election
+  // stays durably queued the whole time, so a restart re-drives it; after the
+  // budget it stays queued for boot recovery (never silently lost). #952.
+  const retryWhileBusy = (why: string): void => {
+    if (attempt < CONTINUATION_TURN_MAX_RETRIES) {
+      log.info(
+        `[continuation:work-busy-retry] session=${params.sessionKey} flow=${params.flowId} attempt=${attempt} reason=${why}`,
       );
-      finalizeDispatchedContinuationWork(params.flowId);
-    })
-    .catch((err: unknown) => {
-      log.warn(
-        `[continuation:work-drive-error] session=${params.sessionKey} flow=${params.flowId} attempts=${attempt}: ${formatErrorMessage(err)}`,
-      );
-      finalizeDispatchedContinuationWork(params.flowId);
-    });
+      const retry = setTimeout(() => {
+        driveContinuationTurn({ ...params, attempt: attempt + 1 });
+      }, CONTINUATION_TURN_RETRY_MS);
+      retry.unref();
+      return;
+    }
+    log.warn(
+      `[continuation:work-busy-exhausted] session=${params.sessionKey} flow=${params.flowId} attempts=${attempt} reason=${why} (kept queued for recovery)`,
+    );
+  };
+
+  if (replyRunRegistry.isActive(params.sessionKey)) {
+    retryWhileBusy("self-run-active");
+    return;
+  }
+  void (async () => {
+    const { getReplyFromConfig } = await import("../reply/get-reply.js");
+    const result = await getReplyFromConfig(
+      {
+        SessionKey: params.sessionKey,
+        Body: CONTINUATION_TURN_BODY,
+        Provider: "heartbeat",
+      },
+      {
+        isHeartbeat: true,
+        continuationTrigger: "work-wake",
+        ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
+      },
+    );
+    // `getReplyFromConfig` returns undefined for admission-skip, no-reply, or
+    // error. Distinguish admission-skip (our drive was rejected because a turn
+    // is now active on this session) from a turn that ran with no visible
+    // output: only the former should retry — finalizing it would drop a due
+    // continuation. Any other completion means the turn ran -> finalize.
+    if (result === undefined && replyRunRegistry.isActive(params.sessionKey)) {
+      retryWhileBusy("admission-skip");
+      return;
+    }
+    finalizeDispatchedContinuationWork(params.flowId);
+  })().catch((err: unknown) => {
+    log.warn(
+      `[continuation:work-drive-error] session=${params.sessionKey} flow=${params.flowId} attempts=${attempt}: ${formatErrorMessage(err)}`,
+    );
+    finalizeDispatchedContinuationWork(params.flowId);
+  });
 }
 
 /**
