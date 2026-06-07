@@ -16,6 +16,14 @@ type DeferredCleanupDecision =
       delayMs: number;
     }
   | {
+      // Same-session continue_work continuation is still pending; keep the run
+      // record AND its session store entry alive so the wake can re-enter as a
+      // heartbeat turn. Distinct from `defer-descendants`, which drives
+      // descendant-wake machinery via `wakeOnDescendantSettle`. Fix #952.
+      kind: "defer-continuation";
+      delayMs: number;
+    }
+  | {
       kind: "give-up";
       reason: "retry-limit" | "expiry";
       retryCount?: number;
@@ -25,6 +33,42 @@ type DeferredCleanupDecision =
       retryCount: number;
       resumeDelayMs?: number;
     };
+
+/** A continuation-deferral decision: defer-with-recheck-delay or proceed. */
+export type ContinuationCleanupDeferralResolver = (
+  entry: SubagentRunRecord,
+  now: number,
+) => { kind: "defer-continuation"; delayMs: number } | undefined;
+
+/**
+ * Compose a continuation-deferral resolver for subagent cleanup.
+ *
+ * Cleanup must defer while a same-session `continue_work` continuation is still
+ * pending for the child, otherwise tearing the run down deletes the session the
+ * wake re-enters (the #952 hop-2 drop). The durable `continuation_work` store is
+ * the source of truth for "pending" — a queued election (possibly far-future)
+ * or a just-dispatched election within its handoff grace — so unlike the
+ * volatile-signal approach this needs no separate leak-guard expiry: retention
+ * is bounded by the task's own lifecycle (queued ≤ the clamped delay, running ≤
+ * the handoff grace). `isReplyRunActive` is the backstop for a hop whose turn
+ * outruns the grace. Kept as a builder (deps injected) so the live runtime
+ * queries stay out of this pure module and tests can stub them. Fix #952.
+ */
+export function buildContinuationCleanupDeferralResolver(deps: {
+  hasPendingContinuationWork: (sessionKey: string) => boolean;
+  isReplyRunActive: (sessionKey: string) => boolean;
+  recheckDelayMs: number;
+}): ContinuationCleanupDeferralResolver {
+  return (entry) => {
+    const pending =
+      deps.hasPendingContinuationWork(entry.childSessionKey) ||
+      deps.isReplyRunActive(entry.childSessionKey);
+    if (!pending) {
+      return undefined;
+    }
+    return { kind: "defer-continuation", delayMs: deps.recheckDelayMs };
+  };
+}
 
 /** Resolve the lifecycle ended reason used when cleaning up a subagent run. */
 export function resolveCleanupCompletionReason(

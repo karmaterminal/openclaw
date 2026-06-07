@@ -196,6 +196,29 @@ function recoverPendingContinuationDelegates(params: { log: GatewayRuntimeServic
   timer.unref?.();
 }
 
+function recoverPendingContinuationWork(params: { log: GatewayRuntimeServiceLogger }): void {
+  // continue_work re-entry is TaskFlow-backed: only un-dispatched (`queued`)
+  // elections survive a restart. Recovery dispatches/re-arms those and purges
+  // orphaned `running` tasks (a wake is not idempotent, so a dispatched election
+  // is never re-fired). Mirrors the delegate recovery delay/shape. Fix #952/#956.
+  const timer = setTimeout(() => {
+    void (async () => {
+      const { recoverPendingContinuationWork: recoverWork } =
+        await import("../auto-reply/continuation/continue-work-dispatch.js");
+      const logRecovery = params.log.child("continuation-work-recovery");
+      const summary = recoverWork({ log: (message) => logRecovery.info(message) });
+      if (summary.sessions > 0 || summary.dispatched > 0 || summary.purged > 0) {
+        logRecovery.info(
+          `replayed sessions=${summary.sessions} dispatched=${summary.dispatched} purged=${summary.purged}`,
+        );
+      }
+    })().catch((err: unknown) =>
+      params.log.error(`Continuation work recovery failed: ${String(err)}`),
+    );
+  }, 1_500);
+  timer.unref?.();
+}
+
 function startGatewayModelPricingRefreshOnDemand(params: {
   config: OpenClawConfig;
   pluginLookUpTable?: PluginMetadataRegistryView;
@@ -265,6 +288,9 @@ export function activateGatewayScheduledServices(params: {
     maxEnqueuedAt: params.sessionDeliveryRecoveryMaxEnqueuedAt,
   });
   recoverPendingContinuationDelegates({
+    log: params.log,
+  });
+  recoverPendingContinuationWork({
     log: params.log,
   });
   const stopModelPricingRefresh = !isVitestRuntimeEnv()

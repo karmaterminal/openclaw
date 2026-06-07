@@ -3,6 +3,11 @@
  *
  * Owns registration, lifecycle, delivery retry, steering, orphan recovery, persistence, and cleanup for child runs.
  */
+import {
+  cancelContinuationWork,
+  hasPendingContinuationWork,
+} from "../auto-reply/continuation/continue-work-store.js";
+import { replyRunRegistry } from "../auto-reply/reply/reply-run-registry.js";
 import type { cleanupBrowserSessionsForLifecycleEnd } from "../browser-lifecycle-cleanup.js";
 import { getRuntimeConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -40,6 +45,7 @@ import {
   SUBAGENT_ENDED_REASON_KILLED,
   type SubagentLifecycleEndedReason,
 } from "./subagent-lifecycle-events.js";
+import { buildContinuationCleanupDeferralResolver } from "./subagent-registry-cleanup.js";
 import {
   emitSubagentEndedHookOnce,
   resolveLifecycleOutcomeFromRunOutcome,
@@ -208,6 +214,23 @@ let restoreAttempted = false;
 const ORPHAN_RECOVERY_DEBOUNCE_MS = 1_000;
 let lastOrphanRecoveryScheduleAt = 0;
 const SUBAGENT_ANNOUNCE_TIMEOUT_MS = 120_000;
+// How often to re-check a continuation-deferred subagent for cleanup. The chain
+// end (the last hop arming no new wake) has no completion event for the deferred
+// run, so cleanup polls until the durable `continuation_work` election clears.
+// Fix #952.
+const CONTINUATION_CLEANUP_RECHECK_MS = 5_000;
+// Composed once: the predicate sources are process-global singletons, and the
+// closure defers all reads to cleanup time. The durable `continuation_work`
+// store is the source of truth ("a same-session continue_work is still
+// pending"); `replyRunRegistry` is the backstop for a hop whose turn outruns the
+// store's post-dispatch handoff grace. No leak guard is needed — retention is
+// bounded by the task's own lifecycle (queued ≤ the clamped delay, running ≤ the
+// handoff grace). Fix #952.
+const resolveContinuationCleanupDeferral = buildContinuationCleanupDeferralResolver({
+  hasPendingContinuationWork: (sessionKey) => hasPendingContinuationWork(sessionKey),
+  isReplyRunActive: (sessionKey) => replyRunRegistry.isActive(sessionKey),
+  recheckDelayMs: CONTINUATION_CLEANUP_RECHECK_MS,
+});
 /**
  * Embedded runs can emit transient lifecycle `error` events while provider/model
  * retry is still in progress. Defer terminal error cleanup briefly so a
@@ -601,6 +624,8 @@ const subagentLifecycleController = createSubagentRegistryLifecycleController({
   cleanupBrowserSessionsForLifecycleEnd: (args) =>
     subagentRegistryDeps.cleanupBrowserSessionsForLifecycleEnd(args),
   runSubagentAnnounceFlow: (params) => subagentRegistryDeps.runSubagentAnnounceFlow(params),
+  resolveContinuationCleanupDeferral,
+  finalizeContinuationCleanup: (childSessionKey) => cancelContinuationWork(childSessionKey),
   warn: (message, meta) => log.warn(message, meta),
 });
 
@@ -1003,6 +1028,15 @@ async function sweepSubagentRuns() {
         continue;
       }
       if (entry.archiveAtMs > now) {
+        continue;
+      }
+      // A same-session continue_work continuation is still pending for this
+      // child: deleting the session now would strand the wake's re-entry turn
+      // (the #952 hop-2 drop) via the archive path, which bypasses the
+      // announce-cleanup defer gate. Skip the sweep until the durable
+      // `continuation_work` election clears; retention is bounded by the task
+      // lifecycle, so a stuck election cannot pin the run forever. Fix #952.
+      if (hasPendingContinuationWork(entry.childSessionKey)) {
         continue;
       }
       clearPendingLifecycleError(runId);

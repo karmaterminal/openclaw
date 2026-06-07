@@ -1,0 +1,192 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Quiet logger; the decode-failure path emits a warn breadcrumb we don't assert.
+vi.mock("../../logging/subsystem.js", () => {
+  const noop = () => {};
+  const logger = {
+    subsystem: "test",
+    isEnabled: () => true,
+    trace: noop,
+    debug: noop,
+    info: noop,
+    warn: noop,
+    error: noop,
+    fatal: noop,
+    raw: noop,
+    child: () => logger,
+  };
+  return { createSubsystemLogger: () => logger };
+});
+
+// In-memory stand-in for the TaskFlow registry the store persists through, so
+// the test exercises the real store lifecycle (queued -> running, upsert,
+// purge) without booting SQLite.
+type MockFlow = {
+  flowId: string;
+  syncMode: "managed";
+  ownerKey: string;
+  controllerId: string;
+  status: string;
+  stateJson: unknown;
+  goal: string;
+  currentStep: string;
+  revision: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const mockFlows = new Map<string, MockFlow>();
+let flowIdCounter = 0;
+
+vi.mock("../../tasks/task-flow-runtime-internal.js", () => ({
+  createManagedTaskFlow: vi.fn(
+    (params: {
+      ownerKey: string;
+      controllerId: string;
+      stateJson: unknown;
+      goal: string;
+      currentStep: string;
+    }) => {
+      const flowId = `flow-${++flowIdCounter}`;
+      const flow: MockFlow = {
+        flowId,
+        syncMode: "managed",
+        ownerKey: params.ownerKey,
+        controllerId: params.controllerId,
+        status: "queued",
+        stateJson: params.stateJson,
+        goal: params.goal,
+        currentStep: params.currentStep,
+        revision: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      mockFlows.set(flowId, flow);
+      return { ...flow };
+    },
+  ),
+  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
+    [...mockFlows.values()].filter((f) => f.ownerKey === ownerKey),
+  ),
+  listTaskFlowRecords: vi.fn(() => [...mockFlows.values()]),
+  updateFlowRecordByIdExpectedRevision: vi.fn(
+    (params: { flowId: string; expectedRevision: number; patch: Record<string, unknown> }) => {
+      const flow = mockFlows.get(params.flowId);
+      if (!flow || flow.revision !== params.expectedRevision) {
+        return {
+          applied: false,
+          reason: flow ? "revision_conflict" : "not_found",
+          current: flow ? { ...flow } : undefined,
+        };
+      }
+      Object.assign(flow, params.patch);
+      flow.revision += 1;
+      return { applied: true, flow: { ...flow } };
+    },
+  ),
+  failFlow: vi.fn((params: { flowId: string }) => {
+    const flow = mockFlows.get(params.flowId);
+    if (flow) {
+      flow.status = "failed";
+      flow.revision += 1;
+    }
+    return { applied: Boolean(flow) };
+  }),
+  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
+    mockFlows.delete(flowId);
+  }),
+}));
+
+import {
+  CONTINUATION_WORK_CONTROLLER_ID,
+  CONTINUATION_WORK_HANDOFF_GRACE_MS,
+  cancelContinuationWork,
+  consumeMaturedContinuationWork,
+  enqueueContinuationWork,
+  hasPendingContinuationWork,
+  listPendingContinuationWorkSessionKeysForRecovery,
+  peekSoonestUnmaturedContinuationWorkDueAt,
+  purgeOrphanedRunningContinuationWork,
+} from "./continue-work-store.js";
+
+const SESSION = "agent:main:subagent:continuation-child";
+
+function flowsFor(sessionKey: string): MockFlow[] {
+  return [...mockFlows.values()].filter((f) => f.ownerKey === sessionKey);
+}
+
+beforeEach(() => {
+  mockFlows.clear();
+  flowIdCounter = 0;
+});
+
+describe("continue-work-store", () => {
+  it("enqueues a queued election that pins the session", () => {
+    enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: 1_000 });
+    const flows = flowsFor(SESSION);
+    expect(flows).toHaveLength(1);
+    expect(flows[0]?.controllerId).toBe(CONTINUATION_WORK_CONTROLLER_ID);
+    expect(flows[0]?.status).toBe("queued");
+    expect(hasPendingContinuationWork(SESSION, 1_000)).toBe(true);
+  });
+
+  it("upserts: a re-election replaces the prior task (one per session)", () => {
+    enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: 1_000 });
+    enqueueContinuationWork(SESSION, { hop: 3, delayMs: 0, electedAt: 2_000 });
+    const flows = flowsFor(SESSION);
+    expect(flows).toHaveLength(1);
+    const state = flows[0]?.stateJson as { hop?: number } | undefined;
+    expect(state?.hop).toBe(3);
+  });
+
+  it("claims a matured election (queued -> running) and reports it once", () => {
+    enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: 1_000 });
+    const claimed = consumeMaturedContinuationWork(SESSION, { now: 1_000 });
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]?.hop).toBe(2);
+    expect(flowsFor(SESSION)[0]?.status).toBe("running");
+    // A second consume is a no-op: a dispatched election is claimed exactly once.
+    expect(consumeMaturedContinuationWork(SESSION, { now: 1_000 })).toHaveLength(0);
+  });
+
+  it("does not claim an unmatured election; peek reports its dueAt", () => {
+    enqueueContinuationWork(SESSION, { hop: 2, delayMs: 60_000, electedAt: 1_000 });
+    expect(consumeMaturedContinuationWork(SESSION, { now: 1_000 })).toHaveLength(0);
+    expect(flowsFor(SESSION)[0]?.status).toBe("queued");
+    expect(peekSoonestUnmaturedContinuationWorkDueAt(SESSION, 1_000)).toBe(61_000);
+  });
+
+  it("queued always pins; running pins only within the handoff grace", () => {
+    enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: 1_000 });
+    consumeMaturedContinuationWork(SESSION, { now: 1_000 });
+    expect(hasPendingContinuationWork(SESSION, 1_000)).toBe(true);
+    expect(hasPendingContinuationWork(SESSION, 1_000 + CONTINUATION_WORK_HANDOFF_GRACE_MS)).toBe(
+      true,
+    );
+    expect(hasPendingContinuationWork(SESSION, 1_001 + CONTINUATION_WORK_HANDOFF_GRACE_MS)).toBe(
+      false,
+    );
+  });
+
+  it("purges orphaned running tasks but leaves queued elections", () => {
+    enqueueContinuationWork(SESSION, { hop: 2, delayMs: 0, electedAt: 1_000 });
+    consumeMaturedContinuationWork(SESSION, { now: 1_000 });
+    expect(purgeOrphanedRunningContinuationWork(SESSION)).toBe(1);
+    expect(flowsFor(SESSION)).toHaveLength(0);
+
+    enqueueContinuationWork("agent:main:main", { hop: 2, delayMs: 0, electedAt: 1_000 });
+    expect(purgeOrphanedRunningContinuationWork("agent:main:main")).toBe(0);
+    expect(flowsFor("agent:main:main")).toHaveLength(1);
+  });
+
+  it("lists recovery session keys (deduped, sorted) and cancels all for a session", () => {
+    enqueueContinuationWork("agent:main:b", { hop: 2, delayMs: 0, electedAt: 1_000 });
+    enqueueContinuationWork("agent:main:a", { hop: 2, delayMs: 60_000, electedAt: 1_000 });
+    expect(listPendingContinuationWorkSessionKeysForRecovery()).toEqual([
+      "agent:main:a",
+      "agent:main:b",
+    ]);
+    cancelContinuationWork("agent:main:a");
+    expect(listPendingContinuationWorkSessionKeysForRecovery()).toEqual(["agent:main:b"]);
+  });
+});

@@ -26,11 +26,12 @@ import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { shouldPreserveUserFacingSessionStateForInputProvenance } from "../../sessions/input-provenance.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
+import { dispatchContinuationWork } from "../continuation/continue-work-dispatch.js";
+import { enqueueContinuationWork } from "../continuation/continue-work-store.js";
 import {
   registerContinuationTimerHandle,
   retainContinuationTimerRef,
@@ -1222,6 +1223,19 @@ export function createFollowupRunner(params: {
             tokens: chainState.accumulatedChainTokens,
           });
 
+          // Record the durable election before arming the in-process timer so a
+          // gateway restart (or subagent cleanup) can see / replay it (#952).
+          enqueueContinuationWork(sessionKey, {
+            hop: nextChainCount,
+            delayMs: clampedDelay,
+            ...(attemptContinueWorkRequest.reason
+              ? { reason: attemptContinueWorkRequest.reason }
+              : {}),
+            ...(attemptContinueWorkRequest.traceparent
+              ? { traceparent: attemptContinueWorkRequest.traceparent }
+              : {}),
+          });
+
           // Schedule the continuation timer.
           retainContinuationTimerRef(sessionKey);
           const timerHandle = setTimeout(() => {
@@ -1237,11 +1251,7 @@ export function createFollowupRunner(params: {
                     : ""),
                 { sessionKey, trusted: true },
               );
-              requestHeartbeatNow({
-                sessionKey,
-                reason: "continuation",
-                parentRunId: runId,
-              });
+              dispatchContinuationWork({ sessionKey, parentRunId: runId });
             } finally {
               unregisterContinuationTimerHandle(sessionKey, timerHandle);
             }
