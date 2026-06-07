@@ -50,7 +50,6 @@ import {
   freezeDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
-import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { generateChainId } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
@@ -76,6 +75,8 @@ import {
 } from "../continuation-delegate-store.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import { checkContextPressure } from "../continuation/context-pressure.js";
+import { dispatchContinuationWork } from "../continuation/continue-work-dispatch.js";
+import { enqueueContinuationWork } from "../continuation/continue-work-store.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import {
   registerContinuationTimerHandle,
@@ -2878,6 +2879,15 @@ export async function runReplyAgent(replyParams: {
               log: (message) => defaultRuntime.log(message),
             });
 
+            enqueueContinuationWork(sessionKey, {
+              hop: nextChainCount,
+              delayMs: clampedDelay,
+              ...(continuationWorkReason ? { reason: continuationWorkReason } : {}),
+              ...(effectiveContinuationSignal.traceparent
+                ? { traceparent: effectiveContinuationSignal.traceparent }
+                : {}),
+            });
+
             retainContinuationTimerRef(sessionKey);
             const persistedChainIdForWorkTimer = persistedChainId;
             const workChainStepRemainingAtDispatch = maxChainLength - nextChainCount;
@@ -2902,7 +2912,7 @@ export async function runReplyAgent(replyParams: {
                     (continuationWorkReason ? ` Reason: ${continuationWorkReason}` : ""),
                   { sessionKey, trusted: true },
                 );
-                requestHeartbeatNow({ sessionKey, reason: "continuation", parentRunId: runId });
+                dispatchContinuationWork({ sessionKey, parentRunId: runId });
               } finally {
                 unregisterContinuationTimerHandle(sessionKey, timerHandle);
               }

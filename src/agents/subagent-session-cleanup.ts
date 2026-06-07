@@ -2,6 +2,7 @@
  * Cleanup helper for subagent sessions. It deletes child session state through
  * the gateway and preserves lifecycle-hook behavior for session-mode spawns.
  */
+import { cancelContinuationWork } from "../auto-reply/continuation/continue-work-store.js";
 import type { callGateway as defaultCallGateway } from "../gateway/call.js";
 import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
 
@@ -14,6 +15,11 @@ export async function deleteSubagentSessionForCleanup(params: {
   spawnMode?: SpawnSubagentMode;
   onError?: (error: unknown) => void;
 }): Promise<void> {
+  // Terminal release: the cleanup gate only reaches here once no continuation is
+  // pending, so drop any lingering durable `continuation_work` task (e.g. the
+  // last hop's consumed `running` election) to keep the TaskFlow store from
+  // accumulating orphaned records per terminated chain. Fix #952.
+  cancelContinuationWork(params.childSessionKey);
   try {
     await params.callGateway({
       method: "sessions.delete",

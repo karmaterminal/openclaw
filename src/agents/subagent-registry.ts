@@ -3,6 +3,11 @@
  *
  * Owns registration, lifecycle, delivery retry, steering, orphan recovery, persistence, and cleanup for child runs.
  */
+import {
+  cancelContinuationWork,
+  hasPendingContinuationWork,
+} from "../auto-reply/continuation/continue-work-store.js";
+import { replyRunRegistry } from "../auto-reply/reply/reply-run-registry.js";
 import type { cleanupBrowserSessionsForLifecycleEnd } from "../browser-lifecycle-cleanup.js";
 import { getRuntimeConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -40,6 +45,7 @@ import {
   SUBAGENT_ENDED_REASON_KILLED,
   type SubagentLifecycleEndedReason,
 } from "./subagent-lifecycle-events.js";
+import { buildContinuationCleanupDeferralResolver } from "./subagent-registry-cleanup.js";
 import {
   emitSubagentEndedHookOnce,
   resolveLifecycleOutcomeFromRunOutcome,
@@ -233,6 +239,24 @@ const SUSPENDED_DELIVERY_INTERACTIVE_EXPIRY_MS = 24 * 60 * 60_000;
 const SUSPENDED_DELIVERY_SOFT_CAP = 25;
 const SUSPENDED_DELIVERY_HARD_CAP = 50;
 const SUSPENDED_DELIVERY_PRESSURE_TARGET = 10;
+
+// How often to re-check a continuation-deferred subagent for cleanup. A chain
+// end (the last hop arming no new wake) has no completion event for the
+// deferred run, so cleanup polls until the durable continuation signal clears.
+// Fix #952.
+const CONTINUATION_CLEANUP_RECHECK_MS = 5_000;
+
+// Composed once: the predicate sources are process-global singletons (the
+// durable `continuation_work` store and the reply-run registry), and the
+// closure defers all reads to cleanup time. Retention is bounded by the
+// `continuation_work` task's own lifecycle — a queued election (≤ the clamped
+// delay) or a just-dispatched one within its handoff grace — so no separate
+// leak-guard expiry is needed; `isActive` is the in-flight-turn backstop.
+const resolveContinuationCleanupDeferral = buildContinuationCleanupDeferralResolver({
+  hasPendingContinuationWork: (sessionKey) => hasPendingContinuationWork(sessionKey),
+  isReplyRunActive: (sessionKey) => replyRunRegistry.isActive(sessionKey),
+  recheckDelayMs: CONTINUATION_CLEANUP_RECHECK_MS,
+});
 
 function loadContextEngineInitModule(): Promise<ContextEngineInitModule> {
   return contextEngineInitLoader.load();
@@ -601,6 +625,7 @@ const subagentLifecycleController = createSubagentRegistryLifecycleController({
   cleanupBrowserSessionsForLifecycleEnd: (args) =>
     subagentRegistryDeps.cleanupBrowserSessionsForLifecycleEnd(args),
   runSubagentAnnounceFlow: (params) => subagentRegistryDeps.runSubagentAnnounceFlow(params),
+  resolveContinuationCleanupDeferral,
   warn: (message, meta) => log.warn(message, meta),
 });
 
@@ -1005,6 +1030,17 @@ async function sweepSubagentRuns() {
       if (entry.archiveAtMs > now) {
         continue;
       }
+      // Second delete path (besides the announce-cleanup flow): the archive
+      // sweep. Defer the purge while a same-session continue_work continuation
+      // is still pending so it can't delete the session out from under an
+      // in-flight chain — the durable-store mirror of the lifecycle gate. The
+      // run is retained for the next sweep tick. Fix #952.
+      if (
+        hasPendingContinuationWork(entry.childSessionKey) ||
+        replyRunRegistry.isActive(entry.childSessionKey)
+      ) {
+        continue;
+      }
       clearPendingLifecycleError(runId);
       try {
         await subagentRegistryDeps.callGateway({
@@ -1024,6 +1060,9 @@ async function sweepSubagentRuns() {
         });
         continue;
       }
+      // Terminal: drop any lingering durable continuation_work record so the
+      // TaskFlow store doesn't accumulate orphans per swept chain. Fix #952.
+      cancelContinuationWork(entry.childSessionKey);
       subagentRuns.delete(runId);
       mutated = true;
       // Archive/purge is terminal for the run record; remove any retained attachments too.

@@ -196,6 +196,29 @@ function recoverPendingContinuationDelegates(params: { log: GatewayRuntimeServic
   timer.unref?.();
 }
 
+function recoverPendingContinuationWorkElections(params: {
+  log: GatewayRuntimeServiceLogger;
+}): void {
+  // Continue_work recovery is TaskFlow-backed and idempotent: matured (and
+  // crash-orphaned running) elections re-fire the heartbeat re-entry wake via an
+  // expected-revision claim, while still-unmatured delayed elections re-arm a
+  // hedge timer so they fire on time despite the lost volatile timer. Fix #952.
+  const timer = setTimeout(() => {
+    void (async () => {
+      const { recoverPendingContinuationWork: recoverWork } =
+        await import("../auto-reply/continuation/continue-work-dispatch.js");
+      const logRecovery = params.log.child("continuation-work-recovery");
+      const summary = recoverWork({ log: (message) => logRecovery.info(message) });
+      if (summary.sessions > 0 || summary.dispatched > 0) {
+        logRecovery.info(`replayed sessions=${summary.sessions} dispatched=${summary.dispatched}`);
+      }
+    })().catch((err: unknown) =>
+      params.log.error(`Continuation work recovery failed: ${String(err)}`),
+    );
+  }, 1_500);
+  timer.unref?.();
+}
+
 function startGatewayModelPricingRefreshOnDemand(params: {
   config: OpenClawConfig;
   pluginLookUpTable?: PluginMetadataRegistryView;
@@ -265,6 +288,9 @@ export function activateGatewayScheduledServices(params: {
     maxEnqueuedAt: params.sessionDeliveryRecoveryMaxEnqueuedAt,
   });
   recoverPendingContinuationDelegates({
+    log: params.log,
+  });
+  recoverPendingContinuationWorkElections({
     log: params.log,
   });
   const stopModelPricingRefresh = !isVitestRuntimeEnv()

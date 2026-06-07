@@ -25,7 +25,6 @@ import {
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { runWithDiagnosticTraceparent } from "../../infra/diagnostic-trace-context.js";
 import { readErrorName } from "../../infra/errors.js";
-import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
@@ -920,9 +919,10 @@ export async function runAgentAttempt(params: {
 /**
  * Schedule a continue_work-triggered heartbeat-wake for the spawn-init /
  * turn-1 path. Loads chain state, enforces maxChainLength + delay clamps,
- * persists advancement, and arms the timer that fires requestHeartbeatNow.
- * Behaviour mirrors the followup-runner block for turn-2+ symmetry. Kept here
- * as a local helper so spawn-init scheduling stays single-sourced.
+ * persists advancement, records the durable `continuation_work` election, and
+ * arms the timer that dispatches the continuation wake. Behaviour mirrors the
+ * followup-runner block for turn-2+ symmetry. Kept here as a local helper so
+ * spawn-init scheduling stays single-sourced.
  */
 async function scheduleSpawnInitContinueWorkWake(params: {
   sessionKey: string;
@@ -942,10 +942,14 @@ async function scheduleSpawnInitContinueWorkWake(params: {
       unregisterContinuationTimerHandle,
     },
     { enqueueSystemEvent },
+    { enqueueContinuationWork },
+    { dispatchContinuationWork },
   ] = await Promise.all([
     import("../../auto-reply/continuation/config.js"),
     import("../../auto-reply/continuation/state.js"),
     import("../../infra/system-events.js"),
+    import("../../auto-reply/continuation/continue-work-store.js"),
+    import("../../auto-reply/continuation/continue-work-dispatch.js"),
   ]);
 
   const continuationConfig = resolveLiveContinuationRuntimeConfig(params.cfg);
@@ -981,6 +985,17 @@ async function scheduleSpawnInitContinueWorkWake(params: {
     tokens: chainState.accumulatedChainTokens,
   });
 
+  // Record the durable election before arming the in-process timer. This is the
+  // spawn-init / turn-1 path for a subagent: the durable `continuation_work`
+  // task keeps the child session alive across the announce-cleanup window so
+  // the wake re-enters a live session instead of a ghost (the #952 hop-2 drop).
+  enqueueContinuationWork(params.sessionKey, {
+    hop: nextChainCount,
+    delayMs: clampedDelay,
+    ...(params.request.reason ? { reason: params.request.reason } : {}),
+    ...(params.request.traceparent ? { traceparent: params.request.traceparent } : {}),
+  });
+
   retainContinuationTimerRef(params.sessionKey);
   const sessionKey = params.sessionKey;
   const reason = params.request.reason;
@@ -996,11 +1011,7 @@ async function scheduleSpawnInitContinueWorkWake(params: {
           (reason ? ` Reason: ${reason}` : ""),
         { sessionKey, trusted: true },
       );
-      requestHeartbeatNow({
-        sessionKey,
-        reason: "continuation",
-        parentRunId,
-      });
+      dispatchContinuationWork({ sessionKey, parentRunId });
     } finally {
       unregisterContinuationTimerHandle(sessionKey, timerHandle);
     }
