@@ -1,3 +1,4 @@
+import { hasLiveOrRecentlyDispatchedContinuationWork } from "../auto-reply/continuation/work-store.js";
 /**
  * Subagent registry coordinator.
  *
@@ -73,6 +74,7 @@ import {
   markSubagentRunPausedAfterYield,
   type RegisterSubagentRunParams,
 } from "./subagent-registry-run-manager.js";
+import { configureSubagentRegistrySpawnRuntime } from "./subagent-registry-spawn-runtime.js";
 import {
   getSubagentRunsSnapshotForRead,
   persistSubagentRunsToDisk,
@@ -91,6 +93,7 @@ import {
 import { resolveAgentTimeoutMs } from "./timeout.js";
 
 export type { SubagentRunRecord } from "./subagent-registry.types.js";
+export { listAncestorSessionKeys } from "./subagent-registry-announce-read.js";
 export {
   getSubagentSessionRuntimeMs,
   getSubagentSessionStartedAt,
@@ -1003,6 +1006,9 @@ async function sweepSubagentRuns() {
       if (entry.archiveAtMs > now) {
         continue;
       }
+      if (hasLiveOrRecentlyDispatchedContinuationWork(entry.childSessionKey)) {
+        continue;
+      }
       clearPendingLifecycleError(runId);
       try {
         await subagentRegistryDeps.callGateway({
@@ -1215,6 +1221,11 @@ configureSubagentRegistrySteerRuntime({
   replaceSubagentRunAfterSteer: (params) => subagentRunManager.replaceSubagentRunAfterSteer(params),
   finalizeInterruptedSubagentRun: async (params) => await finalizeInterruptedSubagentRun(params),
 });
+configureSubagentRegistrySpawnRuntime({
+  countActiveRunsForSession: (requesterSessionKey) =>
+    countActiveRunsForSession(requesterSessionKey),
+  registerSubagentRun: (params) => registerSubagentRun(params),
+});
 
 export function markSubagentRunForSteerRestart(runId: string) {
   return subagentRunManager.markSubagentRunForSteerRestart(runId);
@@ -1273,12 +1284,16 @@ export const testing = {
     await sweepSubagentRuns();
   },
   setDepsForTest(overrides?: Partial<SubagentRegistryDeps>) {
-    subagentRegistryDeps = overrides
+    const nextDeps = overrides
       ? {
           ...defaultSubagentRegistryDeps,
           ...overrides,
         }
       : defaultSubagentRegistryDeps;
+    if (overrides?.persistSubagentRunsToDisk && !overrides.persistSubagentRunsToDiskOrThrow) {
+      nextDeps.persistSubagentRunsToDiskOrThrow = overrides.persistSubagentRunsToDisk;
+    }
+    subagentRegistryDeps = nextDeps;
   },
 } as const;
 
