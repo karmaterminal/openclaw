@@ -6,8 +6,6 @@
  *
  * Coverage gap from CODEWALK.md: "No existing test for announce-side chain guard"
  */
-import fs from "node:fs";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // --- Mocks that DO intercept the SUT (non-barrel modules) ---
@@ -65,7 +63,7 @@ import {
   markPendingDelegateFailed,
 } from "../auto-reply/continuation-delegate-store.js";
 import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
-import { resolveStorePath } from "../config/sessions.js";
+import { seedSessionStore } from "../config/sessions/store-seed.test-helpers.js";
 import { drainSystemEventEntries } from "../infra/system-events.js";
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 import * as subagentSpawn from "./subagent-spawn.js";
@@ -103,10 +101,8 @@ function makeConfig(
  * (config.js -> io.js, sessions.js -> store.js) so we use the real
  * filesystem-backed session store instead.
  */
-function writeSessionStore(data: Record<string, unknown>) {
-  const storePath = resolveStorePath(undefined, { agentId: "main" });
-  fs.mkdirSync(path.dirname(storePath), { recursive: true });
-  fs.writeFileSync(storePath, JSON.stringify(data), "utf8");
+async function writeSessionStore(data: Record<string, unknown>) {
+  await seedSessionStore(data);
 }
 
 function buildChainShardParams(hopIndex: number): AnnounceFlowParams {
@@ -129,9 +125,9 @@ function buildChainShardParams(hopIndex: number): AnnounceFlowParams {
 describe("announce-side chain guard (maxChainLength enforcement)", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Write empty session store so loadSessionEntryByKey finds no entries
-    writeSessionStore({});
+    await writeSessionStore({});
     setRuntimeConfigSnapshot(makeConfig() as any);
     spawnSpy = vi.spyOn(subagentSpawn, "spawnSubagentDirect").mockResolvedValue({
       status: "accepted",
@@ -254,7 +250,7 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
   });
 
   it("blocks on cost cap even when chain length is within bounds", async () => {
-    writeSessionStore({
+    await writeSessionStore({
       "agent:main:discord:dm:test-chain": {
         sessionId: "test",
         updatedAt: Date.now(),
@@ -269,7 +265,7 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
   });
 
   it("allows continuation when accumulated tokens equal costCapTokens exactly (> not >=)", async () => {
-    writeSessionStore({
+    await writeSessionStore({
       "agent:main:discord:dm:test-chain": {
         sessionId: "test",
         updatedAt: Date.now(),
@@ -287,7 +283,7 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
   });
 
   it("rejects continuation when accumulated tokens exceed costCapTokens by one", async () => {
-    writeSessionStore({
+    await writeSessionStore({
       "agent:main:discord:dm:test-chain": {
         sessionId: "test",
         updatedAt: Date.now(),
@@ -335,8 +331,8 @@ const mockedMarkPendingDelegateFailed = vi.mocked(markPendingDelegateFailed);
 describe("tool-delegate chain guard (nextToolHop > toolMaxChainLength)", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
-    writeSessionStore({});
+  beforeEach(async () => {
+    await writeSessionStore({});
     setRuntimeConfigSnapshot(makeConfig({ maxChainLength: 10 }) as any);
     spawnSpy = vi.spyOn(subagentSpawn, "spawnSubagentDirect").mockResolvedValue({
       status: "accepted",
