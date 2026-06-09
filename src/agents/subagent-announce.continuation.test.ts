@@ -183,6 +183,7 @@ describe("subagent announce continuation chaining", () => {
       sessionId: `${params.childSessionKey}-session`,
       inputTokens: 0,
       outputTokens: 0,
+      updatedAt: Date.now(),
     };
     await saveSessionStore(storePath, currentStore, { skipMaintenance: true });
     clearSessionStoreCacheForTest();
