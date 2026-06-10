@@ -290,6 +290,28 @@ export function markPendingWorkFailed(work: PendingContinuationWork, summary: st
   });
 }
 
+/**
+ * Terminate a matured continuation_work row that waited past its freshness
+ * grace without being driven (#986 freshness guard). Distinct from
+ * `markPendingWorkFailed` so the terminal state and audit trail read as an
+ * intentional staleness drop rather than a turn-grant failure.
+ */
+export function markPendingWorkExpiredStale(
+  work: PendingContinuationWork,
+  summary: string,
+): void {
+  if (!work.flowId || work.expectedRevision === undefined) {
+    return;
+  }
+  failFlow({
+    flowId: work.flowId,
+    expectedRevision: work.expectedRevision,
+    currentStep: "Continuation work expired (stale past grace)",
+    blockedSummary: summary,
+    updatedAt: Date.now(),
+  });
+}
+
 export function peekSoonestUnmaturedWorkDueAt(sessionKey: string): number | undefined {
   const now = Date.now();
   let soonest: number | undefined;
@@ -334,6 +356,20 @@ export function peekSoonestRunningWorkRecoveryDueAt(
 
 export function pendingWorkCount(sessionKey: string): number {
   return listTaskFlowsForOwnerKey(sessionKey).filter(isRecoverableWorkFlow).length;
+}
+
+/**
+ * Count queued (not-yet-delivered) continuation_work elections for a session.
+ *
+ * This is the count-bound flood metric for the #986 pending-work cap: it counts
+ * rows still waiting to be granted a turn (`status === "queued"`). Rows already
+ * `running` are mid-delivery (claimed by a drain) and are excluded so a transient
+ * retry/redrive in flight does not block a fresh in-budget election.
+ */
+export function countQueuedPendingWork(sessionKey: string): number {
+  return listTaskFlowsForOwnerKey(sessionKey).filter(
+    (flow) => isContinuationWorkFlow(flow) && flow.status === "queued",
+  ).length;
 }
 
 export function hasLiveOrRecentlyDispatchedContinuationWork(sessionKey: string): boolean {

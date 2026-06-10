@@ -96,6 +96,8 @@ export type ContinuationRuntimeConfig = {
   maxDelayMs: number;
   maxChainLength: number;
   costCapTokens: number;
+  maxPendingContinuationWork: number;
+  continuationStaleGraceMs: number;
   maxDelegatesPerTurn: number;
   crossSessionTargeting: ContinuationCrossSessionTargetingPolicy;
   contextPressureThreshold?: number;

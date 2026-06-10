@@ -29,6 +29,8 @@ const defaultRuntimeConfig: ContinuationRuntimeConfig = {
   maxDelayMs: 1_000,
   maxChainLength: 4,
   costCapTokens: 500_000,
+  maxPendingContinuationWork: 64,
+  continuationStaleGraceMs: 300_000,
   maxDelegatesPerTurn: 5,
   crossSessionTargeting: "disabled",
 };

@@ -906,6 +906,8 @@ agents:
       minDelayMs: 5000
       maxDelayMs: 300000
       costCapTokens: 500000
+      maxPendingContinuationWork: 64 # count-bound flood guard: max queued elections per session
+      continuationStaleGraceMs: 300000 # freshness guard: drop matured wakes idle past this many ms
       maxDelegatesPerTurn: 5
       crossSessionTargeting: disabled
       contextPressureThreshold: 0.8 # optional; omit to disable ordinary pre-run pressure events
@@ -917,6 +919,8 @@ Operational notes:
 - `enabled: false` means explicit opt-in is required in `openclaw.json`.
 - `maxChainLength` is a recursion guard.
 - `costCapTokens` is a per-chain budget leash.
+- `maxPendingContinuationWork` (default: 64) is the count-bound flood guard: the maximum number of queued (not-yet-delivered) `continue_work` elections a session may hold. Overflow elections in a turn are rejected at enqueue with a `[continuation]` system event; earlier in-budget elections still schedule (partial success).
+- `continuationStaleGraceMs` (default: 300000, i.e. 5 minutes) is the freshness-bound flood guard: a matured election that could not be driven (for example the session stayed busy) for longer than this window past its original maturity is expired at the next drain with a `[continuation:work-expired-stale]` system event instead of granting a now-stale turn. This is measured from the election's original maturity (`electedAt + delayMs`), not its delay, so a legitimately long-delayed election is unaffected.
 - `crossSessionTargeting: disabled` is the default-deny gate for explicit cross-session delegate return targeting.
 - `contextPressureThreshold` is optional and must be `> 0` and `<= 1` when configured.
 - `earlyWarningBand` is shipped, defaults to `0.3125`, accepts `0` as opt-out, and is schema-validated as a unit-interval value.

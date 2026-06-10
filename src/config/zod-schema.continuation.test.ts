@@ -130,6 +130,36 @@ describe("continuation config schema validation", () => {
   });
 
   /* ---------------------------------------------------------------- */
+  /*  #986 flood guards:                                              */
+  /*    maxPendingContinuationWork: z.number().int().positive().opt   */
+  /*    continuationStaleGraceMs: z.number().int().nonnegative().opt  */
+  /* ---------------------------------------------------------------- */
+
+  it("accepts maxPendingContinuationWork = 64", () => {
+    expect(parseContinuation({ maxPendingContinuationWork: 64 }).success).toBe(true);
+  });
+
+  it("rejects maxPendingContinuationWork = 0 (not positive)", () => {
+    expect(parseContinuation({ maxPendingContinuationWork: 0 }).success).toBe(false);
+  });
+
+  it("rejects maxPendingContinuationWork = 2.5 (not integer)", () => {
+    expect(parseContinuation({ maxPendingContinuationWork: 2.5 }).success).toBe(false);
+  });
+
+  it("accepts continuationStaleGraceMs = 0 (nonnegative includes zero)", () => {
+    expect(parseContinuation({ continuationStaleGraceMs: 0 }).success).toBe(true);
+  });
+
+  it("accepts continuationStaleGraceMs = 300000", () => {
+    expect(parseContinuation({ continuationStaleGraceMs: 300000 }).success).toBe(true);
+  });
+
+  it("rejects continuationStaleGraceMs = -1 (negative)", () => {
+    expect(parseContinuation({ continuationStaleGraceMs: -1 }).success).toBe(false);
+  });
+
+  /* ---------------------------------------------------------------- */
   /*  enabled: z.boolean().optional()                                  */
   /* ---------------------------------------------------------------- */
 

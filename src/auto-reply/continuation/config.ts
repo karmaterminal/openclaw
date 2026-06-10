@@ -17,6 +17,16 @@ const DEFAULT_CONTINUATION_MIN_DELAY_MS = 5_000;
 const DEFAULT_CONTINUATION_MAX_DELAY_MS = 300_000;
 const DEFAULT_CONTINUATION_MAX_CHAIN_LENGTH = 10;
 const DEFAULT_CONTINUATION_COST_CAP_TOKENS = 500_000;
+// Count-bound flood guard: cap on queued (not-yet-delivered) continuation_work
+// elections per session so a burst of N matured wakes cannot stack into N
+// back-to-back turns. Overflow is rejected honestly at enqueue.
+const DEFAULT_CONTINUATION_MAX_PENDING_WORK = 64;
+// Freshness-bound flood guard: how long past an election's original maturity a
+// matured-but-undriven row may wait before it is expired instead of granting a
+// stale turn. 5 minutes mirrors the "it's been 5min, the intermediate ones
+// don't matter" intent while leaving normal busy/transient retries (1-5s) and
+// long legitimate delays (driven at dueAt) untouched.
+const DEFAULT_CONTINUATION_STALE_GRACE_MS = 300_000;
 const DEFAULT_CONTINUATION_MAX_DELEGATES_PER_TURN = 5;
 const DEFAULT_EARLY_WARNING_BAND = 0.3125;
 
@@ -87,6 +97,14 @@ export function resolveContinuationRuntimeConfig(
     costCapTokens: clampNonNegativeInt(
       continuation?.costCapTokens,
       DEFAULT_CONTINUATION_COST_CAP_TOKENS,
+    ),
+    maxPendingContinuationWork: clampPositiveInt(
+      continuation?.maxPendingContinuationWork,
+      DEFAULT_CONTINUATION_MAX_PENDING_WORK,
+    ),
+    continuationStaleGraceMs: clampNonNegativeDelayMs(
+      continuation?.continuationStaleGraceMs,
+      DEFAULT_CONTINUATION_STALE_GRACE_MS,
     ),
     maxDelegatesPerTurn: clampPositiveInt(
       continuation?.maxDelegatesPerTurn,

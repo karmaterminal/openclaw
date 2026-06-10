@@ -492,6 +492,23 @@ export type AgentDefaultsConfig = {
     maxDelayMs?: number;
     maxChainLength?: number;
     costCapTokens?: number;
+    /**
+     * Maximum number of queued (not-yet-delivered) same-session continuation_work
+     * elections a single session may hold (default: 64). A flood of elections that
+     * all enqueue within maxChainLength and all mature would otherwise wake the
+     * session into N back-to-back turns. Overflow elections are rejected at enqueue
+     * with a [continuation] system event; earlier valid elections still schedule.
+     */
+    maxPendingContinuationWork?: number;
+    /**
+     * How long (ms) past an election's original maturity (electedAt + delayMs) a
+     * matured continuation_work row may wait un-driven before it is expired at the
+     * next drain instead of granting a now-stale turn (default: 300000 = 5 minutes).
+     * This is NOT the election's own delay: a legitimately long-delayed election is
+     * driven at its dueAt; this only drops rows that matured but could not drive
+     * (e.g. the session stayed busy/in-flight) for longer than the grace window.
+     */
+    continuationStaleGraceMs?: number;
     /** Maximum number of continue_delegate tool calls per agent turn (default: 5). */
     maxDelegatesPerTurn?: number;
     /**

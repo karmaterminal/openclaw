@@ -279,6 +279,8 @@ export const AgentDefaultsSchema = z
         maxDelayMs: z.number().int().nonnegative().optional(),
         maxChainLength: z.number().int().positive().optional(),
         costCapTokens: z.number().int().nonnegative().optional(),
+        maxPendingContinuationWork: z.number().int().positive().optional(),
+        continuationStaleGraceMs: z.number().int().nonnegative().optional(),
         maxDelegatesPerTurn: z.number().int().positive().optional(),
         crossSessionTargeting: z
           .union([z.literal("disabled"), z.literal("enabled")])

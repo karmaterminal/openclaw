@@ -26,6 +26,8 @@ describe("resolveContinuationRuntimeConfig", () => {
       maxDelayMs: 300_000,
       maxChainLength: 10,
       costCapTokens: 500_000,
+      maxPendingContinuationWork: 64,
+      continuationStaleGraceMs: 300_000,
       maxDelegatesPerTurn: 5,
       crossSessionTargeting: "disabled",
       earlyWarningBand: 0.3125,
@@ -83,6 +85,28 @@ describe("resolveContinuationRuntimeConfig", () => {
     expect(config.maxChainLength).toBe(10);
     expect(config.costCapTokens).toBe(500_000);
     expect(config.maxDelegatesPerTurn).toBe(5);
+  });
+
+  it("resolves and clamps the #986 flood-guard knobs", () => {
+    const configured = resolveContinuationRuntimeConfig({
+      agents: {
+        defaults: {
+          continuation: { maxPendingContinuationWork: 8, continuationStaleGraceMs: 60_000 },
+        },
+      },
+    } as never);
+    expect(configured.maxPendingContinuationWork).toBe(8);
+    expect(configured.continuationStaleGraceMs).toBe(60_000);
+
+    const clamped = resolveContinuationRuntimeConfig({
+      agents: {
+        defaults: {
+          continuation: { maxPendingContinuationWork: 0, continuationStaleGraceMs: -1 },
+        },
+      },
+    } as never);
+    expect(clamped.maxPendingContinuationWork).toBe(64);
+    expect(clamped.continuationStaleGraceMs).toBe(300_000);
   });
 
   it("rejects invalid contextPressureThreshold", () => {
@@ -156,6 +180,8 @@ describe("clampDelayMs", () => {
     maxDelayMs: 300_000,
     maxChainLength: 10,
     costCapTokens: 500_000,
+    maxPendingContinuationWork: 64,
+    continuationStaleGraceMs: 300_000,
     maxDelegatesPerTurn: 5,
     crossSessionTargeting: "disabled",
     earlyWarningBand: 0.3125,

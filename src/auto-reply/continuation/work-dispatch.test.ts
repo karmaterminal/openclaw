@@ -101,6 +101,8 @@ vi.mock("./config.js", async (importOriginal) => {
     resolveContinuationRuntimeConfig: () => ({
       enabled: true,
       maxChainLength: 8,
+      maxPendingContinuationWork: 64,
+      continuationStaleGraceMs: 300_000,
       maxDelegatesPerTurn: 4,
       defaultDelayMs: 1_000,
       minDelayMs: 1_000,
@@ -238,6 +240,8 @@ import { enqueuePendingWork, hasLiveOrRecentlyDispatchedContinuationWork } from 
 const config = {
   enabled: true,
   maxChainLength: 8,
+  maxPendingContinuationWork: 64,
+  continuationStaleGraceMs: 300_000,
   maxDelegatesPerTurn: 4,
   defaultDelayMs: 1_000,
   minDelayMs: 1_000,
@@ -386,7 +390,7 @@ describe("durable continuation_work dispatch", () => {
 
     const result = await dispatchPendingContinuationWork({ sessionKey: queuedSessionKey });
 
-    expect(result).toEqual({ dispatched: 1, failed: 0 });
+    expect(result).toEqual({ dispatched: 1, failed: 0, expired: 0 });
     expect(turnGrants).toEqual([
       expect.objectContaining({
         context: expect.objectContaining({
@@ -413,7 +417,7 @@ describe("durable continuation_work dispatch", () => {
 
     const result = await dispatchPendingContinuationWork({ sessionKey });
 
-    expect(result).toEqual({ dispatched: 0, failed: 0 });
+    expect(result).toEqual({ dispatched: 0, failed: 0, expired: 0 });
     const flow = [...mockFlows.values()][0];
     expect(flow).toMatchObject({ status: "queued" });
     expect(flow?.currentStep).toBe("Requeued same-session continuation wake");
@@ -490,7 +494,7 @@ describe("durable continuation_work dispatch", () => {
 
     const result = await dispatchPendingContinuationWork({ sessionKey });
 
-    expect(result).toEqual({ dispatched: 0, failed: 0 });
+    expect(result).toEqual({ dispatched: 0, failed: 0, expired: 0 });
     expect(turnGrants).toHaveLength(0);
     expect([...mockFlows.values()][0]).toMatchObject({
       status: "queued",
@@ -567,7 +571,7 @@ describe("durable continuation_work dispatch", () => {
 
     const result = await dispatchPendingContinuationWork({ sessionKey });
 
-    expect(result).toEqual({ dispatched: 1, failed: 0 });
+    expect(result).toEqual({ dispatched: 1, failed: 0, expired: 0 });
     expect([...mockFlows.values()][0]).toMatchObject({ status: "succeeded" });
     expect(systemEvents).toEqual([]);
 
@@ -599,7 +603,7 @@ describe("durable continuation_work dispatch", () => {
 
     const result = await dispatchPendingContinuationWork({ sessionKey });
 
-    expect(result).toEqual({ dispatched: 0, failed: 0 });
+    expect(result).toEqual({ dispatched: 0, failed: 0, expired: 0 });
     expect(turnGrants).toEqual([]);
     expect(systemEvents).toEqual([]);
     expect([...mockFlows.values()][0]).toMatchObject({
@@ -637,7 +641,7 @@ describe("durable continuation_work dispatch", () => {
 
     const result = await dispatchPendingContinuationWork({ sessionKey });
 
-    expect(result).toEqual({ dispatched: 0, failed: 0 });
+    expect(result).toEqual({ dispatched: 0, failed: 0, expired: 0 });
     expect(turnGrants).toEqual([]);
     expect(systemEvents).toEqual([]);
     expect([...mockFlows.values()][0]).toMatchObject({
@@ -662,7 +666,7 @@ describe("durable continuation_work dispatch", () => {
 
     const result = await dispatchPendingContinuationWork({ sessionKey });
 
-    expect(result).toEqual({ dispatched: 0, failed: 0 });
+    expect(result).toEqual({ dispatched: 0, failed: 0, expired: 0 });
     const flow = [...mockFlows.values()][0];
     expect(flow).toMatchObject({
       status: "queued",
@@ -695,7 +699,7 @@ describe("durable continuation_work dispatch", () => {
 
     const result = await dispatchPendingContinuationWork({ sessionKey });
 
-    expect(result).toEqual({ dispatched: 0, failed: 1 });
+    expect(result).toEqual({ dispatched: 0, failed: 1, expired: 0 });
     expect(systemEvents).toEqual([
       expect.objectContaining({ text: expect.stringContaining("was not granted") }),
     ]);
@@ -831,5 +835,129 @@ describe("durable continuation_work dispatch", () => {
         context: expect.objectContaining({ Body: expect.stringContaining("new queued") }),
       }),
     ]);
+  });
+
+  it("caps overflow continue_work elections and keeps the earlier ones (#986 pending-work cap)", async () => {
+    // Count-bound flood guard: a burst beyond maxPendingContinuationWork must
+    // reject the overflow honestly (rejection + system event) while the
+    // in-budget elections still schedule and deliver. Partial success holds.
+    const sessionKey = "agent:main:pending-cap";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const cap = 3;
+    const cappedConfig = {
+      ...config,
+      maxPendingContinuationWork: cap,
+    } satisfies ContinuationRuntimeConfig;
+
+    const batch = await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+        chainId: "chain-flood",
+      },
+      requests: [
+        { reason: "fit-1", delaySeconds: 1 },
+        { reason: "fit-2", delaySeconds: 1 },
+        { reason: "fit-3", delaySeconds: 1 },
+        { reason: "over-1", delaySeconds: 1 },
+        { reason: "over-2", delaySeconds: 1 },
+      ],
+      config: cappedConfig,
+      parentRunId: "run-flood",
+    });
+
+    expect(batch.scheduledCount).toBe(cap);
+    expect(batch.capped).toBe(false);
+    expect(batch.cappedCount).toBe(0);
+    expect(batch.rejections).toEqual([
+      { status: "rejected", reason: "pending-work-cap" },
+      { status: "rejected", reason: "pending-work-cap" },
+    ]);
+    expect(systemEvents).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("not scheduled (pending-work cap"),
+        options: expect.objectContaining({ sessionKey }),
+      }),
+    ]);
+
+    // The in-budget elections still deliver their wakes.
+    await vi.advanceTimersByTimeAsync(1_000);
+    await flushTimers();
+    const deliveredReasons = turnGrants.map((grant) =>
+      String((grant as { context: { Body: string } }).context.Body),
+    );
+    expect(deliveredReasons).toHaveLength(cap);
+    expect(deliveredReasons.some((body) => body.includes("fit-1"))).toBe(true);
+    expect(deliveredReasons.some((body) => body.includes("fit-2"))).toBe(true);
+    expect(deliveredReasons.some((body) => body.includes("fit-3"))).toBe(true);
+    expect(deliveredReasons.some((body) => body.includes("over-1"))).toBe(false);
+    expect(deliveredReasons.some((body) => body.includes("over-2"))).toBe(false);
+  });
+
+  it("expires a matured turn past the stale grace and still delivers fresh work (#986)", async () => {
+    // Freshness-bound flood guard: a row that matured but could not drive for
+    // longer than continuationStaleGraceMs is dropped (no stale turn granted)
+    // with a system event, while a fresh in-grace election in the SAME drain
+    // delivers. The staleness reference is the original maturity, not dueAt.
+    const sessionKey = "agent:main:stale-grace";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const graceMs = 300_000; // matches the mocked continuationStaleGraceMs
+
+    // Stale election matures at T0 + 1000 and is never driven (no timer armed
+    // because enqueuePendingWork is a pure store write).
+    enqueuePendingWork({
+      sessionKey,
+      hop: 2,
+      delayMs: 1_000,
+      electedAt: Date.now(),
+      dueAt: Date.now() + 1_000,
+      maxChainLength: 8,
+      reason: "stale election",
+    });
+
+    await vi.advanceTimersByTimeAsync(graceMs + 5_000);
+
+    // Fresh election matures now, comfortably inside the grace window.
+    enqueuePendingWork({
+      sessionKey,
+      hop: 3,
+      delayMs: 0,
+      electedAt: Date.now(),
+      dueAt: Date.now(),
+      maxChainLength: 8,
+      reason: "fresh election",
+    });
+
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(result).toEqual({ dispatched: 1, failed: 0, expired: 1 });
+    expect(turnGrants).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({ Body: expect.stringContaining("fresh election") }),
+      }),
+    ]);
+    expect(
+      turnGrants.some((grant) =>
+        String((grant as { context: { Body: string } }).context.Body).includes("stale election"),
+      ),
+    ).toBe(false);
+    expect(systemEvents).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("work-expired-stale"),
+        options: expect.objectContaining({ sessionKey }),
+      }),
+    ]);
+
+    const flows = [...mockFlows.values()];
+    const staleFlow = flows.find(
+      (flow) => (flow.stateJson as { reason?: string })?.reason === "stale election",
+    );
+    const freshFlow = flows.find(
+      (flow) => (flow.stateJson as { reason?: string })?.reason === "fresh election",
+    );
+    expect(staleFlow?.status).toBe("failed");
+    expect(freshFlow?.status).toBe("succeeded");
   });
 });

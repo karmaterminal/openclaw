@@ -12,8 +12,10 @@ import { checkContinuationBudget } from "./scheduler.js";
 import type { ChainState, ContinuationRuntimeConfig, ContinueWorkRequest } from "./types.js";
 import {
   consumePendingWork,
+  countQueuedPendingWork,
   enqueuePendingWork,
   listPendingWorkSessionKeysForRecovery,
+  markPendingWorkExpiredStale,
   markPendingWorkFailed,
   markPendingWorkTurnGranted,
   peekSoonestRunningWorkRecoveryDueAt,
@@ -218,11 +220,12 @@ export async function dispatchPendingContinuationWork(params: {
   sessionKey: string;
   recoverRunning?: boolean;
   includeRunningUpdatedAtOrBefore?: number;
-}): Promise<{ dispatched: number; failed: number }> {
+}): Promise<{ dispatched: number; failed: number; expired: number }> {
   const works = consumePendingWork(params.sessionKey, {
     includeRunning: params.recoverRunning === true,
     includeRunningUpdatedAtOrBefore: params.includeRunningUpdatedAtOrBefore,
   });
+  const staleGraceMs = resolveContinuationRuntimeConfig().continuationStaleGraceMs;
   const soonestQueued = peekSoonestUnmaturedWorkDueAt(params.sessionKey);
   const soonestRunningRecovery =
     params.recoverRunning === true
@@ -237,7 +240,32 @@ export async function dispatchPendingContinuationWork(params: {
 
   let dispatched = 0;
   let failed = 0;
+  let expired = 0;
   for (const work of works) {
+    // Freshness-bound flood guard (#986): expire a matured row that waited past
+    // the grace window without driving, instead of waking the session into a
+    // now-stale turn. The reference is the ORIGINAL maturity (electedAt +
+    // delayMs), not work.dueAt: a busy/transient requeue moves dueAt forward, so
+    // dueAt alone would reset the staleness clock and never expire stuck work.
+    // A legitimately long-delayed election is driven at its dueAt with overdue
+    // near zero, so it is never caught by this guard.
+    const originalDueAt = work.electedAt + work.delayMs;
+    const overdueMs = Date.now() - originalDueAt;
+    if (overdueMs > staleGraceMs) {
+      log.warn(
+        `[continuation:work-expired-stale] flowId=${work.flowId ?? "none"} session=${work.sessionKey} overdueMs=${overdueMs} graceMs=${staleGraceMs}`,
+      );
+      enqueueSystemEvent(
+        `[continuation:work-expired-stale] A continue_work turn was dropped: it matured ${overdueMs}ms ago (> ${staleGraceMs}ms grace) without being able to run.`,
+        { sessionKey: work.sessionKey, trusted: true },
+      );
+      markPendingWorkExpiredStale(
+        work,
+        `Continuation work expired: overdue ${overdueMs}ms exceeded ${staleGraceMs}ms grace.`,
+      );
+      expired++;
+      continue;
+    }
     try {
       const fireDeferredMs = Date.now() - work.electedAt;
       const fireChainId = work.chainId ?? work.flowId ?? work.sessionKey;
@@ -296,8 +324,24 @@ export async function dispatchPendingContinuationWork(params: {
       }
     }
   }
-  return { dispatched, failed };
+  return { dispatched, failed, expired };
 }
+
+/** Why a single continue_work election was not scheduled. */
+export type ContinuationScheduleRejectionReason =
+  | "chain-capped"
+  | "cost-capped"
+  | "pending-work-cap"
+  | "enqueue-failed";
+
+/**
+ * Outcome of scheduling one continue_work election. A discriminated union so a
+ * rejection always carries its reason and callers cannot read a "scheduled"
+ * chain state off a rejected election.
+ */
+export type ContinuationScheduleResult =
+  | { status: "scheduled"; chainState: ChainState }
+  | { status: "rejected"; reason: ContinuationScheduleRejectionReason; chainState: ChainState };
 
 export async function scheduleContinuationWork(params: {
   sessionKey: string;
@@ -306,7 +350,7 @@ export async function scheduleContinuationWork(params: {
   config: ContinuationRuntimeConfig;
   parentRunId?: string;
   log?: (message: string) => void;
-}): Promise<{ scheduled: boolean; capped: boolean; chainState: ChainState }> {
+}): Promise<ContinuationScheduleResult> {
   const budgetCheck = checkContinuationBudget({
     chainState: params.chainState,
     config: params.config,
@@ -316,7 +360,19 @@ export async function scheduleContinuationWork(params: {
     params.log?.(
       `[continuation:work-rejected] ${budgetCheck} for ${params.sessionKey}: ${params.chainState.currentChainCount}/${params.config.maxChainLength}`,
     );
-    return { scheduled: false, capped: true, chainState: params.chainState };
+    return { status: "rejected", reason: budgetCheck, chainState: params.chainState };
+  }
+
+  // Count-bound flood guard (#986): reject once the session already holds
+  // maxPendingContinuationWork queued (not-yet-delivered) elections, so a burst
+  // cannot stack N matured wakes into N back-to-back turns. Checked after the
+  // chain/cost budget so the primary recursion guard still reports first.
+  const queuedPendingWork = countQueuedPendingWork(params.sessionKey);
+  if (queuedPendingWork >= params.config.maxPendingContinuationWork) {
+    params.log?.(
+      `[continuation:work-rejected] pending-work-cap for ${params.sessionKey}: ${queuedPendingWork}/${params.config.maxPendingContinuationWork}`,
+    );
+    return { status: "rejected", reason: "pending-work-cap", chainState: params.chainState };
   }
 
   const hop = params.chainState.currentChainCount + 1;
@@ -345,7 +401,7 @@ export async function scheduleContinuationWork(params: {
   };
   const enqueued = enqueuePendingWork(work);
   if (!enqueued) {
-    return { scheduled: false, capped: false, chainState: params.chainState };
+    return { status: "rejected", reason: "enqueue-failed", chainState: params.chainState };
   }
   emitContinuationWorkSpan({
     chainId: params.chainState.chainId,
@@ -360,7 +416,7 @@ export async function scheduleContinuationWork(params: {
   // Let callers persist the advanced chain state before even zero-delay work
   // can start the next turn; the timer fires on the next event-loop tick.
   armWorkTimer(params.sessionKey, fireAt);
-  return { scheduled: true, capped: false, chainState: nextState };
+  return { status: "scheduled", chainState: nextState };
 }
 
 export type ContinuationWorkBatchResult = {
@@ -370,9 +426,18 @@ export type ContinuationWorkBatchResult = {
   cappedCount: number;
   /** True when a cap rejection ended the batch early. */
   capped: boolean;
+  /**
+   * Elections dropped by the count-bound pending-work flood guard (#986). Each
+   * carries the rejection reason so the caller (and tests) see the honest drop;
+   * the batch also emits a [continuation] system event for these.
+   */
+  rejections: PendingWorkCapRejection[];
   /** Chain state after the last scheduled election; persist this once. */
   chainState: ChainState;
 };
+
+/** A single overflow election dropped by the pending-work cap. */
+export type PendingWorkCapRejection = { status: "rejected"; reason: "pending-work-cap" };
 
 /**
  * Schedule every continue_work election captured in a single model turn.
@@ -386,6 +451,11 @@ export type ContinuationWorkBatchResult = {
  * exactly the regression this batches against. A cap rejection ends the batch
  * because the cumulative chain count only grows, so every later election would
  * hit the same cap.
+ *
+ * Two flood guards drop elections honestly, never silently (#986): the
+ * cumulative chain/cost cap (`cappedCount` / `capped`, surfaced by the caller)
+ * and the count-bound pending-work cap (`rejections`, surfaced by a
+ * [continuation] system event emitted here). Both preserve partial success.
  */
 export async function scheduleContinuationWorkBatch(params: {
   sessionKey: string;
@@ -406,33 +476,55 @@ export async function scheduleContinuationWorkBatch(params: {
       ...(params.parentRunId !== undefined ? { parentRunId: params.parentRunId } : {}),
       ...(params.log ? { log: params.log } : {}),
     });
-    if (!result.scheduled) {
+    if (result.status === "rejected") {
+      const droppedCount = params.requests.length - scheduledCount;
+      if (result.reason === "pending-work-cap") {
+        // Count-bound flood guard (#986). The queued count only grows as the
+        // batch enqueues, so once the cap is hit every later election in this
+        // turn would hit it too — drop them all honestly with a single system
+        // event. Earlier valid elections stay scheduled (partial-success).
+        const rejections = Array.from({ length: droppedCount }, () => ({
+          status: "rejected" as const,
+          reason: "pending-work-cap" as const,
+        }));
+        enqueueSystemEvent(
+          `[continuation] ${droppedCount} of ${params.requests.length} continue_work elections were not scheduled (pending-work cap of ${params.config.maxPendingContinuationWork}).`,
+          { sessionKey: params.sessionKey, trusted: true },
+        );
+        return { scheduledCount, cappedCount: 0, capped: false, rejections, chainState };
+      }
+      // chain-capped / cost-capped end the batch with capped=true so the caller
+      // surfaces the chain/cost cap; enqueue-failed ends it without a cap flag.
+      const capped = result.reason === "chain-capped" || result.reason === "cost-capped";
       return {
         scheduledCount,
-        cappedCount: params.requests.length - scheduledCount,
-        capped: result.capped,
+        cappedCount: droppedCount,
+        capped,
+        rejections: [],
         chainState,
       };
     }
     chainState = result.chainState;
     scheduledCount += 1;
   }
-  return { scheduledCount, cappedCount: 0, capped: false, chainState };
+  return { scheduledCount, cappedCount: 0, capped: false, rejections: [], chainState };
 }
 
 export async function recoverPendingContinuationWork(): Promise<{
   sessions: number;
   dispatched: number;
   failed: number;
+  expired: number;
 }> {
   const runtimeConfig = resolveContinuationRuntimeConfig();
   if (!runtimeConfig.enabled) {
-    return { sessions: 0, dispatched: 0, failed: 0 };
+    return { sessions: 0, dispatched: 0, failed: 0, expired: 0 };
   }
   const sessionKeys = listPendingWorkSessionKeysForRecovery();
   const includeRunningUpdatedAtOrBefore = Date.now() - RUNNING_WORK_RECOVERY_STALE_MS;
   let dispatched = 0;
   let failed = 0;
+  let expired = 0;
   for (const sessionKey of sessionKeys) {
     const result = await dispatchPendingContinuationWork({
       sessionKey,
@@ -441,6 +533,7 @@ export async function recoverPendingContinuationWork(): Promise<{
     });
     dispatched += result.dispatched;
     failed += result.failed;
+    expired += result.expired;
   }
-  return { sessions: sessionKeys.length, dispatched, failed };
+  return { sessions: sessionKeys.length, dispatched, failed, expired };
 }
