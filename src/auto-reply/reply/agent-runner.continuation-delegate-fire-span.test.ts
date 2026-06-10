@@ -540,6 +540,8 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
         maxDelayMs: 5_000,
         maxChainLength: 4,
         costCapTokens: 0,
+        maxPendingContinuationWork: 64,
+        continuationStaleGraceMs: 300_000,
         maxDelegatesPerTurn: 4,
         crossSessionTargeting: "enabled",
       },
