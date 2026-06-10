@@ -703,11 +703,18 @@ export async function runAgentAttempt(params: {
   // this wiring, createOpenClawTools sees no continueWorkOpts on the spawn-init
   // path, so typed continue_work never registers for turn-1 subagent tool calls.
   const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
-  let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
+  // #982 cure: array-capture multiple `continue_work()` tool-calls per response.
+  // Previously this was `let attemptContinueWorkRequest: ContinueWorkRequest | undefined`
+  // with `attemptContinueWorkRequest = request` in the callback — every tool-call
+  // overwrote the prior one, silently dropping all but the LAST. TaskFlow + work-store
+  // already support N concurrent flows per session (unique flowId per item, soonest-timer
+  // optimization, drain-all-due-on-fire); the single-variable capture here was the lone
+  // upstream bottleneck collapsing N requests to 1 before they reached TaskFlow.
+  const attemptContinueWorkRequests: ContinueWorkRequest[] = [];
   const continueWorkOpts = continuationEnabled
     ? {
         requestContinuation: (request: ContinueWorkRequest) => {
-          attemptContinueWorkRequest = request;
+          attemptContinueWorkRequests.push(request);
         },
       }
     : undefined;
@@ -894,6 +901,9 @@ export async function runAgentAttempt(params: {
   // Post-turn: capture both continue_work surfaces. Light-context subagents may
   // not receive the typed tool, so the #952 nested path must honor the bracket
   // token parsed from the final payload as well as the tool callback.
+  // #982: when multiple continue_work tool-calls fired in this response, the
+  // capture array holds all of them; the bracket signal (if any) wins precedence
+  // for the FIRST schedule, the remaining tool-call requests schedule additionally.
   if (continuationEnabled && params.sessionKey) {
     try {
       const [{ extractContinuationSignal }, { stripContinuationSignal }] = await Promise.all([
@@ -901,9 +911,10 @@ export async function runAgentAttempt(params: {
         import("../../auto-reply/tokens.js"),
       ]);
       const continuationPayloads = embeddedRunResult.payloads ?? [];
+      const primaryToolRequest = attemptContinueWorkRequests[0];
       const extraction = extractContinuationSignal({
         payloads: continuationPayloads.map((payload) => ({ ...payload })),
-        ...(attemptContinueWorkRequest ? { continueWorkRequest: attemptContinueWorkRequest } : {}),
+        ...(primaryToolRequest ? { continueWorkRequest: primaryToolRequest } : {}),
         enabled: true,
         sessionKey: params.sessionKey,
       });
@@ -932,11 +943,39 @@ export async function runAgentAttempt(params: {
             reason: extraction.workReason ?? "",
             ...(extraction.signal.delayMs !== undefined
               ? { delaySeconds: extraction.signal.delayMs / 1000 }
-              : !extraction.fromBracket && attemptContinueWorkRequest
-                ? { delaySeconds: attemptContinueWorkRequest.delaySeconds }
+              : !extraction.fromBracket && primaryToolRequest
+                ? { delaySeconds: primaryToolRequest.delaySeconds }
                 : {}),
             ...(extraction.signal.traceparent
               ? { traceparent: extraction.signal.traceparent }
+              : {}),
+          },
+          cfg: params.cfg,
+          runResult: embeddedRunResult,
+        });
+      }
+      // #982: schedule any additional tool-call requests beyond the primary.
+      // When a bracket signal was present, ALL captured tool-call requests are
+      // additional (bracket wins primary). Otherwise the first is the primary
+      // (already scheduled via extraction.signal above) and remaining N-1 are
+      // additional.
+      const additionalStartIdx = extraction.fromBracket ? 0 : 1;
+      for (let i = additionalStartIdx; i < attemptContinueWorkRequests.length; i++) {
+        const additionalRequest = attemptContinueWorkRequests[i];
+        if (!additionalRequest) {
+          continue;
+        }
+        await scheduleSpawnInitContinueWorkWake({
+          sessionKey: params.sessionKey,
+          sessionEntry: params.sessionStore?.[params.sessionKey] ?? params.sessionEntry,
+          sessionStore: params.sessionStore,
+          storePath: params.storePath,
+          runId: params.runId,
+          request: {
+            reason: additionalRequest.reason,
+            delaySeconds: additionalRequest.delaySeconds,
+            ...(additionalRequest.traceparent
+              ? { traceparent: additionalRequest.traceparent }
               : {}),
           },
           cfg: params.cfg,
