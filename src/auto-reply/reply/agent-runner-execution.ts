@@ -141,6 +141,7 @@ type EmbeddedAgentRunResult = Awaited<ReturnType<typeof runEmbeddedAgent>>;
 function isContinuationWrappedRunResult(result: unknown): result is {
   result: EmbeddedAgentRunResult;
   continueWorkRequest?: ContinueWorkRequest;
+  continueWorkRequests?: ContinueWorkRequest[];
   compactionTraceparent?: string;
 } {
   return (
@@ -464,6 +465,8 @@ export type AgentRunLoopResult =
       compactionTraceparent?: string;
       /** Payload keys sent directly (not via pipeline) during tool flush. */
       continueWorkRequest?: import("../../agents/tools/continue-work-tool.js").ContinueWorkRequest;
+      /** #982: all continue_work tool-call requests captured this turn (back-compat: requests[0] = continueWorkRequest). */
+      continueWorkRequests?: import("../../agents/tools/continue-work-tool.js").ContinueWorkRequest[];
       directlySentBlockKeys?: Set<string>;
     }
   | { kind: "final"; payload: ReplyPayload };
@@ -1848,6 +1851,7 @@ export async function runAgentTurnWithFallback(params: {
   let attemptedRuntimeModel = fallbackModel;
   let fallbackAttempts: RuntimeFallbackAttempt[] = [];
   let continueWorkRequest: ContinueWorkRequest | undefined;
+  let continueWorkRequests: ContinueWorkRequest[] = [];
   let compactionTraceparent: string | undefined;
   let didResetAfterCompactionFailure = false;
   let transientHttpRetriesRemaining = 1;
@@ -2164,6 +2168,7 @@ export async function runAgentTurnWithFallback(params: {
           | {
               result: EmbeddedAgentRunResult;
               continueWorkRequest?: ContinueWorkRequest;
+              continueWorkRequests?: ContinueWorkRequest[];
               compactionTraceparent?: string;
             }
         >({
@@ -2478,7 +2483,11 @@ export async function runAgentTurnWithFallback(params: {
             return (async () => {
               let attemptCompactionCount = 0;
               let attemptCompactionTraceparent: string | undefined;
-              let attemptContinueWorkRequest: ContinueWorkRequest | undefined;
+              // #982 cure: array-capture multi continue_work in main reply lane.
+              // Previously this was `let attemptContinueWorkRequest: ContinueWorkRequest | undefined`
+              // with `attemptContinueWorkRequest = request` in the callback below — every
+              // tool-call overwrote the prior one, silently dropping all but the LAST.
+              const attemptContinueWorkRequests: ContinueWorkRequest[] = [];
               const lifecycleBackstop = createEmbeddedLifecycleTerminalBackstop({
                 runId,
                 sessionKey: params.sessionKey,
@@ -2549,7 +2558,7 @@ export async function runAgentTurnWithFallback(params: {
                       runtimeConfig?.agents?.defaults?.continuation?.enabled === true
                         ? {
                             requestContinuation: (request) => {
-                              attemptContinueWorkRequest = request;
+                              attemptContinueWorkRequests.push(request);
                             },
                           }
                         : undefined,
@@ -2948,7 +2957,8 @@ export async function runAgentTurnWithFallback(params: {
                 attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
                 return {
                   result: embeddedRunResult,
-                  continueWorkRequest: attemptContinueWorkRequest,
+                  continueWorkRequest: attemptContinueWorkRequests[0],
+                  continueWorkRequests: attemptContinueWorkRequests,
                   compactionTraceparent: attemptCompactionTraceparent,
                 };
               } catch (err) {
@@ -2982,15 +2992,20 @@ export async function runAgentTurnWithFallback(params: {
         | {
             result: EmbeddedAgentRunResult;
             continueWorkRequest?: ContinueWorkRequest;
+            continueWorkRequests?: ContinueWorkRequest[];
             compactionTraceparent?: string;
           };
       if (isContinuationWrappedRunResult(fallbackRunResult)) {
         runResult = fallbackRunResult.result;
         continueWorkRequest = fallbackRunResult.continueWorkRequest;
+        continueWorkRequests =
+          fallbackRunResult.continueWorkRequests ??
+          (continueWorkRequest ? [continueWorkRequest] : []);
         compactionTraceparent = fallbackRunResult.compactionTraceparent;
       } else {
         runResult = fallbackRunResult;
         continueWorkRequest = undefined;
+        continueWorkRequests = [];
         compactionTraceparent = undefined;
       }
       fallbackProvider = fallbackResult.provider;
@@ -3466,5 +3481,6 @@ export async function runAgentTurnWithFallback(params: {
     compactionTraceparent,
     directlySentBlockKeys: directlySentBlockKeys.size > 0 ? directlySentBlockKeys : undefined,
     continueWorkRequest,
+    continueWorkRequests,
   };
 }
