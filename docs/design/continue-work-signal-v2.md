@@ -912,6 +912,7 @@ agents:
       maxDelayMs: 300000
       costCapTokens: 500000
       maxDelegatesPerTurn: 5
+      maxPendingWork: 32 # #986 per-session flood guard: cap on concurrent undelivered continuation flows
       crossSessionTargeting: disabled
       contextPressureThreshold: 0.8 # optional; omit to disable ordinary pre-run pressure events
       earlyWarningBand: 0.3125 # multiplier against contextPressureThreshold; 0 disables early warning
@@ -927,6 +928,7 @@ Operational notes:
 - `enabled: false` means explicit opt-in is required in `openclaw.json`.
 - `maxChainLength` is a recursion guard bounding _unattended self-continuation chain depth_. The chain-count resets to zero on any non-continuation turn-entry (genuine user input, heartbeat, or external system event), so the guard bounds only one unbroken self-driven burst between human (or external) re-engagements, not session-lifetime budget. See §3.3 for the chain-state lifecycle.
 - `costCapTokens` is a per-chain token-cost leash accumulating across `continue_work()` and tool-path delegate hops within a single unbroken self-continuation chain. The accumulated chain tokens reset to zero on the same non-continuation turn-entry trigger as `continuationChainCount`, keeping the cap as a per-burst guard rather than a session-lifetime quota.
+- `maxPendingWork` (#986) is a per-session flood guard orthogonal to the chain-depth/cost leashes (lineage bound vs store-pressure bound): it caps **concurrent undelivered** continuation flows (`queued`/`running`) at enqueue time (default `32`, clamped positive int), rejecting over-cap elections with `pending-capped` while preserving #982 partial-success — a batch ends early exactly like `chain-capped`/`cost-capped`, since the pending count only grows within the batch. A companion drain-superseded guard folds only a genuine **stale backlog**: when one drain returns more than one matured work, `queued` siblings overdue past `2 × maxDelayMs` are superseded by the newest-elected member and expired without driving a turn — in-flight `running` work is never folded, non-stale close bursts still deliver, and every supersession is logged (`[continuation:work-superseded]` + a single continuation-note), never silent.
 - `crossSessionTargeting: disabled` is the default-deny gate for explicit cross-session delegate return targeting.
 - `contextPressureThreshold` is optional and must be `> 0` and `<= 1` when configured.
 - `earlyWarningBand` is shipped, defaults to `0.3125`, accepts `0` as opt-out, and is schema-validated as a unit-interval value.
