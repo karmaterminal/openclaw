@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { useHermeticOpenclawEnv } from "../../test/vitest/hermetic-openclaw-env.js";
 import type { ConfigFileSnapshot, OpenClawConfig } from "../config/types.js";
 import type { PluginManifestRecord, PluginManifestRegistry } from "../plugins/manifest-registry.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
@@ -395,7 +394,6 @@ async function runConfigCommand(args: string[]) {
 }
 
 describe("config cli", () => {
-  useHermeticOpenclawEnv();
   beforeAll(async () => {
     ({ registerConfigCli } = await import("./config-cli.js"));
     sharedProgram = new Command();
