@@ -314,6 +314,15 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
                 );
                 return;
               }
+              // Back off on failure too: previously the rate-limit guard was
+              // only set on success, so a FAILED volitional compaction (e.g. a
+              // timeout) left the guard unset and the next request could fire
+              // immediately — re-firing into the same failing machinery under
+              // load (rate-amplification). Set the guard on failure so a failed
+              // attempt backs off for RATE_LIMIT_MS before retrying.
+              sessionGuardState.set(sessionKey, {
+                lastRequestMs: Date.now(),
+              });
               log.warn(
                 `[request_compaction:resolved-failure] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
                   `diagId=${diagId} trigger=volitional outcome=failed code=${code} ok=${result.ok} compacted=${result.compacted} reason=${resolvedReason}`,
@@ -323,6 +332,12 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
             (err: unknown) => {
               const message = formatErrorMessage(err);
               const code = classifyCompactionReason(message);
+              // Back off on background-error too (same rationale as the
+              // resolved-failure path above): don't let an errored compaction
+              // immediately re-fire into the failing path under load.
+              sessionGuardState.set(sessionKey, {
+                lastRequestMs: Date.now(),
+              });
               log.error(
                 `[request_compaction:background-error] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
                   `diagId=${diagId} trigger=volitional outcome=failed code=${code} error=${message}`,
