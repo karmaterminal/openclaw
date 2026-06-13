@@ -49,3 +49,52 @@
   - Reason for split: half-dropping the field in one file while 36 callsites keep it breaks tsgo; the cleanse must be one atomic all-callsites drop in the competing PR on top of the drift-only back-merge.
   - Current pre-drift inventory remains 36 unique files and 73 matching lines for `forceSenderIsOwnerFalse` under `src/` and `extensions/`; the post-drift hard gate remains `git grep -rn forceSenderIsOwnerFalse -- '*.ts' src extensions` returning 0.
   - Allowed work while paused: prepare the callsite inventory and per-file removal draft only. No merge and no product code edits until the drift-only assembly base lands.
+
+- 2026-06-13T20:23:00+00:00: Cleanse prep inventory/draft completed against the current pre-drift base; still paused on product edits.
+  - Exact prep command: `grep -rn forceSenderIsOwnerFalse --include='*.ts' src/ extensions/`
+  - Current prep result: 73 matching lines across 36 unique TypeScript files.
+  - Re-run this exact grep after the drift-only base lands; the hard clean result is 0 lines.
+  - Draft edit policy:
+    - Extension production/test callsites: delete only the `forceSenderIsOwnerFalse: true` property from `enqueueSystemEvent` expectations/calls; rely on upstream's unconditional queue-boundary sanitizer.
+    - `src/infra/system-events.ts`: match upstream target by deleting `forceSenderIsOwnerFalse`, legacy `trusted?`, `resolveEventOwnerDowngrade`, conditional rawText selection, and event equality ownership comparison; keep continuation traceparent fields if present after the drift-only base, and sanitize with `sanitizeInboundSystemTags(text).trim()` unconditionally.
+    - `src/auto-reply/reply/session-system-events.ts`: remove ownership metadata from `FormattedSystemEventBlock`, drop force/downgrade render branching, keep `drainFormattedSystemEvents`/continuation drain tracing and post-drift upstream structure, and format all drained events as ordinary `System:` lines.
+    - `src/auto-reply/reply/get-reply-run.media-only.test.ts`: mocked system-event blocks become `{ text: ... }` only; sender ownership should not be downgraded by drained system events.
+    - `src/infra/system-events.test.ts`: replace conditional trusted/untrusted expectations with upstream's unconditional-sanitize test shape, especially the "neutralizes nested system markers before formatting queued events" assertion.
+    - `src/auto-reply/reply/session-system-events.test.ts`: delete trusted-vs-untrusted bifurcation coverage and keep only continuation drain behavior plus ordinary `System:` formatting expectations that match the post-drift file.
+  - Current per-file removal draft:
+    - `extensions/discord/src/monitor/agent-components.system-controls.ts`: remove one callsite property.
+    - `extensions/discord/src/monitor/listeners.reactions.ts`: remove one callsite property.
+    - `extensions/discord/src/monitor/message-handler.preflight.ts`: remove one callsite property.
+    - `extensions/discord/src/monitor/monitor.agent-components.test.ts`: remove five expectation properties.
+    - `extensions/imessage/src/monitor/reaction-system-event.test.ts`: remove one expectation property.
+    - `extensions/imessage/src/monitor/reaction-system-event.ts`: remove one callsite property.
+    - `extensions/matrix/src/matrix/monitor/handler.test.ts`: remove four expectation properties.
+    - `extensions/matrix/src/matrix/monitor/reaction-events.test.ts`: remove one expectation property.
+    - `extensions/matrix/src/matrix/monitor/reaction-events.ts`: remove one callsite property.
+    - `extensions/mattermost/src/mattermost/interactions.test.ts`: remove one expectation property.
+    - `extensions/mattermost/src/mattermost/interactions.ts`: remove one callsite property.
+    - `extensions/mattermost/src/mattermost/monitor.ts`: remove one callsite property.
+    - `extensions/msteams/src/monitor-handler/message-handler.ts`: remove two callsite properties.
+    - `extensions/msteams/src/monitor-handler/reaction-handler.ts`: remove one callsite property.
+    - `extensions/msteams/src/reply-dispatcher.test.ts`: remove one expectation property.
+    - `extensions/msteams/src/reply-dispatcher.ts`: remove one callsite property.
+    - `extensions/signal/src/monitor/event-handler.inbound-context.test.ts`: remove one expectation property.
+    - `extensions/signal/src/monitor/event-handler.ts`: remove one callsite property.
+    - `extensions/slack/src/monitor/events/channels.test.ts`: remove one expectation property.
+    - `extensions/slack/src/monitor/events/channels.ts`: remove one callsite property.
+    - `extensions/slack/src/monitor/events/interactions.block-actions.ts`: remove one callsite property.
+    - `extensions/slack/src/monitor/events/interactions.modal.ts`: remove one callsite property.
+    - `extensions/slack/src/monitor/events/members.ts`: remove one callsite property.
+    - `extensions/slack/src/monitor/events/messages.ts`: remove one callsite property.
+    - `extensions/slack/src/monitor/events/pins.ts`: remove one callsite property.
+    - `extensions/slack/src/monitor/events/reactions.test.ts`: remove one expectation property.
+    - `extensions/slack/src/monitor/events/reactions.ts`: remove one callsite property.
+    - `extensions/slack/src/monitor/message-handler/prepare.test.ts`: remove one expectation property.
+    - `extensions/slack/src/monitor/message-handler/prepare.ts`: remove one callsite property.
+    - `extensions/telegram/src/bot-handlers.runtime.ts`: remove one callsite property.
+    - `extensions/whatsapp/src/auto-reply/monitor.ts`: remove two callsite properties.
+    - `src/auto-reply/reply/get-reply-run.media-only.test.ts`: remove eight mock result properties and keep assertions that system events stay in prompt text without sender-owner downgrade.
+    - `src/auto-reply/reply/session-system-events.test.ts`: remove three force-flag references by deleting/replacing stale bifurcation assertions.
+    - `src/auto-reply/reply/session-system-events.ts`: remove five force-flag references from block type, accumulator, event inspection, and return payload.
+    - `src/infra/system-events.test.ts`: remove six force-flag references by replacing old conditional-sanitize tests with upstream unconditional-sanitize expectations.
+    - `src/infra/system-events.ts`: remove eleven force-flag references from types, comments, normalization, resolver, and equality.
