@@ -39,3 +39,13 @@
     - `src/gateway/server-methods/agent.ts`
   - The extra conflicts are outside the byte-true 4-conflict contract, so the workorder says to stop and surface instead of guessing a resolution.
   - I aborted the merge to keep the branch pushable for this blocker journal checkpoint. No conflict resolutions or cleanup edits were made.
+
+- 2026-06-13T20:10:00+00:00: Scope-change amendment received; lane is now cleanse-only, layered on the drift-only back-merge.
+  - Authoritative #999 comment read: https://github.com/karmaterminal/openclaw/issues/999#issuecomment-4699385110
+  - Converged resolution confirmed: DROP-AND-RELY; do not port the anti-spoof property to `deliveryContext`. `deliveryContext` is delivery-routing only; anti-spoof lives in unconditional `sanitizeInboundSystemTags` at `enqueueSystemEvent`.
+  - Work split updated: frond-scribe owns the neutral drift-only back-merge into `frond-scribe/20260613/assembly-drift-cure`; this lane must not run `git merge upstream/main` anymore.
+  - Current remote assembly check: `origin/frond-scribe/20260613/assembly-drift-cure` is still `599f7ba0c97556c23d1707a378f9bebc3a7f05f1`, so the drift-only back-merge has not landed yet.
+  - Fresh upstream remote observation for audit: `upstream/main` currently advertises `4e4ea1c16bcd02f12498bb9b5f40a5f3b47bdd67`; no merge is being performed in this lane under the new scope.
+  - Reason for split: half-dropping the field in one file while 36 callsites keep it breaks tsgo; the cleanse must be one atomic all-callsites drop in the competing PR on top of the drift-only back-merge.
+  - Current pre-drift inventory remains 36 unique files and 73 matching lines for `forceSenderIsOwnerFalse` under `src/` and `extensions/`; the post-drift hard gate remains `git grep -rn forceSenderIsOwnerFalse -- '*.ts' src extensions` returning 0.
+  - Allowed work while paused: prepare the callsite inventory and per-file removal draft only. No merge and no product code edits until the drift-only assembly base lands.
