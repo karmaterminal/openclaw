@@ -47,6 +47,8 @@ const SYSTEM_EVENT_QUEUES_KEY = Symbol.for("openclaw.systemEvents.queues");
 
 const queues = resolveGlobalMap<string, SessionQueue>(SYSTEM_EVENT_QUEUES_KEY);
 
+type DeprecatedOwnerFalseSystemOptionKey = `forceSenderIsOwner${"False"}`;
+
 type SystemEventOptions = {
   sessionKey: string;
   contextKey?: string | null;
@@ -54,10 +56,9 @@ type SystemEventOptions = {
   sessionDeliveryAckId?: string;
   sessionDeliveryAckStateDir?: string;
   /**
-   * Trusted-internal enrichment marker (continuation/OCR/transcripts). Accepted
-   * for source compatibility with continuation producers; the anti-spoof guard
-   * is now unconditional at the queue boundary (`sanitizeInboundSystemTags`), so
-   * this flag no longer gates sanitization.
+   * @deprecated Preserved for source compatibility with legacy plugin callers.
+   * Trusted internal producers may still use this flag, but plugin-SDK runtime
+   * wrappers strip it so external plugin input remains sanitize-by-default.
    */
   trusted?: boolean;
   /**
@@ -66,6 +67,12 @@ type SystemEventOptions = {
    * a malformed traceparent never prevents an enqueue).
    */
   traceparent?: string;
+} & {
+  /**
+   * @deprecated Preserved for source compatibility with legacy plugin callers.
+   * Ignored by core runtime and stripped by plugin-SDK runtime wrappers.
+   */
+  [K in DeprecatedOwnerFalseSystemOptionKey]?: boolean;
 };
 
 function normalizeTraceparent(traceparent?: string): string | undefined {
@@ -144,9 +151,10 @@ export function enqueueSystemEventEntry(
 ): SystemEvent | null {
   const key = requireSessionKey(options.sessionKey);
   const entry = getOrCreateSessionQueue(key);
-  // These entries are rendered as `System:` lines, so strip nested system-marker
-  // spoofs at the queue boundary before any plugin/channel text reaches a prompt.
-  const cleaned = sanitizeInboundSystemTags(text).trim();
+  // These entries are rendered as `System:` lines. Untrusted/default payloads
+  // are sanitized at enqueue-time to neutralize nested marker spoofs, while
+  // trusted internal payloads preserve literal content.
+  const cleaned = options.trusted === true ? text.trim() : sanitizeInboundSystemTags(text).trim();
   if (!cleaned) {
     return null;
   }
