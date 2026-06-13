@@ -116,3 +116,5 @@
     - `grep -rn resolveEventOwnerDowngrade --include='*.ts' src/ extensions/` -> 0
     - focused internal enqueue trusted grep under `src/auto-reply`, `src/agents/command/attempt-execution.ts`, and `src/agents/subagent-announce.ts` -> 0
     - `git diff --check` -> clean
+
+- 2026-06-13T20:49:00+00:00: Gate green: `pnpm tsgo:core` exited 0.
