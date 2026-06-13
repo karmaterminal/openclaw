@@ -106,3 +106,13 @@
     - `src/auto-reply/reply/session-system-events.ts`: bring upstream/plain formatter shape while preserving post-drift continuation additions (`drainFormattedSystemEvents`, queue-drain tracing, delivery ack handling, traceparent/session delivery fields as present on base).
   - The extension/core callsite drops alone would remove the anti-spoof signal without bringing the replacement sanitizer; that is not acceptable. The two security-file toward-upstream swaps plus all callsite/test updates are one atomic cleanse.
   - Current remote assembly observed advanced to `e64e8c4130cd2918ba0bf791115df4986573a9fe`, so the drift-only base appears to have landed. Next step: integrate `origin/frond-scribe/20260613/assembly-drift-cure` into this no-force branch, then apply the atomic cleanse on top.
+
+- 2026-06-13T20:43:00+00:00: Grep-gate cleanup checkpoint.
+  - Integrated assembly base `e64e8c4130cd2918ba0bf791115df4986573a9fe` into this no-force branch at `a4ac7a073b80`.
+  - Base already included #1005, so `forceSenderIsOwnerFalse` and `resolveEventOwnerDowngrade` were already removed with unconditional `sanitizeInboundSystemTags(text).trim()`.
+  - Applied the remaining toward-upstream security-file cleanup: removed the no-op `trusted?: boolean` option from `src/infra/system-events.ts` and removed internal continuation/subagent `enqueueSystemEvent(..., { trusted: true })` usage/tests.
+  - Pre-commit checks:
+    - `grep -rn forceSenderIsOwnerFalse --include='*.ts' src/ extensions/` -> 0
+    - `grep -rn resolveEventOwnerDowngrade --include='*.ts' src/ extensions/` -> 0
+    - focused internal enqueue trusted grep under `src/auto-reply`, `src/agents/command/attempt-execution.ts`, and `src/agents/subagent-announce.ts` -> 0
+    - `git diff --check` -> clean

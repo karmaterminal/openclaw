@@ -122,7 +122,7 @@ describe("releasePostCompactionLifecycle", () => {
     );
     expect(mockState.enqueueSystemEvent).toHaveBeenCalledWith(
       "[continuation] post-compaction band fired",
-      { sessionKey: SESSION_KEY, trusted: true },
+      { sessionKey: SESSION_KEY },
     );
 
     // (3) Two staged delegates → exactly two spawn calls, each with the

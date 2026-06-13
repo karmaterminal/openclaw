@@ -54,13 +54,6 @@ type SystemEventOptions = {
   sessionDeliveryAckId?: string;
   sessionDeliveryAckStateDir?: string;
   /**
-   * Trusted-internal enrichment marker (continuation/OCR/transcripts). Accepted
-   * for source compatibility with continuation producers; the anti-spoof guard
-   * is now unconditional at the queue boundary (`sanitizeInboundSystemTags`), so
-   * this flag no longer gates sanitization.
-   */
-  trusted?: boolean;
-  /**
    * Optional W3C `traceparent` to attach to the queued event for cross-boundary
    * trace correlation. Invalid values are silently dropped (additive contract:
    * a malformed traceparent never prevents an enqueue).

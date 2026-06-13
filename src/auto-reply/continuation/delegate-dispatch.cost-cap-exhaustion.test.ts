@@ -269,7 +269,6 @@ describe("cost-cap exhaustion mid-chain", () => {
     // so the model can self-correct on next turn.
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(expect.stringContaining("cost-capped"), {
       sessionKey,
-      trusted: true,
     });
   });
 

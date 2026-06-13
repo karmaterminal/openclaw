@@ -249,7 +249,7 @@ describe("hedge timer ref/handle cleanup", () => {
     });
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(
       expect.stringContaining("Hedge-timer dispatch failed; queued delegates may be orphaned."),
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
     expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
     expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
@@ -382,7 +382,7 @@ describe("tool delegate dispatch contract", () => {
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(5);
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(
       expect.stringContaining("maxDelegatesPerTurn exceeded (5). Task: delegate-5"),
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
   });
 
@@ -418,7 +418,7 @@ describe("tool delegate dispatch contract", () => {
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(
       expect.stringContaining("maxDelegatesPerTurn exceeded (2). Task: delegate-1"),
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
   });
 
@@ -657,11 +657,11 @@ describe("tool delegate dispatch contract", () => {
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(3);
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(
       expect.stringContaining("DELEGATE spawn forbidden"),
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(
       expect.stringContaining("DELEGATE spawn failed: spawn unavailable"),
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
     expect(mockFlows.get(queuedBefore[0])?.status).toBe("failed");
     expect(mockFlows.get(queuedBefore[1])?.status).toBe("failed");
