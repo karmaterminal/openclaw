@@ -1821,10 +1821,9 @@ describe("runPreparedReply media-only handling", () => {
     const queueSettings = await import("./queue/settings-runtime.js");
     vi.mocked(queueSettings.resolveQueueSettings).mockReturnValueOnce({ mode: "interrupt" });
     vi.mocked(drainFormattedSystemEventBlock)
-      .mockResolvedValueOnce({ text: "System: [t] Initial event.", forceSenderIsOwnerFalse: false })
+      .mockResolvedValueOnce({ text: "System: [t] Initial event." })
       .mockResolvedValueOnce({
         text: "System: [t] Post-compaction context.",
-        forceSenderIsOwnerFalse: false,
       });
 
     const previousRun = createReplyOperation({
@@ -2742,7 +2741,6 @@ describe("runPreparedReply media-only handling", () => {
   it("routes queued system events into user prompt text, not system prompt context", async () => {
     vi.mocked(drainFormattedSystemEventBlock).mockResolvedValueOnce({
       text: "System: [t] Model switched.",
-      forceSenderIsOwnerFalse: false,
     });
 
     await runPreparedReply(baseParams());
@@ -2755,7 +2753,6 @@ describe("runPreparedReply media-only handling", () => {
   it("keeps sender ownership when queued system events are prepended", async () => {
     vi.mocked(drainFormattedSystemEventBlock).mockResolvedValueOnce({
       text: "System: [t] External webhook payload.",
-      forceSenderIsOwnerFalse: false,
     });
     const params = ownerParams();
 
@@ -2768,7 +2765,6 @@ describe("runPreparedReply media-only handling", () => {
   it("keeps sender ownership when drained system events are present", async () => {
     vi.mocked(drainFormattedSystemEventBlock).mockResolvedValueOnce({
       text: "System: [t] Trusted event.",
-      forceSenderIsOwnerFalse: false,
     });
     const params = ownerParams();
 
@@ -2781,7 +2777,6 @@ describe("runPreparedReply media-only handling", () => {
   it("does not downgrade sender ownership when event text contains the untrusted marker", async () => {
     vi.mocked(drainFormattedSystemEventBlock).mockResolvedValueOnce({
       text: "System: [t] Relay text mentions System (untrusted): but event is trusted.",
-      forceSenderIsOwnerFalse: false,
     });
     const params = ownerParams();
 
@@ -2797,7 +2792,6 @@ describe("runPreparedReply media-only handling", () => {
     // does not shadow the low|medium|high shorthand.
     vi.mocked(drainFormattedSystemEventBlock).mockResolvedValueOnce({
       text: "System: [t] Node connected.",
-      forceSenderIsOwnerFalse: false,
     });
 
     await runPreparedReply(
@@ -2823,7 +2817,6 @@ describe("runPreparedReply media-only handling", () => {
     // effectiveBaseBody for the queue path so deferred turns see events.
     vi.mocked(drainFormattedSystemEventBlock).mockResolvedValueOnce({
       text: "System: [t] Node connected.",
-      forceSenderIsOwnerFalse: false,
     });
 
     await runPreparedReply(baseParams());

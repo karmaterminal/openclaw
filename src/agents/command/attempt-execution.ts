@@ -1025,7 +1025,7 @@ async function scheduleSpawnInitContinueWorkWake(params: {
   if (result.cappedCount > 0 && params.requests.length > 1) {
     enqueueSystemEvent(
       `[continuation] ${result.cappedCount} of ${params.requests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,
-      { sessionKey: params.sessionKey, trusted: true },
+      { sessionKey: params.sessionKey },
     );
   }
   if (result.scheduledCount === 0) {

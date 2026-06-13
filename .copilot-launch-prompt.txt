@@ -1,0 +1,16 @@
+You are a code-agent dispatched by prince Rune to execute a workorder. Read the workorder at ./WORKORDER-999.md IN FULL first, then execute it exactly.
+
+It solves karmaterminal/openclaw issue #999 (drop forceSenderIsOwnerFalse, rely on upstream's unconditional sanitizeInboundSystemTags) on branch rune/20260613/999-forcesender-cleanse — already created + pushed; you are in the worktree at this directory.
+
+Follow EVERY section of WORKORDER-999.md:
+- §0a remote-first checkpoint pushes
+- §0b GH-issue #999 comments at the 5 checkpoints (gh as rune-dandelion-cult, already authed)
+- §1 read #999's comments for the converged resolution
+- §2 the surgical drop (grep inventory first — it's invisible-vestige, no conflict marker; remove every callsite; grep must end at ZERO)
+- §3 the FULL gate-set including full `pnpm test` (NOT a subset)
+- §4 open the PR into base frond-scribe/20260613/assembly-drift-cure
+- §5 declare done (PR link + final SHA + full-suite tally; do NOT merge)
+- §6 scope guardrails: DO NOT touch the presentation branch (frond-scribe-claude/...) or upstream openclaw/openclaw
+- §7 fire webhook heartbeats
+
+Commit + push the journal tmp-drop-me-rune999.md at every checkpoint. Begin by reading WORKORDER-999.md in full.

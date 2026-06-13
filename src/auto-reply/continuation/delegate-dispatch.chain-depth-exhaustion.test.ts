@@ -214,7 +214,6 @@ describe("chain-depth exhaustion", () => {
     // change — keep these strings in sync with continue-work-signal-v2.
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(expect.stringContaining("chain-capped"), {
       sessionKey,
-      trusted: true,
     });
   });
 
@@ -269,7 +268,6 @@ describe("chain-depth exhaustion", () => {
     // emit the same chain-capped system event shape as the at-limit case.
     expect(enqueueSystemEventMock).toHaveBeenCalledWith(expect.stringContaining("chain-capped"), {
       sessionKey,
-      trusted: true,
     });
   });
 

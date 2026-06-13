@@ -87,7 +87,7 @@ export async function releasePostCompactionLifecycle(
       postCompaction: true,
     });
     if (postCompactionPressure) {
-      enqueueSystemEvent(postCompactionPressure, { sessionKey, trusted: true });
+      enqueueSystemEvent(postCompactionPressure, { sessionKey });
       pressureFired = true;
     }
   }

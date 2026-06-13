@@ -111,7 +111,7 @@ describe("dispatchStagedPostCompactionDelegates error handling", () => {
     );
     expect(mockState.enqueueSystemEvent).toHaveBeenCalledWith(
       expect.stringContaining("maxDelegatesPerTurn exceeded (1)"),
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
   });
 
@@ -138,7 +138,7 @@ describe("dispatchStagedPostCompactionDelegates error handling", () => {
     expect(mockState.spawnSubagentDirect).not.toHaveBeenCalled();
     expect(mockState.enqueueSystemEvent).toHaveBeenCalledWith(
       expect.stringContaining("chain length 1 reached"),
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
   });
 
@@ -162,7 +162,7 @@ describe("dispatchStagedPostCompactionDelegates error handling", () => {
     );
     expect(mockState.enqueueSystemEvent).toHaveBeenCalledWith(
       expect.stringContaining("cross-session targeting is disabled by policy"),
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
   });
 
@@ -195,7 +195,7 @@ describe("dispatchStagedPostCompactionDelegates error handling", () => {
     expect(eventMessage).toContain("[continuation] Post-compaction delegate spawn failed");
     expect(eventMessage).toContain("registry rejection: chain depth exceeded");
     expect(eventMessage).toContain("rehydrate workspace state after compaction");
-    expect(eventOpts).toEqual({ sessionKey, trusted: true });
+    expect(eventOpts).toEqual({ sessionKey });
   });
 
   it("logs info on dispatch start regardless of outcome", async () => {

@@ -17,11 +17,9 @@ import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.j
 import {
   consumeSelectedSystemEventEntries,
   peekSystemEventEntries,
-  resolveEventOwnerDowngrade,
   type SystemEvent,
 } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
-import { sanitizeInboundSystemTags } from "../../security/system-tags.js";
 
 function selectGenericSystemEvents(events: readonly SystemEvent[]): SystemEvent[] {
   return events.filter((event) => !isExecCompletionEvent(event.text));
@@ -88,7 +86,6 @@ async function ackDrainedSessionDeliveries(events: readonly SystemEvent[]): Prom
 
 export type FormattedSystemEventBlock = {
   text: string;
-  forceSenderIsOwnerFalse: boolean;
 };
 
 function formatSystemEventTimestamp(ts: number, cfg: OpenClawConfig) {
@@ -117,7 +114,6 @@ export async function drainFormattedSystemEventBlock(params: {
 }): Promise<FormattedSystemEventBlock | undefined> {
   const summaryLines: string[] = [];
   const systemLines: string[] = [];
-  let forceSenderIsOwnerFalse = false;
   // Exec completions have a dedicated heartbeat prompt; leave those entries queued
   // so the heartbeat path can consume and deliver them.
   const queued = consumeSelectedSystemEventEntries(
@@ -145,16 +141,12 @@ export async function drainFormattedSystemEventBlock(params: {
       if (!compacted) {
         return [];
       }
-      if (event.forceSenderIsOwnerFalse === true) {
-        forceSenderIsOwnerFalse = true;
-      }
-      const isUntrusted = resolveEventOwnerDowngrade(event);
-      const prefix = isUntrusted ? "System (untrusted)" : "System";
+      // Text is already sanitized unconditionally at enqueue-time; render
+      // uniformly as "System:" (the per-event trust bifurcation is removed).
       const timestamp = `[${formatSystemEventTimestamp(event.ts, params.cfg)}]`;
-      const rendered = isUntrusted ? sanitizeInboundSystemTags(compacted) : compacted;
-      return rendered
+      return compacted
         .split("\n")
-        .map((subline, index) => `${prefix}: ${index === 0 ? `${timestamp} ` : ""}${subline}`);
+        .map((subline, index) => `System: ${index === 0 ? `${timestamp} ` : ""}${subline}`);
     }),
   );
   if (params.isMainSession && params.isNewSession) {
@@ -178,7 +170,6 @@ export async function drainFormattedSystemEventBlock(params: {
       summaryLines.length > 0
         ? [...summaryLines, ...systemLines].join("\n")
         : systemLines.join("\n"),
-    forceSenderIsOwnerFalse,
   };
 }
 

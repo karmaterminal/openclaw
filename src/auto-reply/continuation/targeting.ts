@@ -112,7 +112,6 @@ export async function enqueueContinuationReturnDeliveries(
 
     deps.enqueueSystemEvent(params.text, {
       sessionKey,
-      trusted: true,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
       ...(params.traceparent ? { traceparent: params.traceparent } : {}),
       sessionDeliveryAckId: deliveryId,
