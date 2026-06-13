@@ -192,7 +192,7 @@ function checkSessionContextPressure(
     log.warn(logMessage);
   }
 
-  enqueueSystemEvent(eventText, { sessionKey, trusted: true });
+  enqueueSystemEvent(eventText, { sessionKey });
   sessionEntry.lastContextPressureBand = band;
   return { fired: true, band };
 }

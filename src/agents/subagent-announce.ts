@@ -295,7 +295,7 @@ async function rejectCrossSessionTargetingForSubagentDispatch(params: {
     "[continuation] Delegate rejected: cross-session targeting is disabled by policy. " +
       'Use the default return target, targetSessionKey set to this session, or fanoutMode="tree". ' +
       `Task: ${params.task}`,
-    { sessionKey: params.eventSessionKey, trusted: true },
+    { sessionKey: params.eventSessionKey },
   );
   return true;
 }
@@ -1009,7 +1009,7 @@ export async function runSubagentAnnounceFlow(params: {
           const { enqueueSystemEvent } = await import("../infra/system-events.js");
           enqueueSystemEvent(
             `[continuation:delegate-staged-post-compaction] Bracket delegate staged for post-compaction release: ${chainTask}`,
-            { sessionKey: targetRequesterSessionKey, trusted: true },
+            { sessionKey: targetRequesterSessionKey },
           );
         } else {
           const { maxChainLength, costCapTokens, minDelayMs, maxDelayMs, crossSessionTargeting } =
@@ -1435,7 +1435,6 @@ export async function runSubagentAnnounceFlow(params: {
         triggerMessage || `[continuation:enrichment-return] Delegate completed: ${taskLabel}`;
       enqueueSystemEventLazy(enrichmentText, {
         sessionKey: targetRequesterSessionKey,
-        trusted: true,
         ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
       });
       continuationLog.info(

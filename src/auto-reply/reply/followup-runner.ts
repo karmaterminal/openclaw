@@ -25,8 +25,8 @@ import { readSessionEntry } from "../../config/sessions/store-load.js";
 import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
-import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { shouldPreserveUserFacingSessionStateForInputProvenance } from "../../sessions/input-provenance.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
@@ -1291,11 +1291,7 @@ export function createFollowupRunner(params: {
         delaySeconds?: number;
         traceparent?: string;
       }[] = attemptContinueWorkRequests;
-      if (
-        effectiveContinueWorkRequests.length === 0 &&
-        continuationEnabled &&
-        sessionKey
-      ) {
+      if (effectiveContinueWorkRequests.length === 0 && continuationEnabled && sessionKey) {
         const [{ extractContinuationSignal }, { stripContinuationSignal }] = await Promise.all([
           import("../continuation/signal.js"),
           import("../tokens.js"),
@@ -1372,7 +1368,7 @@ export function createFollowupRunner(params: {
         if (scheduleResult.cappedCount > 0 && effectiveContinueWorkRequests.length > 1) {
           enqueueSystemEvent(
             `[continuation] ${scheduleResult.cappedCount} of ${effectiveContinueWorkRequests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,
-            { sessionKey, trusted: true },
+            { sessionKey },
           );
         }
         if (scheduleResult.scheduledCount > 0) {

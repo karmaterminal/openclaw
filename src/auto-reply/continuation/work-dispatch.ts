@@ -398,7 +398,7 @@ export async function dispatchPendingContinuationWork(params: {
     }
     enqueueSystemEvent(
       `[system:continuation-note] ${superseded.length} stale continue_work wake(s) were folded into the newest election (backlog coalesce).`,
-      { sessionKey: params.sessionKey, trusted: true },
+      { sessionKey: params.sessionKey },
     );
   }
   const soonestQueued = peekSoonestUnmaturedWorkDueAt(params.sessionKey);
@@ -498,7 +498,7 @@ export async function dispatchPendingContinuationWork(params: {
       } else {
         enqueueSystemEvent(
           `[system:continuation-warning] continue_work turn was not granted (${skippedReason}).`,
-          { sessionKey: work.sessionKey, trusted: true },
+          { sessionKey: work.sessionKey },
         );
         markPendingWorkFailed(work, `Continuation turn was not granted: ${skippedReason}`);
         failed++;

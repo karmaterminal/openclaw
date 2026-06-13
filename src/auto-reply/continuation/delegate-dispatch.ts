@@ -79,7 +79,7 @@ function surfaceHedgeDispatchFailure(sessionKey: string, errorMessage: string): 
   try {
     enqueueSystemEvent(
       `[system:continuation-warning] Hedge-timer dispatch failed; queued delegates may be orphaned. Error: ${errorMessage}. Re-issue continue_delegate if the work is still needed.`,
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
   } catch (err) {
     log.error(
@@ -277,7 +277,6 @@ export async function dispatchToolDelegates(params: {
     markDelegateFailed(dropped, summary);
     enqueueSystemEvent(`[continuation] ${summary} Task: ${dropped.task}`, {
       sessionKey,
-      trusted: true,
     });
   }
 
@@ -302,7 +301,6 @@ export async function dispatchToolDelegates(params: {
       markDelegateFailed(delegate, summary);
       enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
         sessionKey,
-        trusted: true,
       });
       emitContinuationDisabledSpan({
         chainId: undefined,
@@ -336,7 +334,6 @@ export async function dispatchToolDelegates(params: {
       markDelegateFailed(delegate, summary);
       enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
         sessionKey,
-        trusted: true,
       });
       rejected++;
       continue;
@@ -424,7 +421,7 @@ export async function dispatchToolDelegates(params: {
         );
         enqueueSystemEvent(
           `[continuation:delegate-spawned] Spawned turn ${nextHop}/${maxChainLength}: ${delegate.task}`,
-          { sessionKey, trusted: true },
+          { sessionKey },
         );
         const acceptedChildSessionKey = result.childSessionKey ?? childSessionKey;
         if (acceptedChildSessionKey) {
@@ -444,7 +441,6 @@ export async function dispatchToolDelegates(params: {
         dispatchSpan.setStatus("ERROR", reasonText);
         enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
           sessionKey,
-          trusted: true,
         });
         rejected++;
       }
@@ -457,7 +453,6 @@ export async function dispatchToolDelegates(params: {
       markDelegateFailed(delegate, summary);
       enqueueSystemEvent(`[continuation] ${summary}. Task: ${delegate.task}`, {
         sessionKey,
-        trusted: true,
       });
       rejected++;
     } finally {
@@ -600,7 +595,7 @@ export async function dispatchStagedPostCompactionDelegates(
     );
     enqueueSystemEvent(
       `[continuation] Post-compaction delegate rejected: maxDelegatesPerTurn exceeded (${config.maxDelegatesPerTurn}). Task: ${dropped.task}`,
-      { sessionKey, trusted: true },
+      { sessionKey },
     );
     emitContinuationDisabledSpan({
       chainId: undefined,
@@ -625,7 +620,7 @@ export async function dispatchStagedPostCompactionDelegates(
       );
       enqueueSystemEvent(
         `[continuation] Post-compaction delegate rejected: cross-session targeting is disabled by policy. Task: ${delegate.task}`,
-        { sessionKey, trusted: true },
+        { sessionKey },
       );
       emitContinuationDisabledSpan({
         chainId: undefined,
@@ -661,7 +656,7 @@ export async function dispatchStagedPostCompactionDelegates(
       );
       enqueueSystemEvent(
         `[continuation] Post-compaction delegate rejected: ${summary}. Task: ${delegate.task}`,
-        { sessionKey, trusted: true },
+        { sessionKey },
       );
       emitContinuationDisabledSpan({
         chainId: undefined,
@@ -706,7 +701,7 @@ export async function dispatchStagedPostCompactionDelegates(
       );
       enqueueSystemEvent(
         `[continuation] Post-compaction delegate spawn ${spawnResult.status}: ${spawnResult.error ?? "delegation was not accepted."}. Task: ${delegate.task}`,
-        { sessionKey, trusted: true },
+        { sessionKey },
       );
       failed++;
     } catch (err) {
@@ -715,7 +710,7 @@ export async function dispatchStagedPostCompactionDelegates(
       );
       enqueueSystemEvent(
         `[continuation] Post-compaction delegate spawn failed: ${String(err)}. Task: ${delegate.task}`,
-        { sessionKey, trusted: true },
+        { sessionKey },
       );
       failed++;
     }

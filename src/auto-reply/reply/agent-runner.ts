@@ -2597,7 +2597,7 @@ export async function runReplyAgent(replyParams: {
       });
       enqueueSystemEvent(
         `[continuation:delegate-staged-post-compaction] Bracket delegate staged for post-compaction release: ${effectiveContinuationSignal.task}`,
-        { sessionKey, trusted: true },
+        { sessionKey },
       );
     } else if (effectiveContinuationSignal && sessionKey) {
       const {
@@ -2618,7 +2618,7 @@ export async function runReplyAgent(replyParams: {
         );
         enqueueSystemEvent(
           `[continuation] Bracket continuation rejected: chain length ${maxChainLength} reached.`,
-          { sessionKey, trusted: true },
+          { sessionKey },
         );
         // Emit `continuation.disabled` at the bracket cap-gate reject.
         // No mint-on-reject: the chain never advanced for this signal, so
@@ -2658,7 +2658,7 @@ export async function runReplyAgent(replyParams: {
           );
           enqueueSystemEvent(
             `[continuation] Bracket continuation rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}).`,
-            { sessionKey, trusted: true },
+            { sessionKey },
           );
           const isDelegate = effectiveContinuationSignal.kind === "delegate";
           const delegateMode = isDelegate
@@ -2715,7 +2715,7 @@ export async function runReplyAgent(replyParams: {
               enqueueSystemEvent(
                 "[continuation] Delegate rejected: cross-session targeting is disabled by policy. " +
                   'Use the default return target, targetSessionKey set to this session, or fanoutMode="tree".',
-                { sessionKey, trusted: true },
+                { sessionKey },
               );
               emitContinuationDisabledSpan({
                 chainId: activeSessionEntry?.continuationChainId,
@@ -2835,7 +2835,7 @@ export async function runReplyAgent(replyParams: {
                   }
                   enqueueSystemEvent(
                     `[continuation:delegate-spawned] Spawned turn ${plannedHop}/${maxChainLength}: ${task}`,
-                    { sessionKey, trusted: true },
+                    { sessionKey },
                   );
                   return true;
                 }
@@ -2846,7 +2846,7 @@ export async function runReplyAgent(replyParams: {
                 dispatchSpan?.setStatus("ERROR", reasonText);
                 enqueueSystemEvent(
                   `[continuation] DELEGATE spawn ${spawnResult.status}: ${reasonText} Use sessions_spawn manually. Original task: ${task}`,
-                  { sessionKey, trusted: true },
+                  { sessionKey },
                 );
                 return false;
               } catch (err) {
@@ -2857,7 +2857,7 @@ export async function runReplyAgent(replyParams: {
                 );
                 enqueueSystemEvent(
                   `[continuation] DELEGATE spawn failed: ${String(err)}. Original task: ${task}`,
-                  { sessionKey, trusted: true },
+                  { sessionKey },
                 );
                 return false;
               } finally {
@@ -2993,7 +2993,7 @@ export async function runReplyAgent(replyParams: {
             if (batchResult.cappedCount > 0 && workRequests.length > 1) {
               enqueueSystemEvent(
                 `[continuation] ${batchResult.cappedCount} of ${workRequests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,
-                { sessionKey, trusted: true },
+                { sessionKey },
               );
             }
           }
