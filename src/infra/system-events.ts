@@ -47,8 +47,6 @@ const SYSTEM_EVENT_QUEUES_KEY = Symbol.for("openclaw.systemEvents.queues");
 
 const queues = resolveGlobalMap<string, SessionQueue>(SYSTEM_EVENT_QUEUES_KEY);
 
-type DeprecatedOwnerFalseSystemOptionKey = `forceSenderIsOwner${"False"}`;
-
 type SystemEventOptions = {
   sessionKey: string;
   contextKey?: string | null;
@@ -67,12 +65,13 @@ type SystemEventOptions = {
    * a malformed traceparent never prevents an enqueue).
    */
   traceparent?: string;
-} & {
   /**
-   * @deprecated Preserved for source compatibility with legacy plugin callers.
-   * Ignored by core runtime and stripped by plugin-SDK runtime wrappers.
+   * @deprecated Legacy per-event downgrade flag. Still REGISTERED + accepted for
+   * source compatibility with legacy plugin callers (per #999 review: deprecated,
+   * NOT removed). Ignored by core runtime; stripped by plugin-SDK runtime wrappers
+   * so external plugin input can never set it. No longer gates sanitization.
    */
-  [K in DeprecatedOwnerFalseSystemOptionKey]?: boolean;
+  forceSenderIsOwnerFalse?: boolean;
 };
 
 function normalizeTraceparent(traceparent?: string): string | undefined {

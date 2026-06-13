@@ -7,12 +7,11 @@ import {
 } from "../infra/system-events.js";
 
 type SystemEventOptions = Parameters<typeof enqueueSystemEventInternal>[1];
-const deprecatedOwnerFalseOptionKey = `forceSenderIsOwner${"False"}` as const;
 
 export function enqueueSystemEvent(text: string, options: SystemEventOptions): boolean {
   const {
     trusted: _trusted,
-    [deprecatedOwnerFalseOptionKey]: _deprecatedOwnerFalseOption,
+    forceSenderIsOwnerFalse: _forceSenderIsOwnerFalse,
     ...safeOptions
   } = options;
   return enqueueSystemEventInternal(text, safeOptions);
