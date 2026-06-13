@@ -24,3 +24,18 @@
   - Base vestige surface confirmed: 36 unique files, 73 matching lines under `src/**/*.ts` and `extensions/**/*.ts`.
   - Continuation marker check over `src/agents/command/work-dispatch.ts`, `src/agents/command/delegate-dispatch.ts`, `src/agents/embedded-agent-runner`, and `src/auto-reply/reply/followup-runner.ts`: no `[System]` or `System:` markers found, so upstream unconditional sanitize remains a no-op for those status emits.
   - Plan: merge `upstream/main`; resolve 3 keep-both conflicts in `src/agents/embedded-agent-runner/run/params.ts`, `src/auto-reply/reply/followup-runner.ts`, and `src/agents/command/attempt-execution.ts`; resolve `src/auto-reply/reply/session-system-events.ts` toward upstream while keeping `drainFormattedSystemEvents` and dropping the force vestige; commit/push; grep-gate to 0; update sanitize tests; run `pnpm tsgo:core`, `pnpm tsgo:test`, `pnpm tsgo:extensions`, `pnpm lint`, and full `pnpm test` if feasible; open PR only into `frond-scribe/20260613/assembly-drift-cure`; dispatch `openclaw-ci`; do not merge.
+
+- 2026-06-13T19:08:00+00:00: DESIGN-BREAK blocker; merge conflict set does not match the workorder.
+  - Command attempted: `git merge upstream/main`.
+  - Expected conflicts from workorder: 4 files.
+  - Actual unmerged files: 8 files:
+    - `src/agents/command/attempt-execution.ts`
+    - `src/agents/command/types.ts`
+    - `src/agents/embedded-agent-runner/run/params.ts`
+    - `src/auto-reply/reply/agent-runner-execution.ts`
+    - `src/auto-reply/reply/followup-runner.ts`
+    - `src/auto-reply/reply/session-system-events.ts`
+    - `src/config/sessions/types.ts`
+    - `src/gateway/server-methods/agent.ts`
+  - The extra conflicts are outside the byte-true 4-conflict contract, so the workorder says to stop and surface instead of guessing a resolution.
+  - I aborted the merge to keep the branch pushable for this blocker journal checkpoint. No conflict resolutions or cleanup edits were made.
