@@ -98,3 +98,11 @@
     - `src/auto-reply/reply/session-system-events.ts`: remove five force-flag references from block type, accumulator, event inspection, and return payload.
     - `src/infra/system-events.test.ts`: remove six force-flag references by replacing old conditional-sanitize tests with upstream unconditional-sanitize expectations.
     - `src/infra/system-events.ts`: remove eleven force-flag references from types, comments, normalization, resolver, and equality.
+
+- 2026-06-13T20:30:00+00:00: Spec refinement recorded; cleanse must bring the upstream security-file shape atomically.
+  - Refinement source: Cael amendment from cohort/frond-scribe. Live #999 comments still show the earlier converged spec as of this checkpoint, so this amendment is the controlling byte-update for this lane.
+  - Important correction to prior prep: on the drift-only keep-ours back-merge base, upstream's unconditional `sanitizeInboundSystemTags(text).trim()` is not yet present in the kept security files. The cleanse must therefore resolve both security files toward upstream as part of the same atomic PR:
+    - `src/infra/system-events.ts`: bring upstream unconditional queue-boundary sanitizer, drop `forceSenderIsOwnerFalse`, drop legacy `trusted?`, drop `resolveEventOwnerDowngrade`, and drop ownership comparisons.
+    - `src/auto-reply/reply/session-system-events.ts`: bring upstream/plain formatter shape while preserving post-drift continuation additions (`drainFormattedSystemEvents`, queue-drain tracing, delivery ack handling, traceparent/session delivery fields as present on base).
+  - The extension/core callsite drops alone would remove the anti-spoof signal without bringing the replacement sanitizer; that is not acceptable. The two security-file toward-upstream swaps plus all callsite/test updates are one atomic cleanse.
+  - Current remote assembly observed advanced to `e64e8c4130cd2918ba0bf791115df4986573a9fe`, so the drift-only base appears to have landed. Next step: integrate `origin/frond-scribe/20260613/assembly-drift-cure` into this no-force branch, then apply the atomic cleanse on top.
