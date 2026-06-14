@@ -110,9 +110,16 @@ export async function enqueueContinuationReturnDeliveries(
     );
     deliveryIds.push(deliveryId);
 
+    // SECURITY (#1024 / clawsweeper P1): cross-session delegate-return text is
+    // model-produced enrichment delivered into OTHER sessions. It must NOT be
+    // trusted-internal — a trusted enqueue skips the inbound anti-spoof sanitizer,
+    // letting one session inject `System:`-marker spoofs as privileged context into
+    // another. Omit `trusted` (defaults untrusted) so `enqueueSystemEvent` routes it
+    // through `sanitizeInboundSystemTags` like any other channel/plugin payload.
+    // (Same-session continuation signals — wake notes, context-pressure events — are
+    // literal system-generated text and stay `trusted: true` at their own call-sites.)
     deps.enqueueSystemEvent(params.text, {
       sessionKey,
-      trusted: true,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
       ...(params.traceparent ? { traceparent: params.traceparent } : {}),
       sessionDeliveryAckId: deliveryId,
