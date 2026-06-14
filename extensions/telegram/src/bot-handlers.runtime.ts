@@ -2181,9 +2181,7 @@ export const registerTelegramHandlers = ({
         callbackMessage.chat.type === "group" || callbackMessage.chat.type === "supergroup";
       const nativeCallbackCommand = parseTelegramNativeCommandCallbackData(data);
       const opaqueCallbackData = parseTelegramOpaqueCallbackData(data);
-      const genericCallbackText = data.startsWith("/") ? data : `callback_data: ${data}`;
-      const callbackCommandText =
-        nativeCallbackCommand ?? (opaqueCallbackData ? "" : genericCallbackText);
+      const callbackCommandText = nativeCallbackCommand ?? (opaqueCallbackData ? "" : data);
       const pluginCallbackData = opaqueCallbackData ?? data;
       const approvalCallback = parseExecApprovalCommandText(
         nativeCallbackCommand ?? (opaqueCallbackData ? "" : data),
