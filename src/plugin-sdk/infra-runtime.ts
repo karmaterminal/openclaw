@@ -4,6 +4,8 @@
  * Prefer focused openclaw/plugin-sdk/<domain> runtime subpaths instead.
  */
 
+import { enqueueSystemEvent as enqueueSystemEventInternal } from "../infra/system-events.js";
+
 export * from "./delivery-queue-runtime.js";
 
 export * from "../infra/backoff.js";
@@ -66,7 +68,44 @@ export * from "../infra/retry-policy.js";
 export * from "../infra/scp-host.ts";
 export * from "../infra/secret-file.js";
 export * from "../infra/secure-random.js";
-export * from "../infra/system-events.js";
+// The raw `enqueueSystemEvent`/`enqueueSystemEventEntry` are deliberately NOT
+// re-exported here: this deprecated barrel is reachable by untrusted third-party
+// plugins, so a forced-untrusted wrapper (below) replaces the producer and only
+// the read/drain helpers pass through. Trusted-internal producers use the direct
+// `infra/system-events` import, not this barrel.
+export {
+  consumeSelectedSystemEventEntries,
+  consumeSystemEventEntries,
+  drainSystemEventEntries,
+  drainSystemEvents,
+  hasSystemEvents,
+  isSystemEventContextChanged,
+  peekSystemEventEntries,
+  peekSystemEvents,
+  removeSystemEvents,
+  resetSystemEventsForTest,
+  resolveSystemEventDeliveryContext,
+  type SystemEvent,
+} from "../infra/system-events.js";
+
+/**
+ * Plugins reaching this deprecated barrel are untrusted by construction. Force
+ * `trusted: false` so a plugin cannot set `trusted: true` to bypass the inbound
+ * anti-spoof sanitizer (#999), and strip the session-delivery ack fields so a
+ * plugin cannot forge an ack target it never owned. `traceparent`/`contextKey`/
+ * `deliveryContext` are additive and pass through untouched.
+ */
+export function enqueueSystemEvent(
+  text: string,
+  options: Parameters<typeof enqueueSystemEventInternal>[1],
+): boolean {
+  return enqueueSystemEventInternal(text, {
+    ...options,
+    trusted: false,
+    sessionDeliveryAckId: undefined,
+    sessionDeliveryAckStateDir: undefined,
+  });
+}
 export * from "../infra/system-message.ts";
 export * from "../infra/tmp-openclaw-dir.js";
 export * from "../infra/transport-ready.js";
