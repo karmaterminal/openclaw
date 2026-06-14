@@ -2,10 +2,7 @@
 
 import { enqueueSystemEvent as enqueueSystemEventInternal } from "../infra/system-events.js";
 
-export {
-  peekSystemEventEntries,
-  resetSystemEventsForTest,
-} from "../infra/system-events.js";
+export { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
 
 /**
  * SDK consumers are untrusted by construction — force `trusted: false` so a
@@ -16,5 +13,5 @@ export function enqueueSystemEvent(
   text: string,
   options: Parameters<typeof enqueueSystemEventInternal>[1],
 ): boolean {
-  return enqueueSystemEventInternal(text, { ...options, trusted: false });
+  return enqueueSystemEventInternal(text, Object.assign({}, options, { trusted: false }));
 }

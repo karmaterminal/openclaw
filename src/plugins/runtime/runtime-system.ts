@@ -20,7 +20,7 @@ const runHeartbeatOnceInternal = createLazyRuntimeMethod(
 // sanitizer. Trusted-internal producers (continuation/post-compaction) enqueue via the
 // direct `infra/system-events` import, not this plugin runtime facade.
 const enqueueSystemEvent: PluginRuntime["system"]["enqueueSystemEvent"] = (text, options) =>
-  enqueueSystemEventInternal(text, { ...options, trusted: false });
+  enqueueSystemEventInternal(text, Object.assign({}, options, { trusted: false }));
 
 /** Creates the plugin runtime system facade with heartbeat/event/process helpers. */
 export function createRuntimeSystem(): PluginRuntime["system"] {

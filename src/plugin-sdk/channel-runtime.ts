@@ -26,7 +26,7 @@ export function enqueueSystemEvent(
   text: string,
   options: Parameters<typeof enqueueSystemEventInternal>[1],
 ): boolean {
-  return enqueueSystemEventInternal(text, { ...options, trusted: false });
+  return enqueueSystemEventInternal(text, Object.assign({}, options, { trusted: false }));
 }
 export { recordChannelActivity } from "../infra/channel-activity.js";
 export * from "../infra/heartbeat-events.ts";
