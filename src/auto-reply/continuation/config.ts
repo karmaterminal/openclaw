@@ -20,7 +20,7 @@ const DEFAULT_CONTINUATION_COST_CAP_TOKENS = 500_000;
 const DEFAULT_CONTINUATION_MAX_DELEGATES_PER_TURN = 5;
 const DEFAULT_CONTINUATION_MAX_PENDING_WORK = 32;
 const DEFAULT_EARLY_WARNING_BAND = 0.3125;
-// #990 busy-skip exp-backoff defaults (preserve pre-config behavior: 1s base,
+// Busy-skip exp-backoff defaults (preserve pre-config behavior: 1s base,
 // ×2 per consecutive busy-skip, capped at maxDelayMs).
 const DEFAULT_BUSY_SKIP_BACKOFF_BASE_MS = 1_000;
 const DEFAULT_BUSY_SKIP_BACKOFF_FACTOR = 2;

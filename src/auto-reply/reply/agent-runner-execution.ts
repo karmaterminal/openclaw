@@ -249,7 +249,7 @@ export async function releaseQueuedCompactionCompletion(params: {
 // caller's compaction-outcome signal. compactEmbeddedAgentSession has
 // already mutated session-snapshot truth on disk before we get here; if
 // release throws and the caller sees `{ ok: false, compacted: false }`,
-// the agent retries compaction on an already-compacted session (#816).
+// the agent retries compaction on an already-compacted session.
 export async function releaseQueuedCompactionTolerant(
   params: Parameters<typeof releaseQueuedCompactionCompletion>[0],
 ): Promise<void> {
@@ -271,7 +271,7 @@ export async function releaseQueuedCompactionTolerant(
 //   - the context-window denominator cannot be resolved for this provider/model
 // Returning null is preferable to a synthetic ratio because the consumer
 // already distinguishes "unknown" from "below-threshold" with separate
-// rejection codes and operator-facing reasons (#817).
+// rejection codes and operator-facing reasons.
 export function computeRequestCompactionContextUsage(params: {
   entry: SessionEntry | undefined;
   cfg: OpenClawConfig | undefined;
@@ -282,7 +282,7 @@ export function computeRequestCompactionContextUsage(params: {
   // compute a fresh totalTokens snapshot (set in session-store.ts:253,280),
   // the value is explicitly known-stale and consumers must refuse to use it
   // for context-utilization gates. Matches the pattern in status-message.ts:
-  // 689-694 and sessions.ts:430-431 (#817).
+  // 689-694 and sessions.ts:430-431.
   const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
   if (freshTotalTokens === undefined) {
     return null;
@@ -293,7 +293,7 @@ export function computeRequestCompactionContextUsage(params: {
   // models (under-fire) and 1M context models (over-fire). No other
   // production caller in the codebase uses a ?? 200_000 shortcut here;
   // they all route through resolveContextTokensForModel /
-  // resolveContextWindowInfo (#817).
+  // resolveContextWindowInfo.
   const sessionWindow = params.entry?.contextTokens;
   const contextWindow =
     sessionWindow ??
@@ -2134,7 +2134,7 @@ export async function runAgentTurnWithFallback(params: {
         // to the end of the text, so mid-sentence mentions are safe. Final-payload
         // stripping in runReplyAgent still runs for the assembled payloads.
         // Only strip when continuation is enabled — otherwise the tokens are
-        // regular text the model happened to generate. (#104)
+        // regular text the model happened to generate.
         if (
           text &&
           params.followupRun.run.config?.agents?.defaults?.continuation?.enabled === true
@@ -2557,7 +2557,7 @@ export async function runAgentTurnWithFallback(params: {
               let attemptCompactionTraceparent: string | undefined;
               // Accumulate every continue_work election fired this turn. A single
               // model response can emit N calls; capturing only the last one
-              // silently drops the rest (#982).
+              // silently drops the rest (only the last continue_work election survives otherwise).
               const attemptContinueWorkRequests: ContinueWorkRequest[] = [];
               const lifecycleBackstop = createEmbeddedLifecycleTerminalBackstop({
                 runId,
@@ -3463,14 +3463,13 @@ export async function runAgentTurnWithFallback(params: {
   // overflow errors were returned as embedded error payloads.
   const finalEmbeddedError = runResult?.meta?.error;
   const hasPayloadText = runResult?.payloads?.some((p) => normalizeOptionalString(p.text));
-  // #475+#487 reconcile (option c): #487 prepends a standalone blocked-liveness
-  // notice payload; #475 (#481) prefixes existing error payloads with a blocked
-  // marker. Both fire on `livenessState === "blocked"`, producing double-emit
-  // (notice + prefixed-error) when both an error payload and blocked liveness
-  // are present. Tests written against #475's contract expect single-payload
-  // outcomes. Gate #487's prepend on the absence of an error payload so the
+  // Blocked-liveness reconcile: the standalone blocked-liveness notice payload
+  // and the existing-error-payload prefix both fire on `livenessState === "blocked"`,
+  // producing double-emit (notice + prefixed-error) when both an error payload and
+  // blocked liveness are present. The single-payload contract expects one marker.
+  // Gate the standalone-notice prepend on the absence of an error payload so the
   // notice surfaces only as the silent-blocked fallback (no error to prefix);
-  // when an error payload is present, #475's prefix carries the blocked-state
+  // when an error payload is present, the error-prefix carries the blocked-state
   // signal alone.
   const hasErrorPayload = runResult?.payloads?.some((p) => p.isError) ?? false;
   if (
@@ -3500,7 +3499,7 @@ export async function runAgentTurnWithFallback(params: {
     }
   }
 
-  // #475: surface terminal blocked livenessState as a channel-visible marker.
+  // Surface terminal blocked livenessState as a channel-visible marker.
   // The embedded runner sets `meta.livenessState = "blocked"` on terminal
   // give-up paths (compaction-failure cap, strict-agentic blocked, role-ordering
   // give-up, etc.) but channel consumers never read this metadata. Operators
@@ -3529,7 +3528,7 @@ export async function runAgentTurnWithFallback(params: {
       if (text.startsWith(blockedMarker)) {
         return payload;
       }
-      // #475+#487 reconcile: skip the standalone blocked-liveness notice
+      // Blocked-liveness reconcile: skip the standalone blocked-liveness notice
       // sentinel so it surfaces unprefixed. The notice is itself a blocked-
       // state marker; prefixing it produces a "⛔ Session blocked: ⚠️ Agent
       // liveness: blocked..." chimera that fails the single-marker contract.

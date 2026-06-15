@@ -577,7 +577,7 @@ function resolveHeartbeatSession(
   // UNLESS the wake is a continuation-triggered wake (reason="continuation"). Subagent
   // sessions that call continue_work() need their own wake to fire back into the same
   // session, not redirect to main. Without this exemption, continue_work in subagents
-  // is a dead tool (the timer fires but the wake gets eaten). Tracking: #746.
+  // is a dead tool (the timer fires but the wake gets eaten).
   const forced = forcedSessionKey?.trim();
   if (forced && isSubagentSessionKey(forced)) {
     if (isContinuationHeartbeatWakeReason(opts?.reason ?? "")) {

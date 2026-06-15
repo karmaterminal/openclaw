@@ -41,11 +41,11 @@ const PendingWorkStateSchema = z.object({
   releasedAt: z.number().int().nonnegative().optional(),
   turnGrantedAt: z.number().int().nonnegative().optional(),
   retryCount: z.number().int().nonnegative().optional(),
-  // #990 Pillar-0: consecutive PRE-drive busy-skip (requests-in-flight/draining)
+  // Consecutive PRE-drive busy-skip (requests-in-flight/draining)
   // count for exp-backoff on the re-arm. DISTINCT from retryCount — a busy-skip is
   // a legit defer, never a failed attempt, so it must not feed the fail-bound.
   busySkipCount: z.number().int().nonnegative().optional(),
-  // #990 locus-3: durable delivered-mark written AFTER a wake is confirmed
+  // Durable delivered-mark written AFTER a wake is confirmed
   // delivered but BEFORE the persist-gap that precedes finishFlow. The
   // consume read-guard skips any flow carrying it so a crash in that window
   // never re-delivers (restart-gap dup cure). Two-axis legible: PRESENT=terminal.
@@ -68,17 +68,17 @@ export type PendingContinuationWork = {
   chainId?: string;
   traceparent?: string;
   retryCount?: number;
-  // #990 Pillar-0: consecutive busy-skip count for exp-backoff on the busy re-arm.
+  // Consecutive busy-skip count for exp-backoff on the busy re-arm.
   // Distinct from retryCount (the transient-error fail-bound). Never penalizes.
   busySkipCount?: number;
-  // #990 locus-3: durable delivered-mark (see schema). PRESENT once a wake was
+  // Durable delivered-mark (see schema). PRESENT once a wake was
   // confirmed delivered; the consume read-guard refuses to re-drive it.
   succeeded?: { point: "optimal"; durability: "durable" };
   flowId?: string;
   expectedRevision?: number;
   // Durable flow status carried onto the runtime object by the store reader
   // ({@link workToRuntime}), sourced from the flow's PRE-claim status. The
-  // fold-side write-guard (#988-P2-1) needs this to tell a recovered `running`
+  // The fold-side write-guard needs this to tell a recovered `running`
   // turn (actively executing) from genuine `queued` backlog so a live turn is
   // never finished-as-superseded. Absent on freshly-constructed enqueue inputs;
   // only store reads populate it.
@@ -180,7 +180,7 @@ export function consumePendingWork(
       if (!isContinuationWorkFlow(candidate)) {
         return false;
       }
-      // #990 Pillar-0 (:259 dedup harden): a cancel-requested flow is terminating
+      // A cancel-requested flow is terminating
       // — never consume/drive it. cancelFlowById finalizes managed continuation
       // work to `cancelled` synchronously, but a transient revision conflict can
       // leave it cancelRequestedAt-marked yet not-yet-terminal until the
@@ -214,7 +214,7 @@ export function consumePendingWork(
       });
       continue;
     }
-    // #990 locus-3 read-guard: a durably delivered-marked flow was confirmed
+    // Read-guard: a durably delivered-marked flow was confirmed
     // delivered before the persist-gap. Even if its status is still `running`
     // (the process died after the durable mark but before finishFlow finalized
     // it), never re-consume it — that would be a restart-gap double-delivery.
@@ -248,7 +248,7 @@ export function consumePendingWork(
     // Carry the PRE-claim durable status: the claim above flips every consumed
     // flow to `running`, so claimed.flow.status can no longer distinguish a
     // recovered active turn from freshly-released queued backlog. The fold-side
-    // write-guard (#988-P2-1) keys off this original status.
+    // The fold-side write-guard keys off this original status.
     const originalStatus: "queued" | "running" = flow.status === "running" ? "running" : "queued";
     work.push(workToRuntime(claimed.flow, { ...state, releasedAt }, originalStatus));
   }
@@ -270,7 +270,7 @@ function buildFallbackWorkState(work: PendingContinuationWork): PendingWorkState
 /**
  * Finish a continuation-work flow cleanly (terminal, no failure/retry).
  *
- * Shared by the turn-granted, superseded (#986), and orphan-reaped (#990) paths:
+ * Shared by the turn-granted, superseded, and orphan-reaped paths:
  * each is an INTENTIONAL terminal — the wake will not re-arm — distinct from
  * {@link markPendingWorkFailed} (error path). `stateExtra` carries the
  * path-specific durable state; `turnGrantedAt` is always stamped so the flow
@@ -309,7 +309,7 @@ function finishContinuationWorkFlow(
 export function markPendingWorkTurnGranted(work: PendingContinuationWork): boolean {
   return finishContinuationWorkFlow(work, {
     currentStep: "Same-session continuation turn granted",
-    // #990 Pillar-0: a flow that drove is no longer busy-deferred — clear the
+    // A flow that drove is no longer busy-deferred — clear the
     // exp-backoff counter so the granted record never carries a stale rate-cap.
     stateExtra: { busySkipCount: 0 },
     notCommittedTag: "work-finish-not-committed",
@@ -317,7 +317,7 @@ export function markPendingWorkTurnGranted(work: PendingContinuationWork): boole
 }
 
 /**
- * Durably mark a continuation wake delivered, BEFORE the persist-gap (#990 locus-3).
+ * Durably mark a continuation wake delivered, BEFORE the persist-gap.
  *
  * Written the instant a wake is confirmed delivered (the agent turn ran),
  * before the dispatch loop's follow-on {@link markPendingWorkTurnGranted}
@@ -416,7 +416,7 @@ export function markPendingWorkFailed(work: PendingContinuationWork, summary: st
 }
 
 /**
- * Mark a matured continuation-work flow superseded (#986 drain-superseded).
+ * Mark a matured continuation-work flow superseded (drain-superseded).
  *
  * Used when a stale backlog member is collapsed in favour of a newer election in
  * the same drain batch — the wake is NOT driven; the flow is finished cleanly so
@@ -431,7 +431,7 @@ export function markPendingWorkSuperseded(work: PendingContinuationWork, summary
 }
 
 /**
- * Reap an orphan continuation-work flow (#990 bucket-1 cull).
+ * Reap an orphan continuation-work flow (orphan-reap cull).
  *
  * Used when the flow's parent run is CONFIDENT-terminal and can never rehydrate
  * it (read-time liveness join). Finished cleanly like a supersede — no
@@ -479,7 +479,7 @@ export function peekSoonestRunningWorkRecoveryDueAt(
     if (!state) {
       continue;
     }
-    // #990 locus-3: a delivered-marked flow stuck `running` (crash before
+    // A delivered-marked flow stuck `running` (crash before
     // finishFlow) must not arm a recovery wake — consume would skip it via the
     // read-guard, so re-arming here would spin a tight no-op recovery loop.
     if (state.succeeded) {
@@ -501,7 +501,7 @@ export function pendingWorkCount(sessionKey: string): number {
 /**
  * Count only QUEUED (future, undelivered) continuation-work flows.
  *
- * The #986 maxPendingWork cap uses this rather than {@link pendingWorkCount}
+ * The maxPendingWork cap uses this rather than {@link pendingWorkCount}
  * (which also counts `running`). At enqueue time the currently-driving wake is
  * still `running` (it is only marked succeeded after `getReplyFromConfig`
  * returns), so counting `running` would make the active wake reject its own
@@ -523,7 +523,7 @@ export function hasLiveOrRecentlyDispatchedContinuationWork(sessionKey: string):
     if (flow.status !== "queued" && flow.status !== "running") {
       return false;
     }
-    // #990 P2 (#996): a durably delivered-marked flow is DONE, not live. The
+    // A durably delivered-marked flow is DONE, not live. The
     // locus-3 mark deliberately leaves it `status:running` until finishFlow
     // finalizes it; if the process crashed in the mark->finishFlow gap, the row
     // stays `running` but is already delivered. The consume-guards (:221, :485)

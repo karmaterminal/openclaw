@@ -1693,7 +1693,7 @@ async function runEmbeddedAgentInternal(
             // openclaw-tools.ts:624 and only continue_delegate registers, leaving
             // continue_work + request_compaction absent from the LLM-callable
             // function-tool-list. Empirically confirmed by schema-inventory
-            // introspection at two deployed agent-host seats; see #868. The opts
+            // introspection at two deployed agent-host seats. The opts
             // are constructed upstream at
             // auto-reply/reply/agent-runner-execution.ts:2472 + :2504 and arrive
             // here on the RunEmbeddedAgent params, but were not threaded through

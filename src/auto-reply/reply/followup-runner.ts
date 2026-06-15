@@ -795,7 +795,7 @@ export function createFollowupRunner(params: {
       let queuedUserMessagePersistedAcrossFallback = false;
       let assistantErrorPersistedAcrossFallback = false;
       // Accumulate every continue_work election fired this turn; capturing only
-      // the last one silently drops the rest (#982).
+      // the last one silently drops the rest (only the last continue_work election survives otherwise).
       const attemptContinueWorkRequests: ContinueWorkRequest[] = [];
       try {
         const outcomePlan = buildAgentRuntimeOutcomePlan();
@@ -1417,10 +1417,9 @@ export function createFollowupRunner(params: {
           parentRunId: runId,
           log: (message) => defaultRuntime.log(message),
         });
-        // #986 cap-notice symmetry: surface cap-dropped elections on the
+        // Cap-notice symmetry: surface cap-dropped elections on the
         // followup lane too, matching the main-reply lane (agent-runner).
-        // Multi-election only, to keep single-work behavior intact
-        // (Rune #988 review residual + frond fold-in).
+        // Multi-election only, to keep single-work behavior intact.
         if (scheduleResult.cappedCount > 0 && effectiveContinueWorkRequests.length > 1) {
           enqueueSystemEvent(
             `[continuation] ${scheduleResult.cappedCount} of ${effectiveContinueWorkRequests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,

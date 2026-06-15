@@ -714,7 +714,7 @@ export async function runAgentAttempt(params: {
   // path, so typed continue_work never registers for turn-1 subagent tool calls.
   const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
   // Accumulate every continue_work election fired this turn; capturing only the
-  // last one silently drops the rest (#982).
+  // last one silently drops the rest (only the last continue_work election survives otherwise).
   const attemptContinueWorkRequests: ContinueWorkRequest[] = [];
   const continueWorkOpts = continuationEnabled
     ? {
@@ -904,7 +904,7 @@ export async function runAgentAttempt(params: {
   );
 
   // Post-turn: capture both continue_work surfaces. Light-context subagents may
-  // not receive the typed tool, so the #952 nested path must honor the bracket
+  // not receive the typed tool, so the nested-tool path must honor the bracket
   // token parsed from the final payload as well as the tool callback.
   if (continuationEnabled && params.sessionKey) {
     try {
@@ -1017,7 +1017,7 @@ async function scheduleSpawnInitContinueWorkWake(params: {
     parentRunId: params.runId,
     log: (message) => log.info(message),
   });
-  // #986 cap-notice symmetry: surface cap-dropped elections on the subagent-init
+  // Cap-notice symmetry: surface cap-dropped elections on the subagent-init
   // lane too, matching the main-reply lane (agent-runner) and followup lane
   // (followup-runner). Without this, a subagent turn's partial cap-drop is
   // silent even though the tool told the model each call was "scheduled".
@@ -1025,8 +1025,7 @@ async function scheduleSpawnInitContinueWorkWake(params: {
   // the pending/chain/cost cap before a multi-continue_work response returns
   // scheduledCount:0 with cappedCount>0, so emitting after the early return
   // would re-open the never-silent gap on this lane only. Multi-election only,
-  // to keep single-work behavior intact (Rune #988 review residual + frond
-  // fold-in, P2-2).
+  // to keep single-work behavior intact. Multi-election only.
   if (result.cappedCount > 0 && params.requests.length > 1) {
     enqueueSystemEvent(
       `[continuation] ${result.cappedCount} of ${params.requests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,

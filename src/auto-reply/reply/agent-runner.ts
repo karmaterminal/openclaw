@@ -1792,7 +1792,7 @@ export async function runReplyAgent(replyParams: {
       }
     }
 
-    // Continuation chain-break reset (#987, #989). A fresh non-`[continuation:wake]`
+    // Continuation chain-break reset. A fresh non-`[continuation:wake]`
     // turn-entry (inbound user message, plain heartbeat, outside-machinery
     // system-event, or an ordinary inter-session subagent completion) means the
     // prior auto-continuation chain ended, so the runaway leashes — chain depth
@@ -1802,7 +1802,7 @@ export async function runReplyAgent(replyParams: {
     // wakes set `isContinuationWake`: `work-wake` (CONTINUE_WORK timer) and an
     // in-chain `delegate-return` (a `[continuation:chain-hop:N]` return). An
     // ordinary subagent completion arrives as `subagent-return`, which is NOT a
-    // continuation wake (#989), so it resets here like any other external turn —
+    // continuation wake, so it resets here like any other external turn —
     // otherwise a long-lived session's stale chain count would reject every fresh
     // continuation elected from an unrelated subagent return. Genuine mid-chain
     // wakes must NOT reset, otherwise the cap could never bound a runaway. This is
@@ -3039,8 +3039,8 @@ export async function runReplyAgent(replyParams: {
               });
             }
           } else {
-            // Fan out every continue_work tool election captured this turn
-            // (#982). A single model response can fire N continue_work calls;
+            // Fan out every continue_work tool election captured this turn.
+            // A single model response can fire N continue_work calls;
             // each is its own flow with its own delay/reason. Bracket-sourced
             // work has no per-tool array, so it schedules one election from the
             // merged signal.

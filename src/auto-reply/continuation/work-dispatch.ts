@@ -35,8 +35,8 @@ const CONTINUATION_TURN_BUSY_REASON = "requests-in-flight";
 const CONTINUATION_TURN_DRAINING_REASON = "draining";
 const MAIN_COMMAND_LANE = "main";
 const RUNNING_WORK_RECOVERY_STALE_MS = 60_000;
-// #986 Guard 2: a matured backlog member is "stale" (superseded-eligible) when it
-// is overdue past this multiple of the configured maxDelayMs. Close bursts stay
+// Stale-backlog guard: a matured backlog member is "stale" (superseded-eligible)
+// when it is overdue past this multiple of the configured maxDelayMs. Close bursts stay
 // below the grace and are NOT collapsed; only a genuine stale pile is folded.
 const SUPERSEDED_GRACE_MULTIPLIER = 2;
 
@@ -92,7 +92,7 @@ function isRetryableContinuationSkipReason(reason: string): boolean {
 }
 
 /**
- * #990 Pillar-0 — exp-backoff delay for a PRE-drive busy-skip re-arm.
+ * Exp-backoff delay for a PRE-drive busy-skip re-arm.
  *
  * A busy-skip (`requests-in-flight`/`draining`) means the turn never started — a
  * legit defer, never a failed attempt. Re-arming at a flat `baseMs` spins a
@@ -118,10 +118,10 @@ export function computeBusySkipBackoffMs(
 }
 
 /**
- * #990 bucket-1 — orphan-reap verdict for a busy-deferred continuation flow.
+ * Orphan-reap verdict for a busy-deferred continuation flow.
  *
  * Pure decision over the delegate-flow-gate + a read-time parent-liveness join.
- * Asymmetric error cost is load-bearing (#952): wrongly culling a busy seat is
+ * Asymmetric error cost is load-bearing: wrongly culling a busy seat is
  * unrecoverable; parking a zombie is harmless. So ONLY a confident-terminal
  * parent authorizes the cull — `alive`, `uncertain`, and the no-lineage gate all
  * quiesce (rate-cap-forever, the Pillar-0 trickle).
@@ -145,7 +145,7 @@ export function bucket1ReapVerdict(
 }
 
 /**
- * Read-time parent-liveness join (#990): classify the latest subagent run for a
+ * Read-time parent-liveness join: classify the latest subagent run for a
  * flow's own session against the LIVE registry map. Never persisted — liveness
  * mutates after a flow is classified (a driver can die or finish between the
  * classify and this read). Lazy dynamic import keeps the agents registry off the
@@ -284,7 +284,7 @@ async function driveContinuationTurn(
   if (!hasNonDrainReplyPayload(reply) && isGatewayDraining()) {
     return { status: "skipped", reason: CONTINUATION_TURN_DRAINING_REASON };
   }
-  // #990 locus-3: the wake is confirmed delivered (the turn ran). Write the
+  // The wake is confirmed delivered (the turn ran). Write the
   // durable delivered-mark NOW — before the persist-gap between here and the
   // dispatch loop's finishFlow — so a crash in that window leaves a row the
   // consume read-guard skips (no restart-gap re-delivery). The mark bumps the
@@ -301,7 +301,7 @@ function earlierDueAt(left: number | undefined, right: number | undefined): numb
 }
 
 /**
- * #986 Guard 2 — partition a matured drain batch into works to drive vs works
+ * Stale-backlog guard — partition a matured drain batch into works to drive vs works
  * superseded by a stale backlog.
  *
  * `consumePendingWork` only returns matured (`now >= dueAt`) works, so a batch of
@@ -311,7 +311,7 @@ function earlierDueAt(left: number | undefined, right: number | undefined): numb
  * the live intent. Non-stale members (close bursts) always drive; the
  * newest-elected always drives.
  *
- * #988-P2-1 fold-side write-guard: only `queued` members are supersede-eligible.
+ * Fold-side write-guard: only `queued` members are supersede-eligible.
  * A recovered `running` member (the recovery path passes `includeRunning`) is a
  * live turn already being driven and ALWAYS drives — it is never folded, even
  * when stale and not newest, so an in-flight turn is never finished-as-superseded
@@ -330,7 +330,7 @@ export function partitionSupersededWork(
   // by `hop` (durable monotonic enqueue order within a chain) — the higher hop
   // is the newer intent. Without the tie-break, same-ms rows fall to array
   // order and the OLDEST stale wake could be kept while the newest is folded
-  // (Codex #988 review :252).
+
   let newestIdx = 0;
   for (let i = 1; i < works.length; i++) {
     const w = works[i];
@@ -343,7 +343,7 @@ export function partitionSupersededWork(
   const superseded: PendingContinuationWork[] = [];
   for (let i = 0; i < works.length; i++) {
     const work = works[i];
-    // #988-P2-1 fold-side write-guard: a recovered `running` member is live
+    // Fold-side write-guard: a recovered `running` member is live
     // intent already being driven (it may be observing requests-in-flight). It
     // is NEVER supersede-eligible, regardless of staleness or election order —
     // folding it would finish an in-flight turn as superseded out from under
@@ -375,7 +375,7 @@ export async function dispatchPendingContinuationWork(params: {
     includeRunning: params.recoverRunning === true,
     includeRunningUpdatedAtOrBefore: params.includeRunningUpdatedAtOrBefore,
   });
-  // #986 Guard 2: fold a stale backlog. Only matured works reach here, so a
+  // Stale-backlog guard: fold a stale backlog. Only matured works reach here, so a
   // batch of >1 means they piled up (the session was busy through the window);
   // on-time staggered elections drain one-per-poll and never co-arrive.
   const runtimeConfig = resolveContinuationRuntimeConfig();
@@ -443,13 +443,13 @@ export async function dispatchPendingContinuationWork(params: {
         `[continuation:work-drive-skipped] flowId=${work.flowId ?? "none"} session=${work.sessionKey} reason=${skippedReason}`,
       );
       if (isRetryableContinuationSkipReason(skippedReason)) {
-        // #990 bucket-1: a busy-defer is the storm symptom. Before re-arming
+        // A busy-defer is the storm symptom. Before re-arming
         // (Pillar-0 exp-backoff = give-up-as-rate-cap-forever), check whether
         // this is an ORPHAN whose parent run is confident-terminal and can never
         // rehydrate it. Read-time liveness join (never persisted — liveness
         // mutates after classify). Delegate-flow-gate FIRST: a flow with no
         // parentRunId (same-session continue_work) skips the read entirely and
-        // quiesces (#952: never enter the orphan-branch for same-session work).
+        // quiesces (never enter the orphan-branch for same-session work).
         // Only a confident-terminal parent authorizes the reap; alive/uncertain
         // all quiesce (asymmetric cost — wrongly-cull-busy is unrecoverable).
         const now = Date.now();
@@ -477,7 +477,7 @@ export async function dispatchPendingContinuationWork(params: {
         // busy-skip count, bounded by the configured ceiling so a chronically
         // busy seat decays toward a slow poll instead of spinning at ~1Hz.
         // busySkipCount is DISTINCT from retryCount — a busy-defer never touches
-        // the transient-error fail-bound (#952 never-penalize) and the flow is
+        // the transient-error fail-bound (never-penalize) and the flow is
         // never dropped; it delivers the instant the seat quiets.
         const priorBusySkips = work.busySkipCount ?? 0;
         // busySkipBackoff is always set by resolveContinuationRuntimeConfig; the
@@ -545,7 +545,7 @@ export async function scheduleContinuationWork(params: {
     return { scheduled: false, capped: true, chainState: params.chainState };
   }
 
-  // #986 Guard 1: per-session concurrent pending-work cap. Orthogonal to the
+  // Per-session concurrent pending-work cap. Orthogonal to the
   // chain-depth cap above — this bounds how many undelivered wakes may coexist
   // (the multi-continue_work flood foot-gun). Enforced at enqueue so a flood can
   // never pile up beyond the cap regardless of chain depth. Treated as a cap
@@ -623,7 +623,7 @@ export type ContinuationWorkBatchResult = {
  * own flow with its own delay/reason and must deliver its own wake. The chain
  * state is threaded across elections so chain/cost caps apply cumulatively.
  *
- * Partial success is load-bearing (#982): when a later election trips the cap,
+ * Partial success is load-bearing: when a later election trips the cap,
  * the earlier valid elections MUST stay scheduled — silently dropping them is
  * exactly the regression this batches against. A cap rejection ends the batch
  * because the cumulative chain count only grows, so every later election would

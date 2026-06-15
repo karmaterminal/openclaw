@@ -1464,7 +1464,7 @@ export async function runSubagentAnnounceFlow(params: {
     // mid-chain wake — it carries `delegate-return` so the reset gate preserves
     // the runaway leash. An ordinary subagent completion is an external
     // turn-entry, so it carries `subagent-return` and the reset gate rewinds the
-    // chain budget instead of skipping it (#989).
+    // chain budget instead of skipping it.
     const delegateReturnTrigger: ContinuationTrigger | undefined = continuationEnabled
       ? isContinuationChainDelegate
         ? "delegate-return"
