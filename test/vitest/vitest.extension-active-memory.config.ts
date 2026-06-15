@@ -20,7 +20,7 @@ export function createExtensionActiveMemoryVitestConfig(
       env,
       name: "extension-active-memory",
       passWithNoTests: true,
-      setupFiles: ["test/setup.extensions.ts"],
+      setupFiles: ["test/setup.extensions.ts", "test/setup.active-memory-isolation.ts"],
     },
   );
 }
