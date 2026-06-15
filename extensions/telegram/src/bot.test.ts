@@ -6,7 +6,10 @@ import {
   registerPluginInteractiveHandler,
 } from "openclaw/plugin-sdk/plugin-runtime";
 import type { MsgContext } from "openclaw/plugin-sdk/reply-runtime";
-import { loadSessionStore } from "openclaw/plugin-sdk/session-store-runtime";
+import {
+  clearSessionStoreCacheForTest,
+  loadSessionStore,
+} from "openclaw/plugin-sdk/session-store-runtime";
 import { mockPinnedHostnameResolution } from "openclaw/plugin-sdk/test-env";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TelegramInteractiveHandlerContext } from "./interactive-dispatch.js";
@@ -184,6 +187,7 @@ describe("createTelegramBot", () => {
   });
 
   beforeEach(() => {
+    clearSessionStoreCacheForTest();
     setMyCommandsSpy.mockClear();
     clearPluginInteractiveHandlers();
     loadConfig.mockReturnValue({
