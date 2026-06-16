@@ -29,6 +29,7 @@ import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
+import { isSubagentSessionKey } from "../../routing/session-key.js";
 import { annotateInterSessionPromptText } from "../../sessions/input-provenance.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
 import {
@@ -469,6 +470,8 @@ export async function runAgentAttempt(params: {
     data?: Record<string, unknown>;
     sessionKey?: string;
   }) => void;
+  deferTerminalLifecycle?: boolean;
+  /** @deprecated Use deferTerminalLifecycle. */
   deferTerminalLifecycleEnd?: boolean;
   authProfileProvider: string;
   sessionStore?: Record<string, SessionEntry>;
@@ -612,6 +615,7 @@ export async function runAgentAttempt(params: {
       nextCliSessionId: string | undefined,
       activeCliSessionBinding = cliSessionBinding,
     ) =>
+<<<<<<< HEAD
       runWithDiagnosticTraceparent(params.opts.traceparent, () =>
         runCliAgent({
           sessionId: params.sessionId,
@@ -664,6 +668,61 @@ export async function runAgentAttempt(params: {
                   if (retry.sessionId !== activeCliSessionBinding?.sessionId) {
                     return false;
                   }
+=======
+      runCliAgent({
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        sessionEntry: params.sessionEntry,
+        agentId: params.sessionAgentId,
+        trigger: "user",
+        sessionFile: params.sessionFile,
+        workspaceDir: params.workspaceDir,
+        cwd: params.cwd,
+        config: params.cfg,
+        prompt: cliPrompt,
+        provider: cliExecutionProvider,
+        model: params.modelOverride,
+        thinkLevel: params.resolvedThinkLevel,
+        timeoutMs: params.timeoutMs,
+        runTimeoutOverrideMs: params.runTimeoutOverrideMs,
+        runId: params.runId,
+        lifecycleGeneration: params.lifecycleGeneration,
+        lane: params.opts.lane,
+        extraSystemPrompt: params.opts.extraSystemPrompt,
+        inputProvenance: params.opts.inputProvenance,
+        sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
+        requireExplicitMessageTarget: isSubagentSessionKey(params.sessionKey),
+        cliSessionId: nextCliSessionId,
+        cliSessionBinding:
+          nextCliSessionId === activeCliSessionBinding?.sessionId
+            ? activeCliSessionBinding
+            : undefined,
+        authProfileId,
+        bootstrapPromptWarningSignaturesSeen,
+        bootstrapPromptWarningSignature,
+        images: params.isFallbackRetry ? undefined : params.opts.images,
+        imageOrder: params.isFallbackRetry ? undefined : params.opts.imageOrder,
+        skillsSnapshot: params.skillsSnapshot,
+        messageChannel: params.messageChannel,
+        streamParams: params.opts.streamParams,
+        messageProvider: params.opts.messageProvider ?? params.messageChannel,
+        currentChannelId: params.runContext.currentChannelId,
+        currentThreadTs: params.runContext.currentThreadTs,
+        currentInboundAudio: params.runContext.currentInboundAudio,
+        agentAccountId: params.runContext.accountId,
+        senderId: params.runContext.senderId,
+        senderIsOwner: params.opts.senderIsOwner,
+        toolsAllow: params.opts.toolsAllow,
+        cleanupBundleMcpOnRunEnd: params.opts.cleanupBundleMcpOnRunEnd,
+        cleanupCliLiveSessionOnRunEnd: params.opts.cleanupCliLiveSessionOnRunEnd,
+        oneShotCliRun: params.opts.oneShotCliRun,
+        ...(mutableCliSessionStore
+          ? {
+              onBeforeFreshCliSessionRetry: async (retry) => {
+                if (retry.sessionId !== activeCliSessionBinding?.sessionId) {
+                  return false;
+                }
+>>>>>>> upstream/main
 
                   log.warn(
                     `CLI session failed, clearing before fresh retry: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${mutableCliSessionStore.sessionKey} reason=${sanitizeForLog(retry.reason)}`,
@@ -705,6 +764,7 @@ export async function runAgentAttempt(params: {
     });
   }
 
+<<<<<<< HEAD
   // --- continuation: spawn-init / turn-1 continueWorkOpts plumbing ---
   // Construct the closure that captures continue_work tool requests fired
   // during this attempt, then surface the runEmbeddedAgent result while
@@ -721,6 +781,78 @@ export async function runAgentAttempt(params: {
         requestContinuation: (request: ContinueWorkRequest) => {
           attemptContinueWorkRequests.push(request);
         },
+=======
+  return runEmbeddedAgent({
+    sessionId: params.sessionId,
+    sessionKey: params.sessionKey,
+    agentId: params.sessionAgentId,
+    trigger: "user",
+    messageChannel: params.messageChannel,
+    messageProvider: params.opts.messageProvider ?? params.messageChannel,
+    agentAccountId: params.runContext.accountId,
+    messageTo: params.opts.replyTo ?? params.opts.to,
+    messageThreadId: params.opts.threadId,
+    groupId: params.runContext.groupId,
+    groupChannel: params.runContext.groupChannel,
+    groupSpace: params.runContext.groupSpace,
+    spawnedBy: params.spawnedBy,
+    currentChannelId: params.runContext.currentChannelId,
+    currentThreadTs: params.runContext.currentThreadTs,
+    currentInboundAudio: params.runContext.currentInboundAudio,
+    replyToMode: params.runContext.replyToMode,
+    hasRepliedRef: params.runContext.hasRepliedRef,
+    senderId: params.runContext.senderId,
+    senderIsOwner: params.opts.senderIsOwner,
+    sessionFile: params.sessionFile,
+    workspaceDir: params.workspaceDir,
+    cwd: params.cwd,
+    config: params.cfg,
+    agentHarnessId: embeddedAgentHarnessOverride,
+    agentHarnessRuntimeOverride: embeddedAgentHarnessOverride,
+    skillsSnapshot: params.skillsSnapshot,
+    prompt: effectivePrompt,
+    images: params.isFallbackRetry ? undefined : params.opts.images,
+    imageOrder: params.isFallbackRetry ? undefined : params.opts.imageOrder,
+    clientTools: params.opts.clientTools,
+    provider: embeddedAgentProvider,
+    model: params.modelOverride,
+    modelFallbacksOverride: params.modelFallbacksOverride,
+    authProfileId,
+    authProfileIdSource: authProfileId ? harnessAuthSelection.authProfileIdSource : undefined,
+    thinkLevel: params.resolvedThinkLevel,
+    fastMode: params.fastMode,
+    verboseLevel: params.resolvedVerboseLevel,
+    bashElevated: params.opts.bashElevated,
+    timeoutMs: params.timeoutMs,
+    runId: params.runId,
+    lifecycleGeneration: params.lifecycleGeneration,
+    lane: params.opts.lane,
+    abortSignal: params.opts.abortSignal,
+    extraSystemPrompt: params.opts.extraSystemPrompt,
+    bootstrapContextMode: params.opts.bootstrapContextMode,
+    bootstrapContextRunKind: params.opts.bootstrapContextRunKind,
+    toolsAllow: params.opts.toolsAllow,
+    internalEvents: params.opts.internalEvents,
+    inputProvenance: params.opts.inputProvenance,
+    sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
+    disableMessageTool: params.opts.disableMessageTool,
+    streamParams: params.opts.streamParams,
+    agentDir: params.agentDir,
+    allowTransientCooldownProbe: params.allowTransientCooldownProbe,
+    cleanupBundleMcpOnRunEnd: params.opts.cleanupBundleMcpOnRunEnd,
+    oneShotCliRun: params.opts.oneShotCliRun,
+    modelRun: params.opts.modelRun,
+    promptMode: params.opts.promptMode,
+    disableTools: params.opts.modelRun === true,
+    onAgentEvent: params.onAgentEvent,
+    deferTerminalLifecycle: params.deferTerminalLifecycle,
+    deferTerminalLifecycleEnd: params.deferTerminalLifecycleEnd,
+    suppressNextUserMessagePersistence: params.suppressPromptPersistenceOnRetry === true,
+    onUserMessagePersisted: params.onUserMessagePersisted,
+    onExecutionStarted: (info) => {
+      if (info?.lifecycleGeneration) {
+        params.onLifecycleGenerationChanged?.(info.lifecycleGeneration);
+>>>>>>> upstream/main
       }
     : undefined;
 

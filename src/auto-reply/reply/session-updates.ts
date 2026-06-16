@@ -10,9 +10,9 @@ import {
   resolveSessionFilePathOptions,
   rewriteSessionFileForNewSessionId,
   type SessionEntry,
-  updateSessionStore,
 } from "../../config/sessions.js";
 import { mergeSessionEntry } from "../../config/sessions/types.js";
+import { patchSessionEntry, upsertSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   forgetActiveSessionForShutdown,
@@ -44,17 +44,12 @@ async function persistSessionEntryUpdate(params: {
   if (!params.storePath) {
     return;
   }
-  await updateSessionStore(
-    params.storePath,
-    (store) => {
-      const next = { ...store[params.sessionKey!], ...params.nextEntry };
-      store[params.sessionKey!] = next;
-      return next;
-    },
+  await upsertSessionEntry(
     {
-      resolveSingleEntryPersistence: (entry) =>
-        entry && params.sessionKey ? { sessionKey: params.sessionKey, entry } : null,
+      storePath: params.storePath,
+      sessionKey: params.sessionKey,
     },
+    params.nextEntry,
   );
 }
 
@@ -325,6 +320,7 @@ export async function incrementCompactionCount(params: {
   } else if (incrementBy > 0) {
     updates.totalTokensFresh = false;
   }
+<<<<<<< HEAD
   sessionStore[sessionKey] = mergeSessionEntry(entry, updates, { now });
   if (storePath) {
     await updateSessionStore(
@@ -341,6 +337,20 @@ export async function incrementCompactionCount(params: {
       },
       { activeSessionKey: sessionKey },
     );
+=======
+  const nextEntry = {
+    ...entry,
+    ...updates,
+  };
+  sessionStore[sessionKey] = nextEntry;
+  if (storePath) {
+    const persistedEntry = await patchSessionEntry({ storePath, sessionKey }, () => updates, {
+      fallbackEntry: nextEntry,
+    });
+    if (persistedEntry) {
+      sessionStore[sessionKey] = persistedEntry;
+    }
+>>>>>>> upstream/main
   }
   if ((sessionIdChanged || sessionFileChanged) && cfg) {
     emitCompactionSessionLifecycleHooks({
