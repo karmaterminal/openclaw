@@ -11,6 +11,13 @@ vi.mock("./media-understanding.runtime.js", () => ({
   transcribeFirstAudio: (...args: unknown[]) => transcribeFirstAudioMock(...args),
 }));
 
+// Pin sticker vision support off so the cached-description fallback path is
+// exercised deterministically; the live default model (gpt-5.5) reports image
+// input, which would otherwise route stickers through fresh vision instead.
+vi.mock("./sticker-vision.runtime.js", () => ({
+  resolveStickerVisionSupportRuntime: async () => false,
+}));
+
 vi.mock("openclaw/plugin-sdk/hook-runtime", async () => {
   const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/hook-runtime")>(
     "openclaw/plugin-sdk/hook-runtime",
