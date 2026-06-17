@@ -7,11 +7,11 @@ import {
   type ChildProcess,
   type ChildProcessByStdio,
   spawn as nodeSpawn,
-  type SpawnOptions,
   type SpawnOptionsWithStdioTuple,
   type StdioNull,
   type StdioPipe,
 } from "node:child_process";
+import type { SpawnOptions } from "node:child_process";
 import type { Readable } from "node:stream";
 import crossSpawn from "cross-spawn";
 
