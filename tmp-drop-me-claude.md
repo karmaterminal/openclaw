@@ -86,3 +86,44 @@ asks for.
 - `diff upstream/main:subscribe.tools.ts <worktree>` → identical.
 
 No semantic ambiguity; no TODO needed.
+
+---
+
+## 2026-06-17T07:29Z — Step 2: migrate event-constants family (Finding 2)
+
+**Method chosen (traced from `c40e904c1b` + `upstream/main`):** upstream kept the
+*types* `AgentInternalEventSource`/`AgentInternalEventStatus` exported but made the
+value arrays private. Its own protocol layer
+(`packages/gateway-protocol/src/schema/agent.ts`) does **not** import them from
+`src/agents/`; it declares its **own local private copies** of all three
+constants (`AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION`,
+`AGENT_INTERNAL_EVENT_SOURCES`, `AGENT_INTERNAL_EVENT_STATUSES`). The
+"keep values stable because they cross agent runtime boundaries" comment in
+`internal-event-contract.ts` is the documented sync contract.
+
+Adopted upstream's exact pattern: gateway-protocol now owns local copies and no
+longer reaches into `src/agents/internal-event-contract.js`. This also satisfies
+the package boundary rule (the standalone gateway-protocol package should not
+depend on core `src/agents` internals).
+
+**Why behavior-preserving:** the local arrays are value-identical to the prior
+imported arrays, so `Type.String({ enum: [...] })` produces the same TypeBox enum
+for `source`/`status`; `Type.Literal(AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION)`
+still narrows to `"task_completion"`. Internal-event enum coverage for the
+continuation feature is unchanged.
+
+**Edits:**
+- `packages/gateway-protocol/src/schema/agent.ts`: drop the 3-constant import from
+  `../../../../src/agents/internal-event-contract.js`; declare local private
+  copies (placement matches upstream, before `AgentGeneratedAttachmentSchema`).
+- `src/agents/internal-event-contract.ts`: `export const
+  AGENT_INTERNAL_EVENT_SOURCES`/`..._STATUSES` -> private `const` (types stay
+  exported). File is now **byte-identical to `upstream/main`** (FROZEN-STALE ->
+  SAFE-CURRENT).
+
+**Verify (worktree-safe):**
+- `run-tsgo -p tsconfig.core.json` (covers `packages/**`, `noUnusedLocals`) -> exit 0.
+- `run-oxlint` on both files -> exit 0.
+- `diff upstream/main:internal-event-contract.ts <worktree>` -> identical.
+
+No semantic ambiguity; no TODO needed.
