@@ -127,3 +127,46 @@ continuation feature is unchanged.
 - `diff upstream/main:internal-event-contract.ts <worktree>` -> identical.
 
 No semantic ambiguity; no TODO needed.
+
+---
+
+## 2026-06-17T07:36Z — Step 3: full verification (worktree-safe)
+
+All commands run from the worktree via node wrappers (no bare pnpm).
+
+**drift-cure-gate** `upstream/main HEAD <PRC=8e04d27f1a> .gate-out`:
+- **0 FROZEN-STALE**, gate **exit 0** (was 2 before: the two seed files).
+- Ground truth: `HEAD:src/agents/internal-event-contract.ts` and
+  `HEAD:src/agents/embedded-agent-subscribe.tools.ts` are now **byte-identical to
+  `upstream/main`** (SAFE-CURRENT); band-aid exports gone.
+- The MIXED-CLOBBER queue (69 rows) is pre-existing continuation-feature
+  divergence, not internalized-symbol carries — out of scope for #1042.
+
+**tsgo (type-check):**
+- `-p tsconfig.core.json` (prod, includes `packages/**`, `noUnusedLocals`) → exit 0.
+- `-p test/tsconfig/tsconfig.core.test.json` (test) → exit 0.
+- `-p tsconfig.extensions.json` → exit 0.
+
+**oxlint:** all 4 changed files → exit 0.
+
+**vitest (worktree-safe `node scripts/run-vitest.mjs run`):**
+- `embedded-agent-subscribe.tools.test.ts` → 23 passed.
+- `embedded-agent-subscribe.tools.media.test.ts` → 37 passed.
+- `embedded-agent-runner/run/tool-media-payloads.test.ts` → 5 passed.
+- `embedded-agent-runner/run/attempt.media-hint-cache-boundary.test.ts` (run-attempt
+  trusted-media path; `collectTrustedLocalMediaToolNames` is live at attempt.ts:2404
+  → passed to filter at :3655) → 5 passed.
+- `packages/gateway-protocol/src/schema/agent.schema.test.ts` → 10 passed.
+- `packages/gateway-protocol/src/schema/agent.test.ts` → 3 passed.
+- Total 83 passed, 0 failed. `internal-event-contract` has no dedicated test;
+  its values/types are covered by the gateway schema runtime tests + the three
+  tsgo lanes (all type consumers compile).
+
+**Branch diff (excl. journal):** 4 files, +15/-10. Net prod +5 lines in
+gateway-protocol (it now owns local enum copies instead of importing them) —
+justified: matches upstream exactly and severs the cross-package import into
+`src/agents` internals.
+
+**Result:** both internalized-symbol families migrated to upstream's current
+public API, band-aids removed, feature behavior preserved. No semantic
+ambiguity encountered; no `TODO(#1042)` carries left.
