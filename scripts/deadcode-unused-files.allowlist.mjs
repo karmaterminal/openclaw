@@ -24,21 +24,16 @@ export const KNIP_OPTIONAL_UNUSED_FILE_ALLOWLIST = [
   "extensions/canvas/src/host/a2ui-app/bootstrap.js",
   "extensions/canvas/src/host/a2ui-app/rolldown.config.mjs",
   "extensions/copilot/src/doctor-probes.ts",
-  "extensions/copilot/src/telemetry-bridge.ts",
-  "extensions/copilot/src/user-input-bridge.ts",
   "extensions/diffs/src/viewer-client.ts",
   "extensions/diffs/src/viewer-payload.ts",
   "extensions/matrix/src/plugin-entry.runtime.js",
   "extensions/memory-core/src/memory-tool-manager-mock.ts",
-  "extensions/qa-lab/src/auth-profile.fixture.ts",
-  "extensions/qa-lab/src/codex-plugin.fixture.ts",
   // Continuation-rail subagent-announce runtime entry; bundled separately via
-  // tsdown.config.ts:277-278 and loaded by subagent-announce.ts:326 via
+  // tsdown.config.ts:277-278 and loaded by subagent-announce.ts via
   // importRuntimeModule(import.meta.url, ["./subagent-announce.continuation.runtime"]).
   // Knip can't see dynamic-import; mirrors subagent-registry.runtime.ts sibling.
   "src/agents/subagent-announce.continuation.runtime.ts",
   "src/agents/subagent-registry.runtime.ts",
-  "src/auto-reply/inbound.group-require-mention-test-plugins.ts",
   "src/auto-reply/reply/get-reply.test-loader.ts",
   "src/cli/daemon-cli-compat.ts",
   "src/commands/doctor/shared/deprecation-compat.ts",
