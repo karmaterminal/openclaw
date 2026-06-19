@@ -1154,6 +1154,44 @@ describe("durable continuation_work dispatch", () => {
       expect((flow?.stateJson as { busySkipCount?: number } | undefined)?.busySkipCount).toBe(1);
     });
 
+    it("delegate child self-continue with its own run id requeues, then grants hop 2", async () => {
+      const sessionKey = "agent:main:child-self-continue";
+      const childRunId = "run-child-self-continue";
+      enqueueDelegateBusyFlow(sessionKey, {
+        parentRunId: childRunId,
+        reason: "self continue hop 2",
+      });
+      addSubagentRun(sessionKey, {
+        runId: childRunId,
+        endedAt: Date.now() - 1,
+      });
+
+      const first = await dispatchPendingContinuationWork({ sessionKey });
+
+      expect(first).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
+      const flow = flowFor(sessionKey);
+      expect(flow?.status).toBe("queued");
+      expect((flow?.stateJson as { busySkipCount?: number } | undefined)?.busySkipCount).toBe(1);
+
+      activeSessions.clear();
+      resetContinuationWorkDispatchForTests();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flushTimers();
+
+      expect(turnGrants).toEqual([
+        expect.objectContaining({
+          context: expect.objectContaining({
+            SessionKey: sessionKey,
+            Body: expect.stringContaining("self continue hop 2"),
+          }),
+          options: expect.objectContaining({
+            continuationTrigger: "work-wake",
+            parentRunId: childRunId,
+          }),
+        }),
+      ]);
+    });
+
     it("delegate-flow + parent-CONFIDENT-terminal → reap", async () => {
       const sessionKey = "agent:main:child-terminal";
       enqueueDelegateBusyFlow(sessionKey, { parentRunId: "run-parent" });
