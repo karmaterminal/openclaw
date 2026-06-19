@@ -160,7 +160,7 @@ import {
 } from "../../embedded-agent-helpers.js";
 import { countActiveToolExecutions } from "../../embedded-agent-subscribe.handlers.tools.js";
 import { subscribeEmbeddedAgentSession } from "../../embedded-agent-subscribe.js";
-import { isCoreToolResultMediaTrustedName } from "../../embedded-agent-subscribe.tools.js";
+import { isToolResultMediaTrusted } from "../../embedded-agent-subscribe.tools.js";
 import { isSignalTimeoutReason } from "../../failover-error.js";
 import { runAgentEndSideEffects } from "../../harness/agent-end-side-effects.js";
 import { runAgentHarnessBeforeAgentFinalizeHook } from "../../harness/lifecycle-hook-helpers.js";
@@ -562,7 +562,7 @@ function collectTrustedLocalMediaToolNames(params: {
 }): Set<string> {
   return new Set([
     ...[...params.coreBuiltinToolNames].filter((toolName) =>
-      isCoreToolResultMediaTrustedName(toolName),
+      isToolResultMediaTrusted(toolName),
     ),
     ...params.trustedPluginToolNames,
   ]);

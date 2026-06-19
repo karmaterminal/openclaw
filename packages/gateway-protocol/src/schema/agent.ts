@@ -1,10 +1,5 @@
 // Gateway Protocol schema module defines protocol validation shapes.
 import { Type } from "typebox";
-import {
-  AGENT_INTERNAL_EVENT_SOURCES,
-  AGENT_INTERNAL_EVENT_STATUSES,
-  AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION,
-} from "../../../../src/agents/internal-event-contract.js";
 import { DIAGNOSTIC_TRACEPARENT_PATTERN } from "../../../../src/infra/diagnostic-trace-context-pure.js";
 import { internalProtocolField } from "./internal-fields.js";
 import { InputProvenanceSchema, NonEmptyString, SessionLabelString } from "./primitives.js";
@@ -16,6 +11,16 @@ import { InputProvenanceSchema, NonEmptyString, SessionLabelString } from "./pri
  * RPC callers, and the agent runtime. Keep public request fields documented
  * because older CLI/channel clients may continue sending them across releases.
  */
+const AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION = "task_completion";
+const AGENT_INTERNAL_EVENT_SOURCES = [
+  "subagent",
+  "cron",
+  "image_generation",
+  "video_generation",
+  "music_generation",
+] as const;
+const AGENT_INTERNAL_EVENT_STATUSES = ["ok", "timeout", "error", "unknown"] as const;
+
 /** Generated media/file attachment metadata carried by internal agent events. */
 export const AgentGeneratedAttachmentSchema = Type.Object(
   {
