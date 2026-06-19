@@ -128,6 +128,22 @@ vi.mock("../auto-reply/continuation/lazy.runtime.js", async (importOriginal) => 
   };
 });
 
+// The unified self-continuation scheduler (scheduleSubagentSelfContinuationWork)
+// reaches the durable continue_work batch entrypoint through this co-located
+// runtime barrel, not lazy.runtime.js. Spy on the same names here so the
+// delegate-child wire-through is observable regardless of which import seam the
+// helper uses; force the liveness guard open so the completion-flow fallback
+// always arms in-test.
+vi.mock("./subagent-announce.continuation.runtime.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./subagent-announce.continuation.runtime.js")>();
+  return {
+    ...actual,
+    scheduleContinuationWorkBatch: mocked.scheduleContinuationWorkBatchMock,
+    hasLiveOrRecentlyDispatchedContinuationWork: () => false,
+  };
+});
+
 import {
   clearRuntimeConfigSnapshot,
   type OpenClawConfig,
