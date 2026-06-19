@@ -973,9 +973,60 @@ export async function runSubagentAnnounceFlow(params: {
     if (continuationEnabled && (findings !== "(no output)" || toolDelegates.length > 0)) {
       const continuationResult = stripContinuationSignal(findings);
       if (continuationResult.signal?.kind === "work") {
-        defaultRuntime.log(
-          `[subagent-chain-hop] CONTINUE_WORK not supported in sub-agent chain (from ${params.childSessionKey}), ignoring`,
+        // #1044 — Wire the bare CONTINUE_WORK signal from a delegate-child to
+        // the same hop-2 execution path the `continue_work()` tool uses:
+        // schedule a wake on the CHILD's own session, not a chain-hop spawn.
+        // continue_work semantics are "same session, next turn" — distinct from
+        // continue_delegate's "spawn a child." Owner intent (figs, settled):
+        // a delegate-child is a session like any other and should self-continue.
+        // Without this wire-through the signal was dropped here and HOP2 never
+        // schedules — leg A of #1044.
+        findings = continuationResult.text || "(no output)";
+        const workSignal = continuationResult.signal;
+        const continuationConfig = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
+        const childEntry = readSessionEntryByKey(params.childSessionKey);
+        const stateRuntime = await loadContinuationStateRuntime();
+        const chainState = stateRuntime.loadContinuationChainState(
+          childEntry,
+          accumulatedChildTokens,
         );
+        const delaySeconds =
+          workSignal.delayMs !== undefined
+            ? workSignal.delayMs / 1000
+            : continuationConfig.defaultDelayMs / 1000;
+        const { scheduleContinuationWork } =
+          await import("../auto-reply/continuation/lazy.runtime.js");
+        const scheduleResult = await scheduleContinuationWork({
+          sessionKey: params.childSessionKey,
+          chainState,
+          request: {
+            delaySeconds,
+            reason: "bare-CONTINUE_WORK from delegate-child",
+            ...(workSignal.traceparent ? { traceparent: workSignal.traceparent } : {}),
+          },
+          config: continuationConfig,
+          parentRunId: params.childRunId,
+          log: (message) => defaultRuntime.log(message),
+        });
+        if (scheduleResult.scheduled) {
+          stateRuntime.persistContinuationChainState({
+            sessionEntry: childEntry,
+            count: scheduleResult.chainState.currentChainCount,
+            startedAt: scheduleResult.chainState.chainStartedAt,
+            tokens: scheduleResult.chainState.accumulatedChainTokens,
+            ...(scheduleResult.chainState.chainId
+              ? { chainId: scheduleResult.chainState.chainId }
+              : {}),
+          });
+          invalidateSessionEntry(params.childSessionKey);
+          defaultRuntime.log(
+            `[subagent-chain-hop] CONTINUE_WORK from delegate-child ${params.childSessionKey} scheduled hop ${scheduleResult.chainState.currentChainCount} in same session`,
+          );
+        } else if (scheduleResult.capped) {
+          defaultRuntime.log(
+            `[subagent-chain-hop] CONTINUE_WORK from delegate-child ${params.childSessionKey} not scheduled (chain/cost/pending cap)`,
+          );
+        }
       } else if (continuationResult.signal?.kind === "delegate") {
         bracketDelegateConsumed = true;
         findings = continuationResult.text || "(no output)";

@@ -17,7 +17,6 @@ import {
   listPendingWorkSessionKeysForRecovery,
   markPendingWorkDelivered,
   markPendingWorkFailed,
-  markPendingWorkReaped,
   markPendingWorkSuperseded,
   markPendingWorkTurnGranted,
   queuedPendingWorkCount,
@@ -120,47 +119,38 @@ export function computeBusySkipBackoffMs(
 /**
  * #990 bucket-1 — orphan-reap verdict for a busy-deferred continuation flow.
  *
- * Pure decision over the delegate-flow-gate + a read-time parent-liveness join.
- * Asymmetric error cost is load-bearing (#952): wrongly culling a busy seat is
- * unrecoverable; parking a zombie is harmless. So ONLY a confident-terminal
- * parent authorizes the cull — `alive`, `uncertain`, and the no-lineage gate all
- * quiesce (rate-cap-forever, the Pillar-0 trickle).
+ * Always quiesces (rate-cap-forever); never reaps. The function is retained as
+ * a documented gate so the rationale stays at the dispatch site and so
+ * regression tests can pin the contract.
+ *
+ * #1044 settled the design question: a continue_delegate child is a session
+ * like any other and must be able to self-continue. continue_work flows are
+ * inherently self-driving — the matured wake drives a new turn in the SAME
+ * session via `driveContinuationTurn` → `getReplyFromConfig`, with no
+ * dependency on a spawning parent re-spawning anything. The work-store only
+ * ever holds continue_work flows, so the "orphan" framing does not apply to
+ * any flow this verdict can ever see:
+ *
+ * - The run that scheduled the wake (carried as `parentRunId`) has terminated
+ *   by the time the wake matures — by design, since continue_work fires AFTER
+ *   the emitting run ends. Treating that terminal-state as orphan evidence
+ *   conflates "the run that scheduled the wake" with "a rehydration parent
+ *   that no longer exists." The wake needs no rehydration parent — it drives
+ *   the next turn itself.
+ * - A genuinely-gone session is already culled by the non-retryable
+ *   `missing-session` skip (not via this verdict): see `driveContinuationTurn`.
+ *
+ * Pillar-0 / asymmetric-cost (#952) is preserved and strengthened: wrongly
+ * culling a busy seat is unrecoverable; parking a zombie is harmless. The
+ * cost-optimal verdict for every continue_work busy-defer is rate-cap-forever.
  */
 export type BucketOneReapVerdict = "reap" | "rate-cap-forever";
 
 export function bucket1ReapVerdict(
-  parentRunId: string | undefined,
-  parentLiveness: SubagentRunLiveness,
+  _parentRunId: string | undefined,
+  _parentLiveness: SubagentRunLiveness,
 ): BucketOneReapVerdict {
-  // Delegate-flow-gate FIRST: a flow with no spawning lineage (same-session
-  // continue_work, or a recovered row without parentRunId) is never an orphan we
-  // may reap. Never wrongful-reap.
-  if (parentRunId == null) {
-    return "rate-cap-forever";
-  }
-  if (parentLiveness === "confident-terminal") {
-    return "reap";
-  }
   return "rate-cap-forever";
-}
-
-/**
- * Read-time parent-liveness join (#990): classify the latest subagent run for a
- * flow's own session against the LIVE registry map. Never persisted — liveness
- * mutates after a flow is classified (a driver can die or finish between the
- * classify and this read). Lazy dynamic import keeps the agents registry off the
- * continuation static import graph (cycle-safe) while the read itself is a
- * synchronous in-process Map lookup.
- */
-async function readChildSessionRunLiveness(
-  sessionKey: string,
-  options: { now: number; staleCutoffMs?: number },
-): Promise<SubagentRunLiveness> {
-  const [{ subagentRuns }, { classifyChildSessionRunLivenessFromRuns }] = await Promise.all([
-    import("../../agents/subagent-registry-memory.js"),
-    import("../../agents/subagent-registry-queries.js"),
-  ]);
-  return classifyChildSessionRunLivenessFromRuns(subagentRuns, sessionKey, options);
 }
 
 function requeueWorkForRetry(
@@ -443,36 +433,19 @@ export async function dispatchPendingContinuationWork(params: {
         `[continuation:work-drive-skipped] flowId=${work.flowId ?? "none"} session=${work.sessionKey} reason=${skippedReason}`,
       );
       if (isRetryableContinuationSkipReason(skippedReason)) {
-        // #990 bucket-1: a busy-defer is the storm symptom. Before re-arming
-        // (Pillar-0 exp-backoff = give-up-as-rate-cap-forever), check whether
-        // this is an ORPHAN whose parent run is confident-terminal and can never
-        // rehydrate it. Read-time liveness join (never persisted — liveness
-        // mutates after classify). Delegate-flow-gate FIRST: a flow with no
-        // parentRunId (same-session continue_work) skips the read entirely and
-        // quiesces (#952: never enter the orphan-branch for same-session work).
-        // Only a confident-terminal parent authorizes the reap; alive/uncertain
-        // all quiesce (asymmetric cost — wrongly-cull-busy is unrecoverable).
+        // #1044 — continue_work flows are inherently self-driving: the wake
+        // drives a new turn in the SAME session via `driveContinuationTurn`,
+        // with no rehydration parent involved. The pre-#1044 bucket-1
+        // confident-terminal cull conflated "the run that scheduled the wake
+        // has terminated" (always true by design — continue_work fires after
+        // the emitting turn ends) with "no driver can ever run another turn",
+        // and so reaped legitimate delegate-child self-continue flows. See
+        // `bucket1ReapVerdict` for the full rationale. Pillar-0 / asymmetric
+        // cost (#952) is preserved and strengthened by always quiescing —
+        // wrongly-culling-busy is unrecoverable; parking a zombie is harmless.
+        // The dead session case is already culled by the non-retryable
+        // `missing-session` skip, not by this branch.
         const now = Date.now();
-        const parentLiveness: SubagentRunLiveness =
-          work.parentRunId == null
-            ? "uncertain"
-            : await readChildSessionRunLiveness(work.sessionKey, {
-                now,
-                ...(runtimeConfig.orphanReapStaleCutoffMs !== undefined
-                  ? { staleCutoffMs: runtimeConfig.orphanReapStaleCutoffMs }
-                  : {}),
-              });
-        if (bucket1ReapVerdict(work.parentRunId, parentLiveness) === "reap") {
-          log.info(
-            `[continuation:work-orphan-reaped] flowId=${work.flowId ?? "none"} session=${work.sessionKey} parentRunId=${work.parentRunId} — parent confident-terminal, can never rehydrate`,
-          );
-          markPendingWorkReaped(
-            work,
-            `Orphan continuation reaped: parent run ${work.parentRunId} is confident-terminal and can never rehydrate this flow.`,
-          );
-          reaped++;
-          continue;
-        }
         // rate-cap-forever: re-arm with exp-backoff on the consecutive
         // busy-skip count, bounded by the configured ceiling so a chronically
         // busy seat decays toward a slow poll instead of spinning at ~1Hz.
