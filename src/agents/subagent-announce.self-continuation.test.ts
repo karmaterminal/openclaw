@@ -54,26 +54,29 @@ vi.mock("../auto-reply/continuation-delegate-store.js", () => ({
 }));
 
 const deliverSubagentAnnouncementMock = vi.hoisted(() =>
-  vi.fn(async () => ({ delivered: true, path: "direct" as const })),
+  vi.fn(async (_params: Record<string, unknown>) => ({ delivered: true, path: "direct" as const })),
 );
 vi.mock("./subagent-announce-delivery.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   deliverSubagentAnnouncement: deliverSubagentAnnouncementMock,
 }));
 
-import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
-import {
-  clearSessionStoreCacheForTest,
-  resolveStorePath,
-  saveSessionStore,
-} from "../config/sessions.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import { loadContinuationChainState } from "../auto-reply/continuation/state.js";
 import {
   resetContinuationWorkDispatchForTests,
   scheduleContinuationWork,
 } from "../auto-reply/continuation/work-dispatch.js";
-import { listTaskFlowsForOwnerKey, resetTaskFlowRegistryForTests } from "../tasks/task-flow-registry.js";
+import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
+import {
+  clearSessionStoreCacheForTest,
+  resolveStorePath,
+  saveSessionStore,
+} from "../config/sessions.js";
+import {
+  listTaskFlowsForOwnerKey,
+  resetTaskFlowRegistryForTests,
+} from "../tasks/task-flow-registry.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,

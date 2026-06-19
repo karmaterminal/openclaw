@@ -106,9 +106,8 @@ describe("#952 subagent CONTINUE_WORK token self-continuation (token-form parity
   });
 
   afterEach(async () => {
-    const { resetContinuationWorkDispatchForTests } = await import(
-      "../../auto-reply/continuation/work-dispatch.js"
-    );
+    const { resetContinuationWorkDispatchForTests } =
+      await import("../../auto-reply/continuation/work-dispatch.js");
     const { resetTaskFlowRegistryForTests } = await import("../../tasks/task-flow-registry.js");
     resetContinuationWorkDispatchForTests();
     resetTaskFlowRegistryForTests({ persist: false });

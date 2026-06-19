@@ -533,9 +533,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
           continuationChainCount: result.chainState.currentChainCount,
           continuationChainStartedAt: result.chainState.chainStartedAt,
           continuationChainTokens: result.chainState.accumulatedChainTokens,
-          ...(result.chainState.chainId
-            ? { continuationChainId: result.chainState.chainId }
-            : {}),
+          ...(result.chainState.chainId ? { continuationChainId: result.chainState.chainId } : {}),
         };
       });
     } catch (writeErr) {
