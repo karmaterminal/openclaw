@@ -275,14 +275,15 @@ describe("#1044 delegate-child self-continue via bare CONTINUE_WORK TOKEN form",
     // The wire-through must reach the continuation work scheduler — either the
     // single-request `scheduleContinuationWork` or the batch entrypoint. Both
     // forms end the same way (work-dispatch armed for the child session).
-    const singleCalls = mocked.scheduleContinuationWorkMock.mock.calls;
-    const batchCalls = mocked.scheduleContinuationWorkBatchMock.mock.calls;
-    const calls = [...singleCalls, ...batchCalls];
+    const singleCalls = mocked.scheduleContinuationWorkMock.mock.calls as unknown[][];
+    const batchCalls = mocked.scheduleContinuationWorkBatchMock.mock.calls as unknown[][];
+    const calls: unknown[][] = [...singleCalls, ...batchCalls];
     expect(calls.length).toBeGreaterThan(0);
 
     // The wake's owner MUST be the child's own session (the `:977` ignore was
     // the bug; the fix-direction is the child drives its OWN next turn).
-    const params = (calls[0]?.[0] ?? {}) as {
+    const firstCall = calls[0] ?? [];
+    const params = (firstCall[0] ?? {}) as {
       sessionKey?: unknown;
       parentRunId?: unknown;
     };

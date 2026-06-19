@@ -405,7 +405,10 @@ export async function dispatchPendingContinuationWork(params: {
 
   let dispatched = 0;
   let failed = 0;
-  let reaped = 0;
+  // #1044 — bucket-1 always quiesces (see `bucket1ReapVerdict`); the counter is
+  // kept at 0 so the {dispatched,failed,reaped} return contract stays stable
+  // for callers that sum it across sessions (recoverPendingContinuationWork).
+  const reaped = 0;
   for (const work of worksToDrive) {
     try {
       const fireDeferredMs = Date.now() - work.electedAt;
