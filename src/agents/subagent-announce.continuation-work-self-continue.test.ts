@@ -8,11 +8,20 @@ type ChainState = {
   chainId?: string;
 };
 
+type ScheduleContinuationWorkBatchParams = { chainState: ChainState };
+type UpdateSessionStoreMock = (
+  storePath: string,
+  mutator: (store: Record<string, Record<string, unknown>>) => void | Promise<void>,
+) => Promise<unknown>;
+
 const mocks = vi.hoisted(() => ({
-  callGateway: vi.fn(async (_request: unknown) => ({})),
-  consumePendingDelegates: vi.fn(() => []),
-  deliverSubagentAnnouncement: vi.fn(async () => ({ delivered: true, path: "direct" })),
-  dispatchToolDelegates: vi.fn(async () => ({
+  callGateway: vi.fn<(request: unknown) => Promise<unknown>>(async (_request) => ({})),
+  consumePendingDelegates: vi.fn<(sessionKey: string) => unknown[]>(() => []),
+  deliverSubagentAnnouncement: vi.fn<(params: unknown) => Promise<unknown>>(async () => ({
+    delivered: true,
+    path: "direct",
+  })),
+  dispatchToolDelegates: vi.fn<(params: unknown) => Promise<unknown>>(async () => ({
     dispatched: 0,
     rejected: 0,
     chainState: {
@@ -21,13 +30,17 @@ const mocks = vi.hoisted(() => ({
       accumulatedChainTokens: 0,
     },
   })),
-  enqueueSystemEvent: vi.fn(),
-  loadSessionStore: vi.fn(() => ({}) as Record<string, unknown>),
-  resolveAgentIdFromSessionKey: vi.fn((sessionKey: string) => {
+  enqueueSystemEvent: vi.fn<(text: string, options: unknown) => void>(),
+  loadSessionStore: vi.fn<(storePath?: string) => Record<string, unknown>>(
+    () => ({}) as Record<string, unknown>,
+  ),
+  resolveAgentIdFromSessionKey: vi.fn<(sessionKey: string) => string>((sessionKey) => {
     return sessionKey.match(/^agent:([^:]+)/)?.[1] ?? "main";
   }),
-  resolveStorePath: vi.fn(() => "/tmp/sessions.json"),
-  scheduleContinuationWorkBatch: vi.fn(async (params: { chainState: ChainState }) => ({
+  resolveStorePath: vi.fn<(store?: unknown, options?: unknown) => string>(
+    () => "/tmp/sessions.json",
+  ),
+  scheduleContinuationWorkBatch: vi.fn(async (params: ScheduleContinuationWorkBatchParams) => ({
     scheduledCount: 1,
     cappedCount: 0,
     capped: false,
@@ -36,15 +49,10 @@ const mocks = vi.hoisted(() => ({
       currentChainCount: params.chainState.currentChainCount + 1,
     },
   })),
-  updateSessionStore: vi.fn(
-    async <T>(
-      _storePath: string,
-      mutator: (store: Record<string, Record<string, unknown>>) => T | Promise<T>,
-    ) => {
-      const store = mocks.loadSessionStore() as Record<string, Record<string, unknown>>;
-      return await mutator(store);
-    },
-  ),
+  updateSessionStore: vi.fn<UpdateSessionStoreMock>(async (_storePath, mutator) => {
+    const store = mocks.loadSessionStore() as Record<string, Record<string, unknown>>;
+    return await mutator(store);
+  }),
 }));
 
 let mockConfig: ReturnType<(typeof import("../config/config.js"))["loadConfig"]>;
@@ -75,7 +83,8 @@ vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
 }));
 
 vi.mock("../auto-reply/continuation/work-dispatch.js", () => ({
-  scheduleContinuationWorkBatch: (params: unknown) => mocks.scheduleContinuationWorkBatch(params),
+  scheduleContinuationWorkBatch: (params: ScheduleContinuationWorkBatchParams) =>
+    mocks.scheduleContinuationWorkBatch(params),
 }));
 
 vi.mock("../config/config.js", () => ({
@@ -91,12 +100,19 @@ vi.mock("../config/sessions.js", () => ({
   resolveStorePath: (store: unknown, options: unknown) => mocks.resolveStorePath(store, options),
   updateSessionStore: (
     storePath: string,
-    mutator: (store: Record<string, Record<string, unknown>>) => unknown,
+    mutator: (store: Record<string, Record<string, unknown>>) => void | Promise<void>,
   ) => mocks.updateSessionStore(storePath, mutator),
 }));
 
 vi.mock("../config/sessions/store-load.js", () => ({
   loadSessionStore: (storePath: string) => mocks.loadSessionStore(storePath),
+}));
+
+vi.mock("../config/sessions/store.js", () => ({
+  updateSessionStore: (
+    storePath: string,
+    mutator: (store: Record<string, Record<string, unknown>>) => void | Promise<void>,
+  ) => mocks.updateSessionStore(storePath, mutator),
 }));
 
 vi.mock("../config/sessions/targets.js", () => ({
@@ -173,11 +189,11 @@ vi.mock("./subagent-announce-delivery.runtime.js", () =>
 vi.mock("./subagent-announce-delivery.js", () => ({
   deliverSubagentAnnouncement: (params: unknown) => mocks.deliverSubagentAnnouncement(params),
   loadRequesterSessionEntry: (sessionKey: string) => {
-    const store = mocks.loadSessionStore("/tmp/sessions.json") as Record<string, unknown>;
+    const store = mocks.loadSessionStore("/tmp/sessions.json");
     return { entry: store[sessionKey] };
   },
   loadSessionEntryByKey: (sessionKey: string) => {
-    const store = mocks.loadSessionStore("/tmp/sessions.json") as Record<string, unknown>;
+    const store = mocks.loadSessionStore("/tmp/sessions.json");
     return store[sessionKey];
   },
   resolveAnnounceOrigin: (
@@ -231,9 +247,8 @@ describe("continue_delegate child continue_work token self-continuation", () => 
     };
   });
 
-  async function completeDelegateChild(reply: string): Promise<void> {
-    const childSessionKey = "agent:main:subagent:self-continue-token";
-    const store = {
+  function defaultStore(childSessionKey: string): Record<string, unknown> {
+    return {
       [childSessionKey]: {
         sessionId: "session-child",
         updatedAt: Date.now(),
@@ -244,8 +259,20 @@ describe("continue_delegate child continue_work token self-continuation", () => 
         sessionId: "session-main",
         updatedAt: Date.now(),
       },
-    } as Record<string, unknown>;
-    mocks.loadSessionStore.mockImplementation(() => store);
+    };
+  }
+
+  async function completeDelegateChild(
+    reply: string,
+    options: { setupStore?: (childSessionKey: string) => void } = {},
+  ): Promise<void> {
+    const childSessionKey = "agent:main:subagent:self-continue-token";
+    if (options.setupStore) {
+      options.setupStore(childSessionKey);
+    } else {
+      const store = defaultStore(childSessionKey);
+      mocks.loadSessionStore.mockImplementation(() => store);
+    }
 
     await runSubagentAnnounceFlow({
       childSessionKey,
@@ -267,7 +294,7 @@ describe("continue_delegate child continue_work token self-continuation", () => 
 
   it.each([
     ["bracket token", "hop1 done\n[[CONTINUE_WORK]]", 0],
-    ["delay token", "hop1 done\nCONTINUE_WORK:0", 0],
+    ["bracket delay token", "hop1 done\n[[CONTINUE_WORK:0]]", 0],
   ])("schedules a hop-2 same-session turn for %s", async (_name, reply, delaySeconds) => {
     await completeDelegateChild(reply);
 
@@ -285,10 +312,55 @@ describe("continue_delegate child continue_work token self-continuation", () => 
     );
     expect(mocks.scheduleContinuationWorkBatch.mock.calls[0]?.[0]).toMatchObject({
       chainState: {
-        currentChainCount: 0,
+        currentChainCount: 1,
         accumulatedChainTokens: 12,
       },
       parentRunId: "run-child-self-continue-token",
+    });
+  });
+
+  it("does not reschedule a plain CONTINUE_WORK token already handled by the child turn", async () => {
+    await completeDelegateChild("hop1 done\nCONTINUE_WORK:0");
+
+    expect(mocks.scheduleContinuationWorkBatch).not.toHaveBeenCalled();
+  });
+
+  it("refreshes child chain state advanced by delegate drain before scheduling bracket work", async () => {
+    const backingStore: Record<string, Record<string, unknown>> = {};
+    const cloneBackingStore = () =>
+      Object.fromEntries(
+        Object.entries(backingStore).map(([key, value]) => [key, { ...value }]),
+      ) as Record<string, Record<string, unknown>>;
+
+    mocks.dispatchToolDelegates.mockResolvedValueOnce({
+      dispatched: 1,
+      rejected: 0,
+      chainState: {
+        currentChainCount: 2,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 99,
+      },
+    });
+
+    await completeDelegateChild("hop1 done\n[[CONTINUE_WORK]]", {
+      setupStore: (childSessionKey) => {
+        Object.assign(backingStore, defaultStore(childSessionKey));
+        mocks.loadSessionStore.mockImplementation(cloneBackingStore);
+        mocks.updateSessionStore.mockImplementation(async (_storePath, mutator) => {
+          const draft = cloneBackingStore();
+          await mutator(draft);
+          for (const [key, value] of Object.entries(draft)) {
+            backingStore[key] = value;
+          }
+        });
+      },
+    });
+
+    expect(mocks.scheduleContinuationWorkBatch.mock.calls[0]?.[0]).toMatchObject({
+      chainState: {
+        currentChainCount: 2,
+        accumulatedChainTokens: 111,
+      },
     });
   });
 });

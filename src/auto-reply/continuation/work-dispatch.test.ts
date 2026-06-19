@@ -1172,9 +1172,8 @@ describe("durable continuation_work dispatch", () => {
       const flow = flowFor(sessionKey);
       expect(flow?.status).toBe("queued");
       expect((flow?.stateJson as { busySkipCount?: number } | undefined)?.busySkipCount).toBe(1);
-
       activeSessions.clear();
-      resetContinuationWorkDispatchForTests();
+      activeSessions.clear();
       await vi.advanceTimersByTimeAsync(1_000);
       await flushTimers();
 
@@ -1367,6 +1366,11 @@ describe("durable continuation_work dispatch", () => {
       expect(bucket1ReapVerdict(undefined, "confident-terminal")).toBe("rate-cap-forever");
       expect(bucket1ReapVerdict(undefined, "alive")).toBe("rate-cap-forever");
       expect(bucket1ReapVerdict(undefined, "uncertain")).toBe("rate-cap-forever");
+      expect(
+        bucket1ReapVerdict("run-1", "confident-terminal", {
+          parentRunOwnsSession: true,
+        }),
+      ).toBe("rate-cap-forever");
       expect(bucket1ReapVerdict("run-1", "confident-terminal")).toBe("reap");
       expect(bucket1ReapVerdict("run-1", "alive")).toBe("rate-cap-forever");
       expect(bucket1ReapVerdict("run-1", "uncertain")).toBe("rate-cap-forever");

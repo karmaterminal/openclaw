@@ -62,6 +62,10 @@ describe("subagent-announce continuation runtime entry", () => {
     expect(typeof continuationRuntime.dispatchToolDelegates).toBe("function");
   });
 
+  it("exports scheduleContinuationWorkBatch from the continuation runtime", () => {
+    expect(typeof continuationRuntime.scheduleContinuationWorkBatch).toBe("function");
+  });
+
   it("exports loadContinuationChainState from the continuation runtime", () => {
     expect(typeof continuationRuntime.loadContinuationChainState).toBe("function");
   });
@@ -94,6 +98,7 @@ describe("subagent-announce continuation runtime entry", () => {
     const requiredExports = [
       // ContinuationDispatchModule
       "dispatchToolDelegates",
+      "scheduleContinuationWorkBatch",
       // ContinuationStateModule
       "loadContinuationChainState",
       "persistContinuationChainState",

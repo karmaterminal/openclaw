@@ -14,6 +14,15 @@ type AgentCallRequest = { method?: string; params?: Record<string, unknown> };
 const agentSpy = vi.fn(async (_req: AgentCallRequest) => ({ runId: "run-main", status: "ok" }));
 const callGatewayMock = vi.fn(async (_request: unknown) => ({}));
 const loadSessionStoreMock = vi.fn((_storePath: string) => ({}) as Record<string, unknown>);
+const updateSessionStoreMock = vi.fn(
+  async <T>(
+    storePath: string,
+    mutator: (store: Record<string, Record<string, unknown>>) => T | Promise<T>,
+  ) => {
+    const store = loadSessionStoreMock(storePath) as Record<string, Record<string, unknown>>;
+    return await mutator(store);
+  },
+);
 const resolveAgentIdFromSessionKeyMock = vi.fn((sessionKey: string) => {
   return sessionKey.match(/^agent:([^:]+)/)?.[1] ?? "main";
 });
@@ -207,6 +216,13 @@ vi.mock("../config/sessions/store-load.js", () => ({
   loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
 }));
 
+vi.mock("../config/sessions/store.js", () => ({
+  updateSessionStore: (
+    storePath: string,
+    mutator: (store: Record<string, Record<string, unknown>>) => unknown,
+  ) => updateSessionStoreMock(storePath, mutator),
+}));
+
 import { runSubagentAnnounceFlow } from "./subagent-announce.js";
 
 describe("subagent-announce continuation drain (F7)", () => {
@@ -225,6 +241,17 @@ describe("subagent-announce continuation drain (F7)", () => {
       contextPressureThreshold: undefined,
     }));
     loadSessionStoreMock.mockReset().mockImplementation(() => ({}));
+    updateSessionStoreMock
+      .mockReset()
+      .mockImplementation(
+        async <T>(
+          storePath: string,
+          mutator: (store: Record<string, Record<string, unknown>>) => T | Promise<T>,
+        ) => {
+          const store = loadSessionStoreMock(storePath) as Record<string, Record<string, unknown>>;
+          return await mutator(store);
+        },
+      );
     resolveAgentIdFromSessionKeyMock.mockReset().mockImplementation(() => "main");
     resolveStorePathMock.mockReset().mockImplementation(() => "/tmp/sessions.json");
     resolveMainSessionKeyMock.mockReset().mockImplementation(() => "agent:main:main");

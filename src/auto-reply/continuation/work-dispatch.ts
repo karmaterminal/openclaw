@@ -131,11 +131,18 @@ export type BucketOneReapVerdict = "reap" | "rate-cap-forever";
 export function bucket1ReapVerdict(
   parentRunId: string | undefined,
   parentLiveness: SubagentRunLiveness,
+  options: { parentRunOwnsSession?: boolean } = {},
 ): BucketOneReapVerdict {
   // Delegate-flow-gate FIRST: a flow with no spawning lineage (same-session
   // continue_work, or a recovered row without parentRunId) is never an orphan we
   // may reap. Never wrongful-reap.
   if (parentRunId == null) {
+    return "rate-cap-forever";
+  }
+  // Same-session self-continuations may carry the just-finished run id for trace
+  // and wake context. If that run owns this session, it is the driver requesting
+  // its next turn, not an external parent whose terminal state proves orphanhood.
+  if (options.parentRunOwnsSession === true) {
     return "rate-cap-forever";
   }
   if (parentLiveness === "confident-terminal") {
@@ -154,13 +161,17 @@ export function bucket1ReapVerdict(
  */
 async function readChildSessionRunLiveness(
   sessionKey: string,
-  options: { now: number; staleCutoffMs?: number },
-): Promise<SubagentRunLiveness> {
+  options: { now: number; parentRunId?: string; staleCutoffMs?: number },
+): Promise<{ liveness: SubagentRunLiveness; parentRunOwnsSession: boolean }> {
   const [{ subagentRuns }, { classifyChildSessionRunLivenessFromRuns }] = await Promise.all([
     import("../../agents/subagent-registry-memory.js"),
     import("../../agents/subagent-registry-queries.js"),
   ]);
-  return classifyChildSessionRunLivenessFromRuns(subagentRuns, sessionKey, options);
+  const parentRun = options.parentRunId ? subagentRuns.get(options.parentRunId) : undefined;
+  return {
+    liveness: classifyChildSessionRunLivenessFromRuns(subagentRuns, sessionKey, options),
+    parentRunOwnsSession: parentRun?.childSessionKey === sessionKey,
+  };
 }
 
 function requeueWorkForRetry(
@@ -453,16 +464,21 @@ export async function dispatchPendingContinuationWork(params: {
         // Only a confident-terminal parent authorizes the reap; alive/uncertain
         // all quiesce (asymmetric cost — wrongly-cull-busy is unrecoverable).
         const now = Date.now();
-        const parentLiveness: SubagentRunLiveness =
+        const parentVerdict =
           work.parentRunId == null
-            ? "uncertain"
+            ? { liveness: "uncertain" as SubagentRunLiveness, parentRunOwnsSession: false }
             : await readChildSessionRunLiveness(work.sessionKey, {
                 now,
+                parentRunId: work.parentRunId,
                 ...(runtimeConfig.orphanReapStaleCutoffMs !== undefined
                   ? { staleCutoffMs: runtimeConfig.orphanReapStaleCutoffMs }
                   : {}),
               });
-        if (bucket1ReapVerdict(work.parentRunId, parentLiveness) === "reap") {
+        if (
+          bucket1ReapVerdict(work.parentRunId, parentVerdict.liveness, {
+            parentRunOwnsSession: parentVerdict.parentRunOwnsSession,
+          }) === "reap"
+        ) {
           log.info(
             `[continuation:work-orphan-reaped] flowId=${work.flowId ?? "none"} session=${work.sessionKey} parentRunId=${work.parentRunId} — parent confident-terminal, can never rehydrate`,
           );

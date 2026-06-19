@@ -230,6 +230,23 @@ type ContinuationDispatchModule = {
     rejected: number;
     chainState: ContinuationChainState;
   }>;
+  scheduleContinuationWorkBatch: (params: {
+    sessionKey: string;
+    chainState: ContinuationChainState;
+    requests: readonly {
+      reason: string;
+      delaySeconds: number;
+      traceparent?: string;
+    }[];
+    config: ReturnType<typeof resolveContinuationRuntimeConfig>;
+    parentRunId?: string;
+    log?: (message: string) => void;
+  }) => Promise<{
+    scheduledCount: number;
+    cappedCount: number;
+    capped: boolean;
+    chainState: ContinuationChainState;
+  }>;
 };
 
 type ContinuationChainSource = {
@@ -263,6 +280,95 @@ type SessionStoreUpdateModule = {
   resolveStorePath: (store: unknown, options: { agentId: string }) => string;
   resolveAgentIdFromSessionKey: (sessionKey: string) => string;
 };
+
+type StrippedContinuationSignal = ReturnType<typeof stripContinuationSignal>;
+type StrippedSubagentContinuationSignal = StrippedContinuationSignal & {
+  workSignalOrigin?: "plain" | "bracket";
+};
+
+const BRACKET_CONTINUE_WORK_PATTERN = /\[\[\s*CONTINUE_WORK(?::(\d+))?\s*\]\]\s*$/;
+
+function stripSubagentContinuationSignal(text: string): StrippedSubagentContinuationSignal {
+  const parsed = stripContinuationSignal(text);
+  if (parsed.signal?.kind === "work") {
+    return { ...parsed, workSignalOrigin: "plain" };
+  }
+  if (parsed.signal) {
+    return parsed;
+  }
+  const bracketWorkMatch = text.trim().match(BRACKET_CONTINUE_WORK_PATTERN);
+  if (!bracketWorkMatch) {
+    return parsed;
+  }
+  const delaySec = bracketWorkMatch[1] ? Number.parseInt(bracketWorkMatch[1], 10) : undefined;
+  return {
+    text: text.replace(BRACKET_CONTINUE_WORK_PATTERN, "").trimEnd(),
+    signal: {
+      kind: "work",
+      ...(delaySec !== undefined ? { delayMs: delaySec * 1000 } : {}),
+    },
+    workSignalOrigin: "bracket",
+  };
+}
+
+function applyChildTaskChainHopFloor(
+  chainState: ContinuationChainState,
+  childTask: string,
+): ContinuationChainState {
+  const hopMatch = childTask.match(CONTINUATION_CHAIN_HOP_PATTERN);
+  const childChainHop = hopMatch ? Number.parseInt(hopMatch[1], 10) : undefined;
+  if (childChainHop === undefined || childChainHop <= chainState.currentChainCount) {
+    return chainState;
+  }
+  return {
+    ...chainState,
+    currentChainCount: childChainHop,
+  };
+}
+
+async function persistAdvancedChildContinuationChainState(params: {
+  cfg: ReturnType<typeof getRuntimeConfig>;
+  childEntry: ContinuationChainSource | undefined;
+  childSessionKey: string;
+  chainState: ContinuationChainState;
+  stateModule: Pick<ContinuationStateModule, "persistContinuationChainState">;
+  sessionStoreModule: SessionStoreUpdateModule;
+  logTag: string;
+}): Promise<void> {
+  const childEntryForWrite = params.childEntry as
+    | (ContinuationChainSource & Record<string, unknown>)
+    | undefined;
+  params.stateModule.persistContinuationChainState({
+    sessionEntry: childEntryForWrite,
+    count: params.chainState.currentChainCount,
+    startedAt: params.chainState.chainStartedAt,
+    tokens: params.chainState.accumulatedChainTokens,
+    ...(params.chainState.chainId ? { chainId: params.chainState.chainId } : {}),
+  });
+  try {
+    const agentId = params.sessionStoreModule.resolveAgentIdFromSessionKey(params.childSessionKey);
+    const storePath = params.sessionStoreModule.resolveStorePath(params.cfg.session?.store, {
+      agentId,
+    });
+    await params.sessionStoreModule.updateSessionStore(storePath, (store) => {
+      const existing = store[params.childSessionKey];
+      if (!existing) {
+        return;
+      }
+      store[params.childSessionKey] = {
+        ...existing,
+        continuationChainCount: params.chainState.currentChainCount,
+        continuationChainStartedAt: params.chainState.chainStartedAt,
+        continuationChainTokens: params.chainState.accumulatedChainTokens,
+        ...(params.chainState.chainId ? { continuationChainId: params.chainState.chainId } : {}),
+      };
+    });
+  } catch (writeErr) {
+    defaultRuntime.error?.(
+      `[continuation:${params.logTag}-persist-failed] child=${params.childSessionKey} error=${writeErr instanceof Error ? writeErr.message : String(writeErr)}`,
+    );
+  }
+}
 
 async function rejectCrossSessionTargetingForSubagentDispatch(params: {
   crossSessionTargeting: "disabled" | "enabled";
@@ -348,11 +454,6 @@ async function drainChildContinuationQueue(params: {
     ]);
     const { dispatchToolDelegates } = dispatchModule;
     const { loadContinuationChainState, persistContinuationChainState } = stateModule;
-    const {
-      updateSessionStore: updateSessionStoreLazy,
-      resolveStorePath: resolveStorePathLazy,
-      resolveAgentIdFromSessionKey: resolveAgentIdFromSessionKeyLazy,
-    } = sessionStoreModule;
     const childEntry = loadSessionEntryByKey(params.childSessionKey) as
       | ContinuationChainSource
       | undefined;
@@ -377,46 +478,15 @@ async function drainChildContinuationQueue(params: {
     // and followup-runner persist patterns.
     if (dispatchResult && dispatchResult.dispatched > 0) {
       const advanced = dispatchResult.chainState;
-      const childEntryForWrite = childEntry as
-        | (ContinuationChainSource & Record<string, unknown>)
-        | undefined;
-      // In-memory mirror so any post-drain reads of the same entry see the
-      // advanced state immediately.
-      persistContinuationChainState({
-        sessionEntry: childEntryForWrite,
-        count: advanced.currentChainCount,
-        startedAt: advanced.chainStartedAt,
-        tokens: advanced.accumulatedChainTokens,
-        // Carry the advanced/minted chain id so a later child drain reloads it
-        // instead of re-minting a fresh one (stable chain correlation).
-        ...(advanced.chainId ? { chainId: advanced.chainId } : {}),
+      await persistAdvancedChildContinuationChainState({
+        cfg,
+        childEntry,
+        childSessionKey: params.childSessionKey,
+        chainState: advanced,
+        stateModule: { persistContinuationChainState },
+        sessionStoreModule,
+        logTag: "drain",
       });
-      // Durable write through the session store so the advanced state
-      // survives gateway restart and is observable by other readers of
-      // the on-disk session entry.
-      try {
-        const agentId = resolveAgentIdFromSessionKeyLazy(params.childSessionKey);
-        const storePath = resolveStorePathLazy(cfg.session?.store, { agentId });
-        await updateSessionStoreLazy(storePath, (store) => {
-          const existing = store[params.childSessionKey];
-          if (!existing) {
-            return;
-          }
-          store[params.childSessionKey] = {
-            ...existing,
-            continuationChainCount: advanced.currentChainCount,
-            continuationChainStartedAt: advanced.chainStartedAt,
-            continuationChainTokens: advanced.accumulatedChainTokens,
-            // Persist the chain id to disk too so it survives gateway restart /
-            // cache eviction and the next drain does not re-mint a fresh id.
-            ...(advanced.chainId ? { continuationChainId: advanced.chainId } : {}),
-          };
-        });
-      } catch (writeErr) {
-        defaultRuntime.error?.(
-          `[continuation:drain-persist-failed] child=${params.childSessionKey} error=${writeErr instanceof Error ? writeErr.message : String(writeErr)}`,
-        );
-      }
     }
   } catch (err) {
     defaultRuntime.error?.(
@@ -667,6 +737,7 @@ export async function runSubagentAnnounceFlow(params: {
       childSessionKey: params.childSessionKey,
       requesterOrigin: targetRequesterOrigin,
     });
+    invalidateSessionEntry(params.childSessionKey);
 
     let requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey);
     const requesterIsInternalSession = () =>
@@ -971,11 +1042,75 @@ export async function runSubagentAnnounceFlow(params: {
     let bracketDelegateConsumed = false;
 
     if (continuationEnabled && (findings !== "(no output)" || toolDelegates.length > 0)) {
-      const continuationResult = stripContinuationSignal(findings);
+      const continuationResult = stripSubagentContinuationSignal(findings);
       if (continuationResult.signal?.kind === "work") {
-        defaultRuntime.log(
-          `[subagent-chain-hop] CONTINUE_WORK not supported in sub-agent chain (from ${params.childSessionKey}), ignoring`,
-        );
+        findings = continuationResult.text || "(no output)";
+        if (continuationResult.workSignalOrigin !== "bracket") {
+          defaultRuntime.log(
+            `[subagent-chain-hop] Plain CONTINUE_WORK from ${params.childSessionKey} is handled by the child turn scheduler; not rescheduling from announce`,
+          );
+        } else {
+          try {
+            const [dispatchModule, stateModule, sessionStoreModule] = await Promise.all([
+              importRuntimeModule<ContinuationDispatchModule>(import.meta.url, [
+                "./subagent-announce.continuation.runtime",
+                ".js",
+              ]),
+              importRuntimeModule<ContinuationStateModule>(import.meta.url, [
+                "./subagent-announce.continuation.runtime",
+                ".js",
+              ]),
+              importRuntimeModule<SessionStoreUpdateModule>(import.meta.url, [
+                "./subagent-announce.continuation.runtime",
+                ".js",
+              ]),
+            ]);
+            const childEntry = readSessionEntryByKey(params.childSessionKey, { refresh: true }) as
+              | ContinuationChainSource
+              | undefined;
+            const workConfig = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
+            const workChainState = stateModule.loadContinuationChainState(
+              childEntry,
+              accumulatedChildTokens,
+            );
+            const batchResult = await dispatchModule.scheduleContinuationWorkBatch({
+              sessionKey: params.childSessionKey,
+              chainState: applyChildTaskChainHopFloor(workChainState, childTask),
+              requests: [
+                {
+                  reason: "",
+                  delaySeconds:
+                    (continuationResult.signal.delayMs ?? workConfig.defaultDelayMs) / 1000,
+                  ...(continuationResult.signal.traceparent
+                    ? { traceparent: continuationResult.signal.traceparent }
+                    : {}),
+                },
+              ],
+              config: workConfig,
+              parentRunId: params.childRunId,
+              log: (message) => defaultRuntime.log(message),
+            });
+            if (batchResult.scheduledCount > 0) {
+              await persistAdvancedChildContinuationChainState({
+                cfg,
+                childEntry,
+                childSessionKey: params.childSessionKey,
+                chainState: batchResult.chainState,
+                stateModule,
+                sessionStoreModule,
+                logTag: "work-token",
+              });
+              invalidateSessionEntry(params.childSessionKey);
+            }
+            defaultRuntime.log(
+              `[subagent-chain-hop] Scheduled ${batchResult.scheduledCount} same-session continue_work wake(s) from ${params.childSessionKey}`,
+            );
+          } catch (err) {
+            defaultRuntime.error?.(
+              `[subagent-chain-hop] Failed to schedule continue_work from ${params.childSessionKey}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
       } else if (continuationResult.signal?.kind === "delegate") {
         bracketDelegateConsumed = true;
         findings = continuationResult.text || "(no output)";

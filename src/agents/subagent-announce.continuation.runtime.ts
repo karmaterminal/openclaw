@@ -16,6 +16,7 @@
 // Registered as a tsdown bundler entry: `subagent-announce.continuation.runtime`
 // in `tsdown.config.ts`.
 export { dispatchToolDelegates } from "../auto-reply/continuation/delegate-dispatch.js";
+export { scheduleContinuationWorkBatch } from "../auto-reply/continuation/work-dispatch.js";
 export {
   loadContinuationChainState,
   persistContinuationChainState,
