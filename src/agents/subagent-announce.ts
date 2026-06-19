@@ -461,6 +461,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
   childSessionKey: string;
   childRunId: string;
   delayMs?: number;
+  accumulatedChildTokens?: number;
   cfg: ReturnType<typeof subagentAnnounceDeps.getRuntimeConfig>;
 }): Promise<void> {
   try {
@@ -499,7 +500,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
       params.delayMs !== undefined ? params.delayMs / 1000 : config.defaultDelayMs / 1000;
     const result = await scheduleContinuationWorkBatch({
       sessionKey: params.childSessionKey,
-      chainState: loadContinuationChainState(childEntry),
+      chainState: loadContinuationChainState(childEntry, params.accumulatedChildTokens ?? 0),
       requests: [{ reason: "subagent self-continuation (CONTINUE_WORK token)", delaySeconds }],
       config,
       parentRunId: params.childRunId,
@@ -1099,17 +1100,24 @@ export async function runSubagentAnnounceFlow(params: {
         // A subagent's bare CONTINUE_WORK token is a same-session
         // self-continuation (the child claims its own next turn), NOT a chain
         // hop to a new child (that is [[CONTINUE_DELEGATE:]], handled below).
-        // Strip the token from the announced findings so the parent's
-        // orchestration update never carries the child's internal continuation
-        // marker, then route it through the SAME durable continue_work scheduler
-        // the tool form uses. The scheduler call is a strict fallback: if the
-        // spawn-init/turn-1 path already armed the wake from the run payloads it
-        // is a no-op (#952).
+        // One scheduler unifies the trigger-forms (#952 + #1044): a lightContext
+        // subagent's bare token (#952, the path that broke) AND a
+        // continue_delegate child self-continuing on its own session (#1044
+        // leg A — owner intent, figs settled: a delegate-child is a session
+        // like any other). Strip the token from the announced findings so the
+        // parent's orchestration update never carries the child's internal
+        // continuation marker, then route it through the SAME durable
+        // continue_work scheduler the tool form uses. accumulatedChildTokens
+        // folds the child's just-completed turn cost into the chain state so the
+        // chain/cost cap counts it (#1044). The scheduler call is a strict
+        // fallback: if the spawn-init/turn-1 path already armed the wake from the
+        // run payloads it is a no-op (#952).
         const workSignal = continuationResult.signal;
         findings = continuationResult.text || "(no output)";
         await scheduleSubagentSelfContinuationWork({
           childSessionKey: params.childSessionKey,
           childRunId: params.childRunId,
+          accumulatedChildTokens,
           ...(workSignal.delayMs !== undefined ? { delayMs: workSignal.delayMs } : {}),
           cfg,
         });

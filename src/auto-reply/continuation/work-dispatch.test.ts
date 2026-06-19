@@ -1154,15 +1154,23 @@ describe("durable continuation_work dispatch", () => {
       expect((flow?.stateJson as { busySkipCount?: number } | undefined)?.busySkipCount).toBe(1);
     });
 
-    it("delegate-flow + parent-CONFIDENT-terminal → reap", async () => {
+    it("#1044 — delegate-flow + child-session-run terminated → rate-cap-forever (NEVER reap)", async () => {
+      // Pre-#1044 this case asserted reap: a delegate-child whose HOP1
+      // subagent-run had endedAt was treated as orphan-eligible. That conflated
+      // "the run that scheduled the wake has ended" (always true by design —
+      // continue_work fires after the emitting turn ends) with "no driver can
+      // ever run another turn." continue_work's wake drives directly via
+      // driveContinuationTurn → getReplyFromConfig, no rehydration parent
+      // needed. figs settled: a delegate-child is a session like any other and
+      // should self-continue.
       const sessionKey = "agent:main:child-terminal";
       enqueueDelegateBusyFlow(sessionKey, { parentRunId: "run-parent" });
-      addSubagentRun(sessionKey, { endedAt: Date.now() - 1 }); // explicit termination
+      addSubagentRun(sessionKey, { endedAt: Date.now() - 1 }); // HOP1 finished
       const result = await dispatchPendingContinuationWork({ sessionKey });
-      expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 1 });
+      expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
       const flow = flowFor(sessionKey);
-      expect(flow?.status).toBe("succeeded");
-      expect(flow?.currentStep?.startsWith("reaped:")).toBe(true);
+      expect(flow?.status).toBe("queued");
+      expect(flow?.currentStep?.startsWith("reaped:")).toBe(false);
       expect(turnGrants).toHaveLength(0);
     });
 
@@ -1200,19 +1208,28 @@ describe("durable continuation_work dispatch", () => {
       expect(flowFor(sessionKey)?.status).toBe("queued");
     });
 
-    it("orphan post-staleness-cutoff → confident-terminal → reap", async () => {
+    it("#1044 — staleness-cutoff parent-run also rate-caps (NEVER reap)", async () => {
+      // Same #1044 design correction as the explicit-termination case: a
+      // stale-cutoff unended run reads confident-terminal too, but a
+      // continue_work flow still has its self-driving wake. The pre-#1044
+      // confident-terminal cull is a false positive for every continue_work
+      // flow because no rehydration parent is needed.
       const sessionKey = "agent:main:child-stale";
       vi.setSystemTime(REALISTIC_NOW);
       enqueueDelegateBusyFlow(sessionKey, { parentRunId: "run-parent" });
       addSubagentRun(sessionKey, { createdAt: REALISTIC_NOW - STALE_UNENDED_SUBAGENT_RUN_MS - 1 });
       const result = await dispatchPendingContinuationWork({ sessionKey });
-      expect(result.reaped).toBe(1);
+      expect(result.reaped).toBe(0);
       const flow = flowFor(sessionKey);
-      expect(flow?.status).toBe("succeeded");
-      expect(flow?.currentStep?.startsWith("reaped:")).toBe(true);
+      expect(flow?.status).toBe("queued");
+      expect(flow?.currentStep?.startsWith("reaped:")).toBe(false);
     });
 
-    it("parent-liveness is read-time JOIN, never persisted (verdict recomputed each read)", async () => {
+    it("#1044 — no liveness verdict is ever frozen onto the durable row (rate-cap stays rate-cap across reads)", async () => {
+      // The pre-#1044 read-time-JOIN test exercised confident-terminal reap
+      // semantics. Post-#1044 the verdict is always rate-cap-forever and the
+      // durable row never carries a frozen liveness verdict (the data-shape
+      // invariant the original test was guarding is still load-bearing).
       const sessionKey = "agent:main:readtime-join";
       vi.setSystemTime(REALISTIC_NOW);
       enqueueDelegateBusyFlow(sessionKey, { parentRunId: "run-parent" });
@@ -1221,38 +1238,45 @@ describe("durable continuation_work dispatch", () => {
       await dispatchPendingContinuationWork({ sessionKey });
       resetContinuationWorkDispatchForTests();
       const flow = flowFor(sessionKey);
-      expect(flow?.status).toBe("queued"); // alive → rate-cap
-      // No liveness verdict is ever frozen onto the durable row.
+      expect(flow?.status).toBe("queued");
       expect(flow?.stateJson).not.toHaveProperty("parentState");
       expect(flow?.stateJson).not.toHaveProperty("parentLiveness");
       expect(flow?.stateJson).not.toHaveProperty("succeeded");
 
-      // Parent dies AFTER the first classify. The next dispatch re-reads live.
+      // The HOP1 run ends after the first dispatch — pre-#1044 this would
+      // have flipped the verdict to "reap" on re-read. Post-#1044 the
+      // self-continue wake survives because continue_work is self-driving.
       const record = subagentRuns.get(run);
       if (record) {
         record.endedAt = REALISTIC_NOW;
       }
       await vi.advanceTimersByTimeAsync(60_000);
       const result = await dispatchPendingContinuationWork({ sessionKey });
-      expect(result.reaped).toBe(1); // re-read → confident-terminal → reap (not a stale verdict)
+      expect(result.reaped).toBe(0);
+      expect(flowFor(sessionKey)?.status).toBe("queued");
     });
 
-    it("specimen 14b1e6f9: classified in-flight×skip parent-alive THEN parent dies → reap on next read", async () => {
+    it("#1044 — child-run liveness transitions never reap a self-continue wake (specimen 14b1e6f9 quiesces)", async () => {
+      // Pre-#1044 this specimen documented a re-read reap when the child-run
+      // ended between two dispatches. Post-#1044 the wake quiesces both times
+      // because continue_work flows are always self-driving — no rehydration
+      // parent's liveness is load-bearing.
       const sessionKey = "agent:main:specimen-14b1e6f9";
       vi.setSystemTime(REALISTIC_NOW);
       enqueueDelegateBusyFlow(sessionKey, { parentRunId: "run-parent" });
       const run = "run-specimen";
       addSubagentRun(sessionKey, { runId: run, createdAt: REALISTIC_NOW - 60_000 });
       const first = await dispatchPendingContinuationWork({ sessionKey });
-      expect(first.reaped).toBe(0); // alive → rate-cap, classified in-flight×skip
+      expect(first.reaped).toBe(0);
       resetContinuationWorkDispatchForTests();
       const record = subagentRuns.get(run);
       if (record) {
-        record.endedAt = REALISTIC_NOW; // parent dies between reads
+        record.endedAt = REALISTIC_NOW; // child-run ends between reads
       }
       await vi.advanceTimersByTimeAsync(60_000);
       const second = await dispatchPendingContinuationWork({ sessionKey });
-      expect(second.reaped).toBe(1); // reaped on the next read, not a frozen verdict
+      expect(second.reaped).toBe(0);
+      expect(flowFor(sessionKey)?.status).toBe("queued");
     });
 
     it("in-flight×busy at re-arm bound → quiesce-not-fail (retryCount stays 0, alive parent)", async () => {
@@ -1325,11 +1349,17 @@ describe("durable continuation_work dispatch", () => {
       ).toBe(1);
     });
 
-    it("bucket1ReapVerdict gate matrix is pure (delegate-gate FIRST, only confident-terminal reaps)", () => {
+    it("#1044 — bucket1ReapVerdict always quiesces (rate-cap-forever); never reaps a continue_work flow", () => {
+      // Continue_work flows are inherently self-driving — the matured wake
+      // drives a new turn via getReplyFromConfig with no rehydration parent.
+      // No input to this verdict authorizes a reap; Pillar-0 "never wrongful-
+      // reap" becomes "never reap" for the only flow class the work-store
+      // ever holds. See work-dispatch.ts:bucket1ReapVerdict for the full
+      // rationale.
       expect(bucket1ReapVerdict(undefined, "confident-terminal")).toBe("rate-cap-forever");
       expect(bucket1ReapVerdict(undefined, "alive")).toBe("rate-cap-forever");
       expect(bucket1ReapVerdict(undefined, "uncertain")).toBe("rate-cap-forever");
-      expect(bucket1ReapVerdict("run-1", "confident-terminal")).toBe("reap");
+      expect(bucket1ReapVerdict("run-1", "confident-terminal")).toBe("rate-cap-forever");
       expect(bucket1ReapVerdict("run-1", "alive")).toBe("rate-cap-forever");
       expect(bucket1ReapVerdict("run-1", "uncertain")).toBe("rate-cap-forever");
     });
