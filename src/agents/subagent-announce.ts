@@ -15,6 +15,7 @@ import {
   isSilentReplyText,
   SILENT_REPLY_TOKEN,
   startsWithSilentToken,
+  type ContinuationSignal,
   stripContinuationSignal,
   stripLeadingSilentToken,
   stripSilentToken,
@@ -440,6 +441,37 @@ async function drainChildContinuationQueue(params: {
       `Subagent continuation delegate drain failed for ${params.childSessionKey}: ${String(err)}`,
     );
   }
+}
+
+// figs ruled the bracket [[CONTINUE_WORK]] self-continuation form must fire: a
+// [[CONTINUE_DELEGATE:]] child's own session must be able to self-continue with
+// [[CONTINUE_WORK]]. The canonical parser (stripContinuationSignal) only
+// recognizes the bare CONTINUE_WORK[:N] token and [[CONTINUE_DELEGATE:]], so
+// layer the bracket-work form on top here, anchored at end-of-text like the
+// bare token. Bracket and bare forms are equivalent self-continuation triggers
+// and route to the same scheduler below; only the surface syntax differs.
+const BRACKET_CONTINUE_WORK_PATTERN = /\[\[\s*CONTINUE_WORK(?::(\d+))?\s*\]\]\s*$/;
+
+function stripSubagentContinuationSignal(text: string): {
+  text: string;
+  signal: ContinuationSignal | null;
+} {
+  const parsed = stripContinuationSignal(text);
+  if (parsed.signal) {
+    return parsed;
+  }
+  const bracketWorkMatch = text.trim().match(BRACKET_CONTINUE_WORK_PATTERN);
+  if (!bracketWorkMatch) {
+    return parsed;
+  }
+  const delaySec = bracketWorkMatch[1] ? Number.parseInt(bracketWorkMatch[1], 10) : undefined;
+  return {
+    text: text.replace(BRACKET_CONTINUE_WORK_PATTERN, "").trimEnd(),
+    signal: {
+      kind: "work",
+      ...(delaySec !== undefined ? { delayMs: delaySec * 1000 } : {}),
+    },
+  };
 }
 
 /**
@@ -1095,23 +1127,24 @@ export async function runSubagentAnnounceFlow(params: {
     let bracketDelegateConsumed = false;
 
     if (continuationEnabled && (findings !== "(no output)" || toolDelegates.length > 0)) {
-      const continuationResult = stripContinuationSignal(findings);
+      const continuationResult = stripSubagentContinuationSignal(findings);
       if (continuationResult.signal?.kind === "work") {
-        // A subagent's bare CONTINUE_WORK token is a same-session
-        // self-continuation (the child claims its own next turn), NOT a chain
-        // hop to a new child (that is [[CONTINUE_DELEGATE:]], handled below).
-        // One scheduler unifies the trigger-forms (#952 + #1044): a lightContext
-        // subagent's bare token (#952, the path that broke) AND a
-        // continue_delegate child self-continuing on its own session (#1044
-        // leg A — owner intent, figs settled: a delegate-child is a session
-        // like any other). Strip the token from the announced findings so the
-        // parent's orchestration update never carries the child's internal
-        // continuation marker, then route it through the SAME durable
-        // continue_work scheduler the tool form uses. accumulatedChildTokens
-        // folds the child's just-completed turn cost into the chain state so the
-        // chain/cost cap counts it (#1044). The scheduler call is a strict
-        // fallback: if the spawn-init/turn-1 path already armed the wake from the
-        // run payloads it is a no-op (#952).
+        // A subagent's CONTINUE_WORK signal is a same-session self-continuation
+        // (the child claims its own next turn), NOT a chain hop to a new child
+        // (that is [[CONTINUE_DELEGATE:]], handled below). One scheduler unifies
+        // all three trigger-forms: a lightContext subagent's bare CONTINUE_WORK:N
+        // token (#952, the path that broke), a continue_delegate child
+        // self-continuing on its own session (#1044 leg A — owner intent, figs
+        // settled: a delegate-child is a session like any other), AND the bracket
+        // [[CONTINUE_WORK]] form (figs ruled it must fire; recognized by
+        // stripSubagentContinuationSignal above). Strip the token from the
+        // announced findings so the parent's orchestration update never carries
+        // the child's internal continuation marker, then route it through the
+        // SAME durable continue_work scheduler the tool form uses.
+        // accumulatedChildTokens folds the child's just-completed turn cost into
+        // the chain state so the chain/cost cap counts it (#1044). The scheduler
+        // call is a strict fallback: if the spawn-init/turn-1 path already armed
+        // the wake from the run payloads it is a no-op (#952).
         const workSignal = continuationResult.signal;
         findings = continuationResult.text || "(no output)";
         await scheduleSubagentSelfContinuationWork({

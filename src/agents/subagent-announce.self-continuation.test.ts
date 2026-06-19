@@ -222,4 +222,38 @@ describe("#952 subagent self-continuation via announce/completion flow", () => {
     await runSubagentAnnounceFlow(buildParams("All done, nothing left to do."));
     expect(continuationWorkFlows()).toHaveLength(0);
   });
+
+  it("arms a same-session continue_work wake from the bracket [[CONTINUE_WORK]] form (#1044)", async () => {
+    // figs ruled the bracket form must fire: a [[CONTINUE_DELEGATE:]] child's own
+    // session must be able to self-continue with [[CONTINUE_WORK]]. The canonical
+    // token parser only recognizes the bare CONTINUE_WORK[:N], so subagent-announce
+    // layers the bracket form on via stripSubagentContinuationSignal and routes it
+    // to the SAME scheduler as the bare token.
+    expect(continuationWorkFlows()).toHaveLength(0);
+
+    await runSubagentAnnounceFlow(buildParams("Research progress so far.\n[[CONTINUE_WORK]]"));
+
+    const flows = continuationWorkFlows();
+    expect(flows).toHaveLength(1);
+    expect((flows[0].stateJson as { sessionKey?: string }).sessionKey).toBe(childSessionKey);
+  });
+
+  it("strips the bracket [[CONTINUE_WORK]] marker from the findings announced to the parent", async () => {
+    await runSubagentAnnounceFlow({
+      ...buildParams("Research progress so far.\n[[CONTINUE_WORK]]"),
+      silentAnnounce: false,
+      wakeOnReturn: false,
+      expectsCompletionMessage: true,
+    });
+
+    expect(deliverSubagentAnnouncementMock).toHaveBeenCalledTimes(1);
+    const arg = deliverSubagentAnnouncementMock.mock.calls[0][0] as {
+      internalEvents: { result?: string }[];
+      triggerMessage?: string;
+    };
+    const result = arg.internalEvents[0]?.result ?? "";
+    expect(result).toContain("Research progress so far.");
+    expect(result).not.toContain("CONTINUE_WORK");
+    expect(arg.triggerMessage ?? "").not.toContain("CONTINUE_WORK");
+  });
 });
