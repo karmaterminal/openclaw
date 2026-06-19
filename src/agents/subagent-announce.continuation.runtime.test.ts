@@ -82,15 +82,23 @@ describe("subagent-announce continuation runtime entry", () => {
     expect(typeof continuationRuntime.resolveAgentIdFromSessionKey).toBe("function");
   });
 
+  it("exports scheduleContinuationWorkBatch from the continuation runtime", () => {
+    expect(typeof continuationRuntime.scheduleContinuationWorkBatch).toBe("function");
+  });
+
+  it("exports hasLiveOrRecentlyDispatchedContinuationWork from the continuation runtime", () => {
+    expect(typeof continuationRuntime.hasLiveOrRecentlyDispatchedContinuationWork).toBe("function");
+  });
+
   it("exports every symbol destructured by subagent-announce runtime imports", () => {
     // Per-symbol assertions above pin individual exports. This test pins the
     // FULL set in one place so a refactor that adds a new destructured symbol
     // to subagent-announce.ts (without adding the corresponding export here)
     // is caught loudly.
     //
-    // The set MUST match every key in subagent-announce.ts's three module-shape
+    // The set MUST match every key in subagent-announce.ts's four module-shape
     // type declarations (ContinuationDispatchModule + ContinuationStateModule +
-    // SessionStoreUpdateModule, lines 176-217 on v5.2 canonical bac4caceac).
+    // SessionStoreUpdateModule + ContinuationWorkModule).
     const requiredExports = [
       // ContinuationDispatchModule
       "dispatchToolDelegates",
@@ -101,6 +109,9 @@ describe("subagent-announce continuation runtime entry", () => {
       "updateSessionStore",
       "resolveStorePath",
       "resolveAgentIdFromSessionKey",
+      // ContinuationWorkModule
+      "scheduleContinuationWorkBatch",
+      "hasLiveOrRecentlyDispatchedContinuationWork",
     ] as const;
 
     for (const exportName of requiredExports) {
