@@ -515,6 +515,59 @@ describe("durable continuation_work dispatch", () => {
     ]);
   });
 
+  it("busy-skips a main-session continuation when the global main lane is busy", async () => {
+    const sessionKey = "agent:main:main-lane-busy-positive-control";
+    mockSessionStore[sessionKey] = { sessionKey };
+    mainQueueSize = 1;
+    enqueuePendingWork({
+      sessionKey,
+      hop: 2,
+      delayMs: 0,
+      electedAt: Date.now(),
+      dueAt: Date.now(),
+      maxChainLength: 8,
+      reason: "main lane positive control",
+    });
+
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
+    expect(turnGrants).toHaveLength(0);
+    expect([...mockFlows.values()][0]).toMatchObject({
+      status: "queued",
+      currentStep: "Requeued same-session continuation wake",
+    });
+  });
+
+  it("drives a subagent continuation when its own session is idle even if the global main lane is busy (cross-session independence — #1057)", async () => {
+    const sessionKey = "agent:main:subagent:cross-session-independence-1057";
+    mockSessionStore[sessionKey] = { sessionKey };
+    mainQueueSize = 1;
+    enqueuePendingWork({
+      sessionKey,
+      hop: 2,
+      delayMs: 0,
+      electedAt: Date.now(),
+      dueAt: Date.now(),
+      maxChainLength: 8,
+      reason: "cross-session independence",
+    });
+
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(result).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
+    expect(turnGrants).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          SessionKey: sessionKey,
+          Body: expect.stringContaining("cross-session independence"),
+        }),
+        options: expect.objectContaining({ continuationTrigger: "work-wake" }),
+      }),
+    ]);
+    expect([...mockFlows.values()][0]).toMatchObject({ status: "succeeded" });
+  });
+
   it("requeues instead of bypassing already queued main-lane work", async () => {
     const sessionKey = "agent:main:queued-user-turn";
     mockSessionStore[sessionKey] = { sessionKey };
