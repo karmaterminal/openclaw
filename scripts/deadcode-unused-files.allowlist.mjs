@@ -33,6 +33,7 @@ export const KNIP_OPTIONAL_UNUSED_FILE_ALLOWLIST = [
   // importRuntimeModule(import.meta.url, ["./subagent-announce.continuation.runtime"]).
   // Knip can't see dynamic-import; mirrors subagent-registry.runtime.ts sibling.
   "src/agents/subagent-announce.continuation.runtime.ts",
+  "ui/src/ui/browser-redact.ts",
   "src/agents/subagent-registry.runtime.ts",
   "src/auto-reply/reply/get-reply.test-loader.ts",
   "src/cli/daemon-cli-compat.ts",
