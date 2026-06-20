@@ -6,6 +6,16 @@ Honest (allowlist-free) baseline reported by figs: **66223 pass / 18 reds**, det
 
 Verdict in one line: **16 of the 18 reds (Class A) are a runner-only build/discovery artifact — the runner builds before it tests, and the product resolver prefers the build's *incomplete* bundled-plugin tree over the complete source tree. Class B (1) is a genuine PATH-coupled product *test* bug exposed by this runner. Class C (1) is a CPU-starvation timeout flake. Cure Class A + Class C runner-side; flag Class B for a prince. No allowlist.**
 
+> **Status / convergence.** While this investigation ran, the runner script
+> `karmaterminal/openclaw-bootstrap` `tools/openclaw-local-ci-runner.sh` (branch
+> `scribe/1191-node24-and-parallelism-cap`) was updated to carry **exactly these two cures**
+> — the Class A `rm -rf dist/extensions dist-runtime/extensions` before the test gate
+> (lines 246-262, credited "Worker-proven: openclaw-bootstrap understand-honest-reds") and the
+> Class C confirm-determinism re-run inside `run_test_gate` (lines 149-175). My byte-level
+> investigation here **independently derived and then verified** those cures end-to-end on a
+> faithful clone; the diffs below match what now ships in the runner. Class B remains
+> (correctly) uncured — a genuine product test bug for a prince.
+
 ---
 
 ## Environment / how the faithful repro was built
@@ -71,8 +81,8 @@ OPENCLAW_BUNDLED_PLUGINS_DIR="$PWD/extensions" \
 ```
 Upstream passes the byte-identical tests because upstream's test job runs against **source `extensions/`** with **no prior build** — there is no dist to shadow it.
 
-### CURE (runner-side, `karmaterminal/openclaw-bootstrap`) — proven
-Make the **test** gate resolve the same complete `extensions/` tree upstream does, by removing the build's *incomplete* extension overlays after the build gate and before `pnpm test`. The build gate keeps its value (it already ran and set its rc); the core `dist/` is untouched.
+### CURE (runner-side, `karmaterminal/openclaw-bootstrap`) — proven, and already live (lines 246-262)
+Make the **test** gate resolve the same complete `extensions/` tree upstream does, by removing the build's *incomplete* extension overlays after the build gate and before `pnpm test`. The build gate keeps its value (it already ran and set its rc); the core `dist/` is untouched. This is exactly what now ships in `tools/openclaw-local-ci-runner.sh:246-262`.
 
 In `tools/openclaw-local-ci-runner.sh`, immediately **before** `run_test_gate`:
 ```bash
@@ -137,8 +147,8 @@ await Promise.race([ new Promise(res => socket.once("close", res)),
 ```
 `delay` is `node:timers/promises` (real timer; no fake timers here). Under the runner's concurrent shard fan-out (cap = `nproc`; this seat = 20-way / 121 GB), the event loop is oversubscribed and a 1 s window can elapse before `close()`/the `close` event lands → throw → **rc=1**. It is the **same starvation class as the codex `attempt-startup` test** and **trades places run-to-run** (this run: cross-os red + codex green; prior run: codex red + cross-os green) — i.e. non-deterministic, load-induced, not a code regression. Because it's a timeout throw (rc=1), the runner's existing **SIGSEGV-only** per-shard retry (`rc>=128`) does **not** catch it.
 
-### CURE (runner-side) — confirm-determinism re-run (primary), cap reduction (optional)
-Add a **single confirm-determinism re-run** of the *specific failing files* when the whole-suite fail count is **small** (a clearly-broken suite is not retried). A starvation flake re-runs green at low contention; a deterministic fail re-runs red — so this **cannot launder** Class A or Class B (their on-disk/PATH conditions persist on re-run).
+### CURE (runner-side) — confirm-determinism re-run (primary), cap reduction (optional) — already live (lines 149-175)
+Add a **single confirm-determinism re-run** of the *specific failing files* when the whole-suite fail count is **small** (a clearly-broken suite is not retried). A starvation flake re-runs green at low contention; a deterministic fail re-runs red — so this **cannot launder** Class A or Class B (their on-disk/PATH conditions persist on re-run). This is exactly what now ships in `run_test_gate` at `tools/openclaw-local-ci-runner.sh:149-175`.
 
 Drop-in for `run_test_gate` in `tools/openclaw-local-ci-runner.sh`, after `total_fails` is computed and **only** when `crashes_unrecovered==0 && total_fails>0 && total_fails<=CONFIRM_DETERMINISM_MAX_FAILS` (default 2):
 ```bash
@@ -183,7 +193,21 @@ This keeps the no-allowlist contract: a genuinely deterministic fail (incl. Clas
 
 ---
 
+## Full-suite validation (faithful clone, post-cure)
+
+Ran the runner's full suite via `node scripts/test-projects.mjs` on the faithful clone **after** the green `build:strict-smoke` **with the Class A cure applied** (`rm -rf dist/extensions dist-runtime/extensions`). Seat: 20 cores / 121 GB; Node 24.17.0; `CI=true OPENCLAW_TEST_PROJECTS_PARALLEL=20 OPENCLAW_VITEST_MAX_WORKERS=1` (the runner's env).
+
+- **Class A (16 reds): CLEARED.** Not a single `model-compat` / `openai-transport-stream` / `provider-catalog-shared` / `image` / `qwen` classification red appeared across the whole suite. The cure holds for the entire test phase.
+  - Robustness note: a product test transiently recreates `dist/extensions` at the repo cwd, but **empty** (0 child dirs), so `hasUsableBundledPluginTree` is false and the resolver still falls back to source `extensions/`. The cure stays effective as long as no test repopulates `dist/extensions` with a *usable* (package.json/manifest-bearing) but incomplete tree — none observed in 89 shards.
+- Remaining non-green shards (3 of 89), each explained and **none a Class A red**:
+  - `infra` → **Class B**, deterministic, genuine product test bug (`exec-authorization-render` `rg`→`/usr/bin/rg`). Correctly stays red; the confirm-determinism re-run re-reds it (host PATH unchanged) → not laundered.
+  - `extension-codex-app-server-attempt` → the **codex starvation flake** (`run-attempt.test.ts > keeps managed web_search for provider-qualified Codex model overrides`). Passes **106/106 in isolation** but takes **~84 s**, so it times out under 20-way load. This is the exact "trades places with cross-os run-to-run" flake the workorder names — my run hit **codex-red / cross-os-green**. The confirm-determinism re-run greens it.
+  - `agents-core` → **`ERR_WORKER_OUT_OF_MEMORY`** under 20-way memory pressure on this 121 GB seat (passes **5474/5474 in isolation**). A seat/parallelism artifact, **not** one of the 18 honest reds (the honest run was on ronan, 128 GB+, no OOM) and **not** caused by the cure (removing files cannot raise test RSS).
+
+So with the Class A cure the honest red set collapses from **18 → 1 deterministic genuine red (Class B)** plus load-induced flakes that the confirm-determinism re-run clears — exactly the intended "understand it, don't accept it" outcome, no allowlist.
+
 ## Net effect of the cures on this commit
+
 - Class A (16): **fixed** by the runner removing the incomplete built extension overlays before the test gate (faithful to upstream). Proven green on the faithful clone.
 - Class C (1): **cleared** by the confirm-determinism re-run as a starvation flake (and/or reduced by the cap).
 - Class B (1): **stays red** — a genuine, environment-coupled product **test** bug; fixed by a prince/figs in the test, not by the runner, and not by an allowlist.
@@ -232,4 +256,6 @@ sed -n '962,996p' test/scripts/openclaw-cross-os-release-checks.test.ts
 - **Exact runner fail count (16 vs my faithful clone's 2-in-this-file).** I byte-proved the *mechanism* and reproduced the exact `provider-catalog-shared` reds end-to-end. The full 16 are the union of tests asserting classifications for the 27 `bundledDist:false` plugins absent from dist (qwen/dashscope/modelstudio, deepseek, kimi-coding, …). I did not run the entire 66k suite on the faithful clone post-build to enumerate all 16 by name (heavy); the per-file repros + the bundledDist:false enumeration cover the set. A full `scripts/test-projects.mjs` run with the cure applied is the recommended final confirmation (no new reds expected; upstream runs the same suite without dist).
 - **Why `bundledDist:false` on these provider plugins at `b7ed06ed`** (vs older states where qwen was in dist) is a product decision; the runner must faithfully handle the current state regardless, which the cure does.
 - **Class C cap value.** `nproc/2` is a reasonable mitigation but is a throughput trade; the confirm-determinism re-run is the robust primary cure. The exact starvation threshold is seat-dependent.
-- **Confirm-determinism project→config mapping** assumes the vitest project name equals the config basename (`vitest.<project>.config.ts`), which holds for every shard observed; the snippet treats an unmapped project as a real fail (fail-closed), so it cannot launder.
+- **Confirm-determinism project→config mapping** assumes the vitest project name equals the config basename (`vitest.<project>.config.ts`), which holds for every shard observed (verified: the `name:` field in each `vitest.*.config.ts` equals the basename); the snippet treats an unmapped project as a real fail (fail-closed), so it cannot launder.
+- **Latent confirm-determinism + crashed-shard gap (out of scope for the 18 reds, but worth noting).** A shard that dies by `ERR_WORKER_OUT_OF_MEMORY` exits non-zero **without** emitting a parseable `FAIL <project> <file>` line, so `count_fails` does not count it. If the only *counted* fails are flakes that green on re-run, the gate could pass while an OOM-killed shard never finished. This did **not** affect the honest run (ronan, 128 GB+, no OOM) — it only surfaced in my 20-way reproduction on a 121 GB seat. Mitigations: detect `ERR_WORKER_OUT_OF_MEMORY` / non-FAIL shard exits explicitly (don't let confirm-determinism reset `rc` when a shard crashed/OOM'd, mirroring the existing `crashes_unrecovered` guard), and/or lower `OPENCLAW_TEST_PROJECTS_PARALLEL` on lower-RAM seats (the `(_ram_gb-12)*10/18` budget under-weights the heavy `agents-core` shard at high core counts).
+- **Cure durability vs. dist recreation.** A product test recreates `dist/extensions` at the repo cwd mid-suite, but **empty** (not usable), so the resolver still falls back to source `extensions/` and the cure holds. If a future test repopulated `dist/extensions` with a *usable-but-incomplete* tree it could regress later shards; none observed across 89 shards. A belt-and-suspenders alternative is to also export `OPENCLAW_DISABLE_BUNDLED_PLUGINS` handling or pin discovery, but the `rm` is sufficient and faithful today.
