@@ -43,6 +43,8 @@ vi.mock("../../sessions/session-key-utils.js", () => ({
     const match = /^agent:([^:]+)/.exec(sessionKey);
     return match ? { agentId: match[1] } : undefined;
   },
+  isSubagentSessionKey: (sessionKey: string | undefined | null) =>
+    typeof sessionKey === "string" && sessionKey.includes(":subagent:"),
 }));
 
 vi.mock("../reply/reply-run-registry.js", () => ({
@@ -544,6 +546,49 @@ describe("durable continuation_work dispatch", () => {
         }),
       }),
     ]);
+  });
+
+  it("#1057: drives a SUBAGENT continuation even when the main lane is busy (sessions must not interfere)", async () => {
+    // The negative byte #1057 captured: a from-child continue_work HOP1-only's on a
+    // busy main seat because the MAIN_COMMAND_LANE gate (correct for main-session
+    // continuations) wrongly gated the subagent's direct-grant turn — which runs on
+    // its OWN session, never the main lane. With main busy, a subagent continuation
+    // whose own session is idle MUST still drive. Pre-fix this requeued (the bug);
+    // the fix skips the main-lane gate for subagent sessions.
+    const childSessionKey = "agent:main:subagent:1057-cross-session-proof";
+    mockSessionStore[childSessionKey] = { sessionKey: childSessionKey };
+    addSubagentRun(childSessionKey);
+    mainQueueSize = 1; // parent/main lane busy — the exact #1057 condition
+    enqueuePendingWork({
+      sessionKey: childSessionKey,
+      hop: 2,
+      delayMs: 0,
+      electedAt: Date.now(),
+      dueAt: Date.now(),
+      maxChainLength: 8,
+      reason: "subagent hop-2 on busy main",
+    });
+
+    const result = await dispatchPendingContinuationWork({
+      sessionKey: childSessionKey,
+    });
+
+    expect(result).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
+    expect(turnGrants).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          SessionKey: childSessionKey,
+          Body: expect.stringContaining("subagent hop-2 on busy main"),
+        }),
+        options: expect.objectContaining({ continuationTrigger: "work-wake" }),
+      }),
+    ]);
+
+    mainQueueSize = 0;
+    gatewayDraining = false;
+    replyError = undefined;
+    drainAfterReply = false;
+    replyPayloadOverride = undefined;
   });
 
   it("recovers only stale running continuation work", async () => {

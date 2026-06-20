@@ -220,7 +220,7 @@ async function driveContinuationTurn(
     { resolveStorePath },
     { loadSessionStore },
     { resolveSessionStoreEntry },
-    { parseAgentSessionKey },
+    { parseAgentSessionKey, isSubagentSessionKey },
     { getReplyFromConfig },
     { replyRunRegistry },
     { getQueueSize, isGatewayDraining },
@@ -247,7 +247,17 @@ async function driveContinuationTurn(
   // Direct grants bypass heartbeat policy, but they must not jump ahead of
   // already queued user/main-lane work. Requeue via TaskFlow instead of silently
   // dropping the wake like the heartbeat path did.
-  if (getQueueSize(MAIN_COMMAND_LANE) > 0) {
+  //
+  // #1057: the MAIN_COMMAND_LANE gate is correct ONLY for MAIN-session
+  // continuations — a main-session continue_work genuinely contends for the
+  // "main" lane. A SUBAGENT/direct-grant continuation runs on its OWN session
+  // (already gated by replyRunRegistry.isActive(work.sessionKey) above) and does
+  // NOT execute on the main lane, so gating it on the parent's main-lane queue is
+  // cross-session interference: on any busy main seat the subagent's hop-2
+  // perpetually defers on traffic it never contends for, and never drives.
+  // Sessions must not interfere with each other: skip the main-lane gate for
+  // subagent sessions; their own-session readiness check (above) is sufficient.
+  if (!isSubagentSessionKey(work.sessionKey) && getQueueSize(MAIN_COMMAND_LANE) > 0) {
     return { status: "skipped", reason: CONTINUATION_TURN_BUSY_REASON };
   }
 
