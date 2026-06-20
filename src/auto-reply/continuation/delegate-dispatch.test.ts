@@ -631,6 +631,62 @@ describe("tool delegate dispatch contract", () => {
     );
   });
 
+  it("a delegate-child can continue_delegate to spawn a grandchild (depth-2 chain — figs #1053 test-7 basis-of-chains)", async () => {
+    const rootSessionKey = "agent:main:root";
+    const delegateChildSessionKey = "agent:main:subagent:continuation-parent-child";
+    enqueuePendingDelegate(delegateChildSessionKey, { task: "grandchild chain work" });
+
+    const result = await dispatchToolDelegates({
+      sessionKey: delegateChildSessionKey,
+      chainState: {
+        currentChainCount: 1,
+        chainStartedAt: 1_700_000_000_000,
+        accumulatedChainTokens: 321,
+      },
+      ctx: { sessionKey: delegateChildSessionKey, agentChannel: "discord", agentTo: "channel" },
+      maxChainLength: 10,
+    });
+
+    const expectedGrandchildSessionKey =
+      "agent:main:subagent:continuation-" +
+      crypto.createHash("sha256").update("flow-1").digest("hex").slice(0, 32);
+
+    expect(result.dispatched).toBe(1);
+    expect(result.rejected).toBe(0);
+    expect(result.chainState).toEqual({
+      currentChainCount: 2,
+      chainStartedAt: 1_700_000_000_000,
+      accumulatedChainTokens: 321,
+      chainId: expect.any(String),
+    });
+    expect(mockFlows.get("flow-1")).toMatchObject({
+      ownerKey: delegateChildSessionKey,
+      status: "succeeded",
+      stateJson: expect.objectContaining({
+        task: "grandchild chain work",
+        childSessionKey: expectedGrandchildSessionKey,
+      }),
+    });
+    expect(expectedGrandchildSessionKey).not.toBe(rootSessionKey);
+    expect(expectedGrandchildSessionKey).not.toBe(delegateChildSessionKey);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.stringMatching(
+          /^\[continuation:chain-hop:2\] Delegated task \(turn 2\/\d+\): grandchild chain work$/,
+        ),
+        continuationDelegateFlowId: "flow-1",
+        drainsContinuationDelegateQueue: true,
+      }),
+      {
+        agentSessionKey: delegateChildSessionKey,
+        agentChannel: "discord",
+        agentAccountId: undefined,
+        agentTo: "channel",
+        agentThreadId: undefined,
+      },
+    );
+  });
+
   it("marks rejected/thrown delegates failed without aborting later delegates", async () => {
     const sessionKey = "session-delegate-spawn-failure";
     enqueuePendingDelegate(sessionKey, { task: "rejected" });
