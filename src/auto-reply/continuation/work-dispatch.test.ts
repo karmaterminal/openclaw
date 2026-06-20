@@ -43,6 +43,16 @@ vi.mock("../../sessions/session-key-utils.js", () => ({
     const match = /^agent:([^:]+)/.exec(sessionKey);
     return match ? { agentId: match[1] } : undefined;
   },
+  isSubagentSessionKey: (sessionKey: string) => {
+    if (typeof sessionKey !== "string" || sessionKey.length === 0) {
+      return false;
+    }
+    const lower = sessionKey.toLowerCase();
+    if (lower.startsWith("subagent:")) {
+      return true;
+    }
+    return lower.replace(/^agent:[^:]+:/, "").startsWith("subagent:");
+  },
 }));
 
 vi.mock("../reply/reply-run-registry.js", () => ({
@@ -1366,21 +1376,24 @@ describe("durable continuation_work dispatch", () => {
   });
 
   describe("#952 own-turn subagent continue_work survives a busy-defer (never orphan-reaped)", () => {
-    it("does NOT reap a no-parentRunId own-turn flow whose own subagent run is confident-terminal, then drives hop-2 once the main lane quiets", async () => {
+    it("does NOT reap a no-parentRunId own-turn flow whose own subagent run is confident-terminal, then drives hop-2 once its own session quiets", async () => {
       // The #952 regression: a tool-less subagent elects continue_work for itself.
       // Its electing run completes (endedAt set → confident-terminal) and the wake
-      // arms. On any active gateway the main lane is non-empty, so driveContinuationTurn
-      // busy-skips. Pre-fix the producer tagged parentRunId with the subagent's own
-      // electing run, so #990 bucket-1 read that run as a confident-terminal "orphan"
-      // and reaped the flow — hop-2 never ran. The fix omits parentRunId for own-turn
-      // work, so the flow stays on the never-reap rate-cap path and delivers when the
-      // seat quiets. This pins that even a confident-terminal OWN run cannot authorize
-      // a reap of a same-session own-turn election.
+      // arms. While the subagent's OWN session is still mid-turn, driveContinuationTurn
+      // busy-skips on the own-session readiness gate — NOT the cross-session main lane
+      // (#1057: a subagent's direct grant is independent of main-lane traffic, so the
+      // main-lane gate is scoped to main-session continuations only). Pre-fix the
+      // producer tagged parentRunId with the subagent's own electing run, so #990
+      // bucket-1 read that run as a confident-terminal "orphan" and reaped the flow —
+      // hop-2 never ran. The fix omits parentRunId for own-turn work, so the flow stays
+      // on the never-reap rate-cap path and delivers once its own session quiets. This
+      // pins that even a confident-terminal OWN run cannot authorize a reap of a
+      // same-session own-turn election.
       const sessionKey = "agent:main:subagent:s952-ownturn";
       mockSessionStore[sessionKey] = { sessionKey };
       // The subagent's electing run has finished — confident-terminal in the registry.
       addSubagentRun(sessionKey, { endedAt: Date.now() - 1 });
-      mainQueueSize = 1; // active gateway: main lane non-empty → drive busy-skips
+      activeSessions.add(sessionKey); // own session still mid-turn → drive busy-skips
       enqueuePendingWork({
         sessionKey,
         hop: 2,
@@ -1398,10 +1411,10 @@ describe("durable continuation_work dispatch", () => {
       expect([...mockFlows.values()][0]?.status).toBe("queued");
       expect(turnGrants).toHaveLength(0);
 
-      // Seat quiets → the requeued wake matures and drives hop-2 into the subagent.
+      // Own session quiets → the requeued wake matures and drives hop-2 into the subagent.
       resetContinuationWorkDispatchForTests();
       await vi.advanceTimersByTimeAsync(60_000);
-      mainQueueSize = 0;
+      activeSessions.delete(sessionKey);
       const driven = await dispatchPendingContinuationWork({ sessionKey });
       expect(driven.dispatched).toBe(1);
       expect(turnGrants).toEqual([
