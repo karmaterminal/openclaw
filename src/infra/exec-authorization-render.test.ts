@@ -103,7 +103,13 @@ describe("exec authorization renderer", () => {
       }),
     );
 
-    expect(command).toBe("rg -n needle");
+    // #1052: the renderer absolutizes a resolvable safe-bin to its PATH-resolved
+    // path (the sibling tr/head test below asserts exactly that). `rg` resolvability
+    // is host-dependent — system ripgrep at /usr/bin/rg vs the @vscode/ripgrep node
+    // module — so assert EITHER the bare or the absolutized binary. The intent here
+    // is "no quote-all argv rendering" (the `-n needle` args stay space-separated /
+    // unquoted), not the binary's absolute path.
+    expect(command).toMatch(/^(?:\/\S+\/)?rg -n needle$/);
   });
 
   it("renders shell-wrapper payloads by preserving wrapper transport", async () => {
