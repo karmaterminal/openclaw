@@ -103,7 +103,13 @@ describe("exec authorization renderer", () => {
       }),
     );
 
-    expect(command).toBe("rg -n needle");
+    // PATH-robust (#1052): the renderer correctly absolutizes a safe-bin to its
+    // PATH-resolved path (see the sibling tr/head test below). On hosts that ship
+    // system ripgrep at /usr/bin/rg, PATH=/usr/bin:/bin resolves rg → /usr/bin/rg;
+    // on dev/upstream-CI images without it, rg stays bare. Accept either — the
+    // assertion under test is the plain `-n needle` argv (no quote-all), not the
+    // bin prefix.
+    expect(command).toMatch(/^(?:\/[^ ]+\/)?rg -n needle$/);
   });
 
   it("renders shell-wrapper payloads by preserving wrapper transport", async () => {
