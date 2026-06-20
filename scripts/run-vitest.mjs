@@ -132,13 +132,20 @@ function parsePositiveInt(value) {
 
 /**
  * Resolves default Node flags for Vitest, including the local Maglev opt-in.
+ *
+ * Forked Vitest workers ignore `--no-maglev` on the launcher because Vitest's
+ * forks pool filters `process.execArgv` and `--no-maglev` is rejected inside
+ * `NODE_OPTIONS`. The `--import` preload reassigns `process.execPath` to a
+ * wrapper-node shim that re-execs workers with `--no-maglev --no-opt`, which
+ * is the only lever that crosses into tinypool's forked workers.
  */
 export function resolveVitestNodeArgs(env = process.env) {
   if (isTruthyEnvValue(env.OPENCLAW_VITEST_ENABLE_MAGLEV)) {
     return [];
   }
 
-  return ["--no-maglev"];
+  const preloadPath = path.join(repoRoot, "scripts", "lib", "vitest-fork-execpath-preload.mjs");
+  return ["--no-maglev", "--import", preloadPath];
 }
 
 function isMissingVitestResolveError(error) {

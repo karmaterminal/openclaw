@@ -61,7 +61,21 @@ function createRunVitestFs(params: { nodeModulesSymlink: boolean; bundledPlugin:
 
 describe("scripts/run-vitest", () => {
   it("adds --no-maglev to vitest child processes by default", () => {
-    expect(resolveVitestNodeArgs({ PATH: "/usr/bin" })).toEqual(["--no-maglev"]);
+    const result = resolveVitestNodeArgs({ PATH: "/usr/bin" });
+    expect(result[0]).toBe("--no-maglev");
+    expect(result[1]).toBe("--import");
+    expect(result[2]?.endsWith("scripts/lib/vitest-fork-execpath-preload.mjs")).toBe(true);
+    expect(result).toHaveLength(3);
+  });
+
+  it("injects the fork-execpath preload by default and omits it when maglev is enabled", () => {
+    const withDefault = resolveVitestNodeArgs({});
+    expect(withDefault).toContain("--import");
+    expect(
+      withDefault.some((arg) => arg.endsWith("scripts/lib/vitest-fork-execpath-preload.mjs")),
+    ).toBe(true);
+    const withMaglev = resolveVitestNodeArgs({ OPENCLAW_VITEST_ENABLE_MAGLEV: "1" });
+    expect(withMaglev).toStrictEqual([]);
   });
 
   it("detects pnpm exec node wrappers that can be spawned directly", () => {
