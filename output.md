@@ -206,6 +206,9 @@ Ran the runner's full suite via `node scripts/test-projects.mjs` on the faithful
 
 So with the Class A cure the honest red set collapses from **18 → 1 deterministic genuine red (Class B)** plus load-induced flakes that the confirm-determinism re-run clears — exactly the intended "understand it, don't accept it" outcome, no allowlist.
 
+### Second full run (10-way) — cross-checks the above
+Re-ran the whole suite at `OPENCLAW_TEST_PROJECTS_PARALLEL=10` (the optional `nproc/2` Class C mitigation). Result: **2** non-green shards — `infra` (**Class B again**, fully deterministic across both runs) and `extension-imessage` (`monitor.watch-subscribe-retry.test.ts > retries a transient watch.subscribe startup timeout ...`, a **different** real-timer flake that passes **5/5 in isolation**). **Zero Class A reds again.** The flake "trades places" exactly as the workorder predicts: honest run = `cross-os`, my 20-way = `codex`, my 10-way = `imessage` — all the same real-timer-under-starvation class, none a Class A red, all cleared by the confirm-determinism re-run. The **only** stable red across every configuration is **Class B**.
+
 ## Net effect of the cures on this commit
 
 - Class A (16): **fixed** by the runner removing the incomplete built extension overlays before the test gate (faithful to upstream). Proven green on the faithful clone.
