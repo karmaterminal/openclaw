@@ -847,6 +847,65 @@ describe("durable continuation_work dispatch", () => {
     });
   });
 
+  it("collapses matured continue_work elections into one drain and leaves unmatured pending (figs #1053 test-4)", async () => {
+    const sessionKey = "agent:main:multi-collapse";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const collapseConfig = {
+      ...config,
+      minDelayMs: 0,
+      defaultDelayMs: 0,
+      maxDelayMs: 120_000,
+    } satisfies ContinuationRuntimeConfig;
+    const electedAt = Date.now();
+
+    const batch = await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: electedAt,
+        accumulatedChainTokens: 0,
+        chainId: "chain-collapse",
+      },
+      requests: [
+        { reason: "work-A", delaySeconds: 0 },
+        { reason: "work-B", delaySeconds: 60 },
+        { reason: "work-C", delaySeconds: 120 },
+      ],
+      config: collapseConfig,
+      parentRunId: "run-collapse",
+    });
+
+    expect(batch).toMatchObject({ scheduledCount: 3, cappedCount: 0, capped: false });
+    resetContinuationWorkDispatchForTests();
+    vi.setSystemTime(electedAt + 90_000);
+
+    const firstDrain = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(firstDrain).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
+    expect(turnGrants).toHaveLength(1);
+    expect(turnGrants[0]).toMatchObject({
+      context: expect.objectContaining({ Body: expect.stringContaining("work-B") }),
+    });
+    expect(turnGrants[0]).toMatchObject({
+      context: expect.not.objectContaining({ Body: expect.stringContaining("work-C") }),
+    });
+    const pendingAfterFirstDrain = [...mockFlows.values()].filter((flow) => flow.status === "queued");
+    expect(pendingAfterFirstDrain).toHaveLength(1);
+    expect(pendingAfterFirstDrain[0]?.stateJson).toMatchObject({
+      reason: "work-C",
+      dueAt: electedAt + 120_000,
+    });
+
+    vi.setSystemTime(electedAt + 120_000);
+    const secondDrain = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(secondDrain).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
+    expect(turnGrants).toHaveLength(2);
+    expect(turnGrants[1]).toMatchObject({
+      context: expect.objectContaining({ Body: expect.stringContaining("work-C") }),
+    });
+  });
+
   it("schedules the valid elections and caps the overflow without dropping the earlier ones", async () => {
     // Partial-success is load-bearing: when the cumulative chain cap rejects a
     // later election, the earlier valid ones must still schedule and deliver.
