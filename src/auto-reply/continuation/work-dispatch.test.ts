@@ -847,8 +847,8 @@ describe("durable continuation_work dispatch", () => {
     });
   });
 
-  it("collapses matured continue_work elections into one drain and leaves unmatured pending (figs #1053 test-4)", async () => {
-    const sessionKey = "agent:main:multi-collapse";
+  it("drives matured below-grace continue_work elections as distinct turns (figs #1053 test-4, on-time)", async () => {
+    const sessionKey = "agent:main:multi-below-grace";
     mockSessionStore[sessionKey] = { sessionKey };
     const collapseConfig = {
       ...config,
@@ -881,14 +881,18 @@ describe("durable continuation_work dispatch", () => {
 
     const firstDrain = await dispatchPendingContinuationWork({ sessionKey });
 
-    expect(firstDrain).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
-    expect(turnGrants).toHaveLength(1);
+    expect(firstDrain).toEqual({ dispatched: 2, failed: 0, reaped: 0 });
+    expect(turnGrants).toHaveLength(2);
     expect(turnGrants[0]).toMatchObject({
-      context: expect.objectContaining({ Body: expect.stringContaining("work-B") }),
+      context: expect.objectContaining({ Body: expect.stringContaining("work-A") }),
     });
     expect(turnGrants[0]).toMatchObject({
       context: expect.not.objectContaining({ Body: expect.stringContaining("work-C") }),
     });
+    expect(turnGrants[1]).toMatchObject({
+      context: expect.objectContaining({ Body: expect.stringContaining("work-B") }),
+    });
+    expect(systemEvents).toEqual([]);
     const pendingAfterFirstDrain = [...mockFlows.values()].filter((flow) => flow.status === "queued");
     expect(pendingAfterFirstDrain).toHaveLength(1);
     expect(pendingAfterFirstDrain[0]?.stateJson).toMatchObject({
@@ -900,10 +904,61 @@ describe("durable continuation_work dispatch", () => {
     const secondDrain = await dispatchPendingContinuationWork({ sessionKey });
 
     expect(secondDrain).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
-    expect(turnGrants).toHaveLength(2);
-    expect(turnGrants[1]).toMatchObject({
+    expect(turnGrants).toHaveLength(3);
+    expect(turnGrants[2]).toMatchObject({
       context: expect.objectContaining({ Body: expect.stringContaining("work-C") }),
     });
+  });
+
+  it("folds a stale past-grace continue_work backlog into the newest election (figs #1053 test-4, busy-pile coalesce)", async () => {
+    const sessionKey = "agent:main:multi-stale-fold";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const collapseConfig = {
+      ...config,
+      minDelayMs: 0,
+      defaultDelayMs: 0,
+      maxDelayMs: 120_000,
+    } satisfies ContinuationRuntimeConfig;
+    const electedAt = Date.now();
+
+    const batch = await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: electedAt,
+        accumulatedChainTokens: 0,
+        chainId: "chain-stale-fold",
+      },
+      requests: [
+        { reason: "work-A", delaySeconds: 0 },
+        { reason: "work-B", delaySeconds: 60 },
+      ],
+      config: collapseConfig,
+      parentRunId: "run-stale-fold",
+    });
+
+    expect(batch).toMatchObject({ scheduledCount: 2, cappedCount: 0, capped: false });
+    resetContinuationWorkDispatchForTests();
+    vi.setSystemTime(electedAt + 300_000);
+
+    const drain = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(drain).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
+    expect(turnGrants).toHaveLength(1);
+    expect(turnGrants[0]).toMatchObject({
+      context: expect.objectContaining({ Body: expect.stringContaining("work-B") }),
+    });
+    expect(turnGrants[0]).toMatchObject({
+      context: expect.not.objectContaining({ Body: expect.stringContaining("work-A") }),
+    });
+    expect(systemEvents).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining(
+          "[system:continuation-note] 1 stale continue_work wake(s) were folded into the newest election",
+        ),
+        options: expect.objectContaining({ sessionKey, trusted: true }),
+      }),
+    ]);
   });
 
   it("schedules the valid elections and caps the overflow without dropping the earlier ones", async () => {
