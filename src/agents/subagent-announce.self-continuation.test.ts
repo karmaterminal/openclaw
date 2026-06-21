@@ -61,19 +61,22 @@ vi.mock("./subagent-announce-delivery.js", async (importOriginal) => ({
   deliverSubagentAnnouncement: deliverSubagentAnnouncementMock,
 }));
 
-import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
-import {
-  clearSessionStoreCacheForTest,
-  resolveStorePath,
-  saveSessionStore,
-} from "../config/sessions.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import { loadContinuationChainState } from "../auto-reply/continuation/state.js";
 import {
   resetContinuationWorkDispatchForTests,
   scheduleContinuationWork,
 } from "../auto-reply/continuation/work-dispatch.js";
-import { listTaskFlowsForOwnerKey, resetTaskFlowRegistryForTests } from "../tasks/task-flow-registry.js";
+import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
+import {
+  clearSessionStoreCacheForTest,
+  resolveStorePath,
+  saveSessionStore,
+} from "../config/sessions.js";
+import {
+  listTaskFlowsForOwnerKey,
+  resetTaskFlowRegistryForTests,
+} from "../tasks/task-flow-registry.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -185,7 +188,9 @@ describe("#952 subagent self-continuation via announce/completion flow", () => {
     });
 
     expect(deliverSubagentAnnouncementMock).toHaveBeenCalledTimes(1);
-    const arg = deliverSubagentAnnouncementMock.mock.calls[0][0] as {
+    const arg = (
+      deliverSubagentAnnouncementMock.mock.calls[0] as unknown[] | undefined
+    )?.[0] as unknown as {
       internalEvents: { result?: string }[];
       triggerMessage?: string;
     };
