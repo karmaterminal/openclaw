@@ -210,7 +210,7 @@ async function driveContinuationTurn(
     { resolveStorePath },
     { loadSessionStore },
     { resolveSessionStoreEntry },
-    { parseAgentSessionKey },
+    { parseAgentSessionKey, isSubagentSessionKey },
     { getReplyFromConfig },
     { replyRunRegistry },
     { getQueueSize, isGatewayDraining },
@@ -234,10 +234,18 @@ async function driveContinuationTurn(
   if (replyRunRegistry.isActive(work.sessionKey)) {
     return { status: "skipped", reason: CONTINUATION_TURN_BUSY_REASON };
   }
-  // Direct grants bypass heartbeat policy, but they must not jump ahead of
-  // already queued user/main-lane work. Requeue via TaskFlow instead of silently
-  // dropping the wake like the heartbeat path did.
-  if (getQueueSize(MAIN_COMMAND_LANE) > 0) {
+  // #1057 — the MAIN-lane busy-check is correct backpressure ONLY for a
+  // main-session continuation, which actually runs ON the main lane and so must
+  // not jump ahead of already-queued user/main-lane work. A subagent/delegate-child
+  // self-continuation is a *direct grant* that runs on its OWN session (see
+  // getReplyFromConfig below, keyed by work.sessionKey) and never contends for the
+  // main lane — gating it on getQueueSize(MAIN_COMMAND_LANE) starves it perpetually
+  // whenever the (unrelated) main session is busy, which is ~always mid-conversation.
+  // The sessions are unique; one session's queued turns must not interrupt a
+  // different session's continuation. So scope the MAIN-lane check to non-subagent
+  // (main-lane) work; subagent direct grants rely solely on the per-session
+  // `replyRunRegistry.isActive(work.sessionKey)` check above.
+  if (!isSubagentSessionKey(work.sessionKey) && getQueueSize(MAIN_COMMAND_LANE) > 0) {
     return { status: "skipped", reason: CONTINUATION_TURN_BUSY_REASON };
   }
 
