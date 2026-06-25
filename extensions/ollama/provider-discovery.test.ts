@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { clearLiveCatalogCacheForTests } from "openclaw/plugin-sdk/provider-catalog-shared";
 import type { ModelDefinitionConfig } from "openclaw/plugin-sdk/provider-onboard";
-import { withFetchPreconnect } from "openclaw/plugin-sdk/test-env";
+import { jsonResponse, withFetchPreconnect } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ollamaProviderDiscovery } from "./provider-discovery.js";
 
@@ -103,16 +103,10 @@ describe("Ollama provider", () => {
 
   const createTagModel = (name: string) => ({ name, modified_at: "", size: 1, digest: "" });
 
-  const tagsResponse = (names: string[]) => ({
-    ok: true,
-    json: async () => ({ models: names.map((name) => createTagModel(name)) }),
-  });
+  const tagsResponse = (names: string[]) =>
+    jsonResponse({ models: names.map((name) => createTagModel(name)) });
 
-  const notFoundJsonResponse = () => ({
-    ok: false,
-    status: 404,
-    json: async () => ({}),
-  });
+  const notFoundJsonResponse = () => jsonResponse({}, 404);
 
   const stubTagsFetch = (names: string[] = []) => {
     const fetchMock = vi.fn(async (input: unknown) => {
@@ -213,16 +207,10 @@ describe("Ollama provider", () => {
         const bodyText = typeof rawBody === "string" ? rawBody : "{}";
         const parsed = JSON.parse(bodyText) as { name?: string };
         if (parsed.name === "qwen3:32b") {
-          return {
-            ok: true,
-            json: async () => ({ model_info: { "qwen3.context_length": 131072 } }),
-          };
+          return jsonResponse({ model_info: { "qwen3.context_length": 131072 } });
         }
         if (parsed.name === "llama3.3:70b") {
-          return {
-            ok: true,
-            json: async () => ({ model_info: { "llama.context_length": 65536 } }),
-          };
+          return jsonResponse({ model_info: { "llama.context_length": 65536 } });
         }
       }
       return notFoundJsonResponse();
@@ -249,10 +237,7 @@ describe("Ollama provider", () => {
           return tagsResponse(["deepseek-r1:latest", "llama3.3:latest"]);
         }
         if (url.endsWith("/api/show")) {
-          return {
-            ok: true,
-            json: async () => ({ model_info: {} }),
-          };
+          return jsonResponse({ model_info: {} });
         }
         return notFoundJsonResponse();
       });
@@ -331,10 +316,7 @@ describe("Ollama provider", () => {
         return tagsResponse(["qwen3:32b"]);
       }
       if (url.endsWith("/api/show")) {
-        return {
-          ok: false,
-          status: 500,
-        };
+        return jsonResponse({}, 500);
       }
       return notFoundJsonResponse();
     });
@@ -359,15 +341,9 @@ describe("Ollama provider", () => {
     const fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input);
       if (url.endsWith("/api/tags")) {
-        return {
-          ok: true,
-          json: async () => ({ models: manyModels }),
-        };
+        return jsonResponse({ models: manyModels });
       }
-      return {
-        ok: true,
-        json: async () => ({ model_info: { "llama.context_length": 65536 } }),
-      };
+      return jsonResponse({ model_info: { "llama.context_length": 65536 } });
     });
     vi.stubGlobal("fetch", withFetchPreconnect(fetchMock));
 
