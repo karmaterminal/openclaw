@@ -557,12 +557,17 @@ function exactOverrideRulesFromOverrides(overrides) {
 }
 
 function parseLockPackagePath(lockPath) {
-  if (!lockPath.startsWith("node_modules/")) {
+  const nodeModulesIdx = lockPath.indexOf("node_modules/");
+  if (nodeModulesIdx === -1) {
     return [];
   }
   const packages = [];
-  let remaining = lockPath;
-  let current = "";
+  let prefix = lockPath.slice(0, nodeModulesIdx);
+  if (prefix.endsWith("/")) {
+    prefix = prefix.slice(0, -1);
+  }
+  let remaining = lockPath.slice(nodeModulesIdx);
+  let current = prefix;
   while (remaining.startsWith("node_modules/")) {
     const withoutPrefix = remaining.slice("node_modules/".length);
     const segments = withoutPrefix.split("/");
