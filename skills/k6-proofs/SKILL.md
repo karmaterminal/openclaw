@@ -11,14 +11,14 @@ prince's gateway, capture OTel/Prometheus/Loki evidence, and land results in the
 corpus — without archaeology.
 
 The harness, scenarios, runner, dashboards, and the machine-parseable pipeline all live in
-`karmaterminal/karmaterminal-openclaw-docs` under `k6-proofs/`.
+`karmaterminal/karmaterminal-openclaw-docs` under `tools/k6-proofs/`.
 
 ## Read these two first (the source-of-truth content)
 
-1. **`k6-proofs/skill/SKILL.md`** — the detailed human-readable how-to: scenario template,
+1. **`tools/k6-proofs/skill/SKILL.md`** — the detailed human-readable how-to: scenario template,
    metrics-naming conventions, evidence-correlation patterns, the both-forms mandate, and the
    caps-test procedure. This is the substance; this AgentSkill is the discoverable wrapper over it.
-2. **`k6-proofs/k6-proofs-pipeline.xml`** — the structured XML decision tree for one-shot model
+2. **`tools/k6-proofs/k6-proofs-pipeline.xml`** — the structured XML decision tree for one-shot model
    parse. A model actor loads it whole and knows: which row, what behavior, who owns it, what to
    fire, how to verify, where artifacts land — no line-by-line scanning. Prefer this for
    "what do I do" routing; prefer the SKILL.md for the "how exactly" detail.
@@ -32,11 +32,11 @@ The harness, scenarios, runner, dashboards, and the machine-parseable pipeline a
 
 - **k6 v2.0.0** — load-testing engine (currently on `ronan-dgx` at `/home/figs/bin/k6`)
 - **Prometheus** — metrics store, `prometheus.dandelion.cult` (k3s on silas)
-- **Grafana** — dashboards, `grafana.dandelion.cult` (dashboard JSON: `k6-proofs/dashboards/k6-proofs.json`)
+- **Grafana** — dashboards, `grafana.dandelion.cult` (dashboard JSON: `tools/k6-proofs/dashboards/k6-proofs.json`)
 - **Loki** — log aggregation, `loki.dandelion.cult` (Alloy DaemonSet forwards journal logs)
 - **Tempo** — distributed tracing, `tempo.dandelion.cult` (OTel Collector on silas)
-- **Harness** — `k6-proofs/` (lib/gateway.js connection helpers + metrics, lib/report.js HTML report)
-- **Runner** — `k6-proofs/run-proof.sh` (auto-detects seat / SHA / Prometheus URL)
+- **Harness** — `tools/k6-proofs/` (lib/gateway.js connection helpers + metrics, lib/report.js HTML report)
+- **Runner** — `tools/k6-proofs/run-proof.sh` (auto-detects seat / SHA / Prometheus URL)
 
 ## Quick start
 
@@ -56,7 +56,7 @@ cd k6-proofs
 k6 run scenarios/preflight.js
 ```
 
-## Build a new proof scenario (summary — full detail in `k6-proofs/skill/SKILL.md`)
+## Build a new proof scenario (summary — full detail in `tools/k6-proofs/skill/SKILL.md`)
 
 1. **Find the row** in `PROOFS/PROOF-CORPUS-METHOD.md` (row name, expected behavior, owner, evidence shape) and its tracked issue on Project 81.
 2. **Create** `scenarios/r-<row-name>.js` (lowercase, hyphens) from the scenario template.
@@ -77,5 +77,5 @@ karmaterminal-openclaw-docs"), labeled `proofs:k6` + category (`scenario`/`integ
 
 ## Source repo
 
-`karmaterminal/karmaterminal-openclaw-docs` → `k6-proofs/` (harness) and this skill at
+`karmaterminal/karmaterminal-openclaw-docs` → `tools/k6-proofs/` (harness) and this skill at
 `skills/k6-proofs/SKILL.md` in `karmaterminal/openclaw` (the discoverable wrapper that mirrors into each prince's `<available_skills>`).
