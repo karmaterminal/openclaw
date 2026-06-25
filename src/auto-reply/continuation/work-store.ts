@@ -45,6 +45,10 @@ const PendingWorkStateSchema = z.object({
   // count for exp-backoff on the re-arm. DISTINCT from retryCount — a busy-skip is
   // a legit defer, never a failed attempt, so it must not feed the fail-bound.
   busySkipCount: z.number().int().nonnegative().optional(),
+  // Diagnostic latch for noisy busy-deferred continuation work. Once emitted,
+  // the same flow keeps rate-capping silently instead of posting warnings on
+  // every retry while the session remains busy.
+  busySkipWarningEmitted: z.boolean().optional(),
   // #990 locus-3: durable delivered-mark written AFTER a wake is confirmed
   // delivered but BEFORE the persist-gap that precedes finishFlow. The
   // consume read-guard skips any flow carrying it so a crash in that window
@@ -71,6 +75,8 @@ export type PendingContinuationWork = {
   // #990 Pillar-0: consecutive busy-skip count for exp-backoff on the busy re-arm.
   // Distinct from retryCount (the transient-error fail-bound). Never penalizes.
   busySkipCount?: number;
+  // Latches the high busy-skip diagnostic so one chronically-busy flow emits at most once.
+  busySkipWarningEmitted?: boolean;
   // #990 locus-3: durable delivered-mark (see schema). PRESENT once a wake was
   // confirmed delivered; the consume read-guard refuses to re-drive it.
   succeeded?: { point: "optimal"; durability: "durable" };
@@ -125,6 +131,9 @@ function workToRuntime(
     ...(state.traceparent ? { traceparent: state.traceparent } : {}),
     ...(state.retryCount !== undefined ? { retryCount: state.retryCount } : {}),
     ...(state.busySkipCount !== undefined ? { busySkipCount: state.busySkipCount } : {}),
+    ...(state.busySkipWarningEmitted !== undefined
+      ? { busySkipWarningEmitted: state.busySkipWarningEmitted }
+      : {}),
     ...(state.succeeded ? { succeeded: state.succeeded } : {}),
     status,
     flowId: flow.flowId,
@@ -359,7 +368,13 @@ export function markPendingWorkDelivered(work: PendingContinuationWork): boolean
 
 export function requeuePendingWork(
   work: PendingContinuationWork,
-  params: { dueAt: number; summary: string; retryCount?: number; busySkipCount?: number },
+  params: {
+    dueAt: number;
+    summary: string;
+    retryCount?: number;
+    busySkipCount?: number;
+    busySkipWarningEmitted?: boolean;
+  },
 ): boolean {
   if (!work.flowId || work.expectedRevision === undefined) {
     return false;
@@ -379,6 +394,9 @@ export function requeuePendingWork(
     dueAt: params.dueAt,
     ...(params.retryCount !== undefined ? { retryCount: params.retryCount } : {}),
     ...(params.busySkipCount !== undefined ? { busySkipCount: params.busySkipCount } : {}),
+    ...(params.busySkipWarningEmitted !== undefined
+      ? { busySkipWarningEmitted: params.busySkipWarningEmitted }
+      : {}),
   };
   const updated = updateFlowRecordByIdExpectedRevision({
     flowId: work.flowId,

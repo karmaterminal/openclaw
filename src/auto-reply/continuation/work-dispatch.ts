@@ -35,6 +35,7 @@ const CONTINUATION_TURN_BUSY_REASON = "requests-in-flight";
 const CONTINUATION_TURN_DRAINING_REASON = "draining";
 const MAIN_COMMAND_LANE = "main";
 const RUNNING_WORK_RECOVERY_STALE_MS = 60_000;
+const BUSY_SKIP_DIAGNOSTIC_THRESHOLD = 5;
 // #986 Guard 2: a matured backlog member is "stale" (superseded-eligible) when it
 // is overdue past this multiple of the configured maxDelayMs. Close bursts stay
 // below the grace and are NOT collapsed; only a genuine stale pile is folded.
@@ -495,12 +496,24 @@ export async function dispatchPendingContinuationWork(params: {
           ceilingMs: runtimeConfig.maxDelayMs,
           factor: 2,
         };
+        const nextBusySkips = priorBusySkips + 1;
+        const shouldEmitBusySkipWarning =
+          nextBusySkips >= BUSY_SKIP_DIAGNOSTIC_THRESHOLD && work.busySkipWarningEmitted !== true;
+        if (shouldEmitBusySkipWarning) {
+          enqueueSystemEvent(
+            `[system:continuation-warning] continue_work wake for ${work.sessionKey} has been deferred ${nextBusySkips} consecutive time(s) because the session is still busy (${skippedReason}); backing off instead of requeueing rapidly.`,
+            { sessionKey: work.sessionKey, trusted: true },
+          );
+        }
         const backoffMs = computeBusySkipBackoffMs(priorBusySkips, backoff);
         const retryDueAt = now + backoffMs;
         requeueWorkForRetry(work, {
           dueAt: retryDueAt,
           summary: `Retryable continuation skip: ${skippedReason}`,
-          busySkipCount: priorBusySkips + 1,
+          busySkipCount: nextBusySkips,
+          ...(shouldEmitBusySkipWarning || work.busySkipWarningEmitted === true
+            ? { busySkipWarningEmitted: true }
+            : {}),
         });
       } else {
         enqueueSystemEvent(

@@ -142,6 +142,7 @@ type MockFlow = {
   notifyPolicy: "silent";
   goal: string;
   currentStep?: string;
+  blockedSummary?: string | null;
   stateJson?: unknown;
   revision: number;
   createdAt: number;
@@ -1015,7 +1016,13 @@ describe("durable continuation_work dispatch", () => {
     }
 
     expect(turnGrants).toHaveLength(0); // never driven while busy, never dropped
-    expect(systemEvents).toEqual([]); // never failed
+    expect(systemEvents).toHaveLength(1); // diagnostic only; no failure warning
+    expect(systemEvents[0]).toEqual(
+      expect.objectContaining({
+        text: expect.stringContaining("has been deferred 5 consecutive time(s)"),
+        options: { sessionKey, trusted: true },
+      }),
+    );
   });
 
   it("never increments retryCount or drops the flow across many busy-skips (rate-cap-forever, #952 never-penalize)", async () => {
@@ -1046,7 +1053,13 @@ describe("durable continuation_work dispatch", () => {
     expect(state.busySkipCount).toBe(20);
     expect(state.retryCount).toBeUndefined();
     expect(turnGrants).toHaveLength(0);
-    expect(systemEvents).toEqual([]); // no failure warning ever enqueued
+    expect(systemEvents).toHaveLength(1); // one diagnostic, no repeated failure warning
+    expect(systemEvents[0]).toEqual(
+      expect.objectContaining({
+        text: expect.stringContaining("has been deferred 5 consecutive time(s)"),
+        options: { sessionKey, trusted: true },
+      }),
+    );
   });
 
   it("resets busySkipCount to 0 and delivers once a busy-deferred flow finally drives (#990 Pillar-0 + #952-preserve)", async () => {
@@ -1216,6 +1229,39 @@ describe("durable continuation_work dispatch", () => {
       expect((flow?.stateJson as { busySkipCount?: number } | undefined)?.busySkipCount).toBe(1);
     });
 
+    it("emits one diagnostic once a same-session wake-cascade repeatedly busy-skips", async () => {
+      const sessionKey = "agent:main:wake-cascade-diagnostic";
+      enqueueDelegateBusyFlow(sessionKey, {
+        reason: "Clearing wake cascade. Yielding and standing by.",
+      });
+
+      for (let i = 0; i < 7; i++) {
+        const result = await dispatchPendingContinuationWork({ sessionKey });
+        expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
+        resetContinuationWorkDispatchForTests();
+        await vi.advanceTimersByTimeAsync(60_000);
+      }
+
+      const flow = flowFor(sessionKey);
+      expect(flow?.status).toBe("queued");
+      expect(flow?.currentStep).toBe("Requeued same-session continuation wake");
+      expect(flow?.blockedSummary).toBe("Retryable continuation skip: requests-in-flight");
+      expect(flow?.stateJson).toEqual(
+        expect.objectContaining({
+          busySkipCount: 7,
+          busySkipWarningEmitted: true,
+          reason: "Clearing wake cascade. Yielding and standing by.",
+        }),
+      );
+      expect(systemEvents).toEqual([
+        expect.objectContaining({
+          text: expect.stringContaining("has been deferred 5 consecutive time(s)"),
+          options: { sessionKey, trusted: true },
+        }),
+      ]);
+      expect(turnGrants).toHaveLength(0);
+    });
+
     it("delegate-flow + parent-CONFIDENT-terminal → reap", async () => {
       const sessionKey = "agent:main:child-terminal";
       enqueueDelegateBusyFlow(sessionKey, { parentRunId: "run-parent" });
@@ -1334,7 +1380,13 @@ describe("durable continuation_work dispatch", () => {
       const state = flow?.stateJson as { busySkipCount?: number; retryCount?: number };
       expect(state.busySkipCount).toBe(12);
       expect(state.retryCount).toBeUndefined(); // busy-skip never feeds the fail-bound
-      expect(systemEvents).toEqual([]);
+      expect(systemEvents).toHaveLength(1); // one diagnostic, still quiesce-not-fail
+      expect(systemEvents[0]).toEqual(
+        expect.objectContaining({
+          text: expect.stringContaining("has been deferred 5 consecutive time(s)"),
+          options: { sessionKey, trusted: true },
+        }),
+      );
     });
 
     it("confidence-gate at bound: persistently-uncertain → quiesce UNBOUNDED, never reap-on-bound (#952 back-door closed)", async () => {
