@@ -1,6 +1,10 @@
 // Status summary runtime tests cover model context-token resolution.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { statusSummaryRuntime } from "./status.summary.runtime.js";
+
+vi.mock("../acp/runtime/session-meta.js", () => ({
+  readAcpSessionMeta: () => undefined,
+}));
 
 describe("statusSummaryRuntime.resolveContextTokensForModel", () => {
   it("does not match provider context window overrides across provider id variants", () => {

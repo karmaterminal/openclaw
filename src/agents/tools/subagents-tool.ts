@@ -35,12 +35,12 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const action = (readStringParam(params, "action") ?? "list") as SubagentAction;
-      const cfg = getRuntimeConfig();
       const recentMinutesRaw = readPositiveIntegerParam(params, "recentMinutes");
       const recentMinutes =
         recentMinutesRaw === undefined
           ? DEFAULT_RECENT_MINUTES
           : Math.min(MAX_RECENT_MINUTES, recentMinutesRaw);
+      const cfg = getRuntimeConfig();
       const controller = resolveSubagentController({
         cfg,
         agentSessionKey: opts?.agentSessionKey,

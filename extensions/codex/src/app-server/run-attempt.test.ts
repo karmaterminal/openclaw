@@ -5461,12 +5461,16 @@ describe("runCodexAppServerAttempt", () => {
     testing.setOpenClawCodingToolsFactoryForTests(() => [createRuntimeDynamicTool("web_search")]);
     const sessionFile = path.join(tempDir, "session.jsonl");
     const workspaceDir = path.join(tempDir, "workspace");
-    const { requests, waitForMethod, completeTurn } = createStartedThreadHarness(async (method) => {
-      if (method === "modelProvider/capabilities/read") {
-        return { webSearch: true };
-      }
-      return undefined;
-    });
+    const onStart = vi.fn();
+    const { requests, waitForMethod, completeTurn } = createStartedThreadHarness(
+      async (method) => {
+        if (method === "modelProvider/capabilities/read") {
+          return { webSearch: true };
+        }
+        return undefined;
+      },
+      { onStart },
+    );
     const params = createParams(sessionFile, workspaceDir);
     params.disableTools = false;
     params.runtimePlan = createCodexRuntimePlanFixture();
@@ -5475,8 +5479,11 @@ describe("runCodexAppServerAttempt", () => {
     const run = runCodexAppServerAttempt(params);
     await waitForMethod("turn/start");
     await completeTurn({ threadId: "thread-1", turnId: "turn-1" });
-    await run;
+    const result = await run;
 
+    expect(result.timedOut).toBe(false);
+    expect(result.promptError).toBeNull();
+    expect(onStart).toHaveBeenCalledTimes(1);
     expect(requests.map((request) => request.method)).not.toContain(
       "modelProvider/capabilities/read",
     );

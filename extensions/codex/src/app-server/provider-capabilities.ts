@@ -27,21 +27,33 @@ export async function resolveCodexProviderWebSearchSupportForClient(params: {
   modelProviderOverride: string | undefined;
   signal: AbortSignal;
 }): Promise<CodexNativeWebSearchSupport> {
-  const modelProviderOverride = params.modelProviderOverride?.trim().toLowerCase();
-  if (modelProviderOverride === "openai") {
-    return "supported";
-  }
-  if (modelProviderOverride) {
-    // Codex's capability RPC only reports the configured provider, not a
-    // thread-scoped override. Keep managed search for overrides whose hosted
-    // capability cannot be proven from the configured-provider response.
-    return "unsupported";
+  const overrideSupport = resolveCodexProviderWebSearchSupportForOverride(
+    params.modelProviderOverride,
+  );
+  if (overrideSupport) {
+    return overrideSupport;
   }
   try {
     return await readConfiguredProviderWebSearchSupport(params);
   } catch {
     return "unknown";
   }
+}
+
+function resolveCodexProviderWebSearchSupportForOverride(
+  modelProviderOverride: string | undefined,
+): CodexNativeWebSearchSupport | undefined {
+  const normalized = modelProviderOverride?.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "openai") {
+    return "supported";
+  }
+  // Codex's capability RPC only reports the configured provider, not a
+  // thread-scoped override. Keep managed search for overrides whose hosted
+  // capability cannot be proven from the configured-provider response.
+  return "unsupported";
 }
 
 export async function resolveCodexProviderWebSearchSupport(params: {
@@ -53,6 +65,12 @@ export async function resolveCodexProviderWebSearchSupport(params: {
   modelProviderOverride: string | undefined;
   signal: AbortSignal;
 }): Promise<CodexNativeWebSearchSupport> {
+  const overrideSupport = resolveCodexProviderWebSearchSupportForOverride(
+    params.modelProviderOverride,
+  );
+  if (overrideSupport) {
+    return overrideSupport;
+  }
   let client: CodexAppServerClient | undefined;
   try {
     client = await params.clientFactory(

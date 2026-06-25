@@ -390,7 +390,7 @@ export function createAppServerHarness(
         params: {
           threadId: params.threadId,
           turnId: params.turnId,
-          turn: { id: params.turnId, status: "completed" },
+          turn: { id: params.turnId, threadId: params.threadId, status: "completed", items: [] },
         },
       });
     },
