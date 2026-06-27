@@ -1618,6 +1618,7 @@ export async function spawnSubagentDirect(
       workspaceDir: _workspaceDir,
       ...publicSpawnedMetadata
     } = spawnedMetadata;
+    const childRunModelRef = splitModelRef(resolvedModel);
     registerSubagentTraceparentHandoff({
       idempotencyKey: childIdem,
       sessionKey: childSessionKey,
@@ -1641,6 +1642,8 @@ export async function spawnSubagentDirect(
         disableMessageTool: true,
         cleanupBundleMcpOnRunEnd: spawnMode !== "session",
         extraSystemPrompt: childSystemPrompt,
+        ...(childRunModelRef.provider ? { provider: childRunModelRef.provider } : {}),
+        ...(childRunModelRef.model ? { model: childRunModelRef.model } : {}),
         thinking: thinkingOverride,
         timeout: runTimeoutSeconds,
         label: label || undefined,

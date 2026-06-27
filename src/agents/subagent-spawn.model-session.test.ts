@@ -51,19 +51,23 @@ describe("spawnSubagentDirect runtime model persistence", () => {
     // The child run reads model/provider from session state, so persistence must
     // happen before the gateway accepts the agent request.
     const operations: string[] = [];
-    callGatewayMock.mockImplementation(async (opts: { method?: string }) => {
-      operations.push(`gateway:${opts.method ?? "unknown"}`);
-      if (opts.method === "sessions.patch") {
-        return { ok: true };
-      }
-      if (opts.method === "agent") {
-        return { runId: "run-1", status: "accepted", acceptedAt: 1000 };
-      }
-      if (opts.method === "sessions.delete") {
-        return { ok: true };
-      }
-      return {};
-    });
+    let childAgentRequest: { params?: { provider?: string; model?: string } } | undefined;
+    callGatewayMock.mockImplementation(
+      async (opts: { method?: string; params?: { provider?: string; model?: string } }) => {
+        operations.push(`gateway:${opts.method ?? "unknown"}`);
+        if (opts.method === "sessions.patch") {
+          return { ok: true };
+        }
+        if (opts.method === "agent") {
+          childAgentRequest = opts;
+          return { runId: "run-1", status: "accepted", acceptedAt: 1000 };
+        }
+        if (opts.method === "sessions.delete") {
+          return { ok: true };
+        }
+        return {};
+      },
+    );
     let persistedStore: Record<string, Record<string, unknown>> | undefined;
     installSessionStoreCaptureMock(updateSessionStoreMock, {
       operations,
@@ -87,6 +91,8 @@ describe("spawnSubagentDirect runtime model persistence", () => {
     expect(result.modelApplied).toBe(true);
     expect(result.resolvedModel).toBe("openai/gpt-5.4");
     expect(result.resolvedProvider).toBe("openai");
+    expect(childAgentRequest?.params?.provider).toBe("openai");
+    expect(childAgentRequest?.params?.model).toBe("gpt-5.4");
     expect(updateSessionStoreMock).toHaveBeenCalledTimes(3);
     expectPersistedRuntimeModel({
       persistedStore,
