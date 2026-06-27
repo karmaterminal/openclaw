@@ -4772,8 +4772,8 @@ describe("createFollowupRunner queued user message idempotency across fallback",
   });
 });
 
-describe("createFollowupRunner continueWorkOpts threading (#746)", () => {
-  it("passes continueWorkOpts to runEmbeddedAgent when continuation.enabled=true", async () => {
+describe("createFollowupRunner continuation callback threading", () => {
+  it("passes continueWorkOpts and requestCompactionOpts to runEmbeddedAgent when continuation.enabled=true", async () => {
     runEmbeddedAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "done" }],
       meta: {},
@@ -4812,6 +4812,9 @@ describe("createFollowupRunner continueWorkOpts threading (#746)", () => {
     const callArgs = requireLastMockCallArg(runEmbeddedAgentMock, "runEmbeddedAgent");
     expect(callArgs.continueWorkOpts).toBeDefined();
     expect(typeof (callArgs.continueWorkOpts as any).requestContinuation).toBe("function");
+    expect(callArgs.requestCompactionOpts).toBeDefined();
+    expect(typeof (callArgs.requestCompactionOpts as any).getContextUsage).toBe("function");
+    expect(typeof (callArgs.requestCompactionOpts as any).triggerCompaction).toBe("function");
   });
 
   it("persists followup continue_work chain state to the session store", async () => {
@@ -5016,5 +5019,6 @@ describe("createFollowupRunner continueWorkOpts threading (#746)", () => {
     expect(runEmbeddedAgentMock).toHaveBeenCalled();
     const callArgs = requireLastMockCallArg(runEmbeddedAgentMock, "runEmbeddedAgent");
     expect(callArgs.continueWorkOpts).toBeUndefined();
+    expect(callArgs.requestCompactionOpts).toBeUndefined();
   });
 });

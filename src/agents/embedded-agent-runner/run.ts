@@ -2209,6 +2209,7 @@ async function runEmbeddedAgentInternal(
             toolsAllow: params.toolsAllow,
             cleanupBundleMcpOnRunEnd: params.cleanupBundleMcpOnRunEnd,
             disableMessageTool: params.disableMessageTool,
+            disableContinuationTools: params.disableContinuationTools,
             forceMessageTool: params.forceMessageTool,
             enableHeartbeatTool: params.enableHeartbeatTool,
             forceHeartbeatTool: params.forceHeartbeatTool,

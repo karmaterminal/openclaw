@@ -113,11 +113,11 @@ import {
   type ToolSearchCatalogRef,
   type ToolSearchCatalogToolExecutor,
 } from "./tool-search.js";
-import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 import {
   replaceWithEffectiveCronCreatorToolAllowlist,
   type CronCreatorToolAllowlistEntry,
 } from "./tools/cron-tool.js";
+import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
@@ -501,6 +501,8 @@ export function createOpenClawCodingTools(options?: {
   allowGatewaySubagentBinding?: boolean;
   /** Whether this run consumes the continue_delegate staging queue. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Internal maintenance/model-only runs that cannot schedule post-turn continuation work. */
+  disableContinuationTools?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */
   continueWorkOpts?: {
     requestContinuation: (
@@ -562,6 +564,7 @@ export function createOpenClawCodingTools(options?: {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
   const isMemoryFlushRun = options?.trigger === "memory";
+  const disableContinuationTools = options?.disableContinuationTools === true || isMemoryFlushRun;
   if (isMemoryFlushRun && !options?.memoryFlushWritePath) {
     throw new Error("memoryFlushWritePath required for memory-triggered tool runs");
   }
@@ -1086,6 +1089,7 @@ export function createOpenClawCodingTools(options?: {
           onYield: options?.onYield,
           allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
           drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
+          disableContinuationTools,
           continueWorkOpts: options?.continueWorkOpts,
           requestCompactionOpts: options?.requestCompactionOpts,
           recordToolPrepStage: options?.recordToolPrepStage,

@@ -310,6 +310,9 @@ export async function consultRealtimeVoiceAgent(params: {
     reasoningLevel: "off",
     toolResultFormat: "plain",
     toolsAllow: params.toolsAllow,
+    // Voice consults must return one speakable answer; they do not own the
+    // auto-reply continuation queue needed to schedule post-turn work.
+    disableContinuationTools: true,
     timeoutMs: params.timeoutMs ?? params.agentRuntime.resolveAgentTimeoutMs({ cfg: params.cfg }),
     runId: `${params.runIdPrefix}:${Date.now()}`,
     lane: params.lane,

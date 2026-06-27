@@ -130,6 +130,8 @@ export type RunEmbeddedAgentParams = {
   allowGatewaySubagentBinding?: boolean;
   /** Whether this run drains continue_delegate work staged during the turn. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Internal maintenance/model-only runs that cannot schedule post-turn continuation work. */
+  disableContinuationTools?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */
   continueWorkOpts?: {
     requestContinuation: (

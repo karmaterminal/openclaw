@@ -66,6 +66,8 @@ import {
 import {
   buildCommandOutputFromToolResultEvent,
   buildPreflightCompactionFailureText,
+  computeRequestCompactionContextUsage,
+  releaseQueuedCompactionTolerant,
   resolveRunAfterAutoFallbackPrimaryProbeRecheck,
   resolveSessionRuntimeOverrideForProvider,
 } from "./agent-runner-execution.js";
@@ -1236,6 +1238,75 @@ export function createFollowupRunner(params: {
                     ? {
                         requestContinuation: (request: ContinueWorkRequest) => {
                           attemptContinueWorkRequests.push(request);
+                        },
+                      }
+                    : undefined,
+                requestCompactionOpts:
+                  runtimeConfig?.agents?.defaults?.continuation?.enabled === true
+                    ? {
+                        sessionId: run.sessionId,
+                        getContextUsage: () =>
+                          computeRequestCompactionContextUsage({
+                            entry: activeSessionEntry,
+                            cfg: runtimeConfig,
+                            provider,
+                            model,
+                          }),
+                        triggerCompaction: async (request) => {
+                          try {
+                            const { compactEmbeddedAgentSession } =
+                              await import("../../agents/embedded-agent-runner/compact.queued.js");
+                            const compactionAuthProfileId =
+                              provider === run.provider
+                                ? selectedAuthProfile.authProfileId
+                                : undefined;
+                            const result = await compactEmbeddedAgentSession({
+                              sessionId: run.sessionId ?? "",
+                              runId: request.runId ?? runId,
+                              ...(replySessionKey ? { sessionKey: replySessionKey } : {}),
+                              sessionFile: run.sessionFile,
+                              workspaceDir: run.workspaceDir ?? process.cwd(),
+                              ...(run.cwd ? { cwd: run.cwd } : {}),
+                              config: runtimeConfig,
+                              ...(run.messageProvider
+                                ? { messageProvider: run.messageProvider }
+                                : {}),
+                              ...(run.agentAccountId ? { agentAccountId: run.agentAccountId } : {}),
+                              provider,
+                              model,
+                              ...(compactionAuthProfileId
+                                ? { authProfileId: compactionAuthProfileId }
+                                : {}),
+                              customInstructions: request.customInstructions,
+                              trigger: request.trigger,
+                              diagId: request.diagId,
+                              traceparent: request.traceparent,
+                            });
+                            if (result.ok && result.compacted) {
+                              await releaseQueuedCompactionTolerant({
+                                ...(sessionStore ? { activeSessionStore: sessionStore } : {}),
+                                compactionResult: result,
+                                followupRun: effectiveQueued,
+                                getActiveSessionEntry: () => activeSessionEntry,
+                                ...(replySessionKey ? { sessionKey: replySessionKey } : {}),
+                                ...(storePath ? { storePath } : {}),
+                                ...(request.traceparent
+                                  ? { traceparent: request.traceparent }
+                                  : {}),
+                              });
+                            }
+                            return {
+                              ok: result.ok,
+                              compacted: result.compacted,
+                              reason: result.reason,
+                            };
+                          } catch (err) {
+                            return {
+                              ok: false,
+                              compacted: false,
+                              reason: err instanceof Error ? err.message : String(err),
+                            };
+                          }
                         },
                       }
                     : undefined,

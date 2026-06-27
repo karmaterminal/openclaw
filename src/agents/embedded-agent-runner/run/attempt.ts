@@ -1365,6 +1365,7 @@ export async function runEmbeddedAttempt(
             sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
             inboundEventKind: params.currentInboundEventKind,
             disableMessageTool: params.disableMessageTool,
+            disableContinuationTools: params.disableContinuationTools,
             forceMessageTool: params.forceMessageTool,
             enableHeartbeatTool: params.enableHeartbeatTool,
             forceHeartbeatTool: params.forceHeartbeatTool,
