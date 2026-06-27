@@ -97,7 +97,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
       .mockResolvedValueOnce(secondClient);
 
     const monitorPromise = monitorIMessageProvider({
-      config: { channels: { imessage: {} } } as never,
+      config: { channels: { imessage: { catchup: { enabled: true } } } } as never,
       runtime: runtime as never,
     });
 
@@ -142,7 +142,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
     );
 
     const monitorErrorPromise = monitorIMessageProvider({
-      config: { channels: { imessage: {} } } as never,
+      config: { channels: { imessage: { catchup: { enabled: true } } } } as never,
       runtime: runtime as never,
     }).catch((error: unknown) => error);
 
