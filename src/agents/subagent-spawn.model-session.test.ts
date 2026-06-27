@@ -108,6 +108,57 @@ describe("spawnSubagentDirect runtime model persistence", () => {
     );
   });
 
+  it("uses authorized in-process model override params for the initial child run", async () => {
+    const dedicatedCallGatewayMock = vi.fn();
+    const dedicatedDispatchGatewayMethodInProcessMock = vi.fn(async () => ({
+      runId: "run-in-process",
+      status: "accepted",
+      acceptedAt: 1000,
+    }));
+    const dedicatedUpdateSessionStoreMock = vi.fn();
+    const {
+      resetSubagentRegistryForTests: resetForInProcessTest,
+      spawnSubagentDirect: spawnInProcess,
+    } = await loadSubagentSpawnModuleForTest({
+      callGatewayMock: dedicatedCallGatewayMock,
+      dispatchGatewayMethodInProcessMock: dedicatedDispatchGatewayMethodInProcessMock,
+      hasInProcessGatewayContextMock: () => true,
+      getRuntimeConfig: () => createSubagentSpawnTestConfig(os.tmpdir()),
+      updateSessionStoreMock: dedicatedUpdateSessionStoreMock,
+      pruneLegacyStoreKeysMock,
+      workspaceDir: os.tmpdir(),
+    });
+    resetForInProcessTest();
+    installSessionStoreCaptureMock(dedicatedUpdateSessionStoreMock);
+
+    const result = await spawnInProcess(
+      {
+        task: "test",
+        model: "openai/gpt-5.4",
+      },
+      {
+        agentSessionKey: "agent:main:main",
+        agentChannel: "guildchat",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(dedicatedCallGatewayMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ method: "agent" }),
+    );
+    expect(dedicatedDispatchGatewayMethodInProcessMock).toHaveBeenCalledWith(
+      "agent",
+      expect.objectContaining({
+        provider: "openai",
+        model: "gpt-5.4",
+      }),
+      expect.objectContaining({
+        allowSyntheticModelOverride: true,
+        forceSyntheticClient: true,
+      }),
+    );
+  });
+
   it("persists self-origin metadata for auto-selected subagent models", async () => {
     const dedicatedUpdateSessionStoreMock = vi.fn();
     const {
