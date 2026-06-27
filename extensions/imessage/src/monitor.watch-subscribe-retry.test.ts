@@ -29,6 +29,14 @@ vi.mock("./monitor/abort-handler.js", () => ({
   attachIMessageMonitorAbortHandler: attachIMessageMonitorAbortHandlerMock,
 }));
 
+// Keep this retry test focused on startup subscription retry behavior. Other
+// iMessage tests intentionally persist recovery cursors; broad serial shards can
+// reuse that module state through Vitest's fs module cache.
+vi.mock("./monitor/recovery-cursor.js", () => ({
+  advanceIMessageRecoveryCursor: vi.fn(),
+  loadIMessageRecoveryCursor: vi.fn(() => null),
+}));
+
 function createRuntime() {
   return {
     log: vi.fn(),
