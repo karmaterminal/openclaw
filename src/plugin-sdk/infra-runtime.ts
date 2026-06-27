@@ -1,0 +1,133 @@
+/**
+ * @deprecated Compatibility shim only. Keep old plugins working, but do not
+ * add new imports here and do not use this subpath from repo code.
+ * Prefer focused openclaw/plugin-sdk/<domain> runtime subpaths instead.
+ */
+
+export * from "./delivery-queue-runtime.js";
+
+export * from "../infra/backoff.js";
+export * from "../infra/channel-activity.js";
+export * from "../infra/dedupe.js";
+export type * from "../infra/diagnostic-events.js";
+export {
+  areDiagnosticsEnabledForProcess,
+  emitDiagnosticEvent,
+  isDiagnosticsEnabled,
+  onDiagnosticEvent,
+} from "../infra/diagnostic-events.js";
+export * from "../infra/diagnostic-flags.js";
+export * from "../infra/env.js";
+export * from "../infra/errors.js";
+export * from "../infra/exec-approval-command-display.ts";
+export * from "../infra/exec-approval-channel-runtime.ts";
+export * from "../infra/exec-approval-reply.ts";
+export * from "../infra/exec-approval-session-target.ts";
+export * from "../infra/exec-approvals.ts";
+export * from "../infra/approval-native-delivery.ts";
+export * from "../infra/approval-native-runtime.ts";
+export * from "../infra/approval-display-paths.ts";
+export * from "../infra/plugin-approvals.ts";
+export * from "../infra/fetch.js";
+export * from "../infra/file-lock.js";
+export * from "../infra/format-time/format-duration.ts";
+export * from "../infra/fs-safe.ts";
+export * from "../infra/heartbeat-events.ts";
+export * from "../infra/heartbeat-summary.ts";
+export * from "../infra/heartbeat-visibility.ts";
+export * from "../infra/home-dir.js";
+export * from "../infra/http-body.js";
+export * from "../infra/json-files.js";
+export * from "../infra/local-file-access.js";
+export * from "../infra/map-size.js";
+export * from "../infra/net/hostname.ts";
+export {
+  fetchWithRuntimeDispatcher,
+  fetchWithSsrFGuard,
+  GUARDED_FETCH_MODE,
+  retainSafeHeadersForCrossOriginRedirectHeaders,
+  withStrictGuardedFetchMode,
+  withTrustedEnvProxyGuardedFetchMode,
+  withTrustedExplicitProxyGuardedFetchMode,
+  type GuardedFetchMode,
+  type GuardedFetchOptions,
+  type GuardedFetchResult,
+} from "../infra/net/fetch-guard.js";
+export * from "../infra/net/proxy-env.js";
+export * from "../infra/net/proxy-fetch.js";
+export * from "../infra/net/undici-global-dispatcher.js";
+export * from "../infra/net/ssrf.js";
+export * from "../infra/outbound/identity.js";
+export * from "../infra/outbound/sanitize-text.js";
+export * from "../infra/parse-finite-number.js";
+export * from "../infra/outbound/send-deps.js";
+export * from "../infra/retry.js";
+export * from "../infra/retry-policy.js";
+export * from "../infra/scp-host.ts";
+export * from "../infra/secret-file.js";
+export * from "../infra/secure-random.js";
+// Security: the bare `export *` re-exported the RAW
+// `enqueueSystemEvent` / `enqueueSystemEventEntry`, which honor `trusted: true`.
+// A plugin importing them from this deprecated public barrel could bypass the
+// SDK boundary wrappers entirely, set `trusted: true`, and skip the inbound
+// anti-spoof sanitizer. Re-export everything EXCEPT the two raw producers, and
+// replace them with forced-untrusted wrappers (mirrors system-event-runtime /
+// channel-runtime) so a legacy plugin physically cannot bypass via this subpath.
+export type { SystemEvent } from "../infra/system-events.js";
+export {
+  isSystemEventContextChanged,
+  drainSystemEventEntries,
+  consumeSystemEventEntries,
+  consumeSelectedSystemEventEntries,
+  drainSystemEvents,
+  removeSystemEvents,
+  peekSystemEventEntries,
+  peekSystemEvents,
+  hasSystemEvents,
+  resolveSystemEventDeliveryContext,
+  resetSystemEventsForTest,
+} from "../infra/system-events.js";
+import {
+  enqueueSystemEvent as enqueueSystemEventInternal,
+  enqueueSystemEventEntry as enqueueSystemEventEntryInternal,
+} from "../infra/system-events.js";
+
+/**
+ * Untrusted by construction — force `trusted: false` so a plugin importing this
+ * deprecated barrel cannot set `trusted: true` to bypass the anti-spoof sanitizer,
+ * and strip `sessionDeliveryAckId` / `sessionDeliveryAckStateDir` so a plugin cannot
+ * forge session-delivery ack ids to reach `deleteDeliveryQueueEntry` at an
+ * attacker-controlled path.
+ * Trusted-internal producers use the direct `infra/system-events` import.
+ */
+export function enqueueSystemEvent(
+  text: string,
+  options: Parameters<typeof enqueueSystemEventInternal>[1],
+): boolean {
+  return enqueueSystemEventInternal(text, {
+    ...options,
+    trusted: false,
+    sessionDeliveryAckId: undefined,
+    sessionDeliveryAckStateDir: undefined,
+  });
+}
+
+export function enqueueSystemEventEntry(
+  text: string,
+  options: Parameters<typeof enqueueSystemEventEntryInternal>[1],
+): ReturnType<typeof enqueueSystemEventEntryInternal> {
+  return enqueueSystemEventEntryInternal(text, {
+    ...options,
+    trusted: false,
+    sessionDeliveryAckId: undefined,
+    sessionDeliveryAckStateDir: undefined,
+  });
+}
+export * from "../infra/system-message.ts";
+export * from "../infra/tmp-openclaw-dir.js";
+export * from "../infra/transport-ready.js";
+export * from "../infra/wsl.ts";
+export * from "../utils/fetch-timeout.js";
+export * from "../utils/run-with-concurrency.js";
+export { createRuntimeOutboundDelegates } from "../channels/plugins/runtime-forwarders.js";
+export * from "./ssrf-policy.js";

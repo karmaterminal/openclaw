@@ -1,0 +1,1328 @@
+/**
+ * Orchestrates one agent attempt across embedded, CLI, and ACP runtimes.
+ */
+import type { AcpRuntimeEvent } from "@openclaw/acp-core/runtime/types";
+import type { FastMode } from "@openclaw/normalization-core/string-coerce";
+import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
+import { formatAcpErrorChain } from "../../acp/runtime/errors.js";
+import {
+  computeRequestCompactionContextUsage,
+  releaseQueuedCompactionTolerant,
+} from "../../auto-reply/reply/agent-runner-execution.js";
+import { normalizeReplyPayload } from "../../auto-reply/reply/normalize-reply.js";
+import type { FollowupRun } from "../../auto-reply/reply/queue/types.js";
+import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
+import { persistSessionTranscriptTurn } from "../../config/sessions/session-accessor.js";
+import { readTailAssistantTextFromSessionTranscript } from "../../config/sessions/transcript.js";
+import type { SessionEntry } from "../../config/sessions/types.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  injectTimestamp,
+  timestampOptsFromConfig,
+} from "../../gateway/server-methods/agent-timestamp.js";
+import { emitAgentEvent } from "../../infra/agent-events.js";
+import { runWithDiagnosticTraceparent } from "../../infra/diagnostic-trace-context.js";
+import { readErrorName } from "../../infra/errors.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
+import { redactSensitiveText } from "../../logging/redact.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
+import { isSubagentSessionKey } from "../../routing/session-key.js";
+import { annotateInterSessionPromptText } from "../../sessions/input-provenance.js";
+import {
+  preparePersistedUserTurnMessageForTranscriptWrite,
+  type PersistedUserTurnMessage,
+} from "../../sessions/user-turn-transcript.js";
+import { buildWorkspaceSkillSnapshot } from "../../skills/loading/workspace.js";
+import { resolveUserPath } from "../../utils.js";
+import { resolveMessageChannel } from "../../utils/message-channel.js";
+import { resolveAuthProfileOrder } from "../auth-profiles/order.js";
+import { ensureAuthProfileStore } from "../auth-profiles/store.js";
+import { resolveBootstrapWarningSignaturesSeen } from "../bootstrap-budget.js";
+import { resolveCliBackendConfig } from "../cli-backends.js";
+import { runCliAgent } from "../cli-runner.js";
+import { getCliSessionBinding } from "../cli-session.js";
+import type { RequestCompactionInvocation } from "../compaction-attribution.js";
+import { runEmbeddedAgent, type EmbeddedAgentRunResult } from "../embedded-agent.js";
+import { FailoverError } from "../failover-error.js";
+import { runAgentHarnessBeforeMessageWriteHook } from "../harness/hook-helpers.js";
+import { resolveAvailableAgentHarnessPolicy } from "../harness/selection.js";
+import { resolveCliRuntimeExecutionProvider } from "../model-runtime-aliases.js";
+import { isCliProvider } from "../model-selection.js";
+import { resolveOpenAIRuntimeProvider } from "../openai-routing.js";
+import { resolveAgentRunAbortLifecycleFields } from "../run-termination.js";
+import { buildAgentRuntimeAuthPlan } from "../runtime-plan/auth.js";
+import type { AgentMessage } from "../runtime/index.js";
+import { buildUsageWithNoCost } from "../stream-message-shared.js";
+import type { ContinueWorkRequest } from "../tools/continue-work-tool.js";
+import {
+  buildClaudeCliFallbackContextPrelude,
+  claudeCliSessionTranscriptHasContent,
+  resolveFallbackRetryPrompt,
+} from "./attempt-execution.helpers.js";
+import { resolveAgentRunContext } from "./run-context.js";
+import { clearCliSessionInStore } from "./session-store.js";
+import type { AgentCommandOpts } from "./types.js";
+
+export {
+  createAcpVisibleTextAccumulator,
+  sessionFileHasContent,
+} from "./attempt-execution.helpers.js";
+
+const log = createSubsystemLogger("agents/agent-command");
+
+function shouldClearReusedCliSessionAfterError(err: unknown): boolean {
+  if (readErrorName(err) === "AbortError") {
+    return true;
+  }
+  return err instanceof FailoverError;
+}
+
+function resolveClearedCliSessionReason(err: unknown): string {
+  if (err instanceof FailoverError) {
+    return err.reason;
+  }
+  return readErrorName(err) || "error";
+}
+
+function normalizeTranscriptMirrorText(value: string): string {
+  return value.trim().replace(/\s+/gu, " ");
+}
+
+const ACP_TRANSCRIPT_USAGE = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0,
+  },
+} as const;
+const GOOGLE_GEMINI_CLI_PROVIDER_ID = "google-gemini-cli";
+const GOOGLE_PROVIDER_ID = "google";
+
+function shouldSuppressEmbeddedLiveStreamOutput(params: { opts: AgentCommandOpts }): boolean {
+  return params.opts.sessionEffects === "internal" && params.opts.deliver !== true;
+}
+
+type TranscriptUsage = {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  total?: number;
+};
+
+type PersistTextTurnTranscriptParams = {
+  body: string;
+  transcriptBody?: string;
+  userMessage?: PersistedUserTurnMessage;
+  finalText: string;
+  sessionId: string;
+  sessionKey: string;
+  sessionEntry: SessionEntry | undefined;
+  sessionStore?: Record<string, SessionEntry>;
+  storePath?: string;
+  sessionAgentId: string;
+  threadId?: string | number;
+  sessionCwd: string;
+  config: OpenClawConfig;
+  embeddedAssistantGapFill?: boolean;
+  assistant: {
+    api: string;
+    provider: string;
+    model: string;
+    usage?: TranscriptUsage;
+  };
+};
+
+type PersistTextTurnTranscriptResult =
+  | { kind: "persisted"; sessionEntry: SessionEntry | undefined }
+  | { kind: "session-rebound"; sessionEntry: undefined };
+
+type HarnessAuthProfileSelection = {
+  authProfileId?: string;
+  authProfileIdSource?: "auto" | "user";
+  authProfileProvider: string;
+  authProfileMode?: string;
+};
+
+function resolveProfileAuthFromStore(params: { agentDir: string; profileId: string | undefined }): {
+  provider?: string;
+  mode?: string;
+} {
+  const profileId = params.profileId?.trim();
+  if (!profileId) {
+    return {};
+  }
+  const credential = ensureAuthProfileStore(params.agentDir, {
+    allowKeychainPrompt: false,
+    externalCliProfileIds: [profileId],
+  }).profiles[profileId];
+  return { provider: credential?.provider, mode: credential?.type };
+}
+
+function resolveHarnessAuthProfileSelection(params: {
+  config: OpenClawConfig;
+  agentDir: string;
+  workspaceDir: string;
+  provider: string;
+  authProfileProvider: string;
+  sessionAuthProfileId?: string;
+  sessionAuthProfileSource?: "auto" | "user";
+  harnessId?: string;
+  harnessRuntime?: string;
+  metadataSnapshot?: PluginMetadataSnapshot;
+  providerAuthAliasesEnabled?: boolean;
+  allowHarnessAuthProfileForwarding: boolean;
+}): HarnessAuthProfileSelection {
+  const sessionAuthProfileId = params.sessionAuthProfileId?.trim();
+  if (sessionAuthProfileId) {
+    const profileAuth = resolveProfileAuthFromStore({
+      agentDir: params.agentDir,
+      profileId: sessionAuthProfileId,
+    });
+    return {
+      authProfileId: sessionAuthProfileId,
+      authProfileIdSource: params.sessionAuthProfileSource,
+      authProfileProvider: profileAuth.provider ?? params.authProfileProvider,
+      authProfileMode: profileAuth.mode,
+    };
+  }
+
+  if (!params.allowHarnessAuthProfileForwarding) {
+    return { authProfileProvider: params.authProfileProvider };
+  }
+
+  const runtimeAuthPlan = buildAgentRuntimeAuthPlan({
+    provider: params.provider,
+    authProfileProvider: params.authProfileProvider,
+    config: params.config,
+    workspaceDir: params.workspaceDir,
+    ...(params.metadataSnapshot ? { metadataSnapshot: params.metadataSnapshot } : {}),
+    providerAuthAliasesEnabled: params.providerAuthAliasesEnabled,
+    harnessId: params.harnessId,
+    harnessRuntime: params.harnessRuntime,
+    allowHarnessAuthProfileForwarding: params.allowHarnessAuthProfileForwarding,
+  });
+  const harnessAuthProvider = runtimeAuthPlan.harnessAuthProvider;
+  if (!harnessAuthProvider) {
+    return { authProfileProvider: params.authProfileProvider };
+  }
+
+  const store = ensureAuthProfileStore(params.agentDir, {
+    allowKeychainPrompt: false,
+    externalCliProviderIds: [harnessAuthProvider],
+  });
+  const authProfileId = resolveAuthProfileOrder({
+    cfg: params.config,
+    store,
+    provider: harnessAuthProvider,
+  })[0];
+
+  return authProfileId
+    ? {
+        authProfileId,
+        authProfileIdSource: "auto",
+        authProfileProvider: harnessAuthProvider,
+      }
+    : { authProfileProvider: params.authProfileProvider };
+}
+
+function cliBackendAcceptsAuthProfileForwarding(params: {
+  provider: string;
+  config: OpenClawConfig;
+  agentId?: string;
+}): boolean {
+  const backend = resolveCliBackendConfig(params.provider, params.config, {
+    agentId: params.agentId,
+  });
+  return backend?.id === "google-gemini-cli";
+}
+
+function resolveCliExecutionAuthProfileId(params: {
+  cliExecutionProvider: string;
+  authProfileProvider: string;
+  config: OpenClawConfig;
+  agentDir: string;
+  selected: HarnessAuthProfileSelection;
+}): string | undefined {
+  if (params.selected.authProfileId) {
+    if (
+      params.selected.authProfileProvider === params.cliExecutionProvider ||
+      (params.cliExecutionProvider === GOOGLE_GEMINI_CLI_PROVIDER_ID &&
+        params.selected.authProfileIdSource !== "auto")
+    ) {
+      return params.selected.authProfileId;
+    }
+  }
+
+  const store = ensureAuthProfileStore(params.agentDir, {
+    allowKeychainPrompt: false,
+    externalCliProviderIds: [params.cliExecutionProvider],
+  });
+  const cliProfileId = resolveAuthProfileOrder({
+    cfg: params.config,
+    store,
+    provider: params.cliExecutionProvider,
+  })[0];
+  if (cliProfileId) {
+    return cliProfileId;
+  }
+
+  if (
+    params.cliExecutionProvider !== GOOGLE_GEMINI_CLI_PROVIDER_ID ||
+    params.authProfileProvider !== GOOGLE_PROVIDER_ID
+  ) {
+    return undefined;
+  }
+
+  return resolveAuthProfileOrder({
+    cfg: params.config,
+    store,
+    provider: GOOGLE_PROVIDER_ID,
+  }).find((profileId) => {
+    const credential = store.profiles[profileId];
+    return credential?.provider === GOOGLE_PROVIDER_ID && credential.type === "api_key";
+  });
+}
+
+function resolveTranscriptUsage(usage: PersistTextTurnTranscriptParams["assistant"]["usage"]) {
+  if (!usage) {
+    return ACP_TRANSCRIPT_USAGE;
+  }
+  return buildUsageWithNoCost({
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheWrite,
+    totalTokens: usage.total,
+  });
+}
+
+async function persistTextTurnTranscript(
+  params: PersistTextTurnTranscriptParams,
+): Promise<PersistTextTurnTranscriptResult> {
+  const promptText = params.transcriptBody ?? params.body;
+  const replyText = params.finalText;
+  if (!promptText && !replyText) {
+    return { kind: "persisted", sessionEntry: params.sessionEntry };
+  }
+
+  const messages = [];
+  const userMessage =
+    params.userMessage ??
+    (promptText
+      ? ({
+          role: "user",
+          content: promptText,
+          timestamp: Date.now(),
+        } as PersistedUserTurnMessage)
+      : undefined);
+  if (userMessage) {
+    messages.push({
+      message: userMessage,
+      idempotencyLookup: "scan" as const,
+      prepareMessageAfterIdempotencyCheck: (message: unknown) =>
+        preparePersistedUserTurnMessageForTranscriptWrite(message as PersistedUserTurnMessage, {
+          agentId: params.sessionAgentId,
+          sessionKey: params.sessionKey,
+          beforeMessageWrite: runAgentHarnessBeforeMessageWriteHook,
+        }),
+    });
+  }
+
+  if (replyText) {
+    messages.push({
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: replyText }],
+        api: params.assistant.api,
+        provider: params.assistant.provider,
+        model: params.assistant.model,
+        usage: resolveTranscriptUsage(params.assistant.usage),
+        stopReason: "stop",
+        timestamp: Date.now(),
+      },
+      shouldAppend: async ({ sessionFile }: { sessionFile: string }) => {
+        if (!params.embeddedAssistantGapFill) {
+          return true;
+        }
+        const latest = await readTailAssistantTextFromSessionTranscript(sessionFile);
+        const normalizedReply = normalizeTranscriptMirrorText(replyText);
+        const normalizedLatest = latest?.text ? normalizeTranscriptMirrorText(latest.text) : "";
+        return !normalizedLatest || normalizedLatest !== normalizedReply;
+      },
+    });
+  }
+
+  const turn = await persistSessionTranscriptTurn(
+    {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      sessionEntry: params.sessionEntry,
+      sessionStore: params.sessionStore,
+      storePath: params.storePath,
+      agentId: params.sessionAgentId,
+      threadId: params.threadId,
+    },
+    {
+      config: params.config,
+      cwd: params.sessionCwd,
+      messages,
+      publishWhen: "always",
+      touchSessionEntry: true,
+      updateMode: "file-only",
+      ...(params.sessionStore && params.storePath ? { expectedSessionId: params.sessionId } : {}),
+    },
+  );
+  if (turn.rejectedReason === "session-rebound") {
+    return { kind: "session-rebound", sessionEntry: undefined };
+  }
+  return { kind: "persisted", sessionEntry: turn.sessionEntry };
+}
+
+function resolveCliTranscriptReplyText(result: EmbeddedAgentRunResult): string {
+  const visibleText = result.meta.finalAssistantVisibleText?.trim();
+  if (visibleText) {
+    return visibleText;
+  }
+
+  return (result.payloads ?? [])
+    .filter((payload) => !payload.isError && !payload.isReasoning)
+    .map((payload) => payload.text?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function isClaudeCliProvider(provider: string): boolean {
+  return provider.trim().toLowerCase() === "claude-cli";
+}
+
+export async function persistAcpTurnTranscript(params: {
+  body: string;
+  transcriptBody?: string;
+  finalText: string;
+  sessionId: string;
+  sessionKey: string;
+  sessionEntry: SessionEntry | undefined;
+  sessionStore?: Record<string, SessionEntry>;
+  storePath?: string;
+  sessionAgentId: string;
+  threadId?: string | number;
+  sessionCwd: string;
+  config: OpenClawConfig;
+}): Promise<PersistTextTurnTranscriptResult> {
+  return await persistTextTurnTranscript({
+    ...params,
+    assistant: {
+      api: "openai-responses",
+      provider: "openclaw",
+      model: "acp-runtime",
+    },
+  });
+}
+
+export async function persistCliTurnTranscript(params: {
+  body: string;
+  transcriptBody?: string;
+  userMessage?: PersistedUserTurnMessage;
+  result: EmbeddedAgentRunResult;
+  sessionId: string;
+  sessionKey: string;
+  sessionEntry: SessionEntry | undefined;
+  sessionStore?: Record<string, SessionEntry>;
+  storePath?: string;
+  sessionAgentId: string;
+  threadId?: string | number;
+  sessionCwd: string;
+  config: OpenClawConfig;
+  embeddedAssistantGapFill?: boolean;
+}): Promise<PersistTextTurnTranscriptResult> {
+  const replyText = resolveCliTranscriptReplyText(params.result);
+  const provider = params.result.meta.agentMeta?.provider?.trim() ?? "cli";
+  const model = params.result.meta.agentMeta?.model?.trim() ?? "default";
+  const gapFill = params.embeddedAssistantGapFill ?? false;
+
+  return await persistTextTurnTranscript({
+    body: gapFill ? "" : params.body,
+    transcriptBody: gapFill ? undefined : params.transcriptBody,
+    ...(!gapFill && params.userMessage ? { userMessage: params.userMessage } : {}),
+    finalText: replyText,
+    sessionId: params.sessionId,
+    sessionKey: params.sessionKey,
+    sessionEntry: params.sessionEntry,
+    sessionStore: params.sessionStore,
+    storePath: params.storePath,
+    sessionAgentId: params.sessionAgentId,
+    threadId: params.threadId,
+    sessionCwd: params.sessionCwd,
+    config: params.config,
+    embeddedAssistantGapFill: gapFill,
+    assistant: {
+      api: "cli",
+      provider,
+      model,
+      usage: params.result.meta.agentMeta?.usage,
+    },
+  });
+}
+
+export async function runAgentAttempt(params: {
+  providerOverride: string;
+  modelOverride: string;
+  originalProvider: string;
+  cfg: OpenClawConfig;
+  sessionEntry: SessionEntry | undefined;
+  sessionId: string;
+  sessionKey: string | undefined;
+  sessionAgentId: string;
+  sessionFile: string;
+  workspaceDir: string;
+  cwd?: string;
+  body: string;
+  isFallbackRetry: boolean;
+  resolvedThinkLevel: ThinkLevel;
+  fastMode?: FastMode;
+  fastModeStartedAtMs?: number;
+  fastModeAutoOnSeconds?: number;
+  isFinalFallbackAttempt?: boolean;
+  timeoutMs: number;
+  runTimeoutOverrideMs?: number;
+  runId: string;
+  lifecycleGeneration: string;
+  opts: AgentCommandOpts;
+  runContext: ReturnType<typeof resolveAgentRunContext>;
+  spawnedBy: string | undefined;
+  messageChannel: ReturnType<typeof resolveMessageChannel>;
+  skillsSnapshot: ReturnType<typeof buildWorkspaceSkillSnapshot> | undefined;
+  resolvedVerboseLevel: VerboseLevel | undefined;
+  agentDir: string;
+  onAgentEvent: (evt: {
+    stream: string;
+    data?: Record<string, unknown>;
+    sessionKey?: string;
+  }) => void;
+  deferTerminalLifecycle?: boolean;
+  /** @deprecated Use deferTerminalLifecycle. */
+  deferTerminalLifecycleEnd?: boolean;
+  authProfileProvider: string;
+  sessionStore?: Record<string, SessionEntry>;
+  storePath?: string;
+  pluginsEnabled?: boolean;
+  metadataSnapshot?: PluginMetadataSnapshot;
+  allowTransientCooldownProbe?: boolean;
+  modelFallbacksOverride?: string[];
+  sessionHasHistory?: boolean;
+  suppressPromptPersistenceOnRetry?: boolean;
+  onUserMessagePersisted?: (message: Extract<AgentMessage, { role: "user" }>) => void;
+  onLifecycleGenerationChanged?: (lifecycleGeneration: string) => void;
+}) {
+  const isRawModelRun = params.opts.modelRun === true || params.opts.promptMode === "none";
+  const claudeCliFallbackPrelude =
+    !isRawModelRun &&
+    params.isFallbackRetry &&
+    isClaudeCliProvider(params.originalProvider) &&
+    !isClaudeCliProvider(params.providerOverride)
+      ? buildClaudeCliFallbackContextPrelude({
+          cliSessionId: getCliSessionBinding(params.sessionEntry, "claude-cli")?.sessionId,
+        })
+      : "";
+  const resolvedPrompt = resolveFallbackRetryPrompt({
+    body: params.body,
+    isFallbackRetry: params.isFallbackRetry,
+    sessionHasHistory: params.sessionHasHistory,
+    priorContextPrelude: claudeCliFallbackPrelude,
+  });
+  const effectivePrompt = isRawModelRun
+    ? resolvedPrompt
+    : annotateInterSessionPromptText(resolvedPrompt, params.opts.inputProvenance);
+  const bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
+    params.sessionEntry?.systemPromptReport,
+  );
+  const bootstrapPromptWarningSignature =
+    bootstrapPromptWarningSignaturesSeen[bootstrapPromptWarningSignaturesSeen.length - 1];
+  const requestedAgentHarnessId = isRawModelRun ? "openclaw" : undefined;
+  const cliExecutionProvider = isRawModelRun
+    ? params.providerOverride
+    : (resolveCliRuntimeExecutionProvider({
+        provider: params.providerOverride,
+        cfg: params.cfg,
+        agentId: params.sessionAgentId,
+        modelId: params.modelOverride,
+        authProfileId: params.sessionEntry?.authProfileOverride,
+      }) ?? params.providerOverride);
+  const isCliExecutionProvider = isCliProvider(cliExecutionProvider, params.cfg);
+  const allowCliAuthProfileForwarding =
+    isCliExecutionProvider &&
+    cliBackendAcceptsAuthProfileForwarding({
+      provider: cliExecutionProvider,
+      config: params.cfg,
+      agentId: params.sessionAgentId,
+    });
+  const agentHarnessPolicy = isRawModelRun
+    ? ({ runtime: "openclaw", runtimeSource: "model" } as const)
+    : resolveAvailableAgentHarnessPolicy({
+        provider: params.providerOverride,
+        modelId: params.modelOverride,
+        config: params.cfg,
+        agentId: params.sessionAgentId,
+        sessionKey: params.sessionKey ?? params.sessionId,
+      });
+  const harnessAuthSelection = resolveHarnessAuthProfileSelection({
+    config: params.cfg,
+    agentDir: params.agentDir,
+    workspaceDir: params.workspaceDir,
+    provider: params.providerOverride,
+    authProfileProvider: params.authProfileProvider,
+    sessionAuthProfileId: params.sessionEntry?.authProfileOverride,
+    sessionAuthProfileSource: params.sessionEntry?.authProfileOverrideSource,
+    harnessId: requestedAgentHarnessId,
+    harnessRuntime: agentHarnessPolicy.runtime,
+    ...(params.metadataSnapshot ? { metadataSnapshot: params.metadataSnapshot } : {}),
+    providerAuthAliasesEnabled: params.pluginsEnabled,
+    allowHarnessAuthProfileForwarding: !isCliExecutionProvider,
+  });
+  const runtimeAuthPlan = buildAgentRuntimeAuthPlan({
+    provider: params.providerOverride,
+    authProfileProvider: harnessAuthSelection.authProfileProvider,
+    authProfileMode: harnessAuthSelection.authProfileMode,
+    sessionAuthProfileId: harnessAuthSelection.authProfileId,
+    config: params.cfg,
+    workspaceDir: params.workspaceDir,
+    ...(params.metadataSnapshot ? { metadataSnapshot: params.metadataSnapshot } : {}),
+    providerAuthAliasesEnabled: params.pluginsEnabled,
+    harnessId: requestedAgentHarnessId,
+    harnessRuntime: agentHarnessPolicy.runtime,
+    allowHarnessAuthProfileForwarding: !isCliExecutionProvider,
+  });
+  const cliAuthProfileId = allowCliAuthProfileForwarding
+    ? resolveCliExecutionAuthProfileId({
+        cliExecutionProvider,
+        authProfileProvider: params.authProfileProvider,
+        config: params.cfg,
+        agentDir: params.agentDir,
+        selected: harnessAuthSelection,
+      })
+    : undefined;
+  const authProfileId = cliAuthProfileId ?? runtimeAuthPlan.forwardedAuthProfileId;
+  const embeddedAgentProvider = resolveOpenAIRuntimeProvider({
+    provider: params.providerOverride,
+    harnessRuntime: agentHarnessPolicy.runtime,
+    agentHarnessId: requestedAgentHarnessId,
+    authProfileProvider: runtimeAuthPlan.authProfileProviderForAuth,
+    authProfileId,
+    config: params.cfg,
+    workspaceDir: params.workspaceDir,
+  });
+  const embeddedAgentHarnessOverride =
+    requestedAgentHarnessId ??
+    (agentHarnessPolicy.runtime === "openclaw" && agentHarnessPolicy.runtimeSource !== "implicit"
+      ? "openclaw"
+      : undefined);
+  if (!isRawModelRun && isCliExecutionProvider) {
+    const cliSessionBinding = getCliSessionBinding(params.sessionEntry, cliExecutionProvider);
+    const cliProcessCwd = params.cwd ? resolveUserPath(params.cwd) : params.workspaceDir;
+    const cliPrompt =
+      params.opts.inputProvenance?.kind === "inter_session"
+        ? effectivePrompt
+        : injectTimestamp(effectivePrompt, timestampOptsFromConfig(params.cfg));
+    const mutableCliSessionStore =
+      params.sessionKey && params.sessionStore && params.storePath
+        ? {
+            sessionKey: params.sessionKey,
+            sessionStore: params.sessionStore,
+            storePath: params.storePath,
+          }
+        : undefined;
+    const resolveReusableCliSessionBinding = async () => {
+      if (
+        !isClaudeCliProvider(cliExecutionProvider) ||
+        !cliSessionBinding?.sessionId ||
+        (await claudeCliSessionTranscriptHasContent({
+          sessionId: cliSessionBinding.sessionId,
+          workspaceDir: cliProcessCwd,
+        }))
+      ) {
+        return cliSessionBinding;
+      }
+
+      log.warn(
+        `cli session reset: provider=${sanitizeForLog(cliExecutionProvider)} reason=transcript-missing sessionKey=${params.sessionKey ?? params.sessionId}`,
+      );
+
+      if (mutableCliSessionStore) {
+        params.sessionEntry =
+          (await clearCliSessionInStore({
+            provider: cliExecutionProvider,
+            ...mutableCliSessionStore,
+          })) ?? params.sessionEntry;
+      }
+
+      return undefined;
+    };
+    const runCliWithSession = (
+      nextCliSessionId: string | undefined,
+      activeCliSessionBinding = cliSessionBinding,
+    ) =>
+      runWithDiagnosticTraceparent(params.opts.traceparent, () =>
+        runCliAgent({
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          sessionEntry: params.sessionEntry,
+          agentId: params.sessionAgentId,
+          trigger: "user",
+          sessionFile: params.sessionFile,
+          workspaceDir: params.workspaceDir,
+          cwd: params.cwd,
+          config: params.cfg,
+          prompt: cliPrompt,
+          provider: cliExecutionProvider,
+          model: params.modelOverride,
+          thinkLevel: params.resolvedThinkLevel,
+          timeoutMs: params.timeoutMs,
+          runTimeoutOverrideMs: params.runTimeoutOverrideMs,
+          runId: params.runId,
+          lifecycleGeneration: params.lifecycleGeneration,
+          lane: params.opts.lane,
+          extraSystemPrompt: params.opts.extraSystemPrompt,
+          inputProvenance: params.opts.inputProvenance,
+          sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
+          requireExplicitMessageTarget: isSubagentSessionKey(params.sessionKey),
+          cliSessionId: nextCliSessionId,
+          cliSessionBinding:
+            nextCliSessionId === activeCliSessionBinding?.sessionId
+              ? activeCliSessionBinding
+              : undefined,
+          authProfileId,
+          bootstrapPromptWarningSignaturesSeen,
+          bootstrapPromptWarningSignature,
+          images: params.isFallbackRetry ? undefined : params.opts.images,
+          imageOrder: params.isFallbackRetry ? undefined : params.opts.imageOrder,
+          skillsSnapshot: params.skillsSnapshot,
+          messageChannel: params.messageChannel,
+          streamParams: params.opts.streamParams,
+          messageProvider: params.opts.messageProvider ?? params.messageChannel,
+          currentChannelId: params.runContext.currentChannelId,
+          chatId: params.runContext.chatId,
+          channelContext: params.runContext.channelContext,
+          currentThreadTs: params.runContext.currentThreadTs,
+          currentInboundAudio: params.runContext.currentInboundAudio,
+          approvalReviewerDeviceId: params.opts.approvalReviewerDeviceId,
+          agentAccountId: params.runContext.accountId,
+          senderId: params.runContext.senderId,
+          senderIsOwner: params.opts.senderIsOwner,
+          toolsAllow: params.opts.toolsAllow,
+          cleanupBundleMcpOnRunEnd: params.opts.cleanupBundleMcpOnRunEnd,
+          cleanupCliLiveSessionOnRunEnd: params.opts.cleanupCliLiveSessionOnRunEnd,
+          oneShotCliRun: params.opts.oneShotCliRun,
+          ...(mutableCliSessionStore
+            ? {
+                onBeforeFreshCliSessionRetry: async (retry) => {
+                  if (retry.sessionId !== activeCliSessionBinding?.sessionId) {
+                    return false;
+                  }
+
+                  log.warn(
+                    `CLI session failed, clearing before fresh retry: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${mutableCliSessionStore.sessionKey} reason=${sanitizeForLog(retry.reason)}`,
+                  );
+
+                  params.sessionEntry =
+                    (await clearCliSessionInStore({
+                      provider: cliExecutionProvider,
+                      ...mutableCliSessionStore,
+                    })) ?? params.sessionEntry;
+                  return true;
+                },
+              }
+            : {}),
+        }),
+      );
+    return resolveReusableCliSessionBinding().then(async (activeCliSessionBinding) => {
+      try {
+        return await runCliWithSession(activeCliSessionBinding?.sessionId, activeCliSessionBinding);
+      } catch (err) {
+        if (
+          isClaudeCliProvider(cliExecutionProvider) &&
+          shouldClearReusedCliSessionAfterError(err) &&
+          activeCliSessionBinding?.sessionId &&
+          mutableCliSessionStore
+        ) {
+          log.warn(
+            `CLI session cleared after failed reused turn: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${mutableCliSessionStore.sessionKey} reason=${sanitizeForLog(resolveClearedCliSessionReason(err))}`,
+          );
+
+          params.sessionEntry =
+            (await clearCliSessionInStore({
+              provider: cliExecutionProvider,
+              ...mutableCliSessionStore,
+            })) ?? params.sessionEntry;
+        }
+        throw err;
+      }
+    });
+  }
+
+  // --- continuation: spawn-init / turn-1 continueWorkOpts plumbing ---
+  // Construct the closure that captures continue_work tool requests fired
+  // during this attempt, then surface the runEmbeddedAgent result while
+  // post-processing the captured request to schedule the next-turn
+  // TaskFlow wake. Mirrors the followup-runner continue_work pattern. Without
+  // this wiring, createOpenClawTools sees no continueWorkOpts on the spawn-init
+  // path, so typed continue_work never registers for turn-1 subagent tool calls.
+  const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
+  // Accumulate every continue_work election fired this turn; capturing only the
+  // last one silently drops the rest (#982).
+  const attemptContinueWorkRequests: ContinueWorkRequest[] = [];
+  const continueWorkOpts = continuationEnabled
+    ? {
+        requestContinuation: (request: ContinueWorkRequest) => {
+          attemptContinueWorkRequests.push(request);
+        },
+      }
+    : undefined;
+
+  // --- continuation: spawn-init / turn-1 requestCompactionOpts plumbing ---
+  // Keep request_compaction aligned with continue_work on the spawn-init path.
+  // Without this closure, createOpenClawTools sees no requestCompactionOpts on
+  // turn 1, so newly spawned subagents can schedule a next turn but cannot ask
+  // to compact when context pressure rises.
+  const requestCompactionOpts = continuationEnabled
+    ? {
+        sessionId: params.sessionId,
+        getContextUsage: () =>
+          computeRequestCompactionContextUsage({
+            entry: params.sessionEntry,
+            cfg: params.cfg,
+            provider: embeddedAgentProvider,
+            model: params.modelOverride,
+          }),
+        triggerCompaction: async (request: RequestCompactionInvocation) => {
+          try {
+            const { compactEmbeddedAgentSession } =
+              await import("../embedded-agent-runner/compact.queued.js");
+            const result = await compactEmbeddedAgentSession({
+              sessionId: params.sessionId,
+              runId: request.runId ?? params.runId,
+              sessionKey: params.sessionKey,
+              sessionFile: params.sessionFile,
+              workspaceDir: params.workspaceDir,
+              cwd: params.cwd,
+              config: params.cfg,
+              messageChannel: params.messageChannel,
+              messageProvider: params.opts.messageProvider ?? params.messageChannel,
+              agentAccountId: params.runContext.accountId,
+              provider: embeddedAgentProvider,
+              model: params.modelOverride,
+              authProfileId,
+              customInstructions: request.customInstructions,
+              trigger: request.trigger,
+              diagId: request.diagId,
+              traceparent: request.traceparent,
+            });
+            if (result.ok && result.compacted) {
+              // Mirror the followup-runner triggerCompaction release. A
+              // successful turn-1 volitional compaction must dispatch staged
+              // `continue_delegate(mode="post-compaction")` work; without this
+              // the staged delegates stay queued and only the followup
+              // (turn-2+) path would ever drain them. `releaseQueuedCompactionTolerant`
+              // degrades gracefully (logs + returns) when sessionKey/sessionStore
+              // are absent, so this is safe on the suppressVisibleSessionEffects
+              // path where both are undefined.
+              const releaseOriginatingTo = params.opts.replyTo ?? params.opts.to;
+              const releaseMessageProvider = params.opts.messageProvider ?? params.messageChannel;
+              const compactionReleaseFollowupRun: FollowupRun = {
+                prompt: effectivePrompt,
+                enqueuedAt: Date.now(),
+                ...(params.runContext.messageChannel
+                  ? { originatingChannel: params.runContext.messageChannel }
+                  : {}),
+                ...(releaseOriginatingTo ? { originatingTo: releaseOriginatingTo } : {}),
+                ...(params.runContext.accountId
+                  ? { originatingAccountId: params.runContext.accountId }
+                  : {}),
+                ...(params.opts.threadId != null
+                  ? { originatingThreadId: params.opts.threadId }
+                  : {}),
+                run: {
+                  agentId: params.sessionAgentId,
+                  agentDir: params.agentDir,
+                  sessionId: params.sessionId,
+                  ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+                  sessionFile: params.sessionFile,
+                  workspaceDir: params.workspaceDir,
+                  ...(params.cwd ? { cwd: params.cwd } : {}),
+                  config: params.cfg,
+                  provider: embeddedAgentProvider,
+                  model: params.modelOverride,
+                  ...(releaseMessageProvider ? { messageProvider: releaseMessageProvider } : {}),
+                  ...(params.runContext.accountId
+                    ? { agentAccountId: params.runContext.accountId }
+                    : {}),
+                  timeoutMs: params.timeoutMs,
+                  blockReplyBreak: "message_end",
+                },
+              };
+              await releaseQueuedCompactionTolerant({
+                ...(params.sessionStore ? { activeSessionStore: params.sessionStore } : {}),
+                compactionResult: result,
+                followupRun: compactionReleaseFollowupRun,
+                getActiveSessionEntry: () => params.sessionEntry,
+                ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+                ...(params.storePath ? { storePath: params.storePath } : {}),
+                ...(request.traceparent ? { traceparent: request.traceparent } : {}),
+              });
+            }
+            return {
+              ok: result.ok,
+              compacted: result.compacted,
+              reason: result.reason,
+            };
+          } catch (err) {
+            return {
+              ok: false,
+              compacted: false,
+              reason: err instanceof Error ? err.message : String(err),
+            };
+          }
+        },
+      }
+    : undefined;
+
+  const embeddedRunResult = await runWithDiagnosticTraceparent(params.opts.traceparent, () =>
+    runEmbeddedAgent({
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      agentId: params.sessionAgentId,
+      trigger: "user",
+      messageChannel: params.messageChannel,
+      messageProvider: params.opts.messageProvider ?? params.messageChannel,
+      agentAccountId: params.runContext.accountId,
+      messageTo: params.opts.replyTo ?? params.opts.to,
+      messageThreadId: params.opts.threadId,
+      groupId: params.runContext.groupId,
+      groupChannel: params.runContext.groupChannel,
+      groupSpace: params.runContext.groupSpace,
+      spawnedBy: params.spawnedBy,
+      currentChannelId: params.runContext.currentChannelId,
+      chatId: params.runContext.chatId,
+      channelContext: params.runContext.channelContext,
+      currentThreadTs: params.runContext.currentThreadTs,
+      currentInboundAudio: params.runContext.currentInboundAudio,
+      replyToMode: params.runContext.replyToMode,
+      hasRepliedRef: params.runContext.hasRepliedRef,
+      senderId: params.runContext.senderId,
+      senderIsOwner: params.opts.senderIsOwner,
+      sessionFile: params.sessionFile,
+      workspaceDir: params.workspaceDir,
+      cwd: params.cwd,
+      config: params.cfg,
+      agentHarnessId: embeddedAgentHarnessOverride,
+      agentHarnessRuntimeOverride: embeddedAgentHarnessOverride,
+      skillsSnapshot: params.skillsSnapshot,
+      prompt: effectivePrompt,
+      images: params.isFallbackRetry ? undefined : params.opts.images,
+      imageOrder: params.isFallbackRetry ? undefined : params.opts.imageOrder,
+      clientTools: params.opts.clientTools,
+      provider: embeddedAgentProvider,
+      model: params.modelOverride,
+      modelFallbacksOverride: params.modelFallbacksOverride,
+      authProfileId,
+      authProfileIdSource: authProfileId ? harnessAuthSelection.authProfileIdSource : undefined,
+      thinkLevel: params.resolvedThinkLevel,
+      fastMode: params.fastMode,
+      fastModeStartedAtMs: params.fastModeStartedAtMs,
+      fastModeAutoOnSeconds: params.fastModeAutoOnSeconds,
+      isFinalFallbackAttempt: params.isFinalFallbackAttempt,
+      verboseLevel: params.resolvedVerboseLevel,
+      bashElevated: params.opts.bashElevated,
+      approvalReviewerDeviceId: params.opts.approvalReviewerDeviceId,
+      timeoutMs: params.timeoutMs,
+      runId: params.runId,
+      lifecycleGeneration: params.lifecycleGeneration,
+      lane: params.opts.lane,
+      // Hidden internal runs have no assistant-event consumer. Visible subagent
+      // lanes can still feed Control UI, session subscribers, and ACP parent relays.
+      suppressLiveStreamOutput: shouldSuppressEmbeddedLiveStreamOutput(params),
+      abortSignal: params.opts.abortSignal,
+      extraSystemPrompt: params.opts.extraSystemPrompt,
+      bootstrapContextMode: params.opts.bootstrapContextMode,
+      bootstrapContextRunKind: params.opts.bootstrapContextRunKind,
+      toolsAllow: params.opts.toolsAllow,
+      drainsContinuationDelegateQueue: params.opts.drainsContinuationDelegateQueue,
+      internalEvents: params.opts.internalEvents,
+      inputProvenance: params.opts.inputProvenance,
+      sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
+      disableMessageTool: params.opts.disableMessageTool,
+      streamParams: params.opts.streamParams,
+      agentDir: params.agentDir,
+      allowTransientCooldownProbe: params.allowTransientCooldownProbe,
+      cleanupBundleMcpOnRunEnd: params.opts.cleanupBundleMcpOnRunEnd,
+      oneShotCliRun: params.opts.oneShotCliRun,
+      modelRun: params.opts.modelRun,
+      promptMode: params.opts.promptMode,
+      disableTools: params.opts.modelRun === true,
+      onAgentEvent: params.onAgentEvent,
+      deferTerminalLifecycle: params.deferTerminalLifecycle,
+      deferTerminalLifecycleEnd: params.deferTerminalLifecycleEnd,
+      suppressNextUserMessagePersistence: params.suppressPromptPersistenceOnRetry === true,
+      onUserMessagePersisted: params.onUserMessagePersisted,
+      onExecutionStarted: (info) => {
+        if (info?.lifecycleGeneration) {
+          params.onLifecycleGenerationChanged?.(info.lifecycleGeneration);
+        }
+      },
+      onSessionIdChanged: params.opts.onSessionIdChanged,
+      bootstrapPromptWarningSignaturesSeen,
+      bootstrapPromptWarningSignature,
+      continueWorkOpts,
+      requestCompactionOpts,
+    }),
+  );
+
+  // Post-turn: capture both continue_work surfaces. Light-context subagents may
+  // not receive the typed tool, so the #952 nested path must honor the bracket
+  // token parsed from the final payload as well as the tool callback.
+  if (continuationEnabled && params.sessionKey) {
+    try {
+      const [{ extractContinuationSignal }, { stripContinuationSignal }] = await Promise.all([
+        import("../../auto-reply/continuation/signal.js"),
+        import("../../auto-reply/tokens.js"),
+      ]);
+      const continuationPayloads = embeddedRunResult.payloads ?? [];
+      const firstWorkRequest = attemptContinueWorkRequests[0];
+      const extraction = extractContinuationSignal({
+        payloads: continuationPayloads.map((payload) => ({ ...payload })),
+        ...(firstWorkRequest ? { continueWorkRequest: firstWorkRequest } : {}),
+        enabled: true,
+        sessionKey: params.sessionKey,
+      });
+      if (extraction.signal?.kind === "work") {
+        // Tool elections fan out one wake each; a bracket signal has no per-tool
+        // array, so it schedules a single election from the merged signal.
+        const requests =
+          !extraction.fromBracket && attemptContinueWorkRequests.length > 0
+            ? attemptContinueWorkRequests
+            : [
+                {
+                  reason: extraction.workReason ?? "",
+                  ...(extraction.signal.delayMs !== undefined
+                    ? { delaySeconds: extraction.signal.delayMs / 1000 }
+                    : {}),
+                  ...(extraction.signal.traceparent
+                    ? { traceparent: extraction.signal.traceparent }
+                    : {}),
+                },
+              ];
+        if (extraction.fromBracket) {
+          for (let i = continuationPayloads.length - 1; i >= 0; i--) {
+            const payload = continuationPayloads[i];
+            if (!payload?.text) {
+              continue;
+            }
+            const stripped = stripContinuationSignal(payload.text);
+            if (stripped.signal?.kind !== "work") {
+              continue;
+            }
+            payload.text = stripped.text;
+            break;
+          }
+        }
+        await scheduleSpawnInitContinueWorkWake({
+          sessionKey: params.sessionKey,
+          sessionEntry: params.sessionStore?.[params.sessionKey] ?? params.sessionEntry,
+          sessionStore: params.sessionStore,
+          storePath: params.storePath,
+          requests,
+          cfg: params.cfg,
+          runResult: embeddedRunResult,
+        });
+      }
+    } catch (err) {
+      // Persistence/scheduling failure must not break the attempt itself —
+      // mirrors followup-runner's defensive logging.
+      log.warn(
+        `[attempt-execution] failed to schedule continue_work wake for ${sanitizeForLog(params.sessionKey)}: ${sanitizeForLog(String(err))}`,
+      );
+    }
+  }
+
+  return embeddedRunResult;
+}
+
+/**
+ * Schedule a continue_work TaskFlow election for the spawn-init / turn-1 path.
+ * Loads chain state, enforces budgets, persists advancement, and lets the
+ * durable work dispatcher arm or replay the same-session wake.
+ */
+async function scheduleSpawnInitContinueWorkWake(params: {
+  sessionKey: string;
+  sessionEntry: SessionEntry | undefined;
+  sessionStore?: Record<string, SessionEntry>;
+  storePath?: string;
+  requests: { reason: string; delaySeconds?: number; traceparent?: string }[];
+  cfg: OpenClawConfig;
+  runResult: EmbeddedAgentRunResult;
+}): Promise<void> {
+  const [
+    { resolveLiveContinuationRuntimeConfig },
+    { loadContinuationChainState, persistContinuationChainState },
+    { scheduleContinuationWorkBatch },
+    { resolveSessionStoreEntry, updateSessionStore },
+  ] = await Promise.all([
+    import("../../auto-reply/continuation/config.js"),
+    import("../../auto-reply/continuation/state.js"),
+    import("../../auto-reply/continuation/lazy.runtime.js"),
+    import("../../config/sessions/store.js"),
+  ]);
+
+  const continuationConfig = resolveLiveContinuationRuntimeConfig(params.cfg);
+  const tailUsage = params.runResult.meta?.agentMeta?.usage;
+  const turnTokens = (tailUsage?.input ?? 0) + (tailUsage?.output ?? 0);
+  const chainState = loadContinuationChainState(params.sessionEntry, turnTokens);
+  const result = await scheduleContinuationWorkBatch({
+    sessionKey: params.sessionKey,
+    chainState,
+    requests: params.requests.map((request) => ({
+      reason: request.reason,
+      delaySeconds: request.delaySeconds ?? continuationConfig.defaultDelayMs / 1000,
+      ...(request.traceparent ? { traceparent: request.traceparent } : {}),
+    })),
+    config: continuationConfig,
+    // Same-session own-turn continue_work has no spawning lineage — this election
+    // is the session's OWN next turn, not a delegate child. Leaving parentRunId
+    // unset keeps it on the #990 bucket-1 never-reap path (parentRunId==null →
+    // same-session). Tagging the electing run here would make the #990 orphan-reap
+    // cull the flow on any busy-defer: a subagent's electing run is always
+    // confident-terminal by wake time, so a single main-lane-busy skip would
+    // wrongly reap it before hop-2 ever runs (#952). Chain lineage rides
+    // chainId/traceparent, not parentRunId.
+    log: (message) => log.info(message),
+  });
+  // #986 cap-notice symmetry: surface cap-dropped elections on the subagent-init
+  // lane too, matching the main-reply lane (agent-runner) and followup lane
+  // (followup-runner). Without this, a subagent turn's partial cap-drop is
+  // silent even though the tool told the model each call was "scheduled".
+  // This MUST fire before the zero-scheduled early return: a session already at
+  // the pending/chain/cost cap before a multi-continue_work response returns
+  // scheduledCount:0 with cappedCount>0, so emitting after the early return
+  // would re-open the never-silent gap on this lane only. Multi-election only,
+  // to keep single-work behavior intact (Rune #988 review residual + frond
+  // fold-in, P2-2).
+  if (result.cappedCount > 0 && params.requests.length > 1) {
+    enqueueSystemEvent(
+      `[continuation] ${result.cappedCount} of ${params.requests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,
+      { sessionKey: params.sessionKey, trusted: true },
+    );
+  }
+  if (result.scheduledCount === 0) {
+    return;
+  }
+  persistContinuationChainState({
+    sessionEntry: params.sessionEntry,
+    count: result.chainState.currentChainCount,
+    startedAt: result.chainState.chainStartedAt,
+    tokens: result.chainState.accumulatedChainTokens,
+    ...(result.chainState.chainId ? { chainId: result.chainState.chainId } : {}),
+  });
+  if (params.storePath && params.sessionStore) {
+    await updateSessionStore(params.storePath, (store) => {
+      const resolved = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey });
+      if (!resolved.existing) {
+        return undefined;
+      }
+      const updated = {
+        ...resolved.existing,
+        continuationChainCount: result.chainState.currentChainCount,
+        continuationChainStartedAt: result.chainState.chainStartedAt,
+        continuationChainTokens: result.chainState.accumulatedChainTokens,
+        ...(result.chainState.chainId ? { continuationChainId: result.chainState.chainId } : {}),
+      };
+      store[resolved.normalizedKey] = updated;
+      params.sessionStore![resolved.normalizedKey] = updated;
+      for (const legacyKey of resolved.legacyKeys) {
+        delete store[legacyKey];
+        delete params.sessionStore![legacyKey];
+      }
+      return updated;
+    });
+  }
+}
+
+export function buildAcpResult(params: {
+  payloadText: string;
+  startedAt: number;
+  stopReason?: string;
+  abortSignal?: AbortSignal;
+}) {
+  const normalizedFinalPayload = normalizeReplyPayload({
+    text: params.payloadText,
+  });
+  const payloads = normalizedFinalPayload ? [normalizedFinalPayload] : [];
+  const abortFields = resolveAgentRunAbortLifecycleFields(params.abortSignal);
+  return {
+    payloads,
+    meta: {
+      durationMs: Date.now() - params.startedAt,
+      aborted: abortFields.aborted ?? false,
+      stopReason: abortFields.stopReason ?? params.stopReason,
+    },
+  };
+}
+
+export function emitAcpLifecycleStart(params: {
+  runId: string;
+  startedAt: number;
+  lifecycleGeneration?: string;
+}) {
+  emitAgentEvent({
+    runId: params.runId,
+    ...(params.lifecycleGeneration ? { lifecycleGeneration: params.lifecycleGeneration } : {}),
+    stream: "lifecycle",
+    data: {
+      phase: "start",
+      startedAt: params.startedAt,
+    },
+  });
+}
+
+const ACP_PROXY_ENV_KEYS = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+] as const;
+
+function resolvePresentProxyEnvKeys(env: NodeJS.ProcessEnv = process.env): string[] {
+  return ACP_PROXY_ENV_KEYS.filter((key) => {
+    const value = env[key];
+    return typeof value === "string" && value.trim().length > 0;
+  });
+}
+
+function sanitizeAcpDiagnosticText(value: string): string {
+  return redactSensitiveText(value).replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function acpRuntimeEventDiagnostics(event: AcpRuntimeEvent): Record<string, unknown> {
+  if (event.type === "status") {
+    return {
+      eventType: event.type,
+      text: sanitizeAcpDiagnosticText(event.text),
+      ...(event.tag ? { tag: event.tag } : {}),
+    };
+  }
+  if (event.type === "tool_call") {
+    return {
+      eventType: event.type,
+      text: sanitizeAcpDiagnosticText(event.text),
+      ...(event.tag ? { tag: event.tag } : {}),
+      ...(event.status ? { status: sanitizeAcpDiagnosticText(event.status) } : {}),
+      ...(event.title ? { title: sanitizeAcpDiagnosticText(event.title) } : {}),
+      ...(event.toolCallId ? { toolCallId: sanitizeAcpDiagnosticText(event.toolCallId) } : {}),
+    };
+  }
+  if (event.type === "error") {
+    return {
+      eventType: event.type,
+      message: sanitizeAcpDiagnosticText(event.message),
+      ...(event.code ? { code: sanitizeAcpDiagnosticText(event.code) } : {}),
+      ...(typeof event.retryable === "boolean" ? { retryable: event.retryable } : {}),
+    };
+  }
+  if (event.type === "done") {
+    return {
+      eventType: event.type,
+      ...(event.stopReason ? { stopReason: sanitizeAcpDiagnosticText(event.stopReason) } : {}),
+    };
+  }
+  return {
+    eventType: event.type,
+    stream: event.stream ?? "output",
+  };
+}
+
+export function emitAcpPromptSubmitted(params: { runId: string; sessionKey?: string; at: number }) {
+  emitAgentEvent({
+    runId: params.runId,
+    stream: "acp",
+    ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    data: {
+      phase: "prompt_submitted",
+      at: params.at,
+      proxyEnvKeys: resolvePresentProxyEnvKeys(),
+    },
+  });
+}
+
+export function emitAcpRuntimeEvent(params: {
+  runId: string;
+  event: AcpRuntimeEvent;
+  sessionKey?: string;
+}) {
+  emitAgentEvent({
+    runId: params.runId,
+    stream: "acp",
+    ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    data: {
+      phase: "runtime_event",
+      ...acpRuntimeEventDiagnostics(params.event),
+    },
+  });
+}
+
+export function emitAcpLifecycleEnd(params: {
+  runId: string;
+  lifecycleGeneration?: string;
+  abortSignal?: AbortSignal;
+}) {
+  emitAgentEvent({
+    runId: params.runId,
+    ...(params.lifecycleGeneration ? { lifecycleGeneration: params.lifecycleGeneration } : {}),
+    stream: "lifecycle",
+    data: {
+      phase: "end",
+      endedAt: Date.now(),
+      ...resolveAgentRunAbortLifecycleFields(params.abortSignal),
+    },
+  });
+}
+
+export function emitAcpLifecycleError(params: {
+  runId: string;
+  error: unknown;
+  sessionKey?: string;
+  lifecycleGeneration?: string;
+  abortSignal?: AbortSignal;
+}) {
+  emitAgentEvent({
+    runId: params.runId,
+    ...(params.lifecycleGeneration ? { lifecycleGeneration: params.lifecycleGeneration } : {}),
+    stream: "lifecycle",
+    ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    data: {
+      phase: "error",
+      error: formatAcpErrorChain(params.error),
+      endedAt: Date.now(),
+      ...resolveAgentRunAbortLifecycleFields(params.abortSignal),
+    },
+  });
+}
+
+export function emitAcpAssistantDelta(params: { runId: string; text: string; delta: string }) {
+  emitAgentEvent({
+    runId: params.runId,
+    stream: "assistant",
+    data: {
+      text: params.text,
+      delta: params.delta,
+    },
+  });
+}
