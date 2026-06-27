@@ -8,6 +8,7 @@ import {
   describeIMessageInboundDropDiagnostic,
   shouldThrottleIMessageInboundDropDiagnostic,
 } from "./monitor/monitor-provider.js";
+import { installIMessageStateRuntimeForTest } from "./test-support/runtime.js";
 
 const waitForTransportReadyMock = vi.hoisted(() =>
   vi.fn<typeof waitForTransportReady>(async () => {}),
@@ -66,6 +67,7 @@ function createRpcClient(overrides?: {
 
 describe("monitorIMessageProvider watch.subscribe startup retry", () => {
   beforeEach(() => {
+    installIMessageStateRuntimeForTest();
     vi.useFakeTimers();
     waitForTransportReadyMock.mockReset().mockResolvedValue(undefined);
     createIMessageRpcClientMock.mockReset();
@@ -101,7 +103,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
       runtime: runtime as never,
     });
 
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(1_000);
     await monitorPromise;
 
     expect(createIMessageRpcClientMock).toHaveBeenCalledTimes(2);
@@ -146,7 +148,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
       runtime: runtime as never,
     }).catch((error: unknown) => error);
 
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(2_000);
     const monitorError = await monitorErrorPromise;
 
     expect(monitorError).toBeInstanceOf(Error);
