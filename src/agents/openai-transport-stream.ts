@@ -101,6 +101,7 @@ import {
   failTransportStream,
   finalizeTransportStream,
   mergeTransportMetadata,
+  sanitizeNonEmptyTransportPayloadText,
   sanitizeTransportPayloadText,
 } from "./transport-stream-shared.js";
 
@@ -1296,7 +1297,9 @@ function convertResponsesMessages(
                     image_url: `data:${item.mimeType};base64,${item.data}`,
                   })),
               ] as ResponseFunctionCallOutputItemList)
-            : sanitizeTransportPayloadText(textResult || "(see attached image)"),
+            : hasImages
+              ? sanitizeTransportPayloadText(textResult || "(see attached image)")
+              : sanitizeNonEmptyTransportPayloadText(textResult),
       });
     }
     msgIndex += 1;

@@ -263,6 +263,54 @@ describe("convertResponsesMessages", () => {
     });
   });
 
+  it("replays empty non-image tool results as no-output text, not image placeholders", () => {
+    const input = convertResponsesMessages(
+      nativeOpenAIModel,
+      {
+        systemPrompt: "system",
+        messages: [
+          {
+            role: "assistant",
+            api: nativeOpenAIModel.api,
+            provider: nativeOpenAIModel.provider,
+            model: nativeOpenAIModel.id,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "toolUse",
+            timestamp: 1,
+            content: [
+              { type: "toolCall", id: "call_plan|fc_plan", name: "update_plan", arguments: {} },
+            ],
+          },
+          {
+            role: "toolResult",
+            toolCallId: "call_plan|fc_plan",
+            toolName: "update_plan",
+            content: [],
+            isError: false,
+            timestamp: 2,
+          },
+        ],
+      } satisfies Context,
+      allowedToolCallProviders,
+      { includeSystemPrompt: false },
+    ) as unknown as Array<Record<string, unknown>>;
+
+    const functionOutput = input.find((item) => item.type === "function_call_output");
+    expect(functionOutput).toMatchObject({
+      type: "function_call_output",
+      call_id: "call_plan",
+      output: "(no output)",
+    });
+    expect(JSON.stringify(input)).not.toContain("(see attached image)");
+  });
+
   it("strips the internal cache boundary marker from the system prompt message", () => {
     const input = convertResponsesMessages(
       nativeOpenAIModel,

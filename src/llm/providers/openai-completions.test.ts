@@ -199,6 +199,51 @@ describe("OpenAI-compatible completions params", () => {
     expect(result.errorMessage).toContain('requested unavailable tool "broken"');
   });
 
+  it("replays empty non-image tool results as no-output text", async () => {
+    let capturedPayload: Record<string, unknown> | undefined;
+    const stream = streamOpenAICompletions(
+      model,
+      {
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "call_plan",
+                name: "update_plan",
+                arguments: {},
+              },
+            ],
+          },
+          {
+            role: "toolResult",
+            content: [],
+            toolCallId: "call_plan",
+            toolName: "update_plan",
+          },
+          ...context.messages,
+        ],
+        tools: [],
+      } as never,
+      {
+        apiKey: "sk-test",
+        onPayload(payload) {
+          capturedPayload = payload as Record<string, unknown>;
+          throw new Error("stop before network");
+        },
+      },
+    );
+
+    const result = await stream.result();
+
+    expect(result.stopReason).toBe("error");
+    const messages = capturedPayload?.messages as Array<Record<string, unknown>>;
+    const toolMessage = messages.find((message) => message.role === "tool");
+    expect(toolMessage?.content).toBe("(no output)");
+    expect(JSON.stringify(messages)).not.toContain("(see attached image)");
+  });
+
   it("preserves the empty tools marker for tool history after quarantining every schema", async () => {
     let capturedPayload: Record<string, unknown> | undefined;
     const stream = streamOpenAICompletions(

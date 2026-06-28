@@ -51,6 +51,8 @@ import { transformMessages } from "./transform-messages.js";
 // Utilities
 // =============================================================================
 
+const EMPTY_TOOL_RESULT_TEXT = "(no output)";
+
 type ReplayableResponseOutputMessage = Omit<ResponseOutputMessage, "id"> & { id?: string };
 type ReplayableResponseReasoningItem = Omit<ResponseReasoningItem, "id"> & { id?: string };
 type ResponsesTextContentPart =
@@ -403,7 +405,9 @@ export function convertResponsesMessages<TApi extends Api>(
 
         output = contentParts;
       } else {
-        output = sanitizeSurrogates(hasText ? textResult : "(see attached image)");
+        output = sanitizeSurrogates(
+          hasText ? textResult : hasImages ? "(see attached image)" : EMPTY_TOOL_RESULT_TEXT,
+        );
       }
 
       messages.push({

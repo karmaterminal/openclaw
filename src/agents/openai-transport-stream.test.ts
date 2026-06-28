@@ -5075,6 +5075,67 @@ describe("openai transport stream", () => {
     }
   });
 
+  it("replays empty non-image Responses tool results as no-output text", () => {
+    const params = buildOpenAIResponsesParams(
+      {
+        id: "gpt-5.5",
+        name: "GPT-5.5",
+        api: "openai-responses",
+        provider: "github-copilot",
+        baseUrl: "https://api.githubcopilot.com",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 200000,
+        maxTokens: 8192,
+      } satisfies Model<"openai-responses">,
+      {
+        systemPrompt: "system",
+        messages: [
+          {
+            role: "assistant",
+            api: "openai-responses",
+            provider: "github-copilot",
+            model: "gpt-5.5",
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "toolUse",
+            timestamp: 1,
+            content: [
+              {
+                type: "toolCall",
+                id: "call_plan|fc_plan",
+                name: "update_plan",
+                arguments: {},
+              },
+            ],
+          },
+          {
+            role: "toolResult",
+            toolCallId: "call_plan|fc_plan",
+            toolName: "update_plan",
+            content: [],
+            isError: false,
+            timestamp: 2,
+          },
+          { role: "user", content: "continue", timestamp: 3 },
+        ],
+        tools: [],
+      } as never,
+      { sessionId: "session-123" },
+    ) as { input?: Array<{ type?: string; output?: unknown }> };
+
+    const functionOutput = params.input?.find((item) => item.type === "function_call_output");
+    expect(functionOutput?.output).toBe("(no output)");
+    expect(JSON.stringify(params.input)).not.toContain("(see attached image)");
+  });
+
   it("omits distinct overlong Copilot Responses replay item ids when store is disabled", () => {
     const sharedToolItemPrefix = "iVec" + "A".repeat(160);
     const firstToolCallId = `call_first|${sharedToolItemPrefix}Aa`;
