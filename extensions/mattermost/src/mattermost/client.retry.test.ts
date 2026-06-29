@@ -79,7 +79,25 @@ describe("createMattermostDirectChannelWithRetry", () => {
     return createMattermostClient({
       baseUrl: "https://mattermost.example.com",
       botToken: "test-token",
-      fetchImpl: mockFetch,
+      fetchImpl: async (input, init) => normalizeMockFetchResponse(await mockFetch(input, init)),
+    });
+  }
+
+  async function normalizeMockFetchResponse(response: Response): Promise<Response> {
+    if (response.body || typeof response.arrayBuffer === "function") {
+      return response;
+    }
+
+    const headers = new Headers(response.headers);
+    const contentType = headers.get("content-type") ?? "";
+    const body = contentType.includes("application/json")
+      ? JSON.stringify(await response.json())
+      : await response.text();
+
+    return new Response(body, {
+      headers,
+      status: response.status,
+      statusText: response.statusText,
     });
   }
 
@@ -158,7 +176,7 @@ describe("createMattermostDirectChannelWithRetry", () => {
     expect(retryCall?.[1]).toBeLessThanOrEqual(20);
     expect(retryCall?.[2]).toBeInstanceOf(Error);
     expect((retryCall?.[2] as Error | undefined)?.message).toBe(
-      "Mattermost API 429 undefined: Too many requests",
+      "Mattermost API 429 : Too many requests",
     );
   });
 

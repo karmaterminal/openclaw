@@ -180,19 +180,23 @@ describe("readResponseWithLimit", () => {
     }
   });
 
-  it("does not read non-streamed text/json fallback bodies", async () => {
+  it("reads non-streamed arrayBuffer bodies without text/json fallback", async () => {
+    const payload = new Uint8Array([1, 2, 3]);
+    const arrayBuffer = vi.fn(async () => payload.buffer);
     const text = vi.fn(async () => "unbounded");
     const response = {
       body: undefined,
-      headers: new Headers({ "content-length": "5" }),
+      headers: new Headers({ "content-length": String(payload.byteLength) }),
+      arrayBuffer,
       text,
     } as unknown as Response;
 
     await expectReadResponseWithLimitSuccessCase({
       response,
       maxBytes: 16,
-      expected: Buffer.alloc(0),
+      expected: Buffer.from(payload),
     });
+    expect(arrayBuffer).toHaveBeenCalledTimes(1);
     expect(text).not.toHaveBeenCalled();
   });
 

@@ -64,7 +64,15 @@ async function readResponsePrefix(
   const chunkTimeoutMs = opts?.chunkTimeoutMs;
   const body = res.body;
   if (!body || typeof body.getReader !== "function") {
-    return { buffer: Buffer.alloc(0), size: 0, truncated: false };
+    const fallback = Buffer.from(await res.arrayBuffer());
+    if (fallback.length > maxBytes) {
+      return {
+        buffer: fallback.subarray(0, maxBytes),
+        size: fallback.length,
+        truncated: true,
+      };
+    }
+    return { buffer: fallback, size: fallback.length, truncated: false };
   }
 
   const reader = body.getReader();
