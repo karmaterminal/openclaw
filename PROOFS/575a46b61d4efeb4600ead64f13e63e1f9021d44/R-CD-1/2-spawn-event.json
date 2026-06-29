@@ -1,0 +1,6 @@
+{
+  "timestamp": "2026-06-29 14:43:10 PDT",
+  "event": "continuation:delegate-spawned",
+  "turn": "1/200",
+  "task": "R-CD-1 Substitution Proof: Verify continue_delegate tool-form schedules a silent-wake child under default models and returns its output. Execute simple counting/nonce and return matching nonce to parent. Nonce: RCD1-575a46-8821"
+}
