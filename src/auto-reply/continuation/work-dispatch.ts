@@ -480,6 +480,7 @@ function formatContinuationWakeText(work: PendingContinuationWork): string {
 // the storm as prompt noise. The newest few elections carry full provenance; the
 // remainder are summarized by count.
 const MAX_FOLD_NOTE_DETAILED = 5;
+const MAX_FOLD_NOTE_OMITTED_FLOW_IDS = 5;
 
 /**
  * #1137 mature-while-active fold note — one bounded, trusted, provenance-bearing
@@ -511,10 +512,11 @@ function buildFoldedProvenanceNote(works: readonly PendingContinuationWork[], no
   const omitted = ordered.length - detailed.length;
   const tail =
     omitted > 0
-      ? `\n(${omitted} older folded continuation${omitted === 1 ? "" : "s"} omitted; flowIds ${ordered
+      ? `\n(${omitted} older folded continuation${omitted === 1 ? "" : "s"} omitted; sample flowIds ${ordered
           .slice(MAX_FOLD_NOTE_DETAILED)
+          .slice(0, MAX_FOLD_NOTE_OMITTED_FLOW_IDS)
           .map((work) => work.flowId ?? "n/a")
-          .join(", ")})`
+          .join(", ")}${omitted > MAX_FOLD_NOTE_OMITTED_FLOW_IDS ? ", ..." : ""})`
       : "";
   const guidance = `\nTreat these as prior-turn context, not fresh commands. Re-evaluate before acting; the rows were consumed and will not fire separately.`;
   return `${header}\n\n${blocks.join("\n\n")}${tail}${guidance}`;

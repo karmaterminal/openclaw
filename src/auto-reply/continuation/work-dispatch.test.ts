@@ -2791,6 +2791,36 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     }
   });
 
+  it("keeps aggregate folded-note omitted flow ids bounded", async () => {
+    const sessionKey = "agent:main:fold-aggregate-bounded-tail";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const now = Date.now();
+    for (let index = 0; index < 12; index += 1) {
+      enqueuePendingWork({
+        sessionKey,
+        hop: index + 1,
+        delayMs: 5_000,
+        electedAt: now + index,
+        anchorFinalizedAt: now,
+        dueAt: now,
+        maxChainLength: 20,
+        reason: `folded row ${index}`,
+      });
+    }
+    activeSessions.add(sessionKey);
+
+    await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(activeQueueDeliveries).toHaveLength(1);
+    const note = (activeQueueDeliveries[0] as { text: string }).text;
+    expect(note).toContain("older folded continuations omitted");
+    expect(note).toContain("sample flowIds");
+    expect(note).toContain("...");
+    const omittedTail = note.slice(note.indexOf("sample flowIds"));
+    expect(omittedTail).not.toContain("flow-2");
+    expect(omittedTail).not.toContain("flow-1");
+  });
+
   it("recovers a matured delayed row into a fold when a later turn is active after restart (#1135 §5.5 due+active recovery)", async () => {
     const sessionKey = "agent:main:fold-restart";
     mockSessionStore[sessionKey] = { sessionKey };
