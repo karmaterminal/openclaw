@@ -19,6 +19,7 @@ import {
   listPendingWorkSessionKeysForRecovery,
   markPendingWorkDelivered,
   markPendingWorkFailed,
+  markPendingWorkFoldDelivered,
   markPendingWorkFolded,
   markPendingWorkReaped,
   markPendingWorkSuperseded,
@@ -705,32 +706,64 @@ export function partitionSupersededWork(
 
 /**
  * #1137 mature-while-active fold — deliver one trusted provenance note for a
- * matured batch and terminalize the rows ONLY after durable enqueue is confirmed.
+ * matured batch and terminalize the rows ONLY after the active turn commits it.
  *
  * Delivery-before-terminalize is the safety invariant (#1135 §5.3.3): if the
- * note cannot be enqueued, every row is kept recoverable (requeued at a bounded
- * recovery cadence), never finished — no silent loss after the tool reported the
- * work scheduled. On success each row is folded (`disposition: folded-active`) so
- * it never fires as a separate turn. Returns the number of rows folded.
+ * active turn cannot accept and commit the note, every row is kept recoverable
+ * (requeued at a bounded recovery cadence), never finished — no silent loss
+ * after the tool reported the work scheduled. On success each row is folded
+ * (`disposition: folded-active`) so it never fires as a separate turn. Returns
+ * the number of rows durably marked for fold finalization.
  */
-function foldMaturedWorkIntoActiveTurn(
+async function deliverFoldedProvenanceNoteToActiveTurn(params: {
+  sessionKey: string;
+  note: string;
+}): Promise<{ delivered: true; deliveredAt: number } | { delivered: false; reason: string }> {
+  const { replyRunRegistry } = await importReplyRunRegistry();
+  const sessionId = replyRunRegistry.resolveSessionId(params.sessionKey);
+  if (!sessionId) {
+    return { delivered: false, reason: "missing-active-session-id" };
+  }
+  const { queueEmbeddedAgentMessageWithOutcomeAsync } =
+    await import("../../agents/embedded-agent-runner/runs.js");
+  const outcome = await queueEmbeddedAgentMessageWithOutcomeAsync(sessionId, params.note, {
+    steeringMode: "all",
+    debounceMs: 0,
+    deliveryTimeoutMs: HEDGE_DISPATCH_FAILURE_RETRY_MS,
+    waitForTranscriptCommit: true,
+  });
+  if (outcome.queued && outcome.deliveredAtMs !== undefined) {
+    return { delivered: true, deliveredAt: outcome.deliveredAtMs };
+  }
+  if (outcome.queued) {
+    return { delivered: false, reason: `queued-without-transcript-commit:${outcome.target}` };
+  }
+  return { delivered: false, reason: outcome.reason };
+}
+
+async function foldMaturedWorkIntoActiveTurn(
   sessionKey: string,
   works: readonly PendingContinuationWork[],
-): number {
+): Promise<number> {
   const now = Date.now();
   const note = buildFoldedProvenanceNote(works, now);
-  const delivered = enqueueSystemEvent(note, { sessionKey, trusted: true });
-  if (!delivered) {
+  let delivery: Awaited<ReturnType<typeof deliverFoldedProvenanceNoteToActiveTurn>>;
+  try {
+    delivery = await deliverFoldedProvenanceNoteToActiveTurn({ sessionKey, note });
+  } catch (err) {
+    delivery = { delivered: false, reason: formatErrorMessage(err) };
+  }
+  if (!delivery.delivered) {
     const retryDueAt = now + HEDGE_DISPATCH_FAILURE_RETRY_MS;
     for (const work of works) {
       clearIdleRetryForWork(work);
       requeueWorkForRetry(work, {
         dueAt: retryDueAt,
-        summary: "Continuation fold-note enqueue failed; keeping row recoverable.",
+        summary: `Continuation fold-note delivery failed (${delivery.reason}); keeping row recoverable.`,
       });
     }
     log.warn(
-      `[continuation:work-fold-note-undelivered] session=${sessionKey} count=${works.length} — rows kept recoverable, not terminalized`,
+      `[continuation:work-fold-note-undelivered] session=${sessionKey} count=${works.length} reason=${delivery.reason} — rows kept recoverable, not terminalized`,
     );
     return 0;
   }
@@ -741,15 +774,19 @@ function foldMaturedWorkIntoActiveTurn(
     log.info(
       `[continuation:work-folded-active] flowId=${work.flowId ?? "none"} session=${sessionKey} hop=${work.hop} overdueMs=${overdueByMs} — folded into active turn (provenance note delivered)`,
     );
-    if (
-      markPendingWorkFolded(work, {
-        summary: "matured while a later turn was active",
-        foldedAt: now,
-        overdueByMs,
-      })
-    ) {
-      folded++;
+    const deliveredMark = markPendingWorkFoldDelivered(work, {
+      foldedAt: now,
+      overdueByMs,
+    });
+    if (!deliveredMark) {
+      continue;
     }
+    markPendingWorkFolded(work, {
+      summary: "matured while a later turn was active",
+      foldedAt: now,
+      overdueByMs,
+    });
+    folded++;
   }
   return folded;
 }
@@ -841,7 +878,7 @@ export async function dispatchPendingContinuationWork(params: {
     const foldWorks = worksToDrive.filter((work) => work.anchorFinalizedAt !== undefined);
     worksToGrant = worksToDrive.filter((work) => work.anchorFinalizedAt === undefined);
     if (foldWorks.length > 0) {
-      foldMaturedWorkIntoActiveTurn(params.sessionKey, foldWorks);
+      await foldMaturedWorkIntoActiveTurn(params.sessionKey, foldWorks);
     }
   }
   for (const work of worksToGrant) {

@@ -112,6 +112,9 @@ export type PendingContinuationWork = {
   originRunId?: string;
   originTurnId?: string;
   deliveredAt?: number;
+  foldedAt?: number;
+  overdueByMs?: number;
+  disposition?: "granted" | "folded-active";
   retryCount?: number;
   // Consecutive busy-skip count for diagnostics/rate state. Distinct from
   // retryCount (the transient-error fail-bound). Never penalizes.
@@ -146,15 +149,22 @@ function decodeWorkState(flow: TaskFlowRecord): PendingWorkState | undefined {
 
 function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState): void {
   const now = Date.now();
+  const foldedActive = state.disposition === "folded-active";
   const finished = finishFlow({
     flowId: flow.flowId,
     expectedRevision: flow.revision,
-    currentStep: "Same-session continuation turn granted",
+    currentStep: foldedActive
+      ? "folded-into-active-turn: recovered delivered fold note"
+      : "Same-session continuation turn granted",
     stateJson: {
       ...state,
-      deliveredAt: state.deliveredAt ?? now,
-      turnGrantedAt: state.turnGrantedAt ?? state.deliveredAt ?? now,
-      disposition: state.disposition ?? "granted",
+      ...(foldedActive
+        ? { foldedAt: state.foldedAt ?? now }
+        : {
+            deliveredAt: state.deliveredAt ?? now,
+            turnGrantedAt: state.turnGrantedAt ?? state.deliveredAt ?? now,
+          }),
+      disposition: state.disposition ?? (foldedActive ? "folded-active" : "granted"),
       busySkipCount: 0,
     },
     updatedAt: now,
@@ -199,6 +209,9 @@ function workToRuntime(
     ...(state.originRunId ? { originRunId: state.originRunId } : {}),
     ...(state.originTurnId ? { originTurnId: state.originTurnId } : {}),
     ...(state.deliveredAt !== undefined ? { deliveredAt: state.deliveredAt } : {}),
+    ...(state.foldedAt !== undefined ? { foldedAt: state.foldedAt } : {}),
+    ...(state.overdueByMs !== undefined ? { overdueByMs: state.overdueByMs } : {}),
+    ...(state.disposition !== undefined ? { disposition: state.disposition } : {}),
     ...(state.retryCount !== undefined ? { retryCount: state.retryCount } : {}),
     ...(state.busySkipCount !== undefined ? { busySkipCount: state.busySkipCount } : {}),
     ...(state.idleRetry ? { idleRetry: state.idleRetry } : {}),
@@ -500,6 +513,54 @@ export function markPendingWorkFolded(
     },
     notCommittedTag: "work-fold-not-committed",
   });
+}
+
+/**
+ * Durably mark a folded-active note delivered before final terminalization.
+ *
+ * Mirrors the grant-side delivered mark: once an active turn has committed the
+ * folded provenance note to its transcript, recovery must not redeliver the row
+ * if the process dies before finishFlow runs.
+ */
+export function markPendingWorkFoldDelivered(
+  work: PendingContinuationWork,
+  params: { foldedAt: number; overdueByMs: number },
+): boolean {
+  if (!work.flowId || work.expectedRevision === undefined) {
+    return false;
+  }
+  const current = getTaskFlowById(work.flowId);
+  const state = current ? decodeWorkState(current) : undefined;
+  const succeeded = { point: "optimal", durability: "durable" } as const;
+  const updated = updateFlowRecordByIdExpectedRevision({
+    flowId: work.flowId,
+    expectedRevision: work.expectedRevision,
+    patch: {
+      currentStep: "Continuation fold note delivered (durable mark)",
+      stateJson: {
+        ...(state ?? buildFallbackWorkState(work)),
+        disposition: "folded-active",
+        foldedAt: params.foldedAt,
+        overdueByMs: params.overdueByMs,
+        busySkipCount: 0,
+        succeeded,
+      },
+      updatedAt: params.foldedAt,
+    },
+  });
+  if (!updated.applied || !updated.flow) {
+    log.warn(
+      `[continuation:work-fold-deliver-mark-not-committed] flowId=${work.flowId} expectedRevision=${work.expectedRevision}`,
+    );
+    return false;
+  }
+  work.expectedRevision = updated.flow.revision;
+  work.disposition = "folded-active";
+  work.foldedAt = params.foldedAt;
+  work.overdueByMs = params.overdueByMs;
+  work.busySkipCount = 0;
+  work.succeeded = succeeded;
+  return true;
 }
 
 /**

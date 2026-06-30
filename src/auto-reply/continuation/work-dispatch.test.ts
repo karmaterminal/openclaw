@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const turnGrants: unknown[] = [];
 const systemEvents: unknown[] = [];
+const activeQueueDeliveries: unknown[] = [];
 const activeSessions = new Set<string>();
 const replyIdleWaiters = new Map<string, Array<(idle: boolean) => void>>();
 const laneIdleWaiters = new Map<string, Array<(idle: boolean) => void>>();
@@ -10,6 +11,7 @@ let replyError: Error | undefined;
 let commandLaneIdleError: Error | undefined;
 let drainAfterReply = false;
 let replyPayloadOverride: unknown;
+let activeQueueMode: "delivered" | "queued-without-proof" | "rejected" = "delivered";
 // #1137 provenance-fold: lets a test force the trusted-note enqueue to fail so we
 // can prove a folded row stays recoverable and is never terminalized on note loss.
 let systemEventEnqueueOk = true;
@@ -165,6 +167,8 @@ vi.mock("../../sessions/session-key-utils.js", () => ({
 vi.mock("../reply/reply-run-registry.js", () => ({
   replyRunRegistry: {
     isActive: (sessionKey: string) => activeSessions.has(sessionKey),
+    resolveSessionId: (sessionKey: string) =>
+      activeSessions.has(sessionKey) ? `active-session:${sessionKey}` : undefined,
     waitForIdle: (sessionKey: string, _timeoutMs?: number, opts?: { signal?: AbortSignal }) =>
       waitForMockIdle(
         replyIdleWaiters,
@@ -173,6 +177,37 @@ vi.mock("../reply/reply-run-registry.js", () => ({
         opts?.signal,
       ),
   },
+}));
+
+vi.mock("../../agents/embedded-agent-runner/runs.js", () => ({
+  queueEmbeddedAgentMessageWithOutcomeAsync: vi.fn(async (sessionId: string, text: string) => {
+    activeQueueDeliveries.push({ sessionId, text });
+    if (activeQueueMode === "delivered") {
+      return {
+        queued: true,
+        sessionId,
+        target: "embedded_run" as const,
+        gatewayHealth: "live" as const,
+        enqueuedAtMs: Date.now(),
+        deliveredAtMs: Date.now(),
+      };
+    }
+    if (activeQueueMode === "queued-without-proof") {
+      return {
+        queued: true,
+        sessionId,
+        target: "reply_run" as const,
+        gatewayHealth: "live" as const,
+        enqueuedAtMs: Date.now(),
+      };
+    }
+    return {
+      queued: false,
+      sessionId,
+      reason: "no_active_run" as const,
+      gatewayHealth: "live" as const,
+    };
+  }),
 }));
 
 vi.mock("../../process/command-queue.js", () => ({
@@ -429,6 +464,7 @@ describe("durable continuation_work dispatch", () => {
     vi.useFakeTimers({ now: 1_000_000 });
     turnGrants.length = 0;
     systemEvents.length = 0;
+    activeQueueDeliveries.length = 0;
     activeSessions.clear();
     replyIdleWaiters.clear();
     laneIdleWaiters.clear();
@@ -438,6 +474,7 @@ describe("durable continuation_work dispatch", () => {
     commandLaneIdleError = undefined;
     drainAfterReply = false;
     replyPayloadOverride = undefined;
+    activeQueueMode = "delivered";
     systemEventEnqueueOk = true;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
@@ -2335,6 +2372,7 @@ describe("#1135 continue_work end-of-turn finalization park + cross-turn coalesc
     vi.useFakeTimers({ now: 1_000_000 });
     turnGrants.length = 0;
     systemEvents.length = 0;
+    activeQueueDeliveries.length = 0;
     activeSessions.clear();
     replyIdleWaiters.clear();
     laneIdleWaiters.clear();
@@ -2344,6 +2382,7 @@ describe("#1135 continue_work end-of-turn finalization park + cross-turn coalesc
     commandLaneIdleError = undefined;
     drainAfterReply = false;
     replyPayloadOverride = undefined;
+    activeQueueMode = "delivered";
     systemEventEnqueueOk = true;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
@@ -2562,6 +2601,7 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     vi.useFakeTimers({ now: 1_000_000 });
     turnGrants.length = 0;
     systemEvents.length = 0;
+    activeQueueDeliveries.length = 0;
     activeSessions.clear();
     replyIdleWaiters.clear();
     laneIdleWaiters.clear();
@@ -2571,6 +2611,7 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     commandLaneIdleError = undefined;
     drainAfterReply = false;
     replyPayloadOverride = undefined;
+    activeQueueMode = "delivered";
     systemEventEnqueueOk = true;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
@@ -2622,10 +2663,10 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     expect(foldState(flow)).toMatchObject({ disposition: "folded-active" });
     expect(foldState(flow).idleRetry).toBeUndefined();
 
-    // Exactly one trusted provenance note carrying origin/staleness, not a naked imperative.
-    expect(systemEvents).toHaveLength(1);
-    const note = systemEvents[0] as { text: string; options: Record<string, unknown> };
-    expect(note.options).toMatchObject({ sessionKey, trusted: true });
+    // Exactly one committed active-turn note carrying origin/staleness, not a naked imperative.
+    expect(systemEvents).toEqual([]);
+    expect(activeQueueDeliveries).toHaveLength(1);
+    const note = activeQueueDeliveries[0] as { text: string };
     expect(note.text).toContain("push the danger button right now!");
     expect(note.text).toContain("run-origin-A");
     expect(note.text).toContain("Folded at:");
@@ -2673,7 +2714,7 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     });
 
     activeSessions.add(sessionKey);
-    systemEventEnqueueOk = false;
+    activeQueueMode = "rejected";
     await vi.advanceTimersByTimeAsync(5_000);
     await flushAsyncWork();
 
@@ -2683,12 +2724,36 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     expect(flow?.status).toBe("queued");
     expect(foldState(flow).disposition).toBeUndefined();
 
-    // Once the session quiets and the note can be enqueued, it folds-or-grants.
-    systemEventEnqueueOk = true;
+    // Once the session quiets, the still-recoverable row grants normally.
+    activeQueueMode = "delivered";
     activeSessions.delete(sessionKey);
     await vi.advanceTimersByTimeAsync(60_000);
     await waitForTurnGrantCount(1);
     expect(turnGrants).toHaveLength(1);
+  });
+
+  it("keeps the row recoverable when active delivery lacks transcript-commit proof", async () => {
+    const sessionKey = "agent:main:fold-note-no-proof";
+    mockSessionStore[sessionKey] = { sessionKey };
+
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { delaySeconds: 5, reason: "follow up only after proof" },
+      config,
+      originRunId: "run-origin-NP",
+    });
+
+    activeSessions.add(sessionKey);
+    activeQueueMode = "queued-without-proof";
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flushAsyncWork();
+
+    expect(activeQueueDeliveries).toHaveLength(1);
+    const flow = [...mockFlows.values()][0];
+    expect(flow?.status).toBe("queued");
+    expect(foldState(flow).disposition).toBeUndefined();
+    expect(turnGrants).toHaveLength(0);
   });
 
   it("aggregates multiple matured rows into one bounded provenance note while active (no N-note storm, no N turns) (#1135 §5.3.4)", async () => {
@@ -2714,8 +2779,9 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     expect(turnGrants).toHaveLength(0);
     expect(result.dispatched).toBe(0);
     // Exactly one bounded aggregate note, both rows terminal-folded.
-    expect(systemEvents).toHaveLength(1);
-    const note = (systemEvents[0] as { text: string }).text;
+    expect(systemEvents).toEqual([]);
+    expect(activeQueueDeliveries).toHaveLength(1);
+    const note = (activeQueueDeliveries[0] as { text: string }).text;
     expect(note).toContain("older danger button");
     expect(note).toContain("newest coffee reminder");
     const folded = [...mockFlows.values()].filter((flow) => flow.status === "succeeded");
@@ -2746,7 +2812,8 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
 
     expect(result.dispatched).toBe(0);
     expect(turnGrants).toHaveLength(0);
-    expect(systemEvents).toHaveLength(1);
+    expect(systemEvents).toEqual([]);
+    expect(activeQueueDeliveries).toHaveLength(1);
     const flow = [...mockFlows.values()][0];
     expect(flow?.status).toBe("succeeded");
     expect(foldState(flow)).toMatchObject({ disposition: "folded-active" });
