@@ -307,6 +307,8 @@ export function classifyContinuationWorkReason(
     "heartbeat",
     "waiting for",
     "wait for",
+    "off-board",
+    "acknowledg",
   ];
   return waitMarkers.some((marker) => normalized.includes(marker))
     ? "wait-shaped"
@@ -657,8 +659,23 @@ export async function dispatchPendingContinuationWork(params: {
         reason: work.reason,
         log: (message) => log.info(message),
       });
+      const reasonCategory = classifyContinuationWorkReason(work.reason);
+      if (reasonCategory === "wait-shaped") {
+        log.info(
+          `[continuation:work-wait-quiesced] flowId=${work.flowId ?? "none"} session=${work.sessionKey} reasonCategory=${reasonCategory}`,
+        );
+        markPendingWorkSuperseded(
+          work,
+          "Quiesced wait-shaped continue_work without entering another model turn.",
+        );
+        enqueueSystemEvent(
+          "[system:continuation-note] wait-shaped continue_work was quiesced without entering another model turn.",
+          { sessionKey: work.sessionKey, trusted: true },
+        );
+        continue;
+      }
       log.info(
-        `[continuation:work-wake] hop=${work.hop}/${work.maxChainLength} session=${work.sessionKey} reasonCategory=${classifyContinuationWorkReason(work.reason)}`,
+        `[continuation:work-wake] hop=${work.hop}/${work.maxChainLength} session=${work.sessionKey} reasonCategory=${reasonCategory}`,
       );
       const wakeText = formatContinuationWakeText(work);
       const result = await driveContinuationTurn(work, wakeText);
@@ -668,7 +685,6 @@ export async function dispatchPendingContinuationWork(params: {
         continue;
       }
       const skippedReason = result.reason;
-      const reasonCategory = classifyContinuationWorkReason(work.reason);
       log.warn(
         `[continuation:work-drive-skipped] flowId=${work.flowId ?? "none"} session=${work.sessionKey} reason=${skippedReason} reasonCategory=${reasonCategory}`,
       );
@@ -783,6 +799,17 @@ export async function scheduleContinuationWork(params: {
       `[continuation:work-rejected] ${budgetCheck} for ${params.sessionKey}: ${params.chainState.currentChainCount}/${params.config.maxChainLength}`,
     );
     return { scheduled: false, capped: true, chainState: params.chainState };
+  }
+
+  if (classifyContinuationWorkReason(params.request.reason) === "wait-shaped") {
+    params.log?.(
+      `[continuation:work-quiesced] wait-shaped for ${params.sessionKey}: ${params.request.reason}`,
+    );
+    enqueueSystemEvent(
+      "[system:continuation-note] wait-shaped continue_work was quiesced without scheduling another model turn.",
+      { sessionKey: params.sessionKey, trusted: true },
+    );
+    return { scheduled: false, capped: false, chainState: params.chainState };
   }
 
   // #986 Guard 1: per-session concurrent pending-work cap. Orthogonal to the
