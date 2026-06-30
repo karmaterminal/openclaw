@@ -572,83 +572,6 @@ describe("durable continuation_work dispatch", () => {
     ]);
   });
 
-  it("schedules wait-shaped continuation work for the post-turn offset", async () => {
-    const sessionKey = "agent:main:standby-schedule";
-    mockSessionStore[sessionKey] = { sessionKey };
-
-    const result = await scheduleContinuationWork({
-      sessionKey,
-      chainState: {
-        currentChainCount: 1,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 12,
-      },
-      request: { delaySeconds: 0, reason: "Holding off-board and acknowledging standby." },
-      config,
-    });
-
-    expect(result).toEqual({
-      scheduled: true,
-      capped: false,
-      chainState: {
-        currentChainCount: 2,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 12,
-      },
-    });
-    expect([...mockFlows.values()].filter((item) => item.ownerKey === sessionKey)).toHaveLength(1);
-    expect(turnGrants).toHaveLength(0);
-    expect(systemEvents).toEqual([]);
-  });
-
-  it("parks wait-shaped continuation work until the current active turn ends", async () => {
-    const sessionKey = "agent:main:standby-busy";
-    mockSessionStore[sessionKey] = { sessionKey };
-    activeSessions.add(sessionKey);
-    enqueuePendingWork({
-      sessionKey,
-      hop: 2,
-      delayMs: 0,
-      electedAt: Date.now(),
-      dueAt: Date.now(),
-      maxChainLength: 8,
-      reason: "Holding off-board and acknowledging standby.",
-    });
-
-    await dispatchPendingContinuationWork({ sessionKey, includeIdleRetry: true });
-    await waitForMockWaiter(replyIdleWaiters, sessionKey);
-
-    let flow = [...mockFlows.values()].find((item) => item.ownerKey === sessionKey);
-    expect(flow).toMatchObject({
-      status: "queued",
-      stateJson: expect.objectContaining({
-        idleRetry: expect.objectContaining({
-          trigger: "reply-run-ended",
-          reasonCategory: "wait-shaped",
-        }),
-      }),
-    });
-    expect(turnGrants).toHaveLength(0);
-
-    resolveReplyRunIdle(sessionKey);
-    await waitForTurnGrantCount(1);
-
-    flow = [...mockFlows.values()].find((item) => item.ownerKey === sessionKey);
-    expect(flow).toMatchObject({
-      status: "succeeded",
-      currentStep: "Same-session continuation turn granted",
-    });
-    expect(turnGrants).toEqual([
-      expect.objectContaining({
-        context: expect.objectContaining({
-          SessionKey: sessionKey,
-          Body: expect.stringContaining("Holding off-board and acknowledging standby."),
-        }),
-        options: expect.objectContaining({ continuationTrigger: "work-wake" }),
-      }),
-    ]);
-  });
-
   it("recovers persisted idle-retry rows without waiting for the slow hedge", async () => {
     const sessionKey = "agent:main:recover-idle-retry";
     mockSessionStore[sessionKey] = { sessionKey };
@@ -1583,49 +1506,6 @@ describe("durable continuation_work dispatch", () => {
     ]);
   });
 
-  it("coalesces duplicate same-session continue_work elections at the same offset", async () => {
-    const sessionKey = "agent:main:duplicate-fanout";
-    mockSessionStore[sessionKey] = { sessionKey };
-
-    const batch = await scheduleContinuationWorkBatch({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-        chainId: "chain-duplicates",
-      },
-      requests: [
-        { reason: "first immediate duplicate", delaySeconds: 0 },
-        { reason: "first immediate duplicate", delaySeconds: 0 },
-        { reason: "positive-delay work", delaySeconds: 2 },
-      ],
-      config,
-    });
-
-    expect(batch).toMatchObject({ scheduledCount: 2, cappedCount: 0, capped: false });
-    expect([...mockFlows.values()].filter((item) => item.ownerKey === sessionKey)).toHaveLength(2);
-
-    await vi.advanceTimersByTimeAsync(0);
-    await waitForTurnGrantCount(1);
-    expect(turnGrants).toHaveLength(1);
-    expect(turnGrants[0]).toMatchObject({
-      context: expect.objectContaining({
-        Body: expect.stringContaining("first immediate duplicate"),
-      }),
-    });
-
-    await vi.advanceTimersByTimeAsync(1_999);
-    await flushAsyncWork();
-    expect(turnGrants).toHaveLength(1);
-
-    await vi.advanceTimersByTimeAsync(1);
-    await waitForTurnGrantCount(2);
-    expect(turnGrants[1]).toMatchObject({
-      context: expect.objectContaining({ Body: expect.stringContaining("positive-delay work") }),
-    });
-  });
-
   it("delivers a distinct wake for every continue_work election scheduled in one turn (#982)", async () => {
     // Regression for #982: N continue_work() calls in one model turn must each
     // deliver their own wake at their own offset. The single-variable capture
@@ -2422,6 +2302,232 @@ describe("durable continuation_work dispatch", () => {
       });
       expect(recovered).toHaveLength(0); // read-guard skipped the delivered row
     });
+  });
+});
+
+describe("#1135 continue_work end-of-turn finalization park + cross-turn coalesce", () => {
+  const immediateConfig = {
+    ...config,
+    defaultDelayMs: 0,
+    minDelayMs: 0,
+  } satisfies ContinuationRuntimeConfig;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    turnGrants.length = 0;
+    systemEvents.length = 0;
+    activeSessions.clear();
+    replyIdleWaiters.clear();
+    laneIdleWaiters.clear();
+    mainQueueSize = 0;
+    gatewayDraining = false;
+    replyError = undefined;
+    commandLaneIdleError = undefined;
+    drainAfterReply = false;
+    replyPayloadOverride = undefined;
+    for (const key of Object.keys(mockSessionStore)) {
+      delete mockSessionStore[key];
+    }
+    mockFlows.clear();
+    flowCounter = 0;
+    subagentRuns.clear();
+    getReplyFromConfigMock.mockClear();
+    resetContinuationWorkDispatchForTests();
+    resetSubagentSessionCleanupForTests();
+  });
+
+  afterEach(() => {
+    subagentRuns.clear();
+    replyIdleWaiters.clear();
+    laneIdleWaiters.clear();
+    resetContinuationWorkDispatchForTests();
+    resetSubagentSessionCleanupForTests();
+    commandLaneIdleError = undefined;
+    vi.useRealTimers();
+  });
+
+  it("parks a delaySeconds=0 election captured during an active turn and fires exactly once after finalization (no pre-finalization hedge)", async () => {
+    const sessionKey = "agent:main:park-zero";
+    mockSessionStore[sessionKey] = { sessionKey };
+    activeSessions.add(sessionKey);
+
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { delaySeconds: 0, reason: "draft the next section" },
+      config: immediateConfig,
+    });
+
+    // The captured wake parks behind the end-of-turn event; no immediate timer
+    // fires, no requests-in-flight skip, and the durable row carries the marker.
+    await waitForMockWaiter(replyIdleWaiters, sessionKey);
+    const flow = [...mockFlows.values()][0];
+    expect(flow).toMatchObject({
+      status: "queued",
+      stateJson: expect.objectContaining({
+        dueAt: Date.now() + immediateConfig.maxDelayMs,
+        idleRetry: {
+          trigger: "reply-run-ended",
+          reasonCategory: "follow-up-work",
+          armedAt: Date.now(),
+        },
+      }),
+    });
+    expect(getReplyFromConfigMock).not.toHaveBeenCalled();
+
+    // The Jun7/Jun8 signature was a sub-second hedge loop firing while the same
+    // session was still active. Advancing far past any 1s hedge must NOT fire.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flushAsyncWork();
+    expect(turnGrants).toHaveLength(0);
+
+    // Finalize the current turn → the parked wake fires exactly once.
+    resolveReplyRunIdle(sessionKey);
+    await waitForTurnGrantCount(1);
+    expect(turnGrants).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          SessionKey: sessionKey,
+          Body: expect.stringContaining("draft the next section"),
+        }),
+      }),
+    ]);
+  });
+
+  it("fires a delaySeconds>0 election once at finalization + offset, not via a busy hedge loop", async () => {
+    const sessionKey = "agent:main:park-delay";
+    mockSessionStore[sessionKey] = { sessionKey };
+    activeSessions.add(sessionKey);
+
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { delaySeconds: 5, reason: "resume after the offset" },
+      config,
+    });
+
+    // Finalize the electing turn; the offset is measured from this post-turn point.
+    resolveReplyRunIdle(sessionKey);
+
+    await vi.advanceTimersByTimeAsync(4_999);
+    await flushAsyncWork();
+    expect(turnGrants).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await flushTimers();
+    expect(turnGrants).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          SessionKey: sessionKey,
+          Body: expect.stringContaining("resume after the offset"),
+        }),
+      }),
+    ]);
+  });
+
+  it("coalesces repeated hold/ack/wait elections across turns into the newest, bounded and fired once (no accumulation, no hedge loop)", async () => {
+    const sessionKey = "agent:main:coalesce";
+    mockSessionStore[sessionKey] = { sessionKey };
+    activeSessions.add(sessionKey);
+
+    // Successive turns each elect a delaySeconds=0 hold while the session stays
+    // active (the courtesy/off-board churn shape). Each turn schedules via the
+    // batch helper, exactly like the runtime.
+    const reasons = [
+      "standing by",
+      "holding position",
+      "all tasks complete",
+      "standing by once more",
+    ];
+    for (const reason of reasons) {
+      await scheduleContinuationWorkBatch({
+        sessionKey,
+        chainState: {
+          currentChainCount: 0,
+          chainStartedAt: Date.now(),
+          accumulatedChainTokens: 0,
+          chainId: "chain-hold",
+        },
+        requests: [{ reason, delaySeconds: 0 }],
+        config: immediateConfig,
+      });
+    }
+
+    // Rows stay bounded: only the newest election remains queued; the older
+    // parked duplicates were folded (succeeded), not dropped by reason text.
+    const queued = [...mockFlows.values()].filter((flow) => flow.status === "queued");
+    expect(queued).toHaveLength(1);
+    expect(queued[0]?.stateJson).toMatchObject({ reason: "standing by once more" });
+    const folded = [...mockFlows.values()].filter((flow) => flow.status === "succeeded");
+    expect(folded).toHaveLength(reasons.length - 1);
+
+    // No high-frequency wake loop while the session is active.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flushAsyncWork();
+    expect(turnGrants).toHaveLength(0);
+
+    // Finalize → the newest valid election fires exactly once.
+    resolveReplyRunIdle(sessionKey);
+    await waitForTurnGrantCount(1);
+    expect(turnGrants).toHaveLength(1);
+    expect(turnGrants[0]).toMatchObject({
+      context: expect.objectContaining({
+        Body: expect.stringContaining("standing by once more"),
+      }),
+    });
+  });
+
+  it("schedules durable wait-shaped continuation work instead of refusing it by reason (#1135 cure, not #1136 quiesce)", async () => {
+    // #1136 made scheduleContinuationWork refuse any wait-shaped reason and made
+    // the tool's `scheduled` result untrue. The contract is the opposite: reason
+    // is diagnostic only, the durable work is created, and it actually fires.
+    const sessionKey = "agent:main:wait-shaped-schedules";
+    mockSessionStore[sessionKey] = { sessionKey };
+
+    const result = await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { delaySeconds: 0, reason: "standing by and yielding" },
+      config: immediateConfig,
+    });
+
+    // Truthful: durable work was created (not refused by reason classification).
+    expect(result.scheduled).toBe(true);
+    expect(classifyContinuationWorkReason("standing by and yielding")).toBe("wait-shaped");
+    const flow = [...mockFlows.values()][0];
+    expect(flow?.status).toBe("queued");
+
+    // And it delivers — the wait-shaped wake is not silently dropped.
+    await vi.advanceTimersByTimeAsync(0);
+    await flushAsyncWork();
+    expect(turnGrants).toHaveLength(1);
+  });
+
+  it("does not coalesce distinct elections fanned out within a single turn (#982 preserved)", async () => {
+    const sessionKey = "agent:main:coalesce-respects-982";
+    mockSessionStore[sessionKey] = { sessionKey };
+    activeSessions.add(sessionKey);
+
+    const batch = await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+        chainId: "chain-fanout",
+      },
+      requests: [
+        { reason: "fanout-A", delaySeconds: 0 },
+        { reason: "fanout-B", delaySeconds: 0 },
+      ],
+      config: immediateConfig,
+    });
+
+    // Both elections from THIS turn survive — cross-turn coalesce folds only
+    // prior-turn parked rows, never the within-turn fan-out.
+    expect(batch).toMatchObject({ scheduledCount: 2, cappedCount: 0 });
+    const queued = [...mockFlows.values()].filter((flow) => flow.status === "queued");
+    expect(queued).toHaveLength(2);
   });
 });
 
