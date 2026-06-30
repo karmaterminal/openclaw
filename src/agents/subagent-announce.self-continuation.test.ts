@@ -167,14 +167,26 @@ describe("#952 subagent self-continuation via announce/completion flow", () => {
     await state.cleanup();
   });
 
-  it("arms a same-session continue_work wake from the CONTINUE_WORK token in findings", async () => {
+  it("arms a same-session continue_work wake from the CONTINUE_WORK token in findings without parentRunId", async () => {
     expect(continuationWorkFlows()).toHaveLength(0);
 
     await runSubagentAnnounceFlow(buildParams("Research progress so far.\nCONTINUE_WORK:5"));
 
     const flows = continuationWorkFlows();
     expect(flows).toHaveLength(1);
-    expect((flows[0].stateJson as { sessionKey?: string }).sessionKey).toBe(childSessionKey);
+    const stateJson = flows[0].stateJson as {
+      sessionKey?: string;
+      parentRunId?: string;
+      originRunId?: string;
+      originTurnId?: string;
+    };
+    expect(stateJson.sessionKey).toBe(childSessionKey);
+    // #1137/#952: this fallback is a same-session self-continuation. Origin
+    // identity is provenance only; parentRunId would make a terminal electing
+    // child run orphan-reap its own hop-2 wake before it can fire.
+    expect(stateJson.parentRunId).toBeUndefined();
+    expect(stateJson.originRunId).toBe("run-952-self-cont");
+    expect(stateJson.originTurnId).toBe(childSessionKey);
   });
 
   it("strips the CONTINUE_WORK token from the findings announced to the parent", async () => {

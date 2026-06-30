@@ -3108,6 +3108,7 @@ export async function runReplyAgent(replyParams: {
               // matching note in attempt-execution.ts scheduleSpawnInitContinueWorkWake).
               // #1137: origin identity is provenance-only and never sets parentRunId.
               originRunId: runId,
+              originTurnId: followupRun.run.sessionId,
               log: (message) => defaultRuntime.log(message),
             });
             if (batchResult.scheduledCount > 0) {

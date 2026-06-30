@@ -504,9 +504,9 @@ async function scheduleSubagentSelfContinuationWork(params: {
       chainState: loadContinuationChainState(childEntry),
       requests: [{ reason: "subagent self-continuation (CONTINUE_WORK token)", delaySeconds }],
       config,
-      parentRunId: params.childRunId,
-      // #1137 origin provenance (audit only; a separate field from parentRunId):
-      // the electing child run/session this self-continuation was elected from.
+      // #1137 origin provenance (audit only; NEVER parentRunId): this is a
+      // same-session self-continuation, so setting parentRunId would re-open the
+      // #952 orphan-reap trap when the electing child run is terminal by wake time.
       originRunId: params.childRunId,
       originTurnId: params.childSessionKey,
       log: (message) => defaultRuntime.log(message),
