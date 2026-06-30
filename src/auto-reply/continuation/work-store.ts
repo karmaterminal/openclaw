@@ -31,6 +31,9 @@ const PendingWorkStateSchema = z.object({
   delayMs: z.number().int().nonnegative(),
   electedAt: z.number().int().nonnegative(),
   dueAt: z.number().int().nonnegative(),
+  // Retry/recovery eligibility timestamp. `dueAt` remains the semantic maturity
+  // time for anchored #1137 rows; recoveryDueAt only delays redelivery attempts.
+  recoveryDueAt: z.number().int().nonnegative().optional(),
   maxChainLength: z.number().int().positive(),
   chainStartedAt: z.number().int().nonnegative().optional(),
   accumulatedChainTokens: z.number().int().nonnegative().optional(),
@@ -99,6 +102,7 @@ export type PendingContinuationWork = {
   delayMs: number;
   electedAt: number;
   dueAt: number;
+  recoveryDueAt?: number;
   maxChainLength: number;
   chainStartedAt?: number;
   accumulatedChainTokens?: number;
@@ -150,6 +154,7 @@ function decodeWorkState(flow: TaskFlowRecord): PendingWorkState | undefined {
 function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState): void {
   const now = Date.now();
   const foldedActive = state.disposition === "folded-active";
+  const { recoveryDueAt: _recoveryDueAt, ...terminalState } = state;
   const finished = finishFlow({
     flowId: flow.flowId,
     expectedRevision: flow.revision,
@@ -157,7 +162,7 @@ function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState
       ? "folded-into-active-turn: recovered delivered fold note"
       : "Same-session continuation turn granted",
     stateJson: {
-      ...state,
+      ...terminalState,
       ...(foldedActive
         ? { foldedAt: state.foldedAt ?? now }
         : {
@@ -193,6 +198,7 @@ function workToRuntime(
     delayMs: state.delayMs,
     electedAt: state.electedAt,
     dueAt: state.dueAt,
+    ...(state.recoveryDueAt !== undefined ? { recoveryDueAt: state.recoveryDueAt } : {}),
     maxChainLength: state.maxChainLength,
     ...(state.chainStartedAt !== undefined ? { chainStartedAt: state.chainStartedAt } : {}),
     ...(state.accumulatedChainTokens !== undefined
@@ -230,6 +236,7 @@ export function enqueuePendingWork(work: PendingContinuationWork): PendingContin
     delayMs: work.delayMs,
     electedAt: work.electedAt,
     dueAt: work.dueAt,
+    ...(work.recoveryDueAt !== undefined ? { recoveryDueAt: work.recoveryDueAt } : {}),
     maxChainLength: work.maxChainLength,
     ...(work.chainStartedAt !== undefined ? { chainStartedAt: work.chainStartedAt } : {}),
     ...(work.accumulatedChainTokens !== undefined
@@ -334,11 +341,12 @@ export function consumePendingWork(
     if (flow.status !== "queued" && !canConsumeRunning) {
       continue;
     }
+    const retryEligibleAt = Math.max(state.dueAt, state.recoveryDueAt ?? state.dueAt);
     const idleRetryReady =
       state.idleRetry !== undefined &&
       (options.includeIdleRetry === true ||
         (options.includeRunningIdleRetry === true && flow.status === "running"));
-    if (now < state.dueAt && !idleRetryReady) {
+    if (now < retryEligibleAt && !idleRetryReady) {
       continue;
     }
     const releasedAt = Date.now();
@@ -380,6 +388,7 @@ function buildFallbackWorkState(work: PendingContinuationWork): PendingWorkState
     delayMs: work.delayMs,
     electedAt: work.electedAt,
     dueAt: work.dueAt,
+    ...(work.recoveryDueAt !== undefined ? { recoveryDueAt: work.recoveryDueAt } : {}),
     maxChainLength: work.maxChainLength,
   };
 }
@@ -404,7 +413,7 @@ function finishContinuationWorkFlow(
   const state = current ? decodeWorkState(current) : undefined;
   const now = Date.now();
   const baseState: PendingWorkState = state ?? buildFallbackWorkState(work);
-  const { idleRetry: _idleRetry, ...terminalState } = baseState;
+  const { idleRetry: _idleRetry, recoveryDueAt: _recoveryDueAt, ...terminalState } = baseState;
   const finished = finishFlow({
     flowId: work.flowId,
     expectedRevision: work.expectedRevision,
@@ -461,7 +470,12 @@ export function finalizeAnchorPendingWork(sessionKey: string, anchorFinalizedAt:
     if (!state || state.anchorPending !== true) {
       continue;
     }
-    const { anchorPending: _anchorPending, idleRetry: _idleRetry, ...rest } = state;
+    const {
+      anchorPending: _anchorPending,
+      idleRetry: _idleRetry,
+      recoveryDueAt: _recoveryDueAt,
+      ...rest
+    } = state;
     const next: PendingWorkState = {
       ...rest,
       anchorFinalizedAt,
@@ -634,10 +648,16 @@ export function requeuePendingWork(
     dueAt: work.dueAt,
     maxChainLength: work.maxChainLength,
   };
-  const { idleRetry: _idleRetry, ...stateWithoutIdleRetry } = baseState;
+  const {
+    idleRetry: _idleRetry,
+    recoveryDueAt: _recoveryDueAt,
+    ...stateWithoutIdleRetry
+  } = baseState;
+  const preserveSemanticDueAt = baseState.anchorFinalizedAt !== undefined;
   const nextState: PendingWorkState = {
     ...stateWithoutIdleRetry,
-    dueAt: params.dueAt,
+    dueAt: preserveSemanticDueAt ? baseState.dueAt : params.dueAt,
+    ...(preserveSemanticDueAt ? { recoveryDueAt: params.dueAt } : {}),
     ...(params.retryCount !== undefined ? { retryCount: params.retryCount } : {}),
     ...(params.busySkipCount !== undefined ? { busySkipCount: params.busySkipCount } : {}),
     ...(params.idleRetry ? { idleRetry: params.idleRetry } : {}),
@@ -759,10 +779,11 @@ export function peekSoonestQueuedWorkDueAt(
     if (!state) {
       continue;
     }
-    if (options.after !== undefined && state.dueAt <= options.after) {
+    const queuedDueAt = Math.max(state.dueAt, state.recoveryDueAt ?? state.dueAt);
+    if (options.after !== undefined && queuedDueAt <= options.after) {
       continue;
     }
-    soonest = soonest === undefined ? state.dueAt : Math.min(soonest, state.dueAt);
+    soonest = soonest === undefined ? queuedDueAt : Math.min(soonest, queuedDueAt);
   }
   return soonest;
 }
@@ -787,10 +808,11 @@ export function peekSoonestRunningWorkRecoveryDueAt(
     if (state.succeeded) {
       continue;
     }
+    const semanticOrRetryDueAt = Math.max(state.dueAt, state.recoveryDueAt ?? state.dueAt);
     const recoveryDueAt =
       state.idleRetry !== undefined
         ? flow.updatedAt + staleMs
-        : Math.max(state.dueAt, flow.updatedAt + staleMs);
+        : Math.max(semanticOrRetryDueAt, flow.updatedAt + staleMs);
     if (recoveryDueAt <= now) {
       return now;
     }

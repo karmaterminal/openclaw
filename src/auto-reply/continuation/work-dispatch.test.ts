@@ -2723,6 +2723,10 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     const flow = [...mockFlows.values()][0];
     expect(flow?.status).toBe("queued");
     expect(foldState(flow).disposition).toBeUndefined();
+    expect(foldState(flow)).toMatchObject({
+      dueAt: Date.now(),
+      recoveryDueAt: Date.now() + 30_000,
+    });
 
     // Once the session quiets, the still-recoverable row grants normally.
     activeQueueMode = "delivered";
@@ -2754,6 +2758,38 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     expect(flow?.status).toBe("queued");
     expect(foldState(flow).disposition).toBeUndefined();
     expect(turnGrants).toHaveLength(0);
+  });
+
+  it("preserves semantic dueAt across active-fold retry and reports real overdue age", async () => {
+    const sessionKey = "agent:main:fold-note-retry-preserves-due";
+    mockSessionStore[sessionKey] = { sessionKey };
+
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { delaySeconds: 5, reason: "fold after retry" },
+      config,
+      originRunId: "run-origin-RD",
+    });
+
+    activeSessions.add(sessionKey);
+    activeQueueMode = "rejected";
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flushAsyncWork();
+    const flowAfterFailure = [...mockFlows.values()][0];
+    expect(foldState(flowAfterFailure)).toMatchObject({
+      dueAt: Date.now(),
+      recoveryDueAt: Date.now() + 30_000,
+    });
+
+    activeQueueMode = "delivered";
+    await vi.advanceTimersByTimeAsync(30_000);
+    await flushAsyncWork();
+
+    expect(activeQueueDeliveries).toHaveLength(2);
+    const deliveredNote = (activeQueueDeliveries[1] as { text: string }).text;
+    expect(deliveredNote).toContain("Overdue by: 30000ms");
+    expect([...mockFlows.values()][0]?.status).toBe("succeeded");
   });
 
   it("aggregates multiple matured rows into one bounded provenance note while active (no N-note storm, no N turns) (#1135 §5.3.4)", async () => {

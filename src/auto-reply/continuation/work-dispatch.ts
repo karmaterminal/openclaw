@@ -848,6 +848,8 @@ export async function dispatchPendingContinuationWork(params: {
       { sessionKey: params.sessionKey, trusted: true },
     );
   }
+  // Includes rows anchored just above. Positive-delay elections captured during
+  // an active turn re-arm here at their semantic finalization+delay due time.
   const soonestQueued = peekSoonestUnmaturedWorkDueAt(params.sessionKey);
   const runningRecoveryDueAt = peekSoonestRunningWorkRecoveryDueAt(
     params.sessionKey,
