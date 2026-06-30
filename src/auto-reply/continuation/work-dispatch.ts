@@ -869,6 +869,27 @@ export type ContinuationWorkBatchResult = {
  * because the cumulative chain count only grows, so every later election would
  * hit the same cap.
  */
+
+function coalesceSameOffsetWorkRequests(
+  requests: readonly ContinueWorkRequest[],
+  config: ContinuationRuntimeConfig,
+): ContinueWorkRequest[] {
+  const seenKeys = new Set<string>();
+  const coalesced: ContinueWorkRequest[] = [];
+  for (const request of requests) {
+    const delayMs = clampDelayMs(request.delaySeconds * 1000, config);
+    // Coalesce exact duplicate tool emissions only; reason stays diagnostic
+    // identity, not a wait/follow-up admission-control gate.
+    const key = JSON.stringify([delayMs, request.reason, request.traceparent ?? ""]);
+    if (seenKeys.has(key)) {
+      continue;
+    }
+    seenKeys.add(key);
+    coalesced.push(request);
+  }
+  return coalesced;
+}
+
 export async function scheduleContinuationWorkBatch(params: {
   sessionKey: string;
   chainState: ChainState;
@@ -877,9 +898,10 @@ export async function scheduleContinuationWorkBatch(params: {
   parentRunId?: string;
   log?: (message: string) => void;
 }): Promise<ContinuationWorkBatchResult> {
+  const requests = coalesceSameOffsetWorkRequests(params.requests, params.config);
   let chainState = params.chainState;
   let scheduledCount = 0;
-  for (const request of params.requests) {
+  for (const request of requests) {
     const result = await scheduleContinuationWork({
       sessionKey: params.sessionKey,
       chainState,
@@ -891,7 +913,7 @@ export async function scheduleContinuationWorkBatch(params: {
     if (!result.scheduled) {
       return {
         scheduledCount,
-        cappedCount: params.requests.length - scheduledCount,
+        cappedCount: requests.length - scheduledCount,
         capped: result.capped,
         chainState,
       };

@@ -1583,6 +1583,49 @@ describe("durable continuation_work dispatch", () => {
     ]);
   });
 
+  it("coalesces duplicate same-session continue_work elections at the same offset", async () => {
+    const sessionKey = "agent:main:duplicate-fanout";
+    mockSessionStore[sessionKey] = { sessionKey };
+
+    const batch = await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+        chainId: "chain-duplicates",
+      },
+      requests: [
+        { reason: "first immediate duplicate", delaySeconds: 0 },
+        { reason: "first immediate duplicate", delaySeconds: 0 },
+        { reason: "positive-delay work", delaySeconds: 2 },
+      ],
+      config,
+    });
+
+    expect(batch).toMatchObject({ scheduledCount: 2, cappedCount: 0, capped: false });
+    expect([...mockFlows.values()].filter((item) => item.ownerKey === sessionKey)).toHaveLength(2);
+
+    await vi.advanceTimersByTimeAsync(0);
+    await waitForTurnGrantCount(1);
+    expect(turnGrants).toHaveLength(1);
+    expect(turnGrants[0]).toMatchObject({
+      context: expect.objectContaining({
+        Body: expect.stringContaining("first immediate duplicate"),
+      }),
+    });
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    await flushAsyncWork();
+    expect(turnGrants).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await waitForTurnGrantCount(2);
+    expect(turnGrants[1]).toMatchObject({
+      context: expect.objectContaining({ Body: expect.stringContaining("positive-delay work") }),
+    });
+  });
+
   it("delivers a distinct wake for every continue_work election scheduled in one turn (#982)", async () => {
     // Regression for #982: N continue_work() calls in one model turn must each
     // deliver their own wake at their own offset. The single-variable capture
