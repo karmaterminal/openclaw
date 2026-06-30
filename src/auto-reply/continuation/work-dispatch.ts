@@ -409,7 +409,15 @@ function isoOrUndefined(ms: number | undefined): string | undefined {
  * never a naked imperative. `now` stamps the delivery/fold instant and the
  * overdue-by figure (clamped to >=0; a wake delivered slightly early reads 0ms).
  */
-function provenanceLines(work: PendingContinuationWork, now: number): string[] {
+type ContinuationProvenanceDisposition =
+  | { disposition: "granted"; deliveredAt: number }
+  | { disposition: "folded-active"; foldedAt: number };
+
+function provenanceLines(
+  work: PendingContinuationWork,
+  now: number,
+  terminal?: ContinuationProvenanceDisposition,
+): string[] {
   const overdueByMs = work.dueAt !== undefined ? Math.max(0, now - work.dueAt) : undefined;
   const lines: string[] = [];
   if (work.originRunId) {
@@ -428,6 +436,14 @@ function provenanceLines(work: PendingContinuationWork, now: number): string[] {
   if (overdueByMs !== undefined) {
     lines.push(`Overdue by: ${overdueByMs}ms`);
   }
+  if (terminal?.disposition === "granted") {
+    lines.push(`Delivered at: ${isoOrUndefined(terminal.deliveredAt)}`);
+  } else if (terminal?.disposition === "folded-active") {
+    lines.push(`Folded at: ${isoOrUndefined(terminal.foldedAt)}`);
+  }
+  if (terminal) {
+    lines.push(`Disposition: ${terminal.disposition}`);
+  }
   lines.push(
     `Chain: ${work.chainId ?? work.flowId ?? "n/a"} hop ${work.hop}/${work.maxChainLength}`,
   );
@@ -440,7 +456,11 @@ function formatContinuationWakeText(work: PendingContinuationWork): string {
   // Provenance banner on the granted wake (#1137 §5.3.1): even a granted turn
   // carries the origin/age timeline so the successor turn knows where the intent
   // came from, not just its raw reason text.
-  const provenance = provenanceLines(work, Date.now()).join(" ");
+  const deliveredAt = Date.now();
+  const provenance = provenanceLines(work, deliveredAt, {
+    disposition: "granted",
+    deliveredAt,
+  }).join(" ");
   return (
     `[continuation:wake] Turn ${work.hop}/${work.maxChainLength}. ` +
     (work.chainStartedAt !== undefined
@@ -482,7 +502,10 @@ function buildFoldedProvenanceNote(works: readonly PendingContinuationWork[], no
   const blocks = detailed.map((work, index) => {
     const label =
       works.length === 1 ? "Folded intent" : `Folded intent ${index + 1}/${works.length}`;
-    return `${label}:\n${provenanceLines(work, now).join("\n")}`;
+    return `${label}:\n${provenanceLines(work, now, {
+      disposition: "folded-active",
+      foldedAt: now,
+    }).join("\n")}`;
   });
   const omitted = ordered.length - detailed.length;
   const tail =

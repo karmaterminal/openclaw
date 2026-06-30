@@ -1838,8 +1838,13 @@ describe("durable continuation_work dispatch", () => {
     expect(result).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
     const flow = [...mockFlows.values()][0];
     expect(flow?.status).toBe("succeeded");
-    const state = flow?.stateJson as { busySkipCount?: number; turnGrantedAt?: number };
+    const state = flow?.stateJson as {
+      busySkipCount?: number;
+      deliveredAt?: number;
+      turnGrantedAt?: number;
+    };
     expect(state.busySkipCount).toBe(0);
+    expect(state.deliveredAt).toBeGreaterThan(0);
     expect(state.turnGrantedAt).toBeGreaterThan(0);
     expect(turnGrants).toEqual([
       expect.objectContaining({
@@ -2242,6 +2247,12 @@ describe("durable continuation_work dispatch", () => {
         point: "optimal",
         durability: "durable",
       });
+      expect((flow?.stateJson as { disposition?: string } | undefined)?.disposition).toBe(
+        "granted",
+      );
+      expect(
+        (flow?.stateJson as { deliveredAt?: number } | undefined)?.deliveredAt,
+      ).toBeGreaterThan(0);
     });
 
     it("mark optimal+durable BEFORE restart-window → reboot read-guard SKIPs (no dup)", async () => {
@@ -2617,6 +2628,8 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     expect(note.options).toMatchObject({ sessionKey, trusted: true });
     expect(note.text).toContain("push the danger button right now!");
     expect(note.text).toContain("run-origin-A");
+    expect(note.text).toContain("Folded at:");
+    expect(note.text).toContain("Disposition: folded-active");
     expect(note.text).toMatch(/folded|matured|prior/i);
   });
 
@@ -2641,6 +2654,8 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     const body = (turnGrants[0] as { context: { Body: string } }).context.Body;
     expect(body).toContain("resume drafting the report");
     expect(body).toContain("run-origin-G");
+    expect(body).toContain("Delivered at:");
+    expect(body).toContain("Disposition: granted");
     const flow = [...mockFlows.values()][0];
     expect(flow?.status).toBe("succeeded");
   });

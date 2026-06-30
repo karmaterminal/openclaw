@@ -54,6 +54,7 @@ const PendingWorkStateSchema = z.object({
   originRunId: z.string().optional(),
   originTurnId: z.string().optional(),
   releasedAt: z.number().int().nonnegative().optional(),
+  deliveredAt: z.number().int().nonnegative().optional(),
   turnGrantedAt: z.number().int().nonnegative().optional(),
   // #1137 terminal fold bookkeeping: stamped when a matured row is folded into a
   // later active turn (provenance note delivered) rather than granted a turn.
@@ -110,6 +111,7 @@ export type PendingContinuationWork = {
   anchorFinalizedAt?: number;
   originRunId?: string;
   originTurnId?: string;
+  deliveredAt?: number;
   retryCount?: number;
   // Consecutive busy-skip count for diagnostics/rate state. Distinct from
   // retryCount (the transient-error fail-bound). Never penalizes.
@@ -150,7 +152,9 @@ function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState
     currentStep: "Same-session continuation turn granted",
     stateJson: {
       ...state,
-      turnGrantedAt: state.turnGrantedAt ?? now,
+      deliveredAt: state.deliveredAt ?? now,
+      turnGrantedAt: state.turnGrantedAt ?? state.deliveredAt ?? now,
+      disposition: state.disposition ?? "granted",
       busySkipCount: 0,
     },
     updatedAt: now,
@@ -194,6 +198,7 @@ function workToRuntime(
       : {}),
     ...(state.originRunId ? { originRunId: state.originRunId } : {}),
     ...(state.originTurnId ? { originTurnId: state.originTurnId } : {}),
+    ...(state.deliveredAt !== undefined ? { deliveredAt: state.deliveredAt } : {}),
     ...(state.retryCount !== undefined ? { retryCount: state.retryCount } : {}),
     ...(state.busySkipCount !== undefined ? { busySkipCount: state.busySkipCount } : {}),
     ...(state.idleRetry ? { idleRetry: state.idleRetry } : {}),
@@ -412,7 +417,11 @@ export function markPendingWorkTurnGranted(work: PendingContinuationWork): boole
     currentStep: "Same-session continuation turn granted",
     // A flow that drove is no longer busy-deferred — clear the busy counter so
     // the granted record never carries stale retry state.
-    stateExtra: { busySkipCount: 0, disposition: "granted" },
+    stateExtra: {
+      deliveredAt: work.deliveredAt ?? Date.now(),
+      busySkipCount: 0,
+      disposition: "granted",
+    },
     notCommittedTag: "work-finish-not-committed",
   });
 }
@@ -519,7 +528,12 @@ export function markPendingWorkDelivered(work: PendingContinuationWork): boolean
     expectedRevision: work.expectedRevision,
     patch: {
       currentStep: "Continuation wake delivered (durable mark)",
-      stateJson: { ...(state ?? buildFallbackWorkState(work)), succeeded },
+      stateJson: {
+        ...(state ?? buildFallbackWorkState(work)),
+        deliveredAt: now,
+        disposition: "granted",
+        succeeded,
+      },
       updatedAt: now,
     },
   });
@@ -530,6 +544,7 @@ export function markPendingWorkDelivered(work: PendingContinuationWork): boolean
     return false;
   }
   work.expectedRevision = updated.flow.revision;
+  work.deliveredAt = now;
   work.succeeded = succeeded;
   return true;
 }
