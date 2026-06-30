@@ -726,8 +726,11 @@ async function deliverFoldedProvenanceNoteToActiveTurn(params: {
   if (!sessionId) {
     return { delivered: false, reason: "missing-active-session-id" };
   }
-  const { queueEmbeddedAgentMessageWithOutcomeAsync } =
+  const { isEmbeddedAgentRunHandleActive, queueEmbeddedAgentMessageWithOutcomeAsync } =
     await import("../../agents/embedded-agent-runner/runs.js");
+  if (!isEmbeddedAgentRunHandleActive(sessionId)) {
+    return { delivered: false, reason: "active-embedded-run-required-for-transcript-proof" };
+  }
   const outcome = await queueEmbeddedAgentMessageWithOutcomeAsync(sessionId, params.note, {
     steeringMode: "all",
     debounceMs: 0,

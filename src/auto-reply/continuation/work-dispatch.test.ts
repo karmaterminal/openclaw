@@ -12,6 +12,7 @@ let commandLaneIdleError: Error | undefined;
 let drainAfterReply = false;
 let replyPayloadOverride: unknown;
 let activeQueueMode: "delivered" | "queued-without-proof" | "rejected" = "delivered";
+let activeQueueHandleAvailable = true;
 // #1137 provenance-fold: lets a test force the trusted-note enqueue to fail so we
 // can prove a folded row stays recoverable and is never terminalized on note loss.
 let systemEventEnqueueOk = true;
@@ -180,6 +181,7 @@ vi.mock("../reply/reply-run-registry.js", () => ({
 }));
 
 vi.mock("../../agents/embedded-agent-runner/runs.js", () => ({
+  isEmbeddedAgentRunHandleActive: vi.fn(() => activeQueueHandleAvailable),
   queueEmbeddedAgentMessageWithOutcomeAsync: vi.fn(async (sessionId: string, text: string) => {
     activeQueueDeliveries.push({ sessionId, text });
     if (activeQueueMode === "delivered") {
@@ -475,6 +477,7 @@ describe("durable continuation_work dispatch", () => {
     drainAfterReply = false;
     replyPayloadOverride = undefined;
     activeQueueMode = "delivered";
+    activeQueueHandleAvailable = true;
     systemEventEnqueueOk = true;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
@@ -2383,6 +2386,7 @@ describe("#1135 continue_work end-of-turn finalization park + cross-turn coalesc
     drainAfterReply = false;
     replyPayloadOverride = undefined;
     activeQueueMode = "delivered";
+    activeQueueHandleAvailable = true;
     systemEventEnqueueOk = true;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
@@ -2612,6 +2616,7 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     drainAfterReply = false;
     replyPayloadOverride = undefined;
     activeQueueMode = "delivered";
+    activeQueueHandleAvailable = true;
     systemEventEnqueueOk = true;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
@@ -2758,6 +2763,28 @@ describe("#1137 mature-while-active provenance fold (#1135 contract)", () => {
     expect(flow?.status).toBe("queued");
     expect(foldState(flow).disposition).toBeUndefined();
     expect(turnGrants).toHaveLength(0);
+  });
+
+  it("does not send a folded note to reply-run fallback when commit proof is unavailable", async () => {
+    const sessionKey = "agent:main:fold-note-no-active-handle";
+    mockSessionStore[sessionKey] = { sessionKey };
+
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { delaySeconds: 5, reason: "do not fire-and-forget" },
+      config,
+    });
+
+    activeSessions.add(sessionKey);
+    activeQueueHandleAvailable = false;
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flushAsyncWork();
+
+    expect(activeQueueDeliveries).toEqual([]);
+    const flow = [...mockFlows.values()][0];
+    expect(flow?.status).toBe("queued");
+    expect(foldState(flow).disposition).toBeUndefined();
   });
 
   it("preserves semantic dueAt across active-fold retry and reports real overdue age", async () => {
