@@ -2714,9 +2714,7 @@ export async function runReplyAgent(replyParams: {
         ...(effectiveContinuationSignal.traceparent
           ? { traceparent: effectiveContinuationSignal.traceparent }
           : {}),
-        ...(effectiveContinuationSignal.model
-          ? { model: effectiveContinuationSignal.model }
-          : {}),
+        ...(effectiveContinuationSignal.model ? { model: effectiveContinuationSignal.model } : {}),
       });
       enqueueSystemEvent(
         `[continuation:delegate-staged-post-compaction] Bracket delegate staged for post-compaction release: ${effectiveContinuationSignal.task}`,
@@ -3108,6 +3106,8 @@ export async function runReplyAgent(replyParams: {
               // Same-session own-turn continue_work has no spawning lineage; leave
               // parentRunId unset so #990 bucket-1 never orphan-reaps it (see the
               // matching note in attempt-execution.ts scheduleSpawnInitContinueWorkWake).
+              // #1137: origin identity is provenance-only and never sets parentRunId.
+              originRunId: runId,
               log: (message) => defaultRuntime.log(message),
             });
             if (batchResult.scheduledCount > 0) {

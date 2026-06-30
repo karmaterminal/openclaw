@@ -271,6 +271,8 @@ type ContinuationWorkModule = {
     requests: readonly { reason: string; delaySeconds: number; traceparent?: string }[];
     config: ReturnType<typeof resolveContinuationRuntimeConfig>;
     parentRunId?: string;
+    originRunId?: string;
+    originTurnId?: string;
     log?: (message: string) => void;
   }) => Promise<{
     scheduledCount: number;
@@ -503,6 +505,10 @@ async function scheduleSubagentSelfContinuationWork(params: {
       requests: [{ reason: "subagent self-continuation (CONTINUE_WORK token)", delaySeconds }],
       config,
       parentRunId: params.childRunId,
+      // #1137 origin provenance (audit only; a separate field from parentRunId):
+      // the electing child run/session this self-continuation was elected from.
+      originRunId: params.childRunId,
+      originTurnId: params.childSessionKey,
       log: (message) => defaultRuntime.log(message),
     });
     if (result.scheduledCount === 0) {

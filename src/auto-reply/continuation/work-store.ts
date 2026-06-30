@@ -38,8 +38,28 @@ const PendingWorkStateSchema = z.object({
   parentRunId: z.string().optional(),
   chainId: z.string().optional(),
   traceparent: z.string().optional(),
+  // #1137 finalization anchor + provenance (separate from parentRunId so origin
+  // identity never re-opens the #952 same-session orphan-reap trap).
+  // `anchorPending` marks a wake captured while its electing turn was still
+  // active: its semantic due time is unknown until that turn finalizes, so the
+  // dispatcher anchors it (stamps `anchorFinalizedAt`, recomputes `dueAt`) at the
+  // electing turn's end and never matures/drives it before then.
+  // `anchorFinalizedAt` is the electing-turn finalization instant; the semantic
+  // `dueAt` is `anchorFinalizedAt + delayMs`. Absent on legacy rows (decode-safe):
+  // the dispatcher then keeps the pre-#1137 busy-skip path (no fold).
+  anchorPending: z.boolean().optional(),
+  anchorFinalizedAt: z.number().int().nonnegative().optional(),
+  // Audit/provenance identity only — delivered in the fold note / wake banner so
+  // a successor can judge stale intent. Never copied into parentRunId.
+  originRunId: z.string().optional(),
+  originTurnId: z.string().optional(),
   releasedAt: z.number().int().nonnegative().optional(),
   turnGrantedAt: z.number().int().nonnegative().optional(),
+  // #1137 terminal fold bookkeeping: stamped when a matured row is folded into a
+  // later active turn (provenance note delivered) rather than granted a turn.
+  foldedAt: z.number().int().nonnegative().optional(),
+  overdueByMs: z.number().int().nonnegative().optional(),
+  disposition: z.enum(["granted", "folded-active"]).optional(),
   retryCount: z.number().int().nonnegative().optional(),
   // Consecutive PRE-drive busy-skip (requests-in-flight/draining/queue-busy)
   // count for diagnostics and rate state. DISTINCT from retryCount — a busy-skip
@@ -85,6 +105,11 @@ export type PendingContinuationWork = {
   parentRunId?: string;
   chainId?: string;
   traceparent?: string;
+  // #1137 finalization anchor + provenance — see PendingWorkStateSchema.
+  anchorPending?: boolean;
+  anchorFinalizedAt?: number;
+  originRunId?: string;
+  originTurnId?: string;
   retryCount?: number;
   // Consecutive busy-skip count for diagnostics/rate state. Distinct from
   // retryCount (the transient-error fail-bound). Never penalizes.
@@ -163,6 +188,12 @@ function workToRuntime(
     ...(state.parentRunId ? { parentRunId: state.parentRunId } : {}),
     ...(state.chainId ? { chainId: state.chainId } : {}),
     ...(state.traceparent ? { traceparent: state.traceparent } : {}),
+    ...(state.anchorPending !== undefined ? { anchorPending: state.anchorPending } : {}),
+    ...(state.anchorFinalizedAt !== undefined
+      ? { anchorFinalizedAt: state.anchorFinalizedAt }
+      : {}),
+    ...(state.originRunId ? { originRunId: state.originRunId } : {}),
+    ...(state.originTurnId ? { originTurnId: state.originTurnId } : {}),
     ...(state.retryCount !== undefined ? { retryCount: state.retryCount } : {}),
     ...(state.busySkipCount !== undefined ? { busySkipCount: state.busySkipCount } : {}),
     ...(state.idleRetry ? { idleRetry: state.idleRetry } : {}),
@@ -190,9 +221,15 @@ export function enqueuePendingWork(work: PendingContinuationWork): PendingContin
     ...(work.parentRunId ? { parentRunId: work.parentRunId } : {}),
     ...(work.chainId ? { chainId: work.chainId } : {}),
     ...(work.traceparent ? { traceparent: work.traceparent } : {}),
+    ...(work.originRunId ? { originRunId: work.originRunId } : {}),
+    ...(work.originTurnId ? { originTurnId: work.originTurnId } : {}),
     // #1135: a continue_work captured during an active turn parks on the
     // end-of-turn lifecycle event from the moment it is enqueued, so the marker
     // must survive the durable write (not just live on the runtime object).
+    // #1137: anchorPending/anchorFinalizedAt likewise persist so the semantic due
+    // time anchors to the electing turn's finalization across a gateway restart.
+    ...(work.anchorPending !== undefined ? { anchorPending: work.anchorPending } : {}),
+    ...(work.anchorFinalizedAt !== undefined ? { anchorFinalizedAt: work.anchorFinalizedAt } : {}),
     ...(work.busySkipCount !== undefined ? { busySkipCount: work.busySkipCount } : {}),
     ...(work.idleRetry ? { idleRetry: work.idleRetry } : {}),
   };
@@ -261,6 +298,14 @@ export function consumePendingWork(
     // it), never re-consume it — that would be a restart-gap double-delivery.
     if (state.succeeded) {
       finalizeDeliveredWorkFlow(flow, state);
+      continue;
+    }
+    // #1137 anchor-pending guard: a wake captured while its electing turn was
+    // still active has no semantic due time yet. It must NOT mature/drive until
+    // that turn finalizes; `finalizeAnchorPendingWork` (driven by the end-of-turn
+    // event or idle-state recovery) is the only path that advances it. Skipping
+    // it here keeps consume from ever folding/granting an unanchored wake.
+    if (state.anchorPending === true) {
       continue;
     }
     const canConsumeRunning =
@@ -367,8 +412,84 @@ export function markPendingWorkTurnGranted(work: PendingContinuationWork): boole
     currentStep: "Same-session continuation turn granted",
     // A flow that drove is no longer busy-deferred — clear the busy counter so
     // the granted record never carries stale retry state.
-    stateExtra: { busySkipCount: 0 },
+    stateExtra: { busySkipCount: 0, disposition: "granted" },
     notCommittedTag: "work-finish-not-committed",
+  });
+}
+
+/**
+ * #1137 finalization anchor — stamp the semantic due time on every anchor-pending
+ * wake for a session once its electing turn has finalized.
+ *
+ * A `continue_work` captured while its electing turn was still active parks with
+ * `anchorPending: true` and no semantic due time. When that turn finalizes (or,
+ * on restart recovery, when the session is observed idle), the delay anchor is
+ * the finalization instant: `dueAt = anchorFinalizedAt + delayMs`. Clearing
+ * `anchorPending` (and the park `idleRetry`) turns the row into an ordinary
+ * future-dated/matured wake that {@link consumePendingWork} will grant-or-fold.
+ * Idempotent: already-anchored rows are skipped. Returns the count anchored.
+ */
+export function finalizeAnchorPendingWork(sessionKey: string, anchorFinalizedAt: number): number {
+  let anchored = 0;
+  for (const flow of listTaskFlowsForOwnerKey(sessionKey)) {
+    if (!isContinuationWorkFlow(flow) || flow.status !== "queued") {
+      continue;
+    }
+    const state = decodeWorkState(flow);
+    if (!state || state.anchorPending !== true) {
+      continue;
+    }
+    const { anchorPending: _anchorPending, idleRetry: _idleRetry, ...rest } = state;
+    const next: PendingWorkState = {
+      ...rest,
+      anchorFinalizedAt,
+      dueAt: anchorFinalizedAt + state.delayMs,
+    };
+    const updated = updateFlowRecordByIdExpectedRevision({
+      flowId: flow.flowId,
+      expectedRevision: flow.revision,
+      patch: {
+        status: "queued",
+        currentStep: "Anchored continue_work to electing-turn finalization",
+        stateJson: next,
+        waitJson: null,
+        blockedTaskId: null,
+        blockedSummary: null,
+        endedAt: null,
+        updatedAt: anchorFinalizedAt,
+      },
+    });
+    if (updated.applied) {
+      anchored++;
+    }
+  }
+  return anchored;
+}
+
+/**
+ * #1137 mature-while-active fold — terminalize a matured wake whose session was
+ * already in a later active turn at due time.
+ *
+ * The wake is NOT granted a turn; a trusted provenance note was durably enqueued
+ * into the active session first (the caller proves that before calling this), so
+ * the row is finished cleanly with `disposition: folded-active` and never fires
+ * separately. Distinct from grant (no turn ran) and from failure (no error). The
+ * delivery-before-terminalize ordering is the safety invariant: if note enqueue
+ * fails the caller requeues instead of calling this.
+ */
+export function markPendingWorkFolded(
+  work: PendingContinuationWork,
+  params: { summary: string; foldedAt: number; overdueByMs: number },
+): boolean {
+  return finishContinuationWorkFlow(work, {
+    currentStep: `folded-into-active-turn: ${params.summary}`.slice(0, 200),
+    stateExtra: {
+      disposition: "folded-active",
+      foldedAt: params.foldedAt,
+      overdueByMs: params.overdueByMs,
+      busySkipCount: 0,
+    },
+    notCommittedTag: "work-fold-not-committed",
   });
 }
 

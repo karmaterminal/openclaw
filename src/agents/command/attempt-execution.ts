@@ -1041,6 +1041,10 @@ export async function runAgentAttempt(params: {
           requests,
           cfg: params.cfg,
           runResult: embeddedRunResult,
+          // #1137 origin provenance (audit only; NOT parentRunId): the electing
+          // run/session this turn-1 continuation was elected from.
+          originRunId: params.runId,
+          originTurnId: params.sessionId,
         });
       }
     } catch (err) {
@@ -1068,6 +1072,8 @@ async function scheduleSpawnInitContinueWorkWake(params: {
   requests: { reason: string; delaySeconds?: number; traceparent?: string }[];
   cfg: OpenClawConfig;
   runResult: EmbeddedAgentRunResult;
+  originRunId?: string;
+  originTurnId?: string;
 }): Promise<void> {
   const [
     { resolveLiveContinuationRuntimeConfig },
@@ -1102,6 +1108,10 @@ async function scheduleSpawnInitContinueWorkWake(params: {
     // confident-terminal by wake time, so a single main-lane-busy skip would
     // wrongly reap it before hop-2 ever runs (#952). Chain lineage rides
     // chainId/traceparent, not parentRunId.
+    // #1137: origin identity is provenance-only (separate field) — it never sets
+    // parentRunId, so it cannot re-open the #952 orphan-reap trap.
+    ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
+    ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
     log: (message) => log.info(message),
   });
   // #986 cap-notice symmetry: surface cap-dropped elections on the subagent-init

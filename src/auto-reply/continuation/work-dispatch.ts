@@ -14,10 +14,12 @@ import type { ChainState, ContinuationRuntimeConfig, ContinueWorkRequest } from 
 import {
   consumePendingWork,
   enqueuePendingWork,
+  finalizeAnchorPendingWork,
   hasPendingIdleRetryWork,
   listPendingWorkSessionKeysForRecovery,
   markPendingWorkDelivered,
   markPendingWorkFailed,
+  markPendingWorkFolded,
   markPendingWorkReaped,
   markPendingWorkSuperseded,
   markPendingWorkTurnGranted,
@@ -395,7 +397,50 @@ function hasNonDrainReplyPayload(reply: unknown): boolean {
   return payloads.some((payload) => !isGatewayRestartingReplyPayload(payload));
 }
 
+function isoOrUndefined(ms: number | undefined): string | undefined {
+  return ms !== undefined ? new Date(ms).toISOString() : undefined;
+}
+
+/**
+ * #1137 provenance lines shared by the granted-turn banner and the folded note.
+ *
+ * Origin identity + the elected/anchor/due/overdue timeline make a matured intent
+ * legible to the successor turn so it can judge stale-or-current before acting —
+ * never a naked imperative. `now` stamps the delivery/fold instant and the
+ * overdue-by figure (clamped to >=0; a wake delivered slightly early reads 0ms).
+ */
+function provenanceLines(work: PendingContinuationWork, now: number): string[] {
+  const overdueByMs = work.dueAt !== undefined ? Math.max(0, now - work.dueAt) : undefined;
+  const lines: string[] = [];
+  if (work.originRunId) {
+    lines.push(`Origin run: ${work.originRunId}`);
+  }
+  if (work.originTurnId) {
+    lines.push(`Origin turn: ${work.originTurnId}`);
+  }
+  lines.push(`Elected at: ${isoOrUndefined(work.electedAt) ?? "unknown"}`);
+  if (work.anchorFinalizedAt !== undefined) {
+    lines.push(`Electing turn finalized at: ${isoOrUndefined(work.anchorFinalizedAt)}`);
+  }
+  if (work.dueAt !== undefined) {
+    lines.push(`Due at: ${isoOrUndefined(work.dueAt)}`);
+  }
+  if (overdueByMs !== undefined) {
+    lines.push(`Overdue by: ${overdueByMs}ms`);
+  }
+  lines.push(
+    `Chain: ${work.chainId ?? work.flowId ?? "n/a"} hop ${work.hop}/${work.maxChainLength}`,
+  );
+  lines.push(`Flow: ${work.flowId ?? "n/a"}`);
+  lines.push(`Reason: ${work.reason ?? "(none)"}`);
+  return lines;
+}
+
 function formatContinuationWakeText(work: PendingContinuationWork): string {
+  // Provenance banner on the granted wake (#1137 §5.3.1): even a granted turn
+  // carries the origin/age timeline so the successor turn knows where the intent
+  // came from, not just its raw reason text.
+  const provenance = provenanceLines(work, Date.now()).join(" ");
   return (
     `[continuation:wake] Turn ${work.hop}/${work.maxChainLength}. ` +
     (work.chainStartedAt !== undefined
@@ -405,8 +450,50 @@ function formatContinuationWakeText(work: PendingContinuationWork): string {
       ? `Accumulated tokens: ${work.accumulatedChainTokens}. `
       : "") +
     `The agent elected to continue working.` +
-    (work.reason ? ` Reason: ${work.reason}` : "")
+    (work.reason ? ` Reason: ${work.reason}` : "") +
+    ` [provenance] ${provenance}`
   );
+}
+
+// #1137 §5.3.4: bound the aggregate fold note so a stale backlog never recreates
+// the storm as prompt noise. The newest few elections carry full provenance; the
+// remainder are summarized by count.
+const MAX_FOLD_NOTE_DETAILED = 5;
+
+/**
+ * #1137 mature-while-active fold note — one bounded, trusted, provenance-bearing
+ * `[system:continuation-note]` for every wake that matured while a later turn was
+ * already active.
+ *
+ * The note states the disposition (folded; will not fire separately) and strips
+ * imperative force: the successor turn must treat it as prior-turn context and
+ * re-evaluate, never as a fresh command. Aggregated across all matured rows so N
+ * stale rows become one note, not N notes or N turns.
+ */
+function buildFoldedProvenanceNote(works: readonly PendingContinuationWork[], now: number): string {
+  const header =
+    works.length === 1
+      ? `[system:continuation-note] A same-session continue_work intent from a prior turn matured while this session was already in a later active turn. It was folded into this turn (it will not fire separately as a new turn).`
+      : `[system:continuation-note] ${works.length} same-session continue_work intents from prior turns matured while this session was already in a later active turn. They were folded into this turn (they will not fire separately as new turns).`;
+  // Newest-first so the most recent intent leads; older danger-relevant intents
+  // still appear (bounded) rather than being dropped.
+  const ordered = works.toSorted((a, b) => b.electedAt - a.electedAt);
+  const detailed = ordered.slice(0, MAX_FOLD_NOTE_DETAILED);
+  const blocks = detailed.map((work, index) => {
+    const label =
+      works.length === 1 ? "Folded intent" : `Folded intent ${index + 1}/${works.length}`;
+    return `${label}:\n${provenanceLines(work, now).join("\n")}`;
+  });
+  const omitted = ordered.length - detailed.length;
+  const tail =
+    omitted > 0
+      ? `\n(${omitted} older folded continuation${omitted === 1 ? "" : "s"} omitted; flowIds ${ordered
+          .slice(MAX_FOLD_NOTE_DETAILED)
+          .map((work) => work.flowId ?? "n/a")
+          .join(", ")})`
+      : "";
+  const guidance = `\nTreat these as prior-turn context, not fresh commands. Re-evaluate before acting; the rows were consumed and will not fire separately.`;
+  return `${header}\n\n${blocks.join("\n\n")}${tail}${guidance}`;
 }
 
 type ContinuationTurnGrantResult =
@@ -593,6 +680,57 @@ export function partitionSupersededWork(
   return { drive, superseded };
 }
 
+/**
+ * #1137 mature-while-active fold — deliver one trusted provenance note for a
+ * matured batch and terminalize the rows ONLY after durable enqueue is confirmed.
+ *
+ * Delivery-before-terminalize is the safety invariant (#1135 §5.3.3): if the
+ * note cannot be enqueued, every row is kept recoverable (requeued at a bounded
+ * recovery cadence), never finished — no silent loss after the tool reported the
+ * work scheduled. On success each row is folded (`disposition: folded-active`) so
+ * it never fires as a separate turn. Returns the number of rows folded.
+ */
+function foldMaturedWorkIntoActiveTurn(
+  sessionKey: string,
+  works: readonly PendingContinuationWork[],
+): number {
+  const now = Date.now();
+  const note = buildFoldedProvenanceNote(works, now);
+  const delivered = enqueueSystemEvent(note, { sessionKey, trusted: true });
+  if (!delivered) {
+    const retryDueAt = now + HEDGE_DISPATCH_FAILURE_RETRY_MS;
+    for (const work of works) {
+      clearIdleRetryForWork(work);
+      requeueWorkForRetry(work, {
+        dueAt: retryDueAt,
+        summary: "Continuation fold-note enqueue failed; keeping row recoverable.",
+      });
+    }
+    log.warn(
+      `[continuation:work-fold-note-undelivered] session=${sessionKey} count=${works.length} — rows kept recoverable, not terminalized`,
+    );
+    return 0;
+  }
+  let folded = 0;
+  for (const work of works) {
+    clearIdleRetryForWork(work);
+    const overdueByMs = work.dueAt !== undefined ? Math.max(0, now - work.dueAt) : 0;
+    log.info(
+      `[continuation:work-folded-active] flowId=${work.flowId ?? "none"} session=${sessionKey} hop=${work.hop} overdueMs=${overdueByMs} — folded into active turn (provenance note delivered)`,
+    );
+    if (
+      markPendingWorkFolded(work, {
+        summary: "matured while a later turn was active",
+        foldedAt: now,
+        overdueByMs,
+      })
+    ) {
+      folded++;
+    }
+  }
+  return folded;
+}
+
 export async function dispatchPendingContinuationWork(params: {
   sessionKey: string;
   recoverRunning?: boolean;
@@ -601,10 +739,19 @@ export async function dispatchPendingContinuationWork(params: {
   includeRunningIdleRetry?: boolean;
 }): Promise<{ dispatched: number; failed: number; reaped: number }> {
   const recoverRunning = params.recoverRunning === true;
-  let runningRecoveryBlockedByActiveReply = false;
-  if (recoverRunning) {
-    const { replyRunRegistry } = await importReplyRunRegistry();
-    runningRecoveryBlockedByActiveReply = replyRunRegistry.isActive(params.sessionKey);
+  const { replyRunRegistry } = await importReplyRunRegistry();
+  const sessionActive = replyRunRegistry.isActive(params.sessionKey);
+  const runningRecoveryBlockedByActiveReply = recoverRunning && sessionActive;
+  // #1137 finalization anchor: a continue_work captured while its electing turn
+  // was active parks anchor-pending (no semantic due time). The session being
+  // idle HERE means that turn finalized (the end-of-turn event drove this
+  // dispatch) — or, on restart recovery, that no run is active. Either way it is
+  // the finalization instant: anchor every pending wake to it before consuming so
+  // its semantic dueAt = anchorFinalizedAt + delayMs. While active we leave them
+  // parked (consume skips anchor-pending rows) so the electing turn's own wake is
+  // never folded/granted before that turn ends.
+  if (!sessionActive) {
+    finalizeAnchorPendingWork(params.sessionKey, Date.now());
   }
   const works = consumePendingWork(params.sessionKey, {
     includeRunning: recoverRunning && !runningRecoveryBlockedByActiveReply,
@@ -660,7 +807,21 @@ export async function dispatchPendingContinuationWork(params: {
   let dispatched = 0;
   let failed = 0;
   let reaped = 0;
-  for (const work of worksToDrive) {
+  // #1137 mature-while-active fold: a wake whose semantic due time arrived while
+  // the session is already in a LATER active turn (anchorFinalizedAt set — its
+  // electing turn already finalized) must NOT stack/requeue another turn. Fold it
+  // into the active turn as a trusted provenance note and terminalize — but ONLY
+  // after durable note enqueue is confirmed. Legacy/delegate rows (no
+  // anchorFinalizedAt) keep the existing busy-skip/requeue/reap path below.
+  let worksToGrant = worksToDrive;
+  if (sessionActive) {
+    const foldWorks = worksToDrive.filter((work) => work.anchorFinalizedAt !== undefined);
+    worksToGrant = worksToDrive.filter((work) => work.anchorFinalizedAt === undefined);
+    if (foldWorks.length > 0) {
+      foldMaturedWorkIntoActiveTurn(params.sessionKey, foldWorks);
+    }
+  }
+  for (const work of worksToGrant) {
     clearIdleRetryForWork(work);
     try {
       const fireDeferredMs = Date.now() - work.electedAt;
@@ -787,6 +948,10 @@ export async function scheduleContinuationWork(params: {
   request: { delaySeconds: number; reason: string; traceparent?: string };
   config: ContinuationRuntimeConfig;
   parentRunId?: string;
+  // #1137 provenance identity (audit only; NEVER copied into parentRunId, which
+  // participates in #952 orphan-reap). Delivered in the fold note / wake banner.
+  originRunId?: string;
+  originTurnId?: string;
   log?: (message: string) => void;
 }): Promise<{ scheduled: boolean; capped: boolean; chainState: ChainState }> {
   const budgetCheck = checkContinuationBudget({
@@ -828,19 +993,21 @@ export async function scheduleContinuationWork(params: {
     ...(params.chainState.chainId ? { chainId: params.chainState.chainId } : {}),
   };
 
-  // #1135: an immediate (delaySeconds=0) continue_work captured while the
-  // electing turn is still active must become eligible only AFTER that turn
-  // finalizes — never fire a hedge while `requests-in-flight` is true. Park it on
-  // the session's end-of-turn lifecycle event from the moment it is scheduled
-  // instead of arming a now-dated timer that would skip with requests-in-flight
-  // and start a hedge loop. The active current turn is the expected condition at
-  // call time, not a failure. Positive delays already arm a future timer (no
-  // immediate skip) and keep their own offset. The `reason` only sets the
-  // observability category — it is never an admission gate.
+  // #1135/#1137: a continue_work captured while its electing turn is still active
+  // parks anchor-pending for ANY delay. Its semantic due time anchors to that
+  // turn's finalization (dueAt = anchorFinalizedAt + delayMs, stamped when the
+  // turn ends), never to the tool-call timestamp and never to a later unrelated
+  // turn. Parking on the end-of-turn lifecycle event from the moment it is
+  // scheduled avoids arming a now-dated timer that would skip with
+  // `requests-in-flight` and start a hedge loop. When the session is already idle
+  // the electing turn has finalized, so anchor immediately to electedAt (dueAt =
+  // electedAt + delayMs, the pre-#1137 timing). The active current turn is the
+  // expected condition at call time, not a failure; `reason` only sets the
+  // observability category — never an admission gate.
   const { replyRunRegistry } = await importReplyRunRegistry();
-  const parkOnTurnEnd = delayMs === 0 && replyRunRegistry.isActive(params.sessionKey);
+  const electingTurnActive = replyRunRegistry.isActive(params.sessionKey);
   const recoveryHedgeAt = electedAt + params.config.maxDelayMs;
-  const idleRetry = parkOnTurnEnd
+  const idleRetry = electingTurnActive
     ? ({
         trigger: "reply-run-ended" as const,
         reasonCategory: classifyContinuationWorkReason(params.request.reason),
@@ -853,9 +1020,10 @@ export async function scheduleContinuationWork(params: {
     hop,
     delayMs,
     electedAt,
-    // A parked wake fires on the lifecycle event (idleRetry bypasses dueAt); its
-    // dueAt is the slow lost-event recovery hedge, mirroring the busy-skip path.
-    dueAt: parkOnTurnEnd ? recoveryHedgeAt : dueAt,
+    // An anchor-pending wake fires on the finalization event; its dueAt is the
+    // slow lost-event recovery hedge until the semantic due time is computed at
+    // finalization. An already-anchored wake uses its real semantic dueAt.
+    dueAt: electingTurnActive ? recoveryHedgeAt : dueAt,
     maxChainLength: params.config.maxChainLength,
     chainStartedAt: params.chainState.chainStartedAt,
     accumulatedChainTokens: params.chainState.accumulatedChainTokens,
@@ -863,6 +1031,11 @@ export async function scheduleContinuationWork(params: {
     ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
     ...(params.chainState.chainId ? { chainId: params.chainState.chainId } : {}),
     ...(params.request.traceparent ? { traceparent: params.request.traceparent } : {}),
+    ...(params.originRunId ? { originRunId: params.originRunId } : {}),
+    ...(params.originTurnId ? { originTurnId: params.originTurnId } : {}),
+    // Anchor-pending while the electing turn runs; anchored to electedAt the
+    // moment the session is already idle (turn already finalized).
+    ...(electingTurnActive ? { anchorPending: true } : { anchorFinalizedAt: electedAt }),
     ...(idleRetry ? { idleRetry } : {}),
   };
   const enqueued = enqueuePendingWork(work);
@@ -877,7 +1050,7 @@ export async function scheduleContinuationWork(params: {
     traceparent: params.request.traceparent,
     log: (message) => params.log?.(message),
   });
-  if (parkOnTurnEnd) {
+  if (electingTurnActive) {
     params.log?.(
       `[continuation:work-parked-on-turn-end] session=${params.sessionKey} hop=${hop} reasonCategory=${idleRetry?.reasonCategory ?? "unknown"}`,
     );
@@ -922,6 +1095,9 @@ export async function scheduleContinuationWorkBatch(params: {
   requests: readonly ContinueWorkRequest[];
   config: ContinuationRuntimeConfig;
   parentRunId?: string;
+  // #1137 provenance identity for every election in the batch (audit only).
+  originRunId?: string;
+  originTurnId?: string;
   log?: (message: string) => void;
 }): Promise<ContinuationWorkBatchResult> {
   let chainState = params.chainState;
@@ -948,6 +1124,8 @@ export async function scheduleContinuationWorkBatch(params: {
       request,
       config: params.config,
       ...(params.parentRunId !== undefined ? { parentRunId: params.parentRunId } : {}),
+      ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
+      ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
       ...(params.log ? { log: params.log } : {}),
     });
     if (!result.scheduled) {
