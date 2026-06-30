@@ -572,7 +572,7 @@ describe("durable continuation_work dispatch", () => {
     ]);
   });
 
-  it("does not schedule wait-shaped continuation work into another model turn", async () => {
+  it("schedules wait-shaped continuation work for the post-turn offset", async () => {
     const sessionKey = "agent:main:standby-schedule";
     mockSessionStore[sessionKey] = { sessionKey };
 
@@ -588,25 +588,20 @@ describe("durable continuation_work dispatch", () => {
     });
 
     expect(result).toEqual({
-      scheduled: false,
+      scheduled: true,
       capped: false,
       chainState: {
-        currentChainCount: 1,
+        currentChainCount: 2,
         chainStartedAt: Date.now(),
         accumulatedChainTokens: 12,
       },
     });
-    expect([...mockFlows.values()].filter((item) => item.ownerKey === sessionKey)).toHaveLength(0);
+    expect([...mockFlows.values()].filter((item) => item.ownerKey === sessionKey)).toHaveLength(1);
     expect(turnGrants).toHaveLength(0);
-    expect(systemEvents).toEqual([
-      expect.objectContaining({
-        text: expect.stringContaining("wait-shaped continue_work was quiesced"),
-        options: { sessionKey, trusted: true },
-      }),
-    ]);
+    expect(systemEvents).toEqual([]);
   });
 
-  it("quiesces persisted wait-shaped continuation work before model entry", async () => {
+  it("parks wait-shaped continuation work until the current active turn ends", async () => {
     const sessionKey = "agent:main:standby-busy";
     mockSessionStore[sessionKey] = { sessionKey };
     activeSessions.add(sessionKey);
@@ -621,18 +616,35 @@ describe("durable continuation_work dispatch", () => {
     });
 
     await dispatchPendingContinuationWork({ sessionKey, includeIdleRetry: true });
+    await waitForMockWaiter(replyIdleWaiters, sessionKey);
 
-    const flow = [...mockFlows.values()].find((item) => item.ownerKey === sessionKey);
+    let flow = [...mockFlows.values()].find((item) => item.ownerKey === sessionKey);
     expect(flow).toMatchObject({
-      status: "succeeded",
-      currentStep: expect.stringContaining("superseded: Quiesced wait-shaped continue_work"),
+      status: "queued",
+      stateJson: expect.objectContaining({
+        idleRetry: expect.objectContaining({
+          trigger: "reply-run-ended",
+          reasonCategory: "wait-shaped",
+        }),
+      }),
     });
     expect(turnGrants).toHaveLength(0);
-    expect(replyIdleWaiters.has(sessionKey)).toBe(false);
-    expect(systemEvents).toEqual([
+
+    resolveReplyRunIdle(sessionKey);
+    await waitForTurnGrantCount(1);
+
+    flow = [...mockFlows.values()].find((item) => item.ownerKey === sessionKey);
+    expect(flow).toMatchObject({
+      status: "succeeded",
+      currentStep: "Same-session continuation turn granted",
+    });
+    expect(turnGrants).toEqual([
       expect.objectContaining({
-        text: expect.stringContaining("wait-shaped continue_work was quiesced"),
-        options: { sessionKey, trusted: true },
+        context: expect.objectContaining({
+          SessionKey: sessionKey,
+          Body: expect.stringContaining("Holding off-board and acknowledging standby."),
+        }),
+        options: expect.objectContaining({ continuationTrigger: "work-wake" }),
       }),
     ]);
   });
@@ -1100,7 +1112,7 @@ describe("durable continuation_work dispatch", () => {
     ]);
   });
 
-  it("terminates wait-shaped continuation rows instead of parking a wake loop", async () => {
+  it("parks wait-shaped continuation rows behind idle events without a high-frequency wake loop", async () => {
     const sessionKey = "agent:main:wait-shaped";
     mockSessionStore[sessionKey] = { sessionKey };
     activeSessions.add(sessionKey);
@@ -1120,15 +1132,22 @@ describe("durable continuation_work dispatch", () => {
     expect(getReplyFromConfigMock).not.toHaveBeenCalled();
     const flow = [...mockFlows.values()][0];
     expect(flow).toMatchObject({
-      status: "succeeded",
-      currentStep: expect.stringContaining("Quiesced wait-shaped continue_work"),
+      status: "queued",
+      stateJson: expect.objectContaining({
+        dueAt: Date.now() + 60_000,
+        idleRetry: {
+          trigger: "reply-run-ended",
+          reasonCategory: "wait-shaped",
+          armedAt: Date.now(),
+        },
+      }),
     });
 
     await vi.advanceTimersByTimeAsync(1_000);
     await flushAsyncWork();
 
     expect(turnGrants).toHaveLength(0);
-    expect([...mockFlows.values()][0]?.status).toBe("succeeded");
+    expect([...mockFlows.values()][0]?.status).toBe("queued");
   });
 
   it("does not let a busy slow hedge delay another continuation due sooner", async () => {
