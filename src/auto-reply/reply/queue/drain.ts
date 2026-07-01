@@ -239,7 +239,6 @@ type FollowupRuntimeMetadata = Pick<
 function hasCurrentTurnRuntimeMetadata(item: FollowupRun): boolean {
   return (
     item.currentInboundEventKind === "room_event" ||
-    item.currentInboundEventTimestampMs !== undefined ||
     item.currentInboundAudio === true ||
     Boolean(item.currentInboundContext)
   );
