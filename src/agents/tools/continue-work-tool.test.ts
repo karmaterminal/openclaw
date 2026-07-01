@@ -38,8 +38,6 @@ vi.mock("../../auto-reply/continuation/config.js", () => ({
   },
 }));
 
-const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
-const ZERO_TRACEPARENT = "00-00000000000000000000000000000000-0000000000000000-00";
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
 const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
   traceId: "0af7651916cd43dd8448eb211c80319c",
@@ -127,6 +125,12 @@ describe("continue_work tool", () => {
     expect(tool.description).toContain("use sessions_yield");
   });
 
+  it("does not expose diagnostic traceparent as a model-facing parameter", () => {
+    const tool = makeTool();
+
+    expect(JSON.stringify(tool.parameters)).not.toContain("traceparent");
+  });
+
   it("keeps traceparent absent when the optional carrier is omitted", async () => {
     const requestContinuation = vi.fn();
     const tool = makeTool({ requestContinuation });
@@ -190,7 +194,7 @@ describe("continue_work tool", () => {
     });
   });
 
-  it("threads a valid optional traceparent carrier into the continuation work span", async () => {
+  it("threads the active runtime trace context into the continuation work span", async () => {
     const { tracer, spans } = createRecordingTracer();
     setContinuationTracer(tracer);
     const requestContinuation = vi.fn((request: ContinueWorkRequest) => {
@@ -205,26 +209,27 @@ describe("continue_work tool", () => {
     const tool = makeTool({ requestContinuation });
 
     const result = (
-      await tool.execute("call-traceparent", {
-        reason: "Continue a traced chain.",
-        traceparent: VALID_TRACEPARENT,
-      })
+      await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
+        tool.execute("call-traceparent", {
+          reason: "Continue a traced chain.",
+        }),
+      )
     )?.details as Record<string, unknown>;
 
     expect(requestContinuation).toHaveBeenCalledWith({
       reason: "Continue a traced chain.",
       delaySeconds: 0,
-      traceparent: VALID_TRACEPARENT,
+      traceparent: ACTIVE_TRACEPARENT,
     });
     expect(result).toMatchObject({
       status: "scheduled",
       delaySeconds: 0,
-      traceparent: VALID_TRACEPARENT,
     });
+    expect(result).not.toHaveProperty("traceparent");
     expect(spans).toHaveLength(1);
     expect(spans[0]).toMatchObject({
       name: "continuation.work",
-      options: { traceparent: VALID_TRACEPARENT },
+      options: { traceparent: ACTIVE_TRACEPARENT },
       statusCalls: [{ status: "OK", message: undefined }],
       ended: true,
     });
@@ -250,59 +255,8 @@ describe("continue_work tool", () => {
     expect(result).toMatchObject({
       status: "scheduled",
       delaySeconds: 0,
-      traceparent: ACTIVE_TRACEPARENT,
     });
-  });
-
-  it("lets an explicit traceparent override the active runtime trace context", async () => {
-    const requestContinuation = vi.fn();
-    const tool = makeTool({ requestContinuation });
-
-    const result = (
-      await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
-        tool.execute("call-explicit-traceparent", {
-          reason: "Continue with explicit trace context.",
-          traceparent: VALID_TRACEPARENT,
-        }),
-      )
-    )?.details as Record<string, unknown>;
-
-    expect(requestContinuation).toHaveBeenCalledWith({
-      reason: "Continue with explicit trace context.",
-      delaySeconds: 0,
-      traceparent: VALID_TRACEPARENT,
-    });
-    expect(result).toMatchObject({
-      status: "scheduled",
-      delaySeconds: 0,
-      traceparent: VALID_TRACEPARENT,
-    });
-  });
-
-  it("rejects malformed traceparent carriers", async () => {
-    const requestContinuation = vi.fn();
-    const tool = makeTool({ requestContinuation });
-
-    await expect(
-      tool.execute("call-bad-traceparent", {
-        reason: "Continue malformed traced chain.",
-        traceparent: "not-a-traceparent",
-      }),
-    ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
-    expect(requestContinuation).not.toHaveBeenCalled();
-  });
-
-  it("rejects all-zero traceparent carriers without scheduling continuation work", async () => {
-    const requestContinuation = vi.fn();
-    const tool = makeTool({ requestContinuation });
-
-    await expect(
-      tool.execute("call-zero-traceparent", {
-        reason: "Continue all-zero traced chain.",
-        traceparent: ZERO_TRACEPARENT,
-      }),
-    ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
-    expect(requestContinuation).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("traceparent");
   });
 
   it("requires a reason", async () => {
