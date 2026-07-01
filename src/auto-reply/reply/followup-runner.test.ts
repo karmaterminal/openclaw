@@ -671,11 +671,45 @@ describe("createFollowupRunner reply-lane admission", () => {
     await runner(
       createQueuedRun({
         currentInboundEventKind: "room_event",
+        currentInboundEventTimestampMs: 0,
         run: { sessionKey, provider: "anthropic", model: "claude" },
       }),
     );
 
     expect(runEmbeddedAgentMock).not.toHaveBeenCalled();
+  });
+
+  it("admits fresh room-event followups without treating normal room activity as backlog (#1148)", async () => {
+    const sessionKey = "main";
+    for (let i = 0; i < noOpRearmGuardForTest.DEFAULT_NO_OP_REARM_THRESHOLD; i += 1) {
+      noOpRearmGuardForTest.recordNoOpRearmOutcome({
+        sessionKey,
+        wakeClass: { kind: "self_rearm", source: "room_event_backlog" },
+        runId: `seed-fresh-room-${i}`,
+        outcome: { kind: "no_op", reason: "seed" },
+      });
+    }
+    runEmbeddedAgentMock.mockResolvedValueOnce({
+      payloads: [],
+      meta: { toolSummary: { calls: 1, tools: ["message_react"] } },
+    });
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      sessionKey,
+      defaultModel: "anthropic/claude",
+    });
+
+    await runner(
+      createQueuedRun({
+        currentInboundEventKind: "room_event",
+        currentInboundEventTimestampMs: Date.now(),
+        messageId: "fresh-room-reaction",
+        run: { sessionKey, provider: "anthropic", model: "claude" },
+      }),
+    );
+
+    expect(runEmbeddedAgentMock).toHaveBeenCalledOnce();
   });
 
   it("records message-tool-only final text as no-op when no message tool delivery happened (#1138/#1142)", async () => {
@@ -703,6 +737,7 @@ describe("createFollowupRunner reply-lane admission", () => {
     await runner(
       createQueuedRun({
         currentInboundEventKind: "room_event",
+        currentInboundEventTimestampMs: 0,
         run: {
           sessionKey,
           provider: "anthropic",
@@ -714,6 +749,7 @@ describe("createFollowupRunner reply-lane admission", () => {
     await runner(
       createQueuedRun({
         currentInboundEventKind: "room_event",
+        currentInboundEventTimestampMs: 0,
         run: {
           sessionKey,
           provider: "anthropic",
@@ -787,6 +823,7 @@ describe("createFollowupRunner reply-lane admission", () => {
     await runner(
       createQueuedRun({
         currentInboundEventKind: "room_event",
+        currentInboundEventTimestampMs: 0,
         run: { sessionKey, provider: "anthropic", model: "claude" },
       }),
     );

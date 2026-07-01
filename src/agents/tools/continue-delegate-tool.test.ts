@@ -17,6 +17,7 @@ import {
 import { createContinueDelegateTool } from "./continue-delegate-tool.js";
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+const ZERO_TRACEPARENT = "00-00000000000000000000000000000000-0000000000000000-00";
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
 const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
   traceId: "0af7651916cd43dd8448eb211c80319c",
@@ -431,6 +432,18 @@ describe("continue_delegate tool", () => {
       tool.execute("call-bad-traceparent", {
         task: "continue malformed traced chain",
         traceparent: "not-a-traceparent",
+      }),
+    ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
+    expect(consumePendingDelegates("test-session")).toEqual([]);
+  });
+
+  it("rejects all-zero traceparent carriers without enqueueing delegates", async () => {
+    const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    await expect(
+      tool.execute("call-zero-traceparent", {
+        task: "continue all-zero traced chain",
+        traceparent: ZERO_TRACEPARENT,
       }),
     ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
     expect(consumePendingDelegates("test-session")).toEqual([]);

@@ -716,6 +716,7 @@ export function createFollowupRunner(params: {
         provenance: run.inputProvenance,
         inboundEventKind: queued.currentInboundEventKind,
         messageId: resolveFollowupCurrentMessageId() ?? queued.messageId,
+        eventTimestampMs: queued.currentInboundEventTimestampMs,
         isHeartbeat: opts?.isHeartbeat === true,
       };
       let noOpRearmWakeClass: NoOpRearmWakeClass | undefined;

@@ -39,6 +39,7 @@ vi.mock("../../auto-reply/continuation/config.js", () => ({
 }));
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+const ZERO_TRACEPARENT = "00-00000000000000000000000000000000-0000000000000000-00";
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
 const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
   traceId: "0af7651916cd43dd8448eb211c80319c",
@@ -286,6 +287,19 @@ describe("continue_work tool", () => {
       tool.execute("call-bad-traceparent", {
         reason: "Continue malformed traced chain.",
         traceparent: "not-a-traceparent",
+      }),
+    ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
+    expect(requestContinuation).not.toHaveBeenCalled();
+  });
+
+  it("rejects all-zero traceparent carriers without scheduling continuation work", async () => {
+    const requestContinuation = vi.fn();
+    const tool = makeTool({ requestContinuation });
+
+    await expect(
+      tool.execute("call-zero-traceparent", {
+        reason: "Continue all-zero traced chain.",
+        traceparent: ZERO_TRACEPARENT,
       }),
     ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
     expect(requestContinuation).not.toHaveBeenCalled();

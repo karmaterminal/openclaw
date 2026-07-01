@@ -78,7 +78,7 @@ export type NoOpRearmWakeClass =
   | { kind: "fresh_human_edge"; messageId?: string }
   | { kind: "structured_completion"; source: string }
   | { kind: "exempt_backend_wake"; source: "heartbeat" }
-  | { kind: "neutral"; reason: string }
+  | { kind: "neutral"; reason: string; messageId?: string }
   | { kind: "self_rearm"; source: NoOpRearmSelfRearmSource };
 
 export type NoOpRearmWakeInput = {
@@ -138,7 +138,6 @@ export function classifyNoOpRearmWake(
 ): NoOpRearmWakeClass {
   const provenance = input.provenance;
   const isRoomEvent = input.inboundEventKind === "room_event";
-
   // Structured inter-session/backend completion (preserved completion source tools)
   // or an explicit awaited-completion marker is concrete context gain.
   if (input.awaitedCompletion === true) {
@@ -149,21 +148,38 @@ export function classifyNoOpRearmWake(
     return { kind: "structured_completion", source: sourceTool };
   }
 
+  const eventAgeMs =
+    input.eventTimestampMs !== undefined
+      ? (opts.nowMs ?? Date.now()) - input.eventTimestampMs
+      : undefined;
+  const isStaleRoomEvent =
+    isRoomEvent &&
+    opts.staleHumanEdgeAfterMs !== undefined &&
+    eventAgeMs !== undefined &&
+    eventAgeMs > opts.staleHumanEdgeAfterMs;
+  const roomEventMessageId = isRoomEvent ? normalizeMessageId(input.messageId) : undefined;
+  if (isRoomEvent && !isStaleRoomEvent && (roomEventMessageId || eventAgeMs !== undefined)) {
+    return roomEventMessageId
+      ? { kind: "neutral", reason: "fresh-room-event", messageId: roomEventMessageId }
+      : { kind: "neutral", reason: "fresh-room-event" };
+  }
+
   if (input.inboundEventKind === "user_request" && !isRoomEvent && provenance === undefined) {
     const messageId = normalizeMessageId(input.messageId);
     return messageId ? { kind: "fresh_human_edge", messageId } : { kind: "fresh_human_edge" };
   }
 
-  // Fresh human edge: a direct external_user request that is not room-event backlog
+  // Fresh human edge: a direct external_user request that is not room-event activity
   // and not obviously stale. Stale human backlog must not reset, and is guarded as
   // backlog like a room event.
   let staleHumanBacklog = false;
-  if (provenance?.kind === "external_user" && !isRoomEvent) {
+  if (provenance?.kind === "external_user") {
     const stale =
       opts.staleHumanEdgeAfterMs !== undefined &&
       input.eventTimestampMs !== undefined &&
-      (opts.nowMs ?? Date.now()) - input.eventTimestampMs > opts.staleHumanEdgeAfterMs;
-    if (!stale) {
+      eventAgeMs !== undefined &&
+      eventAgeMs > opts.staleHumanEdgeAfterMs;
+    if (!stale && !isRoomEvent) {
       const messageId = normalizeMessageId(input.messageId);
       return messageId ? { kind: "fresh_human_edge", messageId } : { kind: "fresh_human_edge" };
     }
@@ -431,7 +447,7 @@ export class NoOpRearmGuard {
     this.threshold = options.threshold ?? DEFAULT_NO_OP_REARM_THRESHOLD;
     this.windowMs = options.windowMs ?? DEFAULT_NO_OP_REARM_WINDOW_MS;
     this.now = options.now ?? Date.now;
-    this.staleHumanEdgeAfterMs = options.staleHumanEdgeAfterMs;
+    this.staleHumanEdgeAfterMs = options.staleHumanEdgeAfterMs ?? DEFAULT_NO_OP_REARM_WINDOW_MS;
   }
 
   private classifyOptions(): ClassifyWakeOptions {
@@ -515,7 +531,17 @@ export class NoOpRearmGuard {
     }
 
     if (wake.kind === "neutral") {
-      return { admit: true, reason: "neutral", wake };
+      const messageId = wake.messageId;
+      if (messageId !== undefined) {
+        if (entry.seenMessageIds.includes(messageId)) {
+          wake = { kind: "self_rearm", source: "room_event_backlog" };
+        } else {
+          pushBounded(entry.seenMessageIds, messageId, MAX_SEEN_MESSAGE_IDS);
+          return { admit: true, reason: "neutral", wake };
+        }
+      } else {
+        return { admit: true, reason: "neutral", wake };
+      }
     }
 
     // self_rearm

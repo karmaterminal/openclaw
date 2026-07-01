@@ -21,6 +21,7 @@ import {
 } from "./request-compaction-tool.js";
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+const ZERO_TRACEPARENT = "00-00000000000000000000000000000000-0000000000000000-00";
 
 type RecordedSpan = {
   name: string;
@@ -426,6 +427,18 @@ describe("request_compaction tool", () => {
       tool.execute("call-bad-traceparent", {
         reason: "thermal evacuation complete",
         traceparent: "not-a-traceparent",
+      }),
+    ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
+    expect(mockTriggerCompaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects all-zero traceparent carriers without triggering compaction", async () => {
+    const tool = makeTool();
+
+    await expect(
+      tool.execute("call-zero-traceparent", {
+        reason: "thermal evacuation complete",
+        traceparent: ZERO_TRACEPARENT,
       }),
     ).rejects.toThrow("traceparent must be a valid W3C traceparent header");
     expect(mockTriggerCompaction).not.toHaveBeenCalled();
