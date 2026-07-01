@@ -146,6 +146,14 @@ The spawn param objects on the announce delegate paths omit `traceparent`, while
 6. **Housekeeping:** wire-or-delete `post-compaction-release.ts` (S1); dedupe the Knip allowlist (S2).
 7. **Validation:** full suite passed on logic (continuation tests green, 0 assertion failures). One worker OOM'd (memory pressure, shared-host artifact — AGENTS.md flags this) rather than a test failure; rerun the affected shard under `OPENCLAW_VITEST_MAX_WORKERS=1` or on Crabbox/Testbox for a definitive green. Live provider/gateway proof intentionally not run (review-only guardrail).
 
-## 9. Full-suite evidence (in progress / partial)
+## 9. Full-suite evidence
 
-`OPENCLAW_VITEST_MAX_WORKERS=4 node scripts/test-projects.mjs` on the head branch: all completed shards green (e.g. `Test Files 248 passed (248)`, `155 passed`, `161 passed`, …), **0** assertion failures observed. One shard emitted a single non-assertion error: `ERR_WORKER_OUT_OF_MEMORY` (JS heap) — a memory-pressure artifact of this shared host, not a PR regression (that shard still reported `5561 passed | 4 skipped`). All 69 continuation/announce/compaction/tracer test files passed. Tally will be finalized on run completion.
+`OPENCLAW_VITEST_MAX_WORKERS=4 node scripts/test-projects.mjs` on the head branch (89 shards, 1060.97s):
+
+- **Aggregate across shards: 6,489 test files passed, 0 test-file failures; 85,688 tests passed, 0 tests failed, 50 skipped. 0 assertion-failure lines.**
+- **1 non-passing shard:** `test/vitest/vitest.agents-core.config.ts` exited 1 due to a single **worker OOM** (`ERR_WORKER_OUT_OF_MEMORY`, JS heap) — a memory-pressure artifact of this shared host (AGENTS.md flags this exact mode: use `OPENCLAW_VITEST_MAX_WORKERS=1`), not a PR regression. That shard still reported `301 test files passed (302)` with 0 assertion failures before the worker was terminated.
+- All 69 continuation/announce/compaction/tracer test files passed.
+- Confirmatory rerun of the OOM'd shard, memory-constrained:
+  `OPENCLAW_VITEST_MAX_WORKERS=1 node scripts/run-vitest.mjs run --config test/vitest/vitest.agents-core.config.ts --maxWorkers=1` → **clean: 325 test files passed (325), 5,669 tests passed / 4 skipped, 0 failures, no OOM.** Confirms the full-run blemish was purely memory pressure, not a code/test defect.
+
+Live provider/gateway proof intentionally not run (review-only guardrail). The two confirmed bugs (C1, C2) are **not** covered by any existing test — corroborating the pr-test-analyzer coverage-gap findings.
