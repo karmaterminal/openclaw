@@ -76,9 +76,21 @@ describe("classifyNoOpRearmWake", () => {
 
   it("treats fresh room-event activity as neutral, not streak-building backlog", () => {
     const wake = classifyNoOpRearmWake(
-      roomEventWake({ provenance: { kind: "external_user" }, messageId: "msg-2" }),
+      roomEventWake({
+        provenance: { kind: "external_user" },
+        messageId: "msg-2",
+        eventTimestampMs: 10_000,
+      }),
+      { nowMs: 10_000, staleHumanEdgeAfterMs: 5_000 },
     );
     expect(wake).toEqual({ kind: "neutral", reason: "fresh-room-event", messageId: "msg-2" });
+  });
+
+  it("treats timestamp-less room-event activity as backlog, not freshness proof", () => {
+    const wake = classifyNoOpRearmWake(
+      roomEventWake({ provenance: { kind: "external_user" }, messageId: "msg-2" }),
+    );
+    expect(wake).toEqual({ kind: "self_rearm", source: "room_event_backlog" });
   });
 
   it("treats stale human room-event backlog as self-rearm, not a fresh edge", () => {
@@ -455,11 +467,15 @@ describe("NoOpRearmGuard admission + recording", () => {
     const guard = new NoOpRearmGuard({ threshold: 1, windowMs: 60_000, now: () => t });
     const sessionKey = "room-a";
     const otherSessionKey = "room-b";
-    const first = guard.evaluate(roomEventWake({ sessionKey, messageId: "same-room-event" }));
+    const first = guard.evaluate(
+      roomEventWake({ sessionKey, messageId: "same-room-event", eventTimestampMs: t }),
+    );
     expect(first.admit).toBe(true);
     expect(first.wake.kind).toBe("neutral");
 
-    const replay = guard.evaluate(roomEventWake({ sessionKey, messageId: "same-room-event" }));
+    const replay = guard.evaluate(
+      roomEventWake({ sessionKey, messageId: "same-room-event", eventTimestampMs: t }),
+    );
     expect(replay.admit).toBe(true);
     expect(replay.wake).toEqual({ kind: "self_rearm", source: "room_event_backlog" });
     guard.record({
@@ -473,7 +489,11 @@ describe("NoOpRearmGuard admission + recording", () => {
     );
 
     const otherRoom = guard.evaluate(
-      roomEventWake({ sessionKey: otherSessionKey, messageId: "same-room-event" }),
+      roomEventWake({
+        sessionKey: otherSessionKey,
+        messageId: "same-room-event",
+        eventTimestampMs: t,
+      }),
     );
     expect(otherRoom.admit).toBe(true);
     expect(otherRoom.wake.kind).toBe("neutral");

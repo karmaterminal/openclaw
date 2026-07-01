@@ -158,7 +158,7 @@ export function classifyNoOpRearmWake(
     eventAgeMs !== undefined &&
     eventAgeMs > opts.staleHumanEdgeAfterMs;
   const roomEventMessageId = isRoomEvent ? normalizeMessageId(input.messageId) : undefined;
-  if (isRoomEvent && !isStaleRoomEvent && (roomEventMessageId || eventAgeMs !== undefined)) {
+  if (isRoomEvent && eventAgeMs !== undefined && !isStaleRoomEvent) {
     return roomEventMessageId
       ? { kind: "neutral", reason: "fresh-room-event", messageId: roomEventMessageId }
       : { kind: "neutral", reason: "fresh-room-event" };
