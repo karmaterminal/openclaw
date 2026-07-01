@@ -1,12 +1,10 @@
 // Pre-provider no-op replay guard (#1138/#1142).
 //
-// The incident family: a wake source presents work to a session, the session
-// buys a provider turn, the turn has no substantive outcome, another same-family
-// wake arrives, and the loop repeats at provider cadence. Wake sources include
-// stale room-event backlog, durable continuation work, restart/pending-delivery
-// /interrupted-run recovery, and status-loop work. The shared bug is self-rearm
-// or wake-delivery granting provider turns without a fresh human edge or concrete
-// state gain.
+// The incident family: continuation machinery presents work to a session, the
+// session buys a provider turn, the turn has no substantive outcome, another
+// continuation wake arrives, and the loop repeats at provider cadence. The room
+// is not the bug: room events/reactions/system events are neutral unless a caller
+// positively marks the wake as continuation-owned.
 //
 // This module is the runtime guard. It exposes pure classifiers (wake source and
 // turn outcome) plus a bounded in-memory ledger that admits or suppresses a wake
@@ -26,9 +24,6 @@ import {
   stripContinuationSignal,
 } from "../tokens.js";
 
-/** Provenance sourceTool used by restart/pending-delivery recovery replays. */
-const RESTART_SENTINEL_SOURCE_TOOL = "restart-sentinel";
-
 /**
  * Default consecutive self-rearm no-op turns (within the cadence window) before a
  * key's next self-rearm wake is suppressed. Conservative: the incident produced
@@ -46,7 +41,6 @@ export const DEFAULT_NO_OP_REARM_THRESHOLD = 4;
 export const DEFAULT_NO_OP_REARM_WINDOW_MS = 5 * 60 * 1000;
 
 const MAX_LEDGER_KEYS = 512;
-const MAX_SEEN_MESSAGE_IDS = 64;
 const MAX_RECORDED_RUN_IDS = 16;
 const MAX_STREAK = 1_000_000;
 
@@ -66,13 +60,7 @@ const NO_OP_LOW_VALUE_TOOLS: ReadonlySet<string> = new Set([
 // Wake-source classification (pure)
 // ---------------------------------------------------------------------------
 
-export type NoOpRearmSelfRearmSource =
-  | "room_event_backlog"
-  | "continuation"
-  | "restart_recovery"
-  | "recovery_replay"
-  | "internal_system"
-  | "human_replay";
+export type NoOpRearmSelfRearmSource = "continuation";
 
 export type NoOpRearmWakeClass =
   | { kind: "fresh_human_edge"; messageId?: string }
@@ -91,35 +79,13 @@ export type NoOpRearmWakeInput = {
   messageId?: string | number | undefined;
   isHeartbeat?: boolean;
   isContinuationWake?: boolean;
-  /**
-   * Restart / pending-delivery / interrupted-run recovery replay. When omitted it
-   * is derived from restart-sentinel provenance.
-   */
-  isRecoveryReplay?: boolean;
   /** Structured awaited-completion marker (concrete child/process/job completion). */
   awaitedCompletion?: boolean;
-  /** Inbound event time; used to reject stale human edges when a staleness bound is set. */
+  /** Inbound event time; context only. Room-event freshness is not a suppression gate. */
   eventTimestampMs?: number;
-  /**
-   * Context only: parentRunId never changes the guard key or wake class. An aligned
-   * parent/main session with a parentRunId stays parent/main self-rearm (#1138/#1142),
-   * never a child split.
-   */
+  /** Context only: parentRunId never changes the guard key or wake class. */
   parentRunId?: string;
 };
-
-export type ClassifyWakeOptions = {
-  nowMs?: number;
-  /** When set, an external_user edge older than this is treated as stale backlog. */
-  staleHumanEdgeAfterMs?: number;
-};
-
-function isRestartSentinelProvenance(provenance: InputProvenance | undefined): boolean {
-  return (
-    provenance?.kind === "internal_system" &&
-    normalizeOptionalString(provenance.sourceTool)?.toLowerCase() === RESTART_SENTINEL_SOURCE_TOOL
-  );
-}
 
 function normalizeMessageId(messageId: string | number | undefined): string | undefined {
   if (messageId === undefined || messageId === null) {
@@ -129,13 +95,10 @@ function normalizeMessageId(messageId: string | number | undefined): string | un
 }
 
 /**
- * Classify a wake's source without ledger state. Message-id novelty (replay
- * detection) is applied at admission time where the ledger lives.
+ * Classify a wake's source without ledger state. Only explicit continuation
+ * markers become self-rearm; room and generic system-event routing stays neutral.
  */
-export function classifyNoOpRearmWake(
-  input: NoOpRearmWakeInput,
-  opts: ClassifyWakeOptions = {},
-): NoOpRearmWakeClass {
+export function classifyNoOpRearmWake(input: NoOpRearmWakeInput): NoOpRearmWakeClass {
   const provenance = input.provenance;
   const isRoomEvent = input.inboundEventKind === "room_event";
   // Structured inter-session/backend completion (preserved completion source tools)
@@ -148,20 +111,8 @@ export function classifyNoOpRearmWake(
     return { kind: "structured_completion", source: sourceTool };
   }
 
-  const eventAgeMs =
-    input.eventTimestampMs !== undefined
-      ? (opts.nowMs ?? Date.now()) - input.eventTimestampMs
-      : undefined;
-  const isStaleRoomEvent =
-    isRoomEvent &&
-    opts.staleHumanEdgeAfterMs !== undefined &&
-    eventAgeMs !== undefined &&
-    eventAgeMs > opts.staleHumanEdgeAfterMs;
-  const roomEventMessageId = isRoomEvent ? normalizeMessageId(input.messageId) : undefined;
-  if (isRoomEvent && eventAgeMs !== undefined && !isStaleRoomEvent) {
-    return roomEventMessageId
-      ? { kind: "neutral", reason: "fresh-room-event", messageId: roomEventMessageId }
-      : { kind: "neutral", reason: "fresh-room-event" };
+  if (input.isContinuationWake === true) {
+    return { kind: "self_rearm", source: "continuation" };
   }
 
   if (input.inboundEventKind === "user_request" && !isRoomEvent && provenance === undefined) {
@@ -170,69 +121,30 @@ export function classifyNoOpRearmWake(
   }
 
   // Fresh human edge: a direct external_user request that is not room-event activity
-  // and not obviously stale. Stale human backlog must not reset, and is guarded as
-  // backlog like a room event.
-  let staleHumanBacklog = false;
-  if (provenance?.kind === "external_user") {
-    const stale =
-      opts.staleHumanEdgeAfterMs !== undefined &&
-      input.eventTimestampMs !== undefined &&
-      eventAgeMs !== undefined &&
-      eventAgeMs > opts.staleHumanEdgeAfterMs;
-    if (!stale && !isRoomEvent) {
-      const messageId = normalizeMessageId(input.messageId);
-      return messageId ? { kind: "fresh_human_edge", messageId } : { kind: "fresh_human_edge" };
-    }
-    staleHumanBacklog = true;
+  // and not room provenance. Room events are neutral below so reaction/emoji ACK
+  // style activity cannot trip or reset the continuation-owned guard by itself.
+  if (provenance?.kind === "external_user" && !isRoomEvent) {
+    const messageId = normalizeMessageId(input.messageId);
+    return messageId ? { kind: "fresh_human_edge", messageId } : { kind: "fresh_human_edge" };
+  }
+
+  if (isRoomEvent) {
+    const messageId = normalizeMessageId(input.messageId);
+    return messageId
+      ? { kind: "neutral", reason: "room-event", messageId }
+      : { kind: "neutral", reason: "room-event" };
   }
 
   // A plain heartbeat timer wake is an explicit periodic backend wake (#1142
   // exception). It is admitted and never accrues or trips the self-rearm streak.
-  // A heartbeat that emits continuation/room-event work is still guarded at that
-  // self-rearm layer.
-  if (
-    input.isHeartbeat === true &&
-    !isRoomEvent &&
-    !staleHumanBacklog &&
-    input.isContinuationWake !== true &&
-    !input.isRecoveryReplay &&
-    !isRestartSentinelProvenance(provenance)
-  ) {
+  if (input.isHeartbeat === true) {
     return { kind: "exempt_backend_wake", source: "heartbeat" };
   }
 
-  // Only positively-identified self-rearm / recovery sources are guarded. An
-  // unmarked wake (no recognized provenance or marker) is neutral: it is admitted
-  // and never accrues the streak, so the guard cannot false-block ordinary turns.
-  // The incident's storm sources are all positively marked (room-event backlog,
-  // continuation, restart/pending-delivery recovery, internal_system).
-  const selfRearmSource = resolveSelfRearmSource(input, isRoomEvent || staleHumanBacklog);
-  if (selfRearmSource === undefined) {
-    return { kind: "neutral", reason: "unmarked-wake" };
-  }
-  return { kind: "self_rearm", source: selfRearmSource };
-}
-
-function resolveSelfRearmSource(
-  input: NoOpRearmWakeInput,
-  isRoomEvent: boolean,
-): NoOpRearmSelfRearmSource | undefined {
-  if (isRoomEvent) {
-    return "room_event_backlog";
-  }
-  if (input.isContinuationWake === true) {
-    return "continuation";
-  }
-  if (isRestartSentinelProvenance(input.provenance)) {
-    return "restart_recovery";
-  }
-  if (input.isRecoveryReplay === true) {
-    return "recovery_replay";
-  }
-  if (input.provenance?.kind === "internal_system") {
-    return "internal_system";
-  }
-  return undefined;
+  // Unmarked/internal/recovery/system wakes are neutral unless the caller supplies
+  // `isContinuationWake`. This keeps the guard at the continuation ownership
+  // boundary instead of treating the room or generic system-event routing as stale.
+  return { kind: "neutral", reason: "unmarked-wake" };
 }
 
 // ---------------------------------------------------------------------------
@@ -408,15 +320,12 @@ export type NoOpRearmGuardOptions = {
   threshold?: number;
   windowMs?: number;
   now?: () => number;
-  staleHumanEdgeAfterMs?: number;
 };
 
 type LedgerEntry = {
   streak: number;
   lastNoOpAtMs?: number;
   lastWakeSource?: string;
-  lastFreshHumanEdgeAtMs?: number;
-  seenMessageIds: string[];
   diagnosedEpisode: boolean;
   lastDiagnosticAtMs?: number;
   recordedRunIds: string[];
@@ -441,22 +350,11 @@ export class NoOpRearmGuard {
   private readonly threshold: number;
   private readonly windowMs: number;
   private readonly now: () => number;
-  private readonly staleHumanEdgeAfterMs: number | undefined;
 
   constructor(options: NoOpRearmGuardOptions = {}) {
     this.threshold = options.threshold ?? DEFAULT_NO_OP_REARM_THRESHOLD;
     this.windowMs = options.windowMs ?? DEFAULT_NO_OP_REARM_WINDOW_MS;
     this.now = options.now ?? Date.now;
-    this.staleHumanEdgeAfterMs = options.staleHumanEdgeAfterMs ?? DEFAULT_NO_OP_REARM_WINDOW_MS;
-  }
-
-  private classifyOptions(): ClassifyWakeOptions {
-    return {
-      nowMs: this.now(),
-      ...(this.staleHumanEdgeAfterMs !== undefined
-        ? { staleHumanEdgeAfterMs: this.staleHumanEdgeAfterMs }
-        : {}),
-    };
   }
 
   private getEntry(key: string): LedgerEntry {
@@ -470,7 +368,6 @@ export class NoOpRearmGuard {
     }
     const created: LedgerEntry = {
       streak: 0,
-      seenMessageIds: [],
       diagnosedEpisode: false,
       recordedRunIds: [],
       lastTouchedAtMs: this.now(),
@@ -503,22 +400,11 @@ export class NoOpRearmGuard {
   evaluate(input: NoOpRearmWakeInput): NoOpRearmDecision {
     const key = resolveNoOpRearmKey(input);
     const entry = this.getEntry(key);
-    let wake = classifyNoOpRearmWake(input, this.classifyOptions());
+    const wake = classifyNoOpRearmWake(input);
 
     if (wake.kind === "fresh_human_edge") {
-      const messageId = wake.messageId;
-      const isReplay = messageId !== undefined && entry.seenMessageIds.includes(messageId);
-      if (!isReplay) {
-        this.resetEntry(entry);
-        entry.lastFreshHumanEdgeAtMs = this.now();
-        if (messageId !== undefined) {
-          pushBounded(entry.seenMessageIds, messageId, MAX_SEEN_MESSAGE_IDS);
-        }
-        return { admit: true, reason: "fresh-human-edge", wake };
-      }
-      // A redelivery of an already-seen human message id is a replay, not a fresh
-      // edge: treat it as self-rearm so a stuck replay loop is bounded.
-      wake = { kind: "self_rearm", source: "human_replay" };
+      this.resetEntry(entry);
+      return { admit: true, reason: "fresh-human-edge", wake };
     }
 
     if (wake.kind === "structured_completion") {
@@ -531,17 +417,7 @@ export class NoOpRearmGuard {
     }
 
     if (wake.kind === "neutral") {
-      const messageId = wake.messageId;
-      if (messageId !== undefined) {
-        if (entry.seenMessageIds.includes(messageId)) {
-          wake = { kind: "self_rearm", source: "room_event_backlog" };
-        } else {
-          pushBounded(entry.seenMessageIds, messageId, MAX_SEEN_MESSAGE_IDS);
-          return { admit: true, reason: "neutral", wake };
-        }
-      } else {
-        return { admit: true, reason: "neutral", wake };
-      }
+      return { admit: true, reason: "neutral", wake };
     }
 
     // self_rearm
