@@ -19,7 +19,7 @@
   - `silent-failure-axis`: completed.
   - `type-design-axis`: completed.
   - `comment-axis`: completed.
-  - `code-reviewer-axis`: launched, still running after two 180s waits; not included in final verdict.
+  - `code-reviewer-axis`: completed after the first report commit; material finding folded into this follow-up report revision.
 - Validation command: `node scripts/test-projects.mjs`.
 
 ## GitNexus availability
@@ -54,7 +54,10 @@ None found.
 4. **Post-compaction delivery queue retries can duplicate an accepted child across crash-after-spawn/pre-ack because the child spawn is not deterministic.**  
    `drainPendingSessionDeliveries` acks only after `deliver()` resolves (`src/infra/session-delivery-queue-recovery.ts:147-165`). `deliverQueuedPostCompactionDelegate` persists chain state before spawning, then spawns without a deterministic continuation id (`src/auto-reply/reply/post-compaction-delegate-dispatch.ts:565-604`). If the process crashes after `spawnSubagentDirect` accepts but before `ackSessionDelivery`, the same queued delivery is replayed and spawns a new UUID child. The comment at `src/auto-reply/reply/post-compaction-delegate-dispatch.ts:549-564` covers persist-before-spawn but not crash-after-spawn/pre-ack. Best fix: derive the child run/session key from the delivery queue id and reconcile accepted live children on retry, mirroring the TaskFlow `flowId` path.
 
-5. **Delete-mode subagent cleanup can silently swallow session-delete failures.**  
+5. **Delete-mode subagent cleanup can delete sessions that still own staged post-compaction delegates.**
+   `deleteSubagentSessionForCleanup` defers when `hasRecoverablePendingDelegate(childSessionKey)` is true (`src/agents/subagent-session-cleanup.ts:70-74`), but `hasRecoverablePendingDelegate` only covers the normal pending-delegate controller through `isRecoverablePendingFlow` (`src/auto-reply/continuation/delegate-store.ts:197-199`, `src/auto-reply/continuation/delegate-store.ts:671-673`). Post-compaction delegates are stored under a separate controller (`src/auto-reply/continuation/delegate-store.ts:187-190`) and can be queued/running while cleanup still proceeds to `sessions.delete`. That removes the child session entry/delivery context those rows need at the later compaction/recovery seam. Best fix: replace/extend the cleanup predicate so it covers all continuation delegate substrate owned by the child session, or explicitly fail/cancel post-compaction rows before deletion with a visible warning.
+
+6. **Delete-mode subagent cleanup can silently swallow session-delete failures.**
    `deleteSubagentSessionForCleanup` catches `sessions.delete` errors and only calls optional `onError` (`src/agents/subagent-session-cleanup.ts:79-91`). At least one caller uses no `onError`, so a failed delete can be silent and not retried. Best fix: log in the helper unconditionally and schedule a bounded retry on delete failure.
 
 ## Coverage gaps
@@ -63,6 +66,7 @@ None found.
 - `spawnSubagentDirect` child seeding: no direct test proves `continuationChainState` is persisted into the child session entry (`src/agents/subagent-spawn.ts:1399-1408`).
 - Admission reset entry paths: the main runner has a test (`src/auto-reply/reply/agent-runner-execution.test.ts:1411-1423`), but the new reset calls in `src/auto-reply/reply/followup-runner.ts:1200-1205` and `src/agents/command/attempt-execution.ts:898-900` are not pinned.
 - Child no-op token persistence fail-closed behavior is weaker than the parent coverage; add a child-session no-op persist failure test that proves the folded basis is used and delayed delegates are not left behind with stale cost.
+- Cleanup needs queued and running post-compaction delegate coverage so delete-mode child sessions cannot be removed while owning staged recovery work.
 - Add tests for post-compaction spawn failure in `releasePostCompactionLifecycle` if the helper remains, and for crash-after-spawn/pre-ack idempotency in the session-delivery queue path.
 
 ## Comment/doc risks
