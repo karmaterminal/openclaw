@@ -364,20 +364,38 @@ final class OpenClawSnapshotUITests: XCTestCase {
         try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .phone, "Phone chat proof only")
         let app = try launchPairedLiveGatewayApp(initialTab: "chat", initialDestination: "chat")
 
-        let input = app.textFields["chat-message-input"]
-        XCTAssertTrue(input.waitForExistence(timeout: 8))
+        // Build scrollable history through the paired app before checking reader behavior.
+        for index in 0..<3 {
+            let seedMarker = "OPENCLAW_E2E_SEED_\(index)_\(Int(Date().timeIntervalSince1970 * 1000))"
+            let seedContext = String(repeating: "Reader context \(index). ", count: 6)
+            self.sendLiveGatewayMessage(
+                "\(seedContext)Reply exactly with \(seedMarker) and no other text.",
+                expecting: seedMarker,
+                in: app)
+        }
+
         let replyMarker = "OPENCLAW_E2E_OK_\(Int(Date().timeIntervalSince1970 * 1000))"
-        input.tap()
-        input.typeText("Reply exactly with \(replyMarker)")
+        self.sendLiveGatewayMessage(
+            "Reply exactly with \(replyMarker) and no other text.",
+            expecting: replyMarker,
+            in: app)
+        let jumpToLatest = app.buttons["Jump to latest reply"]
+        XCTAssertTrue(jumpToLatest.waitForExistence(timeout: 3))
+        self.attachScreenshot(named: "live-gateway-chat-reply-anchored")
 
-        let send = app.buttons["chat-send-message"]
-        XCTAssertTrue(send.waitForExistence(timeout: 3))
-        XCTAssertTrue(send.isEnabled)
-        send.tap()
+        jumpToLatest.tap()
+        XCTAssertTrue(jumpToLatest.waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts[replyMarker].exists)
+        Thread.sleep(forTimeInterval: 0.5)
+        self.attachScreenshot(named: "live-gateway-chat-jumped-to-latest")
 
-        XCTAssertTrue(app.staticTexts[replyMarker].waitForExistence(timeout: 60))
-        XCTAssertTrue(app.staticTexts["Writing"].waitForNonExistence(timeout: 5))
-        self.attachScreenshot(named: "live-gateway-chat-round-trip")
+        let transcript = app.scrollViews.firstMatch
+        XCTAssertTrue(transcript.exists)
+        transcript.swipeDown()
+        XCTAssertTrue(jumpToLatest.waitForExistence(timeout: 3))
+        self.attachScreenshot(named: "live-gateway-chat-manual-departure")
+        jumpToLatest.tap()
+        XCTAssertTrue(jumpToLatest.waitForNonExistence(timeout: 3))
 
         let controlApp = self.relaunchConnectedLiveGatewayApp(
             initialTab: "control",
@@ -390,6 +408,99 @@ final class OpenClawSnapshotUITests: XCTestCase {
         XCTAssertTrue(controlApp.buttons["Gateway settings"].waitForExistence(timeout: 5))
         self.attachScreenshot(named: "live-gateway-overview")
         XCTAssertEqual(controlApp.state, .runningForeground)
+    }
+
+    func testManualAuthRetryUsesEditedToken() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["OPENCLAW_IOS_RETRY_E2E"] == "1",
+            "Set OPENCLAW_IOS_RETRY_E2E=1 with a local token-auth Gateway on port 18920")
+        let token = try XCTUnwrap(ProcessInfo.processInfo.environment["OPENCLAW_IOS_RETRY_TOKEN"])
+
+        let app = XCUIApplication()
+        addUIInterruptionMonitor(withDescription: "Local network access") { alert in
+            guard alert.buttons["Allow"].exists else { return false }
+            alert.buttons["Allow"].tap()
+            return true
+        }
+        app.launchArguments += ["--openclaw-reset-onboarding"]
+        app.launch()
+        self.app = app
+
+        XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 8))
+        app.buttons["Continue"].tap()
+        app.tap()
+        XCTAssertTrue(app.buttons["Set Up Manually"].waitForExistence(timeout: 8))
+        app.buttons["Set Up Manually"].tap()
+        let developerMode = app.buttons["Developer mode"]
+        if developerMode.value as? String != "On" {
+            developerMode.tap()
+        }
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Same Machine (Dev)")).firstMatch.tap()
+        app.buttons["Continue"].tap()
+
+        let port = app.textFields["Port"]
+        XCTAssertTrue(port.waitForExistence(timeout: 5))
+        port.tap()
+        port.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5) + "18920")
+        app.buttons["Connect"].tap()
+
+        let tokenField = app.secureTextFields["Gateway Auth Token"]
+        XCTAssertTrue(tokenField.waitForExistence(timeout: 20))
+        tokenField.tap()
+        tokenField.typeText(token)
+        app.buttons["Done"].tap()
+        app.buttons["Retry Connection"].tap()
+
+        XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 30))
+        self.attachScreenshot(named: "manual-auth-retry-connected")
+    }
+
+    func testPhotosLimitedAccess() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["OPENCLAW_IOS_PHOTOS_E2E"] == "1",
+            "Set OPENCLAW_IOS_PHOTOS_E2E=1 to exercise the system Photos prompt")
+        addUIInterruptionMonitor(withDescription: "Photos access") { alert in
+            for title in ["Limit Access…", "Select Photos…"] where alert.buttons[title].exists {
+                alert.buttons[title].tap()
+                return true
+            }
+            return false
+        }
+        self.launchApp(for: ScreenshotTarget(
+            initialTab: "settings",
+            initialDestination: "settings",
+            name: "photos-limited-access"))
+
+        let permissions = try XCTUnwrap(
+            self.app?.buttons.containing(.staticText, identifier: "Permissions").firstMatch)
+        XCTAssertTrue(permissions.waitForExistence(timeout: 8))
+        permissions.tap()
+
+        let privacy = try XCTUnwrap(
+            self.app?.buttons.containing(.staticText, identifier: "Privacy & Access").firstMatch)
+        XCTAssertTrue(privacy.waitForExistence(timeout: 8))
+        privacy.tap()
+
+        let request = try XCTUnwrap(self.app?.buttons["privacy-access-Photos-action"])
+        XCTAssertTrue(request.waitForExistence(timeout: 5))
+        request.tap()
+        self.app?.tap()
+
+        // The limited picker is an out-of-process system surface without stable accessibility identifiers.
+        // Normalized taps are confined to this opt-in simulator test; app-owned state proves completion below.
+        let screen = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        screen.coordinate(withNormalizedOffset: CGVector(dx: 0.17, dy: 0.43)).tap()
+        screen.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.16)).tap()
+
+        self.app?.activate()
+        let limitedStatus = try XCTUnwrap(self.app?.staticTexts.matching(
+            NSPredicate(
+                format: "identifier == %@ AND label == %@",
+                "privacy-access-Photos-status",
+                "Limited")).firstMatch)
+        XCTAssertTrue(limitedStatus.waitForExistence(timeout: 8))
+        XCTAssertEqual(self.app?.buttons["privacy-access-Photos-action"].label, "Manage Access")
+        self.attachScreenshot(named: "photos-limited-access")
     }
 
     private func launchApp(for target: ScreenshotTarget, appearance: String? = "dark") {
@@ -433,7 +544,11 @@ final class OpenClawSnapshotUITests: XCTestCase {
     {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["OPENCLAW_IOS_LIVE_GATEWAY"] == "1",
-            "Set OPENCLAW_IOS_LIVE_GATEWAY=1 and copy a fresh setup code to the simulator pasteboard")
+            "Set OPENCLAW_IOS_LIVE_GATEWAY=1 and provide a fresh setup code")
+
+        if let setupCode = ProcessInfo.processInfo.environment["OPENCLAW_IOS_LIVE_SETUP_CODE"] {
+            UIPasteboard.general.string = setupCode
+        }
 
         let app = XCUIApplication()
         addUIInterruptionMonitor(withDescription: "Local network access") { alert in
@@ -487,6 +602,27 @@ final class OpenClawSnapshotUITests: XCTestCase {
         self.app = app
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 8))
         return app
+    }
+
+    private func sendLiveGatewayMessage(
+        _ text: String,
+        expecting replyMarker: String,
+        in app: XCUIApplication)
+    {
+        let input = app.textFields["chat-message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8))
+        input.tap()
+        input.typeText(text)
+
+        let send = app.buttons["chat-send-message"]
+        XCTAssertTrue(send.waitForExistence(timeout: 3))
+        XCTAssertTrue(send.isEnabled)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+        send.tap()
+
+        XCTAssertTrue(app.staticTexts[replyMarker].waitForExistence(timeout: 60))
+        XCTAssertTrue(app.staticTexts["Writing"].waitForNonExistence(timeout: 5))
     }
 
     private func attachScreenshot(named name: String) {
