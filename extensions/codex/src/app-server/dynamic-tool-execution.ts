@@ -180,6 +180,7 @@ export async function handleDynamicToolCallWithTimeout(params: {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
+  let timeoutResponse: CodexDynamicToolCallResponse | undefined;
   let resolveAbort: ((response: CodexDynamicToolCallResponse) => void) | undefined;
   const abortFromRun = () => {
     const message = "OpenClaw dynamic tool call aborted.";
@@ -202,20 +203,19 @@ export async function handleDynamicToolCallWithTimeout(params: {
     timeout = setTimeout(() => {
       timedOut = true;
       const timeoutDetails = formatDynamicToolTimeoutDetails({ call: params.call, timeoutMs });
+      timeoutResponse = failedDynamicToolResponse(timeoutDetails.responseMessage, {
+        sideEffectEvidence: true,
+        terminalReason: "timed_out",
+      });
       params.onFallbackSelected?.();
-      controller.abort(new Error(timeoutDetails.responseMessage));
       params.onTimeout?.();
       embeddedAgentLog.warn("codex dynamic tool call timed out", {
         ...timeoutDetails.meta,
         consoleMessage: timeoutDetails.consoleMessage,
       });
       notifyFailedToolResult(timeoutDetails.responseMessage, "timed_out");
-      resolve(
-        failedDynamicToolResponse(timeoutDetails.responseMessage, {
-          sideEffectEvidence: true,
-          terminalReason: "timed_out",
-        }),
-      );
+      resolve(timeoutResponse);
+      controller.abort(new Error(timeoutDetails.responseMessage));
     }, timeoutMs);
     timeout.unref?.();
   });
@@ -242,6 +242,9 @@ export async function handleDynamicToolCallWithTimeout(params: {
     }
     return response;
   } catch (error) {
+    if (timedOut && timeoutResponse !== undefined) {
+      return timeoutResponse;
+    }
     const terminalReason = params.signal.aborted
       ? resolveCodexToolAbortTerminalReason(params.signal)
       : resolveToolExecutionErrorKind(error);
