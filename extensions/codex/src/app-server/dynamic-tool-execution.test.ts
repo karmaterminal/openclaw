@@ -231,7 +231,7 @@ describe("dynamic tool execution helpers", () => {
           },
         ],
         details: {
-          status: "failed",
+          status: "timed_out",
           error: "OpenClaw dynamic tool call timed out after 1ms while running tool message.",
         },
       },
@@ -273,7 +273,7 @@ describe("dynamic tool execution helpers", () => {
       result: {
         content: [{ type: "text", text: "OpenClaw dynamic tool call aborted before execution." }],
         details: {
-          status: "failed",
+          status: "cancelled",
           error: "OpenClaw dynamic tool call aborted before execution.",
         },
       },
