@@ -1,0 +1,222 @@
+{
+  "rows": [
+    {
+      "file": "src/cli/program/register.agent.test.ts",
+      "symbol_or_range": "import block / test registration wiring",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/cli/program/register.agent.test.ts => no hunks",
+        "git diff 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/cli/program/register.agent.test.ts shows only import-order churn."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/cli/program/register.agent.test.ts => 274e035b3bc chore: prune transposed splay from assembly"
+      ],
+      "risk": "low",
+      "proposed_action": "Treat as pure import-order/test registration noise; no runtime change to continuation payload."
+    },
+    {
+      "file": "src/commands/configure.commands.ts",
+      "symbol_or_range": "assertInteractiveConfigureTerminal formatting-only wrap",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/commands/configure.commands.ts => no hunks",
+        "git diff 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/commands/configure.commands.ts shows only line-wrap churn."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/commands/configure.commands.ts => 274e035b3bc chore: prune transposed splay from assembly"
+      ],
+      "risk": "low",
+      "proposed_action": "Drop from the next cleanup PR; no semantic change to continuation or configure behavior."
+    },
+    {
+      "file": "src/plugins/setup-registry.test.ts",
+      "symbol_or_range": "EOF newline / trailing assertion block",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/plugins/setup-registry.test.ts => no hunks",
+        "git diff 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/plugins/setup-registry.test.ts is a one-line EOF-only change."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/plugins/setup-registry.test.ts => 274e035b3bc chore: prune transposed splay from assembly"
+      ],
+      "risk": "low",
+      "proposed_action": "Drop as newline/format-only residue from the earlier assembly cleanup."
+    },
+    {
+      "file": "extensions/raft/src/accounts.ts",
+      "symbol_or_range": "raft account schema/object ordering",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/raft/src/accounts.ts => no hunks",
+        "The file is identical to upstream current content after whitespace-insensitive comparison."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/raft/src/accounts.ts => 274e035b3bc chore: prune transposed splay from assembly"
+      ],
+      "risk": "low",
+      "proposed_action": "Treat as raft-only arrangement drift; no continuation-side dependency is evident."
+    },
+    {
+      "file": "extensions/raft/src/channel.ts",
+      "symbol_or_range": "raft channel wiring block ordering",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/raft/src/channel.ts => no hunks"
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/raft/src/channel.ts => 274e035b3bc chore: prune transposed splay from assembly"
+      ],
+      "risk": "low",
+      "proposed_action": "Drop as local ordering-only residue in the raft extension."
+    },
+    {
+      "file": "extensions/raft/src/config-schema.ts",
+      "symbol_or_range": "raft schema object ordering / formatting",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/raft/src/config-schema.ts => no hunks",
+        "The file matches upstream current content after whitespace-insensitive comparison."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/raft/src/config-schema.ts => 274e035b3bc chore: prune transposed splay from assembly"
+      ],
+      "risk": "low",
+      "proposed_action": "Drop as schema-ordering drift; no continuation wiring to preserve."
+    },
+    {
+      "file": "extensions/raft/src/setup.ts",
+      "symbol_or_range": "raft setup block shaping / import ordering",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/raft/src/setup.ts => no hunks"
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/raft/src/setup.ts => 274e035b3bc chore: prune transposed splay from assembly"
+      ],
+      "risk": "low",
+      "proposed_action": "Drop as setup-file block-shape residue from the prior cleanup branch."
+    },
+    {
+      "file": "extensions/codex/src/app-server/tool-abort-terminal-reason.ts",
+      "symbol_or_range": "resolveCodexToolAbortTerminalReason",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/codex/src/app-server/tool-abort-terminal-reason.ts => no hunks",
+        "A0..A1 added the file, but the current content matches upstream current exactly."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/codex/src/app-server/tool-abort-terminal-reason.ts => 00baf3f8de9 fix: restore upstream splay behavior"
+      ],
+      "risk": "medium",
+      "proposed_action": "Keep as a reviewer note only if the codex extension wants to preserve the helper; otherwise it is upstream-equivalent noise."
+    },
+    {
+      "file": "extensions/mattermost/src/mattermost/slash-commands.ts",
+      "symbol_or_range": "mattermost slash command handler block",
+      "classification": "DROP-candidate",
+      "feature_reachability": "not-feature-reachable",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context createContinueDelegateTool"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/mattermost/src/mattermost/slash-commands.ts => no hunks",
+        "The file is equivalent to upstream current content after whitespace-insensitive comparison."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- extensions/mattermost/src/mattermost/slash-commands.ts => 00baf3f8de9 fix: restore upstream splay behavior"
+      ],
+      "risk": "low",
+      "proposed_action": "Drop as upstream-equivalent mattermost command wiring residue."
+    },
+    {
+      "file": "src/agents/embedded-agent-runner/result-fallback-classifier.ts",
+      "symbol_or_range": "classifyEmbeddedAgentRunResultForModelFallback",
+      "classification": "REVIEW-candidate",
+      "feature_reachability": "feature-adjacent",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "context classifyEmbeddedAgentRunResultForModelFallback"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/agents/embedded-agent-runner/result-fallback-classifier.ts => no hunks",
+        "GitNexus context shows the symbol is wired into embedded-agent fallback and auto-reply token handling, so it is adjacent to continuation flows even though the body matches upstream."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/agents/embedded-agent-runner/result-fallback-classifier.ts => 00baf3f8de9 fix: restore upstream splay behavior"
+      ],
+      "risk": "medium",
+      "proposed_action": "Review only if the next cleanup wants to collapse surrounding embedded-agent fallback scaffolding; do not edit blindly because the module is adjacent to continuation execution."
+    },
+    {
+      "file": "src/auto-reply/reply/agent-runner-reminder-guard.ts",
+      "symbol_or_range": "REMINDER_COMMITMENT_PATTERNS / reminder guard",
+      "classification": "REVIEW-candidate",
+      "feature_reachability": "feature-adjacent",
+      "gitnexus_queries": [
+        "context createContinueWorkTool",
+        "impact createContinueWorkTool",
+        "query reminder guard"
+      ],
+      "equivalence_evidence": [
+        "git diff -w --ignore-blank-lines fc4626c1221d5b49af2d3d374109a7cf4bbd2deb..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/auto-reply/reply/agent-runner-reminder-guard.ts => no hunks",
+        "The file sits in the auto-reply reply surface and its regex logic now matches upstream current content exactly."
+      ],
+      "blame_evidence": [
+        "git log --oneline --decorate --no-merges 1cc8f4e3d617ef6f173283ef83d7b739a4995734..d54026916e5328c2a37a5913cb466250dc78bb44 -- src/auto-reply/reply/agent-runner-reminder-guard.ts => 00baf3f8de9 fix: restore upstream splay behavior"
+      ],
+      "risk": "medium",
+      "proposed_action": "Leave for a second-pass review; it is close to the reply/continuation seam even though the body is upstream-equivalent."
+    }
+  ]
+}
