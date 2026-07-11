@@ -1001,6 +1001,9 @@ async function compactEmbeddedAgentSessionDirectOnce(
           modelCompat: extractModelCompat(effectiveModel),
           modelApi: model.api,
           modelContextWindowTokens: contextTokenBudget,
+          // Compaction is nested maintenance, not an active turn owner; it cannot
+          // schedule or drain continuation work without corrupting the parent turn.
+          disableContinuationTools: true,
           skillsSnapshot: skillsSnapshotForRun,
           skillUsagePaths,
           conversationCapabilityProfile: runtimeCapabilityProfile,
