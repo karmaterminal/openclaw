@@ -10,3 +10,4 @@
   - `node scripts/run-vitest.mjs run --config test/vitest/vitest.config.ts src/agents/openclaw-tools.continuation-misconfig-warn.test.ts` — 2 files / 14 tests.
   - `node scripts/run-vitest.mjs run --config test/vitest/vitest.config.ts src/agents/embedded-agent-runner/compact.hooks.test.ts` — 2 files / 182 tests.
   - `git diff --check` — clean.
+- 2026-07-11T08:17Z: Committed and pushed fork-only repair `b0d39b9491` (`fix(agents): disable continuation tools during compaction`) to `silas/issue-1108-continuation-tool-callbacks-20260711`. No PR opened by parent-direction; intended base remains `scribe/20260709/1172-status-row-assembly`.
