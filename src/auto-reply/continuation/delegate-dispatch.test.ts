@@ -988,18 +988,21 @@ describe("tool delegate dispatch contract", () => {
     );
     expect(spawnParams[0]).toMatchObject({
       task: expect.stringContaining("normal"),
+      lightContext: true,
       drainsContinuationDelegateQueue: true,
     });
     expect(spawnParams[0]).not.toHaveProperty("silentAnnounce");
     expect(spawnParams[0]).not.toHaveProperty("wakeOnReturn");
     expect(spawnParams[1]).toMatchObject({
       task: expect.stringContaining("silent"),
+      lightContext: true,
       silentAnnounce: true,
       drainsContinuationDelegateQueue: true,
     });
     expect(spawnParams[1]).not.toHaveProperty("wakeOnReturn");
     expect(spawnParams[2]).toMatchObject({
       task: expect.stringContaining("wake"),
+      lightContext: true,
       silentAnnounce: true,
       wakeOnReturn: true,
       drainsContinuationDelegateQueue: true,

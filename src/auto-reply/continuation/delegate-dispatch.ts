@@ -690,6 +690,12 @@ export async function dispatchToolDelegates(params: {
       const result = await spawnSubagentDirect(
         {
           task: `[continuation:chain-hop:${nextHop}] Delegated task (turn ${nextHop}/${maxChainLength}): ${delegate.task}`,
+          // Continuation delegates carry their working context in the task string
+          // and chain metadata. Keep the spawned child on the lightweight
+          // bootstrap path so small/local delegate models are not forced to
+          // ingest the requester's full workspace prompt envelope before the
+          // task can run.
+          lightContext: true,
           drainsContinuationDelegateQueue: true,
           continuationChainState: {
             count: nextHop,
