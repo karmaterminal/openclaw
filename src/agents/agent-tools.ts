@@ -105,11 +105,11 @@ import {
   type ToolSearchCatalogRef,
   type ToolSearchCatalogToolExecutor,
 } from "./tool-search.js";
-import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 import {
   replaceWithEffectiveCronCreatorToolAllowlist,
   type CronCreatorToolAllowlistEntry,
 } from "./tools/cron-tool.js";
+import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 
 const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
 
@@ -496,6 +496,8 @@ export function createOpenClawCodingTools(options?: {
   allowGatewaySubagentBinding?: boolean;
   /** Whether this run consumes the continue_delegate staging queue. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Suppress all continuation tools when this run does not own their lifecycle. */
+  disableContinuationTools?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */
   continueWorkOpts?: {
     requestContinuation: (
@@ -1065,6 +1067,7 @@ export function createOpenClawCodingTools(options?: {
           onYield: options?.onYield,
           allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
           drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
+          disableContinuationTools: options?.disableContinuationTools,
           continueWorkOpts: options?.continueWorkOpts,
           requestCompactionOpts: options?.requestCompactionOpts,
           recordToolPrepStage: options?.recordToolPrepStage,

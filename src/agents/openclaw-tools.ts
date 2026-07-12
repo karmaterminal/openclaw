@@ -215,6 +215,8 @@ export function createOpenClawTools(
     allowGatewaySubagentBinding?: boolean;
     /** Whether the current run consumes the continue_delegate staging queue. */
     drainsContinuationDelegateQueue?: boolean;
+    /** Suppress all continuation controls for a run that does not own their lifecycle. */
+    disableContinuationTools?: boolean;
     /** Callback for continue_work to request a post-turn continuation. */
     continueWorkOpts?: {
       requestContinuation: (request: ContinueWorkRequest) => void;
@@ -632,7 +634,8 @@ export function createOpenClawTools(
     // continue_delegate alone, with no warning. The guard below surfaces that silent partial-
     // registration so misconfiguration is observable instead of hidden.
     // Tracking: continuation tool-registration guard.
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    ...(!options?.disableContinuationTools &&
+    options?.config?.agents?.defaults?.continuation?.enabled === true &&
     options?.continueWorkOpts
       ? [
           createContinueWorkTool({
@@ -641,7 +644,8 @@ export function createOpenClawTools(
           }),
         ]
       : []),
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    ...(!options?.disableContinuationTools &&
+    options?.config?.agents?.defaults?.continuation?.enabled === true &&
     options?.drainsContinuationDelegateQueue !== false
       ? [
           createContinueDelegateTool({
@@ -649,7 +653,8 @@ export function createOpenClawTools(
           }),
         ]
       : []),
-    ...(options?.config?.agents?.defaults?.continuation?.enabled === true &&
+    ...(!options?.disableContinuationTools &&
+    options?.config?.agents?.defaults?.continuation?.enabled === true &&
     options?.requestCompactionOpts
       ? [
           createRequestCompactionTool({
@@ -663,6 +668,7 @@ export function createOpenClawTools(
   ];
 
   if (
+    !options?.disableContinuationTools &&
     options?.config?.agents?.defaults?.continuation?.enabled === true &&
     !options?.continueWorkOpts &&
     !options?.requestCompactionOpts
