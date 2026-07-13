@@ -784,6 +784,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Install
   - H2: Setup
   - H2: Configure
+  - H3: Streaming
   - H3: Access policy
   - H3: Multi-account setup
   - H3: Group chats
@@ -1264,6 +1265,8 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
 - Headings:
   - H1: openclaw backup
   - H2: Notes
+  - H2: SQLite snapshots
+  - H3: Verify and restore
   - H2: What gets backed up
   - H2: Invalid config behavior
   - H2: Size and performance
@@ -9639,7 +9642,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
 - Route: /tools/firecrawl
 - Headings:
   - H2: Install plugin
-  - H2: Keyless webfetch and API keys
+  - H2: Keyless access and API keys
   - H2: Configure Firecrawl search
   - H2: Configure Firecrawl webfetch fallback
   - H3: Self-hosted Firecrawl

@@ -224,6 +224,7 @@ function shouldAlwaysBundleDependency(id: string): boolean {
     id.startsWith("@openclaw/fs-safe/") ||
     id === "@openclaw/normalization-core" ||
     id.startsWith("@openclaw/normalization-core/") ||
+    id === "@openclaw/retry" ||
     id === "@openclaw/media-core" ||
     id.startsWith("@openclaw/media-core/") ||
     id === "@openclaw/acp-core" ||
@@ -419,7 +420,6 @@ function buildMediaGenerationCoreDistEntries(): Record<string, string> {
 
 function buildMediaUnderstandingCoreDistEntries(): Record<string, string> {
   return {
-    index: "packages/media-understanding-common/src/index.ts",
     "active-model": "packages/media-understanding-common/src/active-model.ts",
     defaults: "packages/media-understanding-common/src/defaults.ts",
     errors: "packages/media-understanding-common/src/errors.ts",
@@ -457,6 +457,12 @@ function buildNormalizationCoreDistEntries(): Record<string, string> {
     "string-coerce": "packages/normalization-core/src/string-coerce.ts",
     "string-normalization": "packages/normalization-core/src/string-normalization.ts",
     "utf16-slice": "packages/normalization-core/src/utf16-slice.ts",
+  };
+}
+
+function buildRetryDistEntries(): Record<string, string> {
+  return {
+    index: "packages/retry/src/index.ts",
   };
 }
 
@@ -531,7 +537,6 @@ function buildTerminalCoreDistEntries(): Record<string, string> {
 
 function buildWebContentCoreDistEntries(): Record<string, string> {
   return {
-    index: "packages/web-content-core/src/index.ts",
     "provider-runtime-shared": "packages/web-content-core/src/provider-runtime-shared.ts",
   };
 }
@@ -637,6 +642,9 @@ function buildUnifiedDistEntries(): Record<string, string> {
       ]),
     ),
     ...Object.fromEntries(
+      Object.entries(buildRetryDistEntries()).map(([entry, source]) => [`retry/${entry}`, source]),
+    ),
+    ...Object.fromEntries(
       Object.entries(buildMediaCoreDistEntries()).map(([entry, source]) => [
         `media-core/${entry}`,
         source,
@@ -739,6 +747,12 @@ const configs = [
     dts: TSDOWN_DECLARATIONS,
     entry: buildNormalizationCoreDistEntries(),
     outDir: tsdownPackageOutputRoot("normalization-core"),
+  }),
+  nodeWorkspacePackageBuildConfig({
+    clean: true,
+    dts: TSDOWN_DECLARATIONS,
+    entry: buildRetryDistEntries(),
+    outDir: tsdownPackageOutputRoot("retry"),
   }),
   nodeWorkspacePackageBuildConfig({
     clean: true,

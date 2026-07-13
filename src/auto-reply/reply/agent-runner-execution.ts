@@ -51,7 +51,7 @@ import { mergeEmbeddedAgentRunResultForModelFallbackExhaustion } from "../../age
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
 import type { EmbeddedAgentCompactResult } from "../../agents/embedded-agent-runner/types.js";
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
-import { isFailoverError } from "../../agents/failover-error.js";
+import { findCliMaxTurnsError, isFailoverError } from "../../agents/failover-error.js";
 import type { FastModeAutoProgressState } from "../../agents/fast-mode.js";
 import { resolveAgentHarnessPolicy } from "../../agents/harness/policy.js";
 import { ensureSelectedAgentHarnessPlugin } from "../../agents/harness/runtime-plugin.js";
@@ -1223,6 +1223,13 @@ function buildExternalRunFailureReply(
   const authProfileFailoverFailure = buildAuthProfileFailoverFailureText(error);
   if (authProfileFailoverFailure) {
     return { text: authProfileFailoverFailure, isGenericRunnerFailure: false };
+  }
+  const cliMaxTurnsError = findCliMaxTurnsError(error);
+  if (cliMaxTurnsError) {
+    return {
+      text: sanitizeUserFacingText(cliMaxTurnsError.message, { errorContext: true }),
+      isGenericRunnerFailure: false,
+    };
   }
   const providerRequestError = classifyProviderRequestError(error ?? normalizedMessage);
   if (providerRequestError) {
