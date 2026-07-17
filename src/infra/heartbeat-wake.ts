@@ -98,6 +98,7 @@ export function areHeartbeatsEnabled(): boolean {
 }
 
 type WakeTimerKind = "normal" | "retry";
+type WakeTrustDomain = "default" | "trusted-continuation";
 type PendingWakeReason = {
   source: HeartbeatWakeSource;
   intent: HeartbeatWakeIntent;
@@ -165,6 +166,18 @@ function getWakeTargetKey(params: { agentId?: string; sessionKey?: string }) {
   return `${agentId ?? ""}::${sessionKey ?? ""}`;
 }
 
+function resolveWakeTrustDomain(trustedContinuationRouting: boolean): WakeTrustDomain {
+  return trustedContinuationRouting ? "trusted-continuation" : "default";
+}
+
+function getWakeCoalesceKey(params: {
+  agentId?: string;
+  sessionKey?: string;
+  trustDomain: WakeTrustDomain;
+}) {
+  return `${getWakeTargetKey(params)}::${params.trustDomain}`;
+}
+
 function queuePendingWakeReason(params: {
   source: HeartbeatWakeSource;
   intent: HeartbeatWakeIntent;
@@ -181,9 +194,11 @@ function queuePendingWakeReason(params: {
   const normalizedAgentId = normalizeWakeTarget(params.agentId);
   const normalizedSessionKey = normalizeWakeTarget(params.sessionKey);
   const normalizedParentRunId = normalizeWakeTarget(params.parentRunId);
-  const wakeTargetKey = getWakeTargetKey({
+  const trustedContinuationRouting = params.trustedContinuationRouting === true;
+  const wakeTargetKey = getWakeCoalesceKey({
     agentId: normalizedAgentId,
     sessionKey: normalizedSessionKey,
+    trustDomain: resolveWakeTrustDomain(trustedContinuationRouting),
   });
   const next: PendingWakeReason = {
     source: params.source,
@@ -199,7 +214,7 @@ function queuePendingWakeReason(params: {
     sessionKey: normalizedSessionKey,
     parentRunId: normalizedParentRunId,
     heartbeat: params.heartbeat,
-    trustedContinuationRouting: params.trustedContinuationRouting === true,
+    trustedContinuationRouting,
   };
   const previous = pendingWakes.get(wakeTargetKey);
   if (!previous) {
