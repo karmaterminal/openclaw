@@ -168,6 +168,72 @@ describe("collectEnabledInsecureOrDangerousFlags", () => {
         }),
       ),
     ).toBe(false);
+    expect(
+      hasAllowedRootsFlag(
+        asConfig({
+          tools: {
+            exec: {
+              applyPatch: { enabled: false, allowedRoots: ["/tmp/oc-worktree"] },
+            },
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      hasAllowedRootsFlag(
+        asConfig({
+          tools: {
+            fs: { workspaceOnly: true },
+            exec: { applyPatch: { allowedRoots: ["/tmp/oc-worktree"] } },
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("collects active per-agent apply_patch allowed roots", () => {
+    const flags = collectEnabledInsecureOrDangerousFlagsFromContracts(
+      asConfig({
+        tools: {
+          fs: { workspaceOnly: true },
+          exec: { applyPatch: { allowedRoots: ["/tmp/global-worktree"] } },
+        },
+        agents: {
+          list: [
+            {
+              id: "worker",
+              tools: {
+                fs: { workspaceOnly: false },
+                exec: { applyPatch: { allowedRoots: ["/tmp/worker-worktree"] } },
+              },
+            },
+            {
+              id: "disabled",
+              tools: {
+                exec: {
+                  applyPatch: { enabled: false, allowedRoots: ["/tmp/disabled-worktree"] },
+                },
+              },
+            },
+            {
+              id: "inheritor",
+              tools: { fs: { workspaceOnly: false } },
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(flags).toContain(
+      'agents.list[id="worker"].tools.exec.applyPatch.allowedRoots configured (1)',
+    );
+    expect(
+      flags.some((flag) => flag.includes('agents.list[id="disabled"].tools.exec.applyPatch')),
+    ).toBe(false);
+    expect(flags).toContain(
+      'agents.list[id="inheritor"].tools.exec.applyPatch.allowedRoots configured (1)',
+    );
+    expect(flags).not.toContain("tools.exec.applyPatch.allowedRoots configured (1)");
   });
 
   it("uses stable agent ids for per-agent dangerous sandbox flags", () => {

@@ -660,6 +660,54 @@ describe("applyPatch", () => {
     });
   });
 
+  it("allows a workspace directory symlink into a configured root", async () => {
+    await withTempDir(async (dir) => {
+      const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));
+      const nestedAllowedDir = path.join(allowedDir, "nested", "target");
+      await fs.mkdir(nestedAllowedDir, { recursive: true });
+      const aliasPath = path.join(dir, "external");
+      await fs.symlink(
+        nestedAllowedDir,
+        aliasPath,
+        process.platform === "win32" ? "junction" : undefined,
+      );
+      try {
+        const patch = `*** Begin Patch
+*** Add File: external/through-alias.txt
++allowed
+*** End Patch`;
+        await applyPatch(patch, { cwd: dir, allowedRoots: [allowedDir] });
+        await expect(
+          fs.readFile(path.join(nestedAllowedDir, "through-alias.txt"), "utf8"),
+        ).resolves.toBe("allowed\n");
+      } finally {
+        await fs.rm(aliasPath, { recursive: true, force: true });
+        await fs.rm(allowedDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("unlinks a workspace file symlink into a configured root without touching its target", async () => {
+    await withTempDir(async (dir) => {
+      const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));
+      const targetPath = path.join(allowedDir, "target.txt");
+      const aliasPath = path.join(dir, "external.txt");
+      await fs.writeFile(targetPath, "target\n", "utf8");
+      await fs.symlink(targetPath, aliasPath);
+      try {
+        const patch = `*** Begin Patch
+*** Delete File: external.txt
+*** End Patch`;
+        await applyPatch(patch, { cwd: dir, allowedRoots: [allowedDir] });
+        await expect(fs.lstat(aliasPath)).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(fs.readFile(targetPath, "utf8")).resolves.toBe("target\n");
+      } finally {
+        await fs.rm(aliasPath, { force: true });
+        await fs.rm(allowedDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   it("moves a workspace file into a configured root", async () => {
     await withTempDir(async (dir) => {
       const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));

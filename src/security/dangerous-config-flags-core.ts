@@ -2,7 +2,10 @@
 import { DANGEROUS_SANDBOX_DOCKER_BOOLEAN_KEYS } from "../agents/sandbox/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isRecord } from "../utils.js";
-import { collectCoreInsecureOrDangerousFlags } from "./core-dangerous-config-flags.js";
+import {
+  collectCoreInsecureOrDangerousFlags,
+  getAgentDangerousFlagPathSegment,
+} from "./core-dangerous-config-flags.js";
 
 type DangerousFlagValue = string | number | boolean | null;
 
@@ -38,18 +41,6 @@ type DangerousConfigFlagContractInputs = {
 
 function formatDangerousConfigFlagValue(value: DangerousFlagValue): string {
   return value === null ? "null" : String(value);
-}
-
-function getAgentDangerousFlagPathSegment(agent: unknown, index: number): string {
-  const id =
-    agent &&
-    typeof agent === "object" &&
-    !Array.isArray(agent) &&
-    typeof (agent as { id?: unknown }).id === "string" &&
-    (agent as { id: string }).id.length > 0
-      ? (agent as { id: string }).id
-      : undefined;
-  return id ? `agents.list[id=${JSON.stringify(id)}]` : `agents.list[${index}]`;
 }
 
 function collectExactPluginConfigContractMatches({
