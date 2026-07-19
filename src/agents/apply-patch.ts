@@ -93,7 +93,7 @@ type ApplyPatchOptions = {
   sandbox?: SandboxApplyPatchConfig;
   /** Restrict patch paths to the workspace root (cwd). Default: true. Set false to opt out. */
   workspaceOnly?: boolean;
-  /** Additional absolute host roots permitted while workspaceOnly remains enabled. */
+  /** Additional absolute host roots that explicitly expand the workspaceOnly boundary. */
   allowedRoots?: string[];
   signal?: AbortSignal;
 };

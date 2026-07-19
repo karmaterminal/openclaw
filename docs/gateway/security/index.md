@@ -375,7 +375,7 @@ If you allow session tools, treat delegated sub-agent runs as another boundary d
 
 Build a read-only profile by combining `agents.defaults.sandbox.workspaceAccess: "ro"` (or `"none"` for no workspace access) with tool allow/deny lists that block `write`, `edit`, `apply_patch`, `exec`, `process`, etc.
 
-- `tools.exec.applyPatch.workspaceOnly: true` (default): keeps `apply_patch` from writing/deleting outside the workspace directory even with sandboxing off. Set `false` only if you intentionally want `apply_patch` to touch files outside the workspace.
+- `tools.exec.applyPatch.workspaceOnly: true` (default): keeps `apply_patch` within the workspace directory when `allowedRoots` is unset. `tools.exec.applyPatch.allowedRoots` explicitly expands that writable/deletable boundary to each named absolute host directory tree. Keep roots narrow; never grant `/`, a home directory, or a broad project parent. Set `workspaceOnly` to `false` only if you intentionally want unrestricted outside-workspace writes.
 - `tools.fs.workspaceOnly: true` (optional): restricts `read`/`write`/`edit`/`apply_patch` paths and native prompt image auto-load paths to the workspace directory.
 - Keep filesystem roots narrow - avoid broad roots like your home directory for agent/sandbox workspaces, which can expose sensitive local files (for example state/config under `~/.openclaw`) to filesystem tools.
 
@@ -675,6 +675,7 @@ The Control UI needs a secure context (HTTPS or localhost) to generate device id
     - `hooks.gmail.allowUnsafeExternalContent=true`
     - `hooks.mappings[<index>].allowUnsafeExternalContent=true`
     - `tools.exec.applyPatch.workspaceOnly=false`
+    - `tools.exec.applyPatch.allowedRoots configured (<count>)`
     - `plugins.entries.acpx.config.permissionMode=approve-all`
 
   </Accordion>

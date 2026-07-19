@@ -96,6 +96,20 @@ describe("security audit gateway exposure findings", () => {
           "tools.exec.applyPatch.workspaceOnly=false",
         ],
       },
+      {
+        name: "apply_patch expands its writable boundary with allowed roots",
+        cfg: {
+          tools: {
+            exec: {
+              applyPatch: {
+                workspaceOnly: true,
+                allowedRoots: ["/tmp/oc-worktree"],
+              },
+            },
+          },
+        } satisfies OpenClawConfig,
+        expectedDangerousDetails: ["tools.exec.applyPatch.allowedRoots configured (1)"],
+      },
     ] as const;
 
     for (const testCase of cases) {

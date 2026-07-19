@@ -364,13 +364,15 @@ export type ExecToolConfig = {
     /** Enable apply_patch for OpenAI models (default: true; set false to disable). */
     enabled?: boolean;
     /**
-     * Restrict apply_patch paths to the workspace directory.
-     * Default: true (safer; does not affect read/write/edit).
+     * Restrict apply_patch paths to the workspace directory unless allowedRoots
+     * explicitly expands the boundary. Default: true (safer; does not affect
+     * read/write/edit).
      */
     workspaceOnly?: boolean;
     /**
-     * Additional absolute host directory roots that apply_patch may access
-     * while workspaceOnly remains enabled. The workspace root is always kept.
+     * Additional absolute host directory roots that explicitly expand the
+     * apply_patch boundary while workspaceOnly remains enabled. The workspace
+     * root is always kept.
      */
     allowedRoots?: string[];
     /**

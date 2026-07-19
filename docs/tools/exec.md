@@ -261,7 +261,7 @@ Notes:
 - `deny: ["write"]` does not deny `apply_patch`; deny `apply_patch` explicitly or use `deny: ["group:fs"]` when patch writes should also be blocked.
 - Config lives under `tools.exec.applyPatch`.
 - `tools.exec.applyPatch.enabled` defaults to `true`; set it to `false` to disable the tool.
-- `tools.exec.applyPatch.workspaceOnly` defaults to `true` (workspace-contained). `tools.exec.applyPatch.allowedRoots` can add exact absolute host directory roots while preserving workspace containment. Roots are symlink-safe and glob patterns are not expanded. Set `workspaceOnly` to `false` only for unrestricted outside-workspace writes.
+- `tools.exec.applyPatch.workspaceOnly` defaults to `true`, which permits the workspace directory only when no additional roots are configured. `tools.exec.applyPatch.allowedRoots` explicitly expands that boundary to named absolute host directory trees; keep every root narrow. Roots are symlink-safe, and glob patterns are not expanded. Set `workspaceOnly` to `false` only for unrestricted outside-workspace writes.
 - `tools.exec.applyPatch.allowModels` is an optional allowlist of model ids (raw, like `gpt-5.4`, or full, like `openai/gpt-5.4`). When set, only matching models get the tool; when unset, all models get it.
 
 ## Related

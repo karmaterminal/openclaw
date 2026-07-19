@@ -433,9 +433,9 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
   "tools.exec.applyPatch.enabled":
     "Enable or disable apply_patch for OpenAI and OpenAI Codex models when allowed by tool policy (default: true).",
   "tools.exec.applyPatch.workspaceOnly":
-    "Restrict apply_patch paths to the workspace directory (default: true). Set false to allow writing outside the workspace (dangerous).",
+    "Restrict apply_patch paths to the workspace directory unless allowedRoots explicitly expands the boundary (default: true). Set false to allow unrestricted outside-workspace writes (dangerous).",
   "tools.exec.applyPatch.allowedRoots":
-    "Additional absolute host directory roots that apply_patch may access while workspaceOnly remains enabled.",
+    "Additional absolute host directory roots that explicitly expand the apply_patch boundary while workspaceOnly remains enabled. Keep each root narrowly scoped.",
   "tools.exec.applyPatch.allowModels":
     'Optional allowlist of model ids (e.g. "gpt-5.4" or "openai/gpt-5.4").',
   "tools.loopDetection.enabled":

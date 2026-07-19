@@ -131,6 +131,45 @@ describe("collectEnabledInsecureOrDangerousFlags", () => {
     ).toContain("security.audit.suppressions configured (1)");
   });
 
+  it("collects apply_patch allowed roots as a dangerous boundary expansion", () => {
+    expect(
+      collectEnabledInsecureOrDangerousFlagsFromContracts(
+        asConfig({
+          tools: {
+            exec: {
+              applyPatch: {
+                workspaceOnly: true,
+                allowedRoots: ["/tmp/oc-one", "/tmp/oc-two"],
+              },
+            },
+          },
+        }),
+      ),
+    ).toContain("tools.exec.applyPatch.allowedRoots configured (2)");
+  });
+
+  it("does not report empty or inactive apply_patch allowed roots", () => {
+    const hasAllowedRootsFlag = (config: OpenClawConfig) =>
+      collectEnabledInsecureOrDangerousFlagsFromContracts(config).some((flag) =>
+        flag.includes("tools.exec.applyPatch.allowedRoots"),
+      );
+
+    expect(
+      hasAllowedRootsFlag(asConfig({ tools: { exec: { applyPatch: { allowedRoots: [] } } } })),
+    ).toBe(false);
+    expect(
+      hasAllowedRootsFlag(
+        asConfig({
+          tools: {
+            exec: {
+              applyPatch: { workspaceOnly: false, allowedRoots: ["/tmp/oc-worktree"] },
+            },
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it("uses stable agent ids for per-agent dangerous sandbox flags", () => {
     expect(
       collectEnabledInsecureOrDangerousFlagsFromContracts(
