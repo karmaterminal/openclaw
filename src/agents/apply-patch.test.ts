@@ -531,6 +531,158 @@ describe("applyPatch", () => {
     });
   });
 
+  it("allows an exact configured root without opening an adjacent sibling", async () => {
+    await withTempDir(async (dir) => {
+      const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));
+      const siblingDir = `${allowedDir}-sibling`;
+      const allowedFile = path.join(allowedDir, "allowed.txt");
+      const blockedFile = path.join(siblingDir, "blocked.txt");
+      await fs.mkdir(siblingDir);
+      try {
+        const allowedPatch = `*** Begin Patch
+*** Add File: ${allowedFile}
++allowed
+*** End Patch`;
+        await applyPatch(allowedPatch, { cwd: dir, allowedRoots: [allowedDir] });
+        await expect(fs.readFile(allowedFile, "utf8")).resolves.toBe("allowed\n");
+
+        const blockedPatch = `*** Begin Patch
+*** Add File: ${blockedFile}
++blocked
+*** End Patch`;
+        await expect(
+          applyPatch(blockedPatch, { cwd: dir, allowedRoots: [allowedDir] }),
+        ).rejects.toThrow(/escapes allowed patch roots/i);
+        await expectMissingPath(fs.readFile(blockedFile, "utf8"));
+      } finally {
+        await fs.rm(allowedDir, { recursive: true, force: true });
+        await fs.rm(siblingDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("rejects a symlink escape from a configured root", async () => {
+    await withTempDir(async (dir) => {
+      const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-outside-"));
+      const linkDir = path.join(allowedDir, "link");
+      const escapedFile = path.join(linkDir, "escaped.txt");
+      await fs.symlink(outsideDir, linkDir, process.platform === "win32" ? "junction" : undefined);
+      try {
+        const patch = `*** Begin Patch
+*** Add File: ${escapedFile}
++escaped
+*** End Patch`;
+        await expect(applyPatch(patch, { cwd: dir, allowedRoots: [allowedDir] })).rejects.toThrow(
+          /escapes allowed patch roots|path alias under sandbox root|symlink escapes sandbox root/i,
+        );
+        await expectMissingPath(fs.readFile(path.join(outsideDir, "escaped.txt"), "utf8"));
+      } finally {
+        await fs.rm(allowedDir, { recursive: true, force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("unlinks a final symlink inside a configured root without touching its target", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    await withTempDir(async (dir) => {
+      const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));
+      const outsideFile = path.join(os.tmpdir(), `openclaw-patch-outside-${process.pid}.txt`);
+      const linkPath = path.join(allowedDir, "link.txt");
+      await fs.writeFile(outsideFile, "target\n", "utf8");
+      await fs.symlink(outsideFile, linkPath);
+      try {
+        const patch = `*** Begin Patch
+*** Delete File: ${linkPath}
+*** End Patch`;
+        await applyPatch(patch, { cwd: dir, allowedRoots: [allowedDir] });
+        await expect(fs.lstat(linkPath)).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(fs.readFile(outsideFile, "utf8")).resolves.toBe("target\n");
+      } finally {
+        await fs.rm(linkPath, { force: true });
+        await fs.rm(outsideFile, { force: true });
+        await fs.rm(allowedDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("canonicalizes a configured root symlink before matching targets", async () => {
+    await withTempDir(async (dir) => {
+      const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));
+      const rootLink = `${allowedDir}-link`;
+      const allowedFile = path.join(allowedDir, "allowed-through-root-link.txt");
+      const linkedFile = path.join(rootLink, "allowed-through-link-path.txt");
+      await fs.symlink(allowedDir, rootLink, process.platform === "win32" ? "junction" : undefined);
+      try {
+        const canonicalPatch = `*** Begin Patch
+*** Add File: ${allowedFile}
++allowed
+*** End Patch`;
+        await applyPatch(canonicalPatch, { cwd: dir, allowedRoots: [rootLink] });
+        await expect(fs.readFile(allowedFile, "utf8")).resolves.toBe("allowed\n");
+
+        const linkedPatch = `*** Begin Patch
+*** Add File: ${linkedFile}
++linked
+*** End Patch`;
+        await applyPatch(linkedPatch, { cwd: dir, allowedRoots: [rootLink] });
+        await expect(
+          fs.readFile(path.join(allowedDir, "allowed-through-link-path.txt"), "utf8"),
+        ).resolves.toBe("linked\n");
+      } finally {
+        await fs.rm(rootLink, { recursive: true, force: true });
+        await fs.rm(allowedDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("keeps relative patches working when cwd is a symlink and roots are configured", async () => {
+    await withTempDir(async (dir) => {
+      const workspaceLink = `${dir}-link`;
+      const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));
+      await fs.symlink(dir, workspaceLink, process.platform === "win32" ? "junction" : undefined);
+      try {
+        const patch = `*** Begin Patch
+*** Add File: relative.txt
++relative
+*** End Patch`;
+        await applyPatch(patch, { cwd: workspaceLink, allowedRoots: [allowedDir] });
+        await expect(fs.readFile(path.join(dir, "relative.txt"), "utf8")).resolves.toBe(
+          "relative\n",
+        );
+      } finally {
+        await fs.rm(workspaceLink, { recursive: true, force: true });
+        await fs.rm(allowedDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("moves a workspace file into a configured root", async () => {
+    await withTempDir(async (dir) => {
+      const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-allowed-"));
+      const sourcePath = path.join(dir, "source.txt");
+      const targetPath = path.join(allowedDir, "moved.txt");
+      await fs.writeFile(sourcePath, "before\n", "utf8");
+      try {
+        const patch = `*** Begin Patch
+*** Update File: source.txt
+*** Move to: ${targetPath}
+@@
+-before
++after
+*** End Patch`;
+        await applyPatch(patch, { cwd: dir, allowedRoots: [allowedDir] });
+        await expectMissingPath(fs.readFile(sourcePath, "utf8"));
+        await expect(fs.readFile(targetPath, "utf8")).resolves.toBe("after\n");
+      } finally {
+        await fs.rm(allowedDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   it("keeps dot-dot-prefixed filenames inside cwd and reports relative paths", async () => {
     await withTempDir(async (dir) => {
       const patch = `*** Begin Patch

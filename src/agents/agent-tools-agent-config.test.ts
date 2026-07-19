@@ -108,6 +108,81 @@ describe("Agent-specific tool filtering", () => {
     }
   }
 
+  it("passes configured apply_patch allowed roots without disabling workspace containment", async () => {
+    const workspaceDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "openclaw-agent-tools-workspace-"),
+    );
+    const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-agent-tools-allowed-"));
+    const allowedPath = path.join(allowedDir, "allowed.txt");
+    try {
+      const tools = createOpenClawCodingTools({
+        config: {
+          tools: {
+            allow: ["read", "write", "exec"],
+            exec: { applyPatch: { allowedRoots: [allowedDir] } },
+          },
+        },
+        sessionKey: "agent:main:main",
+        workspaceDir,
+        agentDir: "/tmp/agent",
+        modelProvider: "openai",
+        modelId: "gpt-5.4",
+      });
+      const applyPatchTool = tools.find(
+        (tool) => tool.name === "apply_patch",
+      ) as unknown as ToolWithExecute;
+      await applyPatchTool.execute("allowed-root", {
+        input: `*** Begin Patch
+*** Add File: ${allowedPath}
++allowed
+*** End Patch`,
+      });
+      await expect(fs.readFile(allowedPath, "utf8")).resolves.toBe("allowed\n");
+    } finally {
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+      await fs.rm(allowedDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps tools.fs.workspaceOnly stricter than apply_patch allowed roots", async () => {
+    const workspaceDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "openclaw-agent-tools-workspace-"),
+    );
+    const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-agent-tools-allowed-"));
+    const allowedPath = path.join(allowedDir, "blocked-by-fs-policy.txt");
+    try {
+      const tools = createOpenClawCodingTools({
+        config: {
+          tools: {
+            allow: ["read", "write", "exec"],
+            fs: { workspaceOnly: true },
+            exec: { applyPatch: { allowedRoots: [allowedDir] } },
+          },
+        },
+        sessionKey: "agent:main:main",
+        workspaceDir,
+        agentDir: "/tmp/agent",
+        modelProvider: "openai",
+        modelId: "gpt-5.4",
+      });
+      const applyPatchTool = tools.find(
+        (tool) => tool.name === "apply_patch",
+      ) as unknown as ToolWithExecute;
+      await expect(
+        applyPatchTool.execute("fs-policy", {
+          input: `*** Begin Patch
+*** Add File: ${allowedPath}
++blocked
+*** End Patch`,
+        }),
+      ).rejects.toThrow(/Path escapes sandbox root/);
+      await expect(fs.stat(allowedPath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+      await fs.rm(allowedDir, { recursive: true, force: true });
+    }
+  });
+
   function createMainSessionTools(cfg: OpenClawConfig) {
     return createOpenClawCodingTools({
       config: cfg,

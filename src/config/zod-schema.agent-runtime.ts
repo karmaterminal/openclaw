@@ -538,6 +538,13 @@ const ToolExecApplyPatchSchema = z
   .object({
     enabled: z.boolean().optional(),
     workspaceOnly: z.boolean().optional(),
+    allowedRoots: z
+      .array(
+        z.string().refine(isSandboxHostPathAbsolute, {
+          message: "apply_patch allowed roots must be absolute host paths.",
+        }),
+      )
+      .optional(),
     allowModels: z.array(z.string()).optional(),
   })
   .strict()

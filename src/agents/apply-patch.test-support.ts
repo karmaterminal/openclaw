@@ -6,6 +6,7 @@ type ApplyPatchOptions = {
   cwd: string;
   sandbox?: { root: string; bridge: SandboxFsBridge };
   workspaceOnly?: boolean;
+  allowedRoots?: string[];
   signal?: AbortSignal;
 };
 

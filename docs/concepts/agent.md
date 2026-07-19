@@ -68,7 +68,7 @@ To disable bootstrap file creation entirely (for pre-seeded workspaces), set:
 
 Core tools (read/exec/edit/write and related system tools) are always available,
 subject to tool policy. `apply_patch` is on by default for OpenAI models and gated by
-`tools.exec.applyPatch` (`enabled`, `workspaceOnly`, `allowModels`). `TOOLS.md` does **not** control which tools exist; it's
+`tools.exec.applyPatch` (`enabled`, `workspaceOnly`, `allowedRoots`, `allowModels`). `TOOLS.md` does **not** control which tools exist; it's
 guidance for how _you_ want them used.
 
 ## Skills

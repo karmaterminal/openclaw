@@ -262,6 +262,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.list[].tools.message.actions.allow": "Agent Message Action Allowlist",
   "tools.exec.applyPatch.enabled": "Enable apply_patch",
   "tools.exec.applyPatch.workspaceOnly": "apply_patch Workspace-Only",
+  "tools.exec.applyPatch.allowedRoots": "apply_patch Allowed Roots",
   "tools.exec.applyPatch.allowModels": "apply_patch Model Allowlist",
   "tools.loopDetection.enabled": "Tool-loop Detection",
   "tools.loopDetection.historySize": "Tool-loop History Size",

@@ -11,6 +11,11 @@ import { createAbortError } from "../infra/abort-signal.js";
 import { openRootFile, type RootFileOpenResult } from "../infra/boundary-file-read.js";
 import { root as fsRoot } from "../infra/fs-safe.js";
 import { PATH_ALIAS_POLICIES, type PathAliasPolicy } from "../infra/path-alias-guards.js";
+import {
+  relativePathEscapesRoot,
+  resolvePatchRoots,
+  selectPatchRoot,
+} from "./apply-patch-roots.js";
 import { applyUpdateHunk } from "./apply-patch-update.js";
 import { toRelativeSandboxPath, resolvePathFromInput } from "./path-policy.js";
 import type { AgentTool } from "./runtime/index.js";
@@ -88,6 +93,8 @@ type ApplyPatchOptions = {
   sandbox?: SandboxApplyPatchConfig;
   /** Restrict patch paths to the workspace root (cwd). Default: true. Set false to opt out. */
   workspaceOnly?: boolean;
+  /** Additional absolute host roots permitted while workspaceOnly remains enabled. */
+  allowedRoots?: string[];
   signal?: AbortSignal;
 };
 
@@ -113,7 +120,12 @@ const ApplyPatchToolOutputSchema = Type.Object(
 
 /** Create the agent tool wrapper for applying patch-envelope input. */
 export function createApplyPatchTool(
-  options: { cwd?: string; sandbox?: SandboxApplyPatchConfig; workspaceOnly?: boolean } = {},
+  options: {
+    cwd?: string;
+    sandbox?: SandboxApplyPatchConfig;
+    workspaceOnly?: boolean;
+    allowedRoots?: string[];
+  } = {},
 ): AgentTool<typeof applyPatchSchema, ApplyPatchToolDetails> {
   const cwd = options.cwd ?? process.cwd();
   const sandbox = options.sandbox;
@@ -139,6 +151,7 @@ export function createApplyPatchTool(
         cwd,
         sandbox,
         workspaceOnly,
+        allowedRoots: options.allowedRoots,
         signal,
       });
 
@@ -299,16 +312,28 @@ function resolvePatchFileOps(options: ApplyPatchOptions): PatchFileOps {
     };
   }
   const workspaceOnly = options.workspaceOnly !== false;
-  const rootPromise = workspaceOnly ? fsRoot(options.cwd) : undefined;
+  const roots = workspaceOnly ? resolvePatchRoots(options) : [];
+  const rootPromises = new Map<string, ReturnType<typeof fsRoot>>();
+  const getRoot = (rootPath: string) => {
+    const existing = rootPromises.get(rootPath);
+    if (existing) {
+      return existing;
+    }
+    const created = fsRoot(rootPath);
+    rootPromises.set(rootPath, created);
+    return created;
+  };
+  const rootFor = (filePath: string) => selectPatchRoot(filePath, options, roots);
   return {
     readFile: async (filePath) => {
       if (!workspaceOnly) {
         return await fs.readFile(filePath, "utf8");
       }
+      const rootPath = rootFor(filePath);
       const opened = await openRootFile({
         absolutePath: filePath,
-        rootPath: options.cwd,
-        boundaryLabel: "workspace root",
+        rootPath,
+        boundaryLabel: options.allowedRoots?.length ? "allowed patch root" : "workspace root",
       });
       assertBoundaryRead(opened, filePath);
       try {
@@ -322,27 +347,27 @@ function resolvePatchFileOps(options: ApplyPatchOptions): PatchFileOps {
         await fs.writeFile(filePath, content, "utf8");
         return;
       }
-      const relative = toRelativeSandboxPath(options.cwd, filePath);
-      await (await rootPromise)?.write(relative, content, { encoding: "utf8" });
+      const rootPath = rootFor(filePath);
+      const relative = toRelativeSandboxPath(rootPath, filePath);
+      await (await getRoot(rootPath)).write(relative, content, { encoding: "utf8" });
     },
     remove: async (filePath) => {
       if (!workspaceOnly) {
         await fs.rm(filePath);
         return;
       }
-      const relative = toRelativeSandboxPath(options.cwd, filePath);
-      await (await rootPromise)?.remove(relative);
+      const rootPath = rootFor(filePath);
+      const relative = toRelativeSandboxPath(rootPath, filePath);
+      await (await getRoot(rootPath)).remove(relative);
     },
     mkdirp: async (dir) => {
       if (!workspaceOnly) {
         await fs.mkdir(dir, { recursive: true });
         return;
       }
-      const relative = toRelativeSandboxPath(options.cwd, dir, { allowRoot: true });
-      const root = await rootPromise;
-      if (!root) {
-        return;
-      }
+      const rootPath = rootFor(dir);
+      const relative = toRelativeSandboxPath(rootPath, dir, { allowRoot: true });
+      const root = await getRoot(rootPath);
       if (relative === "" || relative === ".") {
         await root.ensureRoot();
         return;
@@ -368,14 +393,15 @@ async function assertPatchParentPath(filePath: string, options: ApplyPatchOption
   if (!parent || parent === ".") {
     return;
   }
+  const rootPath = selectPatchRoot(parent, options);
   await assertSandboxPath({
     filePath: parent,
     cwd: options.cwd,
-    root: options.cwd,
+    root: rootPath,
   });
   await assertNoExistingParentAliases({
     parentPath: resolvePathFromInput(parent, options.cwd),
-    rootPath: options.cwd,
+    rootPath,
   });
 }
 
@@ -434,12 +460,13 @@ async function resolvePatchPath(
   }
 
   const workspaceOnly = options.workspaceOnly !== false;
+  const rootPath = workspaceOnly ? selectPatchRoot(filePath, options) : undefined;
   const resolved = workspaceOnly
     ? (
         await assertSandboxPath({
           filePath,
           cwd: options.cwd,
-          root: options.cwd,
+          root: rootPath!,
           allowFinalSymlinkForUnlink: aliasPolicy.allowFinalSymlinkForUnlink,
           allowFinalHardlinkForUnlink: aliasPolicy.allowFinalHardlinkForUnlink,
         })
@@ -471,15 +498,6 @@ function toDisplayPath(resolved: string, cwd: string): string {
     return resolved;
   }
   return relative;
-}
-
-function relativePathEscapesRoot(relativePath: string): boolean {
-  return (
-    relativePath === ".." ||
-    relativePath.startsWith("../") ||
-    relativePath.startsWith("..\\") ||
-    path.isAbsolute(relativePath)
-  );
 }
 
 function parsePatchText(input: string): { hunks: Hunk[]; patch: string } {

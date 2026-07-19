@@ -803,6 +803,10 @@ function createOpenClawCodingToolsInternal(options?: OpenClawCodingToolsOptions)
               ? { root: sandboxRoot, bridge: sandboxFsBridge! }
               : undefined,
           workspaceOnly: applyPatchWorkspaceOnly,
+          allowedRoots:
+            applyPatchWorkspaceOnly && !sandboxRoot && !workspaceOnly
+              ? applyPatchConfig?.allowedRoots
+              : undefined,
         });
   options?.recordToolPrepStage?.("shell-tools");
   const ownerOnlyCoreToolDenylist =

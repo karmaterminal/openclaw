@@ -31,7 +31,7 @@ The tool accepts a single `input` string that wraps one or more file operations:
 ## Notes
 
 - Patch paths support relative paths (from the workspace directory) and absolute paths.
-- `tools.exec.applyPatch.workspaceOnly` defaults to `true` (workspace-contained). Set it to `false` only if you intentionally want `apply_patch` to write/delete outside the workspace directory.
+- `tools.exec.applyPatch.workspaceOnly` defaults to `true` (workspace-contained). To permit specific host worktrees while preserving that boundary, set `tools.exec.applyPatch.allowedRoots` to exact absolute directory paths (for example `['/tmp/oc-worktree']`). Paths are checked against each root after symlink resolution; glob patterns are not expanded. Set `workspaceOnly` to `false` only if you intentionally want unrestricted outside-workspace writes.
 - Use `*** Move to:` within an `*** Update File:` hunk to rename files.
 - `*** End of File` marks an EOF-only insert when needed.
 - Enabled by default for every model. Set `tools.exec.applyPatch.enabled: false`

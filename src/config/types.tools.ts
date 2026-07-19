@@ -369,6 +369,11 @@ export type ExecToolConfig = {
      */
     workspaceOnly?: boolean;
     /**
+     * Additional absolute host directory roots that apply_patch may access
+     * while workspaceOnly remains enabled. The workspace root is always kept.
+     */
+    allowedRoots?: string[];
+    /**
      * Optional allowlist of model ids that can use apply_patch.
      * Accepts either raw ids (e.g. "gpt-5.4") or full ids (e.g. "openai/gpt-5.4").
      */
