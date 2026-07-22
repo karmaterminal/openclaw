@@ -2312,8 +2312,10 @@ describe("runMessageAction plugin dispatch", () => {
               enabled: true,
             },
           },
-          tts: {
-            auto: "tagged",
+          messages: {
+            tts: {
+              auto: "tagged",
+            },
           },
         } as OpenClawConfig,
         action: "send",
@@ -2387,8 +2389,10 @@ describe("runMessageAction plugin dispatch", () => {
               enabled: true,
             },
           },
-          tts: {
-            auto: "tagged",
+          messages: {
+            tts: {
+              auto: "tagged",
+            },
           },
         } as OpenClawConfig,
         action: "send",
@@ -2831,10 +2835,7 @@ describe("runMessageAction plugin dispatch", () => {
     const handleAction = vi.fn(
       async ({ cfg, params }: { cfg: OpenClawConfig; params: Record<string, unknown> }) => {
         const message = typeof params.message === "string" ? params.message : "";
-        const responsePrefix = Object.values(cfg.channels ?? {}).find(
-          (entry): entry is { responsePrefix?: string } =>
-            typeof entry === "object" && entry !== null && "responsePrefix" in entry,
-        )?.responsePrefix;
+        const responsePrefix = cfg.messages?.responsePrefix;
         const rawMessage =
           responsePrefix && message.startsWith(`${responsePrefix} `)
             ? message.slice(responsePrefix.length + 1)
@@ -3150,9 +3151,9 @@ describe("runMessageAction plugin dispatch", () => {
           channels: {
             cardchat: {
               enabled: true,
-              responsePrefix: "[Nexus]",
             },
           },
+          messages: { responsePrefix: "[Nexus]" },
         } as OpenClawConfig,
         action: "send",
         params: {
