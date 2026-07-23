@@ -5,6 +5,7 @@ import {
 } from "../../packages/memory-host-sdk/src/host/memory-schema.js";
 import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
+import { assertSqliteIntegrity } from "../infra/sqlite-integrity.js";
 import {
   assertSqliteSchemaContains,
   type SqliteSchemaCompatibility,
@@ -105,6 +106,32 @@ export function migrateOpenClawAgentDatabaseForMaintenance(options: {
     if (!hasSupportedOwnedVersion) {
       return;
     }
+
+    // A canonical current-version file is already suitable for offline
+    // maintenance. In particular, do not route it through writable schema
+    // initialization merely because this function also owns the bounded v13
+    // compatibility bridge: initialization refreshes schema_meta.updated_at.
+    // First prove the exact maintenance contract without writing. Only a
+    // supported older file, or a current-version file that fails that proof,
+    // reaches the bridge/repair transaction below.
+    if (userVersion === OPENCLAW_AGENT_SCHEMA_VERSION) {
+      try {
+        assertOpenClawAgentDatabaseForMaintenance(database, {
+          agentId,
+          pathname: options.pathname,
+        });
+        return;
+      } catch {
+        // The current-version file has a known same-version drift candidate.
+        // Prove the whole file before the repair transaction: a broken
+        // integrity check is not schema drift and must fail closed rather than
+        // allowing the bridge to write into a corrupt database.
+        assertSqliteIntegrity(database, options.pathname);
+        // ensureOpenClawAgentDatabaseSchema re-runs owner/version gates inside
+        // its immediate transaction and repairs only supported schema shapes.
+      }
+    }
+
     ensureOpenClawAgentDatabaseSchema(database, {
       agentId,
       path: options.pathname,
