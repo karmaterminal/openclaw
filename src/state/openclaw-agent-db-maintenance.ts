@@ -77,7 +77,7 @@ export function assertOpenClawAgentDatabaseForMaintenance(
   );
 }
 
-/** Upgrade a supported older owned schema before strict offline maintenance. */
+/** Apply supported version and same-version bridges before strict offline maintenance. */
 export function migrateOpenClawAgentDatabaseForMaintenance(options: {
   agentId: string;
   pathname: string;
@@ -95,14 +95,14 @@ export function migrateOpenClawAgentDatabaseForMaintenance(options: {
     assertSupportedAgentSchemaVersion(database, options.pathname);
     const userVersion = readSqliteUserVersion(database);
     const metadataVersion = metadata.schemaVersion;
-    const hasSupportedOlderVersion =
+    const hasSupportedOwnedVersion =
       userVersion >= 1 &&
-      userVersion < OPENCLAW_AGENT_SCHEMA_VERSION &&
+      userVersion <= OPENCLAW_AGENT_SCHEMA_VERSION &&
       metadataVersion !== null &&
       metadataVersion === userVersion &&
       metadataVersion >= 1 &&
-      metadataVersion < OPENCLAW_AGENT_SCHEMA_VERSION;
-    if (!hasSupportedOlderVersion) {
+      metadataVersion <= OPENCLAW_AGENT_SCHEMA_VERSION;
+    if (!hasSupportedOwnedVersion) {
       return;
     }
     ensureOpenClawAgentDatabaseSchema(database, {

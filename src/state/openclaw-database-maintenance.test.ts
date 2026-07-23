@@ -1,9 +1,15 @@
+import fs from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { ensureMemoryIndexSchema } from "../../packages/memory-host-sdk/src/host/memory-schema.js";
+import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
+import { compactDoctorSessionSqliteTarget } from "../commands/doctor-session-sqlite-compact.js";
 import {
   assertOpenClawAgentDatabaseForMaintenance,
+  ensureOpenClawAgentDatabaseSchema,
   OPENCLAW_AGENT_SCHEMA_VERSION,
+  resolveOpenClawAgentSqlitePath,
 } from "./openclaw-agent-db.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.generated.js";
 import {
@@ -11,6 +17,12 @@ import {
   OPENCLAW_STATE_SCHEMA_VERSION,
 } from "./openclaw-state-db.js";
 import { OPENCLAW_STATE_SCHEMA_SQL } from "./openclaw-state-schema.generated.js";
+
+const maintenanceTempDirs: string[] = [];
+
+afterAll(() => {
+  cleanupTempDirs(maintenanceTempDirs);
+});
 
 describe("OpenClaw database maintenance schema validation", () => {
   it("accepts the current global and agent schemas", () => {
@@ -285,6 +297,139 @@ describe("OpenClaw database maintenance schema validation", () => {
       ).toThrow("column definitions differ for memory_index_state");
     } finally {
       database.close();
+    }
+  });
+
+  it("repairs unreleased v13 drift before compacting without losing rows", () => {
+    const stateDir = makeTempDir(maintenanceTempDirs, "openclaw-agent-maintenance-");
+    const agentId = "worker-1";
+    const env = { OPENCLAW_STATE_DIR: stateDir };
+    const storePath = path.join(stateDir, "agents", agentId, "sessions", "sessions.json");
+    const sqlitePath = resolveOpenClawAgentSqlitePath({ agentId, env });
+    fs.mkdirSync(path.dirname(sqlitePath), { recursive: true });
+
+    const database = new DatabaseSync(sqlitePath);
+    try {
+      ensureOpenClawAgentDatabaseSchema(database, { agentId, path: sqlitePath });
+      database
+        .prepare(
+          `INSERT INTO sessions (
+             session_id, session_key, session_scope, created_at, updated_at, status
+           ) VALUES (?, ?, 'conversation', ?, ?, 'done')`,
+        )
+        .run("session-1", "agent:worker-1:main", 1, 1);
+      database
+        .prepare(
+          `INSERT INTO session_entries (
+             session_key, session_id, entry_json, updated_at, status, created_by_json
+           ) VALUES (?, ?, ?, ?, 'done', ?)`,
+        )
+        .run(
+          "agent:worker-1:main",
+          "session-1",
+          JSON.stringify({ sessionId: "session-1", updatedAt: 1 }),
+          1,
+          JSON.stringify({ kind: "agent", id: "worker-1" }),
+        );
+      database
+        .prepare(
+          `INSERT INTO board_tabs (
+             session_key, tab_id, title, position, chat_dock, created_by, revision
+           ) VALUES (?, 'main', 'Main', 0, 'right', 'agent', 1)`,
+        )
+        .run("agent:worker-1:main");
+      database
+        .prepare(
+          `INSERT INTO board_widgets (
+             session_key, name, tab_id, content_kind, html, sha256, view_generation,
+             revision, size_w, size_h, position, manifest, grant_state, created_by,
+             created_at, updated_at
+           ) VALUES (?, 'status', 'main', 'html', ?, 'sha', 'view', 1, 6, 4, 0,
+             '{}', 'none', 'agent', 1, 1)`,
+        )
+        .run("agent:worker-1:main", Buffer.from("preserved"));
+
+      const schema = database
+        .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'board_widgets'")
+        .get() as { sql: string };
+      const legacySchema = schema.sql
+        .replace(
+          "content_kind IN ('html', 'mcp-app', 'plugin')",
+          "content_kind IN ('html', 'mcp-app')",
+        )
+        .replace(
+          /\s+OR\s+\(content_kind = 'plugin' AND html IS NULL AND descriptor_json IS NOT NULL AND view_generation IS NULL\)/u,
+          "",
+        )
+        .replace(/^CREATE TABLE board_widgets/u, "CREATE TABLE board_widgets_legacy");
+      database.exec(`
+        PRAGMA foreign_keys = OFF;
+        BEGIN IMMEDIATE;
+        ALTER TABLE session_entries DROP COLUMN created_by_json;
+        ${legacySchema};
+        INSERT INTO board_widgets_legacy SELECT * FROM board_widgets;
+        DROP TABLE board_widgets;
+        ALTER TABLE board_widgets_legacy RENAME TO board_widgets;
+        CREATE INDEX idx_agent_board_widgets_tab_position
+          ON board_widgets(session_key, tab_id, position);
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+      `);
+    } finally {
+      database.close();
+    }
+
+    const compact = compactDoctorSessionSqliteTarget(
+      { agentId, storePath },
+      { env, migrateOlderSchema: true },
+    );
+    expect(compact.skipped).toBe(false);
+
+    const repaired = new DatabaseSync(sqlitePath);
+    try {
+      expect(() =>
+        assertOpenClawAgentDatabaseForMaintenance(repaired, {
+          agentId,
+          pathname: sqlitePath,
+        }),
+      ).not.toThrow();
+      expect(
+        repaired
+          .prepare("SELECT name FROM pragma_table_info('session_entries') ORDER BY cid")
+          .all(),
+      ).toContainEqual({ name: "created_by_json" });
+      expect(
+        repaired
+          .prepare(
+            "SELECT entry_json, status, created_by_json FROM session_entries WHERE session_key = ?",
+          )
+          .get("agent:worker-1:main"),
+      ).toEqual({
+        created_by_json: null,
+        entry_json: JSON.stringify({ sessionId: "session-1", updatedAt: 1 }),
+        status: "done",
+      });
+      expect(
+        repaired
+          .prepare(
+            "SELECT content_kind, CAST(html AS TEXT) AS html FROM board_widgets WHERE session_key = ? AND name = 'status'",
+          )
+          .get("agent:worker-1:main"),
+      ).toEqual({ content_kind: "html", html: "preserved" });
+      expect(
+        (
+          repaired
+            .prepare(
+              "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'board_widgets'",
+            )
+            .get() as { sql: string }
+        ).sql,
+      ).toContain("content_kind IN ('html', 'mcp-app', 'plugin')");
+      expect(repaired.prepare("PRAGMA user_version").get()).toEqual({
+        user_version: OPENCLAW_AGENT_SCHEMA_VERSION,
+      });
+    } finally {
+      repaired.close();
     }
   });
 });

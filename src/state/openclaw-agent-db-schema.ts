@@ -13,7 +13,10 @@ import { configureSqlitePreSchemaPragmas } from "../infra/sqlite-wal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { VERSION } from "../version.js";
-import { OPENCLAW_AGENT_SCHEMA_WITHOUT_BOARD_SQL } from "./openclaw-agent-board-schema.js";
+import {
+  ensureOpenClawAgentBoardSchemaInTransaction,
+  OPENCLAW_AGENT_SCHEMA_WITHOUT_BOARD_SQL,
+} from "./openclaw-agent-board-schema.js";
 import {
   OPENCLAW_AGENT_SCHEMA_VERSION,
   type OpenClawAgentDatabaseOptions,
@@ -523,11 +526,8 @@ function ensureAgentSchema(db: DatabaseSync, agentId: string, pathname: string):
       migrateMemoryIndexSourcesIdentity(db);
       migrateOpenClawAgentSchema(db);
       ensureAdditiveSessionEntryColumns(db);
-      db.exec(
-        previousVersion === OPENCLAW_AGENT_SCHEMA_VERSION
-          ? OPENCLAW_AGENT_SCHEMA_WITHOUT_BOARD_SQL
-          : OPENCLAW_AGENT_SCHEMA_SQL,
-      );
+      db.exec(OPENCLAW_AGENT_SCHEMA_WITHOUT_BOARD_SQL);
+      ensureOpenClawAgentBoardSchemaInTransaction(db);
       migrateSessionTranscriptGenerations(db, previousVersion);
       migrateConversationDeliveryTargetColumn(db);
       migrateSessionTranscriptActiveProjection(db, previousVersion);

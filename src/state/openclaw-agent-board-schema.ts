@@ -61,13 +61,13 @@ function normalizeBoardWidgetsCreateSql(sql: string): string {
 
 /**
  * Repairs the unreleased v13 board table shape without advancing the agent DB version.
- * Delete this same-version bridge when the lazy board schema folds into the next natural bump.
+ * Delete this same-version bridge when the constraint advances through the next natural bump.
  */
 export function ensureOpenClawAgentBoardSchemaInTransaction(db: DatabaseSync): void {
   if (!db.isTransaction) {
     throw new Error("board schema ensure requires an active transaction");
   }
-  db.exec(OPENCLAW_AGENT_BOARD_SCHEMA_SQL); // sqlite-allow-raw -- Canonical DDL bootstrap for the lazy board schema.
+  db.exec(OPENCLAW_AGENT_BOARD_SCHEMA_SQL); // sqlite-allow-raw -- Canonical DDL bootstrap for the board schema.
   const row = db // sqlite-allow-raw -- Inspect the table DDL before the bounded same-version migration.
     .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'board_widgets'")
     .get() as { sql?: unknown } | undefined;

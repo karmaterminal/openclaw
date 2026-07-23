@@ -510,8 +510,8 @@ describe("SqliteBoardStore persistence", () => {
     expect(store.readWidgetMcpApp(sessionKey, "legacy-app")).toBeUndefined();
   });
 
-  it("lazily creates board tables for an existing v13 database", () => {
-    const stateDir = tempDirs.make("openclaw-board-lazy-schema-");
+  it("eagerly creates board tables for an existing v13 database", () => {
+    const stateDir = tempDirs.make("openclaw-board-eager-schema-");
     const env = { OPENCLAW_STATE_DIR: stateDir };
     const sessionKey = "agent:main:board";
     seedSession(env, "main", sessionKey);
@@ -533,15 +533,16 @@ describe("SqliteBoardStore persistence", () => {
     const reopened = openOpenClawAgentDatabase({ agentId: "main", env });
     expect(
       reopened.db
-        .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'board_tabs'")
-        .get(),
-    ).toBeUndefined();
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('board_tabs', 'board_widgets') ORDER BY name",
+        )
+        .all(),
+    ).toEqual([{ name: "board_tabs" }, { name: "board_widgets" }]);
 
     const store = new SqliteBoardStore({
       resolveSession: () => ({ agentId: "main", sessionKey }),
       env,
     });
-    // Reads before any write must see "no boards", not "no such table".
     expect(store.getSnapshot(sessionKey)).toMatchObject({ revision: 0, tabs: [], widgets: [] });
     expect(store.readWidgetHtml(sessionKey, "status")).toBeUndefined();
     expect(store.listSessionsWithBoards()).toEqual([]);
