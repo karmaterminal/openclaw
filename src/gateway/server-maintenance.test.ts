@@ -43,7 +43,7 @@ function createMaintenanceTimerDeps() {
     ...createGatewayMaintenanceStateForTest(),
     runWorktreeGc: vi.fn(async () => undefined),
     runDeliveryQueueMediaGc: vi.fn(async () => undefined),
-    runDelegateArtifactGc: vi.fn(async () => undefined),
+    runDelegateArtifactGc: vi.fn<() => Promise<number | undefined>>(async () => undefined),
   };
 }
 
@@ -191,6 +191,32 @@ describe("startGatewayMaintenanceTimers", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(deps.runDelegateArtifactGc).toHaveBeenCalledTimes(3);
     stopMaintenanceTimers(restarted);
+  });
+
+  it("drains full artifact GC batches and yields after each bounded group", async () => {
+    vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
+    const deps = createMaintenanceTimerDeps();
+    deps.runDelegateArtifactGc
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(0);
+    const timers = startGatewayMaintenanceTimers(deps);
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(deps.runDelegateArtifactGc).toHaveBeenCalledTimes(11);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 0);
+    stopMaintenanceTimers(timers);
   });
 
   it("delays curator startup, skips overlap, and unregisters on cleanup", async () => {

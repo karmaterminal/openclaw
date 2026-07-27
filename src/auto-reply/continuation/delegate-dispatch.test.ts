@@ -405,6 +405,60 @@ describe("managed artifact pre-spawn lifecycle", () => {
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
     expect(assertDelegateArtifactPolicyPreparedMock).not.toHaveBeenCalled();
     expect([...mockFlows.values()]).toContainEqual(expect.objectContaining({ status: "queued" }));
+    expect(vi.getTimerCount()).toBe(1);
+
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { enabled: true } } },
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledOnce();
+    expect([...mockFlows.values()]).toContainEqual(
+      expect.objectContaining({ status: "succeeded" }),
+    );
+  });
+
+  it("rearms a managed cross-session delegate until targeting is re-enabled", async () => {
+    const sessionKey = "agent:main:managed-cross-session-disabled";
+    enqueuePendingDelegate(sessionKey, {
+      task: "produce report for another session",
+      targetSessionKey: "agent:main:target",
+      returnOptions: { artifacts: "required" },
+    });
+    setRuntimeConfigSnapshot({
+      agents: {
+        defaults: {
+          continuation: { enabled: true, crossSessionTargeting: "disabled" },
+        },
+      },
+    });
+
+    const result = await dispatchToolDelegates({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+      },
+      ctx: { sessionKey },
+      maxChainLength: 8,
+      config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
+    });
+
+    expect(result).toMatchObject({ dispatched: 0, rejected: 0 });
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(1);
+
+    setRuntimeConfigSnapshot({
+      agents: {
+        defaults: {
+          continuation: { enabled: true, crossSessionTargeting: "enabled" },
+        },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledOnce();
   });
 
   it("removes claimless policies when admission rejects before spawn", async () => {

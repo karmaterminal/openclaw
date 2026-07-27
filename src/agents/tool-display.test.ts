@@ -303,6 +303,18 @@ describe("tool display details", () => {
     ).toBe('🔎 Web Search: for "OpenClaw docs"');
   });
 
+  it("does not expose delegate publication paths in tool summaries", () => {
+    const summary = formatToolSummary(
+      resolveToolDisplay({
+        name: "delegate_artifacts_publish",
+        args: { paths: ["private/customer-report.json"] },
+      }),
+    );
+
+    expect(summary).toBe("📦 Publish Delegate Artifacts");
+    expect(summary).not.toContain("customer-report");
+  });
+
   it("moves cd path to context suffix with multiple stages and raw command", () => {
     const detail = formatToolDetail(
       resolveToolDisplay({

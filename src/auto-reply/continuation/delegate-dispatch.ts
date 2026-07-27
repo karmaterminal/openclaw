@@ -370,6 +370,12 @@ export async function dispatchToolDelegates(params: {
       ...(params.inheritedWake ? { inheritedWake: true } : {}),
     });
   };
+  const deferManagedSpawn = (delegate: PendingContinuationDelegate, summary?: string): void => {
+    if (!requeuePendingDelegate(delegate, summary)) {
+      throw new Error("gated managed delegate could not be requeued");
+    }
+    armManagedSpawnRetry();
+  };
   // Fail closed: applying a delegate chain-cost fold requires a persist path so
   // a hedge armed for a still-unmatured delegate can durably advance the folded
   // chain state when it fires. Without `persistChainState` the hedge would fold
@@ -451,7 +457,7 @@ export async function dispatchToolDelegates(params: {
   const dispatchableDelegates: PendingContinuationDelegate[] = [];
   for (const delegate of toolDelegates) {
     if (hasManagedArtifacts(delegate) && !currentArtifactRuntime.enabled) {
-      requeuePendingDelegate(delegate);
+      deferManagedSpawn(delegate);
       continue;
     }
     if (
@@ -459,7 +465,7 @@ export async function dispatchToolDelegates(params: {
       currentArtifactRuntime.crossSessionTargeting === "disabled" &&
       hasCrossSessionDelegateTargeting(delegate, sessionKey)
     ) {
-      requeuePendingDelegate(
+      deferManagedSpawn(
         delegate,
         "Deferred until cross-session continuation targeting is re-enabled",
       );
@@ -551,7 +557,7 @@ export async function dispatchToolDelegates(params: {
       ? resolveContinuationRuntimeConfig(getRuntimeConfig())
       : undefined;
     if (managedArtifacts && !currentArtifactRuntime?.enabled) {
-      requeuePendingDelegate(delegate);
+      deferManagedSpawn(delegate);
       continue;
     }
     const effectiveCrossSessionTargeting =
@@ -561,7 +567,7 @@ export async function dispatchToolDelegates(params: {
       hasCrossSessionDelegateTargeting(delegate, sessionKey)
     ) {
       if (managedArtifacts) {
-        requeuePendingDelegate(
+        deferManagedSpawn(
           delegate,
           "Deferred until cross-session continuation targeting is re-enabled",
         );

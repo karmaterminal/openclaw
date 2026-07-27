@@ -140,16 +140,26 @@ export type SessionDeliverySettledOutcome = "recovered" | "moved-to-failed";
  * Inline attachment bytes are deliberately excluded from generic delivery
  * records: they are accepted only by the post-compaction handoff below.
  */
-type QueuedSessionDeliveryGenericPayload =
-  | ({
-      kind: "systemEvent";
-      sessionKey: string;
-      text: string;
+type QueuedSystemEventPayload = {
+  kind: "systemEvent";
+  sessionKey: string;
+  text: string;
+  deliveryContext?: SessionDeliveryContext;
+  idempotencyKey?: string;
+} & (
+  | {
+      expectedSessionId: string;
+      managedDelegateArtifactDelivery: ManagedDelegateArtifactDelivery;
+    }
+  | {
       expectedSessionId?: string;
-      managedDelegateArtifactDelivery?: ManagedDelegateArtifactDelivery;
-      deliveryContext?: SessionDeliveryContext;
-      idempotencyKey?: string;
-    } & QueuedSessionDeliveryPayloadMetadata)
+      managedDelegateArtifactDelivery?: never;
+    }
+) &
+  QueuedSessionDeliveryPayloadMetadata;
+
+type QueuedSessionDeliveryGenericPayload =
+  | QueuedSystemEventPayload
   | ({
       kind: "agentTurn";
       sessionKey: string;
@@ -314,29 +324,31 @@ const DelegateArtifactDeliveryReceiptSchema = z
   })
   .strict();
 
-const QueuedSystemEventSchema = z
+const QueuedSystemEventCommonSchema = {
+  ...QueuedGenericCommonSchema,
+  kind: z.literal("systemEvent"),
+  sessionKey: z.string(),
+  text: z.string(),
+  deliveryContext: QueuedGenericDeliveryContextSchema.optional(),
+  idempotencyKey: z.string().optional(),
+};
+
+const ManagedDelegateArtifactDeliverySchema = z
   .object({
-    ...QueuedGenericCommonSchema,
-    kind: z.literal("systemEvent"),
-    sessionKey: z.string(),
-    text: z.string(),
-    expectedSessionId: z.string().optional(),
-    managedDelegateArtifactDelivery: z
-      .object({
-        receipt: DelegateArtifactDeliveryReceiptSchema,
-        projection: DelegateArtifactRecipientProjectionSchema,
-      })
-      .strict()
-      .optional(),
-    deliveryContext: QueuedGenericDeliveryContextSchema.optional(),
-    idempotencyKey: z.string().optional(),
+    receipt: DelegateArtifactDeliveryReceiptSchema,
+    projection: DelegateArtifactRecipientProjectionSchema,
+  })
+  .strict();
+
+const QueuedManagedSystemEventSchema = z
+  .object({
+    ...QueuedSystemEventCommonSchema,
+    expectedSessionId: z.string().min(1),
+    managedDelegateArtifactDelivery: ManagedDelegateArtifactDeliverySchema,
   })
   .strict()
   .superRefine((entry, ctx) => {
     const managed = entry.managedDelegateArtifactDelivery;
-    if (!managed) {
-      return;
-    }
     if (
       entry.expectedSessionId !== managed.receipt.recipientSessionId ||
       entry.sessionKey !== managed.receipt.recipientSessionKey ||
@@ -352,6 +364,14 @@ const QueuedSystemEventSchema = z
       });
     }
   });
+
+const QueuedPlainSystemEventSchema = z
+  .object({
+    ...QueuedSystemEventCommonSchema,
+    expectedSessionId: z.string().optional(),
+    managedDelegateArtifactDelivery: z.never().optional(),
+  })
+  .strict();
 
 const QueuedAgentTurnSchema = z
   .object({
@@ -371,8 +391,9 @@ const QueuedAgentTurnSchema = z
   })
   .strict();
 
-const QueuedGenericDeliverySchema = z.discriminatedUnion("kind", [
-  QueuedSystemEventSchema,
+const QueuedGenericDeliverySchema = z.union([
+  QueuedManagedSystemEventSchema,
+  QueuedPlainSystemEventSchema,
   QueuedAgentTurnSchema,
 ]);
 

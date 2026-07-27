@@ -1,7 +1,10 @@
 // Gateway maintenance timers.
 // Starts periodic health, dedupe, abort, and media cleanup loops.
 import { isFutureDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
-import { purgeExpiredDelegateArtifacts } from "../agents/delegate-artifacts.js";
+import {
+  DELEGATE_ARTIFACT_PURGE_BATCH_SIZE,
+  purgeExpiredDelegateArtifacts,
+} from "../agents/delegate-artifacts.js";
 import { createManagedWorktreeOwnerProtection } from "../agents/worktrees/owner-protection.js";
 import {
   managedWorktrees,
@@ -39,6 +42,7 @@ import { setBroadcastHealthUpdate } from "./server/health-state.js";
 // stage-before-row-commit window.
 const DELIVERY_QUEUE_MEDIA_GC_INTERVAL_MS = 60 * 60_000;
 const DELEGATE_ARTIFACT_GC_INTERVAL_MS = 60 * 60_000;
+const DELEGATE_ARTIFACT_GC_BATCHES_PER_YIELD = 10;
 
 export function startGatewayMaintenanceTimers(params: {
   broadcast: (
@@ -84,7 +88,7 @@ export function startGatewayMaintenanceTimers(params: {
   getRuntimeConfig: () => OpenClawConfig;
   runWorktreeGc?: () => Promise<unknown>;
   runDeliveryQueueMediaGc?: () => Promise<unknown>;
-  runDelegateArtifactGc?: () => Promise<unknown> | unknown;
+  runDelegateArtifactGc?: () => unknown;
   enableSkillCurator?: boolean;
   runSkillCuratorSweep?: () => Promise<unknown>;
   registerSkillUsageTracking?: () => () => void;
@@ -180,7 +184,19 @@ export function startGatewayMaintenanceTimers(params: {
     }
     delegateArtifactGcInFlight = Promise.resolve()
       .then(async () => {
-        await runDelegateArtifactGc();
+        for (;;) {
+          let purged: unknown;
+          for (let batch = 0; batch < DELEGATE_ARTIFACT_GC_BATCHES_PER_YIELD; batch += 1) {
+            purged = await runDelegateArtifactGc();
+            if (purged !== DELEGATE_ARTIFACT_PURGE_BATCH_SIZE) {
+              return;
+            }
+          }
+          // Keep each event-loop turn bounded while continuing to drain a large backlog.
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 0);
+          });
+        }
       })
       .catch((err: unknown) => {
         params.logHealth.error(`delegate artifact cleanup failed: ${formatError(err)}`);

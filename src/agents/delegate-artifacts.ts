@@ -497,7 +497,9 @@ export function createDelegateArtifactPolicy(
           max_artifact_bytes: DELEGATE_ARTIFACT_MAX_BYTES,
           max_total_bytes: DELEGATE_ARTIFACT_MAX_TOTAL_BYTES,
           allowed_mimes_json: JSON.stringify(ALLOWED_MIME_PATTERNS),
-          retention_deadline: dispatchAcceptedAt + DELEGATE_ARTIFACT_RETENTION_MS,
+          retention_deadline:
+            Math.max(dispatchAcceptedAt, policy.notBefore ?? dispatchAcceptedAt) +
+            DELEGATE_ARTIFACT_RETENTION_MS,
           status: "active",
           completion_id: null,
           completion_finalization_key: null,

@@ -14,6 +14,7 @@ import {
   markSessionDeliverySettlement,
   moveSessionDeliveryToFailed,
   type QueuedSessionDeliveryPayload,
+  type ManagedDelegateArtifactDelivery,
 } from "./session-delivery-queue-storage.js";
 import {
   enqueueClaimedSessionDelivery,
@@ -246,8 +247,46 @@ describe("session-delivery queue storage", () => {
     });
   });
 
-  it("fails a managed delegate return whose durable receipt and projection disagree", async () => {
+  it("requires expectedSessionId and matching bindings for managed delegate returns", async () => {
     await withTempDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const managedDelegateArtifactDelivery = {
+        receipt: {
+          kind: "delegate-artifact",
+          dispatchId: "dispatch-1",
+          recipientSessionKey: "agent:main:main",
+          recipientSessionId: "session-1",
+        },
+        projection: {
+          artifacts: [],
+          arrivalContext: {
+            deliveryClass: "delegate result",
+            deliveryMode: "announced",
+            dispatchId: "dispatch-1",
+            producer: { sessionKey: "agent:main:child", runId: "run-1" },
+            completionId: "completion-1",
+            binding: {
+              recipientSessionKey: "agent:main:main",
+              recipientSessionId: "session-1",
+            },
+            dispatchAcceptedAt: 1,
+            completedAt: 2,
+            deliveredAt: 3,
+            policyVersion: 1,
+            availability: "available",
+          },
+        },
+      } satisfies ManagedDelegateArtifactDelivery;
+      // @ts-expect-error Managed delivery is invalid without a session incarnation binding.
+      const missingExpectedSessionId: QueuedSessionDeliveryPayload = {
+        kind: "systemEvent",
+        sessionKey: "agent:main:main",
+        text: "managed return",
+        managedDelegateArtifactDelivery,
+      };
+      await expect(enqueueSessionDelivery(missingExpectedSessionId, tempDir)).rejects.toThrow(
+        "invalid generic session delivery payload: invalid shape",
+      );
+
       await expect(
         enqueueSessionDelivery(
           {
@@ -256,29 +295,12 @@ describe("session-delivery queue storage", () => {
             text: "managed return",
             expectedSessionId: "session-1",
             managedDelegateArtifactDelivery: {
-              receipt: {
-                kind: "delegate-artifact",
-                dispatchId: "dispatch-1",
-                recipientSessionKey: "agent:main:main",
-                recipientSessionId: "session-1",
-              },
+              ...managedDelegateArtifactDelivery,
               projection: {
-                artifacts: [],
+                ...managedDelegateArtifactDelivery.projection,
                 arrivalContext: {
-                  deliveryClass: "delegate result",
-                  deliveryMode: "announced",
+                  ...managedDelegateArtifactDelivery.projection.arrivalContext,
                   dispatchId: "dispatch-other",
-                  producer: { sessionKey: "agent:main:child", runId: "run-1" },
-                  completionId: "completion-1",
-                  binding: {
-                    recipientSessionKey: "agent:main:main",
-                    recipientSessionId: "session-1",
-                  },
-                  dispatchAcceptedAt: 1,
-                  completedAt: 2,
-                  deliveredAt: 3,
-                  policyVersion: 1,
-                  availability: "available",
                 },
               },
             },

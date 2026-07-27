@@ -461,7 +461,6 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
     delegate_artifacts_publish: {
       emoji: "📦",
       title: "Publish Delegate Artifacts",
-      detailKeys: ["paths"],
     },
     delegate_artifacts: {
       emoji: "📦",

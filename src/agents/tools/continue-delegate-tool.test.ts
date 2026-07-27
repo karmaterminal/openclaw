@@ -235,6 +235,20 @@ describe("continue_delegate tool", () => {
         recipientContext: { purpose: "Unused context" },
       }),
     ).rejects.toThrow("only valid when managed artifact returns are optional or required");
+    await expect(
+      executeTool(tool, 5, {
+        task: "ambiguous return policy",
+        returnOptions: { artifacts: "optional" },
+        return_options: { artifacts: "required" },
+      }),
+    ).rejects.toThrow("Specify only one of returnOptions or return_options");
+    await expect(
+      executeTool(tool, 6, {
+        task: "ambiguous recipient context",
+        recipientContext: { purpose: "first" },
+        recipient_context: { purpose: "second" },
+      }),
+    ).rejects.toThrow("Specify only one of recipientContext or recipient_context");
   });
 
   it("accepts typed input attachments without echoing content in the tool result", async () => {

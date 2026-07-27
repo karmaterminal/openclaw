@@ -29,6 +29,10 @@ function stateOptions() {
   return { path: join(directory, "openclaw.sqlite") };
 }
 
+const DEFAULT_POLICY_NOT_BEFORE = 31_100;
+const DEFAULT_POLICY_RETENTION_DEADLINE =
+  DEFAULT_POLICY_NOT_BEFORE + DELEGATE_ARTIFACT_RETENTION_MS;
+
 function policy(overrides: Partial<DelegateArtifactPolicyV1> = {}): DelegateArtifactPolicyV1 {
   return {
     flowId: "flow-1",
@@ -39,7 +43,7 @@ function policy(overrides: Partial<DelegateArtifactPolicyV1> = {}): DelegateArti
     dispatchRevision: 4,
     dispatchAcceptedAt: 1_000,
     scheduledAt: 1_100,
-    notBefore: 31_100,
+    notBefore: DEFAULT_POLICY_NOT_BEFORE,
     artifactMode: "optional",
     recipients: [
       {
@@ -125,7 +129,7 @@ describe("managed delegate artifact claims", () => {
       max_artifact_count: 8,
       max_artifact_bytes: 16 * 1024 * 1024,
       max_total_bytes: 32 * 1024 * 1024,
-      retention_deadline: 1_000 + DELEGATE_ARTIFACT_RETENTION_MS,
+      retention_deadline: DEFAULT_POLICY_RETENTION_DEADLINE,
     });
     expect(JSON.parse(String(storedPolicy.route_json))).toEqual({
       kind: "targets",
@@ -842,7 +846,7 @@ describe("managed delegate artifact claims", () => {
         runtimeEnabled: true,
         crossSessionEnabled: true,
         currentRecipientSessionId: "parent-session-1",
-        now: 1_000 + DELEGATE_ARTIFACT_RETENTION_MS,
+        now: DEFAULT_POLICY_RETENTION_DEADLINE,
         options,
       }),
     ).toEqual({ status: "unavailable" });
@@ -875,7 +879,7 @@ describe("managed delegate artifact claims", () => {
     ).toEqual({
       dispatch_accepted_at: 5_000,
       scheduled_at: 1_000,
-      retention_deadline: 5_000 + DELEGATE_ARTIFACT_RETENTION_MS,
+      retention_deadline: DEFAULT_POLICY_RETENTION_DEADLINE,
     });
   });
 
@@ -1035,8 +1039,8 @@ describe("managed delegate artifact claims", () => {
         options,
       }),
     ).toEqual({ outcome: "unauthorized" });
-    expect(purgeExpiredDelegateArtifacts(1_000 + DELEGATE_ARTIFACT_RETENTION_MS, options)).toBe(1);
-    expect(purgeExpiredDelegateArtifacts(1_000 + DELEGATE_ARTIFACT_RETENTION_MS, options)).toBe(0);
+    expect(purgeExpiredDelegateArtifacts(DEFAULT_POLICY_RETENTION_DEADLINE, options)).toBe(1);
+    expect(purgeExpiredDelegateArtifacts(DEFAULT_POLICY_RETENTION_DEADLINE, options)).toBe(0);
     expect(
       openOpenClawStateDatabase(options)
         .db.prepare(
@@ -1383,9 +1387,7 @@ describe("managed delegate artifact claims", () => {
       }),
     ).toEqual({ outcome: "revoked" });
 
-    expect(
-      purgeExpiredDelegateArtifacts(1_000 + DELEGATE_ARTIFACT_RETENTION_MS, revokeOptions),
-    ).toBe(1);
+    expect(purgeExpiredDelegateArtifacts(DEFAULT_POLICY_RETENTION_DEADLINE, revokeOptions)).toBe(1);
     expect(
       inspectDelegateArtifactForRecipient({
         claimId,
@@ -1393,7 +1395,7 @@ describe("managed delegate artifact claims", () => {
         recipientSessionId: "parent-session-1",
         runtimeEnabled: true,
         crossSessionEnabled: true,
-        now: 1_000 + DELEGATE_ARTIFACT_RETENTION_MS,
+        now: DEFAULT_POLICY_RETENTION_DEADLINE,
         options: revokeOptions,
       }),
     ).toEqual({ outcome: "expired" });
@@ -1421,14 +1423,14 @@ describe("managed delegate artifact claims", () => {
       now: 9_950,
       options: expiryOptions,
     });
-    purgeExpiredDelegateArtifacts(1_000 + DELEGATE_ARTIFACT_RETENTION_MS, expiryOptions);
+    purgeExpiredDelegateArtifacts(DEFAULT_POLICY_RETENTION_DEADLINE, expiryOptions);
     expect(
       listDelegateArtifactsForRecipient({
         recipientSessionKey: "agent:main:parent",
         recipientSessionId: "parent-session-1",
         runtimeEnabled: true,
         crossSessionEnabled: true,
-        now: 1_000 + DELEGATE_ARTIFACT_RETENTION_MS,
+        now: DEFAULT_POLICY_RETENTION_DEADLINE,
         options: expiryOptions,
       }),
     ).toEqual({ outcome: "expired" });
@@ -1504,7 +1506,7 @@ describe("managed delegate artifact claims", () => {
       now: 10_050,
       options,
     });
-    const expiredAt = 1_000 + DELEGATE_ARTIFACT_RETENTION_MS;
+    const expiredAt = DEFAULT_POLICY_RETENTION_DEADLINE;
 
     expect(
       listDelegateArtifactsForRecipient({
@@ -1554,7 +1556,7 @@ describe("managed delegate artifact claims", () => {
         recipientSessionId: "parent-session-1",
         runtimeEnabled: true,
         crossSessionEnabled: true,
-        now: 2_000 + DELEGATE_ARTIFACT_RETENTION_MS,
+        now: 32_100 + DELEGATE_ARTIFACT_RETENTION_MS,
         options,
       }),
     ).toEqual({ outcome: "expired" });
@@ -1626,7 +1628,7 @@ describe("managed delegate artifact claims", () => {
       .all();
     closeOpenClawStateDatabaseForTest();
 
-    const expiredAt = 1_000 + DELEGATE_ARTIFACT_RETENTION_MS;
+    const expiredAt = DEFAULT_POLICY_RETENTION_DEADLINE;
     expect(purgeExpiredDelegateArtifacts(expiredAt, options)).toBe(1);
     expect(purgeExpiredDelegateArtifacts(expiredAt, options)).toBe(0);
     closeOpenClawStateDatabaseForTest();
