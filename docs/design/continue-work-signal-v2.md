@@ -1833,9 +1833,62 @@ This is a closed capability request, not a caller-authored attachment/header bag
 
 **V1 publication request.** Before implementation begins, the child-facing completion API SHALL be named and typed in the implementation RFC/API surface. Its artifact argument may contain only a bounded list of child-workspace-relative candidate paths; it SHALL accept neither raw bytes, URLs, hashes, `media://` locators, caller-selected claim IDs, nor a parent destination. The host resolves those relative paths against the policy's approved output root after the child asks to publish, re-checks the regular-file/no-symlink/type/size/redaction constraints, and redacts the candidate path from all channel-visible tool results, logs, diagnostics, and error strings. A rejected or absent candidate produces an explicit typed publication outcome; it never falls back to final prose, tool output, or a path string.
 
-**Canonical content selection gate.** A claim is authority/provenance metadata, not a new public attachment-header language. V1 SHALL use one existing OpenClaw/MCP content representation for the recipient-visible text/media/resource item and retain MIME/name/size as that representation's ordinary descriptive metadata. The implementation RFC MUST name the exact existing type and renderer/input boundary, and prove it can represent every V1 resource class (image, PDF/report, audio, dataset, and patch) without exposing a storage locator. `AgentToolResult.content` is not by itself that general representation today: it is limited to `TextContent | ImageContent`. If no existing general resource representation can carry an opaque, access-checked claim reference without treating that reference as a bearer URL, the feature SHALL stop at the design gate rather than introduce a parallel public descriptor protocol implicitly.
+**Canonical recipient artifact projection.** A claim is authority/provenance metadata, not a new public attachment-header language. V1’s closed `ArtifactSummary` projection is the canonical typed, non-bearer attachment/resource **claim item** in the continuation return: it identifies a host-managed output and retains its ordinary MIME/name/size metadata, but it does **not** inline, serialize, prompt-inject, or otherwise make payload bytes readable at completion. The separately authorized recipient-bound resolver is the rendering/materialization step for that claim item. `AgentToolResult.content` is not itself this general claim-item representation today: it is limited to `TextContent | ImageContent`.
 
-The following is the logical claim projection at the private host completion boundary. It is **not** an independently serialized public attachment/content schema; the recipient-visible completion representation remains blocked on the canonical-content gate above.
+**V1 representation decision.** V1 reuses the existing public gateway-protocol [`ArtifactSummary`](../../packages/gateway-protocol/src/schema/artifacts.ts) vocabulary as its sole recipient-visible artifact item. That existing metadata vocabulary covers opaque `id`, `type`, `title`, optional `mimeType`/`sizeBytes`, source lineage, and a non-content `download.mode` for arbitrary artifact classes; #666 derives its closed projection from it through the seven-field adapter below. It covers image, PDF/report, audio, dataset, and patch through the existing free-form `type` plus MIME metadata, without putting raw bytes, a local path, a URL, or a digest in the return event. The recipient-visible #666 projection SHALL contain only these fields:
+
+`Pick<ArtifactSummary, …>` is **not** a sufficient enforcement mechanism: the
+existing runtime schema also admits `sessionKey`, `runId`, `taskId`,
+`messageSeq`, and `download` modes other than `unsupported`. Before any
+continuation/TaskFlow envelope is serialized, a private adapter named
+`toDelegateArtifactSummaryV1(claim)` SHALL freshly construct and strict-validate
+this closed seven-field projection:
+
+```ts
+{
+  id: string;
+  type: string;
+  title: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  source: "delegate-return";
+  download: { mode: "unsupported" };
+}
+```
+
+This is a private serializer/validator for an existing `ArtifactSummary`
+vocabulary subset, not a second public descriptor schema. It SHALL neither
+spread nor accept a caller-provided `ArtifactSummary`; it creates a new object,
+then rejects any additional key before the envelope boundary. The envelope may
+be structurally typed as `ArtifactSummary[]` only for outputs that this adapter
+has already constructed. It SHALL never accept arbitrary `ArtifactSummary[]`
+input at that boundary.
+
+The adapter SHALL derive `title`, `type`, and `mimeType` only from
+host-validated claim metadata after publication validation—not from arbitrary
+child strings, the candidate path or filename, task prose, tool output, or
+channel state. `title` and `type` use host-owned policy/classification values;
+`mimeType`, when present, is host-detected or host-validated and must satisfy
+MIME syntax. Before any value reaches a claim, envelope, transcript, log,
+diagnostic, or durable failure record, the adapter SHALL reject control
+characters and path-, URI-, URL-, locator-, or bearer-shaped values in all
+three fields. It SHALL fail the private publication/claim validation rather
+than redact or substitute a child-derived scalar into a recipient projection.
+
+For a #666 return, `id` is the host-issued opaque claim ID, never a storage locator or bearer capability; `source` is the fixed host-authored value `"delegate-return"`; and `download` is always `{ mode: "unsupported" }`. The existing generic `artifacts.download` response is **not** the claim resolver: it can expose base64 `data` or a `url`, so it is excluded from this return path. A recipient sees the ordinary `ArtifactSummary` metadata in its typed continuation/TaskFlow result, then uses the separately authorized, recipient-bound list/inspect/materialize/discard operation from §A.6.4. That resolver checks the recipient/delivery/completion/policy binding before it reads private bytes; it does not delegate access to `ArtifactSummary.id`.
+
+The typed continuation return envelope may carry the outputs of
+`toDelegateArtifactSummaryV1()` as `ArtifactSummary[]` next to its ordinary
+text and host-authored arrival context, but it SHALL introduce no new public
+artifact descriptor, MIME/count header bag, or locator-bearing content part.
+The system-event/TaskFlow adapter is the existing recipient input boundary for
+this metadata-only projection; rendering or forwarding bytes remains an
+explicit post-return operation. Any use of `sessionKey`, `runId`, `taskId`, or
+`messageSeq` from the broader gateway schema in a #666 recipient projection is
+prohibited unless a later RFC version independently proves that it is
+authorized recipient-visible provenance.
+
+The following is the logical claim projection at the private host completion boundary. It is **not** an independently serialized public attachment/content schema; its recipient-visible counterpart is the existing `ArtifactSummary` projection chosen above.
 
 ```ts
 type DelegateArtifactRef = {
@@ -1849,7 +1902,7 @@ type DelegateArtifactRef = {
 
 type DelegateCompletionRecord = {
   text?: string;
-  artifacts?: readonly DelegateArtifactRef[];
+  artifacts?: readonly DelegateArtifactRef[]; // projected as ArtifactSummary[] to recipients
 };
 ```
 
@@ -1935,7 +1988,7 @@ Before an implementation can ship, tests must prove all of the following:
 9. **Publish/finalize crash safety:** crashes before retained-byte copy, after copy but before finalization, and after finalization but before delivery leave no resolvable unbound claim, create no duplicate claim, and deterministically finalize by the same idempotency key or orphan/revoke/purge the pending object.
 10. **Recipient privacy:** targeted and fan-out recipients receive only their own binding and approved origin/context/claim projection; they cannot infer sibling recipient identities, complete route/fan-out set or cardinality, or unauthorized claim metadata.
 11. **Publication-input isolation:** the child publication API accepts only a bounded relative candidate path under its approved output root; raw bytes, URLs, hashes, `media://` references, claim IDs, and parent-selected destinations are rejected and redacted. A missing or denied candidate is an explicit typed result and cannot become a claim from prose/tool output.
-12. **Canonical-content gate:** the implementation names and tests one existing public text/media/resource representation for every V1 artifact class. It never exposes a storage locator or makes an opaque claim ID a bearer reference; if the existing representation cannot meet those conditions, implementation does not begin.
+12. **Canonical-content gate:** the implementation projects every V1 artifact class through the existing `ArtifactSummary` schema only, with its #666 subset exactly `id`, `type`, `title`, optional `mimeType`/`sizeBytes`, host-authored `source: "delegate-return"`, and `download: { mode: "unsupported" }`. A named private `toDelegateArtifactSummaryV1()` serializer/strict validator freshly creates that exact seven-field object and rejects or strips every other `ArtifactSummary` key before the continuation/TaskFlow envelope; `Pick<ArtifactSummary, …>` or a bare `ArtifactSummarySchema` parse is insufficient. It derives `title`, `type`, and `mimeType` only from host-validated claim metadata; rejects child-supplied arbitrary display strings, control characters, and path/URI/URL/locator/bearer-shaped values in each scalar; and validates present `mimeType` values as MIME syntax. Negative proofs show those scalars cannot reach continuation/TaskFlow envelopes, transcript collection, legacy artifact RPC, logs, diagnostics, or failed durable state. It proves that this projection carries neither raw bytes nor a path, URL, digest, generic `artifacts.get`/`artifacts.download` capability, `sessionKey`, `runId`, `taskId`, or `messageSeq`; that a #666 claim is addressable through neither legacy `artifacts.get` nor `artifacts.download`, never enters transcript collection, and never yields metadata or bytes through those routes; that `id` cannot resolve without the current recipient/delivery/completion/policy checks; and that image, PDF/report, audio, dataset, and patch all use this one metadata representation. Any new artifact descriptor, MIME/count header bag, locator-bearing content part, generic artifact-RPC fallback, or input path that bypasses the closed projection fails the gate.
 13. **Runtime disable and terminal matrix:** tests distinguish all three windows: (a) disabled before spawn leaves valid work deferred with no child/input/claim/delivery/retry/chain mutation; (b) disabled after child completion but before finalization may retain only non-resolvable `staged` state and never privately create/finalize/publish an `available` claim or arrival event, and its resumed finalization atomically rechecks the current gate, producer/completion integrity, current deny/revoke/expiry policy, and parent continuity before it can proceed; and (c) disabled after finalization but before delivery retains the one finalized binding while deferring delivery/replay and all resolution/materialization. `staged` is runtime-disable-only. The proof SHALL exercise the complete terminal matrix: **global gate failure** records one immutable `global-failed(reason)` completion outcome, creates zero recipient bindings, and permits no route lookup/rebind/delivery/replay/retry/chain mutation or later fan-out; **mixed recipients after global success** finalize independently to one `available` or durable `unavailable(reason)` tombstone per original recipient, where later private-backing purge preserves the tombstone and can never erase/reopen/revive it; and **zero eligible recipients after global success** creates an `unavailable(reason)` tombstone for every original recipient with zero available bindings, then records exactly one `required-failed` completion failure for `required` or exactly one terminal non-failure `optional-zero-eligible` disposition for `optional`. Recovery/replay/cleanup/rebind may not revive, substitute, re-resolve, deliver, or charge a retry for any terminal case. Recipient-scoped projections expose neither sibling identities/outcomes nor route cardinality. Before the complete staged transaction commits, no recipient-visible ref/name/access path, delivery/replay, retry accounting, chain mutation, or replacement completion exists. Re-enable resumes only the same incomplete transaction with original provenance; no window spawns extra work, consumes a retry, widens authorization, or replaces completion identity.
 14. **Activation and absence:** omitted `returnOptions` is text-only/forbidden; optional accepts a text-only successful completion; forbidden rejects a child publish attempt without a claim; required with zero valid finalized claims yields one durable typed policy-completion failure. Replay preserves the original policy mode, completion identity/times, and recipient snapshot.
 15. **Explicit recipient operations:** list/inspect, materialize, and discard are typed, recipient-authorized, and auditable; their unavailable/unauthorized outcomes are stable and fail closed. No claim operation sends or forwards a channel message.
