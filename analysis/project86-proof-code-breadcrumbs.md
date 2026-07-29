@@ -77,7 +77,7 @@ Route one child completion to the intended session set through durable, idempote
 
 **Symbols:** `src/agents/subagent-announce.continuation-return.ts::routeSubagentContinuationReturn`, `src/auto-reply/continuation/targeting.ts::resolveContinuationReturnTargetSessionKeys`, `src/auto-reply/continuation/targeting.ts::enqueueContinuationReturnDeliveries`, `src/infra/session-delivery-queue-storage.ts::enqueueSessionDelivery`, `src/infra/session-delivery-queue-storage.ts::completeSessionDelivery`
 
-**Tests:** `src/agents/subagent-announce.continuation.test.ts`, `src/agents/subagent-announce.continuation-return.delegate-artifacts.test.ts`, `src/auto-reply/continuation/cross-session-targeting.test.ts`, `src/infra/session-delivery-queue.storage.test.ts`, `src/infra/session-delivery-queue.recovery.test.ts`
+**Tests:** `src/agents/subagent-announce.continuation.test.ts`, `src/agents/subagent-announce.continuation-return.delegate-artifacts.test.ts`, `src/auto-reply/continuation/cross-session-targeting.test.ts`, `src/auto-reply/continuation/continuation-return-delivery-dedupe-ack.test.ts`, `src/infra/session-delivery-queue.storage.test.ts`, `src/infra/session-delivery-queue.recovery.test.ts`
 
 ### `delegate-chain`
 
@@ -290,7 +290,7 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 
 **Primary production symbols:** `src/agents/tools/continue-delegate-tool.ts::ContinueDelegateToolSchema`, `src/agents/tools/continue-delegate-tool.ts::createContinueDelegateTool`, `src/agents/subagent-attachments.ts::validateSubagentAttachments`, `src/agents/subagent-attachments.ts::materializeSubagentAttachments`, `src/auto-reply/continuation/delegate-store.ts::stagePostCompactionDelegate`, `src/auto-reply/continuation/post-compaction-release.ts::releasePostCompactionLifecycle`, `src/auto-reply/continuation/post-compaction-staged-dispatch.ts::dispatchStagedPostCompactionDelegates`, `src/infra/session-delivery-queue-storage.ts::enqueuePostCompactionDelegateDelivery`, `src/infra/continuation-tracer.ts::emitContinuationCompactionReleasedSpan`, `src/agents/tools/request-compaction-tool.ts::createRequestCompactionTool`, `src/agents/tools/request-compaction-tool.ts::getVolitionalCompactionCount`, `src/agents/command/attempt-execution.ts::requestCompactionOpts`, `src/auto-reply/continuation/delegate-flow-store.ts::delegateFlowRecords.create`, `src/auto-reply/continuation/delegate-dispatch.ts::dispatchToolDelegates`, `src/auto-reply/continuation/delegate-dispatch-recovery.ts::recoverPendingContinuationDelegates`, `src/agents/subagent-spawn.ts::spawnSubagentDirect`, `src/agents/subagent-continuation-ids.ts::deriveContinuationDelegateChildSessionKeyFromParent`, `src/agents/subagent-announce.continuation-return.ts::routeSubagentContinuationReturn`, `src/auto-reply/continuation/targeting.ts::resolveContinuationReturnTargetSessionKeys`, `src/auto-reply/continuation/targeting.ts::enqueueContinuationReturnDeliveries`, `src/infra/session-delivery-queue-storage.ts::enqueueSessionDelivery`, `src/infra/session-delivery-queue-storage.ts::completeSessionDelivery`, `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan`, `src/logging/diagnostic-continuation-queues.ts::getDiagnosticContinuationQueueMetrics`, `src/status/status-message.ts::formatContinuationStatusLine`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts::createContinuationOtelTracerAdapter`
 
-**Upstream caller chain:** `agent turn` → `createRequestCompactionTool.execute` → `context guard and per-session coordinator` → `triggerCompaction lane` → `confirmed autoCompactionCount` → `dispatchPostCompactionDelegates`.
+**Upstream caller chain:** `agent turn` → `createRequestCompactionTool.execute` → `context guard and per-session coordinator` → `triggerCompaction lane` → `confirmed autoCompactionCount` → `releasePostCompactionLifecycle` → `dispatchStagedPostCompactionDelegates`.
 
 **Durable state/session identity:** `staged post-compaction delegate`, `source flow revision`, `compaction counter`, `state/openclaw.sqlite`, `continuationChainCount/StartedAt/Tokens/Id`.
 
@@ -622,7 +622,7 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 
 **Observability:** `continuation.delegate.dispatch / continuation.delegate.fire spans`, `trusted [continuation:*] system events`, `continuation/announce and subagent-chain-hop logs`, `chain.id and traceparent correlation`, `reason length/redacted hash without raw reason`, `continuation queue diagnostic samples`, `conditional /status continuation line`.
 
-**Owner/regression tests:** `src/auto-reply/continuation/delegate-dispatch.test.ts`, `src/auto-reply/continuation/delegate-dispatch.cost-cap-exhaustion.test.ts`, `src/auto-reply/continuation/delegate-dispatch.recovery-1.test.ts`, `src/auto-reply/continuation/delegate-dispatch.recovery-2.test.ts`, `src/agents/subagent-announce.continuation.test.ts`, `src/agents/subagent-announce.continuation-return.delegate-artifacts.test.ts`, `src/auto-reply/continuation/cross-session-targeting.test.ts`, `src/infra/session-delivery-queue.storage.test.ts`, `src/infra/session-delivery-queue.recovery.test.ts`, `src/infra/continuation-tracer.test.ts`, `src/infra/continuation-tracer.emit-and-fire.test.ts`, `src/auto-reply/continuation/trace-context-propagation.integration.test.ts`, `src/logging/diagnostic.test.ts`, `src/auto-reply/status.test.ts`, `src/status/status-text.test.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.test.ts`.
+**Owner/regression tests:** `src/auto-reply/continuation/delegate-dispatch.test.ts`, `src/auto-reply/continuation/delegate-dispatch.cost-cap-exhaustion.test.ts`, `src/auto-reply/continuation/delegate-dispatch.recovery-1.test.ts`, `src/auto-reply/continuation/delegate-dispatch.recovery-2.test.ts`, `src/agents/subagent-announce.continuation.test.ts`, `src/agents/subagent-announce.continuation-return.delegate-artifacts.test.ts`, `src/auto-reply/continuation/cross-session-targeting.test.ts`, `src/auto-reply/continuation/continuation-return-delivery-dedupe-ack.test.ts`, `src/infra/session-delivery-queue.storage.test.ts`, `src/infra/session-delivery-queue.recovery.test.ts`, `src/infra/continuation-tracer.test.ts`, `src/infra/continuation-tracer.emit-and-fire.test.ts`, `src/auto-reply/continuation/trace-context-propagation.integration.test.ts`, `src/logging/diagnostic.test.ts`, `src/auto-reply/status.test.ts`, `src/status/status-text.test.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.test.ts`.
 
 | Declared failure class | First inspection points |
 | --- | --- |
@@ -751,7 +751,7 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 | `config-read` — Configuration read successful | `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig` |
 | `continuation-values` — Continuation enabled/maxChainLength/maxDelegatesPerTurn/costCapTokens bytes observed | `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig` |
 
-**Blast radius:** . **Halt:** `all-continuation-proofs` — Wrong canonical defaults or tool gating can change every continuation row on the same candidate.
+**Blast radius:** `R-CD-1`, `R-CD-2`, `R-CD-3`, `R-CD-4`, `R-CD-CHAINED-DEPTH-2`, `R-CD-COLLECTION-ON-COLLAPSE`, `R-CD-MODEL-CHAINED-ALT`, `R-CD-MODEL-DEFAULT`, `R-CD-MODEL-TOKEN`, `R-CD-MODEL-TOOL`, `R-CD-RETURN-OVERLAP`, `R-CD-SILENT`, `R-CD-TOKEN`, `R-CONFIG-INTERSESSION`, `R-CW-1`, `R-CW-2`, `R-CW-3`, `R-CW-4`, `R-CW-5`, `R-CW-6`, `R-CW-7`, `R-CW-DELEGATE-CHILD-LIVE`, `R-CW-DELEGATE-SELF-CONTINUATION`, `R-CW-DELEGATE-TOKEN`, `R-CW-MULTI`, `R-CW-MULTI-COLLAPSE`, `R-CW-TOKEN`, `R-OBS-1`, `R-OBS-2`, `R-OBS-STATUS`, `R-RC-1`, `R-RC-2`, `R-REGRESSION-TRAP-TESTS`, `R-TRACE-REDACTION-1121`. **Halt:** `all-continuation-proofs` — Wrong canonical defaults or tool gating can change every continuation row on the same candidate.
 
 **Future-candidate triage commands:**
 
@@ -1302,9 +1302,9 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 
 **Behavior contract:** Session-status-card observability via the session_status tool. Creates a disposable session, asks the agent to call session_status, and verifies build/context/continuation-chain/route visibility by nonce-correlated sentinel.
 
-**Primary production symbols:** `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig`, `src/auto-reply/continuation/config.ts::resolveLiveContinuationRuntimeConfig`, `src/agents/subagent-announce.continuation.runtime.ts::coordinateSubagentContinuation`, `src/agents/subagent-announce.continuation.accounting.ts::prepareSubagentContinuationAccounting`, `src/auto-reply/continuation/state.ts::persistContinuationChainState`, `src/auto-reply/continuation/scheduler.ts::checkContinuationBudget`, `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan`, `src/logging/diagnostic-continuation-queues.ts::getDiagnosticContinuationQueueMetrics`, `src/status/status-message.ts::formatContinuationStatusLine`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts::createContinuationOtelTracerAdapter`
+**Primary production symbols:** `src/agents/tools/session-status-tool.ts::createSessionStatusTool`, `src/status/status-message.ts::buildStatusMessage`, `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig`, `src/auto-reply/continuation/config.ts::resolveLiveContinuationRuntimeConfig`, `src/agents/subagent-announce.continuation.runtime.ts::coordinateSubagentContinuation`, `src/agents/subagent-announce.continuation.accounting.ts::prepareSubagentContinuationAccounting`, `src/auto-reply/continuation/state.ts::persistContinuationChainState`, `src/auto-reply/continuation/scheduler.ts::checkContinuationBudget`, `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan`, `src/logging/diagnostic-continuation-queues.ts::getDiagnosticContinuationQueueMetrics`, `src/status/status-message.ts::formatContinuationStatusLine`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts::createContinuationOtelTracerAdapter`
 
-**Upstream caller chain:** `agent calls session_status` → `status command snapshot` → `formatStatusMessage`.
+**Upstream caller chain:** `agent calls session_status` → `status command snapshot` → `buildStatusMessage`.
 
 **Durable state/session identity:** `session entry`, `continuation chain counters`, `route/model/context snapshot`, `state/openclaw.sqlite`, `continuationChainCount/StartedAt/Tokens/Id`.
 
@@ -1314,14 +1314,14 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 
 **Observability:** `continuation.delegate.dispatch / continuation.delegate.fire spans`, `trusted [continuation:*] system events`, `continuation/announce and subagent-chain-hop logs`, `chain.id and traceparent correlation`, `reason length/redacted hash without raw reason`, `continuation queue diagnostic samples`, `conditional /status continuation line`.
 
-**Owner/regression tests:** `src/config/zod-schema.continuation.test.ts`, `src/auto-reply/continuation/config.test.ts`, `src/agents/subagent-announce.continuation.runtime.test.ts`, `src/agents/subagent-announce.continuation-drain.chain-cost.test.ts`, `src/auto-reply/continuation/state.test.ts`, `src/infra/continuation-tracer.test.ts`, `src/infra/continuation-tracer.emit-and-fire.test.ts`, `src/auto-reply/continuation/trace-context-propagation.integration.test.ts`, `src/logging/diagnostic.test.ts`, `src/auto-reply/status.test.ts`, `src/status/status-text.test.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.test.ts`.
+**Owner/regression tests:** `src/agents/openclaw-tools.session-status.test.ts`, `src/config/zod-schema.continuation.test.ts`, `src/auto-reply/continuation/config.test.ts`, `src/agents/subagent-announce.continuation.runtime.test.ts`, `src/agents/subagent-announce.continuation-drain.chain-cost.test.ts`, `src/auto-reply/continuation/state.test.ts`, `src/infra/continuation-tracer.test.ts`, `src/infra/continuation-tracer.emit-and-fire.test.ts`, `src/auto-reply/continuation/trace-context-propagation.integration.test.ts`, `src/logging/diagnostic.test.ts`, `src/auto-reply/status.test.ts`, `src/status/status-text.test.ts`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.test.ts`.
 
 | Declared failure class | First inspection points |
 | --- | --- |
 | `session-created` — Disposable proof session was created for the status-card read. | `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig` |
 | `dispatch-accepted` — sessions.send accepted the agent turn that calls session_status. | `src/auto-reply/continuation/delegate-flow-store.ts::delegateFlowRecords.create`, `src/auto-reply/continuation/delegate-dispatch.ts::dispatchToolDelegates`, `src/auto-reply/continuation/delegate-dispatch-recovery.ts::recoverPendingContinuationDelegates` |
-| `status-card-sentinel` — Agent reply included OBS1-STATUS sentinel for the nonce. | `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan` |
-| `build-context-chain-route-visible` — Sentinel confirms build/version, context usage, continuation chain/queue, and route/delivery context were visible in the status card. | `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig` |
+| `status-card-sentinel` — Agent reply included OBS1-STATUS sentinel for the nonce. | `src/agents/tools/session-status-tool.ts::createSessionStatusTool`, `src/status/status-message.ts::buildStatusMessage`, `src/status/status-message.ts::formatContinuationStatusLine` |
+| `build-context-chain-route-visible` — Sentinel confirms build/version, context usage, continuation chain/queue, and route/delivery context were visible in the status card. | `src/agents/tools/session-status-tool.ts::createSessionStatusTool`, `src/status/status-message.ts::buildStatusMessage`, `src/status/status-message.ts::formatContinuationStatusLine` |
 | `trace-id` — Trace ID from sessions.send or event payload when available. | `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan` |
 
 **Blast radius:** `R-OBS-2`, `R-OBS-STATUS`, `R-TRACE-REDACTION-1121`. **Halt:** `observability-family` — Stop rows whose PASS requires this evidence surface; do not convert missing telemetry into a behavior failure.
@@ -1329,10 +1329,10 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 **Future-candidate triage commands:**
 
 ```bash
-git grep -n -E 'AgentDefaultsConfig' b134a64a44351bcbce2d086da4ac30a596c01699 -- src/config/types.agent-defaults.ts
-test -n "$OPENCLAW_CANDIDATE_SHA" && git diff --stat b134a64a44351bcbce2d086da4ac30a596c01699 "$OPENCLAW_CANDIDATE_SHA" -- src/config/types.agent-defaults.ts src/config/zod-schema.agent-defaults.ts
-test -n "$OPENCLAW_CANDIDATE_SHA" && git grep -n -E 'AgentDefaultsConfig' "$OPENCLAW_CANDIDATE_SHA" -- src/config/types.agent-defaults.ts
-node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/config/zod-schema.continuation.test.ts src/auto-reply/continuation/config.test.ts
+git grep -n -E 'createSessionStatusTool' b134a64a44351bcbce2d086da4ac30a596c01699 -- src/agents/tools/session-status-tool.ts
+test -n "$OPENCLAW_CANDIDATE_SHA" && git diff --stat b134a64a44351bcbce2d086da4ac30a596c01699 "$OPENCLAW_CANDIDATE_SHA" -- src/agents/tools/session-status-tool.ts src/status/status-message.ts
+test -n "$OPENCLAW_CANDIDATE_SHA" && git grep -n -E 'createSessionStatusTool' "$OPENCLAW_CANDIDATE_SHA" -- src/agents/tools/session-status-tool.ts
+node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/agents/openclaw-tools.session-status.test.ts src/status/status-text.test.ts
 ```
 
 ### R-OBS-2
@@ -1377,9 +1377,9 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 
 **Behavior contract:** Exact-SHA #1172 source contract: active continuation renders a line while a clean all-zero session omits it.
 
-**Primary production symbols:** `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig`, `src/auto-reply/continuation/config.ts::resolveLiveContinuationRuntimeConfig`, `src/agents/tools/request-compaction-tool.ts::createRequestCompactionTool`, `src/agents/tools/request-compaction-tool.ts::getVolitionalCompactionCount`, `src/agents/command/attempt-execution.ts::requestCompactionOpts`, `src/auto-reply/continuation/delegate-flow-store.ts::delegateFlowRecords.create`, `src/auto-reply/continuation/delegate-dispatch.ts::dispatchToolDelegates`, `src/auto-reply/continuation/delegate-dispatch-recovery.ts::recoverPendingContinuationDelegates`, `src/agents/subagent-spawn.ts::spawnSubagentDirect`, `src/agents/subagent-continuation-ids.ts::deriveContinuationDelegateChildSessionKeyFromParent`, `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan`, `src/logging/diagnostic-continuation-queues.ts::getDiagnosticContinuationQueueMetrics`, `src/status/status-message.ts::formatContinuationStatusLine`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts::createContinuationOtelTracerAdapter`
+**Primary production symbols:** `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig`, `src/auto-reply/continuation/config.ts::resolveLiveContinuationRuntimeConfig`, `src/agents/tools/request-compaction-tool.ts::createRequestCompactionTool`, `src/agents/tools/request-compaction-tool.ts::getVolitionalCompactionCount`, `src/agents/command/attempt-execution.ts::requestCompactionOpts`, `src/auto-reply/continuation/delegate-flow-store.ts::delegateFlowRecords.create`, `src/auto-reply/continuation/delegate-dispatch.ts::dispatchToolDelegates`, `src/auto-reply/continuation/delegate-dispatch-recovery.ts::recoverPendingContinuationDelegates`, `src/agents/subagent-spawn.ts::spawnSubagentDirect`, `src/agents/subagent-continuation-ids.ts::deriveContinuationDelegateChildSessionKeyFromParent`, `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan`, `src/logging/diagnostic-continuation-queues.ts::getDiagnosticContinuationQueueMetrics`, `src/status/status-message.ts::formatContinuationStatusLine`, `src/status/status-message.ts::buildStatusMessage`, `extensions/diagnostics-otel/src/continuation-tracer-adapter.ts::createContinuationOtelTracerAdapter`
 
-**Upstream caller chain:** `status command` → `formatContinuationStatusLine` → `formatStatusMessage`.
+**Upstream caller chain:** `status command` → `formatContinuationStatusLine` → `buildStatusMessage`.
 
 **Durable state/session identity:** `continuationChainCount`, `pending delegate count`, `staged post-compaction count`, `volitional compaction count`, `state/openclaw.sqlite`, `continuationChainCount/StartedAt/Tokens/Id`.
 
@@ -1394,18 +1394,18 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 | Declared failure class | First inspection points |
 | --- | --- |
 | `candidate-source-sha256` — Public SHA-256 digest of the exact candidate source fetched by immutable SHA | `src/config/types.agent-defaults.ts::AgentDefaultsConfig`, `src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig` |
-| `active-continuation-line` — Exact candidate formatter rendered the expected continuation line for a non-zero active state | `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan` |
-| `clean-session-line-absence` — Exact candidate formatter omitted the continuation line for the all-zero clean-session state | `src/infra/continuation-tracer.ts::continuationReasonAttributes`, `src/infra/continuation-tracer.ts::emitContinuationDelegateSpan`, `src/infra/continuation-tracer.ts::emitContinuationWorkSpan` |
+| `active-continuation-line` — Exact candidate formatter rendered the expected continuation line for a non-zero active state | `src/status/status-message.ts::formatContinuationStatusLine`, `src/status/status-message.ts::buildStatusMessage`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig` |
+| `clean-session-line-absence` — Exact candidate formatter omitted the continuation line for the all-zero clean-session state | `src/status/status-message.ts::formatContinuationStatusLine`, `src/status/status-message.ts::buildStatusMessage`, `src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig` |
 
 **Blast radius:** `R-CD-3`, `R-RC-1`, `R-RC-2`, `R-OBS-1`, `R-OBS-2`, `R-TRACE-REDACTION-1121`. **Halt:** `observability-family` — Stop rows whose PASS requires this evidence surface; do not convert missing telemetry into a behavior failure.
 
 **Future-candidate triage commands:**
 
 ```bash
-git grep -n -E 'AgentDefaultsConfig' b134a64a44351bcbce2d086da4ac30a596c01699 -- src/config/types.agent-defaults.ts
-test -n "$OPENCLAW_CANDIDATE_SHA" && git diff --stat b134a64a44351bcbce2d086da4ac30a596c01699 "$OPENCLAW_CANDIDATE_SHA" -- src/config/types.agent-defaults.ts src/config/zod-schema.agent-defaults.ts
-test -n "$OPENCLAW_CANDIDATE_SHA" && git grep -n -E 'AgentDefaultsConfig' "$OPENCLAW_CANDIDATE_SHA" -- src/config/types.agent-defaults.ts
-node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/config/zod-schema.continuation.test.ts src/auto-reply/continuation/config.test.ts
+git grep -n -E 'formatContinuationStatusLine|buildStatusMessage' b134a64a44351bcbce2d086da4ac30a596c01699 -- src/status/status-message.ts
+test -n "$OPENCLAW_CANDIDATE_SHA" && git diff --stat b134a64a44351bcbce2d086da4ac30a596c01699 "$OPENCLAW_CANDIDATE_SHA" -- src/status/status-message.ts src/auto-reply/continuation/config.ts
+test -n "$OPENCLAW_CANDIDATE_SHA" && git grep -n -E 'formatContinuationStatusLine|buildStatusMessage' "$OPENCLAW_CANDIDATE_SHA" -- src/status/status-message.ts
+node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/status/status-text.test.ts src/auto-reply/status.test.ts
 ```
 
 ### R-RC-1
@@ -1416,7 +1416,7 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 
 **Primary production symbols:** `src/agents/openclaw-tools.continuation.ts::createOpenClawContinuationTools`, `src/agents/openclaw-tools.ts::createOpenClawTools`, `src/agents/tools/request-compaction-tool.ts::createRequestCompactionTool`, `src/agents/tools/request-compaction-tool.ts::getVolitionalCompactionCount`, `src/agents/command/attempt-execution.ts::requestCompactionOpts`
 
-**Upstream caller chain:** `agent turn` → `createRequestCompactionTool.execute` → `context guard and per-session coordinator` → `triggerCompaction lane` → `confirmed autoCompactionCount` → `dispatchPostCompactionDelegates`.
+**Upstream caller chain:** `agent turn` → `createRequestCompactionTool.execute` → `context guard and per-session coordinator` → `triggerCompaction lane` → `confirmed autoCompactionCount` → `releasePostCompactionLifecycle` → `dispatchStagedPostCompactionDelegates`.
 
 **Durable state/session identity:** `context usage percentage`, `per-session cooldown/in-flight coordinator`.
 
@@ -1453,7 +1453,7 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --max
 
 **Primary production symbols:** `src/auto-reply/continuation/delegate-flow-store.ts::delegateFlowRecords.create`, `src/auto-reply/continuation/delegate-dispatch.ts::dispatchToolDelegates`, `src/auto-reply/continuation/delegate-dispatch-recovery.ts::recoverPendingContinuationDelegates`, `src/agents/subagent-spawn.ts::spawnSubagentDirect`, `src/agents/subagent-continuation-ids.ts::deriveContinuationDelegateChildSessionKeyFromParent`, `src/agents/subagent-announce.continuation.runtime.ts::coordinateSubagentContinuation`, `src/agents/subagent-announce.continuation.accounting.ts::prepareSubagentContinuationAccounting`, `src/auto-reply/continuation/state.ts::persistContinuationChainState`, `src/auto-reply/continuation/scheduler.ts::checkContinuationBudget`, `src/agents/tools/request-compaction-tool.ts::createRequestCompactionTool`, `src/agents/tools/request-compaction-tool.ts::getVolitionalCompactionCount`, `src/agents/command/attempt-execution.ts::requestCompactionOpts`, `src/auto-reply/continuation/delegate-store.ts::stagePostCompactionDelegate`, `src/auto-reply/continuation/post-compaction-release.ts::releasePostCompactionLifecycle`, `src/auto-reply/continuation/post-compaction-staged-dispatch.ts::dispatchStagedPostCompactionDelegates`, `src/infra/session-delivery-queue-storage.ts::enqueuePostCompactionDelegateDelivery`, `src/infra/continuation-tracer.ts::emitContinuationCompactionReleasedSpan`, `src/agents/subagent-announce.continuation-return.ts::routeSubagentContinuationReturn`, `src/auto-reply/continuation/targeting.ts::resolveContinuationReturnTargetSessionKeys`, `src/auto-reply/continuation/targeting.ts::enqueueContinuationReturnDeliveries`, `src/infra/session-delivery-queue-storage.ts::enqueueSessionDelivery`, `src/infra/session-delivery-queue-storage.ts::completeSessionDelivery`
 
-**Upstream caller chain:** `agent turn` → `createRequestCompactionTool.execute` → `context guard and per-session coordinator` → `triggerCompaction lane` → `confirmed autoCompactionCount` → `dispatchPostCompactionDelegates`.
+**Upstream caller chain:** `agent turn` → `createRequestCompactionTool.execute` → `context guard and per-session coordinator` → `triggerCompaction lane` → `confirmed autoCompactionCount` → `releasePostCompactionLifecycle` → `dispatchStagedPostCompactionDelegates`.
 
 **Durable state/session identity:** `child session context percentage`, `structured request result`, `optional compaction id`, `state/openclaw.sqlite`, `continuationChainCount/StartedAt/Tokens/Id`.
 
@@ -1555,4 +1555,3 @@ test -n "$OPENCLAW_CANDIDATE_SHA" && git diff --stat b134a64a44351bcbce2d086da4a
 test -n "$OPENCLAW_CANDIDATE_SHA" && git grep -n -E 'continuationReasonAttributes' "$OPENCLAW_CANDIDATE_SHA" -- src/infra/continuation-tracer.ts
 node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/infra/continuation-tracer.test.ts src/infra/continuation-tracer.emit-and-fire.test.ts
 ```
-

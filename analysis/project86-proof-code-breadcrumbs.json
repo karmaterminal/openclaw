@@ -196,6 +196,7 @@
         "src/agents/subagent-announce.continuation.test.ts",
         "src/agents/subagent-announce.continuation-return.delegate-artifacts.test.ts",
         "src/auto-reply/continuation/cross-session-targeting.test.ts",
+        "src/auto-reply/continuation/continuation-return-delivery-dedupe-ack.test.ts",
         "src/infra/session-delivery-queue.storage.test.ts",
         "src/infra/session-delivery-queue.recovery.test.ts"
       ]
@@ -771,6 +772,7 @@
         "src/infra/continuation-tracer.ts::emitContinuationWorkSpan",
         "src/logging/diagnostic-continuation-queues.ts::getDiagnosticContinuationQueueMetrics",
         "src/status/status-message.ts::formatContinuationStatusLine",
+        "src/status/status-message.ts::buildStatusMessage",
         "extensions/diagnostics-otel/src/continuation-tracer-adapter.ts::createContinuationOtelTracerAdapter"
       ],
       "upstreamEntrypointCallerChain": [
@@ -1009,7 +1011,8 @@
         "context guard and per-session coordinator",
         "triggerCompaction lane",
         "confirmed autoCompactionCount",
-        "dispatchPostCompactionDelegates"
+        "releasePostCompactionLifecycle",
+        "dispatchStagedPostCompactionDelegates"
       ],
       "durableStateAndSessionIdentity": [
         "staged post-compaction delegate",
@@ -1093,6 +1096,7 @@
         "src/agents/subagent-announce.continuation.test.ts",
         "src/agents/subagent-announce.continuation-return.delegate-artifacts.test.ts",
         "src/auto-reply/continuation/cross-session-targeting.test.ts",
+        "src/auto-reply/continuation/continuation-return-delivery-dedupe-ack.test.ts",
         "src/infra/session-delivery-queue.storage.test.ts",
         "src/infra/session-delivery-queue.recovery.test.ts",
         "src/infra/continuation-tracer.test.ts",
@@ -3231,7 +3235,42 @@
           ]
         }
       ],
-      "crossRowBlastRadius": [],
+      "crossRowBlastRadius": [
+        "R-CD-1",
+        "R-CD-2",
+        "R-CD-3",
+        "R-CD-4",
+        "R-CD-CHAINED-DEPTH-2",
+        "R-CD-COLLECTION-ON-COLLAPSE",
+        "R-CD-MODEL-CHAINED-ALT",
+        "R-CD-MODEL-DEFAULT",
+        "R-CD-MODEL-TOKEN",
+        "R-CD-MODEL-TOOL",
+        "R-CD-RETURN-OVERLAP",
+        "R-CD-SILENT",
+        "R-CD-TOKEN",
+        "R-CONFIG-INTERSESSION",
+        "R-CW-1",
+        "R-CW-2",
+        "R-CW-3",
+        "R-CW-4",
+        "R-CW-5",
+        "R-CW-6",
+        "R-CW-7",
+        "R-CW-DELEGATE-CHILD-LIVE",
+        "R-CW-DELEGATE-SELF-CONTINUATION",
+        "R-CW-DELEGATE-TOKEN",
+        "R-CW-MULTI",
+        "R-CW-MULTI-COLLAPSE",
+        "R-CW-TOKEN",
+        "R-OBS-1",
+        "R-OBS-2",
+        "R-OBS-STATUS",
+        "R-RC-1",
+        "R-RC-2",
+        "R-REGRESSION-TRAP-TESTS",
+        "R-TRACE-REDACTION-1121"
+      ],
       "haltScope": {
         "classification": "all-continuation-proofs",
         "rationale": "Wrong canonical defaults or tool gating can change every continuation row on the same candidate."
@@ -5777,6 +5816,8 @@
       "referenceState": "fail",
       "behaviorContract": "Session-status-card observability via the session_status tool. Creates a disposable session, asks the agent to call session_status, and verifies build/context/continuation-chain/route visibility by nonce-correlated sentinel.",
       "primaryProductionSymbols": [
+        "src/agents/tools/session-status-tool.ts::createSessionStatusTool",
+        "src/status/status-message.ts::buildStatusMessage",
         "src/config/types.agent-defaults.ts::AgentDefaultsConfig",
         "src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema",
         "src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig",
@@ -5795,7 +5836,7 @@
       "upstreamEntrypointCallerChain": [
         "agent calls session_status",
         "status command snapshot",
-        "formatStatusMessage"
+        "buildStatusMessage"
       ],
       "durableStateAndSessionIdentity": [
         "session entry",
@@ -5873,6 +5914,7 @@
         "conditional /status continuation line"
       ],
       "ownerAndRegressionTests": [
+        "src/agents/openclaw-tools.session-status.test.ts",
         "src/config/zod-schema.continuation.test.ts",
         "src/auto-reply/continuation/config.test.ts",
         "src/agents/subagent-announce.continuation.runtime.test.ts",
@@ -5909,18 +5951,18 @@
           "failureClass": "status-card-sentinel",
           "symptom": "Agent reply included OBS1-STATUS sentinel for the nonce.",
           "inspectFirst": [
-            "src/infra/continuation-tracer.ts::continuationReasonAttributes",
-            "src/infra/continuation-tracer.ts::emitContinuationDelegateSpan",
-            "src/infra/continuation-tracer.ts::emitContinuationWorkSpan"
+            "src/agents/tools/session-status-tool.ts::createSessionStatusTool",
+            "src/status/status-message.ts::buildStatusMessage",
+            "src/status/status-message.ts::formatContinuationStatusLine"
           ]
         },
         {
           "failureClass": "build-context-chain-route-visible",
           "symptom": "Sentinel confirms build/version, context usage, continuation chain/queue, and route/delivery context were visible in the status card.",
           "inspectFirst": [
-            "src/config/types.agent-defaults.ts::AgentDefaultsConfig",
-            "src/config/zod-schema.agent-defaults.ts::AgentDefaultsSchema",
-            "src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig"
+            "src/agents/tools/session-status-tool.ts::createSessionStatusTool",
+            "src/status/status-message.ts::buildStatusMessage",
+            "src/status/status-message.ts::formatContinuationStatusLine"
           ]
         },
         {
@@ -5943,10 +5985,10 @@
         "rationale": "Stop rows whose PASS requires this evidence surface; do not convert missing telemetry into a behavior failure."
       },
       "futureCandidateTriageCommands": [
-        "git grep -n -E 'AgentDefaultsConfig' b134a64a44351bcbce2d086da4ac30a596c01699 -- src/config/types.agent-defaults.ts",
-        "test -n \"$OPENCLAW_CANDIDATE_SHA\" && git diff --stat b134a64a44351bcbce2d086da4ac30a596c01699 \"$OPENCLAW_CANDIDATE_SHA\" -- src/config/types.agent-defaults.ts src/config/zod-schema.agent-defaults.ts",
-        "test -n \"$OPENCLAW_CANDIDATE_SHA\" && git grep -n -E 'AgentDefaultsConfig' \"$OPENCLAW_CANDIDATE_SHA\" -- src/config/types.agent-defaults.ts",
-        "node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/config/zod-schema.continuation.test.ts src/auto-reply/continuation/config.test.ts"
+        "git grep -n -E 'createSessionStatusTool' b134a64a44351bcbce2d086da4ac30a596c01699 -- src/agents/tools/session-status-tool.ts",
+        "test -n \"$OPENCLAW_CANDIDATE_SHA\" && git diff --stat b134a64a44351bcbce2d086da4ac30a596c01699 \"$OPENCLAW_CANDIDATE_SHA\" -- src/agents/tools/session-status-tool.ts src/status/status-message.ts",
+        "test -n \"$OPENCLAW_CANDIDATE_SHA\" && git grep -n -E 'createSessionStatusTool' \"$OPENCLAW_CANDIDATE_SHA\" -- src/agents/tools/session-status-tool.ts",
+        "node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/agents/openclaw-tools.session-status.test.ts src/status/status-text.test.ts"
       ],
       "proofInterpretation": "Source inspection identifies likely ownership and blast radius; it does not replace the row's live or committed proof receipts."
     },
@@ -6140,7 +6182,7 @@
       "upstreamEntrypointCallerChain": [
         "status command",
         "formatContinuationStatusLine",
-        "formatStatusMessage"
+        "buildStatusMessage"
       ],
       "durableStateAndSessionIdentity": [
         "continuationChainCount",
@@ -6254,18 +6296,18 @@
           "failureClass": "active-continuation-line",
           "symptom": "Exact candidate formatter rendered the expected continuation line for a non-zero active state",
           "inspectFirst": [
-            "src/infra/continuation-tracer.ts::continuationReasonAttributes",
-            "src/infra/continuation-tracer.ts::emitContinuationDelegateSpan",
-            "src/infra/continuation-tracer.ts::emitContinuationWorkSpan"
+            "src/status/status-message.ts::formatContinuationStatusLine",
+            "src/status/status-message.ts::buildStatusMessage",
+            "src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig"
           ]
         },
         {
           "failureClass": "clean-session-line-absence",
           "symptom": "Exact candidate formatter omitted the continuation line for the all-zero clean-session state",
           "inspectFirst": [
-            "src/infra/continuation-tracer.ts::continuationReasonAttributes",
-            "src/infra/continuation-tracer.ts::emitContinuationDelegateSpan",
-            "src/infra/continuation-tracer.ts::emitContinuationWorkSpan"
+            "src/status/status-message.ts::formatContinuationStatusLine",
+            "src/status/status-message.ts::buildStatusMessage",
+            "src/auto-reply/continuation/config.ts::resolveContinuationRuntimeConfig"
           ]
         }
       ],
@@ -6282,10 +6324,10 @@
         "rationale": "Stop rows whose PASS requires this evidence surface; do not convert missing telemetry into a behavior failure."
       },
       "futureCandidateTriageCommands": [
-        "git grep -n -E 'AgentDefaultsConfig' b134a64a44351bcbce2d086da4ac30a596c01699 -- src/config/types.agent-defaults.ts",
-        "test -n \"$OPENCLAW_CANDIDATE_SHA\" && git diff --stat b134a64a44351bcbce2d086da4ac30a596c01699 \"$OPENCLAW_CANDIDATE_SHA\" -- src/config/types.agent-defaults.ts src/config/zod-schema.agent-defaults.ts",
-        "test -n \"$OPENCLAW_CANDIDATE_SHA\" && git grep -n -E 'AgentDefaultsConfig' \"$OPENCLAW_CANDIDATE_SHA\" -- src/config/types.agent-defaults.ts",
-        "node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/config/zod-schema.continuation.test.ts src/auto-reply/continuation/config.test.ts"
+        "git grep -n -E 'formatContinuationStatusLine|buildStatusMessage' b134a64a44351bcbce2d086da4ac30a596c01699 -- src/status/status-message.ts",
+        "test -n \"$OPENCLAW_CANDIDATE_SHA\" && git diff --stat b134a64a44351bcbce2d086da4ac30a596c01699 \"$OPENCLAW_CANDIDATE_SHA\" -- src/status/status-message.ts src/auto-reply/continuation/config.ts",
+        "test -n \"$OPENCLAW_CANDIDATE_SHA\" && git grep -n -E 'formatContinuationStatusLine|buildStatusMessage' \"$OPENCLAW_CANDIDATE_SHA\" -- src/status/status-message.ts",
+        "node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/status/status-text.test.ts src/auto-reply/status.test.ts"
       ],
       "proofInterpretation": "Source inspection identifies likely ownership and blast radius; it does not replace the row's live or committed proof receipts."
     },
@@ -6309,7 +6351,8 @@
         "context guard and per-session coordinator",
         "triggerCompaction lane",
         "confirmed autoCompactionCount",
-        "dispatchPostCompactionDelegates"
+        "releasePostCompactionLifecycle",
+        "dispatchStagedPostCompactionDelegates"
       ],
       "durableStateAndSessionIdentity": [
         "context usage percentage",
@@ -6426,7 +6469,8 @@
         "context guard and per-session coordinator",
         "triggerCompaction lane",
         "confirmed autoCompactionCount",
-        "dispatchPostCompactionDelegates"
+        "releasePostCompactionLifecycle",
+        "dispatchStagedPostCompactionDelegates"
       ],
       "durableStateAndSessionIdentity": [
         "child session context percentage",
