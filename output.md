@@ -237,6 +237,40 @@ Reads confirm a distinct **`Continuation` module cluster** exists in the graph a
 the durable-handoff path (`subagent-announce.runtime.ts`) is the only continuation surface
 touching **two process flows** at once — the highest structural coupling in the feature.
 
+### 5.4.1 Process-level isolation — the strongest structural finding
+
+A Cypher sweep of the graph's 300 process flows
+(`MATCH (p:Process) WHERE p.label CONTAINS 'Continuation' OR 'Compact' OR 'Subagent' OR
+'Delegate'`) returns **27 continuation/compaction process flows**, whose entry points and
+terminals span exactly **16 distinct files**. Named entry points include
+`coordinateSubagentContinuation`, `buildPreparedCompactionRuntime`,
+`executePreparedCompactionSession`, and `compactionSafeguardExtension`.
+
+Cross-referencing those 16 files against upstream ownership and the 194-path intersection:
+
+| Ownership | Count | Conflict exposure |
+| --- | --- | --- |
+| **Fork-added, absent upstream entirely** | **5** | None possible — upstream has no version to conflict with |
+| Upstream-owned, fork-untouched | 9 | None possible — fork has no divergence |
+| Upstream-owned **and** fork-modified | 2 | Only 1 is in the intersection |
+
+The five fork-added files are the continuation core itself:
+`src/agents/subagent-announce.continuation.runtime.ts`,
+`src/agents/subagent-announce.continuation.accounting.ts`,
+`src/auto-reply/continuation/{config,state,delegate-flow-store}.ts`.
+**Upstream has never touched any of them.**
+
+The single overlapping file is
+`src/agents/embedded-agent-runner/prepared-compaction-runtime.ts` — fork 5+0 lines,
+upstream 20+5 lines, and it does **not** appear in the 61-conflict list, i.e. it
+auto-merges. (`compaction-safeguard.ts` is fork-modified but upstream left it alone.)
+
+So the continuation feature's *process core* is architecturally isolated from upstream
+drift: **1 of 16** process-participating files carries any upstream overlap at all, and
+that one auto-merges. The collisions catalogued in §4 sit on the *integration seams*
+(status rendering, heartbeat wake, gateway dispatch, agent loop, subscribe pipeline),
+not on the continuation state machine. That distinction is the core of the verdict.
+
 ### 5.5 Falsification: all four candidate removals are **not** real
 
 This is the most important correction in this report.
@@ -559,6 +593,11 @@ The drift is large in raw volume (944 upstream commits, 4,806 changed paths) but
   fork-added path collides with an upstream path.
 * Only **one** file — `src/infra/heartbeat-wake.ts` — is a genuine architectural collision
   where both sides restructure the same decision surface.
+* **The continuation process core is isolated from upstream drift.** Of the 16 files
+  spanning the graph's 27 continuation/compaction process flows, 5 are fork-added and
+  absent upstream, 9 are upstream-owned but fork-untouched, and only 1 has upstream
+  overlap — and that one auto-merges. Every catalogued collision sits on an *integration
+  seam*, not on the continuation state machine.
 * The strongest evidence: on the already-merged tree, the import/export self-consistency
   profile is **identical** to the frozen assembly — 0 new unresolved modules, 0 new
   missing symbols — corroborated independently by Cael's `tsgo` result of 3 remaining
@@ -616,6 +655,12 @@ node $GNX status
 node $GNX impact  <symbol> --repo "$R" --depth 2 --include-tests [--summary-only]
 node $GNX context <symbol> --repo "$R" -f <file>
 node $GNX query   "<concept>" --repo "$R"
+# Process-flow sweep (note: Process nodes expose `label`, NOT `name`)
+node $GNX cypher "MATCH (p:Process) WHERE p.label CONTAINS 'Continuation' \
+  OR p.label CONTAINS 'Compact' OR p.label CONTAINS 'Subagent' \
+  OR p.label CONTAINS 'Delegate' \
+  RETURN p.label AS label, p.stepCount AS steps, \
+         p.entryPointId AS entry, p.terminalId AS terminal" --repo "$R"
 ```
 
 ### Validation performed by this lane
