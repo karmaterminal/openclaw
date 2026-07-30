@@ -226,13 +226,18 @@ enumerates **12 failing *files*** totalling **~29 failing tests** (11 across the
 "inherited" files, 18 across the seven "untriaged" files). Worth correcting so the figure is not
 carried forward as a test count.
 
-### F6 — INFO · two gateway-server failures were never enumerated
+### F6 — INFO · red ledgers on both sides were incomplete
 
 The candidate's ledger omits `src/gateway/server-plugins.test.ts` (`allows trusted fallback
 provider/model overrides when plugin config is explicit`) and
 `src/gateway/server-node-session-runtime.test.ts` (`forwards subscribed payload json without
 parsing it again`), both of which fail in the gateway-server shard. Both are proven
-upstream-inherited (§7.2), so they change no conclusion, but the ledger was incomplete.
+upstream-inherited (§7.2), so they change no conclusion.
+
+My own full-suite run then surfaced two more (`extensions/msteams/src/auth-coverage.test.ts`,
+`extensions/qa-lab/.../harness.runtime.test.ts`) that **passed in the candidate's run on the
+identical tree** (§7.6). The underlying point is that this seat's suite is non-deterministic,
+so no single broad run — the candidate's or mine — enumerates a stable failing set.
 
 ---
 
@@ -295,6 +300,36 @@ I then verified the replacements actually landed, rather than trusting the narra
   `!agentTerminalPersistenceOwnedAtDispatchReject` guard, immediately before `broadcastChatError`
   at line 212. Upstream's aborted early-return performs no broadcast and correctly carries no
   mark.
+
+### 4.3 Coverage — the hunt is exhaustive over the assembly's contribution
+
+All **658** assembly-changed paths were audited, none skipped:
+
+| Class | Paths | Result |
+| --- | --- | --- |
+| Source (`.ts` / `.mjs` / `.js`) | 598 | 12 flagged, all documented (§4.2) |
+| Android translation XML | 44 | **0 assembly keys lost** |
+| Non-source (docs, SVG, CSS, SQL, JSON) | 14 | **0 lost**, except the generated SDK baseline |
+| Generated SQLite artifacts | 2 | **0 lost** |
+
+The single non-zero non-source entry is `docs/.generated/plugin-sdk-api-baseline.sha256`
+(6 module hashes moved) — a *generated* artifact, correctly regenerated rather than picked, and
+independently verified `OK` by me in §5.8.
+
+The two generated SQLite files (`src/state/openclaw-state-db.generated.d.ts`,
+`src/state/openclaw-state-schema.generated.ts`) retain the assembly's full schema surface, and
+`src/state/openclaw-state-schema.sql` lost nothing.
+
+**SQLite compliance check.** Root AGENTS.md forbids agents advancing SQLite schema versions
+autonomously. Verified unchanged across all three trees:
+
+| Constant | Base | Upstream | Candidate |
+| --- | --- | --- | --- |
+| `OPENCLAW_STATE_SCHEMA_VERSION` | 6 | 6 | **6** |
+| `OPENCLAW_AGENT_SCHEMA_VERSION` | 16 | 16 | **16** |
+
+No bump. This also independently confirms the candidate's §11 control: a schema-13 agent
+database is refused identically on every tree, so those failures cannot be absorb fallout.
 
 **Conclusion: no accepted assembly behavior was silently dropped.**
 
@@ -569,20 +604,101 @@ in source. My independent surface run (§5.8) confirms source is at **81** and t
 not drop an upstream export, so lowering the pinned budget is an owner decision outside absorb
 scope — I agree with leaving it.
 
-### 7.5 Net ledger
+### 7.6 Suite non-determinism is broader than either ledger records
+
+My own full-suite run surfaced failures that appear in **neither** the candidate's ledger nor
+mine up to that point. All are proven not-candidate-caused:
+
+| File | Provenance | Proof |
+| --- | --- | --- |
+| `extensions/msteams/src/auth-coverage.test.ts` | identical in all 3 trees | **passed in the candidate's own run** on the identical tree (`✓ 5 tests, 88ms`) |
+| `extensions/qa-lab/.../matrix/substrate/harness.runtime.test.ts` | identical to upstream | **passed in the candidate's own run** (`✓ 14 tests, 40ms`) |
+| `src/plugins/channel-plugin-ids.test.ts` | identical to upstream | passed in the candidate's own run (`✓ 166 tests`); I re-ran it isolated on the candidate → **166 passed** |
+| `extensions/slack/**` (115 files) | identical to upstream | see below — **reproduces on frozen upstream** |
+
+The msteams file fails on JWT/JWKS validation (`Error: Invalid token`) and, re-run in isolation
+during this review, **hung for over seven minutes** where it had previously taken 88 ms —
+network-dependent. The qa-lab case asserts both a wall-clock bound (`Date.now() - startedAt <
+500`) and an exact call count, so it is timing-sensitive by construction.
+
+#### The `extensions/slack` block — a latent pre-existing defect, not a merge defect
+
+115 slack test files failed. These are **collection failures, not assertion failures** (every
+one reports `(0 test)`; the shard still reports `813 passed | 0 failed` among files that did
+load). The error is identical everywhere:
+
+```
+Error: "./plugin-sdk/system-event-runtime.js" is not exported under the conditions
+["node","development","import"] from package …/extensions/slack/node_modules/openclaw
+```
+
+Root cause, traced to source: five slack test files call
+`vi.mock("openclaw/plugin-sdk/system-event-runtime.js")` **with a `.js` suffix**
+(`extensions/slack/src/monitor/events/{messages,members,channels,reactions,pins}.test.ts`),
+while `package.json` exposes only the extensionless specifier
+`"./plugin-sdk/system-event-runtime": { "default": "./dist/plugin-sdk/system-event-runtime.js" }`.
+
+Not candidate-caused, on four independent grounds:
+
+1. The `.js`-suffixed mock appears **5 times in each of base, upstream, and candidate** — the
+   merge introduced none of them.
+2. `src/plugin-sdk/system-event-runtime.ts` exists in all three trees, and the `package.json`
+   exports entry is **byte-identical** in all three.
+3. `git diff cc48aef1 cad0b99d -- extensions/slack/src/monitor/events/` is **empty**.
+4. **Direct control:** running the slack shard on the frozen-upstream checkout reproduces it
+   exactly — `115 failed | 14 passed (129)`, same error string.
+
+The visible failure count varies with whether `dist/` is built, because the exports target is
+`./dist/…`: the candidate worktree has a partial `dist/` (missing
+`dist/plugin-sdk/system-event-runtime.js`) and fails 28 files when run alone; the upstream
+control has no `dist/` and fails 115. It passed outright in the candidate's earlier run. So the
+shard is **build-state dependent**, which is a real latent fragility on this seat and reinforces
+recommendation #2 (run `pnpm build`), but it is inherited, not absorb fallout.
+
+Practical consequence for whoever lands this: **a single full-suite run on this seat is not a
+reliable gate.** Same tree, same commands, different failing set. Per-file and per-shard controls
+against a frozen parent — the method used throughout §7 — are the only sound oracle here, which
+is why this recommendation rests on those rather than on any suite tally.
+
+### 7.7 Net ledger
 
 | Class | Files | Tests |
 | --- | --- | --- |
 | **Candidate-caused** | **1** | **1** (F1, test-only) |
-| Upstream-inherited (proven on `cc48aef1`) | 7 | 18 |
+| Upstream-inherited (proven on `cc48aef1`) | 7 + slack shard (115) | 18 |
 | Base-inherited (proven on `16f4b3f1`) | 5 | 11 |
-| Flake (passes isolated on all three trees) | 1 | 1 |
+| Non-deterministic / flaky (passes on the same tree in another run) | 4 | — |
 
-No continuation regression remains unclassified.
+No continuation regression remains unclassified, and no red anywhere in the candidate is
+unexplained.
 
 ---
 
-## 8. Feature invariants
+## 8. Full-suite tally (this review's own run)
+
+`node scripts/test-projects.mjs` on the candidate, in this worktree:
+
+| Metric | Value |
+| --- | --- |
+| Shards started | 303 |
+| Shard summaries emitted | **302** |
+| Tests passed | **127,156** |
+| Tests failed | **64** |
+| Tests skipped | 251 |
+| Distinct failing files | **125** |
+
+Read this tally with §7.6 in hand. 115 of the 125 failing files are the `extensions/slack`
+collection block, which reproduces identically on frozen upstream and contributes **zero** test
+failures (its files never load). The remaining 10 files are exactly the ones classified in §7,
+of which **one** — F1 — is candidate-caused.
+
+This run also demonstrates the non-determinism directly: it produced a *different* failing set
+than the candidate's run on the same tree, in both directions. It is reported for completeness,
+not as the basis of the verdict.
+
+---
+
+## 9. Feature invariants
 
 | Invariant | Verdict | Evidence |
 | --- | --- | --- |
@@ -598,7 +714,7 @@ No continuation regression remains unclassified.
 
 ---
 
-## 9. Missing coverage
+## 10. Missing coverage
 
 1. **Signal terminal status-hold coverage was not ported** (candidate §8) — the only
    accepted-test surface this absorb reduces. I verified the justification: the case configured
@@ -621,7 +737,7 @@ No continuation regression remains unclassified.
 
 ---
 
-## 10. Commands run
+## 11. Commands run
 
 Ancestry, scope, drop hunt:
 
@@ -659,7 +775,7 @@ node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-server.confi
 node scripts/run-vitest.mjs run --config test/vitest/vitest.auto-reply-reply.config.ts --maxWorkers=1
 ```
 
-Full suite (sanctioned runner, this worktree) — see §13:
+Full suite (sanctioned runner, this worktree) — tally in §8:
 
 ```
 node scripts/test-projects.mjs
@@ -667,20 +783,23 @@ node scripts/test-projects.mjs
 
 ---
 
-## 11. Cartography cross-check
+## 12. Cartography cross-check
 
 The cartography lane's warning is confirmed and worth restating: **static assembly-vs-upstream
 symbol comparison over-predicts breaks; the merged tree is the sound oracle.** My §4.2 detector
 is deliberately merged-tree-based for that reason, and its 12 flagged files are all real
 merged-tree observations that resolve to documented decisions.
 
-I reproduced the conflict topology independently: 61 content conflicts, zero structural
-(modify/delete, rename/rename, rename/delete, add/add) conflicts. Both prior lanes' verdicts
-(ABSORB-TRACTABLE; READY-FOR-INDEPENDENT-REVIEW) are consistent with what I found.
+I reproduced the conflict topology independently — `git merge-tree --write-tree --messages
+--name-only 16f4b3f1 cc48aef1` exits 1 with **61 conflicted paths** and a histogram of
+**61 CONFLICT (content)**, zero structural conflicts (no modify/delete, rename/rename,
+rename/delete, or add/add). This matches the candidate's §4 and the cartography lane's §4
+exactly. Both prior lanes' verdicts (ABSORB-TRACTABLE; READY-FOR-INDEPENDENT-REVIEW) are
+consistent with what I found.
 
 ---
 
-## 12. Recommendation
+## 13. Recommendation
 
 **REQUEST_CHANGES**
 
@@ -692,7 +811,13 @@ Required before landing:
 
 Recommended, not blocking:
 
-2. Run `pnpm build` (§9.3) — the merge touches dynamic-import and bundled-plugin boundaries.
+2. Run `pnpm build` (§10.3). This is now more than hygiene: §7.6 shows the `extensions/slack`
+   shard is **build-state dependent** — five slack test files mock
+   `openclaw/plugin-sdk/system-event-runtime.js` with a `.js` suffix that `package.json` does not
+   export, so the shard's failure count swings between 0, 28, and 115 files depending on what
+   `dist/` contains. Inherited, not absorb fallout, but it makes any suite result unstable until
+   `dist/` is coherent. Worth a follow-up issue against that mock specifier independently of this
+   absorb.
 3. Correct "12 failing tests" to "12 failing files / ~29 tests" (F5), and add the two omitted
    gateway-server files (F6) so the ledger is complete.
 4. Do not reuse the `createOpenClawTools` 17/HIGH receipt (F2); the disambiguated figure is
