@@ -539,9 +539,13 @@ delegate fencing — precisely the invariants in §8.
    the static pass never nominated — the merged-tree self-check covers imports/exports
    only, not runtime behavior, types beyond export presence, or test semantics. Cael's
    `tsgo` run is the stronger type-level evidence; neither instrument covers behavior.
-6. **No test execution was performed against the merged tree by this lane.** Cael's
-   `tsgo 226 → 3` is their receipt, read from their commit message, not independently
-   re-run here. Behavioral proof (§12) is outstanding.
+6. **No test execution was performed against the *merged* tree.** I ran the full suite
+   against **my** tree (= frozen assembly + one markdown file), which establishes the
+   assembly's inherited baseline but says nothing directly about the absorb result.
+   Cael's `tsgo 226 → 3` is their receipt, read from their commit message, not
+   independently re-run here. Behavioral proof of the merged tree remains outstanding —
+   and is now known to be harder than expected, because the `auto-reply-reply` shard
+   crashes its Vitest worker on the assembly baseline itself (§14).
 7. **Upstream drift is 4,806 paths, not 4,816** as the workorder approximated. Minor, but
    downstream arithmetic should use 4,806.
 8. **The upstream candidate is frozen at `cc48aef1`.** Upstream `main` has moved since;
@@ -567,12 +571,13 @@ delegate fencing — precisely the invariants in §8.
 | 9 | Full-project typecheck on merged tree | `pnpm tsgo` / `tsgo:prod` | **REPORTED by Cael** (226→3, 3 inherited) — not re-run here | absorb lane |
 | 10 | Generated-artifact regeneration | plugin-sdk baseline + surface report | **REQUIRED** — must be regenerated, not merged | absorb lane |
 | 11 | Import-cycle gate | `pnpm check:import-cycles` | **NOT RUN** — fork explicitly did cycle-breaking refactors; upstream moved files | absorb lane |
-| 12 | Continuation behavior suite | `node scripts/test-projects.mjs` | **NOT RUN** — no product change in this lane | absorb lane |
+| 12 | Continuation behavior suite | `node scripts/test-projects.mjs` | **RUN** — 302 shards, 121,393 passed / 87 failed / 214 skipped, 16 failed shards, **all inherited or environmental** (tree delta vs assembly is one added `.md`). `vitest.auto-reply-reply` **crashes the Vitest worker** reproducibly on the assembly baseline — see §14 | absorb lane |
 | 13 | `heartbeat-wake` trust-partition proof | targeted test that trusted + default wakes do not coalesce | **REQUIRED, appears unwritten** — §8.1 invariant is otherwise unguarded | absorb lane |
 | 14 | Android i18n key-set union | assembly-only strings survive all 42 files | **NOT VERIFIED** | absorb lane |
 | 15 | Plugin-SDK surface gate | `pnpm plugin-sdk:surface:check` | **NOT RUN** — conflict touched the baseline | absorb lane |
 
-Gates 1–8 are this lane's deliverable and are complete. Gates 9–15 belong to the absorb
+Gates 1–8 are this lane's deliverable and are complete. Gate 12 was run and establishes
+the assembly's inherited test baseline (§14). Gates 9–11 and 13–15 belong to the absorb
 lane; 10, 13, and 15 are the ones I would not let land without.
 
 ---
@@ -665,7 +670,60 @@ node $GNX cypher "MATCH (p:Process) WHERE p.label CONTAINS 'Continuation' \
 
 ### Validation performed by this lane
 
-Full test suite (`node scripts/test-projects.mjs`) was **not run and is not applicable**:
-this lane is read-only cartography and changes no product code. The only file added is
-this `output.md`. Verification instead consisted of gates 1–8 in §12, of which the
-merged-tree self-consistency delta (§7.1) is the load-bearing one.
+This lane is read-only cartography and changes **no product code**. Proof of that claim:
+
+```
+$ git diff --name-status 16f4b3f106033f7fe75f68e67563db1b5b4d0e2f HEAD
+A       output.md
+```
+
+The working tree differs from the frozen assembly by exactly **one added root-level
+markdown file**. No source, test, script, config, or generated file is touched, so no
+test outcome below can be attributed to this lane.
+
+**Full suite — `node scripts/test-projects.mjs`** (sanctioned runner, single invocation):
+
+```
+302 Vitest shards in 1583.78s (26.4 min)
+Test files : 8,445 passed | 147 failed   (8,592)
+Tests      : 121,393 passed | 87 failed | 214 skipped   (121,694)
+Failed shards: 16 / 302
+```
+
+All 16 failing shards are **inherited from the frozen assembly or environmental**, by the
+tree-delta argument above. Observed failure classes:
+
+| Class | Example | Assessment |
+| --- | --- | --- |
+| Stale shared `/tmp` state | `src/commands/sandbox-explain.test.ts` (7 tests) — *"database `/tmp/openclaw-test-sessions-main.sqlite` uses schema version 9; run `openclaw doctor --fix`"* | **Environmental.** That file is dated 2026-07-11, 18 days before this lane. Not deleted — it is shared state on a seat with 193 worktrees. |
+| Platform-specific | `src/entry.respawn.test.ts > keeps macOS system CA loading…` | **Environmental** — macOS assertion on a Linux host. |
+| Network / port / credential | `extensions/feishu/…/monitor.webhook-e2e.test.ts` (11), `extensions/msteams/…/auth-coverage.test.ts` (3, *"Invalid token"*) | **Environmental.** |
+| TTY-dependent | `src/commands/models/auth-logout.test.ts` (2) | **Environmental.** |
+| Vitest **harness crash** | `test/vitest/vitest.auto-reply-reply.config.ts` | **Inherited, reproducible — see below.** |
+| Other inherited red | `gateway-methods` `chat.directive-tags`, `extension-signal`, `extension-browser`, `extension-discord`, `extension-providers`, `ui` | Inherited from the assembly. |
+
+#### Inherited finding worth surfacing to the absorb lane
+
+`test/vitest/vitest.auto-reply-reply.config.ts` — the shard covering the continuation
+reply surface — **does not fail; it crashes.** Reproduced twice, back to back:
+
+```
+171 test files pass, 3,531 tests pass, zero FAIL lines, then:
+Error: Worker exited unexpectedly
+    at Worker.emitUnexpectedExit (…/vitest/dist/chunks/cli-api…)
+Node.js v25.9.0   → exit 1
+```
+
+This is not resource pressure — it reproduces with 99 GB memory available and load 4.2 on
+a 20-core host. It is a **harness failure on the frozen assembly baseline itself**, and it
+means gate 12 (continuation behavior suite) cannot currently yield a clean green signal on
+the assembly, independent of the absorb. The absorb lane should not mistake this for merge
+fallout, and should not treat a red `auto-reply-reply` shard as absorb evidence either way.
+Reproduce with:
+
+```bash
+node scripts/run-vitest.mjs run --config test/vitest/vitest.auto-reply-reply.config.ts
+```
+
+The load-bearing verification for *this* report's conclusions is not the test suite — it
+is gates 1–8 in §12, above all the merged-tree self-consistency delta in §7.1.
