@@ -1,9 +1,15 @@
+import fs from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { ensureMemoryIndexSchema } from "../../packages/memory-host-sdk/src/host/memory-schema.js";
+import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
 import {
   assertOpenClawAgentDatabaseForMaintenance,
+  ensureOpenClawAgentDatabaseSchema,
+  migrateOpenClawAgentDatabaseForMaintenance,
   OPENCLAW_AGENT_SCHEMA_VERSION,
+  resolveOpenClawAgentSqlitePath,
 } from "./openclaw-agent-db.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.generated.js";
 import {
@@ -11,6 +17,12 @@ import {
   OPENCLAW_STATE_SCHEMA_VERSION,
 } from "./openclaw-state-db.js";
 import { OPENCLAW_STATE_SCHEMA_SQL } from "./openclaw-state-schema.generated.js";
+
+const maintenanceTempDirs: string[] = [];
+
+afterAll(() => {
+  cleanupTempDirs(maintenanceTempDirs);
+});
 
 describe("OpenClaw database maintenance schema validation", () => {
   it("accepts the current global and agent schemas", () => {
@@ -287,7 +299,56 @@ describe("OpenClaw database maintenance schema validation", () => {
       database.close();
     }
   });
+
+  it("does not rewrite a canonical current agent database during maintenance preflight", () => {
+    const stateDir = makeTempDir(maintenanceTempDirs, "openclaw-agent-maintenance-noop-");
+    const agentId = "worker-1";
+    const env = { OPENCLAW_STATE_DIR: stateDir };
+    const sqlitePath = resolveOpenClawAgentSqlitePath({ agentId, env });
+    fs.mkdirSync(path.dirname(sqlitePath), { recursive: true });
+
+    const seeded = new DatabaseSync(sqlitePath);
+    try {
+      ensureOpenClawAgentDatabaseSchema(seeded, { agentId, path: sqlitePath });
+      seeded
+        .prepare("UPDATE schema_meta SET updated_at = ? WHERE meta_key = 'primary'")
+        .run(123456789);
+    } finally {
+      seeded.close();
+    }
+
+    const before = readSqliteArtifact(sqlitePath);
+    migrateOpenClawAgentDatabaseForMaintenance({ agentId, pathname: sqlitePath });
+    const after = readSqliteArtifact(sqlitePath);
+
+    expect(after.schemaMeta).toEqual(before.schemaMeta);
+    expect(after.files).toEqual(before.files);
+  });
 });
+
+function readSqliteArtifact(sqlitePath: string): {
+  files: Record<string, string | null>;
+  schemaMeta: unknown;
+} {
+  const database = new DatabaseSync(sqlitePath, { readOnly: true });
+  try {
+    return {
+      files: Object.fromEntries(
+        [sqlitePath, `${sqlitePath}-wal`, `${sqlitePath}-shm`].map((file) => [
+          file,
+          fs.existsSync(file) ? fs.readFileSync(file).toString("base64") : null,
+        ]),
+      ),
+      schemaMeta: database
+        .prepare(
+          "SELECT meta_key, role, schema_version, agent_id, app_version, created_at, updated_at FROM schema_meta WHERE meta_key = 'primary'",
+        )
+        .get(),
+    };
+  } finally {
+    database.close();
+  }
+}
 
 function createGlobalDatabase(schemaSql = OPENCLAW_STATE_SCHEMA_SQL): DatabaseSync {
   const database = new DatabaseSync(":memory:");

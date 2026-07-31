@@ -7,6 +7,7 @@ import {
 import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { repairCanonicalSqliteIndexes } from "../infra/sqlite-index-schema.js";
+import { assertSqliteIntegrity } from "../infra/sqlite-integrity.js";
 import {
   createNewerSqliteSchemaVersionError,
   readSqliteUserVersion,
@@ -104,6 +105,21 @@ export function migrateOpenClawAgentDatabaseForMaintenance(options: {
       return;
     }
     if (hasCurrentVersion) {
+      // A canonical current-version file is already suitable for offline
+      // maintenance. Prove that read-only first so a successful preflight does
+      // not refresh schema metadata or rewrite SQLite artifacts. A current
+      // file that fails the exact contract may still be a supported repairable
+      // shape; prove physical integrity before the bounded repair path writes.
+      try {
+        assertOpenClawAgentDatabaseForMaintenance(database, {
+          agentId,
+          pathname: options.pathname,
+        });
+        return;
+      } catch {
+        assertSqliteIntegrity(database, options.pathname);
+      }
+
       const hadLegacyRecallMetadata = hasLegacyMemoryRecallMetadataColumns(database);
       const hadLegacyProvenanceTrigger = Boolean(
         database
