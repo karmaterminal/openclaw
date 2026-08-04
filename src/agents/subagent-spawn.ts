@@ -6,7 +6,6 @@
 import { promises as fs } from "node:fs";
 import { isAcpRuntimeSpawnAvailable } from "../acp/runtime/availability.js";
 import type { SubagentSpawnPreparation } from "../context-engine/types.js";
-import { isFastTestRuntimeEnv } from "../infra/env.js";
 import { listRegisteredPluginAgentPromptGuidance } from "../plugins/command-registry-state.js";
 import {
   GatewayDrainingError,
@@ -42,6 +41,7 @@ import { resolveSubagentChildPlan } from "./subagent-spawn-child-plan.js";
 import {
   cleanupFailedSpawnBeforeAgentStart,
   cleanupProvisionalSession,
+  retrySubagentCleanup,
   terminateAcceptedCollectorRun,
 } from "./subagent-spawn-cleanup.js";
 import {
@@ -197,6 +197,10 @@ export async function spawnSubagentDirect(
         childSessionKey,
       };
     }
+    const provisionalSessionIdentity = {
+      expectedSessionId: initialSession.entry?.sessionId,
+      expectedLifecycleRevision: initialSession.entry?.lifecycleRevision,
+    };
     const preparedSpawnContext = await prepareSubagentSessionContext({
       cfg,
       contextMode,
@@ -209,6 +213,7 @@ export async function spawnSubagentDirect(
       await cleanupProvisionalSession(childSessionKey, {
         emitLifecycleHooks: false,
         deleteTranscript: true,
+        ...provisionalSessionIdentity,
       });
       return {
         status: "error",
@@ -226,6 +231,7 @@ export async function spawnSubagentDirect(
       await cleanupProvisionalSession(childSessionKey, {
         emitLifecycleHooks: false,
         deleteTranscript: true,
+        ...provisionalSessionIdentity,
       });
       return {
         status: "error",
@@ -255,6 +261,7 @@ export async function spawnSubagentDirect(
         await cleanupProvisionalSession(childSessionKey, {
           emitLifecycleHooks: false,
           deleteTranscript: true,
+          ...provisionalSessionIdentity,
         });
         return {
           status: "error",
@@ -324,6 +331,7 @@ export async function spawnSubagentDirect(
       await cleanupProvisionalSession(childSessionKey, {
         emitLifecycleHooks: threadBindingReady,
         deleteTranscript: true,
+        ...provisionalSessionIdentity,
       });
       return {
         status: materializedAttachments.status,
@@ -448,6 +456,7 @@ export async function spawnSubagentDirect(
             attachmentAbsDir,
             emitLifecycleHooks: threadBindingReady,
             deleteTranscript: true,
+            ...provisionalSessionIdentity,
           });
           return;
         }
@@ -491,6 +500,7 @@ export async function spawnSubagentDirect(
         await cleanupProvisionalSession(childSessionKey, {
           emitLifecycleHooks,
           deleteTranscript: true,
+          ...provisionalSessionIdentity,
         });
       },
     };
@@ -580,6 +590,7 @@ export async function spawnSubagentDirect(
     childRunId = pipelineResult.runId;
     let collectorSessionKey: string | undefined;
     if (params.collect && swarmGroupId && swarmSchedulerGroupKey) {
+      let launchAcceptanceObserved = false;
       let launchTerminationConfirmed = false;
       activateSwarmRun({
         groupId: swarmSchedulerGroupKey,
@@ -587,6 +598,7 @@ export async function spawnSubagentDirect(
         start: async () => {
           await runWithGatewayIndependentRootWorkContinuation(async () => {
             const response = await launchChildRun();
+            launchAcceptanceObserved = true;
             const gatewayRunId = readGatewayRunId(response) ?? childRunId;
             try {
               if (!startQueuedSubagentRun(childRunId, gatewayRunId)) {
@@ -595,8 +607,11 @@ export async function spawnSubagentDirect(
                 );
               }
             } catch (error) {
-              await terminateAcceptedCollectorRun({ childSessionKey, gatewayRunId });
-              launchTerminationConfirmed = true;
+              launchTerminationConfirmed = await terminateAcceptedCollectorRun({
+                childSessionKey,
+                gatewayRunId,
+                ...provisionalSessionIdentity,
+              });
               throw error;
             }
             await emitSpawnLifecycleHooks(gatewayRunId);
@@ -604,6 +619,9 @@ export async function spawnSubagentDirect(
         },
         onStartFailure: async (error) => {
           if (error instanceof GatewayDrainingError) {
+            return false;
+          }
+          if (launchAcceptanceObserved && !launchTerminationConfirmed) {
             return false;
           }
           const launchError = summarizeSpawnError(error);
@@ -614,23 +632,16 @@ export async function spawnSubagentDirect(
               attachmentAbsDir,
               emitLifecycleHooks: threadBindingReady,
               deleteTranscript: true,
+              ...provisionalSessionIdentity,
               // A launch RPC can fail after acceptance. Keep the FIFO slot until
               // deleting the child session proves no accepted run remains active.
               waitForSessionDeletion: !launchTerminationConfirmed,
             }),
           ]);
-          for (;;) {
-            try {
-              settleFailedQueuedSubagentLaunch(childRunId, launchError);
-              break;
-            } catch {
-              // The child is stopped; retry only the durable terminal write.
-              await new Promise<void>((resolve) => {
-                const timer = setTimeout(resolve, isFastTestRuntimeEnv() ? 1 : 1_000);
-                timer.unref?.();
-              });
-            }
-          }
+          await retrySubagentCleanup(async () => {
+            settleFailedQueuedSubagentLaunch(childRunId, launchError);
+            return true;
+          });
           const cleanupComplete =
             contextRollback.status === "fulfilled" &&
             contextRollback.value &&
