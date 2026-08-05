@@ -251,9 +251,9 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
 
   // Prospective route the hybrid planner would take (proposed_*).
   // unknown is always proposed blocked (total classifier result) — never a
-  // soft-local/self-hosted proposed route. Effective stays pre-existing
-  // self-hosted in increment-1 because the classifier has zero authority
-  // over runs-on (not a grey-row fallback).
+  // proposed self-hosted/soft-local product path. Under bootstrap, effective
+  // remains incumbent self-hosted as topology-inertia attestation only
+  // (classifier has zero runs-on authority; not a grey-row grant).
   let proposed_execution_class;
   let blocked = false;
   let diagnostic = null;
@@ -360,12 +360,18 @@ export function classifyPlan(rows, ruleset, options = {}) {
       emitted: classifications.length,
       matched: classifications.filter((c) => c.match === "exact").length,
       unknown: unknowns.length,
+      // WO alias: same integer as `unknown` (literal unknown_count field name).
+      unknown_count: unknowns.length,
       blocked: blocked.length,
       // Exact digest-bound coverage ratio (not a soft %-threshold gate).
       matched_ratio:
         classifications.length === 0
           ? 1
           : classifications.filter((c) => c.match === "exact").length / classifications.length,
+      // Mode A predicate: 100% attestation over exact planner_digest (every emitted identity has a row).
+      attestation_complete: classifications.length === rows.length,
+      // Mode B predicate: 100% ruleset-match (unknown_count === 0) before selection.
+      ruleset_match_complete: unknowns.length === 0,
     },
     // Increment-1 regression surface: proposed may say hosted; effective does not.
     runs_on_unchanged: true,

@@ -55,8 +55,14 @@ export type PlanArtifact = {
     emitted: number;
     matched: number;
     unknown: number;
+    /** Alias of `unknown` (WO literal field name). */
+    unknown_count: number;
     blocked: number;
     matched_ratio: number;
+    /** Mode A: every emitted identity has a classification row over planner_digest. */
+    attestation_complete: boolean;
+    /** Mode B: ruleset-match total — unknown_count === 0 before selection. */
+    ruleset_match_complete: boolean;
   };
   runs_on_unchanged: true;
   effective_topology: "all-self-hosted";

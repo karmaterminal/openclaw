@@ -151,6 +151,10 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
       hostedSelectionAvailable: false,
     });
     expect(artifact.identity_coverage.unknown).toBe(1);
+    // Mode A attestation totality: unknown is a valid observed row; alias + predicates named.
+    expect(artifact.identity_coverage.unknown_count).toBe(artifact.identity_coverage.unknown);
+    expect(artifact.identity_coverage.attestation_complete).toBe(true);
+    expect(artifact.identity_coverage.ruleset_match_complete).toBe(false);
     expect(artifact.runs_on_unchanged).toBe(true);
     expect(artifact.planner_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(artifact.ruleset_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
@@ -164,6 +168,34 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     const unknownRow = artifact.rows.find((r) => r.match === "unmatched");
     expect(unknownRow?.proposed_execution_class).toBe("blocked");
     expect(unknownRow?.blocked).toBe(true);
+  });
+
+  it("coverage predicates: Mode A attestation vs Mode B ruleset-match", () => {
+    const ruleset = loadRuleset(TINY_RULESET);
+    const dirty = classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
+      policy: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    // Mode A: 100% attestation over planner_digest (every emitted identity has a row),
+    // even when unknown_count > 0. Not a soft %-threshold.
+    expect(dirty.identity_coverage.emitted).toBe(2);
+    expect(dirty.identity_coverage.attestation_complete).toBe(true);
+    expect(dirty.rows).toHaveLength(dirty.identity_coverage.emitted);
+    expect(dirty.identity_coverage.unknown).toBe(1);
+    expect(dirty.identity_coverage.unknown_count).toBe(1);
+    expect(dirty.identity_coverage.ruleset_match_complete).toBe(false);
+
+    // Mode B: ruleset-match terminal before selection when unknown_count !== 0.
+    expect(() => assertMixedRoutingEligible(dirty)).toThrow(/mixed-routing ineligible/u);
+
+    const clean = classifyPlan([HERMETIC_SEED, HOST_LOCAL_SEED], ruleset, {
+      policy: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(clean.identity_coverage.attestation_complete).toBe(true);
+    expect(clean.identity_coverage.ruleset_match_complete).toBe(true);
+    expect(clean.identity_coverage.unknown_count).toBe(0);
+    expect(assertMixedRoutingEligible(clean)).toBe(clean);
   });
 
   it("3a-mixed. Mode B unknown row: proposed blocked, NO effective_execution_class", () => {
@@ -292,8 +324,11 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     expect(artifact.runs_on_unchanged).toBe(true);
     expect(artifact.effective_topology).toBe("all-self-hosted");
     expect(artifact.identity_coverage.unknown).toBe(0);
+    expect(artifact.identity_coverage.unknown_count).toBe(0);
     expect(artifact.identity_coverage.matched).toBe(2);
     expect(artifact.identity_coverage.matched_ratio).toBe(1);
+    expect(artifact.identity_coverage.attestation_complete).toBe(true);
+    expect(artifact.identity_coverage.ruleset_match_complete).toBe(true);
 
     for (const row of artifact.rows) {
       expect(row.effective_execution_class).toBe("self-hosted");
@@ -360,8 +395,11 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
 
     expect(artifact.identity_coverage.emitted).toBe(shards.length);
     expect(artifact.identity_coverage.unknown).toBe(0);
+    expect(artifact.identity_coverage.unknown_count).toBe(0);
     expect(artifact.identity_coverage.matched).toBe(shards.length);
     expect(artifact.identity_coverage.matched_ratio).toBe(1);
+    expect(artifact.identity_coverage.attestation_complete).toBe(true);
+    expect(artifact.identity_coverage.ruleset_match_complete).toBe(true);
     expect(artifact.runs_on_unchanged).toBe(true);
     expect(artifact.planner_digest).toBe(plannerDigest(rows));
     // assertMixedRoutingEligible NOT required for tip audit (Mode A).

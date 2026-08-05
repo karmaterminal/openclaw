@@ -110,7 +110,7 @@ async function main() {
     ...artifact,
     // Explicit privilege note (freeze v2.3 pin 7).
     privilege_note:
-      "unknown-on-prince-seat in inc-1 is pre-existing all-self-hosted risk made visible, not a new grant; soft-local policy remains struck",
+      "unknown-on-prince-seat in inc-1 is Mode A attestation totality: unknown is a valid observed row (proposed blocked + incumbent effective self-hosted); not a classifier-created route or matrix entitlement; Mode B ruleset-match terminal remains dark",
     assert_mixed_routing_eligible_called: false,
   };
 
