@@ -24,11 +24,14 @@ export type ClassificationRow = {
   local_capabilities: string[];
   reason: string;
   proposed_execution_class: ProposedExecutionClass;
-  effective_execution_class: "self-hosted";
+  /** Mode A always; Mode B rejected-unknown omits (no effective route). */
+  effective_execution_class?: "self-hosted";
   blocked: boolean;
   diagnostic: { code: string; message: string } | null;
   classifier_version: string;
   ruleset_digest: string;
+  /** Stamped by classifyPlan once emitted identity set is known. */
+  planner_digest?: string;
   ruleset_id: string;
   mode: ClassifierMode;
   hosted_selection_available: boolean;

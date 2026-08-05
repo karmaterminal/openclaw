@@ -1,64 +1,81 @@
 # Shard execution classifier (increment-1)
 
-Pure data-plane for #1341.
+Pure data-plane for #1341. **No** `runs-on` / matrix authority.
 
-**Freeze authority:** 🪨 CUT=A `#1534401220993876108` · 🌻 two-mode freeze `#1534401471783768236` · 🌫 A cosign `#1534401462388658239`.
-Privileged-seat hole accepted explicitly for inc-1 (audit-exec preserves pre-existing all-self-hosted; does not grant new privilege).
+**Freeze authority:** 🪨 WO review `#1534401738373857290` + `#1534401740626202865` · CUT=A `#1534401220993876108` · 🌻 two-mode `#1534401471783768236` + cardinality `#1534401551148388473` · 🌫 A cosign `#1534401462388658239` / `#1534401707432349726`.
 
-Does **not** change `runs-on`.
+**Path:** pure module under `scripts/lib/shard-execution/` (not `tools/`). Keep pure wherever it lands; do **not** wire workflow/`runs-on`.
 
-## Mode cardinality (pinned 🌻 `#1534401551148388473`)
+## 1. Field enums (settled split)
 
-Dimension split alone is not enough — pin **when `effective_execution_class` exists**:
+| Field                       | Domain                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `capability_class`          | `hermetic` \| `host_local` \| `unknown`                                            |
+| `proposed_execution_class`  | `hosted` \| `self-hosted` \| `blocked`                                             |
+| `effective_execution_class` | incumbent route (Mode A always `self-hosted`; Mode B rejected-unknown: **absent**) |
 
-| Mode                                     | When            | Artifact row shape                                                                                                                                                               |
-| ---------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A — Bootstrap / inc-1**                | audit emit only | `capability_class: unknown`, `proposed_execution_class: blocked`, **`effective_execution_class: self-hosted`**; attested and routed through the **unchanged** self-hosted matrix |
-| **B — Enforced mixed-routing preflight** | later only      | same first two values, then **terminal reject before matrix**; **no** `effective_execution_class` because no effective route exists                                              |
+Do **not** put hermetic/host_local/unknown on `proposed_execution_class`.
 
-“Attested, then rejected before a matrix row” = **Mode B only** — not the audit bootstrap path.
+## 2. Mode A unknown byte (bootstrap / this PR)
 
-Wire values use hyphen form (`self-hosted`), not underscore.
+Unmatched →:
+
+- `capability_class: unknown`
+- `proposed_execution_class: blocked` (**not** `self-hosted`)
+- `blocked: true`
+- diagnostic (`unknown_identity_audit`)
+- `effective_execution_class: self-hosted` unchanged (topology inertia; may still execute)
+- digests + `classifier_version` + canonical `planner_identity` + `match: unmatched`
+
+“unknown → self-hosted + diagnostic” names the **effective/audit** outcome, **not** proposed.
+
+## 3. Schema (every row + plan)
+
+Emit **both**:
+
+- `planner_digest` — emitted identity set
+- `ruleset_digest` — digest-bound ruleset table bytes
+
+Every row attests: `planner_identity` + both digests + `classifier_version` + proposed/effective (Mode A) + match/unknown status.
+
+Tip-plan seed (`ruleset.v1.json`) covers every identity the real planner emits; tiny tables = unit fixtures only.
+
+## Mode cardinality
+
+| Mode                                     | When                 | Unknown row shape                                                                                                              |
+| ---------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **A — Bootstrap / inc-1**                | audit emit (this PR) | `unknown` + `blocked` + **`effective_execution_class: self-hosted`** + diagnostic; routed through unchanged self-hosted matrix |
+| **B — Enforced mixed-routing preflight** | later only           | `unknown` + `blocked` + diagnostic → **terminal before matrix**; **no** `effective_execution_class`                            |
+
+“Attested, then rejected before a matrix row” = **Mode B only**.
 
 ## Inc-1 workorder (A)
 
 1. Pure total classifier: every emitted identity → `capability_class` + `proposed_execution_class` (`unknown` ⇒ `blocked`)
 2. Classifier has **zero** `runs-on` / matrix authority
-3. Unmatched row: emit unknown/blocked + digests + audit finding; `effective_execution_class` stays pre-existing self-hosted
-4. Attest on every row/plan: `classifier_version`, `ruleset_digest`, `planner_digest`, canonical `planner_identity`
-5. Table dup/invalid key → **load** failure; unmatched emitted identity → **classification result** (not silent host default)
-6. Dark pure seam `assertMixedRoutingEligible(plan)` rejects any unknown — **unit/policy only; not called from inc-1 workflow**
-7. Byte/structural regression: classifier output cannot change `runs-on` expression/result
-8. Tip-plan seed (`ruleset.v1.json`) covers every identity the real planner emits; tiny tables = unit fixtures only
-9. `requires_dist` orthogonal · Gate-3g/local-proof separate · no release gate · no slot widen · no Silas enable
+3. Unmatched: emit unknown/blocked + digests + audit; effective stays pre-existing self-hosted
+4. Attest every row/plan: `classifier_version`, `ruleset_digest`, `planner_digest`, canonical identity, match status
+5. Table dup/invalid key → **load** failure; unmatched emitted → **classification result**
+6. Dark pure seam `assertMixedRoutingEligible(plan)` — unit/policy only; **not called from inc-1 workflow**
+7. Byte/structural regression: classifier output cannot change `runs-on`
+8. Tip-plan seed full coverage; tiny tables = unit fixtures only
+9. `requires_dist` orthogonal · Gate-3g separate · no release gate · no slot widen · no Silas enable
 
 ## Later mixed-routing (B, not this PR)
 
-Require `unknown_count === 0` on that `planner_digest` before selection; if unknown occurs anyway → **terminal before matrix/`runs-on`** with **no** `effective_execution_class` (no effective route). No `unknown → self-hosted` once any hosted route can be chosen. Not the bootstrap path.
+`assertMixedRoutingEligible(plan)` rejects any unknown before matrix/`runs-on`. Terminal artifact: unknown + blocked + diagnostic, **no effective_***. Not called from inc-1.
 
-## Phase split
+## Surfaces
 
-| Surface                                           | Role                                                |
-| ------------------------------------------------- | --------------------------------------------------- |
-| `classify` / `classifyPlan`                       | Mode A audit/attestation. May emit unknown+blocked. |
-| `assertMixedRoutingEligible(plan)`                | Mode B dark seam. Not called from inc-1.            |
-| `scripts/emit-shard-execution-classification.mjs` | Data-only workflow emit (audit only).               |
-
-## Artifact fields
-
-- `capability_class` — `hermetic` | `host_local` | `unknown`
-- `proposed_execution_class` — classifier output (`blocked` on unknown)
-- `effective_execution_class` — Mode A only: independently determined route (inc-1 always `self-hosted`). Mode B preflight: field absent (no route).
-- `classifier_version`, `ruleset_digest`, `planner_digest`, exact `planner_identity`
-
-## No implicit capability_class
-
-`kind` / `shard_group` / `configs` / `includePatterns` may only feed evidence for an **explicit** allow/deny row.
+| Surface                                           | Role                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------- |
+| `classify` / `classifyPlan`                       | Mode A audit/attestation. May emit unknown+blocked+effective self-hosted. |
+| `assertMixedRoutingEligible(plan)`                | Mode B dark seam. Not called from inc-1.                                  |
+| `scripts/emit-shard-execution-classification.mjs` | Data-only workflow emit (audit only).                                     |
 
 ## Seed policy
 
-- `ruleset.v1.json` = tip-plan full coverage (every `createNodeTestShards()` identity)
+- `ruleset.v1.json` = tip-plan full coverage (`createNodeTestShards()` identities)
 - `host_local`: only concrete identities needing live gateway / SQLite / journal / SWIM / seat
 - Unit tests use tiny fixture tables, not the tip seed
-- Gate 3g / local-proof: separate workstream
-- `requires_dist` orthogonal
+- No implicit capability from kind/shard_group/configs/includePatterns without explicit row

@@ -129,7 +129,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     expect(row.blocked).toBe(false);
   });
 
-  it("3a. classify(unknown): emits unknown + proposed blocked; effective stays independently self-hosted", () => {
+  it("3a. classify(unknown): Mode A proposed=blocked (NOT self-hosted) + effective self-hosted + diagnostic", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
       mode: "bootstrap",
@@ -137,10 +137,12 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     });
     expect(row.capability_class).toBe("unknown");
     expect(row.match).toBe("unmatched");
+    // 🪨 Mode-A proposed byte: blocked, never self-hosted on unmatched.
     expect(row.proposed_execution_class).toBe("blocked");
+    expect(row.proposed_execution_class).not.toBe("self-hosted");
     expect(row.blocked).toBe(true);
-    // Unchanged workflow still has independently determined effective self-hosted.
     expect(row.effective_execution_class).toBe("self-hosted");
+    expect(row.diagnostic?.code).toBe("unknown_identity_audit");
     expect(row.reason).toMatch(/absent from digest-bound ruleset/u);
 
     // classifyPlan audit may include unmatched rows (not a mixed router).
@@ -150,7 +152,34 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     });
     expect(artifact.identity_coverage.unknown).toBe(1);
     expect(artifact.runs_on_unchanged).toBe(true);
-    expect(artifact.rows.every((r) => r.effective_execution_class === "self-hosted")).toBe(true);
+    expect(artifact.planner_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    expect(artifact.ruleset_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    expect(artifact.planner_digest).not.toBe(artifact.ruleset_digest);
+    for (const r of artifact.rows) {
+      expect(r.effective_execution_class).toBe("self-hosted");
+      expect(r.planner_digest).toBe(artifact.planner_digest);
+      expect(r.ruleset_digest).toBe(artifact.ruleset_digest);
+      expect(r.classifier_version).toBe(artifact.classifier_version);
+    }
+    const unknownRow = artifact.rows.find((r) => r.match === "unmatched");
+    expect(unknownRow?.proposed_execution_class).toBe("blocked");
+    expect(unknownRow?.blocked).toBe(true);
+  });
+
+  it("3a-mixed. Mode B unknown row: proposed blocked, NO effective_execution_class", () => {
+    const ruleset = loadRuleset(TINY_RULESET);
+    const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
+      mode: "mixed",
+      hostedSelectionAvailable: true,
+    });
+    expect(row.capability_class).toBe("unknown");
+    expect(row.proposed_execution_class).toBe("blocked");
+    expect(row.blocked).toBe(true);
+    expect(row.diagnostic?.code).toBe("unknown_identity_terminal");
+    expect(row.effective_execution_class).toBeUndefined();
+    expect("effective_execution_class" in row && row.effective_execution_class !== undefined).toBe(
+      false,
+    );
   });
 
   it("3b. assertMixedRoutingEligible(plan): rejects unknown before matrix/runner selection", () => {

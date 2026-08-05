@@ -261,26 +261,30 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
           };
   }
 
-  // Increment-1: classifier cannot alter runs-on. Effective is always the
-  // pre-existing self-hosted route for attestation/regression surfaces.
-  const effective_execution_class = "self-hosted";
-
-  return {
+  // Mode A (bootstrap): effective is always the pre-existing self-hosted route
+  // (classifier has zero runs-on authority). Mode B rejected unknown: NO effective
+  // field — terminal before matrix means no effective route exists (🌫/🌻 cardinality).
+  // Unmatched Mode A proposed is ALWAYS blocked — never self-hosted (🪨 #1534401740).
+  const out = {
     planner_identity: identity,
     match,
     capability_class,
     local_capabilities,
     reason,
     proposed_execution_class,
-    effective_execution_class,
     blocked,
     diagnostic,
     classifier_version: ruleset.classifier_version,
+    // planner_digest stamped by classifyPlan once the emitted set is known.
     ruleset_digest: ruleset.ruleset_digest,
     ruleset_id: ruleset.ruleset_id,
     mode,
     hosted_selection_available: hostedSelectionAvailable,
   };
+  if (!(mode === "mixed" && capability_class === "unknown")) {
+    out.effective_execution_class = "self-hosted";
+  }
+  return out;
 }
 
 /**
@@ -313,6 +317,16 @@ export function classifyPlan(rows, ruleset, options = {}) {
   const unknowns = classifications.filter((c) => c.capability_class === "unknown");
   const blocked = classifications.filter((c) => c.blocked);
 
+  // Distinct from ruleset_digest: covers the emitted identity set for this plan.
+  const planner_digest = plannerDigest(rows);
+
+  // Every row attests both digests + version (schema gap 3 / 🪨 #1534401740).
+  for (const c of classifications) {
+    c.planner_digest = planner_digest;
+    c.ruleset_digest = ruleset.ruleset_digest;
+    c.classifier_version = ruleset.classifier_version;
+  }
+
   // classifyPlan is the audit/attestation assemble path. It MAY include
   // unknown rows (proposed blocked). Mixed-routing eligibility is enforced
   // only by assertMixedRoutingEligible (dark policy seam) — do NOT call that
@@ -321,8 +335,7 @@ export function classifyPlan(rows, ruleset, options = {}) {
     classifier_version: ruleset.classifier_version,
     ruleset_id: ruleset.ruleset_id,
     ruleset_digest: ruleset.ruleset_digest,
-    // Distinct from ruleset_digest: covers the emitted identity set for this plan.
-    planner_digest: plannerDigest(rows),
+    planner_digest,
     mode,
     hosted_selection_available: options.hostedSelectionAvailable ?? mode === "mixed",
     identity_coverage: {
