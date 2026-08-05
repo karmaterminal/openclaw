@@ -2,7 +2,7 @@
 
 Pure data-plane for #1341.
 
-**Freeze authority:** 🪨 CUT = A (audit inc-1) `#1534401220993876108`.  
+**Freeze authority:** 🪨 CUT=A `#1534401220993876108` · 🌻 two-mode freeze `#1534401471783768236` · 🌫 A cosign `#1534401462388658239`.
 Privileged-seat hole accepted explicitly for inc-1 (audit-exec preserves pre-existing all-self-hosted; does not grant new privilege).
 
 Does **not** change `runs-on`.
