@@ -99,6 +99,12 @@ export function createSubagentRegistryRestorer(config: {
   } = config;
   let restoreAttempted = false;
 
+  // Single ownership predicate for the restored queued launch: both the failure
+  // settlement path and the scheduler seam must agree on whether this exact row
+  // still owns the queued work before either holds or releases its FIFO slot.
+  const ownsRestoredQueuedLaunch = (runId: string, entry: SubagentRunRecord) =>
+    runs.get(runId) === entry && entry.execution.status === "queued";
+
   function restoreSubagentRunsOnce() {
     if (restoreAttempted) {
       return;
@@ -164,7 +170,12 @@ export function createSubagentRegistryRestorer(config: {
       for (const [runId, entry] of runs) {
         // Restart recovery exclusively owns receipt-bearing source rows until it
         // remaps or terminalizes them. Generic resume would wait on an obsolete run.
-        if (entry.execution.restartRecovery || entry.killIntent || entry.killReconciliation) {
+        if (
+          entry.acceptedSteerDispatch ||
+          entry.execution.restartRecovery ||
+          entry.killIntent ||
+          entry.killReconciliation
+        ) {
           continue;
         }
         if (entry.collect && entry.execution.status === "queued") {
@@ -205,6 +216,9 @@ export function createSubagentRegistryRestorer(config: {
               .filter((candidate) => candidate.execution.status === "running")
               .map((candidate) => candidate.schedulerSlotId ?? candidate.runId),
             start: async () => {
+              // Acceptance is sticky for this deterministic launch identity. A lost
+              // response on a retry cannot prove the previously accepted run stopped.
+              launchTerminationConfirmed = false;
               await runWithGatewayIndependentRootWorkAdmission(async () => {
                 launchLifecycleGeneration = getAgentEventLifecycleGeneration();
                 const response = await deps().callGateway({
@@ -240,7 +254,10 @@ export function createSubagentRegistryRestorer(config: {
                 return false;
               }
               if (launchAcceptanceObserved && !launchTerminationConfirmed) {
-                return false;
+                // A possibly-live accepted run keeps the FIFO slot and replays the
+                // same persisted idempotency key, but only while this row still
+                // owns the queued work. Once another owner took it, release.
+                return !ownsRestoredQueuedLaunch(runId, entry);
               }
               return failAndCleanupRestoredQueuedRun(
                 runId,
@@ -287,7 +304,7 @@ export function createSubagentRegistryRestorer(config: {
     expectedSessionId?: string,
     expectedLifecycleRevision?: string,
   ): Promise<boolean> {
-    if (runs.get(runId) !== entry || entry.execution.status !== "queued") {
+    if (!ownsRestoredQueuedLaunch(runId, entry)) {
       return true;
     }
     const claim: RestoredQueuedFailureSettlementClaim = {

@@ -177,6 +177,7 @@ export async function terminateAcceptedCollectorRun(params: {
   expectedLifecycleRevision?: string;
   callGateway?: GatewayCall;
   timeoutMs?: number;
+  retry?: boolean;
 }): Promise<boolean> {
   const call = params.callGateway ?? callSubagentGateway;
   const timeoutMs = params.timeoutMs ?? SUBAGENT_CONTROL_GATEWAY_TIMEOUT_MS;
@@ -208,7 +209,7 @@ export async function terminateAcceptedCollectorRun(params: {
       return cleanup !== "failed";
     },
     {
-      shouldRetry: () => hasFrozenSessionIdentity(params),
+      shouldRetry: () => params.retry !== false && hasFrozenSessionIdentity(params),
     },
   );
 }

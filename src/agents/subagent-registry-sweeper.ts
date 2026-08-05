@@ -20,10 +20,13 @@ import {
   SUBAGENT_SUSPENDED_DELIVERY_HARD_CAP,
   SUBAGENT_SUSPENDED_DELIVERY_WARNING_COUNT,
 } from "./subagent-registry-suspended-delivery.js";
+import { createSubagentSweepSessionCleanup } from "./subagent-registry-sweeper-session.js";
 export { retireSupersededSubagentRun } from "./subagent-registry-sweeper-retire.js";
 import {
+  reconcileAcceptedSteerDispatch,
   reconcileDurableSubagentKillIntent,
   reconcileProvisionalSubagentKill,
+  selectNextAcceptedSteerCandidate,
 } from "./subagent-registry-sweep-kill.js";
 import type {
   ContextEngineSubagentEndedParams,
@@ -31,7 +34,6 @@ import type {
   SubagentRunRecord,
 } from "./subagent-registry.types.js";
 import { isStaleUnendedSubagentRun } from "./subagent-run-liveness.js";
-import { isSessionLifecycleChangedGatewayError } from "./subagent-session-cleanup.js";
 import {
   loadSubagentSessionEntry,
   resolveCompletionFromSessionEntry,
@@ -48,11 +50,14 @@ const killRuntimeLoader = createLazyImportLoader(() => import("./subagent-contro
 
 type LifecycleController = ReturnType<typeof createSubagentRegistryLifecycleController>;
 type LifecycleOptions = Parameters<typeof createSubagentRegistryLifecycleController>[0];
+type SubagentRunManager = ReturnType<typeof createSubagentRunManager>;
+type CollectorRuns = (requester: string, group: string) => Iterable<[string, SubagentRunRecord]>;
 
 export function createSubagentRegistrySweeper(params: {
   runs: Map<string, SubagentRunRecord>;
   resumedRuns: Set<string>;
   persist: (...runIds: string[]) => void;
+  persistOrThrow: (...runIds: string[]) => void;
   clearPendingLifecycleError: (runId: string) => void;
   clearPendingLifecycleTimeout: (runId: string) => void;
   sweepPendingLifecycle: (now: number) => void;
@@ -60,34 +65,17 @@ export function createSubagentRegistrySweeper(params: {
     completion: SubagentCompletionRequest,
     source: string,
   ) => Promise<void>;
+  clearSubagentRunSteerRestart: SubagentRunManager["clearSubagentRunSteerRestart"];
   getGatewayRecoveryRuntime: () => GatewayRecoveryRuntime | undefined;
-  abandonSubagentRestartRecoveryLaunch: ReturnType<
-    typeof createSubagentRunManager
-  >["abandonSubagentRestartRecoveryLaunch"];
-  clearAcceptedSubagentRestartRecovery: ReturnType<
-    typeof createSubagentRunManager
-  >["clearAcceptedSubagentRestartRecovery"];
-  resumeSettledSubagentRestartRecovery: ReturnType<
-    typeof createSubagentRunManager
-  >["resumeSettledSubagentRestartRecovery"];
-  replaceSubagentRunAfterSteer: ReturnType<
-    typeof createSubagentRunManager
-  >["replaceSubagentRunAfterSteer"];
-  markSubagentRestartRecoveryLaunchAttempted: ReturnType<
-    typeof createSubagentRunManager
-  >["markSubagentRestartRecoveryLaunchAttempted"];
-  markSubagentRestartRecoveryLaunchAccepted: ReturnType<
-    typeof createSubagentRunManager
-  >["markSubagentRestartRecoveryLaunchAccepted"];
-  markSubagentRestartRecoveryLaunchConsumed: ReturnType<
-    typeof createSubagentRunManager
-  >["markSubagentRestartRecoveryLaunchConsumed"];
-  reserveSubagentRestartRecoveryLaunch: ReturnType<
-    typeof createSubagentRunManager
-  >["reserveSubagentRestartRecoveryLaunch"];
-  resetSubagentRestartRecoveryLaunchAttempt: ReturnType<
-    typeof createSubagentRunManager
-  >["resetSubagentRestartRecoveryLaunchAttempt"];
+  abandonSubagentRestartRecoveryLaunch: SubagentRunManager["abandonSubagentRestartRecoveryLaunch"];
+  clearAcceptedSubagentRestartRecovery: SubagentRunManager["clearAcceptedSubagentRestartRecovery"];
+  resumeSettledSubagentRestartRecovery: SubagentRunManager["resumeSettledSubagentRestartRecovery"];
+  replaceSubagentRunAfterSteer: SubagentRunManager["replaceSubagentRunAfterSteer"];
+  markSubagentRestartRecoveryLaunchAttempted: SubagentRunManager["markSubagentRestartRecoveryLaunchAttempted"];
+  markSubagentRestartRecoveryLaunchAccepted: SubagentRunManager["markSubagentRestartRecoveryLaunchAccepted"];
+  markSubagentRestartRecoveryLaunchConsumed: SubagentRunManager["markSubagentRestartRecoveryLaunchConsumed"];
+  reserveSubagentRestartRecoveryLaunch: SubagentRunManager["reserveSubagentRestartRecoveryLaunch"];
+  resetSubagentRestartRecoveryLaunchAttempt: SubagentRunManager["resetSubagentRestartRecoveryLaunchAttempt"];
   finalizeInterruptedSubagentRun: ReturnType<
     typeof createSubagentRegistryCompletionRuntime
   >["finalizeInterruptedSubagentRun"];
@@ -103,18 +91,19 @@ export function createSubagentRegistrySweeper(params: {
   notifyContextEngineSubagentEnded: (params: ContextEngineSubagentEndedParams) => Promise<void>;
   retireSupersededRun: (runId: string, entry: SubagentRunRecord) => Promise<void>;
   getRunsForChildSession: (childSessionKey: string) => Iterable<SubagentRunRecord>;
-  getRunsForCollectorGroup: (
-    requesterSessionKey: string,
-    groupId: string,
-  ) => Iterable<[string, SubagentRunRecord]>;
+  getRunsForCollectorGroup: CollectorRuns;
   warn: (message: string, meta?: Record<string, unknown>) => void;
 }) {
   const { runs, resumedRuns } = params;
-  let intervalStarted = false;
+  const { deleteSession, freezeSessionIdentity } = createSubagentSweepSessionCleanup(
+    params.callGateway,
+  );
+  let intervalStarted = false,
+    sweepInProgress = false,
+    rerunRequested = false;
   let scheduledTimer: NodeJS.Timeout | null = null;
   let scheduledAt = Number.POSITIVE_INFINITY;
-  let sweepInProgress = false;
-  let rerunRequested = false;
+  let acceptedSteerCursor: string | undefined;
 
   function start() {
     if (intervalStarted) {
@@ -192,46 +181,6 @@ export function createSubagentRegistrySweeper(params: {
     });
   }
 
-  type FrozenSessionIdentity = {
-    sessionId: string;
-    lifecycleRevision: string;
-  };
-
-  function freezeSessionIdentity(
-    childSessionKey: string,
-    storeCache: SubagentSessionStoreCache,
-  ): FrozenSessionIdentity | undefined {
-    const sessionEntry = loadSubagentSessionEntry({ childSessionKey, storeCache });
-    const sessionId = sessionEntry?.sessionId?.trim();
-    const lifecycleRevision = sessionEntry?.lifecycleRevision?.trim();
-    return sessionId && lifecycleRevision ? { sessionId, lifecycleRevision } : undefined;
-  }
-
-  async function deleteSession(
-    childSessionKey: string,
-    identity: FrozenSessionIdentity,
-  ): Promise<"deleted" | "changed"> {
-    try {
-      await params.callGateway({
-        method: "sessions.delete",
-        params: {
-          key: childSessionKey,
-          deleteTranscript: true,
-          emitLifecycleHooks: false,
-          expectedSessionId: identity.sessionId,
-          expectedLifecycleRevision: identity.lifecycleRevision,
-        },
-        timeoutMs: 10_000,
-      });
-      return "deleted";
-    } catch (error) {
-      if (isSessionLifecycleChangedGatewayError(error)) {
-        return "changed";
-      }
-      throw error;
-    }
-  }
-
   const sweptContext = (entry: SubagentRunRecord) => ({
     childSessionKey: entry.childSessionKey,
     reason: "swept" as const,
@@ -253,6 +202,7 @@ export function createSubagentRegistrySweeper(params: {
         string,
         { requesterSessionKey: string; groupId: string }
       >();
+      const acceptedSteerCandidates: Array<{ runId: string; entry: SubagentRunRecord }> = [];
       const phase = ([runId, entry]: [string, SubagentRunRecord]) =>
         entry.requesterSettleWake
           ? 0
@@ -292,7 +242,10 @@ export function createSubagentRegistrySweeper(params: {
           continue;
         }
         if (isRestoredQueuedFailureSettlementClaimed(entry)) {
-          // The restored FIFO callback owns this row until durable settlement.
+          continue;
+        }
+        if (entry.acceptedSteerDispatch) {
+          acceptedSteerCandidates.push({ runId, entry });
           continue;
         }
         if (entry.requesterSettleWake) {
@@ -684,6 +637,22 @@ export function createSubagentRegistrySweeper(params: {
       if (mutated) {
         params.persist(...mutatedRunIds);
       }
+      const acceptedSteerCandidate = selectNextAcceptedSteerCandidate(
+        acceptedSteerCandidates,
+        acceptedSteerCursor,
+      );
+      if (acceptedSteerCandidate) {
+        acceptedSteerCursor = acceptedSteerCandidate.runId;
+        await reconcileAcceptedSteerDispatch({
+          ...acceptedSteerCandidate,
+          runs,
+          callGateway: params.callGateway,
+          persistOrThrow: params.persistOrThrow,
+          clearSubagentRunSteerRestart: params.clearSubagentRunSteerRestart,
+          warn: params.warn,
+        });
+        schedule({ delayMs: 1_000 });
+      }
       if (runs.size === 0) {
         stop();
       }
@@ -706,6 +675,7 @@ export function createSubagentRegistrySweeper(params: {
       scheduledTimer = null;
       scheduledAt = Number.POSITIVE_INFINITY;
       recovery.reset();
+      acceptedSteerCursor = undefined;
       rerunRequested = false;
       intervalStarted = false;
       sweepInProgress = false;

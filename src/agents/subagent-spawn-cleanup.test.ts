@@ -116,4 +116,24 @@ describe("subagent spawn cleanup identity", () => {
 
     expect(callGateway).toHaveBeenCalledTimes(2);
   });
+
+  it("bounds accepted termination to one abort and deletion attempt when requested", async () => {
+    const callGateway = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, aborted: true, runIds: ["different-run"] })
+      .mockRejectedValueOnce(new Error("delete unavailable"));
+
+    await expect(
+      terminateAcceptedCollectorRun({
+        childSessionKey: "agent:main:subagent:child",
+        gatewayRunId: "gateway-run",
+        expectedSessionId: "session-id",
+        expectedLifecycleRevision: "session-revision",
+        callGateway,
+        retry: false,
+      }),
+    ).resolves.toBe(false);
+
+    expect(callGateway).toHaveBeenCalledTimes(2);
+  });
 });

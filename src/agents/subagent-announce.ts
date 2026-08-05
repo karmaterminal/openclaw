@@ -329,7 +329,7 @@ export async function runSubagentAnnounceFlow(params: {
         childSessionKey: params.childSessionKey,
         childRunId: stripWakeRunSuffixes(params.childRunId),
       });
-      const woke = await wakeSubagentRunAfterDescendants(
+      const wake = await wakeSubagentRunAfterDescendants(
         {
           runId: params.childRunId,
           childSessionKey: params.childSessionKey,
@@ -341,9 +341,16 @@ export async function runSubagentAnnounceFlow(params: {
         },
         subagentAnnounceDeps,
       );
-      if (woke) {
+      if (wake === "woke") {
         shouldDeleteChildSession = false;
         return true;
+      }
+      if (wake === "termination-unconfirmed") {
+        // An accepted wake run may still own this child session. Keep the session
+        // and leave cleanup unfinished so the registry retries instead of deleting
+        // a session out from under a live run.
+        shouldDeleteChildSession = false;
+        return false;
       }
     }
 

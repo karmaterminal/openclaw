@@ -33,6 +33,7 @@ import {
 } from "./subagent-continuation-ids.js";
 import {
   completeCollectorLaunchCleanup,
+  getSubagentRunByRunId,
   settleFailedQueuedSubagentLaunch,
   startQueuedSubagentRun,
 } from "./subagent-registry.js";
@@ -596,6 +597,9 @@ export async function spawnSubagentDirect(
         groupId: swarmSchedulerGroupKey,
         runId: childRunId,
         start: async () => {
+          // Acceptance is sticky for this deterministic launch identity. A lost
+          // response on a retry cannot prove the previously accepted run stopped.
+          launchTerminationConfirmed = false;
           await runWithGatewayIndependentRootWorkContinuation(async () => {
             const response = await launchChildRun();
             launchAcceptanceObserved = true;
@@ -622,7 +626,10 @@ export async function spawnSubagentDirect(
             return false;
           }
           if (launchAcceptanceObserved && !launchTerminationConfirmed) {
-            return false;
+            // A possibly-live accepted run keeps the FIFO slot and replays the same
+            // persisted idempotency key, but only while this row still owns the
+            // queued work. Once another owner took it, release.
+            return getSubagentRunByRunId(childRunId)?.execution.status !== "queued";
           }
           const launchError = summarizeSpawnError(error);
           const [contextRollback, sessionCleanup] = await Promise.allSettled([

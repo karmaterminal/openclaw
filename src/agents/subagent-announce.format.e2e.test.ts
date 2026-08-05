@@ -2875,6 +2875,70 @@ describe("subagent announce formatting", () => {
     });
   });
 
+  it("keeps the child session when a failed wake leaves termination unconfirmed", async () => {
+    // Only a sessionId: without a frozen lifecycle revision the accepted wake run
+    // cannot be proven stopped.
+    sessionStore = {
+      "agent:main:subagent:parent": {
+        sessionId: "session-parent",
+      },
+    };
+
+    subagentRegistryMock.countPendingDescendantRuns.mockReturnValue(0);
+    subagentRegistryMock.replaceSubagentRunAfterSteer.mockReturnValue(false);
+    subagentRegistryMock.listSubagentRunsForRequester.mockImplementation(
+      (sessionKey: string, scope?: { requesterRunId?: string }) => {
+        if (
+          sessionKey !== "agent:main:subagent:parent" ||
+          scope?.requesterRunId !== "run-parent-unconfirmed-1"
+        ) {
+          return [];
+        }
+        return [
+          {
+            runId: "run-child-a",
+            childSessionKey: "agent:main:subagent:parent:subagent:a",
+            requesterSessionKey: "agent:main:subagent:parent",
+            requesterDisplayKey: "parent",
+            task: "child task a",
+            label: "child-a",
+            cleanup: "keep",
+            createdAt: 10,
+            execution: { endedAt: 20, outcome: { status: "ok" } },
+            cleanupCompletedAt: 21,
+            frozenResultText: "result from child a",
+          },
+        ];
+      },
+    );
+
+    agentSpy.mockResolvedValueOnce(visibleAgentResponse("run-parent-unconfirmed-2"));
+
+    const didAnnounce = await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:parent",
+      childRunId: "run-parent-unconfirmed-1",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      ...defaultOutcomeAnnounce,
+      cleanup: "delete",
+      expectsCompletionMessage: true,
+      wakeOnDescendantSettle: true,
+      roundOneReply: "waiting for children",
+    });
+
+    expect(didAnnounce).toBe(false);
+    expect(callGatewaySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "chat.abort",
+        params: {
+          sessionKey: "agent:main:subagent:parent",
+          runId: "run-parent-unconfirmed-2",
+        },
+      }),
+    );
+    expect(sessionsDeleteSpy).not.toHaveBeenCalled();
+  });
+
   it("does not re-wake an already woken run id", async () => {
     sessionStore = {
       "agent:main:subagent:parent": {

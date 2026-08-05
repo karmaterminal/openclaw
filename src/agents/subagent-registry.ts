@@ -288,6 +288,13 @@ export function resumeSubagentRun(runId: string) {
     resumedRuns.add(runId);
     return;
   }
+  if (entry.acceptedSteerDispatch) {
+    // Exact accepted-dispatch cleanup belongs to the sweeper. Generic resume can
+    // announce, delete, or prune the child session before termination settles.
+    resumedRuns.add(runId);
+    scheduleSubagentRegistrySweep({ delayMs: 1_000 });
+    return;
+  }
   const yieldedWakeWaitingForDelivery =
     entry.requesterSettleWake?.requesterYieldBatch === true &&
     (entry.delivery?.status === "pending" ||
@@ -430,6 +437,7 @@ const subagentSweeper = createSubagentRegistrySweeper({
   runs: subagentRuns,
   resumedRuns,
   persist: persistSubagentRuns,
+  persistOrThrow: persistSubagentRunsOrThrow,
   clearPendingLifecycleError,
   clearPendingLifecycleTimeout,
   sweepPendingLifecycle: (now) => {
@@ -437,6 +445,13 @@ const subagentSweeper = createSubagentRegistrySweeper({
     pendingLifecycle.sweepExpired(now);
   },
   completeSubagentRunWithRecovery: completionRuntime.completeSubagentRunWithRecovery,
+  clearSubagentRunSteerRestart: (runId, expected, acceptedDispatch, requirePersistence) =>
+    subagentRunManager.clearSubagentRunSteerRestart(
+      runId,
+      expected,
+      acceptedDispatch,
+      requirePersistence,
+    ),
   getGatewayRecoveryRuntime: () => subagentRegistryDeps.getGatewayRecoveryRuntime(),
   abandonSubagentRestartRecoveryLaunch: (params) =>
     subagentRunManager.abandonSubagentRestartRecoveryLaunch(params),
@@ -523,6 +538,8 @@ const subagentRunManager = createSubagentRunManager({
 
 export const markSubagentRunForSteerRestart = subagentRunManager.markSubagentRunForSteerRestart;
 export const clearSubagentRunSteerRestart = subagentRunManager.clearSubagentRunSteerRestart;
+export const recordAcceptedSubagentSteerDispatch =
+  subagentRunManager.recordAcceptedSubagentSteerDispatch;
 export const replaceSubagentRunAfterSteer = subagentRunManager.replaceSubagentRunAfterSteer;
 export const claimSubagentRunKill = subagentRunManager.claimSubagentRunKill;
 export const releaseSubagentRunKillClaim = subagentRunManager.releaseSubagentRunKillClaim;

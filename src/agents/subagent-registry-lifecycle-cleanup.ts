@@ -578,7 +578,7 @@ export function createSubagentRegistryLifecycleCleanup(
       onBeforeDeleteChildSession:
         cleanup === "delete"
           ? () => {
-              if (!childSessionEffectsAllowed()) {
+              if (!childSessionEffectsAllowed() || entry.acceptedSteerDispatch) {
                 return false;
               }
               // Announce owns delete submission; fence late yields at the

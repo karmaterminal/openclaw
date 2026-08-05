@@ -221,6 +221,14 @@ type SubagentKillIntent = {
   suppressTaskDelivery?: boolean;
 };
 
+export type SubagentAcceptedSteerDispatch = {
+  gatewayRunId: string;
+  phase?: "dispatching" | "accepted";
+  lifecycleGeneration?: string;
+  expectedSessionId?: string;
+  expectedLifecycleRevision?: string;
+};
+
 export type SubagentRunRecord = {
   runId: string;
   /** Detached task owner; steer/restart changes runId but continues the same task. */
@@ -258,6 +266,8 @@ export type SubagentRunRecord = {
   cleanupCompletedAt?: number;
   cleanupHandled?: boolean;
   suppressAnnounceReason?: "steer-restart" | "killed";
+  /** Accepted steer run awaiting remap or exact termination confirmation. */
+  acceptedSteerDispatch?: SubagentAcceptedSteerDispatch;
   /** Sticky owner while restart recovery replays this exact terminal run. */
   terminalOwner?: "interrupted-recovery";
   /** Present only while a current-version killed run awaits bounded reconciliation. */

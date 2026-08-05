@@ -181,12 +181,19 @@ describe("subagent registry lifecycle error grace", () => {
       countPendingDescendantRunsExcludingRun: mod.countPendingDescendantRunsExcludingRun,
       hasDescendantRunAwaitingSettle: announceRead.hasDescendantRunAwaitingSettle,
       getLatestSubagentRunByChildSessionKey: mod.getLatestSubagentRunByChildSessionKey,
+      getSubagentRunByRunId: async (runId: string) => mod.getSubagentRunByRunId(runId),
       isSubagentSessionRunActive: mod.isSubagentSessionRunActive,
       listAncestorSessionKeys,
       listSubagentRunsForRequester: mod.listSubagentRunsForRequester,
+      recordAcceptedSubagentSteerDispatch: async (
+        params: Parameters<typeof mod.recordAcceptedSubagentSteerDispatch>[0],
+      ) => mod.recordAcceptedSubagentSteerDispatch(params),
       replaceSubagentRunAfterSteer: async (
         params: Parameters<typeof mod.replaceSubagentRunAfterSteer>[0],
       ) => mod.replaceSubagentRunAfterSteer(params),
+      clearSubagentRunSteerRestart: async (
+        ...args: Parameters<typeof mod.clearSubagentRunSteerRestart>
+      ) => mod.clearSubagentRunSteerRestart(...args),
       resolveRequesterForChildSession: mod.resolveRequesterForChildSession,
       shouldIgnorePostCompletionAnnounceForSession:
         mod.shouldIgnorePostCompletionAnnounceForSession,

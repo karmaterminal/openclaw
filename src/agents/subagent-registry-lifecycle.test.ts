@@ -1647,6 +1647,28 @@ describe("subagent registry lifecycle hardening", () => {
     await waitForLifecycleState(() => expect(runs.has(entry.runId)).toBe(false));
   });
 
+  it("defers announce delete while an accepted wake dispatch owns the session", async () => {
+    const entry = createRunEntry({ cleanup: "delete", expectsCompletionMessage: true });
+    const runs = new Map([[entry.runId, entry]]);
+    const runSubagentAnnounceFlow: LifecycleControllerParams["runSubagentAnnounceFlow"] = vi.fn(
+      async (announceParams) => {
+        entry.acceptedSteerDispatch = {
+          gatewayRunId: "accepted-wake-dispatch",
+          phase: "accepted",
+        };
+        expect(announceParams.onBeforeDeleteChildSession?.()).toBe(false);
+        return false;
+      },
+    );
+    const controller = createLifecycleController({ entry, runs, runSubagentAnnounceFlow });
+
+    await completeRun(controller, entry, { triggerCleanup: true });
+    await waitForLifecycleState(() => expect(runSubagentAnnounceFlow).toHaveBeenCalledOnce());
+
+    expect(entry.deleteCleanupDispatchedAt).toBeUndefined();
+    expect(runs.get(entry.runId)).toBe(entry);
+  });
+
   it("discards completion capture when an authoritative yield arrives during the await", async () => {
     const entry = createRunEntry({ expectsCompletionMessage: true });
     let finishCapture: ((result: string) => void) | undefined;
