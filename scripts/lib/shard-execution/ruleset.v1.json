@@ -1,0 +1,33 @@
+{
+  "classifier_version": "1.0.0",
+  "ruleset_id": "shard-execution-ruleset-v1",
+  "identity_fields": ["check_name", "shard_name"],
+  "hermetic": [
+    {
+      "check_name": "checks-node-core-fast-1",
+      "shard_name": "core-unit-fast-1",
+      "local_capabilities": [],
+      "reason": "seed: pure unit-fast stripe; no live gateway/SQLite/journal/SWIM/seat"
+    },
+    {
+      "check_name": "checks-node-core-support",
+      "shard_name": "core-unit-support",
+      "local_capabilities": [],
+      "reason": "seed: unit support graph; no live host services"
+    }
+  ],
+  "host_local": [
+    {
+      "check_name": "checks-node-agentic-control-plane-startup-core",
+      "shard_name": "agentic-control-plane-startup-core",
+      "local_capabilities": ["gateway"],
+      "reason": "seed: cold gateway graph / startup-core needs live gateway substrate"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-storage-state",
+      "shard_name": "core-runtime-infra-storage-state",
+      "local_capabilities": ["sqlite"],
+      "reason": "seed: storage-state path proven against live SQLite/state services"
+    }
+  ]
+}
