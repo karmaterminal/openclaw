@@ -7,6 +7,7 @@ import {
   digestRuleset,
   identityKey,
   loadRuleset,
+  plannerDigest,
   plannerIdentity,
 } from "../../scripts/lib/shard-execution/classify-shard-execution.mjs";
 import defaultRulesetJson from "../../scripts/lib/shard-execution/ruleset.v1.json" with { type: "json" };
@@ -186,14 +187,19 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     ).toThrow(/duplicate emitted planner identity/u);
   });
 
-  it("artifact attests version, digest, exact identity; increment-1 runs-on unchanged", () => {
+  it("artifact attests version, ruleset_digest, planner_digest, exact identity; increment-1 runs-on unchanged", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
-    const artifact = classifyPlan([HERMETIC_SEED, HOST_LOCAL_SEED, UNKNOWN_ROW], ruleset, {
+    const planRows = [HERMETIC_SEED, HOST_LOCAL_SEED, UNKNOWN_ROW];
+    const artifact = classifyPlan(planRows, ruleset, {
       mode: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(artifact.classifier_version).toBe(CLASSIFIER_VERSION);
     expect(artifact.ruleset_digest).toBe(ruleset.ruleset_digest);
+    expect(artifact.planner_digest).toBe(plannerDigest(planRows));
+    expect(artifact.planner_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    // Distinct digests: table bytes ≠ emitted identity set.
+    expect(artifact.planner_digest).not.toBe(artifact.ruleset_digest);
     expect(artifact.runs_on_unchanged).toBe(true);
     expect(artifact.effective_topology).toBe("all-self-hosted");
     expect(artifact.identity_coverage.emitted).toBe(3);
@@ -213,6 +219,24 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     const hermetic = artifact.rows.find((r) => r.capability === "hermetic");
     expect(hermetic?.proposed_execution_class).toBe("hosted");
     expect(hermetic?.effective_execution_class).toBe("self-hosted");
+  });
+
+  it("requires_dist is orthogonal to capability classification", () => {
+    const ruleset = loadRuleset(defaultRulesetJson);
+    const withDist = classifyPlannerRow(
+      { ...HERMETIC_SEED, requiresDist: true, requires_dist: true },
+      ruleset,
+      { mode: "bootstrap", hostedSelectionAvailable: false },
+    );
+    const withoutDist = classifyPlannerRow({ ...HERMETIC_SEED, requiresDist: false }, ruleset, {
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(withDist.capability).toBe("hermetic");
+    expect(withoutDist.capability).toBe("hermetic");
+    expect(withDist.proposed_execution_class).toBe(withoutDist.proposed_execution_class);
+    // Artifact path does not consult requires_dist for capability or route.
+    expect(withDist.local_capabilities).toEqual([]);
   });
 
   it("accepts camelCase planner fields from createNodeTestShards shape", () => {

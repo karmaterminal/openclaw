@@ -38,6 +38,7 @@ export type PlanArtifact = {
   classifier_version: string;
   ruleset_id: string;
   ruleset_digest: string;
+  planner_digest: string;
   mode: ClassifierMode;
   hosted_selection_available: boolean;
   identity_coverage: {
@@ -60,6 +61,8 @@ export function plannerIdentity(row: {
 }): PlannerIdentity;
 
 export function identityKey(identity: PlannerIdentity): string;
+
+export function plannerDigest(rows: object[]): string;
 
 export function loadRuleset(source?: string | object): {
   classifier_version: string;

@@ -37,6 +37,25 @@ export function identityKey(identity) {
   return `${id.check_name}\u0000${id.shard_name}`;
 }
 
+/**
+ * Digest of the exact emitted planner identity set (canonical ordered tuples).
+ * Distinct from ruleset_digest: stable table bytes do not prove plan coverage.
+ * @param {object[]} rows
+ */
+export function plannerDigest(rows) {
+  if (!Array.isArray(rows)) {
+    throw new Error("plannerDigest rows must be an array");
+  }
+  const identities = rows
+    .map((row) => plannerIdentity(row))
+    .toSorted(
+      (a, b) =>
+        a.check_name.localeCompare(b.check_name) || a.shard_name.localeCompare(b.shard_name),
+    )
+    .map((id) => [id.check_name, id.shard_name]);
+  return `sha256:${createHash("sha256").update(JSON.stringify(identities)).digest("hex")}`;
+}
+
 function assertStringArray(value, path) {
   if (!Array.isArray(value)) {
     throw new Error(`${path} must be an array`);
@@ -309,6 +328,8 @@ export function classifyPlan(rows, ruleset, options = {}) {
     classifier_version: ruleset.classifier_version,
     ruleset_id: ruleset.ruleset_id,
     ruleset_digest: ruleset.ruleset_digest,
+    // Distinct from ruleset_digest: covers the emitted identity set for this plan.
+    planner_digest: plannerDigest(rows),
     mode,
     hosted_selection_available: options.hostedSelectionAvailable ?? mode === "mixed",
     identity_coverage: {
@@ -316,7 +337,7 @@ export function classifyPlan(rows, ruleset, options = {}) {
       matched: classifications.filter((c) => c.match === "exact").length,
       unknown: unknowns.length,
       blocked: blocked.length,
-      // Exact digest-bound coverage ratio (not a soft threshold gate).
+      // Exact digest-bound coverage ratio (not a soft %-threshold gate).
       matched_ratio:
         classifications.length === 0
           ? 1
