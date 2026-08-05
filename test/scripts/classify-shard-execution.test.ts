@@ -120,7 +120,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     expect(row.planner_identity).toEqual(plannerIdentity(HOST_LOCAL_SEED));
   });
 
-  it("proof 3 Mode A: unknown → self-hosted + diagnostic while hosted absent", () => {
+  it("proof 3 Mode A audit: unknown → proposed blocked + audit finding; effective stays pre-existing self-hosted", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
     const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
       mode: "bootstrap",
@@ -128,14 +128,25 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     });
     expect(row.capability).toBe("unknown");
     expect(row.match).toBe("unmatched");
-    expect(row.proposed_execution_class).toBe("self-hosted");
+    // Total classifier: proposed is always blocked for unknown (not soft-local).
+    expect(row.proposed_execution_class).toBe("blocked");
+    expect(row.blocked).toBe(true);
+    // Effective remains pre-existing self-hosted: classifier has zero runs-on authority.
     expect(row.effective_execution_class).toBe("self-hosted");
-    expect(row.blocked).toBe(false);
-    expect(row.diagnostic?.code).toBe("unknown_identity_bootstrap");
+    expect(row.diagnostic?.code).toBe("unknown_identity_audit");
     expect(row.hosted_selection_available).toBe(false);
+
+    // Audit plan does not throw on unknown — emits finding; topology unchanged.
+    const artifact = classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(artifact.identity_coverage.unknown).toBe(1);
+    expect(artifact.runs_on_unchanged).toBe(true);
+    expect(artifact.rows.every((r) => r.effective_execution_class === "self-hosted")).toBe(true);
   });
 
-  it("proof 4 Mode B: unknown → terminal, no runs-on / matrix", () => {
+  it("proof 4 Mode B mixed: unknown → proposed blocked; planner-layer terminal before matrix/runs-on", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
     const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
       mode: "mixed",
@@ -144,6 +155,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     expect(row.capability).toBe("unknown");
     expect(row.proposed_execution_class).toBe("blocked");
     expect(row.blocked).toBe(true);
+    expect(row.effective_execution_class).toBe("self-hosted");
     expect(row.diagnostic?.code).toBe("unknown_identity_terminal");
 
     expect(() =>

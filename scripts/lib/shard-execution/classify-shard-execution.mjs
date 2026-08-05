@@ -232,6 +232,10 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
   }
 
   // Prospective route the hybrid planner would take (proposed_*).
+  // unknown is always proposed blocked (total classifier result) — never a
+  // soft-local/self-hosted proposed route. Effective stays pre-existing
+  // self-hosted in increment-1 because the classifier has zero authority
+  // over runs-on (not a grey-row fallback).
   let proposed_execution_class;
   let blocked = false;
   let diagnostic = null;
@@ -240,27 +244,25 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
     proposed_execution_class = "hosted";
   } else if (capability === "host_local") {
     proposed_execution_class = "self-hosted";
-  } else if (mode === "bootstrap") {
-    // Mode A: unknown → self-hosted + diagnostic while hosted is unreachable.
-    proposed_execution_class = "self-hosted";
-    diagnostic = {
-      code: "unknown_identity_bootstrap",
-      message:
-        "unknown planner identity routed self-hosted because hosted selection is structurally unavailable for this run; still subject to eligibility/slot guards",
-    };
   } else {
-    // Mode B: unknown is terminal before runs-on / matrix row.
     proposed_execution_class = "blocked";
     blocked = true;
-    diagnostic = {
-      code: "unknown_identity_terminal",
-      message:
-        "unknown planner identity is a terminal planning error under mixed routing; no runs-on selection",
-    };
+    diagnostic =
+      mode === "bootstrap"
+        ? {
+            code: "unknown_identity_audit",
+            message:
+              "unknown planner identity: proposed_execution_class=blocked; effective remains pre-existing self-hosted because classifier has zero runs-on authority in increment-1 audit",
+          }
+        : {
+            code: "unknown_identity_terminal",
+            message:
+              "unknown planner identity is a terminal planning error under mixed routing; planner must reject before matrix/runs-on creation",
+          };
   }
 
-  // Increment-1 effective routing stays all-self-hosted / unchanged.
-  // Classification emission must not be read as a dispatch decision.
+  // Increment-1: classifier cannot alter runs-on. Effective is always the
+  // pre-existing self-hosted route for attestation/regression surfaces.
   const effective_execution_class = "self-hosted";
 
   return {
@@ -311,6 +313,9 @@ export function classifyPlan(rows, ruleset, options = {}) {
   const unknowns = classifications.filter((c) => c.capability === "unknown");
   const blocked = classifications.filter((c) => c.blocked);
 
+  // Mode B (mixed): planner-layer reject before matrix/runs-on. The pure
+  // classifier already marked unknowns blocked; the plan helper enforces the
+  // terminal contract when mixed selection is in force.
   if (mode === "mixed" && unknowns.length > 0) {
     const err = new Error(
       `plan/classification error: ${unknowns.length} unknown identity(ies) under mixed routing; refusing matrix/runs-on creation`,
@@ -321,9 +326,10 @@ export function classifyPlan(rows, ruleset, options = {}) {
     throw err;
   }
 
-  // Coverage: 100% of emitted identities for this plan must be classified
-  // (every row has a classification object). Unmatched is still "classified"
-  // as unknown; Mode B throws above. Mode A keeps them with diagnostics.
+  // Mode A (audit/bootstrap): unmatched rows may exist; they emit as
+  // unknown+blocked proposed with audit findings. Topology stays
+  // all-self-hosted because classifier has zero runs-on authority — not
+  // because unknown was proposed self-hosted.
   const artifact = {
     classifier_version: ruleset.classifier_version,
     ruleset_id: ruleset.ruleset_id,

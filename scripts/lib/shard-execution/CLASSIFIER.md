@@ -4,11 +4,12 @@ Pure data-plane for #1341. Does **not** change `runs-on`.
 
 ## Modes
 
-- **Mode A (`bootstrap`)** — hosted selection is structurally unavailable for the whole run.
-  `unknown` → proposed `self-hosted` + diagnostic. Existing eligibility/slot guards still apply.
-- **Mode B (`mixed`)** — hosted routing is reachable.
-  `unknown` → terminal planning error before any matrix / `runs-on` resolution.
-  No `unknown → self-hosted` fallback once hosted exists.
+Classifier result is **total**: unmatched → `capability: unknown` + `proposed_execution_class: blocked` always.
+
+- **Mode A (`bootstrap` / increment-1 audit)** — hosted selection dark; classifier has **zero** `runs-on` authority.
+  Unknown rows may be emitted with audit findings. `effective_execution_class` stays the pre-existing self-hosted route (not a grey-row fallback; topology unchanged because routing is untouched).
+- **Mode B (`mixed`)** — hosted routing reachable.
+  Require `unknown_count === 0` on the exact planner digest before selection is enabled. If unknown occurs, **planner** rejects before matrix / `runs-on` creation. No `unknown → self-hosted` proposed route.
 
 ## Failure sites
 
