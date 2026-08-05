@@ -65,7 +65,7 @@ async function loadPlannerRows() {
 }
 
 function loudSummary(artifact) {
-  const unknowns = artifact.rows.filter((row) => row.capability === "unknown");
+  const unknowns = artifact.rows.filter((row) => row.capability_class === "unknown");
   const lines = [
     `[shard-execution-classifier] version=${artifact.classifier_version}`,
     `[shard-execution-classifier] ruleset_digest=${artifact.ruleset_digest}`,

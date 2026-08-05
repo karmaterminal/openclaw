@@ -20,7 +20,7 @@ export type ClassifyOptions = {
 export type ClassificationRow = {
   planner_identity: PlannerIdentity;
   match: "exact" | "unmatched" | "none";
-  capability: CapabilityClass;
+  capability_class: CapabilityClass;
   local_capabilities: string[];
   reason: string;
   proposed_execution_class: ProposedExecutionClass;
@@ -68,8 +68,8 @@ export function loadRuleset(source?: string | object): {
   classifier_version: string;
   ruleset_id: string;
   identity_fields: string[];
-  hermetic: Array<PlannerIdentity & { capability: "hermetic"; local_capabilities: string[]; reason: string }>;
-  host_local: Array<PlannerIdentity & { capability: "host_local"; local_capabilities: string[]; reason: string }>;
+  hermetic: Array<PlannerIdentity & { capability_class: "hermetic"; local_capabilities: string[]; reason: string }>;
+  host_local: Array<PlannerIdentity & { capability_class: "host_local"; local_capabilities: string[]; reason: string }>;
   ruleset_digest: string;
   byKey: Map<string, unknown>;
 };

@@ -12,7 +12,7 @@ export const DEFAULT_RULESET_PATH = join(
   "ruleset.v1.json",
 );
 
-const VALID_CAPABILITIES = new Set(["hermetic", "host_local", "unknown"]);
+const VALID_CAPABILITY_CLASSES = new Set(["hermetic", "host_local", "unknown"]);
 const VALID_MODES = new Set(["bootstrap", "mixed"]);
 const VALID_LOCAL_CAPS = new Set(["gateway", "sqlite", "journal", "swim", "seat"]);
 
@@ -67,7 +67,7 @@ function assertStringArray(value, path) {
   }
 }
 
-function normalizeTableRow(row, path, expectedCapability) {
+function normalizeTableRow(row, path, expectedCapabilityClass) {
   if (row === null || typeof row !== "object" || Array.isArray(row)) {
     throw new Error(`${path} must be an object`);
   }
@@ -81,10 +81,10 @@ function normalizeTableRow(row, path, expectedCapability) {
       );
     }
   }
-  if (expectedCapability === "hermetic" && local_capabilities.length > 0) {
+  if (expectedCapabilityClass === "hermetic" && local_capabilities.length > 0) {
     throw new Error(`${path}: hermetic rows must not declare local_capabilities`);
   }
-  if (expectedCapability === "host_local" && local_capabilities.length === 0) {
+  if (expectedCapabilityClass === "host_local" && local_capabilities.length === 0) {
     throw new Error(`${path}: host_local rows must declare at least one local_capability`);
   }
   const reason = row.reason;
@@ -93,7 +93,7 @@ function normalizeTableRow(row, path, expectedCapability) {
   }
   return {
     ...identity,
-    capability: expectedCapability,
+    capability_class: expectedCapabilityClass,
     local_capabilities: [...local_capabilities].toSorted((a, b) => a.localeCompare(b)),
     reason,
   };
@@ -189,7 +189,7 @@ export function digestRuleset(canonical) {
 }
 
 /**
- * Classify one planner row. Absent identity → capability unknown (not a load error).
+ * Classify one planner row. Absent identity → capability_class unknown (not a load error).
  * @param {object} row planner identity-bearing row
  * @param {object} ruleset from loadRuleset
  * @param {{ mode?: 'bootstrap'|'mixed', hostedSelectionAvailable?: boolean }} options
@@ -210,25 +210,25 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
   const identity = plannerIdentity(row);
   const hit = ruleset.byKey.get(identityKey(identity));
 
-  let capability;
+  let capability_class;
   let local_capabilities;
   let reason;
   let match = "none";
 
   if (!hit) {
-    capability = "unknown";
+    capability_class = "unknown";
     local_capabilities = [];
     reason = "emitted planner identity absent from digest-bound ruleset";
     match = "unmatched";
   } else {
-    capability = hit.capability;
+    capability_class = hit.capability_class;
     local_capabilities = hit.local_capabilities;
     reason = hit.reason;
     match = "exact";
   }
 
-  if (!VALID_CAPABILITIES.has(capability)) {
-    throw new Error(`internal: invalid capability ${capability}`);
+  if (!VALID_CAPABILITY_CLASSES.has(capability_class)) {
+    throw new Error(`internal: invalid capability_class ${capability_class}`);
   }
 
   // Prospective route the hybrid planner would take (proposed_*).
@@ -240,9 +240,9 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
   let blocked = false;
   let diagnostic = null;
 
-  if (capability === "hermetic") {
+  if (capability_class === "hermetic") {
     proposed_execution_class = "hosted";
-  } else if (capability === "host_local") {
+  } else if (capability_class === "host_local") {
     proposed_execution_class = "self-hosted";
   } else {
     proposed_execution_class = "blocked";
@@ -268,7 +268,7 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
   return {
     planner_identity: identity,
     match,
-    capability,
+    capability_class,
     local_capabilities,
     reason,
     proposed_execution_class,
@@ -310,7 +310,7 @@ export function classifyPlan(rows, ruleset, options = {}) {
     classifications.push(classifyPlannerRow(row, ruleset, options));
   }
 
-  const unknowns = classifications.filter((c) => c.capability === "unknown");
+  const unknowns = classifications.filter((c) => c.capability_class === "unknown");
   const blocked = classifications.filter((c) => c.blocked);
 
   // classifyPlan is the audit/attestation assemble path. It MAY include
@@ -358,7 +358,7 @@ export function assertMixedRoutingEligible(planOrArtifact) {
   if (!Array.isArray(rows)) {
     throw new Error("assertMixedRoutingEligible requires a classifyPlan artifact with rows");
   }
-  const unknownRows = rows.filter((row) => row.capability === "unknown");
+  const unknownRows = rows.filter((row) => row.capability_class === "unknown");
   if (unknownRows.length > 0) {
     const err = new Error(
       `mixed-routing ineligible: ${unknownRows.length} unknown identity(ies); refusing matrix/runs-on selection`,

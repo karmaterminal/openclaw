@@ -1,32 +1,663 @@
 {
   "classifier_version": "1.0.0",
   "ruleset_id": "shard-execution-ruleset-v1",
-  "identity_fields": ["check_name", "shard_name"],
+  "identity_fields": [
+    "check_name",
+    "shard_name"
+  ],
   "hermetic": [
+    {
+      "check_name": "checks-node-agentic-agents-core-auth",
+      "shard_name": "agentic-agents-core-auth",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-isolated",
+      "shard_name": "agentic-agents-core-isolated",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-models",
+      "shard_name": "agentic-agents-core-models",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-runner-cli-1",
+      "shard_name": "agentic-agents-core-runner-cli-1",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-runner-cli-2",
+      "shard_name": "agentic-agents-core-runner-cli-2",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-runner-cli-3",
+      "shard_name": "agentic-agents-core-runner-cli-3",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-runner-commands",
+      "shard_name": "agentic-agents-core-runner-commands",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-runner-embedded",
+      "shard_name": "agentic-agents-core-runner-embedded",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-runner-sessions",
+      "shard_name": "agentic-agents-core-runner-sessions",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-runtime",
+      "shard_name": "agentic-agents-core-runtime",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-subagents",
+      "shard_name": "agentic-agents-core-subagents",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-core-tools",
+      "shard_name": "agentic-agents-core-tools",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-embedded",
+      "shard_name": "agentic-agents-embedded",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-support",
+      "shard_name": "agentic-agents-support",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-agents-tools",
+      "shard_name": "agentic-agents-tools",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-cli",
+      "shard_name": "agentic-cli",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-command-support",
+      "shard_name": "agentic-command-support",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-agent-channel",
+      "shard_name": "agentic-commands-agent-channel",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor",
+      "shard_name": "agentic-commands-doctor",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-auth",
+      "shard_name": "agentic-commands-doctor-auth",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-config-state",
+      "shard_name": "agentic-commands-doctor-config-state",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-device",
+      "shard_name": "agentic-commands-doctor-device",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-gateway",
+      "shard_name": "agentic-commands-doctor-gateway",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-platform",
+      "shard_name": "agentic-commands-doctor-platform",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-plugins-tools",
+      "shard_name": "agentic-commands-doctor-plugins-tools",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-sessions-cron",
+      "shard_name": "agentic-commands-doctor-sessions-cron",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-shared",
+      "shard_name": "agentic-commands-doctor-shared",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-whatsapp",
+      "shard_name": "agentic-commands-doctor-whatsapp",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor-workspace",
+      "shard_name": "agentic-commands-doctor-workspace",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-models",
+      "shard_name": "agentic-commands-models",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-onboard-config",
+      "shard_name": "agentic-commands-onboard-config",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-commands-status-tools",
+      "shard_name": "agentic-commands-status-tools",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-agent-chat",
+      "shard_name": "agentic-control-plane-agent-chat",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-auth-node",
+      "shard_name": "agentic-control-plane-auth-node",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-http-models",
+      "shard_name": "agentic-control-plane-http-models",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-http-plugin-ws",
+      "shard_name": "agentic-control-plane-http-plugin-ws",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-runtime",
+      "shard_name": "agentic-control-plane-runtime",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-runtime-config",
+      "shard_name": "agentic-control-plane-runtime-config",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-runtime-cron",
+      "shard_name": "agentic-control-plane-runtime-cron",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-runtime-network",
+      "shard_name": "agentic-control-plane-runtime-network",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-runtime-server",
+      "shard_name": "agentic-control-plane-runtime-server",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-runtime-shared-token",
+      "shard_name": "agentic-control-plane-runtime-shared-token",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-runtime-state",
+      "shard_name": "agentic-control-plane-runtime-state",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-runtime-ui-tools",
+      "shard_name": "agentic-control-plane-runtime-ui-tools",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-startup-config",
+      "shard_name": "agentic-control-plane-startup-config",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-startup-health-runtime",
+      "shard_name": "agentic-control-plane-startup-health-runtime",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-control-plane-startup-restart-close",
+      "shard_name": "agentic-control-plane-startup-restart-close",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-gateway-core",
+      "shard_name": "agentic-gateway-core",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-gateway-methods",
+      "shard_name": "agentic-gateway-methods",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-plugin-sdk",
+      "shard_name": "agentic-plugin-sdk",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-agentic-plugins",
+      "shard_name": "agentic-plugins",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-auto-reply-core-top-level",
+      "shard_name": "auto-reply-core-top-level",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-auto-reply-reply-agent-runner",
+      "shard_name": "auto-reply-reply-agent-runner",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-auto-reply-reply-commands-1",
+      "shard_name": "auto-reply-reply-commands-1",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-auto-reply-reply-commands-2",
+      "shard_name": "auto-reply-reply-commands-2",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-auto-reply-reply-commands-3",
+      "shard_name": "auto-reply-reply-commands-3",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-auto-reply-reply-dispatch",
+      "shard_name": "auto-reply-reply-dispatch",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-auto-reply-reply-session",
+      "shard_name": "auto-reply-reply-session",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-auto-reply-reply-state-routing",
+      "shard_name": "auto-reply-reply-state-routing",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
     {
       "check_name": "checks-node-core-fast-1",
       "shard_name": "core-unit-fast-1",
       "local_capabilities": [],
-      "reason": "seed: pure unit-fast stripe; no live gateway/SQLite/journal/SWIM/seat"
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-fast-2",
+      "shard_name": "core-unit-fast-2",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-fast-isolated",
+      "shard_name": "core-unit-fast-isolated",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-cron-core",
+      "shard_name": "core-runtime-cron-core",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-cron-isolated-agent",
+      "shard_name": "core-runtime-cron-isolated-agent",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-cron-service",
+      "shard_name": "core-runtime-cron-service",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-hooks",
+      "shard_name": "core-runtime-hooks",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-approval-exec",
+      "shard_name": "core-runtime-infra-approval-exec",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-channel-plugin",
+      "shard_name": "core-runtime-infra-channel-plugin",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-cli-ui",
+      "shard_name": "core-runtime-infra-cli-ui",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-core-utils",
+      "shard_name": "core-runtime-infra-core-utils",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-device",
+      "shard_name": "core-runtime-infra-device",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-diagnostics-state",
+      "shard_name": "core-runtime-infra-diagnostics-state",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-env-auth",
+      "shard_name": "core-runtime-infra-env-auth",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-events-runtime",
+      "shard_name": "core-runtime-infra-events-runtime",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-file-safety",
+      "shard_name": "core-runtime-infra-file-safety",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-files-commands",
+      "shard_name": "core-runtime-infra-files-commands",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-gateway-lock-argv",
+      "shard_name": "core-runtime-infra-gateway-lock-argv",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-gateway-processes",
+      "shard_name": "core-runtime-infra-gateway-processes",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-gateway-watch",
+      "shard_name": "core-runtime-infra-gateway-watch",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-heartbeat-core",
+      "shard_name": "core-runtime-infra-heartbeat-core",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-heartbeat-runner",
+      "shard_name": "core-runtime-infra-heartbeat-runner",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-misc",
+      "shard_name": "core-runtime-infra-misc",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-misc-dedupe-disk",
+      "shard_name": "core-runtime-infra-misc-dedupe-disk",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-misc-os",
+      "shard_name": "core-runtime-infra-misc-os",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-misc-values",
+      "shard_name": "core-runtime-infra-misc-values",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-net-install",
+      "shard_name": "core-runtime-infra-net-install",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-network-node",
+      "shard_name": "core-runtime-infra-network-node",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-network-platform",
+      "shard_name": "core-runtime-infra-network-platform",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-outbound-actions",
+      "shard_name": "core-runtime-infra-outbound-actions",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-outbound-core",
+      "shard_name": "core-runtime-infra-outbound-core",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-process",
+      "shard_name": "core-runtime-infra-process",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-provider-push",
+      "shard_name": "core-runtime-infra-provider-push",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-repo-tooling",
+      "shard_name": "core-runtime-infra-repo-tooling",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-system-runtime",
+      "shard_name": "core-runtime-infra-system-runtime",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-media-ui",
+      "shard_name": "core-runtime-media-ui",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-secrets",
+      "shard_name": "core-runtime-secrets",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-shared",
+      "shard_name": "core-runtime-shared",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-runtime-tui-pty",
+      "shard_name": "core-runtime-tui-pty",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-src-security",
+      "shard_name": "core-unit-src-security",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
     },
     {
       "check_name": "checks-node-core-support",
       "shard_name": "core-unit-support",
       "local_capabilities": [],
-      "reason": "seed: unit support graph; no live host services"
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-support-boundary",
+      "shard_name": "core-support-boundary",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-tooling-1",
+      "shard_name": "core-tooling-1",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-tooling-2",
+      "shard_name": "core-tooling-2",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-tooling-3",
+      "shard_name": "core-tooling-3",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-tooling-4",
+      "shard_name": "core-tooling-4",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
+    },
+    {
+      "check_name": "checks-node-core-tooling-isolated",
+      "shard_name": "core-tooling-isolated",
+      "local_capabilities": [],
+      "reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)"
     }
   ],
   "host_local": [
     {
       "check_name": "checks-node-agentic-control-plane-startup-core",
       "shard_name": "agentic-control-plane-startup-core",
-      "local_capabilities": ["gateway"],
+      "local_capabilities": [
+        "gateway"
+      ],
       "reason": "seed: cold gateway graph / startup-core needs live gateway substrate"
     },
     {
       "check_name": "checks-node-core-runtime-infra-storage-state",
       "shard_name": "core-runtime-infra-storage-state",
-      "local_capabilities": ["sqlite"],
+      "local_capabilities": [
+        "sqlite"
+      ],
       "reason": "seed: storage-state path proven against live SQLite/state services"
     }
   ]
