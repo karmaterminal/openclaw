@@ -1233,13 +1233,13 @@ export async function steerControlledSubagentRun(params: {
   const initialDispatchOwner = recordSteerDispatch(idempotencyKey, "dispatching");
   if (initialDispatchOwner.status !== "persisted") {
     if (initialDispatchOwner.status !== "rejected") {
-      const cleared = clearSubagentRunSteerRestart(
+      const rollbackCleared = clearSubagentRunSteerRestart(
         initialDispatchOwner.ownerRunId,
         initialDispatchOwner.owner,
         initialDispatchOwner.dispatch,
         true,
       );
-      if (!cleared) {
+      if (!rollbackCleared) {
         // No RPC was sent, but an uncommitted rollback still needs the same
         // durable reconciliation path instead of a permanent steer marker.
         recordSteerDispatch(idempotencyKey, "accepted");
