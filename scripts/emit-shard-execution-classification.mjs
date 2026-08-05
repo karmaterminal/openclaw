@@ -72,7 +72,7 @@ function loudSummary(artifact) {
     `[shard-execution-classifier] planner_digest=${artifact.planner_digest}`,
     `[shard-execution-classifier] emitted=${artifact.identity_coverage.emitted} matched=${artifact.identity_coverage.matched} unknown_count=${artifact.identity_coverage.unknown}`,
     `[shard-execution-classifier] runs_on_unchanged=${artifact.runs_on_unchanged} effective_topology=${artifact.effective_topology}`,
-    `[shard-execution-classifier] mode=${artifact.mode} (audit emit only; assertMixedRoutingEligible NOT called)`,
+    `[shard-execution-classifier] policy=${artifact.policy} (bootstrap explicit; assertMixedRoutingEligible NOT called)`,
   ];
   if (unknowns.length > 0) {
     lines.push(
@@ -100,9 +100,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const rows = await loadPlannerRows();
   const ruleset = loadRuleset(args.rulesetPath);
-  // Mode A audit: may include unknown; do NOT call assertMixedRoutingEligible.
+  // bootstrap policy MUST be explicit (never default). Do NOT call assertMixedRoutingEligible.
   const artifact = classifyPlan(rows, ruleset, {
-    mode: "bootstrap",
+    policy: "bootstrap",
     hostedSelectionAvailable: false,
   });
 

@@ -6,14 +6,19 @@ export type PlannerIdentity = {
   shard_name: string;
 };
 
-export type ClassifierMode = "bootstrap" | "mixed";
+export type ClassifierPolicy = "bootstrap" | "enforced";
+/** @deprecated use ClassifierPolicy; "mixed" was renamed to enforced */
+export type ClassifierMode = ClassifierPolicy;
 
 export type CapabilityClass = "hermetic" | "host_local" | "unknown";
 
 export type ProposedExecutionClass = "hosted" | "self-hosted" | "blocked";
 
 export type ClassifyOptions = {
-  mode?: ClassifierMode;
+  /** Explicit policy. Default = enforced. bootstrap is NEVER implicit. */
+  policy?: ClassifierPolicy;
+  /** @deprecated use policy; "mixed" aliases to enforced */
+  mode?: ClassifierPolicy | "mixed";
   hostedSelectionAvailable?: boolean;
 };
 
@@ -24,7 +29,7 @@ export type ClassificationRow = {
   local_capabilities: string[];
   reason: string;
   proposed_execution_class: ProposedExecutionClass;
-  /** Mode A always; Mode B rejected-unknown omits (no effective route). */
+  /** bootstrap always; enforced rejected-unknown omits (no effective route). */
   effective_execution_class?: "self-hosted";
   blocked: boolean;
   diagnostic: { code: string; message: string } | null;
@@ -33,7 +38,8 @@ export type ClassificationRow = {
   /** Stamped by classifyPlan once emitted identity set is known. */
   planner_digest?: string;
   ruleset_id: string;
-  mode: ClassifierMode;
+  policy: ClassifierPolicy;
+  mode: ClassifierPolicy;
   hosted_selection_available: boolean;
 };
 
@@ -42,7 +48,8 @@ export type PlanArtifact = {
   ruleset_id: string;
   ruleset_digest: string;
   planner_digest: string;
-  mode: ClassifierMode;
+  policy: ClassifierPolicy;
+  mode: ClassifierPolicy;
   hosted_selection_available: boolean;
   identity_coverage: {
     emitted: number;

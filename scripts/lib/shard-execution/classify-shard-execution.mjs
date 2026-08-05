@@ -13,8 +13,29 @@ export const DEFAULT_RULESET_PATH = join(
 );
 
 const VALID_CAPABILITY_CLASSES = new Set(["hermetic", "host_local", "unknown"]);
-const VALID_MODES = new Set(["bootstrap", "mixed"]);
+const VALID_POLICIES = new Set(["bootstrap", "enforced"]);
 const VALID_LOCAL_CAPS = new Set(["gateway", "sqlite", "journal", "swim", "seat"]);
+
+/**
+ * Resolve classifier policy (🌻 #1534401854522396702).
+ * bootstrap is NEVER implicit — must be options.policy/mode === "bootstrap".
+ * Default (omit / mixed-routing planner) = enforced.
+ * Legacy mode "mixed" aliases to enforced.
+ * @param {{ policy?: string, mode?: string }} options
+ */
+function resolvePolicy(options = {}) {
+  const raw = options.policy ?? options.mode;
+  if (raw === undefined || raw === null || raw === "") {
+    return "enforced";
+  }
+  if (raw === "mixed") {
+    return "enforced";
+  }
+  if (!VALID_POLICIES.has(raw)) {
+    throw new Error(`invalid classifier policy: ${raw}`);
+  }
+  return raw;
+}
 
 /**
  * Stable planner identity tuple used for table match + attestation.
@@ -192,19 +213,16 @@ export function digestRuleset(canonical) {
  * Classify one planner row. Absent identity → capability_class unknown (not a load error).
  * @param {object} row planner identity-bearing row
  * @param {object} ruleset from loadRuleset
- * @param {{ mode?: 'bootstrap'|'mixed', hostedSelectionAvailable?: boolean }} options
+ * @param {{ policy?: 'bootstrap'|'enforced', mode?: 'bootstrap'|'mixed'|'enforced', hostedSelectionAvailable?: boolean }} options
  */
 export function classifyPlannerRow(row, ruleset, options = {}) {
-  const mode = options.mode ?? "bootstrap";
-  if (!VALID_MODES.has(mode)) {
-    throw new Error(`invalid classifier mode: ${mode}`);
+  const policy = resolvePolicy(options);
+  const hostedSelectionAvailable = options.hostedSelectionAvailable ?? policy === "enforced";
+  if (policy === "bootstrap" && hostedSelectionAvailable) {
+    throw new Error("bootstrap policy requires hostedSelectionAvailable=false");
   }
-  const hostedSelectionAvailable = options.hostedSelectionAvailable ?? mode === "mixed";
-  if (mode === "bootstrap" && hostedSelectionAvailable) {
-    throw new Error("bootstrap mode requires hostedSelectionAvailable=false");
-  }
-  if (mode === "mixed" && !hostedSelectionAvailable) {
-    throw new Error("mixed mode requires hostedSelectionAvailable=true");
+  if (policy === "enforced" && !hostedSelectionAvailable) {
+    throw new Error("enforced policy requires hostedSelectionAvailable=true");
   }
 
   const identity = plannerIdentity(row);
@@ -248,23 +266,22 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
     proposed_execution_class = "blocked";
     blocked = true;
     diagnostic =
-      mode === "bootstrap"
+      policy === "bootstrap"
         ? {
             code: "unknown_identity_audit",
             message:
-              "unknown planner identity: proposed_execution_class=blocked; effective remains pre-existing self-hosted because classifier has zero runs-on authority in increment-1 audit",
+              "unknown planner identity: proposed_execution_class=blocked; effective remains pre-existing self-hosted because classifier has zero runs-on authority under bootstrap policy",
           }
         : {
             code: "unknown_identity_terminal",
             message:
-              "unknown planner identity is a terminal planning error under mixed routing; planner must reject before matrix/runs-on creation",
+              "unknown planner identity is a terminal planning error under enforced policy; planner must reject before matrix/runs-on creation",
           };
   }
 
-  // Mode A (bootstrap): effective is always the pre-existing self-hosted route
-  // (classifier has zero runs-on authority). Mode B rejected unknown: NO effective
-  // field — terminal before matrix means no effective route exists (🌫/🌻 cardinality).
-  // Unmatched Mode A proposed is ALWAYS blocked — never self-hosted (🪨 #1534401740).
+  // bootstrap: effective is always the pre-existing self-hosted route (zero runs-on
+  // authority). enforced rejected unknown: NO effective field — terminal before matrix
+  // (🌻 #1534401854522396702). Unmatched proposed is ALWAYS blocked (🪨 #1534401740).
   const out = {
     planner_identity: identity,
     match,
@@ -278,27 +295,28 @@ export function classifyPlannerRow(row, ruleset, options = {}) {
     // planner_digest stamped by classifyPlan once the emitted set is known.
     ruleset_digest: ruleset.ruleset_digest,
     ruleset_id: ruleset.ruleset_id,
-    mode,
+    policy,
+    mode: policy, // mirror
     hosted_selection_available: hostedSelectionAvailable,
   };
-  if (!(mode === "mixed" && capability_class === "unknown")) {
+  if (!(policy === "enforced" && capability_class === "unknown")) {
     out.effective_execution_class = "self-hosted";
   }
   return out;
 }
 
 /**
- * Classify a full emitted plan. Enforces mode contracts at the plan layer.
+ * Classify a full emitted plan. Enforces policy contracts at the plan layer.
  * @param {object[]} rows
  * @param {object} ruleset
- * @param {{ mode?: 'bootstrap'|'mixed', hostedSelectionAvailable?: boolean }} options
+ * @param {{ policy?: 'bootstrap'|'enforced', mode?: 'bootstrap'|'mixed'|'enforced', hostedSelectionAvailable?: boolean }} options
  */
 export function classifyPlan(rows, ruleset, options = {}) {
   if (!Array.isArray(rows)) {
     throw new Error("classifyPlan rows must be an array");
   }
 
-  const mode = options.mode ?? "bootstrap";
+  const policy = resolvePolicy(options);
   const classifications = [];
   const seen = new Map();
 
@@ -327,17 +345,17 @@ export function classifyPlan(rows, ruleset, options = {}) {
     c.classifier_version = ruleset.classifier_version;
   }
 
-  // classifyPlan is the audit/attestation assemble path. It MAY include
-  // unknown rows (proposed blocked). Mixed-routing eligibility is enforced
-  // only by assertMixedRoutingEligible (dark policy seam) — do NOT call that
-  // from the increment-1 workflow.
+  // classifyPlan may include unknown rows (proposed blocked). Under bootstrap
+  // those are attested with effective self-hosted; under enforced they omit
+  // effective and assertMixedRoutingEligible is the terminal gate (not called here).
   const artifact = {
     classifier_version: ruleset.classifier_version,
     ruleset_id: ruleset.ruleset_id,
     ruleset_digest: ruleset.ruleset_digest,
     planner_digest,
-    mode,
-    hosted_selection_available: options.hostedSelectionAvailable ?? mode === "mixed",
+    policy,
+    mode: policy,
+    hosted_selection_available: options.hostedSelectionAvailable ?? policy === "enforced",
     identity_coverage: {
       emitted: classifications.length,
       matched: classifications.filter((c) => c.match === "exact").length,

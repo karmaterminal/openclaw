@@ -103,7 +103,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
   it("1. hermetic → proposed_execution_class=hosted", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     const row = classifyPlannerRow(HERMETIC_SEED, ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(row.capability_class).toBe("hermetic");
@@ -119,7 +119,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
   it("2. host-local → self-hosted + expected local_capabilities", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     const row = classifyPlannerRow(HOST_LOCAL_SEED, ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(row.capability_class).toBe("host_local");
@@ -132,7 +132,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
   it("3a. classify(unknown): Mode A proposed=blocked (NOT self-hosted) + effective self-hosted + diagnostic", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(row.capability_class).toBe("unknown");
@@ -147,7 +147,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
 
     // classifyPlan audit may include unmatched rows (not a mixed router).
     const artifact = classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(artifact.identity_coverage.unknown).toBe(1);
@@ -169,7 +169,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
   it("3a-mixed. Mode B unknown row: proposed blocked, NO effective_execution_class", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
-      mode: "mixed",
+      policy: "enforced",
       hostedSelectionAvailable: true,
     });
     expect(row.capability_class).toBe("unknown");
@@ -182,10 +182,33 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     );
   });
 
+  it("3c. bootstrap cannot be selected implicitly; default policy is enforced", () => {
+    const ruleset = loadRuleset(TINY_RULESET);
+    const implicit = classifyPlannerRow(UNKNOWN_ROW, ruleset, {});
+    expect(implicit.policy).toBe("enforced");
+    expect(implicit.policy).not.toBe("bootstrap");
+    expect(implicit.proposed_execution_class).toBe("blocked");
+    expect(implicit.effective_execution_class).toBeUndefined();
+    expect(implicit.diagnostic?.code).toBe("unknown_identity_terminal");
+
+    const boot = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
+      policy: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(boot.policy).toBe("bootstrap");
+    expect(boot.effective_execution_class).toBe("self-hosted");
+    expect(boot.diagnostic?.code).toBe("unknown_identity_audit");
+    expect(boot.proposed_execution_class).toBe("blocked");
+
+    const plan = classifyPlan([UNKNOWN_ROW], ruleset, {});
+    expect(plan.policy).toBe("enforced");
+    expect(plan.rows[0]?.effective_execution_class).toBeUndefined();
+  });
+
   it("3b. assertMixedRoutingEligible(plan): rejects unknown before matrix/runner selection", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     const dirty = classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(() => assertMixedRoutingEligible(dirty)).toThrow(/mixed-routing ineligible/u);
@@ -199,7 +222,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     }
 
     const clean = classifyPlan([HERMETIC_SEED, HOST_LOCAL_SEED], ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(assertMixedRoutingEligible(clean)).toBe(clean);
@@ -210,10 +233,10 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     const withDist = classifyPlannerRow(
       { ...HERMETIC_SEED, requiresDist: true, requires_dist: true },
       ruleset,
-      { mode: "bootstrap", hostedSelectionAvailable: false },
+      { policy: "bootstrap", hostedSelectionAvailable: false },
     );
     const withoutDist = classifyPlannerRow({ ...HERMETIC_SEED, requiresDist: false }, ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(withDist.capability_class).toBe("hermetic");
@@ -226,7 +249,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     expect(() =>
       classifyPlan([HERMETIC_SEED, HERMETIC_SEED], ruleset, {
-        mode: "bootstrap",
+        policy: "bootstrap",
         hostedSelectionAvailable: false,
       }),
     ).toThrow(/duplicate emitted planner identity/u);
@@ -236,7 +259,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     expect(() => loadRuleset(TINY_RULESET)).not.toThrow();
     const artifact = classifyPlan([UNKNOWN_ROW], ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(artifact.identity_coverage.unknown).toBe(1);
@@ -250,7 +273,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     const planRows = [HOST_LOCAL_SEED, HERMETIC_SEED];
     const artifact = classifyPlan(planRows, ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(artifact.ruleset_digest).toBe(ruleset.ruleset_digest);
@@ -263,7 +286,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
   it("10. inc-1 emit cannot change runs-on (still all-self-hosted)", () => {
     const ruleset = loadRuleset(TINY_RULESET);
     const artifact = classifyPlan([HERMETIC_SEED, HOST_LOCAL_SEED], ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(artifact.runs_on_unchanged).toBe(true);
@@ -297,7 +320,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
         shard_group: "core",
       },
       ruleset,
-      { mode: "bootstrap", hostedSelectionAvailable: false },
+      { policy: "bootstrap", hostedSelectionAvailable: false },
     );
     expect(row.capability_class).toBe("unknown");
     expect(row.proposed_execution_class).toBe("blocked");
@@ -312,7 +335,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
         shardName: HERMETIC_SEED.shard_name,
       },
       ruleset,
-      { mode: "bootstrap", hostedSelectionAvailable: false },
+      { policy: "bootstrap", hostedSelectionAvailable: false },
     );
     expect(row.match).toBe("exact");
     expect(identityKey(row.planner_identity)).toBe(identityKey(HERMETIC_SEED));
@@ -331,7 +354,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
       shardName: shard.shardName,
     }));
     const artifact = classifyPlan(rows, ruleset, {
-      mode: "bootstrap",
+      policy: "bootstrap",
       hostedSelectionAvailable: false,
     });
 
