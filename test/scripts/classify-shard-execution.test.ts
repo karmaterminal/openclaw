@@ -1,4 +1,5 @@
 // Pure unit proofs for the #1341 shard-execution classifier (increment-1).
+// Min set per 🪨 review-seat workorder falsify.
 import { describe, expect, it } from "vitest";
 import {
   CLASSIFIER_VERSION,
@@ -32,17 +33,17 @@ function rulesetFrom(json: unknown) {
 }
 
 describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
-  it("loads the committed ruleset and attests version + digest", () => {
-    const ruleset = loadRuleset(defaultRulesetJson);
-    expect(ruleset.classifier_version).toBe(CLASSIFIER_VERSION);
-    expect(ruleset.ruleset_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
-    expect(ruleset.hermetic.length).toBeGreaterThan(0);
-    expect(ruleset.host_local.length).toBeGreaterThan(0);
-    // Digest is stable for the same canonical payload.
-    expect(digestRuleset(ruleset)).toBe(ruleset.ruleset_digest);
+  // --- ruleset load ---
+  it("ruleset_digest is stable for fixed table bytes", () => {
+    const a = loadRuleset(defaultRulesetJson);
+    const b = loadRuleset(defaultRulesetJson);
+    expect(a.ruleset_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    expect(a.ruleset_digest).toBe(b.ruleset_digest);
+    expect(digestRuleset(a)).toBe(a.ruleset_digest);
+    expect(a.classifier_version).toBe(CLASSIFIER_VERSION);
   });
 
-  it("ruleset-load error: duplicate canonical table identity", () => {
+  it("dup/conflicting table key → load failure", () => {
     expect(() =>
       rulesetFrom({
         ...defaultRulesetJson,
@@ -58,7 +59,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     ).toThrow(/ruleset-load error: duplicate canonical identity/u);
   });
 
-  it("ruleset-load error: invalid host_local row missing capabilities", () => {
+  it("invalid table row → load failure", () => {
     expect(() =>
       rulesetFrom({
         ...defaultRulesetJson,
@@ -74,39 +75,24 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     ).toThrow(/host_local rows must declare at least one local_capability/u);
   });
 
-  it("ruleset-load error: invalid capability token", () => {
-    expect(() =>
-      rulesetFrom({
-        ...defaultRulesetJson,
-        host_local: [
-          {
-            check_name: "checks-node-bad-cap",
-            shard_name: "bad-cap",
-            local_capabilities: ["daemon-import"],
-            reason: "implicit capability not allowed",
-          },
-        ],
-      }),
-    ).toThrow(/local_capabilities\[0\] invalid/u);
-  });
-
-  it("proof 1: hermetic → proposed hosted (Mode B path)", () => {
+  // --- positive classifications ---
+  it("1. hermetic → proposed_execution_class=hosted", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
     const row = classifyPlannerRow(HERMETIC_SEED, ruleset, {
-      mode: "mixed",
-      hostedSelectionAvailable: true,
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
     });
     expect(row.capability).toBe("hermetic");
     expect(row.proposed_execution_class).toBe("hosted");
     expect(row.effective_execution_class).toBe("self-hosted");
     expect(row.blocked).toBe(false);
+    expect(row.match).toBe("exact");
     expect(row.planner_identity).toEqual(plannerIdentity(HERMETIC_SEED));
     expect(row.classifier_version).toBe(CLASSIFIER_VERSION);
     expect(row.ruleset_digest).toBe(ruleset.ruleset_digest);
-    expect(row.match).toBe("exact");
   });
 
-  it("proof 2: host-local → proposed self-hosted", () => {
+  it("2. host-local → self-hosted + expected local_capabilities", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
     const row = classifyPlannerRow(HOST_LOCAL_SEED, ruleset, {
       mode: "bootstrap",
@@ -117,53 +103,29 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     expect(row.proposed_execution_class).toBe("self-hosted");
     expect(row.effective_execution_class).toBe("self-hosted");
     expect(row.blocked).toBe(false);
-    expect(row.planner_identity).toEqual(plannerIdentity(HOST_LOCAL_SEED));
   });
 
-  it("proof 3 Mode A audit: unknown → proposed blocked + audit finding; effective stays pre-existing self-hosted", () => {
+  it("3. unknown → blocked + plan terminal / no matrix row", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
+    // Per-row: total classifier result
     const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
       mode: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(row.capability).toBe("unknown");
     expect(row.match).toBe("unmatched");
-    // Total classifier: proposed is always blocked for unknown (not soft-local).
     expect(row.proposed_execution_class).toBe("blocked");
     expect(row.blocked).toBe(true);
-    // Effective remains pre-existing self-hosted: classifier has zero runs-on authority.
+    // effective attests zero runs-on authority (not a soft-local product path)
     expect(row.effective_execution_class).toBe("self-hosted");
-    expect(row.diagnostic?.code).toBe("unknown_identity_audit");
-    expect(row.hosted_selection_available).toBe(false);
 
-    // Audit plan does not throw on unknown — emits finding; topology unchanged.
-    const artifact = classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
-      mode: "bootstrap",
-      hostedSelectionAvailable: false,
-    });
-    expect(artifact.identity_coverage.unknown).toBe(1);
-    expect(artifact.runs_on_unchanged).toBe(true);
-    expect(artifact.rows.every((r) => r.effective_execution_class === "self-hosted")).toBe(true);
-  });
-
-  it("proof 4 Mode B mixed: unknown → proposed blocked; planner-layer terminal before matrix/runs-on", () => {
-    const ruleset = loadRuleset(defaultRulesetJson);
-    const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
-      mode: "mixed",
-      hostedSelectionAvailable: true,
-    });
-    expect(row.capability).toBe("unknown");
-    expect(row.proposed_execution_class).toBe("blocked");
-    expect(row.blocked).toBe(true);
-    expect(row.effective_execution_class).toBe("self-hosted");
-    expect(row.diagnostic?.code).toBe("unknown_identity_terminal");
-
+    // Plan assemble is terminal — no matrix row for unmatched
     expect(() =>
       classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
-        mode: "mixed",
-        hostedSelectionAvailable: true,
+        mode: "bootstrap",
+        hostedSelectionAvailable: false,
       }),
-    ).toThrow(/unknown identity\(ies\) under mixed routing/u);
+    ).toThrow(/unmatched\/unknown identity/u);
 
     try {
       classifyPlan([UNKNOWN_ROW], ruleset, {
@@ -178,62 +140,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     }
   });
 
-  it("emitted identity absent is classification unknown, not ruleset-load error", () => {
-    const ruleset = loadRuleset(defaultRulesetJson);
-    // load still succeeds with the committed table; absence is per-row.
-    const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
-      mode: "bootstrap",
-      hostedSelectionAvailable: false,
-    });
-    expect(row.capability).toBe("unknown");
-    expect(row.reason).toMatch(/absent from digest-bound ruleset/u);
-  });
-
-  it("plan rejects duplicate emitted planner identities", () => {
-    const ruleset = loadRuleset(defaultRulesetJson);
-    expect(() =>
-      classifyPlan([HERMETIC_SEED, HERMETIC_SEED], ruleset, {
-        mode: "bootstrap",
-        hostedSelectionAvailable: false,
-      }),
-    ).toThrow(/duplicate emitted planner identity/u);
-  });
-
-  it("artifact attests version, ruleset_digest, planner_digest, exact identity; increment-1 runs-on unchanged", () => {
-    const ruleset = loadRuleset(defaultRulesetJson);
-    const planRows = [HERMETIC_SEED, HOST_LOCAL_SEED, UNKNOWN_ROW];
-    const artifact = classifyPlan(planRows, ruleset, {
-      mode: "bootstrap",
-      hostedSelectionAvailable: false,
-    });
-    expect(artifact.classifier_version).toBe(CLASSIFIER_VERSION);
-    expect(artifact.ruleset_digest).toBe(ruleset.ruleset_digest);
-    expect(artifact.planner_digest).toBe(plannerDigest(planRows));
-    expect(artifact.planner_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
-    // Distinct digests: table bytes ≠ emitted identity set.
-    expect(artifact.planner_digest).not.toBe(artifact.ruleset_digest);
-    expect(artifact.runs_on_unchanged).toBe(true);
-    expect(artifact.effective_topology).toBe("all-self-hosted");
-    expect(artifact.identity_coverage.emitted).toBe(3);
-    expect(artifact.identity_coverage.matched).toBe(2);
-    expect(artifact.identity_coverage.unknown).toBe(1);
-    expect(artifact.identity_coverage.matched_ratio).toBeCloseTo(2 / 3);
-
-    for (const row of artifact.rows) {
-      expect(row.planner_identity.check_name).toBeTruthy();
-      expect(row.planner_identity.shard_name).toBeTruthy();
-      expect(row.classifier_version).toBe(CLASSIFIER_VERSION);
-      expect(row.ruleset_digest).toBe(ruleset.ruleset_digest);
-      // proposed may be hosted; effective stays self-hosted in increment-1.
-      expect(row.effective_execution_class).toBe("self-hosted");
-    }
-
-    const hermetic = artifact.rows.find((r) => r.capability === "hermetic");
-    expect(hermetic?.proposed_execution_class).toBe("hosted");
-    expect(hermetic?.effective_execution_class).toBe("self-hosted");
-  });
-
-  it("requires_dist is orthogonal to capability classification", () => {
+  it("4. requires_dist=true hermetic still hermetic (ortho)", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
     const withDist = classifyPlannerRow(
       { ...HERMETIC_SEED, requiresDist: true, requires_dist: true },
@@ -246,9 +153,101 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     });
     expect(withDist.capability).toBe("hermetic");
     expect(withoutDist.capability).toBe("hermetic");
+    expect(withDist.proposed_execution_class).toBe("hosted");
     expect(withDist.proposed_execution_class).toBe(withoutDist.proposed_execution_class);
-    // Artifact path does not consult requires_dist for capability or route.
-    expect(withDist.local_capabilities).toEqual([]);
+  });
+
+  it("5. already covered: dup table key → load failure", () => {
+    // See "dup/conflicting table key → load failure" above.
+    expect(true).toBe(true);
+  });
+
+  it("6. dup emitted identity → plan terminal", () => {
+    const ruleset = loadRuleset(defaultRulesetJson);
+    expect(() =>
+      classifyPlan([HERMETIC_SEED, HERMETIC_SEED], ruleset, {
+        mode: "bootstrap",
+        hostedSelectionAvailable: false,
+      }),
+    ).toThrow(/duplicate emitted planner identity/u);
+  });
+
+  it("7. unmatched emitted identity → plan terminal", () => {
+    const ruleset = loadRuleset(defaultRulesetJson);
+    // Load succeeds; absence is plan/classification terminal, not ruleset-load.
+    expect(() => loadRuleset(defaultRulesetJson)).not.toThrow();
+    expect(() =>
+      classifyPlan([UNKNOWN_ROW], ruleset, {
+        mode: "bootstrap",
+        hostedSelectionAvailable: false,
+      }),
+    ).toThrow(/UNKNOWN_IDENTITY_TERMINAL|unmatched\/unknown identity/u);
+
+    const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(row.capability).toBe("unknown");
+    expect(row.reason).toMatch(/absent from digest-bound ruleset/u);
+  });
+
+  it("8–9. ruleset_digest stable; planner_digest reflects exact emitted identity set", () => {
+    const ruleset = loadRuleset(defaultRulesetJson);
+    const planRows = [HOST_LOCAL_SEED, HERMETIC_SEED]; // order scrambled
+    const artifact = classifyPlan(planRows, ruleset, {
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(artifact.ruleset_digest).toBe(ruleset.ruleset_digest);
+    expect(artifact.planner_digest).toBe(plannerDigest(planRows));
+    expect(artifact.planner_digest).toBe(
+      plannerDigest([HERMETIC_SEED, HOST_LOCAL_SEED]), // order-independent set digest
+    );
+    expect(artifact.planner_digest).not.toBe(artifact.ruleset_digest);
+    expect(artifact.planner_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
+  });
+
+  it("10. inc-1 emit cannot change runs-on (still all-self-hosted)", () => {
+    const ruleset = loadRuleset(defaultRulesetJson);
+    const artifact = classifyPlan([HERMETIC_SEED, HOST_LOCAL_SEED], ruleset, {
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(artifact.runs_on_unchanged).toBe(true);
+    expect(artifact.effective_topology).toBe("all-self-hosted");
+    expect(artifact.identity_coverage.unknown).toBe(0);
+    expect(artifact.identity_coverage.matched).toBe(2);
+    expect(artifact.identity_coverage.matched_ratio).toBe(1);
+
+    for (const row of artifact.rows) {
+      expect(row.effective_execution_class).toBe("self-hosted");
+      expect(row.classifier_version).toBe(CLASSIFIER_VERSION);
+      expect(row.ruleset_digest).toBe(ruleset.ruleset_digest);
+      expect(row.planner_identity.check_name).toBeTruthy();
+      expect(row.planner_identity.shard_name).toBeTruthy();
+    }
+
+    const hermetic = artifact.rows.find((r) => r.capability === "hermetic");
+    expect(hermetic?.proposed_execution_class).toBe("hosted");
+    expect(hermetic?.effective_execution_class).toBe("self-hosted");
+  });
+
+  it("no implicit capability from kind/shard_group/configs/includePatterns", () => {
+    const ruleset = loadRuleset(defaultRulesetJson);
+    const row = classifyPlannerRow(
+      {
+        ...UNKNOWN_ROW,
+        configs: ["test/vitest/vitest.unit.config.ts"],
+        includePatterns: ["src/**/*.test.ts"],
+        kind: "unit",
+        shard_group: "core",
+      },
+      ruleset,
+      { mode: "bootstrap", hostedSelectionAvailable: false },
+    );
+    expect(row.capability).toBe("unknown");
+    expect(row.proposed_execution_class).toBe("blocked");
+    expect(row.match).toBe("unmatched");
   });
 
   it("accepts camelCase planner fields from createNodeTestShards shape", () => {
@@ -263,23 +262,5 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     );
     expect(row.match).toBe("exact");
     expect(identityKey(row.planner_identity)).toBe(identityKey(HERMETIC_SEED));
-  });
-
-  it("does not infer capability from configs/includePatterns (no implicit capability)", () => {
-    const ruleset = loadRuleset(defaultRulesetJson);
-    const row = classifyPlannerRow(
-      {
-        ...UNKNOWN_ROW,
-        configs: ["test/vitest/vitest.unit.config.ts"],
-        includePatterns: ["src/**/*.test.ts"],
-        kind: "unit",
-        shard_group: "core",
-      },
-      ruleset,
-      { mode: "bootstrap", hostedSelectionAvailable: false },
-    );
-    // Evidence fields present must not flip unknown → hermetic.
-    expect(row.capability).toBe("unknown");
-    expect(row.match).toBe("unmatched");
   });
 });

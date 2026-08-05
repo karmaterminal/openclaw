@@ -313,23 +313,20 @@ export function classifyPlan(rows, ruleset, options = {}) {
   const unknowns = classifications.filter((c) => c.capability === "unknown");
   const blocked = classifications.filter((c) => c.blocked);
 
-  // Mode B (mixed): planner-layer reject before matrix/runs-on. The pure
-  // classifier already marked unknowns blocked; the plan helper enforces the
-  // terminal contract when mixed selection is in force.
-  if (mode === "mixed" && unknowns.length > 0) {
+  // Plan/classification terminal: any unknown/unmatched emitted identity fails
+  // before matrix / runs-on creation. Pure per-row classify still emits
+  // unknown+blocked for attestation; assemble-plan is the planner reject.
+  // Inc-1 stays all-self-hosted only for the surviving fully-classified plan
+  // (not by executing unknowns under soft-local).
+  if (unknowns.length > 0) {
     const err = new Error(
-      `plan/classification error: ${unknowns.length} unknown identity(ies) under mixed routing; refusing matrix/runs-on creation`,
+      `plan/classification error: ${unknowns.length} unmatched/unknown identity(ies); refusing matrix/runs-on creation`,
     );
     err.code = "UNKNOWN_IDENTITY_TERMINAL";
     err.unknowns = unknowns.map((u) => u.planner_identity);
     err.classifications = classifications;
     throw err;
   }
-
-  // Mode A (audit/bootstrap): unmatched rows may exist; they emit as
-  // unknown+blocked proposed with audit findings. Topology stays
-  // all-self-hosted because classifier has zero runs-on authority — not
-  // because unknown was proposed self-hosted.
   const artifact = {
     classifier_version: ruleset.classifier_version,
     ruleset_id: ruleset.ruleset_id,

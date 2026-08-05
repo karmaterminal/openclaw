@@ -2,14 +2,14 @@
 
 Pure data-plane for #1341. Does **not** change `runs-on`.
 
-## Modes
+## Modes / plan contract
 
-Classifier result is **total**: unmatched → `capability: unknown` + `proposed_execution_class: blocked` always.
+Classifier result is **total**: unmatched → `capability: unknown` + `proposed_execution_class: blocked` always (every phase).
 
-- **Mode A (`bootstrap` / increment-1 audit)** — hosted selection dark; classifier has **zero** `runs-on` authority.
-  Unknown rows may be emitted with audit findings. `effective_execution_class` stays the pre-existing self-hosted route (not a grey-row fallback; topology unchanged because routing is untouched).
-- **Mode B (`mixed`)** — hosted routing reachable.
-  Require `unknown_count === 0` on the exact planner digest before selection is enabled. If unknown occurs, **planner** rejects before matrix / `runs-on` creation. No `unknown → self-hosted` proposed route.
+- **Per-row classify** may emit unknown + blocked + diagnostic (attestation).
+- **`classifyPlan` (planner assemble)** is terminal on any unknown / duplicate emitted identity — no matrix row, no `runs-on` selection. Surviving plan must be fully classified for that exact `planner_digest`.
+- **Increment-1:** classifier has **zero** `runs-on` authority. Topology stays all-self-hosted only for the _surviving fully-classified_ plan — not by executing unknowns under soft-local. Mode-A `unknown → self-hosted` is **not** a product path.
+- **First mixed-routing PR:** keep unknown terminal before selection (already implied by plan terminal).
 
 ## Failure sites
 
