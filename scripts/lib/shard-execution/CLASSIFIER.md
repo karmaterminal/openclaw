@@ -2,21 +2,26 @@
 
 Pure data-plane for #1341. Does **not** change `runs-on`.
 
-## Modes / plan contract
+## Phase split (load-bearing)
 
-Classifier result is **total**: unmatched → `capability: unknown` + `proposed_execution_class: blocked` always (every phase).
+Classifier result is **total**: unmatched → `capability: unknown` + `proposed_execution_class: blocked` always.
 
-- **Per-row classify** may emit unknown + blocked + diagnostic (attestation).
-- **`classifyPlan` (planner assemble)** is terminal on any unknown / duplicate emitted identity — no matrix row, no `runs-on` selection. Surviving plan must be fully classified for that exact `planner_digest`.
-- **Increment-1:** classifier has **zero** `runs-on` authority. Topology stays all-self-hosted only for the _surviving fully-classified_ plan — not by executing unknowns under soft-local. Mode-A `unknown → self-hosted` is **not** a product path.
-- **First mixed-routing PR:** keep unknown terminal before selection (already implied by plan terminal).
+| Surface                            | Role                                                                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `classify` / `classifyPlan`        | Audit/attestation. May emit unknown+blocked. `effective_execution_class` stays independently self-hosted (classifier has **zero** `runs-on` authority). |
+| `assertMixedRoutingEligible(plan)` | Dark pure policy seam. Rejects any unknown before matrix/runner selection. **Do not call from increment-1 workflow.**                                   |
+
+Duplicate **emitted** planner identity fails at `classifyPlan` (malformed plan). Duplicate **table** key fails at ruleset load.
+
+Mode-A `unknown → self-hosted` is **not** a product path. Soft-local struck.
 
 ## Failure sites
 
-| Site           | Cause                                                   | Effect                                   |
-| -------------- | ------------------------------------------------------- | ---------------------------------------- |
-| Ruleset load   | duplicate / invalid canonical keys                      | throw (config-load error)                |
-| Classification | emitted planner identity absent from digest-bound table | `capability: unknown` (+ Mode A/B route) |
+| Site              | Cause                                                   | Effect                                                            |
+| ----------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
+| Ruleset load      | duplicate / invalid canonical keys                      | throw (config-load error)                                         |
+| Classification    | emitted planner identity absent from digest-bound table | `capability: unknown` + `proposed_execution_class: blocked`       |
+| Mixed eligibility | any unknown in plan                                     | `assertMixedRoutingEligible` throws (`UNKNOWN_IDENTITY_TERMINAL`) |
 
 ## No implicit capability
 
@@ -32,5 +37,5 @@ Classifier result is **total**: unmatched → `capability: unknown` + `proposed_
 ## Artifact fields
 
 - `proposed_execution_class` — classifier output (what hybrid would do)
-- `effective_execution_class` — what actually routes (increment-1: always self-hosted / unchanged)
-- `classifier_version`, `ruleset_digest`, exact `planner_identity`
+- `effective_execution_class` — independently determined route (increment-1: always self-hosted / unchanged)
+- `classifier_version`, `ruleset_digest`, `planner_digest`, exact `planner_identity`

@@ -88,6 +88,10 @@ export function classifyPlan(
   options?: ClassifyOptions,
 ): PlanArtifact;
 
+export function assertMixedRoutingEligible(
+  planOrArtifact: PlanArtifact | { rows?: ClassificationRow[]; identity_coverage?: { unknown?: number } },
+): PlanArtifact | { rows?: ClassificationRow[]; identity_coverage?: { unknown?: number } };
+
 export function classifyPlanWithDefaultRuleset(
   rows: object[],
   options?: ClassifyOptions,

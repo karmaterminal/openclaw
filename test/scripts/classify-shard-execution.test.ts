@@ -1,8 +1,9 @@
 // Pure unit proofs for the #1341 shard-execution classifier (increment-1).
-// Min set per 🪨 review-seat workorder falsify.
+// Phase split: classify (audit emit) vs assertMixedRoutingEligible (dark seam).
 import { describe, expect, it } from "vitest";
 import {
   CLASSIFIER_VERSION,
+  assertMixedRoutingEligible,
   classifyPlan,
   classifyPlannerRow,
   digestRuleset,
@@ -33,7 +34,6 @@ function rulesetFrom(json: unknown) {
 }
 
 describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
-  // --- ruleset load ---
   it("ruleset_digest is stable for fixed table bytes", () => {
     const a = loadRuleset(defaultRulesetJson);
     const b = loadRuleset(defaultRulesetJson);
@@ -75,7 +75,6 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     ).toThrow(/host_local rows must declare at least one local_capability/u);
   });
 
-  // --- positive classifications ---
   it("1. hermetic → proposed_execution_class=hosted", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
     const row = classifyPlannerRow(HERMETIC_SEED, ruleset, {
@@ -105,9 +104,8 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     expect(row.blocked).toBe(false);
   });
 
-  it("3. unknown → blocked + plan terminal / no matrix row", () => {
+  it("3a. classify(unknown): emits unknown + proposed blocked; effective stays independently self-hosted", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
-    // Per-row: total classifier result
     const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
       mode: "bootstrap",
       hostedSelectionAvailable: false,
@@ -116,28 +114,41 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     expect(row.match).toBe("unmatched");
     expect(row.proposed_execution_class).toBe("blocked");
     expect(row.blocked).toBe(true);
-    // effective attests zero runs-on authority (not a soft-local product path)
+    // Unchanged workflow still has independently determined effective self-hosted.
     expect(row.effective_execution_class).toBe("self-hosted");
+    expect(row.reason).toMatch(/absent from digest-bound ruleset/u);
 
-    // Plan assemble is terminal — no matrix row for unmatched
-    expect(() =>
-      classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
-        mode: "bootstrap",
-        hostedSelectionAvailable: false,
-      }),
-    ).toThrow(/unmatched\/unknown identity/u);
+    // classifyPlan audit may include unmatched rows (not a mixed router).
+    const artifact = classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(artifact.identity_coverage.unknown).toBe(1);
+    expect(artifact.runs_on_unchanged).toBe(true);
+    expect(artifact.rows.every((r) => r.effective_execution_class === "self-hosted")).toBe(true);
+  });
 
+  it("3b. assertMixedRoutingEligible(plan): rejects unknown before matrix/runner selection", () => {
+    const ruleset = loadRuleset(defaultRulesetJson);
+    const dirty = classifyPlan([HERMETIC_SEED, UNKNOWN_ROW], ruleset, {
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(() => assertMixedRoutingEligible(dirty)).toThrow(/mixed-routing ineligible/u);
     try {
-      classifyPlan([UNKNOWN_ROW], ruleset, {
-        mode: "mixed",
-        hostedSelectionAvailable: true,
-      });
-      expect.unreachable("expected terminal plan error");
+      assertMixedRoutingEligible(dirty);
+      expect.unreachable("expected terminal eligibility error");
     } catch (error) {
       const err = error as Error & { code?: string; unknowns?: unknown[] };
       expect(err.code).toBe("UNKNOWN_IDENTITY_TERMINAL");
       expect(err.unknowns).toEqual([plannerIdentity(UNKNOWN_ROW)]);
     }
+
+    const clean = classifyPlan([HERMETIC_SEED, HOST_LOCAL_SEED], ruleset, {
+      mode: "bootstrap",
+      hostedSelectionAvailable: false,
+    });
+    expect(assertMixedRoutingEligible(clean)).toBe(clean);
   });
 
   it("4. requires_dist=true hermetic still hermetic (ortho)", () => {
@@ -157,11 +168,6 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     expect(withDist.proposed_execution_class).toBe(withoutDist.proposed_execution_class);
   });
 
-  it("5. already covered: dup table key → load failure", () => {
-    // See "dup/conflicting table key → load failure" above.
-    expect(true).toBe(true);
-  });
-
   it("6. dup emitted identity → plan terminal", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
     expect(() =>
@@ -172,37 +178,30 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
     ).toThrow(/duplicate emitted planner identity/u);
   });
 
-  it("7. unmatched emitted identity → plan terminal", () => {
+  it("7. unmatched emitted identity → classification unknown; mixed eligibility terminal", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
-    // Load succeeds; absence is plan/classification terminal, not ruleset-load.
     expect(() => loadRuleset(defaultRulesetJson)).not.toThrow();
-    expect(() =>
-      classifyPlan([UNKNOWN_ROW], ruleset, {
-        mode: "bootstrap",
-        hostedSelectionAvailable: false,
-      }),
-    ).toThrow(/UNKNOWN_IDENTITY_TERMINAL|unmatched\/unknown identity/u);
-
-    const row = classifyPlannerRow(UNKNOWN_ROW, ruleset, {
+    const artifact = classifyPlan([UNKNOWN_ROW], ruleset, {
       mode: "bootstrap",
       hostedSelectionAvailable: false,
     });
-    expect(row.capability).toBe("unknown");
-    expect(row.reason).toMatch(/absent from digest-bound ruleset/u);
+    expect(artifact.identity_coverage.unknown).toBe(1);
+    expect(artifact.rows[0]?.capability).toBe("unknown");
+    expect(() => assertMixedRoutingEligible(artifact)).toThrow(
+      /UNKNOWN_IDENTITY_TERMINAL|mixed-routing ineligible/u,
+    );
   });
 
   it("8–9. ruleset_digest stable; planner_digest reflects exact emitted identity set", () => {
     const ruleset = loadRuleset(defaultRulesetJson);
-    const planRows = [HOST_LOCAL_SEED, HERMETIC_SEED]; // order scrambled
+    const planRows = [HOST_LOCAL_SEED, HERMETIC_SEED];
     const artifact = classifyPlan(planRows, ruleset, {
       mode: "bootstrap",
       hostedSelectionAvailable: false,
     });
     expect(artifact.ruleset_digest).toBe(ruleset.ruleset_digest);
     expect(artifact.planner_digest).toBe(plannerDigest(planRows));
-    expect(artifact.planner_digest).toBe(
-      plannerDigest([HERMETIC_SEED, HOST_LOCAL_SEED]), // order-independent set digest
-    );
+    expect(artifact.planner_digest).toBe(plannerDigest([HERMETIC_SEED, HOST_LOCAL_SEED]));
     expect(artifact.planner_digest).not.toBe(artifact.ruleset_digest);
     expect(artifact.planner_digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
@@ -227,6 +226,7 @@ describe("scripts/lib/shard-execution/classify-shard-execution.mjs", () => {
       expect(row.planner_identity.shard_name).toBeTruthy();
     }
 
+    // proposed may be hosted; effective never flips from classifier emission.
     const hermetic = artifact.rows.find((r) => r.capability === "hermetic");
     expect(hermetic?.proposed_execution_class).toBe("hosted");
     expect(hermetic?.effective_execution_class).toBe("self-hosted");

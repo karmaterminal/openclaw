@@ -313,20 +313,10 @@ export function classifyPlan(rows, ruleset, options = {}) {
   const unknowns = classifications.filter((c) => c.capability === "unknown");
   const blocked = classifications.filter((c) => c.blocked);
 
-  // Plan/classification terminal: any unknown/unmatched emitted identity fails
-  // before matrix / runs-on creation. Pure per-row classify still emits
-  // unknown+blocked for attestation; assemble-plan is the planner reject.
-  // Inc-1 stays all-self-hosted only for the surviving fully-classified plan
-  // (not by executing unknowns under soft-local).
-  if (unknowns.length > 0) {
-    const err = new Error(
-      `plan/classification error: ${unknowns.length} unmatched/unknown identity(ies); refusing matrix/runs-on creation`,
-    );
-    err.code = "UNKNOWN_IDENTITY_TERMINAL";
-    err.unknowns = unknowns.map((u) => u.planner_identity);
-    err.classifications = classifications;
-    throw err;
-  }
+  // classifyPlan is the audit/attestation assemble path. It MAY include
+  // unknown rows (proposed blocked). Mixed-routing eligibility is enforced
+  // only by assertMixedRoutingEligible (dark policy seam) — do NOT call that
+  // from the increment-1 workflow.
   const artifact = {
     classifier_version: ruleset.classifier_version,
     ruleset_id: ruleset.ruleset_id,
@@ -353,6 +343,37 @@ export function classifyPlan(rows, ruleset, options = {}) {
   };
 
   return artifact;
+}
+
+/**
+ * Dark/pure mixed-routing eligibility seam.
+ * Rejects any unknown before matrix/runner selection.
+ * Do NOT call from increment-1 workflow (hosted selection dark).
+ * Future mixed-routing enable must call this before runs-on selection.
+ *
+ * @param {ReturnType<typeof classifyPlan>} planOrArtifact
+ */
+export function assertMixedRoutingEligible(planOrArtifact) {
+  const rows = planOrArtifact?.rows;
+  if (!Array.isArray(rows)) {
+    throw new Error("assertMixedRoutingEligible requires a classifyPlan artifact with rows");
+  }
+  const unknownRows = rows.filter((row) => row.capability === "unknown");
+  if (unknownRows.length > 0) {
+    const err = new Error(
+      `mixed-routing ineligible: ${unknownRows.length} unknown identity(ies); refusing matrix/runs-on selection`,
+    );
+    err.code = "UNKNOWN_IDENTITY_TERMINAL";
+    err.unknowns = unknownRows.map((u) => u.planner_identity);
+    throw err;
+  }
+  const coverageUnknown = planOrArtifact.identity_coverage?.unknown ?? 0;
+  if (coverageUnknown !== 0) {
+    const err = new Error(`mixed-routing ineligible: identity_coverage.unknown=${coverageUnknown}`);
+    err.code = "UNKNOWN_IDENTITY_TERMINAL";
+    throw err;
+  }
+  return planOrArtifact;
 }
 
 /**
