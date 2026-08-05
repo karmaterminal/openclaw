@@ -749,6 +749,44 @@ jobs:
         if: steps.manifest.outputs.run_protocol_event_coverage == 'true'
         run: node scripts/check-protocol-event-coverage.mjs
 
+      # #1341 inc-1: data-only shard-execution classifier audit (freeze v2.3 pin 6).
+      # Emits digests + loud unknown_count. Never fails the live plan on unknown.
+      # Does not call assertMixedRoutingEligible. Does not change runs-on.
+      - name: Emit shard-execution classification audit
+        if: steps.manifest.outputs.run_node == 'true'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/shard-execution
+          node --no-opt scripts/emit-shard-execution-classification.mjs \
+            --out .artifacts/shard-execution/classification.json
+          if [[ -f .artifacts/shard-execution/classification.json ]]; then
+            {
+              echo "### Shard-execution classifier audit (#1341 inc-1)"
+              echo
+              node --no-opt -e '
+                const fs = require("node:fs");
+                const j = JSON.parse(fs.readFileSync(".artifacts/shard-execution/classification.json", "utf8"));
+                console.log(`- classifier_version: \`${j.classifier_version}\``);
+                console.log(`- ruleset_digest: \`${j.ruleset_digest}\``);
+                console.log(`- planner_digest: \`${j.planner_digest}\``);
+                console.log(`- emitted/matched/unknown: ${j.identity_coverage.emitted}/${j.identity_coverage.matched}/${j.identity_coverage.unknown}`);
+                console.log(`- runs_on_unchanged: ${j.runs_on_unchanged}`);
+                console.log(`- assertMixedRoutingEligible called: ${j.assert_mixed_routing_eligible_called}`);
+              '
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload shard-execution classification audit
+        if: steps.manifest.outputs.run_node == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: shard-execution-classification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/shard-execution/
+          if-no-files-found: ignore
+          retention-days: 14
+
       # Canonical main cannot be cancelled by a newer push. Publish the sole
       # dependency snapshot here before fanout. Blacksmith may expose a fresh
       # commit only to a later run; readers retain the marker-checked fallback.
