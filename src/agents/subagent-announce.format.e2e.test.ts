@@ -182,9 +182,33 @@ const { subagentRegistryMock } = vi.hoisted(() => ({
     getLatestSubagentRunByChildSessionKey: vi.fn(
       (_childSessionKey: string): MockSubagentRun | undefined => undefined,
     ),
+    getSubagentRunByRunId: vi.fn((_runId: string): MockSubagentRun | undefined => undefined),
     listSubagentRunsForRequester: vi.fn(
       (_sessionKey: string, _scope?: { requesterRunId?: string }): MockSubagentRun[] => [],
     ),
+    recordAcceptedSubagentSteerDispatch: vi.fn(
+      async (params: {
+        runId: string;
+        expected: MockSubagentRun;
+        gatewayRunId: string;
+        phase: "dispatching" | "accepted";
+        lifecycleGeneration?: string;
+        expectedSessionId?: string;
+        expectedLifecycleRevision?: string;
+      }) => ({
+        status: "persisted" as const,
+        ownerRunId: params.runId,
+        owner: params.expected,
+        dispatch: {
+          gatewayRunId: params.gatewayRunId,
+          phase: params.phase,
+          lifecycleGeneration: params.lifecycleGeneration,
+          expectedSessionId: params.expectedSessionId,
+          expectedLifecycleRevision: params.expectedLifecycleRevision,
+        },
+      }),
+    ),
+    clearSubagentRunSteerRestart: vi.fn(async () => true),
     replaceSubagentRunAfterSteer: vi.fn(
       (_params: { previousRunId: string; nextRunId: string; lifecycleGeneration?: string }) => true,
     ),
@@ -482,7 +506,35 @@ describe("subagent announce formatting", () => {
     subagentRegistryMock.getLatestSubagentRunByChildSessionKey
       .mockClear()
       .mockReturnValue(undefined);
+    subagentRegistryMock.getSubagentRunByRunId.mockClear().mockImplementation((runId: string) => ({
+      runId,
+      childSessionKey: "agent:main:subagent:parent",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "parent task",
+      cleanup: "delete",
+      createdAt: 1,
+      execution: {
+        endedAt: 2,
+        outcome: { status: "ok" },
+      },
+    }));
     subagentRegistryMock.listSubagentRunsForRequester.mockClear().mockReturnValue([]);
+    subagentRegistryMock.recordAcceptedSubagentSteerDispatch
+      .mockClear()
+      .mockImplementation(async (params) => ({
+        status: "persisted" as const,
+        ownerRunId: params.runId,
+        owner: params.expected,
+        dispatch: {
+          gatewayRunId: params.gatewayRunId,
+          phase: params.phase,
+          lifecycleGeneration: params.lifecycleGeneration,
+          expectedSessionId: params.expectedSessionId,
+          expectedLifecycleRevision: params.expectedLifecycleRevision,
+        },
+      }));
+    subagentRegistryMock.clearSubagentRunSteerRestart.mockClear().mockResolvedValue(true);
     subagentRegistryMock.replaceSubagentRunAfterSteer.mockClear().mockReturnValue(true);
     subagentRegistryMock.resolveRequesterForChildSession.mockClear().mockReturnValue(null);
     hasSubagentDeliveryTargetHook = false;
@@ -2842,7 +2894,13 @@ describe("subagent announce formatting", () => {
       },
     );
 
-    agentSpy.mockResolvedValueOnce(visibleAgentResponse("run-parent-phase-2"));
+    const wakeDispatchId = buildAnnounceIdempotencyKey(
+      `${buildAnnounceIdFromChildRun({
+        childSessionKey: "agent:main:subagent:parent",
+        childRunId: "run-parent-phase-1",
+      })}:wake`,
+    );
+    agentSpy.mockResolvedValueOnce(visibleAgentResponse(wakeDispatchId));
     const lifecycleGeneration = getAgentEventLifecycleGeneration();
 
     const didAnnounce = await runSubagentAnnounceFlow({
@@ -2859,20 +2917,23 @@ describe("subagent announce formatting", () => {
     expect(didAnnounce).toBe(true);
     expect(agentSpy).toHaveBeenCalledTimes(1);
     const call = getAgentCall() as {
-      params?: { sessionKey?: string; message?: string };
+      params?: { sessionKey?: string; message?: string; idempotencyKey?: string };
     };
     expect(call?.params?.sessionKey).toBe("agent:main:subagent:parent");
+    expect(call?.params?.idempotencyKey).toBe(wakeDispatchId);
     const message = call?.params?.message ?? "";
     expect(message).toContain("All pending descendants for that run have now settled");
     expect(message).toContain("result from child a");
     expect(message).toContain("result from child b");
-    expect(subagentRegistryMock.replaceSubagentRunAfterSteer).toHaveBeenCalledWith({
-      previousRunId: "run-parent-phase-1",
-      nextRunId: "run-parent-phase-2",
-      lifecycleGeneration,
-      preserveFrozenResultFallback: true,
-      task: expect.stringContaining("All pending descendants for that run have now settled"),
-    });
+    expect(subagentRegistryMock.replaceSubagentRunAfterSteer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousRunId: "run-parent-phase-1",
+        nextRunId: wakeDispatchId,
+        lifecycleGeneration,
+        preserveFrozenResultFallback: true,
+        task: expect.stringContaining("All pending descendants for that run have now settled"),
+      }),
+    );
   });
 
   it("keeps the child session when a failed wake leaves termination unconfirmed", async () => {
@@ -2912,7 +2973,13 @@ describe("subagent announce formatting", () => {
       },
     );
 
-    agentSpy.mockResolvedValueOnce(visibleAgentResponse("run-parent-unconfirmed-2"));
+    const wakeDispatchId = buildAnnounceIdempotencyKey(
+      `${buildAnnounceIdFromChildRun({
+        childSessionKey: "agent:main:subagent:parent",
+        childRunId: "run-parent-unconfirmed-1",
+      })}:wake`,
+    );
+    agentSpy.mockResolvedValueOnce(visibleAgentResponse(wakeDispatchId));
 
     const didAnnounce = await runSubagentAnnounceFlow({
       childSessionKey: "agent:main:subagent:parent",
@@ -2932,7 +2999,7 @@ describe("subagent announce formatting", () => {
         method: "chat.abort",
         params: {
           sessionKey: "agent:main:subagent:parent",
-          runId: "run-parent-unconfirmed-2",
+          runId: wakeDispatchId,
         },
       }),
     );
