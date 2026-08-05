@@ -7,6 +7,19 @@ Privileged-seat hole accepted explicitly for inc-1 (audit-exec preserves pre-exi
 
 Does **not** change `runs-on`.
 
+## Mode cardinality (pinned 🌻 `#1534401551148388473`)
+
+Dimension split alone is not enough — pin **when `effective_execution_class` exists**:
+
+| Mode                                     | When            | Artifact row shape                                                                                                                                                               |
+| ---------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A — Bootstrap / inc-1**                | audit emit only | `capability_class: unknown`, `proposed_execution_class: blocked`, **`effective_execution_class: self-hosted`**; attested and routed through the **unchanged** self-hosted matrix |
+| **B — Enforced mixed-routing preflight** | later only      | same first two values, then **terminal reject before matrix**; **no** `effective_execution_class` because no effective route exists                                              |
+
+“Attested, then rejected before a matrix row” = **Mode B only** — not the audit bootstrap path.
+
+Wire values use hyphen form (`self-hosted`), not underscore.
+
 ## Inc-1 workorder (A)
 
 1. Pure total classifier: every emitted identity → `capability_class` + `proposed_execution_class` (`unknown` ⇒ `blocked`)
@@ -21,7 +34,7 @@ Does **not** change `runs-on`.
 
 ## Later mixed-routing (B, not this PR)
 
-Require `unknown_count === 0` on that `planner_digest` before selection; if unknown occurs anyway → terminal before matrix/`runs-on`. No `unknown → self-hosted` once any hosted route can be chosen.
+Require `unknown_count === 0` on that `planner_digest` before selection; if unknown occurs anyway → **terminal before matrix/`runs-on`** with **no** `effective_execution_class` (no effective route). No `unknown → self-hosted` once any hosted route can be chosen. Not the bootstrap path.
 
 ## Phase split
 
@@ -35,7 +48,7 @@ Require `unknown_count === 0` on that `planner_digest` before selection; if unkn
 
 - `capability_class` — `hermetic` | `host_local` | `unknown`
 - `proposed_execution_class` — classifier output (`blocked` on unknown)
-- `effective_execution_class` — independently determined route (inc-1: always self-hosted)
+- `effective_execution_class` — Mode A only: independently determined route (inc-1 always `self-hosted`). Mode B preflight: field absent (no route).
 - `classifier_version`, `ruleset_digest`, `planner_digest`, exact `planner_identity`
 
 ## No implicit capability_class
