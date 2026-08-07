@@ -1705,6 +1705,72 @@ describe("channel turn kernel", () => {
     ]);
   });
 
+  it("carries the canonical source id from context when the adapter omits messageId", async () => {
+    const log = vi.fn();
+    const recordInboundSession = createRecordInboundSession([]);
+    const runDispatch = vi.fn(async () => ({
+      queuedFinal: false,
+      counts: { tool: 0, block: 0, final: 0 },
+    }));
+
+    const result = await runPreparedInboundReply({
+      channel: "test",
+      routeSessionKey: "agent:main:test:peer",
+      storePath: "/tmp/sessions.json",
+      ctxPayload: createCtx({ MessageSid: "canonical-1", MessageSidFull: "raw-1" }),
+      recordInboundSession,
+      runDispatch,
+      log,
+      record: {
+        onRecordError: vi.fn(),
+      },
+    });
+
+    expectDispatched(result);
+    expect(log.mock.calls).toContainEqual([
+      expect.objectContaining({
+        stage: "dispatch",
+        event: "warning",
+        messageId: "canonical-1",
+        reason: "zero-count-visible-dispatch",
+      }),
+    ]);
+    for (const [event] of log.mock.calls as [{ messageId?: string }][]) {
+      expect(event.messageId).toBe("canonical-1");
+    }
+  });
+
+  it("falls back to the raw source id when only MessageSidFull is set", async () => {
+    const log = vi.fn();
+    const recordInboundSession = createRecordInboundSession([]);
+    const runDispatch = vi.fn(async () => ({
+      queuedFinal: false,
+      counts: { tool: 0, block: 0, final: 0 },
+    }));
+
+    const result = await runPreparedInboundReply({
+      channel: "test",
+      routeSessionKey: "agent:main:test:peer",
+      storePath: "/tmp/sessions.json",
+      ctxPayload: createCtx({ MessageSidFull: "raw-only-1" }),
+      recordInboundSession,
+      runDispatch,
+      log,
+      record: {
+        onRecordError: vi.fn(),
+      },
+    });
+
+    expectDispatched(result);
+    expect(log.mock.calls).toContainEqual([
+      expect.objectContaining({
+        event: "warning",
+        messageId: "raw-only-1",
+        reason: "zero-count-visible-dispatch",
+      }),
+    ]);
+  });
+
   it("does not warn for observed-path deliveries with zero queued counts", async () => {
     const events: string[] = [];
     const log = vi.fn();

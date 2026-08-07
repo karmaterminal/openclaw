@@ -7,6 +7,7 @@ import {
   createNoQueuedDispatchResult,
   createThreadBindingManager,
   dispatchInboundMessageForTest as dispatchInboundMessage,
+  getLastChannelInboundTurnPlan,
   getLastDispatchCtx,
   getLastDispatchReplyOptions,
   getLastRouteUpdate,
@@ -233,6 +234,25 @@ describe("processDiscordMessage session routing and room events", () => {
     expectRecordFields(requireRecord(getLastDispatchCtx(), "dispatch context"), {
       MessageSid: "orig-123",
       MessageSidFull: "proxy-456",
+    });
+    expect(getLastChannelInboundTurnPlan()?.messageId).toBe("orig-123");
+  });
+
+  it("carries the raw Discord message id on the dispatch record without a canonical id", async () => {
+    const ctx = await createBaseContext({
+      message: {
+        id: "raw-789",
+        channelId: "c1",
+        timestamp: new Date().toISOString(),
+        attachments: [],
+      },
+    });
+
+    await runProcessDiscordMessage(ctx);
+
+    expect(getLastChannelInboundTurnPlan()).toMatchObject({
+      messageId: "raw-789",
+      accountId: "default",
     });
   });
 

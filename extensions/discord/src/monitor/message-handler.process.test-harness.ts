@@ -235,6 +235,10 @@ const dispatchInboundMessage = vi.hoisted(() =>
 const recordInboundSession = vi.hoisted(() =>
   vi.fn<(params?: unknown) => Promise<void>>(async () => {}),
 );
+// Captures the dispatch-record correlation fields the channel turn receives.
+const lastChannelInboundTurnPlan = vi.hoisted(() => ({
+  value: undefined as { messageId?: string; accountId?: string } | undefined,
+}));
 const configSessionsMocks = vi.hoisted(() => ({
   getSessionEntry: vi.fn<(params?: unknown) => unknown>(() => undefined),
   readLatestAssistantTextByIdentity: vi.fn<
@@ -403,6 +407,10 @@ vi.mock("openclaw/plugin-sdk/channel-inbound", async (importOriginal) => {
     dispatchChannelInboundTurn: async (
       plan: import("openclaw/plugin-sdk/channel-inbound").ChannelInboundTurnPlan<"provider_message_sending">,
     ) => {
+      lastChannelInboundTurnPlan.value = {
+        messageId: plan.messageId,
+        accountId: plan.accountId,
+      };
       const { cfg, route, delivery, sessionInitRetry, ...prepared } = plan;
       const runDispatch = async () => {
         for (let retryIndex = 0; ; retryIndex += 1) {
@@ -583,6 +591,7 @@ export function registerDiscordProcessTestLifecycle() {
     resolveStorePath.mockClear();
     createDiscordRestClientSpy.mockClear();
     getGlobalHookRunner.mockReset();
+    lastChannelInboundTurnPlan.value = undefined;
     dispatchInboundMessage.mockResolvedValue(createNoQueuedDispatchResult());
     recordInboundSession.mockResolvedValue(undefined);
     readSessionUpdatedAt.mockReturnValue(undefined);
@@ -672,6 +681,12 @@ export function getLastDispatchCtx():
       }
     | undefined;
   return params?.ctx;
+}
+
+export function getLastChannelInboundTurnPlan():
+  | { messageId?: string; accountId?: string }
+  | undefined {
+  return lastChannelInboundTurnPlan.value;
 }
 
 export function getLastDispatchReplyOptions(): DispatchInboundParams["replyOptions"] | undefined {

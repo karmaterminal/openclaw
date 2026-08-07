@@ -4,6 +4,7 @@ import {
   createDiagnosticTraceContextFromActiveScope,
   runWithDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
+import { resolveCommitHash } from "../../infra/git-commit.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { isRecentOutboundMessageIdentity } from "../message/outbound-echo.js";
 import { recordChannelBotPairLoopAndCheckSuppression } from "./bot-loop-protection.js";
@@ -25,16 +26,52 @@ import type {
 const NO_ADDITIONAL_DELIVERY_SIGNALS: ChannelTurnVisibleDeliverySignals = {};
 const log = createSubsystemLogger("channels/turn/execution");
 
+// Build identity is process-stable; resolving it once keeps the warning path cheap.
+let cachedBuildIdentity: string | undefined;
+function resolveChannelTurnBuildIdentity(): string {
+  cachedBuildIdentity ??= resolveCommitHash({ moduleUrl: import.meta.url }) ?? "unknown";
+  return cachedBuildIdentity;
+}
+
+/**
+ * Correlation id for one channel turn receipt. Adapters may omit the explicit
+ * turn messageId, but the finalized context already carries the canonical
+ * source id, so receipts read it instead of degrading to "unknown" and
+ * breaking source/run correlation.
+ */
+function resolveChannelTurnReceiptMessageId(params: {
+  messageId?: string;
+  ctxPayload?: FinalizedMsgContext;
+}): string | undefined {
+  const candidates = [
+    params.messageId,
+    params.ctxPayload?.MessageSid,
+    params.ctxPayload?.MessageSidFull,
+  ];
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
+
 function emit(params: {
   log?: (event: ChannelTurnLogEvent) => void;
   event: Omit<ChannelTurnLogEvent, "channel" | "accountId">;
   channel: string;
   accountId?: string;
+  ctxPayload?: FinalizedMsgContext;
 }) {
   params.log?.({
     channel: params.channel,
     accountId: params.accountId,
     ...params.event,
+    messageId: resolveChannelTurnReceiptMessageId({
+      messageId: params.event.messageId,
+      ctxPayload: params.ctxPayload,
+    }),
   });
 }
 
@@ -84,7 +121,7 @@ function resolveRecordSessionKey<TDispatchResult>(
 function maybeWarnZeroCountVisibleDispatch<TDispatchResult>(
   params: Pick<
     PreparedChannelTurn<TDispatchResult>,
-    "admission" | "channel" | "ctxPayload" | "messageId" | "routeSessionKey"
+    "accountId" | "admission" | "channel" | "ctxPayload" | "messageId" | "routeSessionKey"
   > & {
     dispatchResult: TDispatchResult;
     log?: (event: ChannelTurnLogEvent) => void;
@@ -98,18 +135,21 @@ function maybeWarnZeroCountVisibleDispatch<TDispatchResult>(
   if (hasVisibleChannelTurnDispatch(dispatchResult, NO_ADDITIONAL_DELIVERY_SIGNALS)) {
     return;
   }
+  const messageId = resolveChannelTurnReceiptMessageId(params);
+  // Single-line receipt: source id, account, queue key, and build identity are the
+  // join keys used to correlate this dispatch with the agent run it produced.
   log.warn(
     `visible channel turn dispatched with no queued reply payloads: channel=${params.channel} ` +
-      `messageId=${params.messageId ?? "unknown"} sessionKey=${
-        params.ctxPayload.SessionKey ?? params.routeSessionKey
-      }`,
+      `accountId=${params.accountId ?? "unknown"} messageId=${messageId ?? "unknown"} ` +
+      `sessionKey=${params.ctxPayload.SessionKey ?? params.routeSessionKey} ` +
+      `build=${resolveChannelTurnBuildIdentity()}`,
   );
   emit({
     ...params,
     event: {
       stage: "dispatch",
       event: "warning",
-      messageId: params.messageId,
+      messageId,
       sessionKey: params.ctxPayload.SessionKey ?? params.routeSessionKey,
       admission: params.admission?.kind ?? "dispatch",
       reason: "zero-count-visible-dispatch",
