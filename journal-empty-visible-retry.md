@@ -156,4 +156,7 @@ node scripts/test-projects.mjs
 The local gitcrawl archive was fresh to 2026-08-06 but did not contain these fork-local issues,
 so attribution uses the live `gh issue view` payloads.
 
+Durable issue report posted:
+https://github.com/karmaterminal/openclaw/issues/1227#issuecomment-5220654685
+
 VERDICT: inconclusive

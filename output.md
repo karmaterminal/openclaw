@@ -45,4 +45,7 @@ The historical log excerpts do not include the correlation bytes needed to disti
 same-run terminal retry from duplicate ingress or a combination. Current-source behavior is
 high-confidence; historical incident attribution remains low-confidence.
 
+Durable issue report:
+https://github.com/karmaterminal/openclaw/issues/1227#issuecomment-5220654685
+
 VERDICT: inconclusive
