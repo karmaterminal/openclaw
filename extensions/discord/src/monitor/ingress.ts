@@ -14,9 +14,11 @@ import type { Client } from "../internal/discord.js";
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
 import type { DiscordMessageEvent } from "./listeners.js";
+import { hasRawDiscordUserMention } from "./message-handler.preflight-helpers.js";
 
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
+const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
 
 type DiscordIngressPayload = {
   version: 1;
@@ -97,11 +99,35 @@ function isDiscordAuthenticationFailure(error: unknown): boolean {
   return false;
 }
 
+function discordMessageSentAtMs(rawMessage: APIMessage): number | null {
+  const sentAt = Date.parse(rawMessage.timestamp);
+  return Number.isFinite(sentAt) ? sentAt : null;
+}
+
+function isDiscordGuildMessage(rawMessage: APIMessage): boolean {
+  return typeof (rawMessage as { guild_id?: unknown }).guild_id === "string";
+}
+
+function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): boolean {
+  if (!isDiscordGuildMessage(rawMessage)) {
+    return true;
+  }
+  const botId = nonEmptyString(botUserId);
+  if (!botId) {
+    return true;
+  }
+  return (
+    rawMessage.mentions?.some((user) => user.id === botId) ||
+    hasRawDiscordUserMention(rawMessage.content ?? "", botId)
+  );
+}
+
 export function createDiscordIngressMonitor(params: {
   accountId: string;
   client: Client;
   runtime: Pick<RuntimeEnv, "error" | "log">;
   dispatch: DiscordIngressDispatch;
+  botUserId?: string;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
 }): DiscordIngressMonitor {
   const queue =
@@ -147,6 +173,23 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
+      resolvePendingDisposition: (record, context) => {
+        const rawMessage = record.payload.rawMessage;
+        if (isDiscordAddressedMessage(rawMessage, params.botUserId)) {
+          return null;
+        }
+        const sentAt = discordMessageSentAtMs(rawMessage) ?? record.receivedAt;
+        if (context.now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
+          return null;
+        }
+        return {
+          kind: "fail",
+          reason: "stale-ambient-backlog",
+          message:
+            `Discord ambient message ${record.id} on ${context.laneKey} is older than ` +
+            `${DISCORD_STALE_AMBIENT_BACKLOG_MS}ms; suppressing stale backlog before dispatch.`,
+        };
+      },
       resolveNonRetryableFailure: (error) => {
         if (error instanceof DiscordIngressPayloadError) {
           return { reason: "invalid-event", message: error.message };

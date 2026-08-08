@@ -18,7 +18,11 @@ type DiscordIngressPayload = {
   rawMessage: APIMessage;
 };
 
-function createRawMessage(id: string, channelId = "channel-1"): APIMessage {
+function createRawMessage(
+  id: string,
+  channelId = "channel-1",
+  overrides: Partial<APIMessage> = {},
+): APIMessage {
   return {
     id,
     channel_id: channelId,
@@ -40,6 +44,7 @@ function createRawMessage(id: string, channelId = "channel-1"): APIMessage {
     pinned: false,
     type: 0,
     tts: false,
+    ...overrides,
   } as unknown as APIMessage;
 }
 
@@ -249,6 +254,94 @@ describe("Discord durable ingress", () => {
           const verdict = await queue.enqueue("1005", payloadFor(rawMessage));
           expect(verdict.kind).toBe("failed");
         });
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("suppresses stale ambient guild backlog before dispatching a fresh bot mention", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const stale = createRawMessage("1006", "channel-1", {
+        guild_id: "guild-1",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      const fresh = createRawMessage("1007", "channel-1", {
+        guild_id: "guild-1",
+        content: "hello <@bot-1>",
+        mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
+        timestamp: new Date(now).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1006", payloadFor(stale), {
+        laneKey: "channel:channel-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+      await queue.enqueue("1007", payloadFor(fresh), {
+        laneKey: "channel:channel-1",
+        receivedAt: now,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1007"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+          { id: "1006", reason: "stale-ambient-backlog" },
+        ]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("keeps stale bot mentions out of ambient backlog suppression", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const mentioned = createRawMessage("1008", "channel-1", {
+        guild_id: "guild-1",
+        content: "old but direct <@bot-1>",
+        mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1008", payloadFor(mentioned), {
+        laneKey: "channel:channel-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1008"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         await monitor.stop();
       }

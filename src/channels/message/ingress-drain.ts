@@ -15,6 +15,10 @@ import {
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
 import {
+  applyIngressPendingDispositions,
+  type ResolveChannelIngressPendingDisposition,
+} from "./ingress-drain-pending-disposition.js";
+import {
   activeClaimKey,
   IngressAdoptionLostError,
   isIngressAdoptionLostError,
@@ -22,6 +26,7 @@ import {
   sortedKeys,
   type ActiveHandlerState,
   type ChannelIngressDrainDispatchResult,
+  type ChannelIngressDispatchLifecycle,
 } from "./ingress-drain-state.js";
 import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
 export { isIngressAdoptionLostError } from "./ingress-drain-state.js";
@@ -45,36 +50,6 @@ export const DEFAULT_INGRESS_ADOPTION_STALL_MS = 5 * 60 * 1000;
 
 /** Bounded tombstone write retries — wedged ownership beats silent double-dispatch. */
 const INGRESS_TOMBSTONE_RETRY_MAX_ATTEMPTS = 8;
-
-/** Full pre-adoption → adoption ownership lifecycle for one claimed event. */
-type ChannelIngressDispatchLifecycle = {
-  /** Pre-adoption only. After adopt the drain treats this signal as inert. */
-  abortSignal: AbortSignal;
-  /**
-   * Fires when recovery-relevant session/run state is durable.
-   * Drain completes (tombstones) the claim here — never at settle.
-   */
-  onAdopted: () => void | Promise<void>;
-  /**
-   * Turn ownership deferred to reply-lane admission (queued followup).
-   * Claim remains held until adopted or abandoned.
-   */
-  onDeferred: () => void;
-  /**
-   * Durable adoption finalization is in progress (e.g. settlement hold while
-   * committing dedupe). Clears the pre-adoption stall watchdog so a timeout
-   * settlement cannot race and dead-letter an about-to-complete claim.
-   * Claim stays held until onAdopted / onAbandoned / fail.
-   */
-  onAdoptionFinalizing: () => void;
-  /** Deferred work terminally failed after dispatch returned. */
-  onFailed?: (error: unknown) => void | Promise<void>;
-  /**
-   * Deferred turn finished without ever owning the reply lane.
-   * Drain releases the claim for retry.
-   */
-  onAbandoned: () => void | Promise<void>;
-};
 
 type DeferredLaneOccupancy = "hold" | "release";
 
@@ -106,6 +81,7 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
+  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -706,7 +682,16 @@ export function createChannelIngressDrain<
 
     await recoverStaleClaims();
 
-    const pending = await queue.listPending({ limit: "all", orderBy });
+    const dispositionNow = now();
+    const pending = await applyIngressPendingDispositions({
+      pending: await queue.listPending({ limit: "all", orderBy }),
+      dispositionNow,
+      queue,
+      resolvePendingDisposition: options.resolvePendingDisposition,
+      deriveLaneKey: options.deriveLaneKey,
+      reconcileStoredLaneKey: options.reconcileStoredLaneKey,
+      log,
+    });
     const claims = await queue.listClaims();
     const activeLaneKeys = new Set(laneOwnerByKey.keys());
     const claimedLaneKeys = new Set(
@@ -724,25 +709,19 @@ export function createChannelIngressDrain<
           resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
         ),
     );
-    const retryDelayedLaneKeys = new Set<string>();
-    for (const event of pending) {
-      if (resolveIngressRetryDelayMs(event, options.retryPolicy, now()) > 0) {
-        retryDelayedLaneKeys.add(
-          resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey),
-        );
-      }
-    }
+    const eligiblePending = pending.filter(
+      (event) => resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow) === 0,
+    );
 
     // Deterministic blocked set for claimNext lane serialization.
     const blockedLaneKeys = new Set<string>([
       ...sortedKeys(activeLaneKeys),
       ...sortedKeys(claimedLaneKeys),
-      ...sortedKeys(retryDelayedLaneKeys),
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
     // Free the lane in blockedLaneKeys so claimNext can take the superseding event.
-    for (const event of pending) {
+    for (const event of eligiblePending) {
       if (shouldStop()) {
         break;
       }
@@ -752,7 +731,7 @@ export function createChannelIngressDrain<
       }
     }
 
-    const candidateIds = new Set(pending.map((event) => event.id));
+    const candidateIds = new Set(eligiblePending.map((event) => event.id));
     let started = 0;
     while (started < startLimit) {
       if (shouldStop()) {

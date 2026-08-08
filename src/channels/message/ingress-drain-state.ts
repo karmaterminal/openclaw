@@ -19,6 +19,36 @@ export type ChannelIngressDrainDispatchResult =
   | { kind: "deferred" }
   | { kind: "failed-retryable"; error: unknown };
 
+/** Full pre-adoption → adoption ownership lifecycle for one claimed event. */
+export type ChannelIngressDispatchLifecycle = {
+  /** Pre-adoption only. After adopt the drain treats this signal as inert. */
+  abortSignal: AbortSignal;
+  /**
+   * Fires when recovery-relevant session/run state is durable.
+   * Drain completes (tombstones) the claim here — never at settle.
+   */
+  onAdopted: () => void | Promise<void>;
+  /**
+   * Turn ownership deferred to reply-lane admission (queued followup).
+   * Claim remains held until adopted or abandoned.
+   */
+  onDeferred: () => void;
+  /**
+   * Durable adoption finalization is in progress (e.g. settlement hold while
+   * committing dedupe). Clears the pre-adoption stall watchdog so a timeout
+   * settlement cannot race and dead-letter an about-to-complete claim.
+   * Claim stays held until onAdopted / onAbandoned / fail.
+   */
+  onAdoptionFinalizing: () => void;
+  /** Deferred work terminally failed after dispatch returned. */
+  onFailed?: (error: unknown) => void | Promise<void>;
+  /**
+   * Deferred turn finished without ever owning the reply lane.
+   * Drain releases the claim for retry.
+   */
+  onAbandoned: () => void | Promise<void>;
+};
+
 export type ActiveHandlerState<TPayload, TMetadata> = {
   eventId: string;
   laneKey: string;
