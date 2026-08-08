@@ -21,11 +21,18 @@ export type ResolveChannelIngressPendingDisposition<TPayload, TMetadata> = (
   | undefined
   | Promise<ChannelIngressPendingDisposition | null | undefined>;
 
+export type OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata> = (
+  record: ChannelIngressQueueRecord<TPayload, TMetadata>,
+  disposition: ChannelIngressPendingDisposition,
+  context: ChannelIngressPendingDispositionContext,
+) => void | Promise<void>;
+
 type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   dispositionNow: number;
   queue: Pick<ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>, "fail">;
   resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
   deriveLaneKey?: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string | undefined;
   reconcileStoredLaneKey?: (
     record: ChannelIngressQueueRecord<TPayload, TMetadata>,
@@ -33,6 +40,11 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
     derivedLaneKey: string,
   ) => boolean;
   log: (message: string) => void;
+};
+
+export type AppliedIngressPendingDispositions<TPayload, TMetadata> = {
+  pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
+  blockedLaneKeys: Set<string>;
 };
 
 async function failPendingRecord<TPayload, TMetadata, TCompletedMetadata>(
@@ -48,11 +60,12 @@ async function failPendingRecord<TPayload, TMetadata, TCompletedMetadata>(
 
 export async function applyIngressPendingDispositions<TPayload, TMetadata, TCompletedMetadata>(
   params: ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata>,
-): Promise<Array<ChannelIngressQueueRecord<TPayload, TMetadata>>> {
+): Promise<AppliedIngressPendingDispositions<TPayload, TMetadata>> {
   if (!params.resolvePendingDisposition) {
-    return params.pending;
+    return { pending: params.pending, blockedLaneKeys: new Set() };
   }
   const retained: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
+  const blockedLaneKeys = new Set<string>();
   for (const event of params.pending) {
     const laneKey = resolveLaneKey(event, params.deriveLaneKey, params.reconcileStoredLaneKey);
     const disposition = await params.resolvePendingDisposition(event, {
@@ -72,8 +85,15 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       );
       if (!failed) {
         params.log(`ingress drain: pending disposition lost race for event ${event.id}`);
+        retained.push(event);
+        blockedLaneKeys.add(laneKey);
+        continue;
       }
+      await params.onPendingDispositionCommitted?.(event, disposition, {
+        laneKey,
+        now: params.dispositionNow,
+      });
     }
   }
-  return retained;
+  return { pending: retained, blockedLaneKeys };
 }

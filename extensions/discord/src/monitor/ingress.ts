@@ -34,7 +34,7 @@ import {
 } from "./allow-list.js";
 import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
 import type { DiscordMessageEvent } from "./listeners.js";
-import { hasRawDiscordUserMention } from "./message-handler.preflight-helpers.js";
+import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
 
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
@@ -295,13 +295,11 @@ function canExpireDiscordStaleAmbientBacklog(
   if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
     return false;
   }
-  const directChannelIdConfig =
-    channelConfig?.matchSource === "direct" && channelConfig.matchKey === channelId;
   const rawNonThreadChannel =
     typeof channelInfo.type === "number" && !isDiscordThreadChannelType(channelInfo.type);
-  // Stale expiry is a freshness fence, not mention admission. A direct channel
-  // id config or raw non-thread type proves this is not an unhydrated thread.
-  return directChannelIdConfig || rawNonThreadChannel;
+  // Stale expiry is a freshness fence, not mention admission. Only raw channel
+  // type proves this is not an unhydrated thread; direct config can name either.
+  return rawNonThreadChannel;
 }
 
 async function matchesConfiguredDiscordMentionText(
@@ -319,6 +317,9 @@ async function matchesConfiguredDiscordMentionText(
   const hasAudioOnlyMentionCandidate =
     !text.trim() && hasPotentialDiscordAudioAttachment(rawMessage);
   if (!text.trim() && !hasAudioOnlyMentionCandidate) {
+    return false;
+  }
+  if (!params.cfg) {
     return false;
   }
   try {
@@ -439,6 +440,36 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
+      onPendingDispositionCommitted: (record, disposition, context) => {
+        if (disposition.kind !== "fail" || disposition.reason !== "stale-ambient-backlog") {
+          return;
+        }
+        const rawMessage = record.payload.rawMessage;
+        const payloadReceivedAt = Number.isFinite(record.payload.receivedAt)
+          ? record.payload.receivedAt
+          : record.receivedAt;
+        const sentAt =
+          record.receivedAt > payloadReceivedAt
+            ? record.receivedAt
+            : (discordMessageSentAtMs(rawMessage) ?? record.receivedAt);
+        params.runtime.log?.(
+          {
+            level: "debug",
+            source: "discord",
+            accountId: params.accountId,
+            eventId: record.id,
+            sourceEventId: rawMessage.id,
+            laneKey: context.laneKey,
+            channelId: rawMessage.channel_id,
+            receivedAt: new Date(record.receivedAt).toISOString(),
+            ageMs: Math.max(0, context.now - sentAt),
+            thresholdMs: DISCORD_STALE_AMBIENT_BACKLOG_MS,
+            disposition: "failed",
+            reason: "stale-ambient-backlog",
+          },
+          "discord ingress stale ambient backlog suppressed",
+        );
+      },
       resolvePendingDisposition: async (record, context) => {
         const rawMessage = record.payload.rawMessage;
         if (isDiscordAddressedMessage(rawMessage, params.botUserId)) {
@@ -471,21 +502,6 @@ export function createDiscordIngressMonitor(params: {
         ) {
           return null;
         }
-        const receipt = {
-          level: "debug",
-          source: "discord",
-          accountId: params.accountId,
-          eventId: record.id,
-          sourceEventId: rawMessage.id,
-          laneKey: context.laneKey,
-          channelId: rawMessage.channel_id,
-          receivedAt: new Date(record.receivedAt).toISOString(),
-          ageMs: Math.max(0, context.now - sentAt),
-          thresholdMs: DISCORD_STALE_AMBIENT_BACKLOG_MS,
-          disposition: "failed",
-          reason: "stale-ambient-backlog",
-        };
-        params.runtime.log?.(receipt, "discord ingress stale ambient backlog suppressed");
         return {
           kind: "fail",
           reason: "stale-ambient-backlog",

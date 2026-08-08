@@ -25,6 +25,8 @@ type RawMessageOverrides = Partial<APIMessage> & {
   guild_id?: string;
 };
 
+const DISCORD_INGRESS_WAIT_TIMEOUT_MS = 10_000;
+
 function createRawMessage(
   id: string,
   channelId = "channel-1",
@@ -144,7 +146,9 @@ async function expectStaleMessageDispatches(params: {
       });
       monitor.start();
       try {
-        await vi.waitFor(() => expect(dispatched).toEqual([messageId]));
+        await vi.waitFor(() => expect(dispatched).toEqual([messageId]), {
+          timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS,
+        });
         expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         await monitor.stop();
@@ -191,11 +195,14 @@ async function expectStaleMessageFailsAsAmbient(params: {
       });
       monitor.start();
       try {
-        await vi.waitFor(async () => {
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: messageId, reason: "stale-ambient-backlog" },
-          ]);
-        });
+        await vi.waitFor(
+          async () => {
+            expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+              { id: messageId, reason: "stale-ambient-backlog" },
+            ]);
+          },
+          { timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS },
+        );
         expect(dispatch).not.toHaveBeenCalled();
       } finally {
         await monitor.stop();
@@ -859,6 +866,133 @@ describe("Discord durable ingress", () => {
         const receipt = log.mock.calls[0]?.[0];
         expect(receipt).not.toHaveProperty("content");
         expect(JSON.stringify(receipt)).not.toContain("old room history");
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("does not emit a stale suppression receipt when the durable fail loses its race", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const rawMessage = createRawMessage("1027", "channel-cas-loss-1", {
+        guild_id: "guild-1",
+        channel: guildTextChannel("channel-cas-loss-1"),
+        content: "old room history must not be logged",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1027", payloadFor(rawMessage), {
+        laneKey: "channel:channel-cas-loss-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const fail = vi.fn(async (...args: Parameters<typeof queue.fail>) => {
+        const peerClaim = await queue.claim("1027", { ownerId: "peer-drain" });
+        expect(peerClaim).not.toBeNull();
+        if (peerClaim) {
+          await queue.release(peerClaim, { recordAttempt: false });
+        }
+        expect(args[0]).toBe("1027");
+        return false;
+      });
+      const log = vi.fn();
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: { error: vi.fn(), log },
+        botUserId: "bot-1",
+        queue: { ...queue, fail },
+        dispatch: vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
+          await lifecycle.onAdopted();
+        }),
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(fail).toHaveBeenCalledTimes(1));
+        expect(log).not.toHaveBeenCalled();
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("does not emit a stale suppression receipt when the durable fail write throws", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const rawMessage = createRawMessage("1028", "channel-fail-throws-1", {
+        guild_id: "guild-1",
+        channel: guildTextChannel("channel-fail-throws-1"),
+        content: "old room history must not be logged",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1028", payloadFor(rawMessage), {
+        laneKey: "channel:channel-fail-throws-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const fail = vi.fn(async () => {
+        throw new Error("simulated durable fail write outage");
+      });
+      const log = vi.fn();
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: { error: vi.fn(), log },
+        botUserId: "bot-1",
+        queue: { ...queue, fail },
+        dispatch: vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
+          await lifecycle.onAdopted();
+        }),
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(fail).toHaveBeenCalledTimes(1));
+        expect(log).not.toHaveBeenCalled();
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("does not emit duplicate stale suppression receipts for repeated delivery", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const rawMessage = createRawMessage("1029", "channel-duplicate-debug-1", {
+        guild_id: "guild-1",
+        channel: guildTextChannel("channel-duplicate-debug-1"),
+        content: "old duplicate room history must not be logged",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1029", payloadFor(rawMessage), {
+        laneKey: "channel:channel-duplicate-debug-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const log = vi.fn();
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: { error: vi.fn(), log },
+        botUserId: "bot-1",
+        queue,
+        dispatch: vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
+          await lifecycle.onAdopted();
+        }),
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(async () => {
+          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+            { id: "1029", reason: "stale-ambient-backlog" },
+          ]);
+        });
+        expect(log).toHaveBeenCalledTimes(1);
+
+        await monitor.accept(rawMessage);
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 25);
+        });
+        expect(log).toHaveBeenCalledTimes(1);
       } finally {
         await monitor.stop();
       }

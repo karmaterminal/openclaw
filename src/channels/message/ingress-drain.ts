@@ -16,6 +16,7 @@ import {
 } from "./ingress-claim-owner.js";
 import {
   applyIngressPendingDispositions,
+  type OnChannelIngressPendingDispositionCommitted,
   type ResolveChannelIngressPendingDisposition,
 } from "./ingress-drain-pending-disposition.js";
 import {
@@ -85,6 +86,7 @@ export type CreateChannelIngressDrainOptions<
     derivedLaneKey: string,
   ) => boolean;
   resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -658,15 +660,17 @@ export function createChannelIngressDrain<
     await recoverStaleClaims();
 
     const dispositionNow = now();
-    const pending = await applyIngressPendingDispositions({
+    const pendingDispositionResult = await applyIngressPendingDispositions({
       pending: await queue.listPending({ limit: "all", orderBy }),
       dispositionNow,
       queue,
       resolvePendingDisposition: options.resolvePendingDisposition,
+      onPendingDispositionCommitted: options.onPendingDispositionCommitted,
       deriveLaneKey: options.deriveLaneKey,
       reconcileStoredLaneKey: options.reconcileStoredLaneKey,
       log,
     });
+    const pending = pendingDispositionResult.pending;
     const claims = await queue.listClaims();
     const activeLaneKeys = new Set(laneOwnerByKey.keys());
     const claimedLaneKeys = new Set(
@@ -709,6 +713,7 @@ export function createChannelIngressDrain<
       ...sortedKeys(activeLaneKeys),
       ...sortedKeys(claimedLaneKeys),
       ...sortedKeys(retryDelayedLaneKeys),
+      ...sortedKeys(pendingDispositionResult.blockedLaneKeys),
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
