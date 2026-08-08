@@ -166,6 +166,20 @@ function materializeCurrentWorkerAgentDatabase(stateDir: string): string {
   return databasePath;
 }
 
+function readAgentDatabaseFileBytes(databasePath: string): Record<string, string | null> {
+  // Sidecars are part of the artifact: a preflight that leaked a journal or
+  // retained a WAL mutated the file even when the main image round-trips.
+  return Object.fromEntries(
+    ["", "-wal", "-shm", "-journal"].map((suffix) => {
+      const file = `${databasePath}${suffix}`;
+      return [
+        `database${suffix}`,
+        fs.existsSync(file) ? fs.readFileSync(file).toString("base64") : null,
+      ];
+    }),
+  );
+}
+
 function ensureV13WorkerAgentDatabaseTemplate(): string {
   if (v13WorkerAgentDatabaseTemplatePath) {
     return v13WorkerAgentDatabaseTemplatePath;
@@ -3243,6 +3257,85 @@ describe("openclaw agent database", () => {
     ).toEqual({ main_key: "main" });
   });
 
+  it("leaves a canonical current-version database byte-identical during maintenance migration", () => {
+    const stateDir = createTempStateDir();
+    const databasePath = materializeCurrentWorkerAgentDatabase(stateDir);
+    const { DatabaseSync } = requireNodeSqlite();
+
+    // A live agent database carries session rows whose entry_valid projection is
+    // still pending (0). That is ordinary runtime state on a canonical file, not
+    // schema drift, so maintenance preflight must not rewrite it.
+    const seeded = new DatabaseSync(databasePath);
+    try {
+      seeded
+        .prepare(
+          `INSERT INTO session_nodes (session_key, current_session_id, entry_json, updated_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(
+          "agent:worker-1:canonical",
+          "canonical-session",
+          JSON.stringify({ sessionId: "canonical-session", updatedAt: 1000 }),
+          1000,
+        );
+      seeded.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    } finally {
+      seeded.close();
+    }
+
+    // Snapshot the literal on-disk artifact the seeding left behind, sidecars
+    // included and unmodified: a preflight that leaked a journal, retained a
+    // WAL, or rewrote any byte has mutated the file even when the main
+    // database image happens to round-trip.
+    const readArtifact = (): {
+      entryValid: unknown;
+      files: Record<string, string | null>;
+      schemaMeta: unknown;
+    } => {
+      const files = readAgentDatabaseFileBytes(databasePath);
+      const database = new DatabaseSync(databasePath, { readOnly: true });
+      try {
+        return {
+          entryValid: database
+            .prepare("SELECT entry_valid FROM session_nodes WHERE session_key = ?")
+            .get("agent:worker-1:canonical"),
+          files,
+          schemaMeta: database
+            .prepare(
+              `SELECT meta_key, role, schema_version, agent_id, app_version, created_at, updated_at
+               FROM schema_meta WHERE meta_key = 'primary'`,
+            )
+            .get(),
+        };
+      } finally {
+        database.close();
+      }
+    };
+
+    const before = readArtifact();
+    expect(before.entryValid).toEqual({ entry_valid: 0 });
+    expect(before.files.database).toEqual(expect.any(String));
+
+    migrateOpenClawAgentDatabaseForMaintenance({
+      agentId: "worker-1",
+      pathname: databasePath,
+    });
+
+    expect(readArtifact()).toEqual(before);
+
+    const verified = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(() =>
+        assertOpenClawAgentDatabaseForMaintenance(verified, {
+          agentId: "worker-1",
+          pathname: databasePath,
+        }),
+      ).not.toThrow();
+    } finally {
+      verified.close();
+    }
+  });
+
   it("installs same-version session additions before maintenance index repair", () => {
     const stateDir = createTempStateDir();
     const databasePath = materializeCurrentWorkerAgentDatabase(stateDir);
@@ -3297,6 +3390,101 @@ describe("openclaw agent database", () => {
     } finally {
       repaired.close();
     }
+  });
+
+  it("fails closed when same-version drift accompanies an integrity failure", () => {
+    const stateDir = createTempStateDir();
+    const databasePath = materializeCurrentWorkerAgentDatabase(stateDir);
+    const { DatabaseSync } = requireNodeSqlite();
+
+    const damaged = new DatabaseSync(databasePath);
+    try {
+      // Index-only drift keeps the additive session/memory migrations absent, so
+      // ensureOpenClawAgentDatabaseSchema would take its index-repair branch --
+      // and that branch discards a terminal integrity failure once it repairs an
+      // index. Only the maintenance preflight's own integrity proof fails closed.
+      damaged.exec("DROP INDEX idx_agent_session_members_identity;");
+      // An orphaned child row is what an interrupted delete leaves behind while
+      // enforcement is off; foreign_key_check must condemn the whole file.
+      damaged.exec("PRAGMA foreign_keys = OFF;");
+      damaged
+        .prepare(
+          `INSERT INTO session_members (session_key, identity_id, added_by, added_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run("agent:worker-1:deleted-session", "identity-1", "tester", 1000);
+      damaged.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    } finally {
+      damaged.close();
+    }
+
+    const readState = (): {
+      files: Record<string, string | null>;
+      memberIndex: unknown;
+      orphans: unknown;
+      schemaMeta: unknown;
+    } => {
+      const files = readAgentDatabaseFileBytes(databasePath);
+      const database = new DatabaseSync(databasePath, { readOnly: true });
+      try {
+        return {
+          files,
+          memberIndex: database
+            .prepare(
+              "SELECT name FROM sqlite_schema WHERE type = 'index' AND name = 'idx_agent_session_members_identity'",
+            )
+            .get(),
+          orphans: database
+            .prepare("SELECT COUNT(*) AS count FROM session_members WHERE session_key = ?")
+            .get("agent:worker-1:deleted-session"),
+          schemaMeta: database
+            .prepare(
+              `SELECT meta_key, role, schema_version, agent_id, app_version, created_at, updated_at
+               FROM schema_meta WHERE meta_key = 'primary'`,
+            )
+            .get(),
+        };
+      } finally {
+        database.close();
+      }
+    };
+
+    const before = readState();
+    // Preconditions: the drift is real, so the read-only proof enters the repair
+    // branch; the damage is real, so that branch must refuse to write.
+    expect(before.memberIndex).toBeUndefined();
+    expect(before.orphans).toEqual({ count: 1 });
+    expect(before.files.database).toEqual(expect.any(String));
+    const preflight = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(() =>
+        assertOpenClawAgentDatabaseForMaintenance(preflight, {
+          agentId: "worker-1",
+          pathname: databasePath,
+        }),
+      ).toThrow(/missing or drifted index idx_agent_session_members_identity/iu);
+      expect(preflight.prepare("PRAGMA foreign_key_check").all()).not.toEqual([]);
+    } finally {
+      preflight.close();
+    }
+
+    let thrown: unknown;
+    try {
+      migrateOpenClawAgentDatabaseForMaintenance({
+        agentId: "worker-1",
+        pathname: databasePath,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    // Classification matters: the integrity proof must reject this file, not the
+    // post-repair schema assertion, and not the drift error alone.
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).name).toBe("SqliteIntegrityError");
+    expect((thrown as Error).message).toMatch(/foreign_key_check failed/iu);
+
+    // No repair write: the drifted index stays dropped and the artifact is byte-identical.
+    expect(readState()).toEqual(before);
   });
 
   it("rejects a missing current-schema table instead of recreating it empty", () => {

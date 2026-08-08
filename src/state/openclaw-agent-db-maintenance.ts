@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
+import { assertSqliteIntegrity } from "../infra/sqlite-integrity.js";
 import {
   createNewerSqliteSchemaVersionError,
   readSqliteUserVersion,
@@ -96,6 +97,25 @@ export function migrateOpenClawAgentDatabaseForMaintenance(options: {
       metadataVersion < OPENCLAW_AGENT_SCHEMA_VERSION;
     if (!hasCurrentVersion && !hasSupportedOlderVersion) {
       return;
+    }
+    // A canonical current-version file already satisfies the maintenance
+    // contract, so prove it read-only instead of routing it through writable
+    // schema initialization: that path rewrites pending entry_valid rows and
+    // would mutate a healthy artifact. Only a supported older file, or a
+    // current-version file that fails this proof, reaches the repair below.
+    if (hasCurrentVersion) {
+      try {
+        assertOpenClawAgentDatabaseForMaintenance(database, {
+          agentId,
+          pathname: options.pathname,
+        });
+        return;
+      } catch {
+        // Recognized same-version drift: prove the whole file before repairing.
+        // A failed integrity check is corruption, not drift, and must fail
+        // closed rather than let the repair transaction write into it.
+        assertSqliteIntegrity(database, options.pathname);
+      }
     }
     ensureOpenClawAgentDatabaseSchema(database, {
       agentId,
