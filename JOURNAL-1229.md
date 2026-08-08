@@ -567,3 +567,233 @@ official GitHub release into `$HOME/.local/bin` after checking the published
 checksum, then reran the helper successfully. A repo-local binary was rejected
 by autoreview isolation, and a repo-local `TMPDIR` was rejected because review
 temp roots must be outside the reviewed repository.
+
+## Third follow-up implementation — 2026-08-08
+
+### Safety review objection
+
+The next safety review found two false-terminalization gaps in the second
+follow-up:
+
+- provider-scoped Discord `mentionPatterns` from `params.discordConfig` were
+  passed into full preflight's `buildMentionRegexes()` but not into the
+  durable-ingress pre-claim classifier; and
+- identity-derived mention regexes from the routed agent identity
+  (`identity.name` and `identity.emoji`) can make full preflight treat stale
+  guild rows as addressed, while the monitor still saw only raw Discord
+  mentions, replies, bound/cached threads, and global/agent text-pattern
+  presence.
+
+Either case could incorrectly dead-letter an older guild row as
+`stale-ambient-backlog` before full preflight proved it addressed.
+
+### GitNexus focused graph commands
+
+No whole-repo GitNexus indexing was run. Only the existing global CLI
+`/home/figs/.npm-global/bin/gitnexus` was available; no GitNexus MCP graph/query
+surface was exposed in this session.
+
+The existing focused alias remains `src/channels/message` only:
+
+```shell
+/home/figs/.npm-global/bin/gitnexus list
+# `emeric-1229-ingress` path is `src/channels/message`; Discord files are not indexed.
+
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolveDiscordMentionState
+# Symbol not found.
+
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress buildMentionRegexes
+# Symbol not found.
+
+/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'mention' OR toLower(s.name) CONTAINS 'identity' OR toLower(s.name) CONTAINS 'preflight' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line LIMIT 120"
+# Returned only core message-ingress identity symbols such as ingress claim-owner/outbound echo.
+
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress preflightDiscordMessage
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolveDiscordPreflightRoute
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress -u Function:message-handler.preflight.ts:preflightDiscordMessage
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress -u Function:message-handler.routing-preflight.ts:resolveDiscordPreflightRoute
+# All returned symbol not found, confirming the Discord route/preflight surfaces are outside the focused alias.
+
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createDiscordIngressMonitor
+/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createDiscordIngressMonitor --depth 3 --include-tests
+# Symbol/target not found; impactedCount=0.
+
+/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createChannelIngressDrain --depth 2 --include-tests
+# Impact remains `ingress-drain.test.ts`, `ingress-drain-supersede.test.ts`, and `ingress-drain-lanes.test.ts`.
+
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress claimNext
+# Ambiguous; candidates include `Function:ingress-queue.ts:claimNext`.
+
+/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'claimnext' OR toLower(s.name) CONTAINS 'retry' OR toLower(s.name) CONTAINS 'pending' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line LIMIT 120"
+# Confirmed the indexed owner symbols are still core pending/retry/claim surfaces: `listPending`, `claimNext`, `resolveIngressRetryDelayMs`, and drain retry state.
+```
+
+GitNexus conclusion: the focused graph continues to validate that core
+claim/retry/pending disposition ownership is unchanged. It cannot inspect the
+Discord plugin or full mention preflight, so the provider-policy and identity
+gaps were traced by direct source walk.
+
+### Direct source and dependency walk
+
+- `extensions/discord/src/monitor/message-handler.ts` created the ingress
+  monitor with `cfg` and `threadBindings`, but not `discordConfig`; therefore
+  the pre-claim classifier could not pass provider policy into mention regex
+  resolution.
+- `extensions/discord/src/monitor/message-handler.preflight.ts` builds mention
+  regexes with `buildMentionRegexes(params.cfg, effectiveRoute.agentId, {
+provider: "discord", conversationId: messageChannelId, providerPolicy:
+params.discordConfig?.mentionPatterns })`.
+- `extensions/discord/src/monitor/message-handler.routing-preflight.ts`
+  resolves the effective route and `effectiveRoute.agentId` after binding and
+  route hydration. Pre-claim rows do not have that routed fact.
+- `src/auto-reply/reply/mentions.ts` derives mention regex patterns from
+  configured `agents.*.groupChat.mentionPatterns`, then falls back to
+  `identity.name` and `identity.emoji` for the selected agent when no explicit
+  patterns are set.
+- `src/channels/mention-pattern-policy.ts` applies provider-scoped
+  `channels.discord.mentionPatterns` / account `params.discordConfig`
+  allow/deny policy to those regexes.
+- `extensions/discord/src/monitor/preflight-audio.ts` can treat captionless
+  guild audio as addressed after transcription when mention regexes are
+  configured. Pre-claim cannot run transcription safely, so audio-only rows
+  with any configured mention regex must fail open.
+- `node_modules/discord-api-types/payloads/v10/message.d.ts` confirms raw
+  `APIMessage` contains `mentions`, `mention_everyone`, and optional
+  `referenced_message`; it does not carry the post-route effective agent id or
+  transcription result.
+
+### Design comparison
+
+**A. Reproduce the full Discord preflight route before claim.** Rejected for
+this bounded follow-up. Correct preflight needs route hydration, binding
+resolution, access checks, audio transcription, fetched channel/thread context,
+and message normalization. Running that before claim would widen the monitor
+into a second preflight path and still risks drift from the canonical dispatcher
+path.
+
+**B. Fail open when full preflight-only addressability is unproven.** Chosen.
+The monitor now performs the narrow safe subset that is already available at
+pre-claim: raw Discord mention/reply/everyone signals, bound/cached-thread
+ambiguity, and the same mention-regex builder used by preflight with the
+available config/provider-policy snapshot. Because the effective routed
+`agentId` is unavailable before claim, it checks all configured agent ids and
+the global fallback; this may preserve extra old rows, but it cannot falsely
+terminalize a supported address form.
+
+### Chosen implementation and blast radius
+
+- `extensions/discord/src/monitor/message-handler.ts` now passes
+  `params.discordConfig` into `createDiscordIngressMonitor()`.
+- `extensions/discord/src/monitor/ingress.ts` now lazily loads
+  `openclaw/plugin-sdk/channel-inbound` and calls the same public
+  `buildMentionRegexes()` / `matchesMentionPatterns()` path that preflight uses,
+  including provider policy from `params.discordConfig?.mentionPatterns`.
+- The pre-claim classifier checks every configured agent id from
+  `agents.entries` and `agents.list`, plus the global fallback, so
+  identity-derived name/emoji address forms fail open even though the final
+  routed agent id is not known before claim.
+- The age check now runs before the lazy mention-regex path, so fresh guild rows
+  do not pay the regex/preflight import cost.
+- Raw `mention_everyone` is preserved as an explicit preflight-supported
+  address form.
+- Audio-only rows with configured mention regexes fail open because full
+  preflight can transcribe them before mention resolution.
+
+No core drain/queue change, SQLite schema bump, migration, config/env addition,
+protocol change, dependency change, route hydration, live Discord access,
+runtime queue mutation, deploy, public comment, issue closure, or PR/merge
+operation was performed.
+
+Blast-radius tradeoff: stale guild rows that mention any configured agent
+identity, match any configured mention regex, contain mention-candidate audio,
+or hit a provider-policy-enabled regex are now preserved for full preflight
+instead of being pre-claim dead-lettered. This can leave more old rows for the
+canonical preflight path, but avoids irreversible false terminalization.
+
+### New regressions
+
+`extensions/discord/src/monitor/ingress.test.ts` now covers stale guild rows
+that would previously have been failed as ambient but must be preserved:
+
+- provider-level Discord `mentionPatterns` policy from `discordConfig`;
+- identity-derived agent name mention;
+- identity-derived emoji mention;
+- `@everyone` mention; and
+- audio-only row with configured mention regexes.
+
+Existing Discord ingress regressions still cover DM, direct mention,
+reply-to-bot, bound-thread, cached-thread, configured text mention, and stale
+ambient dead-letter behavior. Existing core ingress suites continue to cover
+per-row retry, active-claim serialization, unrelated lane progress,
+multi-lane/lane blocking, dead-letter, idempotency, and stale ambient ordering.
+
+### Third follow-up validation receipts
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# passed: 17 tests, 1 file, 10.43s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts
+# passed: 36 tests, 1 file, 5.87s wrapper time
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts
+# passed before the audio-only refinement: 120 tests, 4 files, 9.78s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: 121 tests across 2 Vitest shards, 9.50s wrapper time
+
+pnpm tsgo:extensions && pnpm tsgo:extensions:test
+# passed before the audio-only refinement
+
+pnpm tsgo:core && pnpm tsgo:core:test
+# passed
+
+pnpm format extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts
+# passed; oxfmt completed after audio-only refinement
+```
+
+Final post-documentation validation receipts are appended below after the last
+format, lint, diff, typecheck, and autoreview pass.
+
+### Final third follow-up validation receipts
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# final passed: 17 tests, 1 file, 10.27s wrapper time
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts
+# final passed: 121 tests, 4 files, 10.24s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts
+# final passed: 36 tests, 1 file, 5.75s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# final passed: 121 tests across 2 Vitest shards, 9.70s wrapper time
+
+pnpm tsgo:extensions && pnpm tsgo:extensions:test && pnpm tsgo:core && pnpm tsgo:core:test
+# first final attempt failed on the new audio fixture missing APIAttachment
+# `size`/`proxy_url` fields and a `guild_id` test override typed too narrowly;
+# fixed the fixture and reran successfully.
+
+pnpm format:check extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/message-handler.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md
+# passed
+
+node scripts/run-oxlint.mjs extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/message-handler.ts extensions/discord/src/monitor/ingress.test.ts
+# passed
+
+git --no-pager diff --check
+# passed
+
+git --no-pager diff --numstat
+# 230 0  JOURNAL-1229.md
+# 47  0  REVIEW-1229.md
+# 118 42 extensions/discord/src/monitor/ingress.test.ts
+# 106 20 extensions/discord/src/monitor/ingress.ts
+# 1   0  extensions/discord/src/monitor/message-handler.ts
+
+mkdir -p "$HOME/.cache/openclaw-autoreview-tmp" && TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+# passed: TruffleHog clean; autoreview clean with no accepted/actionable findings.
+```
+
+Autoreview summary: Codex `gpt-5.6-sol` / high reasoning found no P0 defects
+and judged the patch correct with the intended conservative fail-open behavior.

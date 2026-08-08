@@ -174,3 +174,50 @@ typechecks, targeted format/lint, and diff checks passed after the fixture type
 fixes noted there. Closeout autoreview also passed after installing verified
 TruffleHog `v3.96.0` into `$HOME/.local/bin`; it reported no
 accepted/actionable findings.
+
+## Third follow-up review objection
+
+The latest safety review found that the second follow-up still failed closed on
+two preflight-supported address forms:
+
+- full Discord preflight passes account/provider
+  `params.discordConfig?.mentionPatterns` into `buildMentionRegexes()`, but the
+  monitor received only `cfg` and `threadBindings`; and
+- full mention regex construction derives address patterns from the routed
+  agent identity name/emoji when no explicit agent/global patterns are set.
+
+Because route hydration and final `effectiveRoute.agentId` are not available
+before claim, the safe narrow method is not a second preflight. The monitor now
+fails open when raw/pre-claim facts cannot prove a stale guild row is ambient:
+it preserves native/raw mentions, replies to the bot, everyone mentions,
+bound/cached thread ambiguity, provider-policy-enabled text regex matches,
+identity-derived configured-agent name/emoji matches, and audio-only rows that
+full preflight may transcribe against configured mention regexes.
+
+Method: pass `discordConfig` from `message-handler.ts` into
+`createDiscordIngressMonitor()`, lazily call the public
+`buildMentionRegexes()`/`matchesMentionPatterns()` helper with provider policy,
+and check all configured agent ids plus the global fallback because the routed
+agent id is unavailable pre-claim. Fresh rows skip this lazy mention path by
+checking the stale threshold first.
+
+Edge cases covered: provider-level Discord mention policy, identity-derived
+agent name, identity-derived emoji, everyone mention, audio-only mention
+candidate, DM, direct bot mention, reply-to-bot, bound thread, cached thread,
+configured text mention, and stale ambient dead-letter.
+
+Blast radius: more stale guild rows can survive to full preflight when their
+addressability is ambiguous. That is intentional and safer than irreversible
+pre-claim terminal failure. No core queue/drain, SQLite, config schema, env,
+protocol, dependency, or runtime-state mutation changed.
+
+Residual risk: without a larger post-preflight suppression seam, ambiguous old
+rows may still be claimed and then dropped by canonical preflight rather than
+being pre-claim dead-lettered. That preserves safety but can leave extra
+backlog work compared with a future design that records a non-health
+suppressed tombstone after full route/preflight facts exist.
+
+Receipts are recorded in `JOURNAL-1229.md`: GitNexus core-slice trace, direct
+Discord source/dependency walk, focused Discord ingress regression shard,
+focused and broader core ingress suites, prod/test typechecks, format/lint,
+diff check, and closeout autoreview.

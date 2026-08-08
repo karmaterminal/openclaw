@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { ChannelType, type APIMessage } from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+import type { DiscordAccountConfig, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
@@ -89,9 +89,53 @@ async function withQueue<T>(
 }
 
 type DiscordIngressMonitor = ReturnType<typeof createDiscordIngressMonitor>;
+type DiscordThreadBindings = Parameters<typeof createDiscordIngressMonitor>[0]["threadBindings"];
 
 async function stopAll(monitors: DiscordIngressMonitor[]): Promise<void> {
   await Promise.allSettled(monitors.map((monitor) => monitor.stop()));
+}
+
+async function expectStaleMessageDispatches(params: {
+  rawMessage: APIMessage;
+  botUserId?: string;
+  cfg?: OpenClawConfig;
+  discordConfig?: DiscordAccountConfig;
+  threadBindings?: DiscordThreadBindings;
+}): Promise<void> {
+  await withQueue(async (queue) => {
+    const messageId = params.rawMessage.id;
+    const sentAt = Date.parse(params.rawMessage.timestamp);
+    await queue.enqueue(messageId, payloadFor(params.rawMessage), {
+      laneKey: `channel:${params.rawMessage.channel_id}`,
+      receivedAt: Number.isFinite(sentAt) ? sentAt : Date.now() - 16 * 60 * 1_000,
+    });
+
+    const dispatched: string[] = [];
+    const monitor = createDiscordIngressMonitor({
+      accountId: "default",
+      client: {} as never,
+      runtime: runtime(),
+      botUserId: params.botUserId ?? "bot-1",
+      ...(params.cfg ? { cfg: params.cfg } : {}),
+      ...(params.discordConfig ? { discordConfig: params.discordConfig } : {}),
+      ...(params.threadBindings ? { threadBindings: params.threadBindings } : {}),
+      queue,
+      dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+        if (!event.id) {
+          throw new Error("expected dispatched Discord event id");
+        }
+        dispatched.push(event.id);
+        await lifecycle.onAdopted();
+      },
+    });
+    monitor.start();
+    try {
+      await vi.waitFor(() => expect(dispatched).toEqual([messageId]));
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+    } finally {
+      await monitor.stop();
+    }
+  });
 }
 
 describe("Discord durable ingress", () => {
@@ -526,49 +570,81 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it("keeps stale configured text-mention policy messages out of ambient backlog suppression", async () => {
-    await withQueue(async (queue) => {
-      const now = Date.now();
-      const configuredMention = createRawMessage("1013", "channel-mentions-1", {
-        guild_id: "guild-1",
-        content: "openclaw can you check the incident",
-        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
-      await queue.enqueue("1013", payloadFor(configuredMention), {
-        laneKey: "channel:channel-mentions-1",
-        receivedAt: now - 16 * 60 * 1_000,
-      });
-
-      const cfg = {
-        messages: {
-          groupChat: {
-            mentionPatterns: ["openclaw"],
+  it.each([
+    {
+      name: "configured text-mention policy",
+      id: "1013",
+      channelId: "channel-mentions-1",
+      content: "openclaw can you check the incident",
+      cfg: { messages: { groupChat: { mentionPatterns: ["openclaw"] } } } satisfies OpenClawConfig,
+    },
+    {
+      name: "provider-level Discord mention policy",
+      id: "1014",
+      channelId: "channel-provider-mentions-1",
+      content: "Policy Bot can you check the incident?",
+      cfg: {
+        agents: { list: [{ id: "main", identity: { name: "Policy Bot" } }] },
+      } satisfies OpenClawConfig,
+      discordConfig: {
+        mentionPatterns: { mode: "deny", allowIn: ["channel-provider-mentions-1"] },
+      } satisfies DiscordAccountConfig,
+    },
+    {
+      name: "identity-derived agent-name mention",
+      id: "1015",
+      channelId: "channel-agent-name-1",
+      content: "Molty can you check the incident?",
+      cfg: {
+        agents: { list: [{ id: "main", identity: { name: "Molty" } }] },
+      } satisfies OpenClawConfig,
+    },
+    {
+      name: "identity-derived emoji mention",
+      id: "1016",
+      channelId: "channel-agent-emoji-1",
+      content: "🦀 can you check the incident?",
+      cfg: {
+        agents: { list: [{ id: "main", identity: { emoji: "🦀" } }] },
+      } satisfies OpenClawConfig,
+    },
+    {
+      name: "everyone mention",
+      id: "1017",
+      channelId: "channel-everyone-1",
+      content: "@everyone can someone check the incident?",
+      overrides: { mention_everyone: true } satisfies RawMessageOverrides,
+    },
+    {
+      name: "audio-only configured mention candidate",
+      id: "1018",
+      channelId: "channel-audio-mention-1",
+      content: "",
+      overrides: {
+        attachments: [
+          {
+            id: "att-1",
+            filename: "voice.ogg",
+            url: "https://cdn.discordapp.com/attachments/voice.ogg",
+            proxy_url: "https://cdn.discordapp.com/attachments/voice.ogg",
+            content_type: "audio/ogg",
+            size: 1024,
           },
-        },
-      } satisfies OpenClawConfig;
-      const dispatched: string[] = [];
-      const monitor = createDiscordIngressMonitor({
-        accountId: "default",
-        client: {} as never,
-        runtime: runtime(),
-        botUserId: "bot-1",
-        cfg,
-        queue,
-        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
-          if (!event.id) {
-            throw new Error("expected dispatched Discord event id");
-          }
-          dispatched.push(event.id);
-          await lifecycle.onAdopted();
-        },
-      });
-      monitor.start();
-      try {
-        await vi.waitFor(() => expect(dispatched).toEqual(["1013"]));
-        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
-      } finally {
-        await monitor.stop();
-      }
+        ],
+      } satisfies RawMessageOverrides,
+      cfg: { messages: { groupChat: { mentionPatterns: ["openclaw"] } } } satisfies OpenClawConfig,
+    },
+  ])("keeps stale $name messages out of ambient backlog suppression", async (testCase) => {
+    const now = Date.now();
+    await expectStaleMessageDispatches({
+      rawMessage: createRawMessage(testCase.id, testCase.channelId, {
+        guild_id: "guild-1",
+        content: testCase.content,
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+        ...testCase.overrides,
+      } as RawMessageOverrides),
+      cfg: testCase.cfg,
+      discordConfig: testCase.discordConfig,
     });
   });
 });

@@ -7,10 +7,14 @@ import {
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
 } from "openclaw/plugin-sdk/channel-outbound";
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+import type { DiscordAccountConfig, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 import { danger, type RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
-import { normalizeNullableString as nonEmptyString } from "openclaw/plugin-sdk/string-coerce-runtime";
+import {
+  isRecord,
+  normalizeNullableString as nonEmptyString,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { Client } from "../internal/discord.js";
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
@@ -20,6 +24,11 @@ import { hasRawDiscordUserMention } from "./message-handler.preflight-helpers.js
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
 const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
+const DISCORD_AUDIO_ATTACHMENT_EXTENSIONS =
+  /\.(?:aac|caf|flac|m4a|mp3|oga|ogg|opus|wav)(?:[?#]|$)/i;
+const loadMentionRuntime = createLazyRuntimeModule(
+  () => import("openclaw/plugin-sdk/channel-inbound"),
+);
 
 type DiscordIngressPayload = {
   version: 1;
@@ -115,19 +124,51 @@ function isDiscordGuildMessage(rawMessage: APIMessage): boolean {
   return typeof (rawMessage as { guild_id?: unknown }).guild_id === "string";
 }
 
-function hasMentionPatternValues(groupChat?: { mentionPatterns?: readonly string[] }): boolean {
-  return (groupChat?.mentionPatterns ?? []).some((pattern) => Boolean(nonEmptyString(pattern)));
+function hasPotentialDiscordAudioAttachment(rawMessage: APIMessage): boolean {
+  for (const attachment of rawMessage.attachments ?? []) {
+    const contentType = nonEmptyString(
+      (attachment as { content_type?: unknown; contentType?: unknown }).content_type ??
+        (attachment as { contentType?: unknown }).contentType,
+    );
+    if (contentType?.startsWith("audio/")) {
+      return true;
+    }
+    if (typeof (attachment as { duration_secs?: unknown }).duration_secs === "number") {
+      return true;
+    }
+    if (nonEmptyString((attachment as { waveform?: unknown }).waveform)) {
+      return true;
+    }
+    const filename = nonEmptyString((attachment as { filename?: unknown }).filename);
+    const url = nonEmptyString((attachment as { url?: unknown }).url);
+    if (
+      (filename && DISCORD_AUDIO_ATTACHMENT_EXTENSIONS.test(filename)) ||
+      (url && DISCORD_AUDIO_ATTACHMENT_EXTENSIONS.test(url))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
-function hasConfiguredTextMentionPatterns(cfg?: OpenClawConfig): boolean {
-  if (hasMentionPatternValues(cfg?.messages?.groupChat)) {
-    return true;
+function listConfiguredAgentIds(cfg?: OpenClawConfig): string[] {
+  const ids = new Set<string>();
+  const agents = cfg?.agents;
+  if (isRecord(agents?.entries)) {
+    for (const id of Object.keys(agents.entries)) {
+      const normalized = nonEmptyString(id);
+      if (normalized) {
+        ids.add(normalized);
+      }
+    }
   }
-  const agentEntries = Object.values(cfg?.agents?.entries ?? {});
-  if (agentEntries.some((entry) => hasMentionPatternValues(entry.groupChat))) {
-    return true;
+  for (const entry of agents?.list ?? []) {
+    const normalized = nonEmptyString(entry?.id);
+    if (normalized) {
+      ids.add(normalized);
+    }
   }
-  return (cfg?.agents?.list ?? []).some((entry) => hasMentionPatternValues(entry.groupChat));
+  return [...ids];
 }
 
 function isDiscordThreadChannelType(type: unknown): boolean {
@@ -170,6 +211,9 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
   if (!isDiscordGuildMessage(rawMessage)) {
     return true;
   }
+  if (rawMessage.mention_everyone) {
+    return true;
+  }
   const botId = nonEmptyString(botUserId);
   if (!botId) {
     return true;
@@ -181,19 +225,59 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
   );
 }
 
-function hasUnresolvedDiscordAddressForm(
+async function matchesConfiguredDiscordMentionText(
   rawMessage: APIMessage,
   params: {
     cfg?: OpenClawConfig;
+    discordConfig?: DiscordAccountConfig | null;
+  },
+): Promise<boolean> {
+  const text = typeof rawMessage.content === "string" ? rawMessage.content : "";
+  const conversationId = nonEmptyString(rawMessage.channel_id);
+  const agentIds = listConfiguredAgentIds(params.cfg);
+  // Audio-only messages can satisfy preflight after transcription; pre-claim
+  // cannot transcribe, so a configured mention regex is enough to preserve them.
+  const hasAudioOnlyMentionCandidate =
+    !text.trim() && hasPotentialDiscordAudioAttachment(rawMessage);
+  if (!text.trim() && !hasAudioOnlyMentionCandidate) {
+    return false;
+  }
+  try {
+    const { buildMentionRegexes, matchesMentionPatterns } = await loadMentionRuntime();
+    for (const agentId of [undefined, ...agentIds]) {
+      const mentionRegexes = buildMentionRegexes(params.cfg, agentId, {
+        provider: "discord",
+        conversationId,
+        providerPolicy: params.discordConfig?.mentionPatterns,
+      });
+      if (hasAudioOnlyMentionCandidate && mentionRegexes.length > 0) {
+        return true;
+      }
+      if (matchesMentionPatterns(text, mentionRegexes)) {
+        return true;
+      }
+    }
+  } catch {
+    // Missing or rejected regex state makes addressability unproven, not ambient.
+    return true;
+  }
+  return false;
+}
+
+async function hasUnresolvedDiscordAddressForm(
+  rawMessage: APIMessage,
+  params: {
+    cfg?: OpenClawConfig;
+    discordConfig?: DiscordAccountConfig | null;
     threadBindings?: DiscordThreadBindingLookup;
   },
-): boolean {
+): Promise<boolean> {
   // Pre-claim rows do not have route/preflight facts. Preserve rows when a
   // later preflight path may prove them addressed instead of dead-lettering.
   return (
     hasBoundThread(rawMessage, params.threadBindings) ||
     hasCachedThreadChannel(rawMessage) ||
-    hasConfiguredTextMentionPatterns(params.cfg)
+    (await matchesConfiguredDiscordMentionText(rawMessage, params))
   );
 }
 
@@ -204,6 +288,7 @@ export function createDiscordIngressMonitor(params: {
   dispatch: DiscordIngressDispatch;
   botUserId?: string;
   cfg?: OpenClawConfig;
+  discordConfig?: DiscordAccountConfig | null;
   threadBindings?: DiscordThreadBindingLookup;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
 }): DiscordIngressMonitor {
@@ -250,21 +335,22 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
-      resolvePendingDisposition: (record, context) => {
+      resolvePendingDisposition: async (record, context) => {
         const rawMessage = record.payload.rawMessage;
         if (isDiscordAddressedMessage(rawMessage, params.botUserId)) {
           return null;
         }
+        const sentAt = discordMessageSentAtMs(rawMessage) ?? record.receivedAt;
+        if (context.now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
+          return null;
+        }
         if (
-          hasUnresolvedDiscordAddressForm(rawMessage, {
+          await hasUnresolvedDiscordAddressForm(rawMessage, {
             cfg: params.cfg,
+            discordConfig: params.discordConfig,
             threadBindings: params.threadBindings,
           })
         ) {
-          return null;
-        }
-        const sentAt = discordMessageSentAtMs(rawMessage) ?? record.receivedAt;
-        if (context.now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
           return null;
         }
         return {

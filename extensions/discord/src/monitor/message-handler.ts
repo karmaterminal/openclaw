@@ -21,6 +21,7 @@ export function createDiscordMessageHandler(
     runtime: params.runtime,
     botUserId: params.botUserId,
     cfg: params.cfg,
+    discordConfig: params.discordConfig,
     threadBindings: params.threadBindings,
     dispatch: (event, lifecycle) =>
       dispatcher(event, params.client, {
