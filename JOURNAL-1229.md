@@ -298,3 +298,73 @@ Direct full oxlint including `src/channels/message/ingress-drain.test.ts` was no
 ### First fixed ownership boundary
 
 The first repaired boundary is the core drain pre-claim selection step: stale-claim recovery now feeds a pending-disposition pass before retry eligibility and `claimNext()`. Core owns durable failure/tombstone mechanics and retry row eligibility; Discord owns the addressed-vs-ambient decision that determines whether a stale guild row is terminally failed as `stale-ambient-backlog`.
+
+## Follow-up implementation — 2026-08-08
+
+### Review objection
+
+Independent review rejected the Discord addressed classifier as incomplete for
+stale explicit replies: `resolveDiscordMentionState()` already maps
+`referencedAuthorId === botUserId` to `reply_to_bot`, but
+`isDiscordAddressedMessage()` only preserved DMs and direct bot mentions before
+stale-ambient suppression. That left a raw Discord guild reply to the bot able
+to dead-letter as ambient before preflight could resolve the existing
+`reply_to_bot` semantic.
+
+### Narrow fix
+
+- Added the raw `APIMessage.referenced_message.author.id === botUserId` check
+  to the Discord durable-ingress addressed classifier.
+- Added a Discord owner regression that enqueues a stale guild reply whose raw
+  referenced message author is the bot, then proves it dispatches and leaves no
+  `stale-ambient-backlog` failed row.
+- Left route hydration and configured mention-pattern resolution out of scope;
+  text-only configured mentions remain the known residual because they require
+  a broader pre-claim route/policy seam.
+
+### Completed/suppressed tombstone comparison
+
+I compared the completed/suppressed tombstone alternative and retained the
+failed dead-letter semantic. A completed tombstone would make suppressed stale
+ambient backlog look successfully handled, hide it from channel ingress
+dead-letter health, and remove the explicit operator decision before replay.
+Failed `stale-ambient-backlog` rows are therefore intentional dead letters:
+they count in dead-letter health and require explicit dead-letter resubmit to
+run again.
+
+### Follow-up validation receipts
+
+```shell
+pnpm format extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md
+# passed; oxfmt completed on 4 files
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# passed: 8 tests, 1 file, 9.66s wrapper time on final run
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts
+# passed: 36 tests, 1 file, 5.91s wrapper time on final run
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: 121 tests across unit-fast/channels shards, 9.56s wrapper time
+
+pnpm tsgo:extensions && pnpm tsgo:extensions:test
+# first run failed on the new test fixture missing APIUser.global_name; fixed the fixture; rerun passed
+
+pnpm format:check extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md
+# passed
+
+node scripts/run-oxlint.mjs extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts
+# passed
+
+git --no-pager diff --check
+# passed
+
+git --no-pager diff --numstat
+# 70  0  JOURNAL-1229.md
+# 22  0  REVIEW-1229.md
+# 50  0  extensions/discord/src/monitor/ingress.test.ts
+# 1   0  extensions/discord/src/monitor/ingress.ts
+```
+
+No runtime queue mutation, issue/PR comment, merge, deploy, or public GitHub
+write was performed.

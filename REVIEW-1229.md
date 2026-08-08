@@ -100,3 +100,25 @@ Final local receipts are recorded in `JOURNAL-1229.md`: focused/broader Vitest s
 - Should Discord stale ambient threshold be 15 minutes or a different constant? I chose 15 minutes to match the existing iMessage live stale-backlog fence and because the incident lags were hours.
 - Should pre-claim pending disposition support a future `complete` tombstone in addition to `fail`? I kept only `fail` so suppressed backlog is auditable.
 - Should route-specific text mention patterns be made available to ingress admission? That would require a larger pre-claim route/policy seam and was rejected for this fix.
+
+## Follow-up review objection
+
+Independent review found one incomplete Discord addressed classifier edge:
+preflight already treats `referencedAuthorId === botUserId` as
+`reply_to_bot`, but the raw durable-ingress classifier only preserved DMs and
+direct mentions. A stale guild reply to the bot could therefore be failed as
+`stale-ambient-backlog` before preflight ever saw the reply context.
+
+The follow-up fix keeps the same owner boundary and adds only the raw
+`APIMessage.referenced_message.author.id === botUserId` check in
+`isDiscordAddressedMessage()`. It does not hydrate routes, evaluate configured
+text mention patterns, or add a broader pre-claim policy seam. The new Discord
+owner test proves an old explicit reply to the bot dispatches and leaves no
+failed stale-ambient row.
+
+I also compared the completed/suppressed tombstone alternative again and kept
+the failed dead-letter semantic. Completing suppressed ambient backlog would
+make the row look successfully handled, remove it from dead-letter health, and
+allow replay without an explicit operator decision. Failed
+`stale-ambient-backlog` rows intentionally count in channel ingress
+dead-letter health; replay requires an explicit dead-letter resubmit command.

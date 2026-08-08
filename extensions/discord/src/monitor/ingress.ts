@@ -118,6 +118,7 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
   }
   return (
     rawMessage.mentions?.some((user) => user.id === botId) ||
+    rawMessage.referenced_message?.author?.id === botId ||
     hasRawDiscordUserMention(rawMessage.content ?? "", botId)
   );
 }

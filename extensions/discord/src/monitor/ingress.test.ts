@@ -347,4 +347,54 @@ describe("Discord durable ingress", () => {
       }
     });
   });
+
+  it("keeps stale replies to the bot out of ambient backlog suppression", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const referencedBotMessage = createRawMessage("bot-reply-source", "channel-1", {
+        guild_id: "guild-1",
+        author: {
+          id: "bot-1",
+          username: "openclaw",
+          discriminator: "0",
+          global_name: null,
+          avatar: null,
+          bot: true,
+        },
+      } as Partial<APIMessage>);
+      const reply = createRawMessage("1009", "channel-1", {
+        guild_id: "guild-1",
+        content: "old but explicit reply",
+        referenced_message: referencedBotMessage,
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1009", payloadFor(reply), {
+        laneKey: "channel:channel-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1009"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
 });
