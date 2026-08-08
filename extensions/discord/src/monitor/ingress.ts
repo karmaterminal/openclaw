@@ -1,5 +1,5 @@
 // Discord plugin module owns raw gateway-message durable ingress and replay draining.
-import { GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
+import { ChannelType, GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
 import {
   createChannelIngressError,
   createChannelIngressMonitor,
@@ -7,6 +7,7 @@ import {
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
 } from "openclaw/plugin-sdk/channel-outbound";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { danger, type RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { normalizeNullableString as nonEmptyString } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -36,6 +37,12 @@ type DiscordIngressDispatch = (
   event: DiscordMessageEvent,
   lifecycle: DiscordIngressLifecycle,
 ) => Promise<DiscordIngressDispatchResult | void> | DiscordIngressDispatchResult | void;
+
+type DiscordThreadBindingLookup = {
+  getByThreadId?: (threadId: string) => unknown;
+  listBySessionKey?: (targetSessionKey: string) => unknown[];
+  touchThread?: (params: { threadId: string; at?: number; persist?: boolean }) => unknown;
+};
 
 type DiscordIngressMonitor = {
   accept: (rawMessage: APIMessage) => Promise<void>;
@@ -108,6 +115,57 @@ function isDiscordGuildMessage(rawMessage: APIMessage): boolean {
   return typeof (rawMessage as { guild_id?: unknown }).guild_id === "string";
 }
 
+function hasMentionPatternValues(groupChat?: { mentionPatterns?: readonly string[] }): boolean {
+  return (groupChat?.mentionPatterns ?? []).some((pattern) => Boolean(nonEmptyString(pattern)));
+}
+
+function hasConfiguredTextMentionPatterns(cfg?: OpenClawConfig): boolean {
+  if (hasMentionPatternValues(cfg?.messages?.groupChat)) {
+    return true;
+  }
+  const agentEntries = Object.values(cfg?.agents?.entries ?? {});
+  if (agentEntries.some((entry) => hasMentionPatternValues(entry.groupChat))) {
+    return true;
+  }
+  return (cfg?.agents?.list ?? []).some((entry) => hasMentionPatternValues(entry.groupChat));
+}
+
+function isDiscordThreadChannelType(type: unknown): boolean {
+  return (
+    type === ChannelType.PublicThread ||
+    type === ChannelType.PrivateThread ||
+    type === ChannelType.AnnouncementThread
+  );
+}
+
+function hasCachedThreadChannel(rawMessage: APIMessage): boolean {
+  const channel = (rawMessage as { channel?: unknown }).channel;
+  if (!channel || typeof channel !== "object") {
+    return false;
+  }
+  const isThread = (channel as { isThread?: unknown }).isThread;
+  if (typeof isThread === "function") {
+    try {
+      return isThread() === true;
+    } catch {
+      return true;
+    }
+  }
+  return isDiscordThreadChannelType((channel as { type?: unknown }).type);
+}
+
+function hasBoundThread(rawMessage: APIMessage, threadBindings?: DiscordThreadBindingLookup) {
+  const channelId = nonEmptyString(rawMessage.channel_id);
+  if (!channelId || typeof threadBindings?.getByThreadId !== "function") {
+    return false;
+  }
+  try {
+    return Boolean(threadBindings.getByThreadId(channelId));
+  } catch {
+    return true;
+  }
+}
+
 function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): boolean {
   if (!isDiscordGuildMessage(rawMessage)) {
     return true;
@@ -123,12 +181,30 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
   );
 }
 
+function hasUnresolvedDiscordAddressForm(
+  rawMessage: APIMessage,
+  params: {
+    cfg?: OpenClawConfig;
+    threadBindings?: DiscordThreadBindingLookup;
+  },
+): boolean {
+  // Pre-claim rows do not have route/preflight facts. Preserve rows when a
+  // later preflight path may prove them addressed instead of dead-lettering.
+  return (
+    hasBoundThread(rawMessage, params.threadBindings) ||
+    hasCachedThreadChannel(rawMessage) ||
+    hasConfiguredTextMentionPatterns(params.cfg)
+  );
+}
+
 export function createDiscordIngressMonitor(params: {
   accountId: string;
   client: Client;
   runtime: Pick<RuntimeEnv, "error" | "log">;
   dispatch: DiscordIngressDispatch;
   botUserId?: string;
+  cfg?: OpenClawConfig;
+  threadBindings?: DiscordThreadBindingLookup;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
 }): DiscordIngressMonitor {
   const queue =
@@ -177,6 +253,14 @@ export function createDiscordIngressMonitor(params: {
       resolvePendingDisposition: (record, context) => {
         const rawMessage = record.payload.rawMessage;
         if (isDiscordAddressedMessage(rawMessage, params.botUserId)) {
+          return null;
+        }
+        if (
+          hasUnresolvedDiscordAddressForm(rawMessage, {
+            cfg: params.cfg,
+            threadBindings: params.threadBindings,
+          })
+        ) {
           return null;
         }
         const sentAt = discordMessageSentAtMs(rawMessage) ?? record.receivedAt;

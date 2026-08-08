@@ -2,8 +2,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { APIMessage } from "discord-api-types/v10";
+import { ChannelType, type APIMessage } from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
@@ -18,10 +19,15 @@ type DiscordIngressPayload = {
   rawMessage: APIMessage;
 };
 
+type RawMessageOverrides = Partial<APIMessage> & {
+  channel?: unknown;
+  guild_id?: string;
+};
+
 function createRawMessage(
   id: string,
   channelId = "channel-1",
-  overrides: Partial<APIMessage> = {},
+  overrides: RawMessageOverrides = {},
 ): APIMessage {
   return {
     id,
@@ -391,6 +397,174 @@ describe("Discord durable ingress", () => {
       monitor.start();
       try {
         await vi.waitFor(() => expect(dispatched).toEqual(["1009"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("keeps stale direct messages out of ambient backlog suppression", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const direct = createRawMessage("1010", "dm-1", {
+        content: "old direct message",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1010", payloadFor(direct), {
+        laneKey: "channel:dm-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1010"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("keeps stale bound-thread messages out of ambient backlog suppression", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const boundThreadMessage = createRawMessage("1011", "thread-bound-1", {
+        guild_id: "guild-1",
+        content: "old bound thread follow-up without mention",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1011", payloadFor(boundThreadMessage), {
+        laneKey: "channel:thread-bound-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        threadBindings: {
+          getByThreadId: (threadId) =>
+            threadId === "thread-bound-1" ? { threadId, targetSessionKey: "agent:main" } : null,
+        },
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1011"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("keeps stale cached thread-channel messages out of ambient backlog suppression", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const cachedThreadMessage = createRawMessage("1012", "thread-cached-1", {
+        guild_id: "guild-1",
+        channel: {
+          id: "thread-cached-1",
+          type: ChannelType.PublicThread,
+          parent_id: "channel-1",
+        },
+        content: "old cached thread follow-up without mention",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      });
+      await queue.enqueue("1012", payloadFor(cachedThreadMessage), {
+        laneKey: "channel:thread-cached-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1012"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("keeps stale configured text-mention policy messages out of ambient backlog suppression", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const configuredMention = createRawMessage("1013", "channel-mentions-1", {
+        guild_id: "guild-1",
+        content: "openclaw can you check the incident",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1013", payloadFor(configuredMention), {
+        laneKey: "channel:channel-mentions-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const cfg = {
+        messages: {
+          groupChat: {
+            mentionPatterns: ["openclaw"],
+          },
+        },
+      } satisfies OpenClawConfig;
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        cfg,
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1013"]));
         expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         await monitor.stop();

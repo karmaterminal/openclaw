@@ -20,6 +20,8 @@ export function createDiscordMessageHandler(
     client: params.client,
     runtime: params.runtime,
     botUserId: params.botUserId,
+    cfg: params.cfg,
+    threadBindings: params.threadBindings,
     dispatch: (event, lifecycle) =>
       dispatcher(event, params.client, {
         abortSignal: lifecycle.abortSignal,

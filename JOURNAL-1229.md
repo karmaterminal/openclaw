@@ -368,3 +368,202 @@ git --no-pager diff --numstat
 
 No runtime queue mutation, issue/PR comment, merge, deploy, or public GitHub
 write was performed.
+
+## Second follow-up implementation — 2026-08-08
+
+### Cohort objection
+
+The cohort accepted the stale reply-to-bot repair but rejected the raw
+pre-claim classifier as still too confident. Full Discord preflight has two
+additional addressed forms that the raw durable-ingress row cannot always prove:
+
+- bound-thread traffic can bypass mention requirements once preflight resolves
+  a thread binding and thread channel; and
+- configured text mention patterns can set `wasMentioned` even when Discord
+  does not provide a native user mention in `mentions`.
+
+The invariant is unchanged: stale ambient backlog may be terminally suppressed
+only when the row is provably ambient at the pre-claim boundary.
+
+### GitNexus focused graph commands
+
+No whole-repo indexing was run. The focused alias still covers only
+`src/channels/message`, so Discord symbol lookups correctly returned no graph
+node and forced a direct source walk for the plugin-owned classifier.
+
+```shell
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolveDiscordMentionState
+# Symbol not found; Discord files are outside the focused alias.
+
+/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress resolveDiscordMentionState --depth 3 --include-tests
+# Target not found; impactedCount=0.
+
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createDiscordIngressMonitor
+# Symbol not found; Discord files are outside the focused alias.
+
+/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createDiscordIngressMonitor --depth 3 --include-tests
+# Target not found; impactedCount=0.
+
+/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'discord' OR toLower(s.name) CONTAINS 'mention' OR toLower(s.name) CONTAINS 'thread' OR toLower(s.name) CONTAINS 'preflight' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line ORDER BY s.filePath, s.startLine LIMIT 200"
+# Returned [] because the focused graph is the core message-ingress slice.
+
+/home/figs/.npm-global/bin/gitnexus list
+# Confirmed `emeric-1229-ingress` path is `src/channels/message`; no indexing.
+
+/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line LIMIT 80"
+# Sampled symbols from the existing alias; all were core message-ingress files.
+
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createChannelIngressDrain
+
+/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createChannelIngressDrain --depth 3 --include-tests
+# Impact remains the core drain tests: ingress-drain, lanes, supersede.
+
+/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolvePendingDisposition
+# Symbol not found; the indexed alias predates the new helper extraction name.
+
+/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'pending' OR toLower(s.name) CONTAINS 'retry' OR toLower(s.name) CONTAINS 'disposition' OR toLower(s.name) CONTAINS 'claimnext' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line ORDER BY s.filePath, s.startLine LIMIT 120"
+# Confirmed `claimNext`, retry delay, and failure disposition remain the core owner symbols.
+
+/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'disposition' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line ORDER BY s.filePath, s.startLine LIMIT 80"
+# Confirmed the graph has only core failure-disposition symbols, not Discord preflight.
+```
+
+### Direct source walk conclusions
+
+- Core pre-claim mechanics are still owned by
+  `src/channels/message/ingress-drain.ts`: stale-claim recovery runs before the
+  pending-disposition hook, retry-delayed rows are only omitted from candidate
+  IDs, and `claimNext()` remains the atomic owner for eligible claims.
+- `extensions/discord/src/monitor/ingress.ts` was the unsafe owner: its
+  pre-claim classifier preserved DMs, native/raw bot mentions, and raw
+  reply-to-bot, then failed old guild rows as `stale-ambient-backlog`.
+- `extensions/discord/src/monitor/message-handler.preflight.ts` proves the
+  missing addressed forms: `bypassMentionRequirement` becomes true for bound
+  thread sessions, and `buildMentionRegexes()` plus
+  `resolveDiscordMentionState()` can set `wasMentioned` from configured text
+  patterns.
+- `extensions/discord/src/monitor/message-handler.preflight-thread.ts` and
+  `extensions/discord/src/monitor/threading.starter.ts` show thread status can
+  come from cached `message.channel.isThread()` or fetched channel info before
+  bindings are resolved; the raw durable row does not have that full preflight
+  context.
+- `extensions/discord/src/monitor/thread-bindings.types.ts` and
+  `thread-bindings.manager.ts` show the plugin-owned manager can resolve a
+  known bound thread by `getByThreadId()`.
+- `node_modules/discord-api-types/payloads/v10/message.d.ts` confirms
+  `APIMessage` carries `referenced_message` for replies and `thread` for a
+  newly-started thread, but not a guaranteed current-channel type. That is why
+  unresolved thread-address semantics must fail open rather than be called
+  ambient.
+
+### Designs compared
+
+**A. Fail open pre-claim for unresolved address forms.** Preserve the existing
+pre-claim stale ambient dead-letter only for rows that are still provably
+ambient after cheap raw checks. When a stale guild row is in a known bound
+thread, has cached thread-channel shape, or the config contains text mention
+patterns that preflight may use, skip pre-claim suppression and let the normal
+preflight path decide. This is narrow, Discord-local, leaves core drain
+semantics unchanged, and avoids false terminalization.
+
+**B. Replace pre-claim terminal fail with a priority-only seam and move stale
+ambient suppression after full preflight.** This would require a larger core
+and Discord lifecycle seam: priority-only claiming for provably addressed rows,
+post-preflight stale ambient detection after route hydration, and a new
+completed/suppressed tombstone that does not count as health noise. It would
+remove more false-negative stale backlog but changes durable disposition
+semantics beyond the red contracts.
+
+Chosen design: **A**. It is the narrowest safe revision. It keeps the original
+default stale ambient suppression and retry-head bypass contracts, but refuses
+to dead-letter rows whose address status depends on preflight-only thread or
+configured text-mention state.
+
+### Chosen implementation and blast radius
+
+- `extensions/discord/src/monitor/ingress.ts`
+  - Added fail-open checks for plugin-owned thread binding lookup,
+    cached thread-channel shape, and configured text mention patterns.
+  - Kept DMs, direct mentions, raw content mentions, and raw reply-to-bot as
+    positive addressed signals.
+  - Still fails only old guild rows that have none of those addressed or
+    ambiguous forms.
+- `extensions/discord/src/monitor/message-handler.ts`
+  - Threads the runtime config snapshot and thread-binding lookup into the
+    ingress monitor so the pre-claim classifier can fail open for those
+    unresolved forms.
+- `extensions/discord/src/monitor/ingress.test.ts`
+  - Added regressions for stale DM, stale bound-thread, stale cached
+    thread-channel, and stale configured text-mention rows.
+
+No SQLite schema bump, migration, config/env addition, route hydration,
+post-preflight tombstone seam, live Discord state, runtime queue mutation, or
+GitHub public write was performed.
+
+Residual scope: design A intentionally preserves more old guild rows when text
+mention patterns are configured or a thread row is address-ambiguous. Full
+post-preflight suppression with a non-health suppressed tombstone is still the
+larger design B follow-up if maintainers want stale ambient cleanup in those
+ambiguous configurations.
+
+### Second follow-up validation receipts
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# passed: 12 tests, 1 file, 10.21s wrapper time
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/message-handler.preflight.test.ts
+# passed: 61 tests, 1 file, 10.06s wrapper time
+
+pnpm tsgo:extensions && pnpm tsgo:extensions:test
+# first run failed because the ingress monitor expected a getByThreadId-only
+# lookup while preflight params carry the narrower reply-delivery lookup type;
+# widened the local structural type. Second run failed because the cached
+# thread-channel test override needed an explicit guild_id test type field;
+# fixed the fixture type. Final rerun passed.
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts
+# passed: 116 tests, 4 files, 9.65s wrapper time
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts
+# final rerun passed: 116 tests, 4 files, 9.51s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: 121 tests across 2 Vitest shards, 9.67s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# final rerun passed: 121 tests across 2 Vitest shards, 9.79s wrapper time
+
+pnpm tsgo:extensions && pnpm tsgo:extensions:test
+# final rerun passed
+
+pnpm format:check extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/message-handler.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md
+# passed
+
+node scripts/run-oxlint.mjs extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/message-handler.ts extensions/discord/src/monitor/ingress.test.ts
+# passed
+
+git --no-pager diff --check
+# passed
+
+git --no-pager diff --numstat
+# 199  0  JOURNAL-1229.md
+# 52   0  REVIEW-1229.md
+# 176  2  extensions/discord/src/monitor/ingress.test.ts
+# 85   1  extensions/discord/src/monitor/ingress.ts
+# 2    0  extensions/discord/src/monitor/message-handler.ts
+
+node scripts/check-changed.mjs -- extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/message-handler.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md
+# blocked before repo checks: delegated Crabbox workload routing selected a
+# crabbox binary that failed basic --version/--help sanity checks.
+
+mkdir -p "$HOME/.cache/openclaw-autoreview-tmp" && TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+# passed: TruffleHog clean and autoreview clean; no accepted/actionable findings reported.
+```
+
+Autoreview setup note: the first local autoreview attempt was blocked because
+`trufflehog` was absent. I installed verified TruffleHog `v3.96.0` from the
+official GitHub release into `$HOME/.local/bin` after checking the published
+checksum, then reran the helper successfully. A repo-local binary was rejected
+by autoreview isolation, and a repo-local `TMPDIR` was rejected because review
+temp roots must be outside the reviewed repository.

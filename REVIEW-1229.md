@@ -122,3 +122,55 @@ make the row look successfully handled, remove it from dead-letter health, and
 allow replay without an explicit operator decision. Failed
 `stale-ambient-backlog` rows intentionally count in channel ingress
 dead-letter health; replay requires an explicit dead-letter resubmit command.
+
+## Second follow-up review objection
+
+The cohort found two more preflight-only addressed forms that the raw
+pre-claim classifier could not safely call ambient:
+
+- bound-thread traffic bypasses mention requirements after preflight resolves a
+  bound thread and thread channel; and
+- configured text mention patterns can set `wasMentioned` without a raw Discord
+  user mention.
+
+The chosen fix is design A: fail open at pre-claim for unresolved address
+forms. Discord now preserves stale guild rows when the raw row is in a known
+bound thread, has cached thread-channel shape, or the runtime config contains
+text mention patterns. Those rows proceed to the existing full preflight path.
+The existing pre-claim dead-letter remains only for old guild rows with no DM,
+direct mention, reply-to-bot, bound/cached-thread ambiguity, or configured text
+mention ambiguity.
+
+Design B was rejected for this bounded follow-up. Moving stale suppression
+after full preflight would require a larger core lifecycle seam: priority-only
+claiming, route-hydrated stale suppression, and a new completed/suppressed
+tombstone that does not count as health noise. That would be cleaner for all
+ambiguous stale ambient cleanup, but it is broader than needed to avoid the
+false terminalization contracts.
+
+Additional blast radius:
+
+- Core drain/queue code is unchanged in this follow-up.
+- Discord durable ingress grows only a fail-open classifier before the existing
+  stale ambient dead-letter.
+- Operators with configured text mention patterns or bound/cached thread rows
+  may preserve more old guild backlog for full preflight instead of pre-claim
+  dead-lettering it. That is intentional: the pre-claim row cannot prove those
+  messages are ambient.
+- No SQLite schema, config, env, protocol, migration, route hydration, live
+  Discord, runtime queue, PR/issue, deployment, or public comment mutation.
+
+New focused regressions:
+
+- stale bound-thread row is not failed as ambient;
+- stale cached thread-channel row is not failed as ambient;
+- stale configured text-mention row is not failed as ambient; and
+- stale DM remains preserved while existing direct mention, reply-to-bot,
+  stale ambient vs fresh addressed, and retry-head bypass contracts stay green.
+
+Validation receipts are recorded in `JOURNAL-1229.md`: focused Discord ingress,
+Discord preflight/thread-binding shard, broader core ingress shard, extension
+typechecks, targeted format/lint, and diff checks passed after the fixture type
+fixes noted there. Closeout autoreview also passed after installing verified
+TruffleHog `v3.96.0` into `$HOME/.local/bin`; it reported no
+accepted/actionable findings.
