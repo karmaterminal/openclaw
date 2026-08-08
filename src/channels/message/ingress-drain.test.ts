@@ -639,6 +639,92 @@ describe("channel ingress drain", () => {
     });
   });
 
+  it("red: retry-delayed same-lane head does not starve a newer event", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000;
+      const laneKey = "channel:discord-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "retrying-head",
+        { text: "ambient backlog head" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        retryPolicy: {
+          maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
+          deadLetterMinAgeMs: DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
+          baseMs: 60_000,
+          maxMs: 60_000,
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          if (event.id === "retrying-head" && event.attempts === 0) {
+            throw new Error("transient Discord recovery failure");
+          }
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual([]);
+
+      clock += 1_000;
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw current diagnostic ask" },
+        { laneKey, receivedAt: clock },
+      );
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["fresh-addressed"]);
+      drain.dispose();
+    });
+  });
+
+  it("red: stale Discord ambient backlog is not adopted before a fresh addressed event", async () => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const thirteenHoursMs = 13 * 60 * 60 * 1_000;
+      let clock = thirteenHoursMs;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "stale-ambient",
+        { text: "ambient room history" },
+        { laneKey, receivedAt: clock - thirteenHoursMs },
+      );
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw current diagnostic ask" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        startLimit: 1,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["fresh-addressed"]);
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).not.toContain(
+        "fresh-addressed",
+      );
+      drain.dispose();
+    });
+  });
+
   it("dead-letter needs both attempt floor and age (releases when age insufficient)", async () => {
     await withTempState(async (stateDir) => {
       const receivedAt = 100;
