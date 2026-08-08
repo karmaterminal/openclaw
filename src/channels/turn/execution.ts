@@ -98,19 +98,20 @@ function maybeWarnZeroCountVisibleDispatch<TDispatchResult>(
   if (hasVisibleChannelTurnDispatch(dispatchResult, NO_ADDITIONAL_DELIVERY_SIGNALS)) {
     return;
   }
+  const messageId =
+    params.messageId ?? params.ctxPayload.MessageSid ?? params.ctxPayload.MessageSidFull;
+  const sessionKey = params.ctxPayload.SessionKey ?? params.routeSessionKey;
   log.warn(
     `visible channel turn dispatched with no queued reply payloads: channel=${params.channel} ` +
-      `messageId=${params.messageId ?? "unknown"} sessionKey=${
-        params.ctxPayload.SessionKey ?? params.routeSessionKey
-      }`,
+      `messageId=${messageId ?? "unknown"} sessionKey=${sessionKey}`,
   );
   emit({
     ...params,
     event: {
       stage: "dispatch",
       event: "warning",
-      messageId: params.messageId,
-      sessionKey: params.ctxPayload.SessionKey ?? params.routeSessionKey,
+      messageId,
+      sessionKey,
       admission: params.admission?.kind ?? "dispatch",
       reason: "zero-count-visible-dispatch",
     },

@@ -1705,6 +1705,42 @@ describe("channel turn kernel", () => {
     ]);
   });
 
+  it("uses the finalized inbound context message id for zero-count warnings", async () => {
+    const events: string[] = [];
+    const log = vi.fn();
+    const recordInboundSession = createRecordInboundSession(events);
+    const runDispatch = vi.fn(async () => ({
+      queuedFinal: false,
+      counts: { tool: 0, block: 0, final: 0 },
+    }));
+
+    const result = await runPreparedInboundReply({
+      channel: "test",
+      routeSessionKey: "agent:main:test:peer",
+      storePath: "/tmp/sessions.json",
+      ctxPayload: createCtx({
+        MessageSid: "ctx-source-msg",
+        MessageSidFull: "ctx-proxy-msg",
+      }),
+      recordInboundSession,
+      runDispatch,
+      log,
+      record: {
+        onRecordError: vi.fn(),
+      },
+    });
+
+    expectDispatched(result);
+    expect(log.mock.calls).toContainEqual([
+      expect.objectContaining({
+        stage: "dispatch",
+        event: "warning",
+        messageId: "ctx-source-msg",
+        reason: "zero-count-visible-dispatch",
+      }),
+    ]);
+  });
+
   it("does not warn for observed-path deliveries with zero queued counts", async () => {
     const events: string[] = [];
     const log = vi.fn();
