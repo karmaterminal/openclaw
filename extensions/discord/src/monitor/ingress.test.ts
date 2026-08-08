@@ -11,6 +11,7 @@ import {
 } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { createDiscordIngressMonitor, type DiscordIngressLifecycle } from "./ingress.js";
 
 type DiscordIngressPayload = {
@@ -90,6 +91,7 @@ async function withQueue<T>(
 
 type DiscordIngressMonitor = ReturnType<typeof createDiscordIngressMonitor>;
 type DiscordThreadBindings = Parameters<typeof createDiscordIngressMonitor>[0]["threadBindings"];
+type DiscordGuildEntries = Record<string, DiscordGuildEntryResolved>;
 
 async function stopAll(monitors: DiscordIngressMonitor[]): Promise<void> {
   await Promise.allSettled(monitors.map((monitor) => monitor.stop()));
@@ -100,6 +102,7 @@ async function expectStaleMessageDispatches(params: {
   botUserId?: string;
   cfg?: OpenClawConfig;
   discordConfig?: DiscordAccountConfig;
+  guildEntries?: DiscordGuildEntries;
   threadBindings?: DiscordThreadBindings;
 }): Promise<void> {
   await withQueue(async (queue) => {
@@ -118,6 +121,7 @@ async function expectStaleMessageDispatches(params: {
       botUserId: params.botUserId ?? "bot-1",
       ...(params.cfg ? { cfg: params.cfg } : {}),
       ...(params.discordConfig ? { discordConfig: params.discordConfig } : {}),
+      ...(params.guildEntries ? { guildEntries: params.guildEntries } : {}),
       ...(params.threadBindings ? { threadBindings: params.threadBindings } : {}),
       queue,
       dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
@@ -143,6 +147,7 @@ async function expectStaleMessageFailsAsAmbient(params: {
   botUserId?: string;
   cfg?: OpenClawConfig;
   discordConfig?: DiscordAccountConfig;
+  guildEntries?: DiscordGuildEntries;
   threadBindings?: DiscordThreadBindings;
 }): Promise<void> {
   await withQueue(async (queue) => {
@@ -163,6 +168,7 @@ async function expectStaleMessageFailsAsAmbient(params: {
       botUserId: params.botUserId ?? "bot-1",
       ...(params.cfg ? { cfg: params.cfg } : {}),
       ...(params.discordConfig ? { discordConfig: params.discordConfig } : {}),
+      ...(params.guildEntries ? { guildEntries: params.guildEntries } : {}),
       ...(params.threadBindings ? { threadBindings: params.threadBindings } : {}),
       queue,
       dispatch,
@@ -731,6 +737,116 @@ describe("Discord durable ingress", () => {
       discordConfig: {
         mentionPatterns: { mode: "allow", denyIn: ["channel-denied-identity-1"] },
       } satisfies DiscordAccountConfig,
+    });
+  });
+
+  it.each([
+    {
+      name: "guild requireMention:false",
+      id: "1022",
+      channelId: "channel-open-guild-1",
+      guildEntries: {
+        "guild-1": { requireMention: false },
+      } satisfies DiscordGuildEntries,
+    },
+    {
+      name: "channel requireMention:false",
+      id: "1023",
+      channelId: "channel-open-channel-1",
+      guildEntries: {
+        "guild-1": {
+          channels: {
+            "channel-open-channel-1": { enabled: true, requireMention: false },
+          },
+        },
+      } satisfies DiscordGuildEntries,
+    },
+  ])(
+    "keeps stale ordinary unmentioned guild text when $name resolves mention-open",
+    async (testCase) => {
+      const now = Date.now();
+      await expectStaleMessageDispatches({
+        rawMessage: createRawMessage(testCase.id, testCase.channelId, {
+          guild_id: "guild-1",
+          content: "ordinary old room text",
+          timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+        } as Partial<APIMessage>),
+        guildEntries: testCase.guildEntries,
+      });
+    },
+  );
+
+  it("still suppresses stale ambient content when channel config proves mention-required", async () => {
+    const now = Date.now();
+    await expectStaleMessageFailsAsAmbient({
+      rawMessage: createRawMessage("1024", "channel-require-mention-1", {
+        guild_id: "guild-1",
+        content: "old unmentioned room text",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>),
+      guildEntries: {
+        "guild-1": {
+          channels: {
+            "channel-require-mention-1": { enabled: true, requireMention: true },
+          },
+        },
+      },
+    });
+  });
+
+  it("emits one payload-free structured debug receipt for stale ambient suppression", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const rawMessage = createRawMessage("1025", "channel-debug-1", {
+        guild_id: "guild-1",
+        content: "old room history must not be logged",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1025", payloadFor(rawMessage), {
+        laneKey: "channel:channel-debug-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const log = vi.fn();
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: { error: vi.fn(), log },
+        botUserId: "bot-1",
+        queue,
+        dispatch: vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
+          await lifecycle.onAdopted();
+        }),
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(async () => {
+          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+            { id: "1025", reason: "stale-ambient-backlog" },
+          ]);
+        });
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(log).toHaveBeenCalledWith(
+          expect.objectContaining({
+            level: "debug",
+            source: "discord",
+            accountId: "default",
+            eventId: "1025",
+            sourceEventId: "1025",
+            laneKey: "channel:channel-debug-1",
+            channelId: "channel-debug-1",
+            thresholdMs: 15 * 60 * 1_000,
+            disposition: "failed",
+            reason: "stale-ambient-backlog",
+          }),
+          "discord ingress stale ambient backlog suppressed",
+        );
+        const receipt = log.mock.calls[0]?.[0];
+        expect(receipt).not.toHaveProperty("content");
+        expect(JSON.stringify(receipt)).not.toContain("old room history");
+      } finally {
+        await monitor.stop();
+      }
     });
   });
 });

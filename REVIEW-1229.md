@@ -4,33 +4,19 @@
 
 `drainOnce()` treated a retry-delayed pending row as a lane-wide block. A same-channel retry head therefore prevented later eligible rows from being claimed, even when the old row was still inside backoff. Separately, durable ingress had no pre-claim freshness disposition: Discord ambient guild backlog and current addressed work were both just FIFO pending rows in `channel:<id>`, so recovery could admit day-old room events as fresh turns before a current mention.
 
-## GitNexus call graph
+## GitNexus fork MCP call graph
 
-Focused alias only: `emeric-1229-ingress`; no whole-repo reindex.
+Parent completed the GitNexus MCP gate against fork-backed repo `openclaw` at `/data/worktrees/oc-1229-gitnexus-slice`, commit `a59a96549b7736613cb86dc846b28d0d82f03295`. I did not use the stock global npm GitNexus and did not rerun whole-repo indexing.
 
-Commands/queries used:
+Recorded MCP calls/results:
 
-```shell
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createChannelIngressDrain
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createChannelIngressDrain --depth 3 --include-tests
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress -u Function:ingress-queue.ts:claimNext
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress Function:ingress-queue.ts:claimNext --depth 3 --include-tests
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createChannelIngressMonitor
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolveIngressRetryDelayMs
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress supersedeActiveStatesIfNeeded
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (a)-[r]->(b) WHERE a.name IN ['createChannelIngressDrain','drainOnce','claimNext','resolveIngressRetryDelayMs','supersedeActiveStatesIfNeeded','createChannelIngressMonitor'] RETURN a.name AS from, r.type AS rel, b.name AS to, b.filePath AS filePath LIMIT 160"
-```
+1. `gitnexus-list_repos()` returned repo `openclaw` with path `/data/worktrees/oc-1229-gitnexus-slice`, lastCommit `a59a96549b7736613cb86dc846b28d0d82f03295`, stats `{files:357,nodes:8921,edges:19006,communities:510,processes:300}`.
+2. `gitnexus-context({repo:"openclaw", name:"createDiscordIngressMonitor"})` found `Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor`, lines 306-411. Incoming callers in the slice are `extensions/discord/src/monitor/ingress.test.ts`, `expectStaleMessageDispatches`, and `expectStaleMessageFailsAsAmbient`. Upstream impact is LOW and direct impacted count is 3, all tests.
+3. `gitnexus-context({repo:"openclaw", name:"resolveDiscordShouldRequireMention"})` found `extensions/discord/src/monitor/allow-list.ts:522-541`, incoming caller `preflightDiscordMessage`, outgoing call `isDiscordAutoThreadOwnedByBot`.
+4. `gitnexus-context({repo:"openclaw", name:"resolveDiscordChannelConfig"})` found `extensions/discord/src/monitor/allow-list.ts:458-476`, outgoing calls `resolveDiscordChannelEntryMatch` and `hasConfiguredDiscordChannels`, reads `channels`.
+5. `gitnexus-cypher({repo:"openclaw", query:"MATCH (s)-[r:CodeRelation]->(t) WHERE s.name IN ['createDiscordIngressMonitor','resolveDiscordShouldRequireMention','resolveDiscordChannelConfig','preflightDiscordMessage','createDiscordMessageHandler'] RETURN s.name AS from, s.filePath AS fromPath, r.type AS rel, t.name AS to, t.filePath AS toPath LIMIT 200"})` returned the relevant graph: `createDiscordMessageHandler` accesses `createIngressMonitor`; `preflightDiscordMessage` calls `resolveDiscordShouldRequireMention`, `resolveDiscordChannelConfig`, `resolveDiscordPreflightRoute`, `resolveDiscordPreflightChannelContext`, `resolveDiscordPreflightThreadContext`, `resolveDiscordMentionState`, `resolvePreflightMentionRequirement`, `resolveDiscordTextCommandAccess`, and related preflight helpers.
 
-Owning symbols:
-
-- `createChannelIngressDrain` / `drainOnce`: core claim recovery, retry eligibility, lane serialization, dispatch lifecycle.
-- `claimNext`: queue-level pending-to-claimed transition and candidate ID filtering.
-- `resolveIngressRetryDelayMs`: per-row retry eligibility.
-- `supersedeActiveStatesIfNeeded`: active pre-adoption supersede only; not a pending backlog owner.
-- `createChannelIngressMonitor`: channel admission/pump bridge into the core drain.
-- `createDiscordIngressMonitor`: Discord owner for raw message timestamp and addressed-vs-ambient policy.
-
-Causal path: Discord durable append -> monitor pump -> core drain recovery -> pending disposition -> retry eligibility filter -> `claimNext(candidateIds)` -> dispatch lifecycle -> complete/fail tombstone.
+Causal conclusion: the pre-claim monitor has incomplete policy facts relative to canonical preflight. It may only terminally suppress stale ambient rows when it can prove mention-required admission; resolved `requireMention:false` and unproven preflight-only addressability must fail open into canonical dispatch/preflight.
 
 ## Chosen method
 
@@ -239,13 +225,7 @@ text control commands after the stale-age check and before ambient failure. If
 the pre-claim monitor cannot prove command-surface state, it fails open for the
 parsed control command and lets canonical preflight decide.
 
-Explicit policy: old unaddressed ambient guild traffic is intentionally failed
-as `stale-ambient-backlog` even in always-on `requireMention=false` rooms.
-Stale backlog is not a fresh room action. Explicit address/control forms fail
-open: DMs, direct bot mentions, replies to the bot, everyone mentions,
-bound/cached thread ambiguity, configured/provider/identity mention matches,
-audio-only mention candidates, and active text control commands are preserved
-for full preflight.
+Superseded policy: old unaddressed ambient guild traffic is failed as `stale-ambient-backlog` only when the pre-claim monitor can prove canonical preflight would still require a mention. Resolved `requireMention:false` and unproven address/control forms fail open to full preflight. DMs, direct bot mentions, replies to the bot, everyone mentions, bound/cached thread ambiguity, configured/provider/identity mention matches, audio-only mention candidates, and active text control commands are preserved for full preflight.
 
 Edge cases covered: stale unmentioned `/status` dispatches; unrelated stale
 ambient content still fails when an agent identity exists but does not match;
@@ -271,3 +251,27 @@ focused Discord ingress shard, focused drain shard, broader
 Discord/preflight/thread shard, broader core ingress suite, typechecks,
 format/lint, diff check, and closeout autoreview with no accepted/actionable
 findings.
+
+## Fifth follow-up review objection — requireMention:false fail-open
+
+The request-change gap was a false terminalization in open-listening Discord channels. Canonical preflight resolves guild/channel config through `resolveDiscordChannelConfig*()` and `resolveDiscordShouldRequireMention()`; resolved `requireMention:false` means ordinary unmentioned guild text can be admitted. The pre-claim monitor did not carry that fact, so it could dead-letter a stale ordinary guild row as `stale-ambient-backlog` before canonical preflight saw the mention-open policy.
+
+Best-fix verdict: best bounded fix for this non-continuation packet. The monitor now carries only the small authoritative guild/channel mention-required fact already used by preflight. If that fact cannot be established before claim, it fails open into canonical dispatch/preflight instead of reimplementing partial preflight policy.
+
+Alternatives considered:
+
+- Clone full Discord preflight before claim: rejected because it would duplicate route hydration, bindings, access checks, mention regex, command auth, and audio transcription.
+- Remove stale ambient dead-lettering entirely: rejected because proven mention-required ambient backlog would again drain as current room turns and lose the red-to-green repair.
+- Add a new suppressed tombstone: rejected for this packet because failed dead letters already provide durable health/resubmit semantics without a schema/lifecycle expansion.
+
+Lifecycle decision: keep failed/dead-letter rows for `stale-ambient-backlog`. They are visible in dead-letter health and require explicit operator resubmit; a completed/suppressed tombstone would hide intentional suppression as success.
+
+Debug receipt: every terminal stale ambient suppression logs exactly one payload-free structured debug receipt with `level`, `source`, `accountId`, `eventId`, `sourceEventId`, `laneKey`, `channelId`, `receivedAt`, `ageMs`, `thresholdMs`, `disposition`, and `reason`. It logs no content, token, auth, attachment URL, or payload.
+
+Frequency/observability: #1229's incident denominator is 3,313/5,000 completed rows >=1h, 1,715/5,000 >=12h, max 30.52h, and the retained head row had 496 attempts. That is incident frequency, not fleet incidence. Follow-up counters should expose stale-ambient suppression count and oldest pending age by account/channel/lane.
+
+Code read: `extensions/discord/src/monitor/ingress.ts`, `extensions/discord/src/monitor/message-handler.ts`, `extensions/discord/src/monitor/allow-list.ts`, `extensions/discord/src/monitor/message-handler.preflight.ts`, `extensions/discord/src/monitor/message-handler.preflight-channel-context.ts`, `extensions/discord/src/monitor/message-handler.preflight-channel-access.ts`, `src/channels/message/ingress-drain.ts`, `src/channels/message/ingress-drain-pending-disposition.ts`, and `extensions/discord/src/monitor/ingress.test.ts`.
+
+New proof: Discord ingress tests now cover guild-level `requireMention:false`, channel-level `requireMention:false`, proven `requireMention:true` suppression, and one structured debug receipt. Existing focused core drain tests retain retry-head bypass, active-claim, multi-lane, dead-letter/idempotency, restart recovery, stale proven ambient, fresh/addressed/ambiguous admitted, and strict 15-minute boundary coverage.
+
+Residual risk: if future preflight admits another address/control form not visible before claim, the monitor must fail open for that form or move suppression after canonical preflight. Current patch intentionally prefers extra canonical preflight work over irreversible false dead-lettering.

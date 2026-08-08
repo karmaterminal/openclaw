@@ -142,28 +142,19 @@ gh issue view 1229 --repo karmaterminal/openclaw --comments --json number,title,
 
 Result: issue #1229 remains open, unassigned, labeled `bug`, `status:in_coding_agent`, and `code-agent`. The only public comment is the red-first receipt for `c22823368aead2a6cef82b770b5fd82d3b3e61a9`; no maintainer comment changed the two red contracts.
 
-### GitNexus focused graph commands
+### GitNexus fork MCP evidence
 
-The exact-root build was not rerun. I used the completed focused alias `emeric-1229-ingress` only.
+Parent completed the GitNexus MCP gate against fork-backed repo `openclaw` at `/data/worktrees/oc-1229-gitnexus-slice`, commit `a59a96549b7736613cb86dc846b28d0d82f03295`. I did not use the stock global npm GitNexus and did not rerun whole-repo indexing.
 
-```shell
-/home/figs/.npm-global/bin/gitnexus list
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createChannelIngressDrain
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createChannelIngressDrain --depth 3 --include-tests
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress -u Function:ingress-queue.ts:claimNext
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress Function:ingress-queue.ts:claimNext --depth 3 --include-tests
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createChannelIngressMonitor
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createChannelIngressMonitor --depth 3 --include-tests
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolveIngressRetryDelayMs
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress resolveIngressRetryDelayMs --depth 3 --include-tests
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress supersedeActiveStatesIfNeeded
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress supersedeActiveStatesIfNeeded --depth 3 --include-tests
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (n) RETURN labels(n) AS labels, keys(n) AS keys LIMIT 5"
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'retry' OR toLower(s.name) CONTAINS 'supersede' OR toLower(s.name) CONTAINS 'lane' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line LIMIT 80"
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (a)-[r]->(b) WHERE a.name IN ['createChannelIngressDrain','drainOnce','claimNext','resolveIngressRetryDelayMs','supersedeActiveStatesIfNeeded','createChannelIngressMonitor'] RETURN a.name AS from, r.type AS rel, b.name AS to, b.filePath AS filePath LIMIT 160"
-```
+Recorded MCP calls/results:
 
-Notes: two initial exploratory Cypher attempts using `TYPE(r)` and `s.file` failed against this GitNexus store; the schema probe showed edge relation names live in `r.type` and symbol paths in `filePath`, so the successful Cypher commands above use those fields.
+1. `gitnexus-list_repos()` returned repo `openclaw` with path `/data/worktrees/oc-1229-gitnexus-slice`, lastCommit `a59a96549b7736613cb86dc846b28d0d82f03295`, stats `{files:357,nodes:8921,edges:19006,communities:510,processes:300}`.
+2. `gitnexus-context({repo:"openclaw", name:"createDiscordIngressMonitor"})` found `Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor`, lines 306-411. Incoming callers in the slice are `extensions/discord/src/monitor/ingress.test.ts`, `expectStaleMessageDispatches`, and `expectStaleMessageFailsAsAmbient`. Upstream impact is LOW and direct impacted count is 3, all tests.
+3. `gitnexus-context({repo:"openclaw", name:"resolveDiscordShouldRequireMention"})` found `extensions/discord/src/monitor/allow-list.ts:522-541`, incoming caller `preflightDiscordMessage`, outgoing call `isDiscordAutoThreadOwnedByBot`.
+4. `gitnexus-context({repo:"openclaw", name:"resolveDiscordChannelConfig"})` found `extensions/discord/src/monitor/allow-list.ts:458-476`, outgoing calls `resolveDiscordChannelEntryMatch` and `hasConfiguredDiscordChannels`, reads `channels`.
+5. `gitnexus-cypher({repo:"openclaw", query:"MATCH (s)-[r:CodeRelation]->(t) WHERE s.name IN ['createDiscordIngressMonitor','resolveDiscordShouldRequireMention','resolveDiscordChannelConfig','preflightDiscordMessage','createDiscordMessageHandler'] RETURN s.name AS from, s.filePath AS fromPath, r.type AS rel, t.name AS to, t.filePath AS toPath LIMIT 200"})` returned the relevant graph: `createDiscordMessageHandler` accesses `createIngressMonitor`; `preflightDiscordMessage` calls `resolveDiscordShouldRequireMention`, `resolveDiscordChannelConfig`, `resolveDiscordPreflightRoute`, `resolveDiscordPreflightChannelContext`, `resolveDiscordPreflightThreadContext`, `resolveDiscordMentionState`, `resolvePreflightMentionRequirement`, `resolveDiscordTextCommandAccess`, and related preflight helpers.
+
+Causal conclusion: the pre-claim monitor has incomplete policy facts relative to canonical preflight. It may only terminally suppress stale ambient rows when it can prove mention-required admission; resolved `requireMention:false` and unproven preflight-only addressability must fail open into canonical dispatch/preflight.
 
 ### GitNexus ownership map
 
@@ -385,48 +376,9 @@ additional addressed forms that the raw durable-ingress row cannot always prove:
 The invariant is unchanged: stale ambient backlog may be terminally suppressed
 only when the row is provably ambient at the pre-claim boundary.
 
-### GitNexus focused graph commands
+### GitNexus fork MCP evidence for this follow-up
 
-No whole-repo indexing was run. The focused alias still covers only
-`src/channels/message`, so Discord symbol lookups correctly returned no graph
-node and forced a direct source walk for the plugin-owned classifier.
-
-```shell
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolveDiscordMentionState
-# Symbol not found; Discord files are outside the focused alias.
-
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress resolveDiscordMentionState --depth 3 --include-tests
-# Target not found; impactedCount=0.
-
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createDiscordIngressMonitor
-# Symbol not found; Discord files are outside the focused alias.
-
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createDiscordIngressMonitor --depth 3 --include-tests
-# Target not found; impactedCount=0.
-
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'discord' OR toLower(s.name) CONTAINS 'mention' OR toLower(s.name) CONTAINS 'thread' OR toLower(s.name) CONTAINS 'preflight' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line ORDER BY s.filePath, s.startLine LIMIT 200"
-# Returned [] because the focused graph is the core message-ingress slice.
-
-/home/figs/.npm-global/bin/gitnexus list
-# Confirmed `emeric-1229-ingress` path is `src/channels/message`; no indexing.
-
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line LIMIT 80"
-# Sampled symbols from the existing alias; all were core message-ingress files.
-
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createChannelIngressDrain
-
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createChannelIngressDrain --depth 3 --include-tests
-# Impact remains the core drain tests: ingress-drain, lanes, supersede.
-
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolvePendingDisposition
-# Symbol not found; the indexed alias predates the new helper extraction name.
-
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'pending' OR toLower(s.name) CONTAINS 'retry' OR toLower(s.name) CONTAINS 'disposition' OR toLower(s.name) CONTAINS 'claimnext' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line ORDER BY s.filePath, s.startLine LIMIT 120"
-# Confirmed `claimNext`, retry delay, and failure disposition remain the core owner symbols.
-
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'disposition' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line ORDER BY s.filePath, s.startLine LIMIT 80"
-# Confirmed the graph has only core failure-disposition symbols, not Discord preflight.
-```
+The same parent-completed fork MCP evidence above covers `createDiscordIngressMonitor`, `resolveDiscordShouldRequireMention`, `resolveDiscordChannelConfig`, `preflightDiscordMessage`, and `createDiscordMessageHandler`. It proves the Discord monitor/preflight policy gap without stock CLI calls or reindexing.
 
 ### Direct source walk conclusions
 
@@ -587,51 +539,9 @@ follow-up:
 Either case could incorrectly dead-letter an older guild row as
 `stale-ambient-backlog` before full preflight proved it addressed.
 
-### GitNexus focused graph commands
+### GitNexus fork MCP evidence for this follow-up
 
-No whole-repo GitNexus indexing was run. Only the existing global CLI
-`/home/figs/.npm-global/bin/gitnexus` was available; no GitNexus MCP graph/query
-surface was exposed in this session.
-
-The existing focused alias remains `src/channels/message` only:
-
-```shell
-/home/figs/.npm-global/bin/gitnexus list
-# `emeric-1229-ingress` path is `src/channels/message`; Discord files are not indexed.
-
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolveDiscordMentionState
-# Symbol not found.
-
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress buildMentionRegexes
-# Symbol not found.
-
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'mention' OR toLower(s.name) CONTAINS 'identity' OR toLower(s.name) CONTAINS 'preflight' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line LIMIT 120"
-# Returned only core message-ingress identity symbols such as ingress claim-owner/outbound echo.
-
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress preflightDiscordMessage
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress resolveDiscordPreflightRoute
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress -u Function:message-handler.preflight.ts:preflightDiscordMessage
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress -u Function:message-handler.routing-preflight.ts:resolveDiscordPreflightRoute
-# All returned symbol not found, confirming the Discord route/preflight surfaces are outside the focused alias.
-
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress createDiscordIngressMonitor
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createDiscordIngressMonitor --depth 3 --include-tests
-# Symbol/target not found; impactedCount=0.
-
-/home/figs/.npm-global/bin/gitnexus impact -r emeric-1229-ingress createChannelIngressDrain --depth 2 --include-tests
-# Impact remains `ingress-drain.test.ts`, `ingress-drain-supersede.test.ts`, and `ingress-drain-lanes.test.ts`.
-
-/home/figs/.npm-global/bin/gitnexus context -r emeric-1229-ingress claimNext
-# Ambiguous; candidates include `Function:ingress-queue.ts:claimNext`.
-
-/home/figs/.npm-global/bin/gitnexus cypher -r emeric-1229-ingress "MATCH (s) WHERE toLower(s.name) CONTAINS 'claimnext' OR toLower(s.name) CONTAINS 'retry' OR toLower(s.name) CONTAINS 'pending' RETURN s.name AS name, s.filePath AS filePath, s.startLine AS line LIMIT 120"
-# Confirmed the indexed owner symbols are still core pending/retry/claim surfaces: `listPending`, `claimNext`, `resolveIngressRetryDelayMs`, and drain retry state.
-```
-
-GitNexus conclusion: the focused graph continues to validate that core
-claim/retry/pending disposition ownership is unchanged. It cannot inspect the
-Discord plugin or full mention preflight, so the provider-policy and identity
-gaps were traced by direct source walk.
+The parent-completed fork MCP evidence above supersedes the older stock-CLI notes. It directly covers the Discord monitor, preflight mention requirement, channel config resolution, and causal graph proving pre-claim policy facts are incomplete relative to canonical preflight. No stock global npm GitNexus call or whole-repo indexing was used for this request-change packet.
 
 ### Direct source and dependency walk
 
@@ -850,14 +760,7 @@ must reach canonical preflight instead of being failed as ambient backlog.
 
 ### Explicit stale ambient policy
 
-Old unaddressed ambient guild traffic is intentionally terminalized as
-`stale-ambient-backlog` even in always-on rooms where Discord config eventually
-sets `requireMention=false`: stale backlog is not a fresh operator action and
-must not replay as a current room turn after recovery. Explicit address/control
-forms fail open before claim: direct/DM mentions, replies to the bot, everyone
-mentions, bound/cached thread ambiguity, configured/provider/identity mention
-matches, audio-only mention candidates, and active text control commands all
-survive to full Discord preflight.
+Superseded by the fifth follow-up: stale unaddressed guild traffic is terminalized only when the pre-claim monitor can prove canonical preflight would still require a mention. Resolved `requireMention:false` and unproven address/control forms fail open to full Discord preflight. Explicit address/control forms still fail open before claim: direct/DM mentions, replies to the bot, everyone mentions, bound/cached thread ambiguity, configured/provider/identity mention matches, audio-only mention candidates, and active text control commands all survive to full Discord preflight.
 
 ### New regressions and negative controls
 
@@ -899,3 +802,96 @@ TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .age
 
 No SQLite schema bump, dependency change, live Discord/runtime queue mutation,
 PR/merge/deploy, issue closure, or public GitHub comment was performed.
+
+## Fifth follow-up implementation — 2026-08-08
+
+### Required context refresh
+
+- Read root `AGENTS.md`, `src/channels/AGENTS.md`, `.github/instructions/copilot.instructions.md`, `extensions/AGENTS.md`, this journal, and `REVIEW-1229.md` before editing.
+- `extensions/discord/AGENTS.md` is absent in this worktree, so `extensions/AGENTS.md` is the scoped plugin guide for Discord changes.
+- Live `gh issue view 1229 --repo karmaterminal/openclaw --comments --json number,title,state,author,createdAt,updatedAt,body,comments,labels,assignees,url` shows issue #1229 open, unassigned, with labels `bug`, `status:in_coding_agent`, `code-agent`, and `non-continuation`. The newest issue comment marks the work as a standalone non-continuation lane and adds the `requireMention:false` fail-open, debug-receipt, dead-letter, and observability acceptance points.
+
+### Request-change root cause
+
+The pushed head still terminalized stale ordinary guild text before canonical Discord preflight could apply resolved `requireMention:false`. Full preflight resolves guild/channel config through `resolveDiscordChannelConfig*()` and `resolveDiscordShouldRequireMention()`; when guild or channel config sets `requireMention:false`, ordinary unmentioned guild text is eligible for canonical dispatch/preflight. The pre-claim monitor lacked that small authoritative fact and treated the row as proven ambient.
+
+### Chosen narrow fix
+
+- `createDiscordMessageHandler()` now passes the same `guildEntries` snapshot used by preflight into `createDiscordIngressMonitor()`.
+- `createDiscordIngressMonitor()` uses existing Discord-local helpers (`resolveDiscordGuildEntry`, `resolveDiscordChannelConfigWithFallback`, and `resolveDiscordShouldRequireMention`) to prove whether the stale row is in a mention-required guild/channel before returning `stale-ambient-backlog`.
+- Resolved `requireMention:false` returns `null` from the pending-disposition hook so the row reaches canonical dispatch/preflight. Unmatched configured channel allowlists, missing guild facts, and other unproven policy states also fail open.
+- Proven stale ambient rows in mention-required channels still fail through the existing dead-letter path.
+
+No full preflight clone, route hydration, schema bump, config/env addition, live Discord probe, queue mutation, Frond/continuation ref change, PR/merge/deploy, or GitHub public write was performed.
+
+### Debug receipt and lifecycle decision
+
+Every stale ambient terminal disposition emits one payload-free structured debug receipt before the existing failed dead-letter tombstone is written. Shape:
+
+```ts
+{
+  level: "debug",
+  source: "discord",
+  accountId,
+  eventId,
+  sourceEventId,
+  laneKey,
+  channelId,
+  receivedAt,
+  ageMs,
+  thresholdMs,
+  disposition: "failed",
+  reason: "stale-ambient-backlog",
+}
+```
+
+No content, token, auth, attachment URL, or payload bytes are logged. I kept failed/dead-letter semantics instead of adding a suppressed/completed tombstone because the operator health/resubmit blast radius is safer: suppressed stale ambient backlog remains visible in dead-letter health and requires explicit dead-letter resubmit before it can run again. A completed tombstone would hide the suppression as success and make replay less explicit. No schema or lifecycle broadening was needed for this packet.
+
+### Frequency and observability notes
+
+The incident denominator is local to #1229, not a fleet incidence claim: 3,313/5,000 retained completed rows had >=1h lag, 1,715/5,000 had >=12h lag, max lag was 30.52h, and the retained head row had 496 attempts. Follow-up observability should add counters for `stale-ambient-backlog` suppression count by channel/account and gauges for oldest pending age / oldest pending age by lane so a healthy gateway cannot hide multi-hour unusable ingress.
+
+### Added regressions
+
+- stale ordinary unmentioned guild text dispatches when guild-level `requireMention:false` is resolved;
+- stale ordinary unmentioned guild text dispatches when channel-level `requireMention:false` is resolved;
+- stale ambient guild text still dead-letters when channel config proves `requireMention:true`;
+- stale ambient dead-letter emits exactly one payload-free structured debug receipt;
+- existing stale ambient, direct mention, reply-to-bot, everyone, bound/cached thread, configured name/emoji, audio-only, text control command, retry-head, active-claim, multi-lane, idempotency, restart recovery, and 15-minute strict-boundary coverage remains in the focused suites.
+
+### GitNexus evidence binding
+
+The parent-completed fork MCP evidence in the earlier section remains the graph proof for this request-change packet. It binds the reviewed non-continuation commit lineage to MCP repo `openclaw` at `/data/worktrees/oc-1229-gitnexus-slice`, commit `a59a96549b7736613cb86dc846b28d0d82f03295`, and shows `createDiscordMessageHandler -> createDiscordIngressMonitor` plus canonical preflight's calls into `resolveDiscordShouldRequireMention` and `resolveDiscordChannelConfig`. A future frond-build/assembly branch may absorb the exact reviewed commit, but proof must record both the assembly head and this standalone non-continuation commit.
+
+### Validation receipts for this packet
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# passed: 24 tests, 1 file, 11.65s wrapper time before documentation updates
+```
+
+Final focused/broader test, typecheck, format/lint/diff, autoreview, commit, and push receipts are appended after closeout.
+
+### Final fifth follow-up validation receipts
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts && node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts && node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts && node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: Discord ingress 24 tests; focused core drain 36 tests; broader Discord monitor/preflight/thread shard 128 tests; broader core ingress owner suite 121 tests across 2 shards
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/message-handler.queue.test.ts
+# passed: 17 tests, 1 file, 9.20s wrapper time
+
+node --no-opt scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions-test.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.core.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core-test.tsbuildinfo
+# passed
+
+./node_modules/.bin/oxfmt --check --threads=1 extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/message-handler.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md && node --no-opt scripts/run-oxlint.mjs extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/message-handler.ts extensions/discord/src/monitor/ingress.test.ts && git --no-pager diff --check && git --no-pager diff --numstat
+# passed; numstat before this receipt append: docs net -24, production +85/-0, tests +116/-0
+
+node --no-opt scripts/check-changed.mjs -- extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/message-handler.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md
+# blocked before repo checks: delegated Crabbox workload routing selected a crabbox binary that failed basic --version/--help sanity checks.
+
+test -d "$HOME/.cache/openclaw-autoreview-tmp" || mkdir -p "$HOME/.cache/openclaw-autoreview-tmp"; TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+# first closeout passed: TruffleHog clean; autoreview clean with no accepted/actionable findings; overall patch correct (0.98). Final rerun after receipt docs also passed with bundle 46494 bytes and overall patch correct (0.99).
+```
+
+Production LOC delta for this follow-up is +85/-0, justified by carrying the small authoritative Discord mention-required fact into pre-claim gating and by emitting the required structured suppression receipt. Test delta is +116/-0.

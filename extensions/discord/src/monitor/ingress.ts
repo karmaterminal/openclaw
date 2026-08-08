@@ -20,6 +20,14 @@ import {
 import type { Client } from "../internal/discord.js";
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
+import {
+  normalizeDiscordSlug,
+  resolveDiscordChannelConfigWithFallback,
+  resolveDiscordGuildEntry,
+  resolveDiscordShouldRequireMention,
+  type DiscordGuildEntryResolved,
+} from "./allow-list.js";
+import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
 import type { DiscordMessageEvent } from "./listeners.js";
 import { hasRawDiscordUserMention } from "./message-handler.preflight-helpers.js";
 
@@ -181,6 +189,10 @@ function isDiscordThreadChannelType(type: unknown): boolean {
   );
 }
 
+function hasConfiguredDiscordChannels(guildInfo: DiscordGuildEntryResolved | null): boolean {
+  return Boolean(guildInfo?.channels && Object.keys(guildInfo.channels).length > 0);
+}
+
 function hasCachedThreadChannel(rawMessage: APIMessage): boolean {
   const channel = (rawMessage as { channel?: unknown }).channel;
   if (!channel || typeof channel !== "object") {
@@ -225,6 +237,55 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
     rawMessage.referenced_message?.author?.id === botId ||
     hasRawDiscordUserMention(rawMessage.content ?? "", botId)
   );
+}
+
+function resolveDiscordPreClaimMentionRequirement(
+  rawMessage: APIMessage,
+  params: {
+    botUserId?: string;
+    guildEntries?: Record<string, DiscordGuildEntryResolved>;
+  },
+): boolean | null {
+  if (!isDiscordGuildMessage(rawMessage)) {
+    return false;
+  }
+  const guildInfo = resolveDiscordGuildEntry({
+    guildId: nonEmptyString((rawMessage as { guild_id?: unknown }).guild_id),
+    guildEntries: params.guildEntries,
+  });
+  if (params.guildEntries && Object.keys(params.guildEntries).length > 0 && !guildInfo) {
+    return null;
+  }
+
+  const channelId = nonEmptyString(rawMessage.channel_id);
+  const channelInfo = resolveDiscordChannelInfoSafe((rawMessage as { channel?: unknown }).channel);
+  const channelSlug = channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "";
+  const parentSlug = channelInfo.parentName ? normalizeDiscordSlug(channelInfo.parentName) : "";
+  const channelConfig = channelId
+    ? resolveDiscordChannelConfigWithFallback({
+        guildInfo,
+        channelId,
+        channelName: channelInfo.name,
+        channelSlug,
+        parentId: channelInfo.parentId,
+        parentName: channelInfo.parentName,
+        parentSlug,
+        scope: isDiscordThreadChannelType(channelInfo.type) ? "thread" : "channel",
+      })
+    : null;
+
+  if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
+    return null;
+  }
+
+  return resolveDiscordShouldRequireMention({
+    isGuildMessage: true,
+    isThread: isDiscordThreadChannelType(channelInfo.type),
+    botId: params.botUserId,
+    threadOwnerId: channelInfo.ownerId,
+    channelConfig,
+    guildInfo,
+  });
 }
 
 async function matchesConfiguredDiscordMentionText(
@@ -312,6 +373,7 @@ export function createDiscordIngressMonitor(params: {
   botUserId?: string;
   cfg?: OpenClawConfig;
   discordConfig?: DiscordAccountConfig | null;
+  guildEntries?: Record<string, DiscordGuildEntryResolved>;
   threadBindings?: DiscordThreadBindingLookup;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
 }): DiscordIngressMonitor {
@@ -367,6 +429,13 @@ export function createDiscordIngressMonitor(params: {
         if (context.now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
           return null;
         }
+        const shouldRequireMention = resolveDiscordPreClaimMentionRequirement(rawMessage, {
+          botUserId: params.botUserId,
+          guildEntries: params.guildEntries,
+        });
+        if (shouldRequireMention !== true) {
+          return null;
+        }
         if (hasPotentialActiveDiscordTextControlCommand(rawMessage, params.cfg)) {
           return null;
         }
@@ -379,6 +448,21 @@ export function createDiscordIngressMonitor(params: {
         ) {
           return null;
         }
+        const receipt = {
+          level: "debug",
+          source: "discord",
+          accountId: params.accountId,
+          eventId: record.id,
+          sourceEventId: rawMessage.id,
+          laneKey: context.laneKey,
+          channelId: rawMessage.channel_id,
+          receivedAt: new Date(record.receivedAt).toISOString(),
+          ageMs: Math.max(0, context.now - sentAt),
+          thresholdMs: DISCORD_STALE_AMBIENT_BACKLOG_MS,
+          disposition: "failed",
+          reason: "stale-ambient-backlog",
+        };
+        params.runtime.log?.(receipt, "discord ingress stale ambient backlog suppressed");
         return {
           kind: "fail",
           reason: "stale-ambient-backlog",
