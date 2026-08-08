@@ -218,7 +218,7 @@ describe("processDiscordMessage session routing and room events", () => {
     expect(guildHistories.get("c1")).toEqual([]);
   });
 
-  it("uses PluralKit original ids for inbound dedupe while preserving the Discord message id", async () => {
+  it("dispatch-receipt segment: declares PluralKit canonicalMessageId on the turn plan", async () => {
     const ctx = await createBaseContext({
       canonicalMessageId: "orig-123",
       message: {
@@ -238,7 +238,7 @@ describe("processDiscordMessage session routing and room events", () => {
     expect(getLastChannelInboundTurnPlan()?.messageId).toBe("orig-123");
   });
 
-  it("carries the raw Discord message id on the dispatch record without a canonical id", async () => {
+  it("dispatch-receipt segment: declares raw Discord message.id when no canonicalMessageId", async () => {
     const ctx = await createBaseContext({
       message: {
         id: "raw-789",

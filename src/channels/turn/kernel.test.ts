@@ -1705,7 +1705,7 @@ describe("channel turn kernel", () => {
     ]);
   });
 
-  it("carries the canonical source id from context when the adapter omits messageId", async () => {
+  it("dispatch-receipt segment: backfills ChannelTurnLogEvent.messageId from MessageSid when adapter omits messageId", async () => {
     const log = vi.fn();
     const recordInboundSession = createRecordInboundSession([]);
     const runDispatch = vi.fn(async () => ({
@@ -1740,7 +1740,7 @@ describe("channel turn kernel", () => {
     }
   });
 
-  it("falls back to the raw source id when only MessageSidFull is set", async () => {
+  it("dispatch-receipt segment: falls back to MessageSidFull when MessageSid is absent", async () => {
     const log = vi.fn();
     const recordInboundSession = createRecordInboundSession([]);
     const runDispatch = vi.fn(async () => ({
