@@ -24,7 +24,6 @@ import {
   normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
   resolveDiscordGuildEntry,
-  resolveDiscordShouldRequireMention,
   type DiscordGuildEntryResolved,
 } from "./allow-list.js";
 import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
@@ -239,13 +238,12 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
   );
 }
 
-function resolveDiscordPreClaimMentionRequirement(
+function canExpireDiscordStaleAmbientBacklog(
   rawMessage: APIMessage,
   params: {
-    botUserId?: string;
     guildEntries?: Record<string, DiscordGuildEntryResolved>;
   },
-): boolean | null {
+): boolean {
   if (!isDiscordGuildMessage(rawMessage)) {
     return false;
   }
@@ -254,7 +252,7 @@ function resolveDiscordPreClaimMentionRequirement(
     guildEntries: params.guildEntries,
   });
   if (params.guildEntries && Object.keys(params.guildEntries).length > 0 && !guildInfo) {
-    return null;
+    return false;
   }
 
   const channelId = nonEmptyString(rawMessage.channel_id);
@@ -275,22 +273,15 @@ function resolveDiscordPreClaimMentionRequirement(
     : null;
 
   if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
-    return null;
+    return false;
   }
-  // Without a raw channel type, channel_id may be an unhydrated thread; full
-  // preflight owns that route/thread decision after it can fetch channel facts.
-  if (typeof channelInfo.type !== "number") {
-    return null;
-  }
-
-  return resolveDiscordShouldRequireMention({
-    isGuildMessage: true,
-    isThread: isDiscordThreadChannelType(channelInfo.type),
-    botId: params.botUserId,
-    threadOwnerId: channelInfo.ownerId,
-    channelConfig,
-    guildInfo,
-  });
+  const directChannelIdConfig =
+    channelConfig?.matchSource === "direct" && channelConfig.matchKey === channelId;
+  const rawNonThreadChannel =
+    typeof channelInfo.type === "number" && !isDiscordThreadChannelType(channelInfo.type);
+  // Stale expiry is a freshness fence, not mention admission. A direct channel
+  // id config or raw non-thread type proves this is not an unhydrated thread.
+  return directChannelIdConfig || rawNonThreadChannel;
 }
 
 async function matchesConfiguredDiscordMentionText(
@@ -381,6 +372,7 @@ export function createDiscordIngressMonitor(params: {
   guildEntries?: Record<string, DiscordGuildEntryResolved>;
   threadBindings?: DiscordThreadBindingLookup;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
+  now?: () => number;
 }): DiscordIngressMonitor {
   const queue =
     params.queue ??
@@ -393,6 +385,7 @@ export function createDiscordIngressMonitor(params: {
     DiscordIngressPayload
   >({
     queue,
+    now: params.now,
     inspect: inspectDiscordMessage,
     payload: {
       version: DISCORD_INGRESS_PAYLOAD_VERSION,
@@ -430,15 +423,14 @@ export function createDiscordIngressMonitor(params: {
         if (isDiscordAddressedMessage(rawMessage, params.botUserId)) {
           return null;
         }
-        const sentAt = discordMessageSentAtMs(rawMessage) ?? record.receivedAt;
+        const payloadReceivedAt = Number.isFinite(record.payload.receivedAt)
+          ? record.payload.receivedAt
+          : record.receivedAt;
+        const sentAt =
+          record.receivedAt > payloadReceivedAt
+            ? record.receivedAt
+            : (discordMessageSentAtMs(rawMessage) ?? record.receivedAt);
         if (context.now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
-          return null;
-        }
-        const shouldRequireMention = resolveDiscordPreClaimMentionRequirement(rawMessage, {
-          botUserId: params.botUserId,
-          guildEntries: params.guildEntries,
-        });
-        if (shouldRequireMention !== true) {
           return null;
         }
         if (hasPotentialActiveDiscordTextControlCommand(rawMessage, params.cfg)) {
@@ -450,6 +442,11 @@ export function createDiscordIngressMonitor(params: {
             discordConfig: params.discordConfig,
             threadBindings: params.threadBindings,
           })
+        ) {
+          return null;
+        }
+        if (
+          !canExpireDiscordStaleAmbientBacklog(rawMessage, { guildEntries: params.guildEntries })
         ) {
           return null;
         }

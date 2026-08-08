@@ -961,3 +961,99 @@ node --no-opt scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --t
 test -d "$HOME/.cache/openclaw-autoreview-tmp" || mkdir -p "$HOME/.cache/openclaw-autoreview-tmp"; TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
 # passed: TruffleHog clean; autoreview clean with no accepted/actionable findings; overall patch correct (0.99)
 ```
+
+## Seventh follow-up implementation — 2026-08-08
+
+### Required context and MCP evidence
+
+- Loaded `$openclaw-pr-maintainer` as the required maintainer workflow skill.
+- Read scoped guides before edits: `extensions/AGENTS.md`, `src/channels/AGENTS.md`, and `test/AGENTS.md`; `extensions/discord/AGENTS.md` does not exist in this worktree.
+- Personally used GitNexus MCP before edits, not the stock npm CLI:
+  - `gitnexus-list_repos()` returned repo `openclaw`, path `/data/worktrees/oc-1229-gitnexus-slice`, commit `a59a96549b7736613cb86dc846b28d0d82f03295`, stats `357 files / 8,921 nodes / 19,006 edges`.
+  - `gitnexus-context({repo:"openclaw", name:"createChannelIngressDrain", file_path:"src/channels/message/ingress-drain.ts", kind:"Function"})` found lines 139-810; direct callers were drain tests (`ingress-drain.test.ts`, lanes, supersede); processes included drain/admit/onFailed flows.
+  - `gitnexus-context({repo:"openclaw", name:"createDiscordIngressMonitor", file_path:"extensions/discord/src/monitor/ingress.ts", kind:"Function"})` found lines 306-411; direct callers were Discord ingress tests; upstream impact was LOW with three direct impacted symbols.
+  - `gitnexus-impact` for both `createChannelIngressDrain` and `createDiscordIngressMonitor` reported LOW risk and three direct impacts each.
+  - `gitnexus-cypher` confirmed `mapGatewayDispatchData` is called by `extensions/discord/src/internal/gateway.ts:handleDispatch` and `extensions/discord/src/monitor/ingress.ts:deliver`; Discord monitor mapping is delayed until after claim. It also confirmed canonical preflight calls `resolveDiscordShouldRequireMention` and `resolveDiscordPreflightThreadContext`.
+  - After edits, `gitnexus-detect_changes` mapped touched symbols to `drainOnce`, `createChannelIngressDrain`, `createDiscordIngressMonitor`, and Discord pending-disposition processes.
+
+### Direct source inspection
+
+- `git show 8d9c510724c -- src/channels/message/ingress-drain.ts` showed the retry-lane regression: `retryDelayedLaneKeys` was removed from `blockedLaneKeys` and `candidateIds` was reduced to eligible rows, allowing later same-lane rows to overtake a retry-delayed pending head.
+- `src/channels/message/ingress-drain.ts` already applies pending dispositions before retry eligibility and `claimNext()`, so terminal stale heads can be failed before lane blocking.
+- `src/channels/message/ingress-queue.ts:claimNext()` still owns the atomic pending-to-claimed transition and honors `blockedLaneKeys` plus `candidateIds`.
+- `extensions/discord/src/internal/gateway.ts` keeps raw `MESSAGE_CREATE` payloads unmapped until durable claim; `extensions/discord/src/internal/gateway-dispatch.ts` maps to `Message` only inside delivery.
+- `extensions/discord/src/monitor/message-handler.preflight.ts` and `message-handler.preflight-thread.ts` prove canonical preflight owns hydrated route/thread policy, mention-open config, bound threads, text commands, mentions, replies, and audio mention candidates.
+
+### Upstream issue classification
+
+- #97435 is the public symptom thread for the same operator-visible stale Discord backlog.
+- #111373 and #120419 are partial core overlaps around durable ingress queue/drain behavior.
+- #92980 and #98774 are same-root retry/poison ordering precedents.
+- #118649 and #115888 are adjacent but distinct.
+- The exact mechanism and fix in this packet were not previously public: retry-delayed pending lane blocking plus direct-configured mention-open stale expiry on raw Discord `MESSAGE_CREATE`.
+
+### Chosen changes
+
+- Restored shared durable-ingress FIFO: retry-delayed pending rows add their lane back to `blockedLaneKeys`, so later same-lane rows cannot overtake while the head is in backoff. Active/claimed serialization is unchanged, and unrelated lanes still claim.
+- Kept the generic pre-claim pending-disposition hook. It runs before retry lane blocking, so a terminal stale head can be failed/dead-lettered and then later same-lane work can proceed.
+- Updated Discord stale expiry to use authoritative raw route facts rather than mention-required admission:
+  - direct channel-id config match is authoritative even when the raw `APIMessage` has no synthetic `channel` object;
+  - raw non-thread channel type is also authoritative;
+  - unknown/no-direct raw channel facts fail open for possible unhydrated threads;
+  - known bound/cached threads, DMs, bot mentions, replies, everyone mentions, configured/provider/identity mentions, audio candidates, and text controls remain fail-open.
+- Age expiry is now distinct from mention admission: stale unaddressed text in an authoritative direct-configured guild channel is failed as `stale-ambient-backlog` even when that channel has `requireMention:false`. This covers the directly configured mention-open incident channel, directly configured mention-open.
+- Explicit dead-letter resubmit is treated as fresh operator intent by using the queue row's resubmitted `receivedAt` when it is newer than the stored Discord ingress payload's original `receivedAt`.
+
+### New regression proof
+
+- Core drain replaces the old red overtaking contract with proof that a retry-delayed same-lane head blocks a later same-lane row, unrelated lanes still proceed, the head runs when eligible, and a terminal pending disposition/dead-letter frees the lane.
+- Discord ingress uses the real SQLite queue/monitor, controlled `now`, fresh per-test ids, production-shaped raw `APIMessage` objects with no `channel` property, direct configured `requireMention:false`, and no model/transport mock.
+- Discord tests prove stale unaddressed direct-configured raw backlog dead-letters before dispatch, emits exactly one payload-free structured receipt, and a fresh addressed same-lane row proceeds only because the old head got a terminal disposition.
+- Additional Discord coverage proves the strict 15-minute boundary, explicit resubmit replay, unhydrated thread fail-open, and direct-configured explicit address/control forms.
+
+### Validation receipts for this packet
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# passed: 32 tests, 1 file, 12.20s wrapper time after formatting
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts
+# passed: 36 tests, 1 file, 6.08s wrapper time after formatting
+```
+
+Final broader tests, typechecks, format/lint/diff, autoreview, commit, and push receipts are appended after closeout.
+
+### Final seventh follow-up validation receipts
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts src/channels/message/ingress-drain.test.ts
+# passed: Discord ingress split files 32 tests; focused core drain 36 tests
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts extensions/discord/src/monitor/message-handler.queue.test.ts
+# passed: 153 tests, 6 files
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: 121 tests across unit-fast/channels shards
+
+node --no-opt scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions-test.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.core.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core-test.tsbuildinfo
+# passed
+
+./node_modules/.bin/oxfmt --check --threads=1 src/channels/message/ingress-drain.ts src/channels/message/ingress-drain-state.ts src/channels/message/ingress-drain.test.ts extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts JOURNAL-1229.md REVIEW-1229.md && node --no-opt scripts/run-oxlint.mjs src/channels/message/ingress-drain.ts src/channels/message/ingress-drain-state.ts extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts && git --no-pager diff --check
+# passed
+
+node --no-opt scripts/check-changed.mjs -- src/channels/message/ingress-drain.ts src/channels/message/ingress-drain-state.ts src/channels/message/ingress-drain.test.ts extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts JOURNAL-1229.md REVIEW-1229.md
+# blocked before repo checks: delegated Crabbox workload routing selected a crabbox binary that failed basic --version/--help sanity checks (`version=unknown providers=unknown`).
+
+TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode branch --base origin/main
+# blocked before review: branch-wide diff still contains a prior known secret-like value from the inherited branch bundle; the current local patch is reviewed below instead.
+
+TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+# passed: TruffleHog clean; autoreview clean with no accepted/actionable findings; overall patch correct (0.98).
+
+TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode commit --commit HEAD
+# passed after commit: TruffleHog clean; autoreview clean with no accepted/actionable findings; overall patch correct (0.98).
+```
+
+Production LOC delta for this packet before docs: +64/-57 (net +7), split across `ingress-drain.ts`, `ingress-drain-state.ts`, and Discord ingress. Test delta before docs: +558/-106 (net +452), including the new direct-config stale ingress owner test file.
+
+Autoreview, commit, and push receipts are appended below after the final review pass.

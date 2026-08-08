@@ -49,6 +49,31 @@ export type ChannelIngressDispatchLifecycle = {
   onAbandoned: () => void | Promise<void>;
 };
 
+/**
+ * Maps a drain lifecycle onto reply options.
+ * Single surface: turnAdoptionLifecycle only.
+ * Marks exclusive admission so collect isolation is not inferred from onAbandoned.
+ */
+export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDispatchLifecycle): {
+  turnAdoptionLifecycle: {
+    admission: "exclusive";
+    onAdopted: () => void | Promise<void>;
+    onDeferred: () => void;
+    onAbandoned: () => void | Promise<void>;
+    abortSignal: AbortSignal;
+  };
+} {
+  return {
+    turnAdoptionLifecycle: {
+      admission: "exclusive",
+      onAdopted: lifecycle.onAdopted,
+      onDeferred: lifecycle.onDeferred,
+      onAbandoned: lifecycle.onAbandoned,
+      abortSignal: lifecycle.abortSignal,
+    },
+  };
+}
+
 export type ActiveHandlerState<TPayload, TMetadata> = {
   eventId: string;
   laneKey: string;

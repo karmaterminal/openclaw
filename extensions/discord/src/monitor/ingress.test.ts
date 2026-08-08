@@ -59,8 +59,8 @@ function runtime(): Pick<RuntimeEnv, "error" | "log"> {
   return { error: vi.fn(), log: vi.fn() };
 }
 
-function payloadFor(rawMessage: APIMessage): DiscordIngressPayload {
-  return { version: 1, receivedAt: Date.now(), rawMessage };
+function payloadFor(rawMessage: APIMessage, receivedAt = Date.now()): DiscordIngressPayload {
+  return { version: 1, receivedAt, rawMessage };
 }
 
 function createDeferred() {
@@ -73,6 +73,7 @@ function createDeferred() {
 
 async function withQueue<T>(
   fn: (queue: ChannelIngressQueue<DiscordIngressPayload>) => Promise<T>,
+  options: { now?: () => number } = {},
 ): Promise<T> {
   const created = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-discord-ingress-"));
   const stateDir = await fs.realpath(created);
@@ -80,6 +81,7 @@ async function withQueue<T>(
     channelId: "discord",
     accountId: "default",
     stateDir,
+    ...(options.now ? { now: options.now } : {}),
   });
   try {
     return await fn(queue);
@@ -108,42 +110,48 @@ async function expectStaleMessageDispatches(params: {
   discordConfig?: DiscordAccountConfig;
   guildEntries?: DiscordGuildEntries;
   threadBindings?: DiscordThreadBindings;
+  now?: () => number;
 }): Promise<void> {
-  await withQueue(async (queue) => {
-    const messageId = params.rawMessage.id;
-    const sentAt = Date.parse(params.rawMessage.timestamp);
-    await queue.enqueue(messageId, payloadFor(params.rawMessage), {
-      laneKey: `channel:${params.rawMessage.channel_id}`,
-      receivedAt: Number.isFinite(sentAt) ? sentAt : Date.now() - 16 * 60 * 1_000,
-    });
+  await withQueue(
+    async (queue) => {
+      const messageId = params.rawMessage.id;
+      const sentAt = Date.parse(params.rawMessage.timestamp);
+      const receivedAt = Number.isFinite(sentAt) ? sentAt : (params.now?.() ?? Date.now());
+      await queue.enqueue(messageId, payloadFor(params.rawMessage, receivedAt), {
+        laneKey: `channel:${params.rawMessage.channel_id}`,
+        receivedAt,
+      });
 
-    const dispatched: string[] = [];
-    const monitor = createDiscordIngressMonitor({
-      accountId: "default",
-      client: {} as never,
-      runtime: runtime(),
-      botUserId: params.botUserId ?? "bot-1",
-      ...(params.cfg ? { cfg: params.cfg } : {}),
-      ...(params.discordConfig ? { discordConfig: params.discordConfig } : {}),
-      ...(params.guildEntries ? { guildEntries: params.guildEntries } : {}),
-      ...(params.threadBindings ? { threadBindings: params.threadBindings } : {}),
-      queue,
-      dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
-        if (!event.id) {
-          throw new Error("expected dispatched Discord event id");
-        }
-        dispatched.push(event.id);
-        await lifecycle.onAdopted();
-      },
-    });
-    monitor.start();
-    try {
-      await vi.waitFor(() => expect(dispatched).toEqual([messageId]));
-      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
-    } finally {
-      await monitor.stop();
-    }
-  });
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: params.botUserId ?? "bot-1",
+        ...(params.cfg ? { cfg: params.cfg } : {}),
+        ...(params.discordConfig ? { discordConfig: params.discordConfig } : {}),
+        ...(params.guildEntries ? { guildEntries: params.guildEntries } : {}),
+        ...(params.threadBindings ? { threadBindings: params.threadBindings } : {}),
+        ...(params.now ? { now: params.now } : {}),
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual([messageId]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    },
+    params.now ? { now: params.now } : {},
+  );
 }
 
 async function expectStaleMessageFailsAsAmbient(params: {
@@ -153,42 +161,48 @@ async function expectStaleMessageFailsAsAmbient(params: {
   discordConfig?: DiscordAccountConfig;
   guildEntries?: DiscordGuildEntries;
   threadBindings?: DiscordThreadBindings;
+  now?: () => number;
 }): Promise<void> {
-  await withQueue(async (queue) => {
-    const messageId = params.rawMessage.id;
-    const sentAt = Date.parse(params.rawMessage.timestamp);
-    await queue.enqueue(messageId, payloadFor(params.rawMessage), {
-      laneKey: `channel:${params.rawMessage.channel_id}`,
-      receivedAt: Number.isFinite(sentAt) ? sentAt : Date.now() - 16 * 60 * 1_000,
-    });
-
-    const dispatch = vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
-      await lifecycle.onAdopted();
-    });
-    const monitor = createDiscordIngressMonitor({
-      accountId: "default",
-      client: {} as never,
-      runtime: runtime(),
-      botUserId: params.botUserId ?? "bot-1",
-      ...(params.cfg ? { cfg: params.cfg } : {}),
-      ...(params.discordConfig ? { discordConfig: params.discordConfig } : {}),
-      ...(params.guildEntries ? { guildEntries: params.guildEntries } : {}),
-      ...(params.threadBindings ? { threadBindings: params.threadBindings } : {}),
-      queue,
-      dispatch,
-    });
-    monitor.start();
-    try {
-      await vi.waitFor(async () => {
-        expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-          { id: messageId, reason: "stale-ambient-backlog" },
-        ]);
+  await withQueue(
+    async (queue) => {
+      const messageId = params.rawMessage.id;
+      const sentAt = Date.parse(params.rawMessage.timestamp);
+      const receivedAt = Number.isFinite(sentAt) ? sentAt : (params.now?.() ?? Date.now());
+      await queue.enqueue(messageId, payloadFor(params.rawMessage, receivedAt), {
+        laneKey: `channel:${params.rawMessage.channel_id}`,
+        receivedAt,
       });
-      expect(dispatch).not.toHaveBeenCalled();
-    } finally {
-      await monitor.stop();
-    }
-  });
+
+      const dispatch = vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
+        await lifecycle.onAdopted();
+      });
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: params.botUserId ?? "bot-1",
+        ...(params.cfg ? { cfg: params.cfg } : {}),
+        ...(params.discordConfig ? { discordConfig: params.discordConfig } : {}),
+        ...(params.guildEntries ? { guildEntries: params.guildEntries } : {}),
+        ...(params.threadBindings ? { threadBindings: params.threadBindings } : {}),
+        ...(params.now ? { now: params.now } : {}),
+        queue,
+        dispatch,
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(async () => {
+          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+            { id: messageId, reason: "stale-ambient-backlog" },
+          ]);
+        });
+        expect(dispatch).not.toHaveBeenCalled();
+      } finally {
+        await monitor.stop();
+      }
+    },
+    params.now ? { now: params.now } : {},
+  );
 }
 
 describe("Discord durable ingress", () => {
@@ -747,42 +761,19 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it.each([
-    {
-      name: "guild requireMention:false",
-      id: "1022",
-      channelId: "channel-open-guild-1",
+  it("keeps stale ordinary guild text with no direct raw channel facts fail-open", async () => {
+    const now = Date.now();
+    await expectStaleMessageDispatches({
+      rawMessage: createRawMessage("1022", "channel-open-guild-1", {
+        guild_id: "guild-1",
+        content: "ordinary old room text",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>),
       guildEntries: {
         "guild-1": { requireMention: false },
-      } satisfies DiscordGuildEntries,
-    },
-    {
-      name: "channel requireMention:false",
-      id: "1023",
-      channelId: "channel-open-channel-1",
-      guildEntries: {
-        "guild-1": {
-          channels: {
-            "channel-open-channel-1": { enabled: true, requireMention: false },
-          },
-        },
-      } satisfies DiscordGuildEntries,
-    },
-  ])(
-    "keeps stale ordinary unmentioned guild text when $name resolves mention-open",
-    async (testCase) => {
-      const now = Date.now();
-      await expectStaleMessageDispatches({
-        rawMessage: createRawMessage(testCase.id, testCase.channelId, {
-          guild_id: "guild-1",
-          channel: guildTextChannel(testCase.channelId),
-          content: "ordinary old room text",
-          timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-        } as Partial<APIMessage>),
-        guildEntries: testCase.guildEntries,
-      });
-    },
-  );
+      },
+    });
+  });
 
   it("still suppresses stale ambient content when channel config proves mention-required", async () => {
     const now = Date.now();

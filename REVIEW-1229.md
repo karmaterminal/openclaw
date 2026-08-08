@@ -285,3 +285,24 @@ Best bounded fix: `resolveDiscordPreClaimMentionRequirement()` now fails open un
 Behavioral proof: a new deterministic SQLite-backed Discord ingress regression enqueues stale raw guild text with only `guild_id`/`channel_id` and guild default `requireMention:true`; it failed red before the code change because dispatch stayed `[]`, then passed after the fail-open guard. Negative controls still prove config/raw-fact-proven stale ambient rows dead-letter as `stale-ambient-backlog`; `requireMention:false`, addressed, and ambiguous rows survive to canonical preflight. Core drain tests continue to prove retry-head bypass, active-claim/multi-lane behavior, restart recovery, dead-letter/idempotency, and strict `> 15m` boundary.
 
 Blast radius: Discord durable pre-claim suppression becomes more conservative when raw gateway rows lack channel type. That can leave more old guild rows for canonical preflight, but avoids irreversible false dead letters for thread/route states only canonical preflight can hydrate. Core drain/queue, SQLite schema, stale threshold, config/env, protocol, dependencies, live state, Frond/continuation, PR/issue/deploy state, and assembly refs are unchanged.
+
+## Seventh follow-up — FIFO restore and direct configured stale expiry
+
+Root cause: 8d9c510 removed retry-delayed pending lanes from core drain blocking, so a later same-lane row could overtake a retry-delayed head. Discord also still treated `requireMention:false` as an admission reason to preserve stale direct-configured backlog, even though age expiry is a freshness fence.
+
+Best-fix verdict: best bounded fix. Core restores retry-delayed lane blocking after the pending-disposition pass; Discord expires stale unaddressed rows only when raw route facts are authoritative.
+
+Production blast radius:
+
+- `src/channels/message/ingress-drain.ts`: retry-delayed pending rows again block their lanes; terminal pending dispositions still run first.
+- `extensions/discord/src/monitor/ingress.ts`: direct channel-id config matches and raw non-thread channel types are authoritative stale-expiry facts. Unknown/no-direct raw facts fail open for unhydrated threads. Direct-configured mention-open stale unaddressed text dead-letters as `stale-ambient-backlog`; explicit address/control forms and operator resubmit survive.
+
+Upstream classification: #97435 is the public symptom; #111373 and #120419 are partial core overlaps; #92980/#98774 are same-root retry/poison ordering precedents; #118649/#115888 are adjacent distinct. The exact mechanism/fix was not previously public.
+
+Tests added/updated: core retry-head FIFO/dead-letter lane proof; Discord SQLite queue/monitor proof for raw `APIMessage` without `channel`, the directly configured mention-open incident channel with `requireMention:false`, payload-free receipt, strict 15-minute boundary, resubmit, unhydrated thread fail-open, and explicit address/control rows.
+
+Production LOC delta before docs closeout: +64/-57 (net +7) across `src/channels/message/ingress-drain.ts`, `src/channels/message/ingress-drain-state.ts`, and `extensions/discord/src/monitor/ingress.ts`. Test delta before docs closeout: +558/-106 (net +452), including the split direct-config stale ingress owner test. Positive production growth is justified by restoring the core FIFO invariant and carrying the Discord authoritative-route freshness/resubmit contract.
+
+Code read: `src/channels/message/ingress-drain.ts`, `src/channels/message/ingress-queue.ts`, `extensions/discord/src/monitor/ingress.ts`, `extensions/discord/src/monitor/ingress.test.ts`, `extensions/discord/src/monitor/message-handler.ts`, `extensions/discord/src/internal/gateway.ts`, `extensions/discord/src/internal/gateway-dispatch.ts`, `extensions/discord/src/monitor/message-handler.preflight.ts`, `extensions/discord/src/monitor/message-handler.preflight-thread.ts`, `extensions/discord/src/monitor/allow-list.ts`, and `extensions/discord/src/monitor/channel-access.ts`.
+
+Residual risk: explicit resubmit uses the queue row's new `receivedAt` as operator intent while the original raw Discord timestamp stays old. That is deliberate so failed stale backlog can be replayed only after an operator-visible dead-letter decision.

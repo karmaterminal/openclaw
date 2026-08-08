@@ -29,7 +29,10 @@ import {
   type ChannelIngressDispatchLifecycle,
 } from "./ingress-drain-state.js";
 import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
-export { isIngressAdoptionLostError } from "./ingress-drain-state.js";
+export {
+  bindIngressLifecycleToReplyOptions,
+  isIngressAdoptionLostError,
+} from "./ingress-drain-state.js";
 import type {
   ChannelIngressQueue,
   ChannelIngressQueueClaim,
@@ -107,34 +110,6 @@ export type ChannelIngressDrain = {
   waitForIdle: () => Promise<void>;
   dispose: () => void;
 };
-
-/**
- * Maps a drain lifecycle onto reply options.
- * Single surface: turnAdoptionLifecycle only.
- * Marks exclusive admission so collect isolation is not inferred from onAbandoned.
- */
-export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDispatchLifecycle): {
-  turnAdoptionLifecycle: {
-    admission: "exclusive";
-    onAdopted: () => void | Promise<void>;
-    onDeferred: () => void;
-    onAbandoned: () => void | Promise<void>;
-    abortSignal: AbortSignal;
-  };
-} {
-  return {
-    turnAdoptionLifecycle: {
-      admission: "exclusive",
-      onAdopted: lifecycle.onAdopted,
-      onDeferred: lifecycle.onDeferred,
-      onAbandoned: lifecycle.onAbandoned,
-      abortSignal: lifecycle.abortSignal,
-    },
-  };
-}
-
-// onAdoptionFinalizing stays drain-only (not reply-options); channels call it
-// via the spooled-replay ALS lifecycle frame during settlement hold.
 
 /** Creates a channel-agnostic durable ingress drain over an existing queue. */
 export function createChannelIngressDrain<
@@ -712,11 +687,21 @@ export function createChannelIngressDrain<
     const eligiblePending = pending.filter(
       (event) => resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow) === 0,
     );
+    const retryDelayedLaneKeys = new Set(
+      pending
+        .filter(
+          (event) => resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow) > 0,
+        )
+        .map((event) =>
+          resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey),
+        ),
+    );
 
     // Deterministic blocked set for claimNext lane serialization.
     const blockedLaneKeys = new Set<string>([
       ...sortedKeys(activeLaneKeys),
       ...sortedKeys(claimedLaneKeys),
+      ...sortedKeys(retryDelayedLaneKeys),
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
