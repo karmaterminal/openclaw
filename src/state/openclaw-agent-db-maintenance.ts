@@ -1,7 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
-import { assertSqliteIntegrity } from "../infra/sqlite-integrity.js";
+import { isCanonicalSqliteIndexRepairable } from "../infra/sqlite-index-schema.js";
+import { assertSqliteIntegrity, diagnoseSqliteIntegrity } from "../infra/sqlite-integrity.js";
 import {
   createNewerSqliteSchemaVersionError,
   readSqliteUserVersion,
@@ -98,23 +99,38 @@ export function migrateOpenClawAgentDatabaseForMaintenance(options: {
     if (!hasCurrentVersion && !hasSupportedOlderVersion) {
       return;
     }
-    // A canonical current-version file already satisfies the maintenance
-    // contract, so prove it read-only instead of routing it through writable
-    // schema initialization: that path rewrites pending entry_valid rows and
-    // would mutate a healthy artifact. Only a supported older file, or a
-    // current-version file that fails this proof, reaches the repair below.
+    // A canonical, physically healthy current-version file already satisfies the
+    // maintenance contract, so prove it read-only instead of routing it through
+    // writable schema initialization: that path rewrites pending entry_valid
+    // rows and would mutate a healthy artifact. Anything else falls through to
+    // the repair below.
     if (hasCurrentVersion) {
+      let contractFailure: Error | undefined;
       try {
         assertOpenClawAgentDatabaseForMaintenance(database, {
           agentId,
           pathname: options.pathname,
         });
+      } catch (error) {
+        // Carried, not swallowed: this is the only reason a file whose integrity
+        // is clean may still be rewritten below. It is never chained onto the
+        // integrity error, because a cause there would downgrade a proven
+        // corruption finding to non-terminal.
+        contractFailure = error instanceof Error ? error : new Error(String(error));
+      }
+      // Declared shape alone cannot prove a canonical file: an index b-tree can
+      // diverge from canonical SQL while every declaration still matches, and
+      // only a full integrity_check sees that.
+      const diagnosis = diagnoseSqliteIntegrity(database, options.pathname);
+      if (diagnosis.status !== "healthy") {
+        if (!isCanonicalSqliteIndexRepairable(diagnosis, OPENCLAW_AGENT_SCHEMA_SQL)) {
+          // Fail closed on the original integrity finding. Nothing below can undo
+          // damage outside the canonical-index class, so the repair transaction
+          // must never write into this file.
+          throw diagnosis.error;
+        }
+      } else if (!contractFailure) {
         return;
-      } catch {
-        // Recognized same-version drift: prove the whole file before repairing.
-        // A failed integrity check is corruption, not drift, and must fail
-        // closed rather than let the repair transaction write into it.
-        assertSqliteIntegrity(database, options.pathname);
       }
     }
     ensureOpenClawAgentDatabaseSchema(database, {
@@ -125,6 +141,9 @@ export function migrateOpenClawAgentDatabaseForMaintenance(options: {
       agentId,
       pathname: options.pathname,
     });
+    // Converged, once: the repair savepoint only proves the indexes it rebuilt,
+    // and the schema migrations that follow it write again.
+    assertSqliteIntegrity(database, options.pathname);
   } finally {
     clearNodeSqliteKyselyCacheForDatabase(database);
     database.close();

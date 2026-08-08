@@ -3,6 +3,7 @@ import {
   assertSqliteIntegrity,
   assertSqliteTableIntegrity,
   isTerminalSqliteIntegrityError,
+  type SqliteIntegrityDiagnosis,
 } from "./sqlite-integrity.js";
 import {
   collectSqliteNamedIndexContract,
@@ -29,6 +30,28 @@ type RepairCanonicalSqliteIndexesOptions = {
   validateAfterRepair?: () => void;
   verifyPhysicalIntegrity?: boolean;
 };
+
+/**
+ * Report whether verifyAndRepairCanonicalSqliteIndexes alone can resolve a
+ * diagnosis. It only rebuilds named canonical indexes, so damage naming an
+ * autoindex or any index outside the committed schema must fail closed instead
+ * of entering the repair transaction.
+ */
+export function isCanonicalSqliteIndexRepairable(
+  diagnosis: SqliteIntegrityDiagnosis,
+  schemaSql: string,
+): boolean {
+  if (diagnosis.status !== "index-content-damaged") {
+    return false;
+  }
+  if (diagnosis.indexNames.length === 0) {
+    return false;
+  }
+  const canonicalNames = new Set(
+    getCanonicalSqliteNamedIndexContracts(schemaSql).map((index) => index.name),
+  );
+  return diagnosis.indexNames.every((indexName) => canonicalNames.has(indexName));
+}
 
 /**
  * Verify the whole file once, then use table scans only to locate repairable

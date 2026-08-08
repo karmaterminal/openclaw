@@ -20,6 +20,12 @@ export type SqliteIntegrityConfirmation =
   | { status: "failed"; error: Error; generation: SqliteFileGeneration; terminal: true }
   | { status: "healthy"; generation: SqliteFileGeneration };
 
+/** A full integrity proof, split by whether an index rebuild could resolve it. */
+export type SqliteIntegrityDiagnosis =
+  | { status: "healthy" }
+  | { status: "damaged"; error: Error }
+  | { status: "index-content-damaged"; error: Error; indexNames: readonly string[] };
+
 type SqliteCheckPragma = "integrity_check";
 type SqliteForeignKeyViolation = {
   fkid: bigint;
@@ -29,6 +35,16 @@ type SqliteForeignKeyViolation = {
 };
 
 const MAX_REPORTED_FOREIGN_KEY_VIOLATIONS = 5;
+const MAX_CLASSIFIED_INTEGRITY_PROBLEMS = 1000;
+
+/**
+ * The only integrity_check findings a canonical index rebuild can resolve, as
+ * emitted by every SQLite our supported Node runtimes bundle. `non-unique entry
+ * in index` is excluded on purpose: rebuilding cannot delete the duplicate row,
+ * so its CREATE UNIQUE INDEX would fail. Anything unrecognized fails closed.
+ */
+const SQLITE_INDEX_CONTENT_PROBLEM =
+  /^(?:row -?\d+ missing from index|wrong # of entries in index) (.+)$/u;
 
 /** Return whether a named integrity failure proves persistent database damage. */
 export function isTerminalSqliteIntegrityError(error: Error): boolean {
@@ -51,6 +67,61 @@ export function assertSqliteIntegrity(
   const integrityCheck = runSqliteCheck(database, databaseLabel, "integrity_check");
   runSqliteForeignKeyCheck(database, databaseLabel);
   return { integrityCheck };
+}
+
+/**
+ * Classify one full integrity proof so a caller can route the narrow damage a
+ * canonical index rebuild repairs without weakening the proof itself. Only
+ * integrity_check is used: quick_check reports `ok` for both index-content
+ * drift and UNIQUE violations, so it cannot prove what it skips.
+ */
+export function diagnoseSqliteIntegrity(
+  database: DatabaseSync,
+  databaseLabel: string,
+): SqliteIntegrityDiagnosis {
+  let problems: readonly string[];
+  try {
+    problems = readSqliteCheckProblems(
+      database,
+      databaseLabel,
+      "integrity_check",
+      undefined,
+      MAX_CLASSIFIED_INTEGRITY_PROBLEMS,
+    );
+  } catch (error) {
+    return { status: "damaged", error: error instanceof Error ? error : new Error(String(error)) };
+  }
+  let foreignKeyFailure: Error | undefined;
+  try {
+    runSqliteForeignKeyCheck(database, databaseLabel);
+  } catch (error) {
+    foreignKeyFailure = error instanceof Error ? error : new Error(String(error));
+  }
+  if (problems.length === 0) {
+    return foreignKeyFailure
+      ? { status: "damaged", error: foreignKeyFailure }
+      : { status: "healthy" };
+  }
+  // Uncaused, so isTerminalSqliteIntegrityError still reads it as proven damage.
+  const error = createSqliteCheckError("integrity_check", databaseLabel, problems);
+  // SQLite stops after the requested number of findings. A full page of
+  // repairable-looking rows may therefore hide a later terminal finding.
+  if (problems.length >= MAX_CLASSIFIED_INTEGRITY_PROBLEMS) {
+    return { status: "damaged", error };
+  }
+  const indexNames: string[] = [];
+  for (const problem of problems) {
+    const indexName = SQLITE_INDEX_CONTENT_PROBLEM.exec(problem)?.[1];
+    if (indexName === undefined) {
+      return { status: "damaged", error };
+    }
+    indexNames.push(indexName);
+  }
+  // Referential damage is never index-repairable, and the integrity_check
+  // finding still leads the report exactly as assertSqliteIntegrity orders it.
+  return foreignKeyFailure
+    ? { status: "damaged", error }
+    : { status: "index-content-damaged", error, indexNames };
 }
 
 /** Run integrity checks and preserve whether a failure proves persistent damage. */
@@ -179,7 +250,27 @@ function runSqliteCheck(
   pragma: SqliteCheckPragma,
   tableName?: string,
 ): "ok" {
-  const argument = tableName ? `('${tableName.replaceAll("'", "''")}')` : "";
+  const maxProblems = tableName ? undefined : MAX_CLASSIFIED_INTEGRITY_PROBLEMS;
+  const problems = readSqliteCheckProblems(database, databaseLabel, pragma, tableName, maxProblems);
+  if (problems.length === 0) {
+    return "ok";
+  }
+  throw createSqliteCheckError(pragma, databaseLabel, problems);
+}
+
+/** Read one check pragma verbatim, returning every reported problem row. */
+function readSqliteCheckProblems(
+  database: DatabaseSync,
+  databaseLabel: string,
+  pragma: SqliteCheckPragma,
+  tableName?: string,
+  maxProblems?: number,
+): readonly string[] {
+  const argument = tableName
+    ? `('${tableName.replaceAll("'", "''")}')`
+    : maxProblems
+      ? `(${maxProblems})`
+      : "";
   let rows: Array<Record<string, unknown>>;
   try {
     rows = database.prepare(`PRAGMA ${pragma}${argument};`).all() as Array<Record<string, unknown>>;
@@ -190,12 +281,21 @@ function runSqliteCheck(
       error,
     );
   }
-  const results = rows.map((row) => row[pragma] ?? Object.values(row)[0]);
-  if (results.length === 1 && results[0] === "ok") {
-    return "ok";
+  if (rows.length === 0) {
+    return ["no result"];
   }
-  const details = results.map((result) => String(result)).join("; ") || "no result";
-  throw createSqliteIntegrityError(`SQLite ${pragma} failed for ${databaseLabel}: ${details}`);
+  const results = rows.map((row) => String(row[pragma] ?? Object.values(row)[0]));
+  return results.length === 1 && results[0] === "ok" ? [] : results;
+}
+
+function createSqliteCheckError(
+  pragma: SqliteCheckPragma,
+  databaseLabel: string,
+  problems: readonly string[],
+): Error {
+  return createSqliteIntegrityError(
+    `SQLite ${pragma} failed for ${databaseLabel}: ${problems.join("; ")}`,
+  );
 }
 
 function runSqliteForeignKeyCheck(database: DatabaseSync, databaseLabel: string): void {

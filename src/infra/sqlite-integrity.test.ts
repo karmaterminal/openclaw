@@ -8,6 +8,7 @@ import { requireNodeSqlite } from "./node-sqlite.js";
 import {
   assertSqliteIntegrity,
   confirmSqliteFileIntegrity,
+  diagnoseSqliteIntegrity,
   isTerminalSqliteIntegrityError,
 } from "./sqlite-integrity.js";
 
@@ -185,6 +186,64 @@ describe("assertSqliteIntegrity", () => {
     } finally {
       database.close();
     }
+  });
+});
+
+describe("diagnoseSqliteIntegrity", () => {
+  it("keeps referential damage terminal when index findings are also present", () => {
+    const database = {
+      prepare: (sql: string) => {
+        if (sql === "PRAGMA integrity_check(1000);") {
+          return {
+            all: () => [{ integrity_check: "row 1 missing from index idx_records" }],
+          };
+        }
+        if (sql === "PRAGMA foreign_key_check;") {
+          return {
+            setReadBigInts: () => undefined,
+            *iterate() {
+              yield { fkid: 0n, parent: "parents", rowid: 1n, table: "children" };
+            },
+          };
+        }
+        throw new Error(`unexpected SQL: ${sql}`);
+      },
+    } as unknown as DatabaseSync;
+
+    expect(diagnoseSqliteIntegrity(database, "test database")).toMatchObject({
+      status: "damaged",
+      error: {
+        name: "SqliteIntegrityError",
+        message: expect.stringMatching(/row 1 missing from index idx_records/u),
+      },
+    });
+  });
+
+  it("fails closed when the integrity result reaches the classification cap", () => {
+    const database = {
+      prepare: (sql: string) => {
+        if (sql === "PRAGMA integrity_check(1000);") {
+          return {
+            all: () =>
+              Array.from({ length: 1000 }, (_, index) => ({
+                integrity_check: `row ${index + 1} missing from index idx_records`,
+              })),
+          };
+        }
+        if (sql === "PRAGMA foreign_key_check;") {
+          return {
+            setReadBigInts: () => undefined,
+            *iterate() {},
+          };
+        }
+        throw new Error(`unexpected SQL: ${sql}`);
+      },
+    } as unknown as DatabaseSync;
+
+    expect(diagnoseSqliteIntegrity(database, "test database")).toMatchObject({
+      status: "damaged",
+      error: { name: "SqliteIntegrityError" },
+    });
   });
 });
 

@@ -3,6 +3,7 @@ import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
 import {
@@ -178,6 +179,43 @@ function readAgentDatabaseFileBytes(databasePath: string): Record<string, string
       ];
     }),
   );
+}
+
+/** Read every integrity_check problem row; empty means a clean full proof. */
+function readSqliteIntegrityProblems(database: DatabaseSync): string[] {
+  const results = (
+    database.prepare("PRAGMA integrity_check").all() as Array<{ integrity_check: string }>
+  ).map((row) => row.integrity_check);
+  return results.length === 1 && results[0] === "ok" ? [] : results;
+}
+
+function readSqliteDeclaredSchemaSql(database: DatabaseSync, objectName: string): string {
+  const row = database.prepare("SELECT sql FROM sqlite_schema WHERE name = ?").get(objectName) as
+    | { sql?: unknown }
+    | undefined;
+  if (typeof row?.sql !== "string") {
+    throw new Error(`missing declared SQL for ${objectName}`);
+  }
+  return row.sql;
+}
+
+function rewriteSqliteDeclaredSchemaSql(
+  database: DatabaseSync,
+  objectName: string,
+  declaredSql: string,
+): void {
+  // Rewriting sqlite_schema is how a damaged file diverges from the contract it
+  // declares. The schema cookie bump is required, otherwise later connections
+  // keep serving the pre-rewrite declaration from their own cache.
+  database.enableDefensive?.(false);
+  database.exec("PRAGMA writable_schema = ON;");
+  database.prepare("UPDATE sqlite_schema SET sql = ? WHERE name = ?").run(declaredSql, objectName);
+  database.exec("PRAGMA writable_schema = OFF;");
+  const row = database.prepare("PRAGMA schema_version;").get() as
+    | Record<string, unknown>
+    | undefined;
+  const schemaVersion = Number(row?.schema_version ?? (row ? Object.values(row)[0] : Number.NaN));
+  database.exec(`PRAGMA schema_version = ${schemaVersion + 1};`);
 }
 
 function ensureV13WorkerAgentDatabaseTemplate(): string {
@@ -3391,6 +3429,277 @@ describe("openclaw agent database", () => {
       repaired.close();
     }
   });
+
+  it("repairs canonical index content drift during maintenance migration", () => {
+    const stateDir = createTempStateDir();
+    const databasePath = materializeCurrentWorkerAgentDatabase(stateDir);
+    const { DatabaseSync } = requireNodeSqlite();
+
+    const drifted = new DatabaseSync(databasePath);
+    try {
+      const canonicalIndexSql = readSqliteDeclaredSchemaSql(drifted, "idx_agent_cache_expiry");
+      drifted.exec(`
+        INSERT INTO cache_entries (scope, key, value_json, expires_at, updated_at)
+        VALUES ('doctor', 'canonical-index', '{"ok":true}', 100, 1);
+        DROP INDEX idx_agent_cache_expiry;
+        CREATE INDEX idx_agent_cache_expiry ON cache_entries(key);
+      `);
+      // Canonical declaration over a narrower b-tree: the shape a half-applied
+      // index rebuild leaves behind. Rebuilding the index fully repairs it.
+      rewriteSqliteDeclaredSchemaSql(drifted, "idx_agent_cache_expiry", canonicalIndexSql);
+      drifted.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    } finally {
+      drifted.close();
+    }
+
+    // Preconditions that make this the repairable class: the declaration is
+    // canonical, so the shape assertion cannot see the damage, referential
+    // integrity is intact, and the finding names a canonical index.
+    const inspect = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(() =>
+        assertOpenClawAgentDatabaseForMaintenance(inspect, {
+          agentId: "worker-1",
+          pathname: databasePath,
+        }),
+      ).not.toThrow();
+      expect(inspect.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+      expect(readSqliteIntegrityProblems(inspect)).toEqual([
+        expect.stringMatching(
+          /^(?:row -?\d+ missing from index|wrong # of entries in index) idx_agent_cache_expiry$/u,
+        ),
+      ]);
+    } finally {
+      inspect.close();
+    }
+
+    expect(() =>
+      migrateOpenClawAgentDatabaseForMaintenance({
+        agentId: "worker-1",
+        pathname: databasePath,
+      }),
+    ).not.toThrow();
+
+    const repaired = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      // Convergence, proven by the same full check that condemned the file.
+      expect(readSqliteIntegrityProblems(repaired)).toEqual([]);
+      // Repair rebuilds the index without discarding the row it indexes.
+      expect(
+        repaired
+          .prepare("SELECT value_json FROM cache_entries WHERE scope = ? AND key = ?")
+          .get("doctor", "canonical-index"),
+      ).toEqual({ value_json: '{"ok":true}' });
+      expect(() =>
+        assertOpenClawAgentDatabaseForMaintenance(repaired, {
+          agentId: "worker-1",
+          pathname: databasePath,
+        }),
+      ).not.toThrow();
+    } finally {
+      repaired.close();
+    }
+  });
+
+  // Every case is damage a canonical index rebuild cannot undo, reported by the
+  // full integrity_check the maintenance preflight now classifies. quick_check
+  // stays out of this contract: it reports "ok" for the UNIQUE case below.
+  const unrepairableIntegrityDamageCases: Array<{
+    damage: (database: DatabaseSync) => void;
+    hasReferentialDamage?: boolean;
+    name: string;
+    problem: RegExp;
+  }> = [
+    {
+      damage: (database: DatabaseSync) => {
+        const canonicalTableSql = readSqliteDeclaredSchemaSql(database, "cache_entries");
+        const relaxedTableSql = canonicalTableSql.replace(
+          "updated_at INTEGER NOT NULL",
+          "updated_at INTEGER",
+        );
+        expect(relaxedTableSql).not.toBe(canonicalTableSql);
+        // Store a row the canonical declaration forbids, then restore that
+        // declaration. No index rebuild reconciles the record with the contract.
+        rewriteSqliteDeclaredSchemaSql(database, "cache_entries", relaxedTableSql);
+        database
+          .prepare(
+            `INSERT INTO cache_entries (scope, key, value_json, expires_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+          .run("doctor", "record-damage", '{"ok":true}', null, null);
+        rewriteSqliteDeclaredSchemaSql(database, "cache_entries", canonicalTableSql);
+      },
+      name: "a NOT NULL violation",
+      problem: /^NULL value in cache_entries\.updated_at$/u,
+    },
+    {
+      damage: (database: DatabaseSync) => {
+        // Duplicate rows under a canonical UNIQUE index: the finding names an
+        // index the repair owns, but rebuilding cannot delete either row, so its
+        // CREATE UNIQUE INDEX would fail. Message class, not name, decides.
+        const canonicalIndexSql = readSqliteDeclaredSchemaSql(
+          database,
+          "idx_agent_conversations_identity",
+        );
+        database.exec(`
+          DROP INDEX idx_agent_conversations_identity;
+          CREATE INDEX idx_agent_conversations_identity ON conversations(
+            channel,
+            account_id,
+            kind,
+            peer_id,
+            IFNULL(parent_conversation_id, ''),
+            IFNULL(thread_id, '')
+          );
+          INSERT INTO conversations (
+            conversation_id, channel, account_id, kind, peer_id, delivery_target,
+            created_at, updated_at
+          )
+          VALUES ('conversation-a', 'discord', 'account-1', 'direct', 'peer-1', 'peer-1', 1, 1),
+                 ('conversation-b', 'discord', 'account-1', 'direct', 'peer-1', 'peer-1', 1, 1);
+        `);
+        rewriteSqliteDeclaredSchemaSql(
+          database,
+          "idx_agent_conversations_identity",
+          canonicalIndexSql,
+        );
+      },
+      name: "a UNIQUE violation quick_check cannot see",
+      problem: /^non-unique entry in index idx_agent_conversations_identity$/u,
+    },
+    {
+      damage: (database: DatabaseSync) => {
+        // Index-content damage in the allowed message class, on an index the
+        // canonical repair does not own and therefore never rebuilds.
+        database.exec(`
+          CREATE INDEX ix_probe_uncontracted ON cache_entries(scope, updated_at);
+          INSERT INTO cache_entries (scope, key, value_json, expires_at, updated_at)
+          VALUES ('doctor', 'uncontracted', '{}', NULL, 1);
+        `);
+        const canonicalIndexSql = readSqliteDeclaredSchemaSql(database, "ix_probe_uncontracted");
+        database.exec(`
+          DROP INDEX ix_probe_uncontracted;
+          CREATE INDEX ix_probe_uncontracted ON cache_entries(scope, updated_at) WHERE key = 'absent';
+        `);
+        rewriteSqliteDeclaredSchemaSql(database, "ix_probe_uncontracted", canonicalIndexSql);
+      },
+      name: "index damage outside the canonical contract",
+      problem:
+        /^(?:row -?\d+ missing from index|wrong # of entries in index) ix_probe_uncontracted$/u,
+    },
+    {
+      damage: (database: DatabaseSync) => {
+        // Repairable-class damage on a canonical index, carried by a file that is
+        // also referentially damaged. Rebuilding the index leaves the orphan, so
+        // the index finding alone must not license a write.
+        const canonicalIndexSql = readSqliteDeclaredSchemaSql(database, "idx_agent_cache_expiry");
+        database.exec(`
+          INSERT INTO cache_entries (scope, key, value_json, expires_at, updated_at)
+          VALUES ('doctor', 'canonical-index', '{}', 100, 1);
+          DROP INDEX idx_agent_cache_expiry;
+          CREATE INDEX idx_agent_cache_expiry ON cache_entries(key);
+        `);
+        rewriteSqliteDeclaredSchemaSql(database, "idx_agent_cache_expiry", canonicalIndexSql);
+        database.exec("PRAGMA foreign_keys = OFF;");
+        database
+          .prepare(
+            `INSERT INTO session_members (session_key, identity_id, added_by, added_at)
+             VALUES (?, ?, ?, ?)`,
+          )
+          .run("agent:worker-1:deleted-session", "identity-1", "tester", 1000);
+      },
+      hasReferentialDamage: true,
+      name: "repairable index damage alongside referential damage",
+      problem:
+        /^(?:row -?\d+ missing from index|wrong # of entries in index) idx_agent_cache_expiry$/u,
+    },
+  ];
+
+  it.each(unrepairableIntegrityDamageCases)(
+    "fails closed when a current-version file carries $name",
+    ({ damage, hasReferentialDamage, problem }) => {
+      const stateDir = createTempStateDir();
+      const databasePath = materializeCurrentWorkerAgentDatabase(stateDir);
+      const { DatabaseSync } = requireNodeSqlite();
+
+      const damaged = new DatabaseSync(databasePath);
+      try {
+        damage(damaged);
+        damaged.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+      } finally {
+        damaged.close();
+      }
+
+      const readState = (): {
+        files: Record<string, string | null>;
+        schemaMeta: unknown;
+      } => {
+        const files = readAgentDatabaseFileBytes(databasePath);
+        const database = new DatabaseSync(databasePath, { readOnly: true });
+        try {
+          return {
+            files,
+            schemaMeta: database
+              .prepare(
+                `SELECT meta_key, role, schema_version, agent_id, app_version, created_at, updated_at
+                 FROM schema_meta WHERE meta_key = 'primary'`,
+              )
+              .get(),
+          };
+        } finally {
+          database.close();
+        }
+      };
+
+      const before = readState();
+      expect(before.files.database).toEqual(expect.any(String));
+      // Preconditions: the canonical declarations are all intact, so only a
+      // record-reading proof -- not the shape assertion -- can condemn this file.
+      const preflight = new DatabaseSync(databasePath, { readOnly: true });
+      try {
+        expect(() =>
+          assertOpenClawAgentDatabaseForMaintenance(preflight, {
+            agentId: "worker-1",
+            pathname: databasePath,
+          }),
+        ).not.toThrow();
+        expect(preflight.prepare("PRAGMA foreign_key_check").all().length > 0).toBe(
+          hasReferentialDamage === true,
+        );
+        // SQLite may report one damaged index more than once; every finding must
+        // still be the class under test, and there must be at least one.
+        const problems = readSqliteIntegrityProblems(preflight);
+        expect(problems.length).toBeGreaterThan(0);
+        for (const reported of problems) {
+          expect(reported).toMatch(problem);
+        }
+      } finally {
+        preflight.close();
+      }
+
+      let thrown: unknown;
+      try {
+        migrateOpenClawAgentDatabaseForMaintenance({
+          agentId: "worker-1",
+          pathname: databasePath,
+        });
+      } catch (error) {
+        thrown = error;
+      }
+      // The original integrity finding is what escapes, uncaused, so callers
+      // still read it as proven persistent damage.
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).name).toBe("SqliteIntegrityError");
+      expect((thrown as Error).cause).toBeUndefined();
+      expect((thrown as Error).message).toMatch(/integrity_check failed/iu);
+      expect((thrown as Error).message).toMatch(
+        new RegExp(problem.source.replace(/^\^|\$$/gu, ""), "u"),
+      );
+
+      // No repair write: the artifact is byte-identical.
+      expect(readState()).toEqual(before);
+    },
+  );
 
   it("fails closed when same-version drift accompanies an integrity failure", () => {
     const stateDir = createTempStateDir();

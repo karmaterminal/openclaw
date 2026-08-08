@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import {
+  isCanonicalSqliteIndexRepairable,
   repairCanonicalSqliteIndexes,
   verifyAndRepairCanonicalSqliteIndexes,
 } from "./sqlite-index-schema.js";
@@ -59,7 +60,7 @@ describe("repairCanonicalSqliteIndexes", () => {
       verifyAndRepairCanonicalSqliteIndexes(traced.database, "test database", CANONICAL_SCHEMA);
 
       expect(traced.statements.filter((sql) => sql.startsWith("PRAGMA integrity_check"))).toEqual([
-        "PRAGMA integrity_check;",
+        "PRAGMA integrity_check(1000);",
       ]);
     } finally {
       db.close();
@@ -394,5 +395,20 @@ describe("repairCanonicalSqliteIndexes", () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe("isCanonicalSqliteIndexRepairable", () => {
+  it("rejects an empty index diagnosis", () => {
+    expect(
+      isCanonicalSqliteIndexRepairable(
+        {
+          status: "index-content-damaged",
+          error: new Error("empty diagnosis"),
+          indexNames: [],
+        },
+        CANONICAL_SCHEMA,
+      ),
+    ).toBe(false);
   });
 });
