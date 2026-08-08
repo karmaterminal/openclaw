@@ -4,7 +4,6 @@ import {
   createDiagnosticTraceContextFromActiveScope,
   runWithDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
-import { resolveCommitHash } from "../../infra/git-commit.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { isRecentOutboundMessageIdentity } from "../message/outbound-echo.js";
 import { recordChannelBotPairLoopAndCheckSuppression } from "./bot-loop-protection.js";
@@ -26,18 +25,11 @@ import type {
 const NO_ADDITIONAL_DELIVERY_SIGNALS: ChannelTurnVisibleDeliverySignals = {};
 const log = createSubsystemLogger("channels/turn/execution");
 
-// Build identity is process-stable; resolving it once keeps the warning path cheap.
-let cachedBuildIdentity: string | undefined;
-function resolveChannelTurnBuildIdentity(): string {
-  cachedBuildIdentity ??= resolveCommitHash({ moduleUrl: import.meta.url }) ?? "unknown";
-  return cachedBuildIdentity;
-}
-
 /**
- * Correlation id for one channel turn receipt. Adapters may omit the explicit
- * turn messageId, but the finalized context already carries the canonical
- * source id, so receipts read it instead of degrading to "unknown" and
- * breaking source/run correlation.
+ * Prefer an explicit turn messageId; otherwise read the finalized context
+ * source id so dispatch receipts do not degrade to "unknown" when an adapter
+ * forgot to declare it. This is not a full causal join — only less-unknown
+ * source identification on existing ChannelTurnLogEvent fields.
  */
 function resolveChannelTurnReceiptMessageId(params: {
   messageId?: string;
@@ -136,13 +128,13 @@ function maybeWarnZeroCountVisibleDispatch<TDispatchResult>(
     return;
   }
   const messageId = resolveChannelTurnReceiptMessageId(params);
-  // Single-line receipt: source id, account, queue key, and build identity are the
-  // join keys used to correlate this dispatch with the agent run it produced.
+  // Keep the existing warning fields honest: channel/account/source/session only.
+  // sessionKey is the route/session label already on the event — not a durable
+  // admission/queue key, and not enough to join source → run by itself.
   log.warn(
     `visible channel turn dispatched with no queued reply payloads: channel=${params.channel} ` +
       `accountId=${params.accountId ?? "unknown"} messageId=${messageId ?? "unknown"} ` +
-      `sessionKey=${params.ctxPayload.SessionKey ?? params.routeSessionKey} ` +
-      `build=${resolveChannelTurnBuildIdentity()}`,
+      `sessionKey=${params.ctxPayload.SessionKey ?? params.routeSessionKey}`,
   );
   emit({
     ...params,
