@@ -895,3 +895,69 @@ test -d "$HOME/.cache/openclaw-autoreview-tmp" || mkdir -p "$HOME/.cache/opencla
 ```
 
 Production LOC delta for this follow-up is +85/-0, justified by carrying the small authoritative Discord mention-required fact into pre-claim gating and by emitting the required structured suppression receipt. Test delta is +116/-0.
+
+## Sixth follow-up implementation — 2026-08-08
+
+### Required context refresh
+
+- Read root `AGENTS.md`, `src/channels/AGENTS.md`, `.github/instructions/copilot.instructions.md`, `extensions/AGENTS.md`, this journal, and `REVIEW-1229.md` before editing.
+- `extensions/discord/AGENTS.md` remains absent in this worktree; `extensions/AGENTS.md` is the scoped plugin guide for Discord changes.
+- Live `gh issue view 1229 --repo karmaterminal/openclaw --comments --json number,title,state,author,createdAt,updatedAt,body,comments,labels,assignees,url` shows issue #1229 open, unassigned, labeled `bug`, `status:in_coding_agent`, `code-agent`, and `non-continuation`. The newest issue comment still binds the standalone non-continuation branch to `eb0795ba4458a01b21747c9921b878efc3d3761f`.
+
+### Peer request-change root cause
+
+The fifth follow-up still let `resolveDiscordPreClaimMentionRequirement()` inherit guild-level `requireMention:true` when the raw durable row carried only `guild_id` and `channel_id`. That is unsafe for old thread backlog because canonical preflight can later hydrate the channel, resolve thread parent/owner/binding, and decide that the row is bot-owned, bound-thread, auto-thread, or mention-open. A pre-claim stale dead letter from incomplete raw channel/thread facts would be irreversible and would bypass canonical preflight's owner boundary.
+
+### Red proof before code fix
+
+After adding only the new regression, the existing head failed exactly on the false terminalization path:
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# failed: 25 tests, 1 failed. `keeps stale unhydrated thread rows out of guild-default ambient suppression` observed no dispatch (`[]`) where the regression expected [`1026`]. The row was failed as stale ambient before canonical preflight could hydrate thread facts.
+```
+
+### Chosen narrow fix
+
+- `resolveDiscordPreClaimMentionRequirement()` now returns `null` unless the raw row includes an authoritative channel type before it allows inherited guild/channel mention-required policy to trigger stale ambient suppression.
+- The method does not hydrate routes, fetch channels, consult Discord live state, or reimplement full preflight. It simply refuses to classify a row as proven ambient when the raw channel/thread facts are incomplete.
+- Negative controls now provide an explicit raw `GuildText` channel shape before expecting stale ambient dead-lettering. That proves suppression still works for genuinely stale config/raw-fact-proven ambient rows.
+- Resolved `requireMention:false` tests also carry raw guild text channel shape so they prove the mention-open policy, not just the new incomplete-facts fail-open.
+
+No queue schema, stale threshold, suppression lifecycle, continuation/assembly refs, Frond code, live Discord probe, runtime queue mutation, PR/merge/deploy, issue closure, public GitHub comment, or GitNexus reindex was performed.
+
+### Concrete behavioral proof plan
+
+Use the existing durable SQLite ingress queue test harness with controlled clock and fresh nonce-like message IDs per test row:
+
+1. enqueue a stale raw guild row with only `guild_id`/`channel_id`, guild default `requireMention:true`, no cached channel, and no cached thread binding; prove it is not failed as `stale-ambient-backlog` and reaches dispatch for canonical preflight;
+2. enqueue stale guild text rows with authoritative raw `GuildText` channel facts and mention-required config; prove they are failed once with the structured payload-free `stale-ambient-backlog` receipt and never call dispatch;
+3. keep existing addressed/ambiguous rows (DM, direct mention, reply-to-bot, everyone, bound thread, cached thread, configured/provider/identity mention, audio-only mention candidate, text control command, and `requireMention:false`) eligible for dispatch;
+4. keep core durable drain contracts green: retry-delayed head bypass, active-claim lane blocking, multi-lane progress, restart recovery, dead-letter/idempotency, and strict `> 15m` stale boundary.
+
+The structured suppression receipt remains payload-free (`eventId`, `sourceEventId`, `laneKey`, `channelId`, `receivedAt`, `ageMs`, `thresholdMs`, `disposition`, `reason`) and intentionally excludes message content, auth, token, attachment URL, or payload bytes.
+
+### Green receipt before documentation closeout
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# passed: 25 tests, 1 file, 11.23s wrapper time
+```
+
+Final focused/broader test, typecheck, format/lint/diff, autoreview, commit, and push receipts are appended after closeout.
+
+### Final sixth follow-up validation receipts
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts && node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts && node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts && node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: Discord ingress 25 tests; focused core drain 36 tests; broader Discord monitor/preflight/thread shard 129 tests; broader core ingress owner suite 121 tests across 2 shards
+
+node --no-opt scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions-test.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.core.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core-test.tsbuildinfo
+# passed
+
+./node_modules/.bin/oxfmt --check --threads=1 extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md && node --no-opt scripts/run-oxlint.mjs extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts && git --no-pager diff --check && git --no-pager diff --numstat
+# passed; numstat before this receipt append: 50 0 JOURNAL-1229.md; 10 0 REVIEW-1229.md; 24 0 extensions/discord/src/monitor/ingress.test.ts; 5 0 extensions/discord/src/monitor/ingress.ts
+
+test -d "$HOME/.cache/openclaw-autoreview-tmp" || mkdir -p "$HOME/.cache/openclaw-autoreview-tmp"; TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+# passed: TruffleHog clean; autoreview clean with no accepted/actionable findings; overall patch correct (0.99)
+```

@@ -277,6 +277,11 @@ function resolveDiscordPreClaimMentionRequirement(
   if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
     return null;
   }
+  // Without a raw channel type, channel_id may be an unhydrated thread; full
+  // preflight owns that route/thread decision after it can fetch channel facts.
+  if (typeof channelInfo.type !== "number") {
+    return null;
+  }
 
   return resolveDiscordShouldRequireMention({
     isGuildMessage: true,

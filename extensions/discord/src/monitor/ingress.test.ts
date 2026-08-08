@@ -93,6 +93,10 @@ type DiscordIngressMonitor = ReturnType<typeof createDiscordIngressMonitor>;
 type DiscordThreadBindings = Parameters<typeof createDiscordIngressMonitor>[0]["threadBindings"];
 type DiscordGuildEntries = Record<string, DiscordGuildEntryResolved>;
 
+function guildTextChannel(id: string): unknown {
+  return { id, type: ChannelType.GuildText };
+}
+
 async function stopAll(monitors: DiscordIngressMonitor[]): Promise<void> {
   await Promise.allSettled(monitors.map((monitor) => monitor.stop()));
 }
@@ -364,6 +368,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const stale = createRawMessage("1006", "channel-1", {
         guild_id: "guild-1",
+        channel: guildTextChannel("channel-1"),
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
       const fresh = createRawMessage("1007", "channel-1", {
@@ -714,6 +719,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1020", "channel-unmatched-identity-1", {
         guild_id: "guild-1",
+        channel: guildTextChannel("channel-unmatched-identity-1"),
         content: "unrelated room chatter",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -728,6 +734,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1021", "channel-denied-identity-1", {
         guild_id: "guild-1",
+        channel: guildTextChannel("channel-denied-identity-1"),
         content: "Molty can you check the incident?",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -768,6 +775,7 @@ describe("Discord durable ingress", () => {
       await expectStaleMessageDispatches({
         rawMessage: createRawMessage(testCase.id, testCase.channelId, {
           guild_id: "guild-1",
+          channel: guildTextChannel(testCase.channelId),
           content: "ordinary old room text",
           timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
         } as Partial<APIMessage>),
@@ -781,6 +789,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1024", "channel-require-mention-1", {
         guild_id: "guild-1",
+        channel: guildTextChannel("channel-require-mention-1"),
         content: "old unmentioned room text",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -794,11 +803,26 @@ describe("Discord durable ingress", () => {
     });
   });
 
+  it("keeps stale unhydrated thread rows out of guild-default ambient suppression", async () => {
+    const now = Date.now();
+    await expectStaleMessageDispatches({
+      rawMessage: createRawMessage("1026", "thread-unhydrated-1", {
+        guild_id: "guild-1",
+        content: "old unmentioned thread follow-up",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>),
+      guildEntries: {
+        "guild-1": { requireMention: true },
+      },
+    });
+  });
+
   it("emits one payload-free structured debug receipt for stale ambient suppression", async () => {
     await withQueue(async (queue) => {
       const now = Date.now();
       const rawMessage = createRawMessage("1025", "channel-debug-1", {
         guild_id: "guild-1",
+        channel: guildTextChannel("channel-debug-1"),
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
