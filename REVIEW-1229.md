@@ -346,3 +346,44 @@ Red/green receipt: focused drain shard failed before the code change with
 `{ started: 0 }` for the eligible-head/delayed-tail regression, then passed
 after the oldest-retained-row fix (`38 tests`, `6.10s` wrapper time). Full
 closeout receipts are in `JOURNAL-1229.md`.
+
+## Ninth follow-up — hydrateable reply-reference fail-open
+
+Latest request-change: a stale raw Discord reply can carry
+`message_reference.message_id` while omitting `referenced_message`. Canonical
+preflight hydrates that missing reference before mention-state resolution, so
+the pre-claim stale classifier must not dead-letter the row before preflight can
+prove reply-to-bot.
+
+Best-fix verdict: best bounded Discord owner fix. The pre-claim classifier now
+fails open only for reply references that match the same hydrateable raw shape
+used by preflight hydration: default reference type, reply message type, a
+present referenced message id, and no `referenced_message` property. Existing
+nested `referenced_message.author.id === botUserId` reply-to-bot handling stays
+intact, and a reply whose referenced author is known non-bot can still expire
+as stale ambient under the existing direct-route rules.
+
+GitNexus evidence: parent completed the fork-backed MCP gate for this
+non-continuation packet. `createDiscordIngressMonitor` was found at
+`extensions/discord/src/monitor/ingress.ts:306-411` with LOW impact and direct
+test callers only; `preflightDiscordMessage` was found at
+`extensions/discord/src/monitor/message-handler.preflight.ts:213-883`; and
+the graph confirmed
+`preflightDiscordMessage -> hydrateDiscordMessageIfNeeded -> hydrateDiscordReplyReference`
+before mention state uses `resolveDiscordMentionState`.
+
+Production blast radius: Discord durable pre-claim stale classification only.
+No hydration, route/preflight clone, core drain/queue change, SQLite schema,
+config/env/protocol/dependency change, live queue mutation, GitHub write,
+Frond/assembly ref change, deploy, or merge.
+
+Tests added: SQLite-backed Discord direct-config regression for a stale raw
+reply with `message_reference.message_id` and absent `referenced_message` that
+must dispatch/fail open; negative control for a stale reply whose nested
+referenced author is known non-bot and still dead-letters; existing nested
+reply-to-bot case remains.
+
+Red/green receipt: the new direct-config regression failed before the classifier
+change (`dispatched` stayed `[]` while expected the reply id), then
+`node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress-stale-direct-config.test.ts extensions/discord/src/monitor/ingress.test.ts`
+passed (`34 tests`).

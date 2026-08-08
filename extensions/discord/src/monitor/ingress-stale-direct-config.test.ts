@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { APIMessage } from "discord-api-types/v10";
+import { MessageReferenceType, MessageType, type APIMessage } from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
@@ -398,6 +398,54 @@ describe("Discord direct-configured stale ingress", () => {
         ...testCase.overrides,
       } as RawMessageOverrides),
       cfg: testCase.cfg,
+      clock,
+    });
+  });
+
+  it("keeps stale hydrateable replies with missing referenced payload fail-open", async () => {
+    const clock = 1_780_000_400_000;
+    await expectDispatches({
+      rawMessage: createRawMessage("1023-hydrateable-reply", DIRECT_OPEN_CHANNEL_ID, {
+        guild_id: "guild-1",
+        content: "old reply without nested referenced payload",
+        type: MessageType.Reply,
+        message_reference: {
+          type: MessageReferenceType.Default,
+          message_id: "reply-source-missing",
+          channel_id: DIRECT_OPEN_CHANNEL_ID,
+          guild_id: "guild-1",
+        },
+        timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
+      } as RawMessageOverrides),
+      clock,
+    });
+  });
+
+  it("still dead-letters stale replies when the referenced author is known non-bot", async () => {
+    const clock = 1_780_000_500_000;
+    await expectFailsAsAmbient({
+      rawMessage: createRawMessage("1023-known-nonbot-reply", DIRECT_OPEN_CHANNEL_ID, {
+        guild_id: "guild-1",
+        content: "old reply to a human",
+        type: MessageType.Reply,
+        message_reference: {
+          type: MessageReferenceType.Default,
+          message_id: "reply-source-human",
+          channel_id: DIRECT_OPEN_CHANNEL_ID,
+          guild_id: "guild-1",
+        },
+        referenced_message: createRawMessage("reply-source-human", DIRECT_OPEN_CHANNEL_ID, {
+          guild_id: "guild-1",
+          author: {
+            id: "user-2",
+            username: "bob",
+            discriminator: "0",
+            global_name: null,
+            avatar: null,
+          },
+        } as RawMessageOverrides),
+        timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
+      } as RawMessageOverrides),
       clock,
     });
   });

@@ -1,5 +1,11 @@
 // Discord plugin module owns raw gateway-message durable ingress and replay draining.
-import { ChannelType, GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
+import {
+  ChannelType,
+  GatewayDispatchEvents,
+  MessageReferenceType,
+  MessageType,
+  type APIMessage,
+} from "discord-api-types/v10";
 import {
   createChannelIngressError,
   createChannelIngressMonitor,
@@ -238,6 +244,20 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
   );
 }
 
+function hasHydrateableDiscordReplyReference(rawMessage: APIMessage): boolean {
+  const reference = rawMessage.message_reference;
+  if (!reference || !nonEmptyString(reference.message_id)) {
+    return false;
+  }
+  if (reference.type != null && reference.type !== MessageReferenceType.Default) {
+    return false;
+  }
+  if (rawMessage.type != null && rawMessage.type !== MessageType.Reply) {
+    return false;
+  }
+  return !Object.hasOwn(rawMessage, "referenced_message");
+}
+
 function canExpireDiscordStaleAmbientBacklog(
   rawMessage: APIMessage,
   params: {
@@ -355,6 +375,7 @@ async function hasUnresolvedDiscordAddressForm(
   // Pre-claim rows do not have route/preflight facts. Preserve rows when a
   // later preflight path may prove them addressed instead of dead-lettering.
   return (
+    hasHydrateableDiscordReplyReference(rawMessage) ||
     hasBoundThread(rawMessage, params.threadBindings) ||
     hasCachedThreadChannel(rawMessage) ||
     (await matchesConfiguredDiscordMentionText(rawMessage, params))

@@ -1178,3 +1178,148 @@ TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .age
 ```
 
 Commit-mode autoreview and push receipts are reported after commit closeout.
+
+## Ninth follow-up implementation — 2026-08-08
+
+### Request-change objection
+
+PR #1230 review comment
+`https://github.com/karmaterminal/openclaw/pull/1230#issuecomment-5227023272`
+identified one more false terminalization in the Discord pre-claim stale
+classifier. A raw `APIMessage` reply can contain
+`message_reference.message_id` while `referenced_message` is absent. Canonical
+preflight calls `hydrateDiscordMessageIfNeeded()`, which then calls
+`hydrateDiscordReplyReference()` and may fetch the referenced bot-authored
+message before `resolveDiscordMentionState()` classifies `reply_to_bot`.
+Pre-claim must therefore fail open for that hydrateable reply shape.
+
+### GitNexus and direct source boundary
+
+Parent completed the fork-backed GitNexus MCP gate before this packet: repo
+`openclaw` at `/data/worktrees/oc-1229-gitnexus-slice`, indexed commit
+`a59a96549b7736613cb86dc846b28d0d82f03295`, `357 files / 8,921 nodes / 19,006
+edges`. The recorded graph evidence found `createDiscordIngressMonitor` at
+`extensions/discord/src/monitor/ingress.ts:306-411`, LOW impact with three
+direct callers; `preflightDiscordMessage` at
+`extensions/discord/src/monitor/message-handler.preflight.ts:213-883`; and the
+causal path
+`preflightDiscordMessage -> hydrateDiscordMessageIfNeeded -> hydrateDiscordReplyReference`
+before mention state uses `resolveDiscordMentionState`. I did not use the stock
+npm GitNexus CLI.
+
+Direct source read for this packet:
+
+- `extensions/discord/src/monitor/ingress.ts`: stale ambient pre-claim owner;
+  it classifies direct mentions, nested reply-to-bot, unresolved address forms,
+  and direct-config/raw-authoritative stale expiry before `mapGatewayDispatchData`.
+- `extensions/discord/src/monitor/ingress.test.ts` and
+  `extensions/discord/src/monitor/ingress-stale-direct-config.test.ts`: SQLite
+  monitor regressions for stale direct-config/raw-authoritative behavior,
+  strict boundary, resubmit, payload-free receipt, and reply-to-bot.
+- `extensions/discord/src/monitor/message-handler.preflight.ts`: canonical
+  hydrate-then-mention path, including `referencedAuthorId` passed into
+  `resolveDiscordMentionState()`.
+- `extensions/discord/src/monitor/message-handler.hydration.ts`: missing
+  `referenced_message` plus default reply reference triggers
+  `hydrateDiscordReplyReference()`.
+- `extensions/discord/src/internal/structures.ts`: `Message.referencedMessage`
+  exposes nested `referenced_message` to preflight only when raw data has it.
+
+### Red receipt
+
+I added the SQLite-backed direct-config regression first:
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress-stale-direct-config.test.ts
+# failed before code fix: 1 failed / 9 passed.
+# `keeps stale hydrateable replies with missing referenced payload fail-open`
+# expected dispatched [`1023-hydrateable-reply`] but got []
+```
+
+The same file also adds a negative authoritative control: a stale reply whose
+nested `referenced_message.author.id` is a known non-bot still dead-letters as
+`stale-ambient-backlog`. The existing nested bot-authored
+`referenced_message.author.id === botUserId` case remains unchanged.
+
+### Chosen fix
+
+`extensions/discord/src/monitor/ingress.ts` now treats only hydrateable raw
+reply references as unresolved address forms:
+
+- `message_reference.message_id` is present;
+- the reference type is absent/default;
+- the message type is absent or `MessageType.Reply`; and
+- the raw object does not own `referenced_message`.
+
+That is the smallest pre-claim fail-open matching the existing hydration
+contract. It does not move hydration or full preflight into the drain, does not
+fetch Discord, does not clone route/preflight policy, and does not make all
+reply references immune to stale expiry. If the nested referenced message exists
+and its author is known non-bot, the existing ambient/direct rules still apply.
+
+### Blast radius
+
+Production change is Discord monitor classification only. Core drain/queue,
+SQLite schema, stale threshold, direct-route expiry, strict boundary,
+dead-letter/resubmit lifecycle, payload-free receipt shape, config/env/protocol,
+dependencies, live queues, Frond/assembly refs, issue/PR state, deploys, and
+GitHub public comments are unchanged.
+
+### Initial green receipt
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress-stale-direct-config.test.ts extensions/discord/src/monitor/ingress.test.ts
+# passed: 34 tests, 2 files, 12.33s wrapper time
+```
+
+Final focused/broader test, typecheck, format/lint/diff, autoreview,
+commit-mode review, handoff, and push receipts are appended after closeout.
+
+### Final ninth follow-up validation receipts
+
+```shell
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts
+# passed: 34 tests, 2 files, 13.41s wrapper time on final rerun
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain-retry-delay.test.ts src/channels/message/ingress-drain.test.ts
+# passed: focused retry-delay 3 tests plus focused drain 36 tests, 10.92s wrapper time
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts extensions/discord/src/monitor/message-handler.queue.test.ts
+# passed: 155 tests, 6 files, 13.31s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-retry-delay.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: 124 tests across unit-fast/channels shards, 11.78s wrapper time
+
+node --no-opt scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions-test.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.core.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core-test.tsbuildinfo
+# first attempt failed because the new helper did not narrow `reference` before
+# reading `reference.type`; added the explicit guard and reran successfully.
+
+./node_modules/.bin/oxfmt --check --threads=1 extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts JOURNAL-1229.md REVIEW-1229.md && node --no-opt scripts/run-oxlint.mjs extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts && git --no-pager diff --check
+# passed
+
+node --no-opt scripts/check-changed.mjs -- extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts JOURNAL-1229.md REVIEW-1229.md
+# blocked before repo checks: delegated Crabbox workload routing selected a
+# crabbox binary that failed basic --version/--help sanity checks
+# (`version=unknown providers=unknown`).
+```
+
+Production LOC delta before docs: `extensions/discord/src/monitor/ingress.ts`
+`+22/-1` (net `+21`), justified by the Discord pre-claim ownership boundary
+needed to preserve hydrateable reply references for canonical preflight. Test
+delta before docs: `extensions/discord/src/monitor/ingress-stale-direct-config.test.ts`
+`+49/-1`, covering fail-open and known-non-bot negative control.
+
+Commit-mode closeout:
+
+```shell
+TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode commit --commit HEAD
+# passed before amend: TruffleHog clean; autoreview clean with no
+# accepted/actionable findings; overall patch correct (0.98).
+```
+
+`/tmp/emeric-1229-frond-runtime-handoff.md` was prepared with the exact
+standalone SHA, non-continuation statement, proof commands, expected
+suppression/fail-open outcomes, structured-log fields, rollback condition, and
+the Frond-scribe rule to record both the pr-presentation parent and the applied
+#1229 SHA. Because this receipt amends the commit, the handoff file and
+commit-mode autoreview are refreshed after amend before push.
