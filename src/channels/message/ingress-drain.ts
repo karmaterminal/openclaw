@@ -684,18 +684,25 @@ export function createChannelIngressDrain<
           resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
         ),
     );
-    const eligiblePending = pending.filter(
-      (event) => resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow) === 0,
-    );
-    const retryDelayedLaneKeys = new Set(
-      pending
-        .filter(
-          (event) => resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow) > 0,
-        )
-        .map((event) =>
-          resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey),
-        ),
-    );
+    const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
+    const oldestRetainedPendingLaneKeys = new Set<string>();
+    const retryDelayedLaneKeys = new Set<string>();
+    for (const event of pending) {
+      const retryDelayMs = resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow);
+      if (retryDelayMs === 0) {
+        eligiblePending.push(event);
+      }
+      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
+      if (oldestRetainedPendingLaneKeys.has(laneKey)) {
+        continue;
+      }
+      oldestRetainedPendingLaneKeys.add(laneKey);
+      // Only the oldest retained row can block its lane for retry backoff. A
+      // delayed tail must not hide an eligible head from claimNext.
+      if (retryDelayMs > 0) {
+        retryDelayedLaneKeys.add(laneKey);
+      }
+    }
 
     // Deterministic blocked set for claimNext lane serialization.
     const blockedLaneKeys = new Set<string>([

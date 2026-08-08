@@ -306,3 +306,43 @@ Production LOC delta before docs closeout: +64/-57 (net +7) across `src/channels
 Code read: `src/channels/message/ingress-drain.ts`, `src/channels/message/ingress-queue.ts`, `extensions/discord/src/monitor/ingress.ts`, `extensions/discord/src/monitor/ingress.test.ts`, `extensions/discord/src/monitor/message-handler.ts`, `extensions/discord/src/internal/gateway.ts`, `extensions/discord/src/internal/gateway-dispatch.ts`, `extensions/discord/src/monitor/message-handler.preflight.ts`, `extensions/discord/src/monitor/message-handler.preflight-thread.ts`, `extensions/discord/src/monitor/allow-list.ts`, and `extensions/discord/src/monitor/channel-access.ts`.
 
 Residual risk: explicit resubmit uses the queue row's new `receivedAt` as operator intent while the original raw Discord timestamp stays old. That is deliberate so failed stale backlog can be replayed only after an operator-visible dead-letter decision.
+
+## Eighth follow-up — oldest-retained retry-delay blocking
+
+Peer request-change: the restored core `retryDelayedLaneKeys` was too broad
+because it included every delayed pending row. A retry-delayed tail could block
+an eligible oldest same-lane head, violating FIFO and making the drain idle even
+though the row at the lane head was runnable.
+
+Best-fix verdict: best bounded owner fix. `drainOnce()` now computes retry-delay
+blocking from the oldest retained pending row per lane after pending
+dispositions, in the actual pending order. Eligible heads run; delayed heads
+block later same-lane tails; terminal pending dispositions remove stale heads
+before blocking so tails can proceed.
+
+GitNexus impact evidence: parent ran the fork-backed GitNexus MCP against repo
+`openclaw` at `/data/worktrees/oc-1229-gitnexus-slice`, indexed commit
+`a59a965`, `357 files / 8,921 symbols / 19,006 edges`. Context found
+`createChannelIngressDrain` at `src/channels/message/ingress-drain.ts:139-810`
+with incoming drain/lane/supersede tests, and `claimNext` at
+`src/channels/message/ingress-queue.ts:762-916`. Impact for
+`createChannelIngressDrain` was LOW risk with three direct callers and no
+process/module expansion. The earlier Cypher probe had a `TYPE()` syntax error
+and is not evidence for this packet.
+
+Production blast radius: core durable ingress drain scheduling only. Queue
+claiming, SQLite schema, Discord stale expiry, active/claimed serialization,
+supersede, retry policy, stale thresholds, config/env/protocol surfaces, live
+queues, PR/issue state, deploys, and assembly refs are unchanged.
+
+Tests added/updated: core drain now has exact regressions for eligible head +
+delayed tail, delayed head + eligible tail with unrelated-lane progress, and
+terminal disposition of a delayed stale head freeing the tail. Existing Discord
+direct-config stale expiry, raw-thread fail-open, payload-free receipt,
+same-lane FIFO, active/claimed serialization, unrelated-lane progress, and the
+generic pending-disposition hook remain covered by the owner shards.
+
+Red/green receipt: focused drain shard failed before the code change with
+`{ started: 0 }` for the eligible-head/delayed-tail regression, then passed
+after the oldest-retained-row fix (`38 tests`, `6.10s` wrapper time). Full
+closeout receipts are in `JOURNAL-1229.md`.

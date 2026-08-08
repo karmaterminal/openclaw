@@ -1057,3 +1057,124 @@ TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .age
 Production LOC delta for this packet before docs: +64/-57 (net +7), split across `ingress-drain.ts`, `ingress-drain-state.ts`, and Discord ingress. Test delta before docs: +558/-106 (net +452), including the new direct-config stale ingress owner test file.
 
 Autoreview, commit, and push receipts are appended below after the final review pass.
+
+## Eighth follow-up implementation — 2026-08-08
+
+### Peer request-change
+
+The peer review caught a retry-delay over-blocking bug in the seventh follow-up:
+`retryDelayedLaneKeys` included every delayed pending row. That means an
+eligible oldest same-lane head could be hidden from `claimNext()` by a later
+retry-delayed tail. The correct FIFO invariant is lane blocking from retry
+backoff only when the oldest retained pending row in that lane is still delayed.
+
+### Required context and GitNexus evidence
+
+- Read scoped guides before edits: `src/channels/AGENTS.md`,
+  `extensions/AGENTS.md`, and `test/AGENTS.md`; `extensions/discord/AGENTS.md`
+  does not exist in this worktree.
+- Read the requested owner files before editing: `src/channels/message/ingress-drain.ts`,
+  `src/channels/message/ingress-drain-state.ts`, `src/channels/message/ingress-drain.test.ts`,
+  `src/channels/message/ingress-queue.ts`, `extensions/discord/src/monitor/ingress.ts`,
+  `extensions/discord/src/monitor/ingress.test.ts`, and
+  `extensions/discord/src/monitor/ingress-stale-direct-config.test.ts`.
+- Parent completed the fork-backed GitNexus MCP graph gate before this edit:
+  repo `openclaw` at `/data/worktrees/oc-1229-gitnexus-slice`, indexed commit
+  `a59a965`, `357 files / 8,921 symbols / 19,006 edges`.
+- Parent `gitnexus-context` found `createChannelIngressDrain` at
+  `src/channels/message/ingress-drain.ts:139-810`; incoming tests were
+  `ingress-drain.test.ts`, `ingress-drain-supersede.test.ts`, and
+  `ingress-drain-lanes.test.ts`; outgoing evidence covered queue/owner/time/order/scan/start
+  accesses and owner calls.
+- Parent `gitnexus-impact` for `createChannelIngressDrain` with upstream
+  `maxDepth=2 includeTests summaryOnly` was LOW risk, three direct callers, no
+  process/module expansion.
+- Parent `gitnexus-context` found `claimNext` at
+  `src/channels/message/ingress-queue.ts:762-916`, covering candidate ids,
+  rows, and lane selection.
+- The earlier exploratory Cypher query had a `TYPE()` syntax error, so this
+  packet relies on the successful context/impact evidence above, not that query.
+
+### Red receipt
+
+```shell
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts
+# failed before code fix: 1 failed / 37 passed; `runs an eligible same-lane head when only the tail is retry-delayed` got `{ started: 0 }` instead of `{ started: 1 }`
+```
+
+### Chosen fix
+
+`drainOnce()` now computes retry-delay lane blocking in one pass over the
+post-disposition pending snapshot, preserving the queue's actual pending order:
+
+1. retain `eligiblePending` for rows whose retry delay is zero;
+2. track the first retained pending row per resolved lane;
+3. add a lane to `retryDelayedLaneKeys` only when that first retained row is
+   retry-delayed.
+
+This keeps delayed heads blocking later same-lane work, lets eligible heads run
+even when a delayed tail remains, and lets terminal pending dispositions remove a
+stale delayed head before lane blocking is computed. `claimNext()` remains the
+atomic pending-to-claimed owner; active/claimed serialization and unrelated-lane
+progress are unchanged.
+
+### New regression proof
+
+- `runs an eligible same-lane head when only the tail is retry-delayed`: proves a
+  delayed tail does not block the eligible oldest retained head.
+- `retry-delayed same-lane head blocks eligible tail while unrelated lanes proceed`:
+  proves a delayed oldest retained head blocks a same-lane tail while unrelated
+  lanes still claim.
+- `terminal disposition of retry-delayed stale head frees the same-lane tail`:
+  proves the generic pending-disposition hook runs before retry-delay blocking
+  and a terminal stale head frees the tail.
+
+### Focused green receipt
+
+```shell
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts
+# passed: 38 tests, 1 file, 6.10s wrapper time
+```
+
+### Final eighth follow-up validation receipts
+
+```shell
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts
+# passed: 36 tests, 1 file, 10.38s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain-retry-delay.test.ts
+# passed: 3 tests, 1 file, 7.10s wrapper time
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts
+# passed: 32 tests, 2 files, 11.90s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-retry-delay.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: 124 tests across unit-fast/channels shards, 10.32s wrapper time
+
+node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/ingress-stale-direct-config.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts extensions/discord/src/monitor/message-handler.queue.test.ts
+# passed: 153 tests, 6 files, 11.77s wrapper time
+
+node --no-opt scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions-test.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo && node --no-opt scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.core.test.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core-test.tsbuildinfo
+# passed
+
+./node_modules/.bin/oxfmt --check --threads=1 src/channels/message/ingress-drain.ts src/channels/message/ingress-drain-retry-delay.test.ts JOURNAL-1229.md REVIEW-1229.md && node --no-opt scripts/run-oxlint.mjs src/channels/message/ingress-drain.ts src/channels/message/ingress-drain-retry-delay.test.ts && git --no-pager diff --check
+# passed
+
+node --no-opt scripts/check-changed.mjs -- src/channels/message/ingress-drain.ts src/channels/message/ingress-drain-retry-delay.test.ts JOURNAL-1229.md REVIEW-1229.md
+# blocked before repo checks: delegated Crabbox workload routing selected a crabbox binary that failed basic --version/--help sanity checks (`version=unknown providers=unknown`).
+```
+
+Production LOC delta for this packet before docs: `src/channels/message/ingress-drain.ts`
+`+19/-12` (net `+7`), justified by restoring the oldest-retained-row FIFO
+blocking invariant. Test delta before docs: `src/channels/message/ingress-drain-retry-delay.test.ts`
+`+168/-0`. No Discord production behavior changed in this packet.
+
+```shell
+TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode branch --base origin/main
+# blocked before review: TruffleHog clean, then branch-wide diff refused a known secret-like value inherited from the branch bundle.
+
+TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+# passed: TruffleHog clean; autoreview clean with no accepted/actionable findings; overall patch correct (0.98).
+```
+
+Commit-mode autoreview and push receipts are reported after commit closeout.
