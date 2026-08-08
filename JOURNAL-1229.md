@@ -797,3 +797,105 @@ mkdir -p "$HOME/.cache/openclaw-autoreview-tmp" && TMPDIR="$HOME/.cache/openclaw
 
 Autoreview summary: Codex `gpt-5.6-sol` / high reasoning found no P0 defects
 and judged the patch correct with the intended conservative fail-open behavior.
+
+## Fourth follow-up implementation — 2026-08-08
+
+### Changes-request objection
+
+The pushed head `4cfa0c5ca43c74ddeb1ad0c9d0d91ee31e8c273b` still had one
+preflight-supported address/control path that the raw pre-claim stale filter
+could terminalize too early. Full Discord preflight lets authorized text
+control commands bypass mention gating through the public command surface:
+`shouldHandleTextCommands({ cfg, surface: "discord" })` plus
+`hasControlCommand(baseText, params.cfg)`. A stale, unmentioned `/status`
+message in a guild channel is therefore potentially active control traffic and
+must reach canonical preflight instead of being failed as ambient backlog.
+
+### Source walk and public API contract inspected
+
+- `src/plugin-sdk/command-detection.ts` publicly exports `hasControlCommand`
+  from `src/auto-reply/command-detection.ts`. The underlying detector strips
+  inbound metadata, normalizes command bodies, checks the configured chat
+  command registry with config feature flags, and intentionally treats
+  `/status`, `/status:`, and `/status ...` as control commands while rejecting
+  ambient text such as `hello /status`.
+- `src/plugin-sdk/command-surface.ts` publicly exports
+  `shouldHandleTextCommands` from `src/auto-reply/commands-text-routing.ts`.
+  That helper keeps text commands active unless `commands.text === false` on a
+  provider-native surface, while native command invocations remain active.
+- `extensions/discord/src/monitor/message-handler.preflight.ts` is the
+  canonical Discord preflight path: it imports the same public SDK helpers,
+  computes `allowTextCommands`, computes `hasControlCommandInMessage`, resolves
+  sender command authorization, and passes those facts into
+  `resolveInboundMentionDecision()` so authorized text control commands can
+  bypass mention gating.
+- `extensions/discord/src/monitor/ingress.ts` is still the right narrow owner:
+  it owns pre-claim stale ambient disposition and already fails open for raw
+  address forms whose final route/preflight addressability is unproven.
+
+### Chosen implementation
+
+- Added a Discord-local `hasPotentialActiveDiscordTextControlCommand()` helper
+  in `extensions/discord/src/monitor/ingress.ts`.
+- The helper reuses public `openclaw/plugin-sdk/command-detection` and
+  `openclaw/plugin-sdk/command-surface` exports; it does not duplicate command
+  parsing or hydrate full routes before claim.
+- The helper runs only after the stale-age check and before the unresolved
+  mention/thread fail-open checks. Fresh rows therefore do not pay extra
+  command-surface work.
+- If `shouldHandleTextCommands()` cannot prove the surface state before claim
+  because registry state is unavailable, the helper fails open for a parsed
+  control command. The row then reaches the canonical preflight authorization
+  gate rather than being irreversibly dead-lettered.
+
+### Explicit stale ambient policy
+
+Old unaddressed ambient guild traffic is intentionally terminalized as
+`stale-ambient-backlog` even in always-on rooms where Discord config eventually
+sets `requireMention=false`: stale backlog is not a fresh operator action and
+must not replay as a current room turn after recovery. Explicit address/control
+forms fail open before claim: direct/DM mentions, replies to the bot, everyone
+mentions, bound/cached thread ambiguity, configured/provider/identity mention
+matches, audio-only mention candidates, and active text control commands all
+survive to full Discord preflight.
+
+### New regressions and negative controls
+
+- Positive control: a stale unmentioned `/status` guild row dispatches and does
+  not become a `stale-ambient-backlog` dead letter.
+- Negative control 1: a configured agent identity exists, but unrelated stale
+  ambient content that does not match the identity is still failed as
+  `stale-ambient-backlog`.
+- Negative control 2: a stale row textually matches an agent identity, but the
+  provider/account Discord mention policy denies that conversation, so it is
+  still failed as `stale-ambient-backlog`.
+
+These negative controls prove the fail-open safety guard is not a blanket
+suppression bypass.
+
+### Fourth follow-up validation receipts
+
+```shell
+pnpm format extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts && node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+# passed: oxfmt completed; Discord ingress shard passed 20 tests, 1 file, 10.82s wrapper time
+
+node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts && node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts extensions/discord/src/monitor/message-handler.preflight.test.ts extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts extensions/discord/src/monitor/thread-bindings.discord-api.test.ts && node --no-opt scripts/run-vitest.mjs src/channels/message/ingress-drain.test.ts src/channels/message/ingress-drain-lanes.test.ts src/channels/message/ingress-drain-supersede.test.ts src/channels/message/ingress-monitor.test.ts src/channels/message/ingress-queue.test.ts src/channels/message/ingress-queue.dead-letters.test.ts src/channels/message/ingress-retry-policy.test.ts src/channels/message/ingress-claim-owner.test.ts
+# passed: focused drain 36 tests; Discord monitor/preflight/thread shard 124 tests; broader core ingress owner suite 121 tests across 2 shards
+
+pnpm tsgo:extensions && pnpm tsgo:extensions:test && pnpm tsgo:core && pnpm tsgo:core:test
+# passed
+
+pnpm format extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md && pnpm format:check extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts JOURNAL-1229.md REVIEW-1229.md && node scripts/run-oxlint.mjs extensions/discord/src/monitor/ingress.ts extensions/discord/src/monitor/ingress.test.ts && git --no-pager diff --check && git --no-pager diff --numstat
+# passed: oxfmt wrote/checks passed, targeted oxlint passed, diff check passed
+# numstat before final receipt text: 88 0 JOURNAL-1229.md; 49 0 REVIEW-1229.md; 86 0 extensions/discord/src/monitor/ingress.test.ts; 26 0 extensions/discord/src/monitor/ingress.ts
+
+mkdir -p .artifacts/autoreview-tmp && TMPDIR="$PWD/.artifacts/autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+# blocked: autoreview requires TMPDIR/TMP/TEMP outside the reviewed repository.
+
+test -d "$HOME/.cache/openclaw-autoreview-tmp" || mkdir -p "$HOME/.cache/openclaw-autoreview-tmp"; TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode local
+# final passed: TruffleHog clean; bundle 17202 bytes; autoreview clean with no accepted/actionable findings. Codex judged the patch correct (overall 0.99) with no P0 defects.
+```
+
+No SQLite schema bump, dependency change, live Discord/runtime queue mutation,
+PR/merge/deploy, issue closure, or public GitHub comment was performed.

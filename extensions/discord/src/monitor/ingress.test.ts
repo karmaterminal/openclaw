@@ -138,6 +138,49 @@ async function expectStaleMessageDispatches(params: {
   });
 }
 
+async function expectStaleMessageFailsAsAmbient(params: {
+  rawMessage: APIMessage;
+  botUserId?: string;
+  cfg?: OpenClawConfig;
+  discordConfig?: DiscordAccountConfig;
+  threadBindings?: DiscordThreadBindings;
+}): Promise<void> {
+  await withQueue(async (queue) => {
+    const messageId = params.rawMessage.id;
+    const sentAt = Date.parse(params.rawMessage.timestamp);
+    await queue.enqueue(messageId, payloadFor(params.rawMessage), {
+      laneKey: `channel:${params.rawMessage.channel_id}`,
+      receivedAt: Number.isFinite(sentAt) ? sentAt : Date.now() - 16 * 60 * 1_000,
+    });
+
+    const dispatch = vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
+      await lifecycle.onAdopted();
+    });
+    const monitor = createDiscordIngressMonitor({
+      accountId: "default",
+      client: {} as never,
+      runtime: runtime(),
+      botUserId: params.botUserId ?? "bot-1",
+      ...(params.cfg ? { cfg: params.cfg } : {}),
+      ...(params.discordConfig ? { discordConfig: params.discordConfig } : {}),
+      ...(params.threadBindings ? { threadBindings: params.threadBindings } : {}),
+      queue,
+      dispatch,
+    });
+    monitor.start();
+    try {
+      await vi.waitFor(async () => {
+        expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+          { id: messageId, reason: "stale-ambient-backlog" },
+        ]);
+      });
+      expect(dispatch).not.toHaveBeenCalled();
+    } finally {
+      await monitor.stop();
+    }
+  });
+}
+
 describe("Discord durable ingress", () => {
   afterEach(() => {
     closeOpenClawStateDatabaseForTest();
@@ -645,6 +688,49 @@ describe("Discord durable ingress", () => {
       } as RawMessageOverrides),
       cfg: testCase.cfg,
       discordConfig: testCase.discordConfig,
+    });
+  });
+
+  it("keeps stale text control commands out of ambient backlog suppression", async () => {
+    const now = Date.now();
+    await expectStaleMessageDispatches({
+      rawMessage: createRawMessage("1019", "channel-control-1", {
+        guild_id: "guild-1",
+        content: "/status",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>),
+      cfg: {} satisfies OpenClawConfig,
+    });
+  });
+
+  it("still suppresses stale ambient content when configured agent identity does not match", async () => {
+    const now = Date.now();
+    await expectStaleMessageFailsAsAmbient({
+      rawMessage: createRawMessage("1020", "channel-unmatched-identity-1", {
+        guild_id: "guild-1",
+        content: "unrelated room chatter",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>),
+      cfg: {
+        agents: { list: [{ id: "main", identity: { name: "Molty", emoji: "🦀" } }] },
+      } satisfies OpenClawConfig,
+    });
+  });
+
+  it("still suppresses stale ambient content when provider policy disables identity matches", async () => {
+    const now = Date.now();
+    await expectStaleMessageFailsAsAmbient({
+      rawMessage: createRawMessage("1021", "channel-denied-identity-1", {
+        guild_id: "guild-1",
+        content: "Molty can you check the incident?",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>),
+      cfg: {
+        agents: { list: [{ id: "main", identity: { name: "Molty" } }] },
+      } satisfies OpenClawConfig,
+      discordConfig: {
+        mentionPatterns: { mode: "allow", denyIn: ["channel-denied-identity-1"] },
+      } satisfies DiscordAccountConfig,
     });
   });
 });

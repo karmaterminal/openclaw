@@ -221,3 +221,53 @@ Receipts are recorded in `JOURNAL-1229.md`: GitNexus core-slice trace, direct
 Discord source/dependency walk, focused Discord ingress regression shard,
 focused and broader core ingress suites, prod/test typechecks, format/lint,
 diff check, and closeout autoreview.
+
+## Fourth follow-up review objection
+
+The latest changes request found one more preflight-supported bypass form:
+Discord text control commands. Canonical preflight imports the public SDK
+`hasControlCommand()` detector and `shouldHandleTextCommands()` command-surface
+decision, then feeds `allowTextCommands`, `hasControlCommand`, and sender
+authorization into mention gating. A stale unmentioned `/status` row could be
+an authorized control command, so pre-claim stale suppression must not
+terminalize it as ambient before that authorization path runs.
+
+Method: `extensions/discord/src/monitor/ingress.ts` now uses the same public
+`openclaw/plugin-sdk/command-detection` and
+`openclaw/plugin-sdk/command-surface` exports to recognize potential active
+text control commands after the stale-age check and before ambient failure. If
+the pre-claim monitor cannot prove command-surface state, it fails open for the
+parsed control command and lets canonical preflight decide.
+
+Explicit policy: old unaddressed ambient guild traffic is intentionally failed
+as `stale-ambient-backlog` even in always-on `requireMention=false` rooms.
+Stale backlog is not a fresh room action. Explicit address/control forms fail
+open: DMs, direct bot mentions, replies to the bot, everyone mentions,
+bound/cached thread ambiguity, configured/provider/identity mention matches,
+audio-only mention candidates, and active text control commands are preserved
+for full preflight.
+
+Edge cases covered: stale unmentioned `/status` dispatches; unrelated stale
+ambient content still fails when an agent identity exists but does not match;
+and stale content that would match an identity still fails when Discord
+provider mention policy disables that conversation. Existing direct mention,
+reply, everyone, bound/cached thread, configured name/emoji, audio-only,
+retry-head, active-claim, multi-lane, and dead-letter contracts remain covered.
+
+Blast radius: Discord pre-claim stale suppression preserves one more class of
+ambiguous rows for full preflight. Core drain/queue, SQLite schema, config
+shape, env vars, protocol, dependencies, live Discord state, runtime queues,
+PR/issue state, deploys, and public comments are unchanged.
+
+Residual risk: without a larger post-preflight suppressed tombstone, rows that
+look like potential control commands but are later unauthorized can still be
+claimed and dropped by canonical preflight instead of becoming pre-claim stale
+dead letters. This is the safer tradeoff because false pre-claim
+terminalization is irreversible, while canonical preflight already owns command
+authorization and no-mention drops.
+
+Receipts are recorded in `JOURNAL-1229.md`: public command SDK source walk,
+focused Discord ingress shard, focused drain shard, broader
+Discord/preflight/thread shard, broader core ingress suite, typechecks,
+format/lint, diff check, and closeout autoreview with no accepted/actionable
+findings.

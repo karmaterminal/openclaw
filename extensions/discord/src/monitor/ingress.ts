@@ -7,6 +7,8 @@ import {
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
 } from "openclaw/plugin-sdk/channel-outbound";
+import { hasControlCommand } from "openclaw/plugin-sdk/command-detection";
+import { shouldHandleTextCommands } from "openclaw/plugin-sdk/command-surface";
 import type { DiscordAccountConfig, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
@@ -264,6 +266,27 @@ async function matchesConfiguredDiscordMentionText(
   return false;
 }
 
+function hasPotentialActiveDiscordTextControlCommand(
+  rawMessage: APIMessage,
+  cfg?: OpenClawConfig,
+): boolean {
+  const text = typeof rawMessage.content === "string" ? rawMessage.content : "";
+  if (!hasControlCommand(text, cfg)) {
+    return false;
+  }
+  try {
+    return shouldHandleTextCommands({
+      cfg: cfg ?? {},
+      surface: "discord",
+      commandSource: "text",
+    });
+  } catch {
+    // Pre-claim cannot prove registry/surface state; preserve possible control
+    // commands for the canonical preflight authorization gate.
+    return true;
+  }
+}
+
 async function hasUnresolvedDiscordAddressForm(
   rawMessage: APIMessage,
   params: {
@@ -342,6 +365,9 @@ export function createDiscordIngressMonitor(params: {
         }
         const sentAt = discordMessageSentAtMs(rawMessage) ?? record.receivedAt;
         if (context.now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
+          return null;
+        }
+        if (hasPotentialActiveDiscordTextControlCommand(rawMessage, params.cfg)) {
           return null;
         }
         if (
