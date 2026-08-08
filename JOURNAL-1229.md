@@ -1323,3 +1323,23 @@ suppression/fail-open outcomes, structured-log fields, rollback condition, and
 the Frond-scribe rule to record both the pr-presentation parent and the applied
 #1229 SHA. Because this receipt amends the commit, the handoff file and
 commit-mode autoreview are refreshed after amend before push.
+
+### Final post-amend and push receipt
+
+After the receipt amend, `/tmp/emeric-1229-frond-runtime-handoff.md` was
+refreshed with standalone source SHA
+`fd1bf404cf524afa4bd6f61ba0323f9518011d1b`, pr-presentation parent
+`5eecf18e3a07d84727631e71c9de46e227016dd1`, and applied #1229 SHA
+`fd1bf404cf524afa4bd6f61ba0323f9518011d1b`.
+
+```shell
+TMPDIR="$HOME/.cache/openclaw-autoreview-tmp" PATH="$HOME/.local/bin:$PATH" .agents/skills/autoreview/scripts/autoreview --mode commit --commit HEAD
+# passed after amend: TruffleHog clean; autoreview clean with no accepted/actionable findings; overall patch correct (0.98).
+
+git push origin codeagent/emeric-1229-ingress-backlog-red
+# pushed hydrateable-reply packet at fd1bf404cf524afa4bd6f61ba0323f9518011d1b.
+```
+
+No additional tests, queue mutation, GitHub issue/PR/comment/deploy mutation, or
+production/test source edits were part of this receipt-only documentation
+correction.

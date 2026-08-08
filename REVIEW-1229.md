@@ -387,3 +387,12 @@ Red/green receipt: the new direct-config regression failed before the classifier
 change (`dispatched` stayed `[]` while expected the reply id), then
 `node --no-opt scripts/run-vitest.mjs extensions/discord/src/monitor/ingress-stale-direct-config.test.ts extensions/discord/src/monitor/ingress.test.ts`
 passed (`34 tests`).
+
+Post-amend closeout receipt: after the final receipt amend,
+`/tmp/emeric-1229-frond-runtime-handoff.md` was refreshed with standalone source
+SHA `fd1bf404cf524afa4bd6f61ba0323f9518011d1b` and the Frond-scribe
+parent/applied SHA fields. Commit-mode autoreview was rerun against amended
+`HEAD` and passed with TruffleHog clean, no accepted/actionable findings, and
+overall patch correctness `0.98`; the hydrateable-reply packet was then pushed
+at `fd1bf404cf524afa4bd6f61ba0323f9518011d1b`. This docs-only correction only
+records that missing receipt.
