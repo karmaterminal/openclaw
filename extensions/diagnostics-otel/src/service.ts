@@ -1,5 +1,12 @@
 // Diagnostics Otel plugin module implements service behavior.
-import { diag, metrics, trace, type SpanContext } from "@opentelemetry/api";
+import {
+  context as otelContextApi,
+  diag,
+  isSpanContextValid,
+  metrics,
+  trace,
+  type SpanContext,
+} from "@opentelemetry/api";
 import * as otelCore from "@opentelemetry/core";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
@@ -649,9 +656,19 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               }
             },
             resolveTraceContext(traceContext) {
+              // Tool and model spans must land in the same trace as the work
+              // that produced them. The exported-span registry is the precise
+              // answer when it has the exact span, but it is process-local and
+              // capacity-evicted, so a miss must not silently strand the span
+              // in a trace of its own. Fall back to the SDK's live active span,
+              // which is the authoritative record of the current trace, and
+              // keep rejecting invalid contexts either way.
               const spanContext =
-                diagnosticsTrace.exportedSpanContextForDiagnosticTraceContext(traceContext);
-              return spanContext ? diagnosticTraceContextFromSpanContext(spanContext) : undefined;
+                diagnosticsTrace.exportedSpanContextForDiagnosticTraceContext(traceContext) ??
+                trace.getSpanContext(otelContextApi.active());
+              return spanContext && isSpanContextValid(spanContext)
+                ? diagnosticTraceContextFromSpanContext(spanContext)
+                : undefined;
             },
           }) ?? null;
       }
