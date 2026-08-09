@@ -15,7 +15,7 @@ import {
   createChannelIngressQueueForTests,
 } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { createDiscordIngressMonitor, type DiscordIngressLifecycle } from "./ingress.js";
 
@@ -35,6 +35,10 @@ type DiscordGuildEntries = Record<string, DiscordGuildEntryResolved>;
 const DIRECT_OPEN_CHANNEL_ID = "direct-configured-mention-open-channel";
 const STALE_MS = 15 * 60 * 1_000;
 const DISCORD_INGRESS_WAIT_TIMEOUT_MS = 10_000;
+// Pre-claim stale checks lazily import the mention runtime on first use. Warming
+// it outside the dispatch waits keeps a cold module graph from being charged to
+// whichever test happens to evaluate stale ambient backlog first.
+const DISCORD_INGRESS_RUNTIME_WARM_TIMEOUT_MS = 120_000;
 
 function createRawMessage(
   id: string,
@@ -211,6 +215,10 @@ async function expectFailsAsAmbient(params: {
 }
 
 describe("Discord direct-configured stale ingress", () => {
+  beforeAll(async () => {
+    await import("openclaw/plugin-sdk/channel-inbound");
+  }, DISCORD_INGRESS_RUNTIME_WARM_TIMEOUT_MS);
+
   afterEach(() => {
     closeOpenClawStateDatabaseForTest();
   });
