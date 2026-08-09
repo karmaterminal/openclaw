@@ -1653,6 +1653,72 @@ describe("channel turn kernel", () => {
     ]);
   });
 
+  it("dispatch-receipt segment: backfills ChannelTurnLogEvent.messageId from MessageSid when adapter omits messageId", async () => {
+    const log = vi.fn();
+    const recordInboundSession = createRecordInboundSession([]);
+    const runDispatch = vi.fn(async () => ({
+      queuedFinal: false,
+      counts: { tool: 0, block: 0, final: 0 },
+    }));
+
+    const result = await runPreparedInboundReply({
+      channel: "test",
+      routeSessionKey: "agent:main:test:peer",
+      storePath: "/tmp/sessions.json",
+      ctxPayload: createCtx({ MessageSid: "canonical-1", MessageSidFull: "raw-1" }),
+      recordInboundSession,
+      runDispatch,
+      log,
+      record: {
+        onRecordError: vi.fn(),
+      },
+    });
+
+    expectDispatched(result);
+    expect(log.mock.calls).toContainEqual([
+      expect.objectContaining({
+        stage: "dispatch",
+        event: "warning",
+        messageId: "canonical-1",
+        reason: "zero-count-visible-dispatch",
+      }),
+    ]);
+    for (const [event] of log.mock.calls as [{ messageId?: string }][]) {
+      expect(event.messageId).toBe("canonical-1");
+    }
+  });
+
+  it("dispatch-receipt segment: falls back to MessageSidFull when MessageSid is absent", async () => {
+    const log = vi.fn();
+    const recordInboundSession = createRecordInboundSession([]);
+    const runDispatch = vi.fn(async () => ({
+      queuedFinal: false,
+      counts: { tool: 0, block: 0, final: 0 },
+    }));
+
+    const result = await runPreparedInboundReply({
+      channel: "test",
+      routeSessionKey: "agent:main:test:peer",
+      storePath: "/tmp/sessions.json",
+      ctxPayload: createCtx({ MessageSidFull: "raw-only-1" }),
+      recordInboundSession,
+      runDispatch,
+      log,
+      record: {
+        onRecordError: vi.fn(),
+      },
+    });
+
+    expectDispatched(result);
+    expect(log.mock.calls).toContainEqual([
+      expect.objectContaining({
+        event: "warning",
+        messageId: "raw-only-1",
+        reason: "zero-count-visible-dispatch",
+      }),
+    ]);
+  });
+
   it("does not warn for observed-path deliveries with zero queued counts", async () => {
     const events: string[] = [];
     const log = vi.fn();

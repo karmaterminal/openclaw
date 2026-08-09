@@ -612,6 +612,7 @@ async function processDiscordMessageInner(
       cfg,
       channel: "discord",
       accountId: route.accountId,
+      messageId: canonicalMessageId ?? message.id,
       outboundEchoSourceId: resolveDiscordWebhookId(message) ?? undefined,
       route: { agentId: route.agentId, sessionKey: persistedSessionKey },
       ctxPayload,

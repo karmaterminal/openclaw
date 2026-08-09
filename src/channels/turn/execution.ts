@@ -25,16 +25,45 @@ import type {
 const NO_ADDITIONAL_DELIVERY_SIGNALS: ChannelTurnVisibleDeliverySignals = {};
 const log = createSubsystemLogger("channels/turn/execution");
 
+/**
+ * Prefer an explicit turn messageId; otherwise read the finalized context
+ * source id so dispatch receipts do not degrade to "unknown" when an adapter
+ * forgot to declare it. This is not a full causal join — only less-unknown
+ * source identification on existing ChannelTurnLogEvent fields.
+ */
+function resolveChannelTurnReceiptMessageId(params: {
+  messageId?: string;
+  ctxPayload?: FinalizedMsgContext;
+}): string | undefined {
+  const candidates = [
+    params.messageId,
+    params.ctxPayload?.MessageSid,
+    params.ctxPayload?.MessageSidFull,
+  ];
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
+
 function emit(params: {
   log?: (event: ChannelTurnLogEvent) => void;
   event: Omit<ChannelTurnLogEvent, "channel" | "accountId">;
   channel: string;
   accountId?: string;
+  ctxPayload?: FinalizedMsgContext;
 }) {
   params.log?.({
     channel: params.channel,
     accountId: params.accountId,
     ...params.event,
+    messageId: resolveChannelTurnReceiptMessageId({
+      messageId: params.event.messageId,
+      ctxPayload: params.ctxPayload,
+    }),
   });
 }
 
@@ -84,7 +113,7 @@ function resolveRecordSessionKey<TDispatchResult>(
 function maybeWarnZeroCountVisibleDispatch<TDispatchResult>(
   params: Pick<
     PreparedChannelTurn<TDispatchResult>,
-    "admission" | "channel" | "ctxPayload" | "messageId" | "routeSessionKey"
+    "accountId" | "admission" | "channel" | "ctxPayload" | "messageId" | "routeSessionKey"
   > & {
     dispatchResult: TDispatchResult;
     log?: (event: ChannelTurnLogEvent) => void;
@@ -98,18 +127,21 @@ function maybeWarnZeroCountVisibleDispatch<TDispatchResult>(
   if (hasVisibleChannelTurnDispatch(dispatchResult, NO_ADDITIONAL_DELIVERY_SIGNALS)) {
     return;
   }
+  const messageId = resolveChannelTurnReceiptMessageId(params);
+  // Keep the existing warning fields honest: channel/account/source/session only.
+  // sessionKey is the route/session label already on the event — not a durable
+  // admission/queue key, and not enough to join source → run by itself.
   log.warn(
     `visible channel turn dispatched with no queued reply payloads: channel=${params.channel} ` +
-      `messageId=${params.messageId ?? "unknown"} sessionKey=${
-        params.ctxPayload.SessionKey ?? params.routeSessionKey
-      }`,
+      `accountId=${params.accountId ?? "unknown"} messageId=${messageId ?? "unknown"} ` +
+      `sessionKey=${params.ctxPayload.SessionKey ?? params.routeSessionKey}`,
   );
   emit({
     ...params,
     event: {
       stage: "dispatch",
       event: "warning",
-      messageId: params.messageId,
+      messageId,
       sessionKey: params.ctxPayload.SessionKey ?? params.routeSessionKey,
       admission: params.admission?.kind ?? "dispatch",
       reason: "zero-count-visible-dispatch",
