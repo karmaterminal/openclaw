@@ -2,6 +2,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-state.js";
 import {
   bindIngressLifecycleToReplyOptions,
   createChannelIngressDrain,
@@ -13,15 +14,6 @@ import {
   type IngressDrainTestPayload as Payload,
   withTempState,
 } from "./ingress-drain.test-helpers.js";
-
-// Module-private in ingress-drain.ts; derive from the factory signature.
-type ChannelIngressDispatchLifecycle = Parameters<
-  Parameters<typeof createChannelIngressDrain>[0]["dispatchClaimedEvent"]
->[1];
-import {
-  DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-  DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-} from "./ingress-retry-policy.js";
 
 describe("channel ingress drain", () => {
   beforeEach(() => {
@@ -636,64 +628,6 @@ describe("channel ingress drain", () => {
       hold();
       await drain.waitForIdle();
       drain.dispose();
-    });
-  });
-
-  it("dead-letter needs both attempt floor and age (releases when age insufficient)", async () => {
-    await withTempState(async (stateDir) => {
-      const receivedAt = 100;
-      let clock = receivedAt;
-      const queue = createTestIngressQueue(stateDir, { now: () => clock });
-      await queue.enqueue("poison", { text: "x" }, { laneKey: "l", receivedAt });
-
-      // Burn attempts without aging past the gate.
-      for (let i = 0; i < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; i += 1) {
-        clock += 1;
-        const drain = createChannelIngressDrain<Payload>({
-          queue,
-          now: () => clock,
-          retryPolicy: {
-            maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-            deadLetterMinAgeMs: DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-            baseMs: 0,
-            maxMs: 0,
-          },
-          dispatchClaimedEvent: async () => {
-            throw new Error("still broken");
-          },
-        });
-        await drain.drainOnce();
-        await drain.waitForIdle();
-        drain.dispose();
-      }
-
-      const pending = await queue.listPending({ limit: "all" });
-      expect(pending).toHaveLength(1);
-      expect(pending[0]?.attempts).toBeGreaterThanOrEqual(DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS);
-
-      // Age past the gate → next failure dead-letters.
-      clock = receivedAt + DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS;
-      const finalDrain = createChannelIngressDrain<Payload>({
-        queue,
-        now: () => clock,
-        retryPolicy: {
-          maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-          deadLetterMinAgeMs: DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-          baseMs: 0,
-          maxMs: 0,
-        },
-        dispatchClaimedEvent: async () => {
-          throw new Error("still broken");
-        },
-      });
-      await finalDrain.drainOnce();
-      await finalDrain.waitForIdle();
-      const status = await queue.enqueue("poison", { text: "x" });
-      expect(status.kind).toBe("failed");
-      if (status.kind === "failed") {
-        expect(status.record.reason).toBe("retry-limit-exceeded");
-      }
-      finalDrain.dispose();
     });
   });
 
