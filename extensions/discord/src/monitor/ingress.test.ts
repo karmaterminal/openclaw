@@ -5,6 +5,7 @@ import path from "node:path";
 import { ChannelType, type APIMessage } from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
 import type { DiscordAccountConfig, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
@@ -63,14 +64,6 @@ function runtime(): Pick<RuntimeEnv, "error" | "log"> {
 
 function payloadFor(rawMessage: APIMessage, receivedAt = Date.now()): DiscordIngressPayload {
   return { version: 1, receivedAt, rawMessage };
-}
-
-function createDeferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((innerResolve) => {
-    resolve = innerResolve;
-  });
-  return { promise, resolve };
 }
 
 async function withQueue<T>(
@@ -219,7 +212,7 @@ describe("Discord durable ingress", () => {
 
   it("does not normalize or dispatch before the durable append completes", async () => {
     await withQueue(async (queue) => {
-      const appendGate = createDeferred();
+      const appendGate = createDeferred<void>();
       const enqueue = vi.fn(async (...args: Parameters<typeof queue.enqueue>) => {
         await appendGate.promise;
         return await queue.enqueue(...args);
