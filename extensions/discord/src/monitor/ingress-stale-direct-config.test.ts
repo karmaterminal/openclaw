@@ -1,6 +1,5 @@
 // Discord direct-configured stale ingress regression tests.
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import {
   ChannelType,
@@ -35,6 +34,7 @@ type DiscordGuildEntries = Record<string, DiscordGuildEntryResolved>;
 const DIRECT_OPEN_CHANNEL_ID = "direct-configured-mention-open-channel";
 const STALE_MS = 15 * 60 * 1_000;
 const DISCORD_INGRESS_WAIT_TIMEOUT_MS = 10_000;
+const DISCORD_INGRESS_TEST_STATE_ROOT = path.join(process.cwd(), ".tmp", "discord-ingress-tests");
 // Pre-claim stale checks lazily import the mention runtime on first use. Warming
 // it outside the dispatch waits keeps a cold module graph from being charged to
 // whichever test happens to evaluate stale ambient backlog first.
@@ -88,6 +88,16 @@ function directOpenGuildEntries(channelId = DIRECT_OPEN_CHANNEL_ID): DiscordGuil
   };
 }
 
+function mentionRequiredGuildEntries(channelId = DIRECT_OPEN_CHANNEL_ID): DiscordGuildEntries {
+  return {
+    "guild-1": {
+      channels: {
+        [channelId]: { enabled: true, requireMention: true },
+      },
+    },
+  };
+}
+
 function guildTextChannel(id: string): unknown {
   return { id, type: ChannelType.GuildText };
 }
@@ -96,7 +106,10 @@ async function withQueue<T>(
   now: () => number,
   fn: (queue: ChannelIngressQueue<DiscordIngressPayload>) => Promise<T>,
 ): Promise<T> {
-  const created = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-discord-ingress-"));
+  await fs.mkdir(DISCORD_INGRESS_TEST_STATE_ROOT, { recursive: true });
+  const created = await fs.mkdtemp(
+    path.join(DISCORD_INGRESS_TEST_STATE_ROOT, "openclaw-discord-ingress-"),
+  );
   const stateDir = await fs.realpath(created);
   const queue = createChannelIngressQueueForTests<DiscordIngressPayload>({
     channelId: "discord",
@@ -277,7 +290,7 @@ describe("Discord direct-configured stale ingress", () => {
     );
   });
 
-  it("dead-letters stale authoritative raw non-thread backlog before fresh addressed work", async () => {
+  it("preserves stale mention-open raw non-thread backlog before fresh addressed work", async () => {
     const clock = 1_780_000_050_000;
     const staleId = `stale-non-thread-${DIRECT_OPEN_CHANNEL_ID}-a`;
     const freshId = `fresh-non-thread-${DIRECT_OPEN_CHANNEL_ID}-b`;
@@ -323,22 +336,9 @@ describe("Discord direct-configured stale ingress", () => {
         });
         monitor.start();
         try {
-          await vi.waitFor(() => expect(dispatched).toEqual([freshId]));
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: staleId, reason: "stale-ambient-backlog" },
-          ]);
-          expect(log).toHaveBeenCalledTimes(1);
-          expect(log.mock.calls[0]?.[0]).toEqual(
-            expect.objectContaining({
-              eventId: staleId,
-              sourceEventId: staleId,
-              laneKey: `channel:${DIRECT_OPEN_CHANNEL_ID}`,
-              channelId: DIRECT_OPEN_CHANNEL_ID,
-              disposition: "failed",
-              reason: "stale-ambient-backlog",
-            }),
-          );
-          expect(JSON.stringify(log.mock.calls[0]?.[0])).not.toContain("ordinary old room text");
+          await vi.waitFor(() => expect(dispatched).toEqual([staleId, freshId]));
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+          expect(log).not.toHaveBeenCalled();
         } finally {
           await monitor.stop();
         }
@@ -346,23 +346,79 @@ describe("Discord direct-configured stale ingress", () => {
     );
   });
 
-  it.each([
-    [STALE_MS, "dispatches"],
-    [STALE_MS + 1, "dead-letters"],
-  ] as const)("uses a strict 15-minute stale boundary", async (ageMs, expected) => {
-    const clock = 1_780_000_100_000;
-    const rawMessage = createRawMessage(`boundary-${ageMs}`, `direct-boundary-${ageMs}`, {
-      guild_id: "guild-1",
-      channel: guildTextChannel(`direct-boundary-${ageMs}`),
-      content: "ordinary old room text",
-      timestamp: new Date(clock - ageMs).toISOString(),
-    } as RawMessageOverrides);
-    const guildEntries = directOpenGuildEntries(rawMessage.channel_id);
-    if (expected === "dispatches") {
+  it.each([STALE_MS, STALE_MS + 1] as const)(
+    "keeps mention-open rows dispatching at age %sms",
+    async (ageMs) => {
+      const clock = 1_780_000_100_000;
+      const rawMessage = createRawMessage(`boundary-${ageMs}`, `direct-boundary-${ageMs}`, {
+        guild_id: "guild-1",
+        channel: guildTextChannel(`direct-boundary-${ageMs}`),
+        content: "ordinary old room text",
+        timestamp: new Date(clock - ageMs).toISOString(),
+      } as RawMessageOverrides);
+      const guildEntries = directOpenGuildEntries(rawMessage.channel_id);
       await expectDispatches({ rawMessage, clock, guildEntries });
-    } else {
-      await expectFailsAsAmbient({ rawMessage, clock, guildEntries });
-    }
+    },
+  );
+
+  it("suppresses stale mention-required ambient rows before fresh addressed work", async () => {
+    const clock = 1_780_000_150_000;
+    const channelId = "mention-required-channel";
+    await withQueue(
+      () => clock,
+      async (queue) => {
+        for (const [index, id] of ["stale-ambient-a", "stale-ambient-b"].entries()) {
+          const sentAt = clock - STALE_MS - 1_000 - index;
+          const stale = createRawMessage(id, channelId, {
+            guild_id: "guild-1",
+            channel: guildTextChannel(channelId),
+            content: `old ambient room text ${index}`,
+            timestamp: new Date(sentAt).toISOString(),
+          } as RawMessageOverrides);
+          await queue.enqueue(id, payloadFor(stale, clock - 10_000 + index), {
+            laneKey: `channel:${channelId}`,
+            receivedAt: clock - 10_000 + index,
+          });
+        }
+        const fresh = createRawMessage("fresh-mention-required", channelId, {
+          guild_id: "guild-1",
+          channel: guildTextChannel(channelId),
+          content: "fresh direct ask <@bot-1>",
+          mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
+          timestamp: new Date(clock).toISOString(),
+        } as RawMessageOverrides);
+        await queue.enqueue(fresh.id, payloadFor(fresh, clock), {
+          laneKey: `channel:${channelId}`,
+          receivedAt: clock,
+        });
+
+        const dispatched: string[] = [];
+        const monitor = createMonitor({
+          queue,
+          now: () => clock,
+          guildEntries: mentionRequiredGuildEntries(channelId),
+          dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+            if (!event.id) {
+              throw new Error("expected dispatched Discord event id");
+            }
+            dispatched.push(event.id);
+            await lifecycle.onAdopted();
+          },
+        });
+        monitor.start();
+        try {
+          await vi.waitFor(() => expect(dispatched).toEqual([fresh.id]), {
+            timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS,
+          });
+          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+            { id: "stale-ambient-a", reason: "stale-ambient-backlog" },
+            { id: "stale-ambient-b", reason: "stale-ambient-backlog" },
+          ]);
+        } finally {
+          await monitor.stop();
+        }
+      },
+    );
   });
 
   it("treats dead-letter resubmit as fresh operator intent", async () => {
@@ -387,6 +443,7 @@ describe("Discord direct-configured stale ingress", () => {
         const firstMonitor = createMonitor({
           queue,
           now: () => clock,
+          guildEntries: mentionRequiredGuildEntries(),
           dispatch: firstDispatch,
         });
         firstMonitor.start();
@@ -413,6 +470,7 @@ describe("Discord direct-configured stale ingress", () => {
         const replayMonitor = createMonitor({
           queue,
           now: () => clock,
+          guildEntries: mentionRequiredGuildEntries(),
           dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
             if (!event.id) {
               throw new Error("expected dispatched Discord event id");
@@ -502,9 +560,9 @@ describe("Discord direct-configured stale ingress", () => {
     });
   });
 
-  it("still dead-letters stale replies when the referenced author is known non-bot", async () => {
+  it("keeps stale known non-bot replies in a mention-open raw channel", async () => {
     const clock = 1_780_000_500_000;
-    await expectFailsAsAmbient({
+    await expectDispatches({
       rawMessage: createRawMessage("1023-known-nonbot-reply", DIRECT_OPEN_CHANNEL_ID, {
         guild_id: "guild-1",
         channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),

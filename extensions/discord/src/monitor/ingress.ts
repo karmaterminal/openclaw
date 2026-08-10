@@ -10,6 +10,7 @@ import {
   createChannelIngressError,
   createChannelIngressMonitor,
   type ChannelIngressQueue,
+  type ChannelIngressQueueRecord,
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
 } from "openclaw/plugin-sdk/channel-outbound";
@@ -30,6 +31,7 @@ import {
   normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
   resolveDiscordGuildEntry,
+  resolveDiscordShouldRequireMention,
   type DiscordGuildEntryResolved,
 } from "./allow-list.js";
 import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
@@ -61,6 +63,33 @@ type DiscordIngressDispatch = (
   event: DiscordMessageEvent,
   lifecycle: DiscordIngressLifecycle,
 ) => Promise<DiscordIngressDispatchResult | void> | DiscordIngressDispatchResult | void;
+
+type PublicDiscordDrainOptions = NonNullable<
+  Parameters<typeof createChannelIngressMonitor>[0]["drain"]
+>;
+
+type DiscordStaleAmbientBacklogDisposition = {
+  kind: "fail";
+  reason: "stale-ambient-backlog";
+  message: string;
+};
+
+type DiscordPendingDispositionContext = {
+  laneKey: string;
+  now: number;
+};
+
+type DiscordInternalDrainOptions = PublicDiscordDrainOptions & {
+  onPendingDispositionCommitted: (
+    record: ChannelIngressQueueRecord<DiscordIngressPayload>,
+    disposition: { kind: string; reason: string },
+    context: DiscordPendingDispositionContext,
+  ) => void;
+  resolvePendingDisposition: (
+    record: ChannelIngressQueueRecord<DiscordIngressPayload>,
+    context: DiscordPendingDispositionContext,
+  ) => Promise<DiscordStaleAmbientBacklogDisposition | null>;
+};
 
 type DiscordThreadBindingLookup = {
   getByThreadId?: (threadId: string) => unknown;
@@ -297,9 +326,15 @@ function canExpireDiscordStaleAmbientBacklog(
   }
   const rawNonThreadChannel =
     typeof channelInfo.type === "number" && !isDiscordThreadChannelType(channelInfo.type);
+  const requireMention = resolveDiscordShouldRequireMention({
+    isGuildMessage: true,
+    isThread: false,
+    channelConfig,
+    guildInfo,
+  });
   // Stale expiry is a freshness fence, not mention admission. Only raw channel
-  // type proves this is not an unhydrated thread; direct config can name either.
-  return rawNonThreadChannel;
+  // type plus a mention-required route proves unmentioned content is ambient.
+  return rawNonThreadChannel && requireMention;
 }
 
 async function matchesConfiguredDiscordMentionText(
@@ -439,6 +474,8 @@ export function createDiscordIngressMonitor(params: {
       failedMaxEntries: 5_000,
     },
     appendRetryDelaysMs: [0],
+    // Bundled-only pending disposition hook: keep stale ambient policy local to
+    // Discord without promoting the callbacks as public channel SDK API.
     drain: {
       onPendingDispositionCommitted: (record, disposition, context) => {
         if (disposition.kind !== "fail" || disposition.reason !== "stale-ambient-backlog") {
@@ -520,7 +557,7 @@ export function createDiscordIngressMonitor(params: {
         return null;
       },
       onLog: (message) => params.runtime.error?.(danger(`discord ingress: ${message}`)),
-    },
+    } satisfies DiscordInternalDrainOptions as PublicDiscordDrainOptions,
     onError: (error) =>
       params.runtime.error?.(danger(`discord ingress drain failed: ${formatErrorMessage(error)}`)),
   });

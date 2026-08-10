@@ -1,6 +1,5 @@
 // Discord tests cover durable gateway-message admission and replay recovery.
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { ChannelType, type APIMessage } from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
@@ -27,6 +26,7 @@ type RawMessageOverrides = Partial<APIMessage> & {
 };
 
 const DISCORD_INGRESS_WAIT_TIMEOUT_MS = 10_000;
+const DISCORD_INGRESS_TEST_STATE_ROOT = path.join(process.cwd(), ".tmp", "discord-ingress-tests");
 // Pre-claim stale checks lazily import the mention runtime on first use. Warming
 // it outside the dispatch waits keeps a cold module graph from being charged to
 // whichever test happens to evaluate stale ambient backlog first.
@@ -74,7 +74,10 @@ async function withQueue<T>(
   fn: (queue: ChannelIngressQueue<DiscordIngressPayload>) => Promise<T>,
   options: { now?: () => number } = {},
 ): Promise<T> {
-  const created = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-discord-ingress-"));
+  await fs.mkdir(DISCORD_INGRESS_TEST_STATE_ROOT, { recursive: true });
+  const created = await fs.mkdtemp(
+    path.join(DISCORD_INGRESS_TEST_STATE_ROOT, "openclaw-discord-ingress-"),
+  );
   const stateDir = await fs.realpath(created);
   const queue = createChannelIngressQueueForTests<DiscordIngressPayload>({
     channelId: "discord",

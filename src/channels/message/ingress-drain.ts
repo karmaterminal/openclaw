@@ -85,8 +85,6 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
-  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
-  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -105,6 +103,15 @@ export type CreateChannelIngressDrainOptions<
   startLimit?: number;
 };
 
+type InternalChannelIngressDrainOptions<
+  TPayload,
+  TMetadata = unknown,
+  TCompletedMetadata = unknown,
+> = CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata> & {
+  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
+};
+
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;
   drainOnce: (options?: { shouldStop?: () => boolean }) => Promise<{ started: number }>;
@@ -121,6 +128,11 @@ export function createChannelIngressDrain<
 >(
   options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata>,
 ): ChannelIngressDrain {
+  const internalOptions = options as InternalChannelIngressDrainOptions<
+    TPayload,
+    TMetadata,
+    TCompletedMetadata
+  >;
   const queue = options.queue;
   // Unique per drain instance so same-process peers do not share claim ownership.
   const ownerId = options.ownerId ?? createIngressDrainOwnerId();
@@ -664,8 +676,8 @@ export function createChannelIngressDrain<
       pending: await queue.listPending({ limit: "all", orderBy }),
       dispositionNow,
       queue,
-      resolvePendingDisposition: options.resolvePendingDisposition,
-      onPendingDispositionCommitted: options.onPendingDispositionCommitted,
+      resolvePendingDisposition: internalOptions.resolvePendingDisposition,
+      onPendingDispositionCommitted: internalOptions.onPendingDispositionCommitted,
       deriveLaneKey: options.deriveLaneKey,
       reconcileStoredLaneKey: options.reconcileStoredLaneKey,
       log,
