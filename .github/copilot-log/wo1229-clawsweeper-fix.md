@@ -200,3 +200,132 @@ Tests: `ingress-stale-direct-config.test.ts` +247/-59, `ingress.test.ts` +5/-2,
 No live recovered Discord gateway replay was run in this lane. The stale-ambient
 terminal path is proven by focused durable queue/monitor tests plus Discord
 mock-payload tests, not by a real reconnect against Discord.
+
+## Lane: check-docs format fix + PR body head-SHA refresh
+
+### `check-docs` / `pnpm format:check`
+
+CI job `check-docs` (run `31378150170`, job `93422141718`) failed on head
+`b8cb0f7134c881502a4fe05d49ee669fbdb906f0` at `pnpm format:check`. The log named
+exactly one file:
+
+```text
+.github/copilot-log/wo1229-clawsweeper-fix.md (46ms)
+Format issues found in above 1 files.
+```
+
+Reproduced locally in this linked worktree (no pnpm reconciliation):
+
+```bash
+./node_modules/.bin/oxfmt --check
+# .github/copilot-log/wo1229-clawsweeper-fix.md (419ms)
+# Format issues found in above 1 files.
+# Finished in 6407ms on 27936 files using 20 threads.
+```
+
+Cause: this run log was appended via heredoc using `*emphasis*`; oxfmt normalizes
+Markdown emphasis to `_emphasis_`. No source file and no other repository file
+was unformatted, so the fix is scoped to this log alone.
+
+```bash
+./node_modules/.bin/oxfmt .github/copilot-log/wo1229-clawsweeper-fix.md
+./node_modules/.bin/oxfmt --check
+# All matched files use the correct format. (27936 files)
+git --no-pager diff --stat
+# .github/copilot-log/wo1229-clawsweeper-fix.md | 6 +++---
+```
+
+Three lines, cosmetic only, zero production or test LOC. Committed as
+`cd71390e0e9aa74f2eea07d683334baad7d7b274` with the Copilot co-author trailer and
+pushed to `codeagent/wo1229-clawsweeper-fix`.
+
+### PR body head SHA
+
+`gh pr edit 1237 --body-file` refreshed only the `## Notes` head-branch SHA from
+`b8cb0f7134c881502a4fe05d49ee669fbdb906f0` to
+`cd71390e0e9aa74f2eea07d683334baad7d7b274`. Body line count unchanged (71), the
+codesmith footer block and its `codesmith:autofix:disabled` marker preserved
+verbatim, no code changes.
+
+Re-verified against the repository's own gate implementation:
+
+```bash
+node -e '...import("./scripts/github/real-behavior-proof-policy.mjs")...'
+# forced-external: {"status":"passed","reason":"External PR includes problem context and evidence.","applies":true,"passed":true}
+# authored problem: true
+# authored evidence: true
+```
+
+The `edited` event retriggered `PR context and evidence`; run `31378826569`
+completed `success` on the new head (previous head run `31378633729` also
+`success`).
+
+### Exact-head CI on `cd71390e0e9`
+
+| Check                                                             | Result                                      |
+| ----------------------------------------------------------------- | ------------------------------------------- |
+| `check-docs`                                                      | success (was the format failure; now fixed) |
+| `check-dependencies`                                              | success                                     |
+| `PR context and evidence`                                         | success                                     |
+| `Dependency Guard`, `Security Sensitive Guard`, `Workflow Sanity` | success                                     |
+| `CodeQL`, `CodeQL Critical Quality`, `OpenGrep — PR Diff`         | success                                     |
+| iOS / macOS / Shared OpenClawKit Periphery                        | success                                     |
+| `ClawSweeper Dispatch`                                            | success                                     |
+| `check-test-types`                                                | failure — base-owned only, see below        |
+| `Labeler`, `Auto response`                                        | failure — fork secret absence, see below    |
+
+### Remaining external blockers (re-proven on this head)
+
+`check-test-types` (run `31378636868`, job `93423739599`) now reports exactly one
+error, down from the eleven present before this lane:
+
+```text
+src/sessions/user-turn-transcript.test.ts(548,19): error TS2304: Cannot find name 'createTempDir'.
+```
+
+All ten attributable errors (pending-disposition, freshness, retry-delay
+callsites) are gone. The surviving file is untouched by this diff:
+
+```bash
+git diff --quiet origin/codeagent/wo1229-upstream-pr HEAD -- src/sessions/user-turn-transcript.test.ts
+# exit 0 -> identical to base
+```
+
+`Labeler` (run `31378633617`, job `label`) and `Auto response` (run
+`31378633605`) both fail inside
+`actions/create-github-app-token`:
+
+```text
+Error: The 'private-key' input must be set to a non-empty string.
+```
+
+That is the fork's missing `GH_APP_PRIVATE_KEY` / `GH_APP_PRIVATE_KEY_FALLBACK`
+secret, not a body or metadata defect. `.github/workflows/auto-response.yml:48`
+lacks `continue-on-error` on its fallback token step, so the job goes red instead
+of degrading; `real-behavior-proof.yml` marks both token steps
+`continue-on-error`, which is why `PR context and evidence` recovered once the
+body was correct. Neither is attributable to this diff and neither is fixable
+from the PR branch.
+
+### `openclaw/ci-gate` decomposition (run `31378636868`, job `93427987104`)
+
+The aggregate gate is red only through the two shards that carry the base-owned
+`createTempDir` failure. Its own required set is green:
+
+```text
+REQUIRED_RESULTS: preflight=success security-fast=success
+SELECTED_RESULTS: pnpm-store-warmup=success build-artifacts=success
+  checks-fast-core=success qa-smoke-ci-profile=success
+  checks-fast-plugin-contracts-shard=success
+  checks-fast-channel-contracts-shard=success
+  checks-node-core-test-nondist-shard=failure check-shard=failure
+  check-additional-shard=success check-docs=success
+::error checks-node-core-test-nondist-shard finished with failure
+::error check-shard finished with failure
+```
+
+`check-shard` contains `check-test-types`; `checks-node-core-test-nondist-shard`
+contains `checks-node-core-src-security`, whose only failing test is the same
+base-owned file (`1 failed | 359 passed | 2 skipped`, `ReferenceError:
+createTempDir is not defined` at `src/sessions/user-turn-transcript.test.ts:548`).
+`check-docs` is now explicitly `success` in the gate's own selected results.
