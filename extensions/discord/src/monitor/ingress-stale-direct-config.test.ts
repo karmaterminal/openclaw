@@ -191,6 +191,7 @@ async function expectFailsAsAmbient(params: {
   rawMessage: APIMessage;
   clock: number;
   guildEntries?: DiscordGuildEntries;
+  cfg?: OpenClawConfig;
 }): Promise<void> {
   await withQueue(
     () => params.clock,
@@ -207,6 +208,7 @@ async function expectFailsAsAmbient(params: {
         queue,
         now: () => params.clock,
         guildEntries: params.guildEntries,
+        cfg: params.cfg,
         dispatch,
       });
       monitor.start();
@@ -225,6 +227,25 @@ async function expectFailsAsAmbient(params: {
       }
     },
   );
+}
+
+const MENTION_REQUIRED_CHANNEL_ID = "mention-required-guild-text-channel";
+const CONFIGURED_MENTION_CFG = {
+  messages: { groupChat: { mentionPatterns: ["clawbot"] } },
+} as unknown as OpenClawConfig;
+
+function staleGuildTextMessage(
+  id: string,
+  clock: number,
+  overrides: RawMessageOverrides = {},
+): APIMessage {
+  return createRawMessage(id, MENTION_REQUIRED_CHANNEL_ID, {
+    guild_id: "guild-1",
+    channel: guildTextChannel(MENTION_REQUIRED_CHANNEL_ID),
+    content: "ordinary old room text",
+    timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
+    ...overrides,
+  } as RawMessageOverrides);
 }
 
 describe("Discord direct-configured stale ingress", () => {
@@ -541,40 +562,72 @@ describe("Discord direct-configured stale ingress", () => {
     });
   });
 
-  it("keeps stale hydrateable replies with missing referenced payload fail-open", async () => {
-    const clock = 1_780_000_400_000;
-    await expectDispatches({
-      rawMessage: createRawMessage("1023-hydrateable-reply", DIRECT_OPEN_CHANNEL_ID, {
-        guild_id: "guild-1",
+  // Suppression-eligible route: raw GuildText channel with requireMention true.
+  // Mention-open routes fail open before these checks, so only this route
+  // proves each preservation reason actually blocks the terminal branch.
+  it.each([
+    {
+      name: "direct bot mention",
+      id: "1023-required-mention",
+      overrides: {
+        content: "old direct ask <@bot-1>",
+        mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
+      },
+    },
+    {
+      name: "reply to the bot",
+      id: "1023-required-bot-reply",
+      overrides: {
+        content: "old explicit reply",
+        type: MessageType.Reply,
+        message_reference: {
+          type: MessageReferenceType.Default,
+          message_id: "reply-source-bot",
+          channel_id: MENTION_REQUIRED_CHANNEL_ID,
+          guild_id: "guild-1",
+        },
+        referenced_message: createRawMessage("reply-source-bot", MENTION_REQUIRED_CHANNEL_ID, {
+          guild_id: "guild-1",
+          author: {
+            id: "bot-1",
+            username: "openclaw",
+            discriminator: "0",
+            global_name: null,
+            avatar: null,
+            bot: true,
+          },
+        } as RawMessageOverrides),
+      },
+    },
+    {
+      name: "reply with a missing referenced payload",
+      id: "1023-required-missing-reply",
+      overrides: {
         content: "old reply without nested referenced payload",
         type: MessageType.Reply,
         message_reference: {
           type: MessageReferenceType.Default,
           message_id: "reply-source-missing",
-          channel_id: DIRECT_OPEN_CHANNEL_ID,
+          channel_id: MENTION_REQUIRED_CHANNEL_ID,
           guild_id: "guild-1",
         },
-        timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
-      } as RawMessageOverrides),
-      clock,
-    });
-  });
-
-  it("keeps stale known non-bot replies in a mention-open raw channel", async () => {
-    const clock = 1_780_000_500_000;
-    await expectDispatches({
-      rawMessage: createRawMessage("1023-known-nonbot-reply", DIRECT_OPEN_CHANNEL_ID, {
-        guild_id: "guild-1",
-        channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),
-        content: "old reply to a human",
+      },
+    },
+    {
+      // Canonical hydration refetches a mismatched nested payload too, so
+      // pre-claim must not terminally fail before the referenced author is proven.
+      name: "reply with a mismatched referenced payload",
+      id: "1023-required-mismatched-reply",
+      overrides: {
+        content: "old reply with a stale nested payload",
         type: MessageType.Reply,
         message_reference: {
           type: MessageReferenceType.Default,
-          message_id: "reply-source-human",
-          channel_id: DIRECT_OPEN_CHANNEL_ID,
+          message_id: "reply-source-authoritative",
+          channel_id: MENTION_REQUIRED_CHANNEL_ID,
           guild_id: "guild-1",
         },
-        referenced_message: createRawMessage("reply-source-human", DIRECT_OPEN_CHANNEL_ID, {
+        referenced_message: createRawMessage("reply-source-other", MENTION_REQUIRED_CHANNEL_ID, {
           guild_id: "guild-1",
           author: {
             id: "user-2",
@@ -584,9 +637,86 @@ describe("Discord direct-configured stale ingress", () => {
             avatar: null,
           },
         } as RawMessageOverrides),
-        timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
-      } as RawMessageOverrides),
-      clock,
-    });
-  });
+      },
+    },
+    {
+      name: "configured text mention",
+      id: "1023-required-configured-text",
+      overrides: { content: "hey clawbot are you around" },
+      cfg: CONFIGURED_MENTION_CFG,
+    },
+    {
+      name: "configured audio mention candidate",
+      id: "1023-required-configured-audio",
+      overrides: {
+        content: "",
+        attachments: [
+          { id: "att-1", filename: "voice-note.ogg", url: "https://cdn.example/voice-note.ogg" },
+        ] as unknown as APIMessage["attachments"],
+      },
+      cfg: CONFIGURED_MENTION_CFG,
+    },
+    {
+      name: "text control command",
+      id: "1023-required-control",
+      overrides: { content: "/status" },
+      cfg: {} satisfies OpenClawConfig,
+    },
+  ])(
+    "keeps stale $name in a suppression-eligible mention-required raw channel",
+    async (testCase) => {
+      const clock = 1_780_000_600_000;
+      await expectDispatches({
+        rawMessage: staleGuildTextMessage(testCase.id, clock, testCase.overrides),
+        guildEntries: mentionRequiredGuildEntries(MENTION_REQUIRED_CHANNEL_ID),
+        cfg: testCase.cfg,
+        clock,
+      });
+    },
+  );
+
+  it.each([
+    { name: "plain ambient text", id: "1023-required-ambient", overrides: {} },
+    {
+      name: "human reply with a matching referenced payload",
+      id: "1023-required-human-reply",
+      overrides: {
+        content: "old reply to a human",
+        type: MessageType.Reply,
+        message_reference: {
+          type: MessageReferenceType.Default,
+          message_id: "reply-source-human",
+          channel_id: MENTION_REQUIRED_CHANNEL_ID,
+          guild_id: "guild-1",
+        },
+        referenced_message: createRawMessage("reply-source-human", MENTION_REQUIRED_CHANNEL_ID, {
+          guild_id: "guild-1",
+          author: {
+            id: "user-2",
+            username: "bob",
+            discriminator: "0",
+            global_name: null,
+            avatar: null,
+          },
+        } as RawMessageOverrides),
+      },
+    },
+    {
+      name: "text that misses every configured mention pattern",
+      id: "1023-required-unmatched-text",
+      overrides: { content: "old room chatter about lunch" },
+      cfg: CONFIGURED_MENTION_CFG,
+    },
+  ])(
+    "suppresses stale $name in a suppression-eligible mention-required raw channel",
+    async (testCase) => {
+      const clock = 1_780_000_700_000;
+      await expectFailsAsAmbient({
+        rawMessage: staleGuildTextMessage(testCase.id, clock, testCase.overrides),
+        guildEntries: mentionRequiredGuildEntries(MENTION_REQUIRED_CHANNEL_ID),
+        cfg: testCase.cfg,
+        clock,
+      });
+    },
+  );
 });

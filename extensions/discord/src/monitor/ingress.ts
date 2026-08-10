@@ -1,16 +1,10 @@
 // Discord plugin module owns raw gateway-message durable ingress and replay draining.
-import {
-  ChannelType,
-  GatewayDispatchEvents,
-  MessageReferenceType,
-  MessageType,
-  type APIMessage,
-} from "discord-api-types/v10";
+import { ChannelType, GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
 import {
   createChannelIngressError,
   createChannelIngressMonitor,
   type ChannelIngressQueue,
-  type ChannelIngressQueueRecord,
+  type ChannelIngressQueueClaim,
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
 } from "openclaw/plugin-sdk/channel-outbound";
@@ -37,6 +31,7 @@ import {
 import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
 import type { DiscordMessageEvent } from "./listeners.js";
 import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
+import { resolveDiscordReplyReferenceState } from "./message-handler.reply-reference.js";
 
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
@@ -64,33 +59,6 @@ type DiscordIngressDispatch = (
   lifecycle: DiscordIngressLifecycle,
 ) => Promise<DiscordIngressDispatchResult | void> | DiscordIngressDispatchResult | void;
 
-type PublicDiscordDrainOptions = NonNullable<
-  Parameters<typeof createChannelIngressMonitor>[0]["drain"]
->;
-
-type DiscordStaleAmbientBacklogDisposition = {
-  kind: "fail";
-  reason: "stale-ambient-backlog";
-  message: string;
-};
-
-type DiscordPendingDispositionContext = {
-  laneKey: string;
-  now: number;
-};
-
-type DiscordInternalDrainOptions = PublicDiscordDrainOptions & {
-  onPendingDispositionCommitted: (
-    record: ChannelIngressQueueRecord<DiscordIngressPayload>,
-    disposition: { kind: string; reason: string },
-    context: DiscordPendingDispositionContext,
-  ) => void;
-  resolvePendingDisposition: (
-    record: ChannelIngressQueueRecord<DiscordIngressPayload>,
-    context: DiscordPendingDispositionContext,
-  ) => Promise<DiscordStaleAmbientBacklogDisposition | null>;
-};
-
 type DiscordThreadBindingLookup = {
   getByThreadId?: (threadId: string) => unknown;
   listBySessionKey?: (targetSessionKey: string) => unknown[];
@@ -104,6 +72,9 @@ type DiscordIngressMonitor = {
 };
 
 const DiscordIngressPayloadError = createChannelIngressError("DiscordIngressPayloadError");
+const DiscordStaleAmbientBacklogError = createChannelIngressError(
+  "DiscordStaleAmbientBacklogError",
+);
 
 function inspectDiscordMessage(rawMessage: unknown): { eventId: string; laneKey: string } {
   if (!rawMessage || typeof rawMessage !== "object" || Array.isArray(rawMessage)) {
@@ -274,17 +245,9 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
 }
 
 function hasHydrateableDiscordReplyReference(rawMessage: APIMessage): boolean {
-  const reference = rawMessage.message_reference;
-  if (!reference || !nonEmptyString(reference.message_id)) {
-    return false;
-  }
-  if (reference.type != null && reference.type !== MessageReferenceType.Default) {
-    return false;
-  }
-  if (rawMessage.type != null && rawMessage.type !== MessageType.Reply) {
-    return false;
-  }
-  return !Object.hasOwn(rawMessage, "referenced_message");
+  // `missing` and `invalid` both refetch in canonical hydration, so pre-claim
+  // must keep both: only hydration can prove the referenced author is the bot.
+  return resolveDiscordReplyReferenceState(rawMessage) !== "complete";
 }
 
 function canExpireDiscordStaleAmbientBacklog(
@@ -418,6 +381,44 @@ async function hasUnresolvedDiscordAddressForm(
   );
 }
 
+async function resolveDiscordStaleAmbientSuppression(
+  rawMessage: APIMessage,
+  claim: ChannelIngressQueueClaim<DiscordIngressPayload>,
+  params: {
+    botUserId?: string;
+    cfg?: OpenClawConfig;
+    discordConfig?: DiscordAccountConfig | null;
+    guildEntries?: Record<string, DiscordGuildEntryResolved>;
+    threadBindings?: DiscordThreadBindingLookup;
+  },
+  now: number,
+): Promise<{ laneKey: string; sentAt: number } | null> {
+  if (isDiscordAddressedMessage(rawMessage, params.botUserId)) {
+    return null;
+  }
+  const payloadReceivedAt = Number.isFinite(claim.payload.receivedAt)
+    ? claim.payload.receivedAt
+    : claim.receivedAt;
+  // A replayed row keeps its original send time; a re-enqueued row does not.
+  const sentAt =
+    claim.receivedAt > payloadReceivedAt
+      ? claim.receivedAt
+      : (discordMessageSentAtMs(rawMessage) ?? claim.receivedAt);
+  if (now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
+    return null;
+  }
+  if (hasPotentialActiveDiscordTextControlCommand(rawMessage, params.cfg)) {
+    return null;
+  }
+  if (await hasUnresolvedDiscordAddressForm(rawMessage, params)) {
+    return null;
+  }
+  if (!canExpireDiscordStaleAmbientBacklog(rawMessage, { guildEntries: params.guildEntries })) {
+    return null;
+  }
+  return { laneKey: claim.laneKey ?? `channel:${rawMessage.channel_id}`, sentAt };
+}
+
 export function createDiscordIngressMonitor(params: {
   accountId: string;
   client: Client;
@@ -431,11 +432,28 @@ export function createDiscordIngressMonitor(params: {
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
   now?: () => number;
 }): DiscordIngressMonitor {
-  const queue =
+  const nowMs = params.now ?? Date.now;
+  const baseQueue =
     params.queue ??
     getDiscordRuntime().state.openChannelIngressQueue<DiscordIngressPayload>({
       accountId: params.accountId,
     });
+  // Suppression receipts are recorded where the durable fact commits: a lost
+  // claim race or a failed write must never claim a message was suppressed.
+  const pendingReceipts = new Map<string, () => void>();
+  const queue: ChannelIngressQueue<DiscordIngressPayload> = {
+    ...baseQueue,
+    fail: async (idOrClaim, failOptions) => {
+      const eventId = typeof idOrClaim === "string" ? idOrClaim : idOrClaim.id;
+      const emitReceipt = pendingReceipts.get(eventId);
+      pendingReceipts.delete(eventId);
+      const committed = await baseQueue.fail(idOrClaim, failOptions);
+      if (committed && failOptions.reason === "stale-ambient-backlog") {
+        emitReceipt?.();
+      }
+      return committed;
+    },
+  };
   const monitor = createChannelIngressMonitor<
     APIMessage,
     DiscordIngressBody,
@@ -458,7 +476,41 @@ export function createDiscordIngressMonitor(params: {
         ),
     },
     // Gateway mapping is intentionally delayed until after the durable claim.
-    deliver: async (rawMessage, lifecycle) => {
+    deliver: async (rawMessage, lifecycle, claim) => {
+      // Stale ambient suppression runs on the claimed row so the terminal
+      // decision stays on the canonical delivery lifecycle instead of a
+      // Discord-only pre-claim seam on public channel SDK options.
+      const suppressed = await resolveDiscordStaleAmbientSuppression(
+        rawMessage,
+        claim,
+        params,
+        nowMs(),
+      );
+      if (suppressed) {
+        pendingReceipts.set(claim.id, () =>
+          params.runtime.log?.(
+            {
+              level: "debug",
+              source: "discord",
+              accountId: params.accountId,
+              eventId: claim.id,
+              sourceEventId: rawMessage.id,
+              laneKey: suppressed.laneKey,
+              channelId: rawMessage.channel_id,
+              receivedAt: new Date(claim.receivedAt).toISOString(),
+              ageMs: Math.max(0, nowMs() - suppressed.sentAt),
+              thresholdMs: DISCORD_STALE_AMBIENT_BACKLOG_MS,
+              disposition: "failed",
+              reason: "stale-ambient-backlog",
+            },
+            "discord ingress stale ambient backlog suppressed",
+          ),
+        );
+        throw new DiscordStaleAmbientBacklogError(
+          `Discord ambient message ${claim.id} on ${suppressed.laneKey} is older than ` +
+            `${DISCORD_STALE_AMBIENT_BACKLOG_MS}ms; suppressing stale backlog before dispatch.`,
+        );
+      }
       const event = mapGatewayDispatchData(
         params.client,
         GatewayDispatchEvents.MessageCreate,
@@ -474,82 +526,13 @@ export function createDiscordIngressMonitor(params: {
       failedMaxEntries: 5_000,
     },
     appendRetryDelaysMs: [0],
-    // Bundled-only pending disposition hook: keep stale ambient policy local to
-    // Discord without promoting the callbacks as public channel SDK API.
     drain: {
-      onPendingDispositionCommitted: (record, disposition, context) => {
-        if (disposition.kind !== "fail" || disposition.reason !== "stale-ambient-backlog") {
-          return;
-        }
-        const rawMessage = record.payload.rawMessage;
-        const payloadReceivedAt = Number.isFinite(record.payload.receivedAt)
-          ? record.payload.receivedAt
-          : record.receivedAt;
-        const sentAt =
-          record.receivedAt > payloadReceivedAt
-            ? record.receivedAt
-            : (discordMessageSentAtMs(rawMessage) ?? record.receivedAt);
-        params.runtime.log?.(
-          {
-            level: "debug",
-            source: "discord",
-            accountId: params.accountId,
-            eventId: record.id,
-            sourceEventId: rawMessage.id,
-            laneKey: context.laneKey,
-            channelId: rawMessage.channel_id,
-            receivedAt: new Date(record.receivedAt).toISOString(),
-            ageMs: Math.max(0, context.now - sentAt),
-            thresholdMs: DISCORD_STALE_AMBIENT_BACKLOG_MS,
-            disposition: "failed",
-            reason: "stale-ambient-backlog",
-          },
-          "discord ingress stale ambient backlog suppressed",
-        );
-      },
-      resolvePendingDisposition: async (record, context) => {
-        const rawMessage = record.payload.rawMessage;
-        if (isDiscordAddressedMessage(rawMessage, params.botUserId)) {
-          return null;
-        }
-        const payloadReceivedAt = Number.isFinite(record.payload.receivedAt)
-          ? record.payload.receivedAt
-          : record.receivedAt;
-        const sentAt =
-          record.receivedAt > payloadReceivedAt
-            ? record.receivedAt
-            : (discordMessageSentAtMs(rawMessage) ?? record.receivedAt);
-        if (context.now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
-          return null;
-        }
-        if (hasPotentialActiveDiscordTextControlCommand(rawMessage, params.cfg)) {
-          return null;
-        }
-        if (
-          await hasUnresolvedDiscordAddressForm(rawMessage, {
-            cfg: params.cfg,
-            discordConfig: params.discordConfig,
-            threadBindings: params.threadBindings,
-          })
-        ) {
-          return null;
-        }
-        if (
-          !canExpireDiscordStaleAmbientBacklog(rawMessage, { guildEntries: params.guildEntries })
-        ) {
-          return null;
-        }
-        return {
-          kind: "fail",
-          reason: "stale-ambient-backlog",
-          message:
-            `Discord ambient message ${record.id} on ${context.laneKey} is older than ` +
-            `${DISCORD_STALE_AMBIENT_BACKLOG_MS}ms; suppressing stale backlog before dispatch.`,
-        };
-      },
       resolveNonRetryableFailure: (error) => {
         if (error instanceof DiscordIngressPayloadError) {
           return { reason: "invalid-event", message: error.message };
+        }
+        if (error instanceof DiscordStaleAmbientBacklogError) {
+          return { reason: "stale-ambient-backlog", message: error.message };
         }
         if (isDiscordAuthenticationFailure(error)) {
           return { reason: "authentication-failed", message: formatErrorMessage(error) };
@@ -557,7 +540,7 @@ export function createDiscordIngressMonitor(params: {
         return null;
       },
       onLog: (message) => params.runtime.error?.(danger(`discord ingress: ${message}`)),
-    } satisfies DiscordInternalDrainOptions as PublicDiscordDrainOptions,
+    },
     onError: (error) =>
       params.runtime.error?.(danger(`discord ingress drain failed: ${formatErrorMessage(error)}`)),
   });
@@ -567,6 +550,9 @@ export function createDiscordIngressMonitor(params: {
       await monitor.admit(rawMessage);
     },
     start: monitor.start,
-    stop: monitor.stop,
+    stop: async () => {
+      await monitor.stop();
+      pendingReceipts.clear();
+    },
   };
 }

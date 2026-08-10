@@ -1,10 +1,6 @@
 /** Shared durable channel-ingress admission, pump, retention, and shutdown lifecycle. */
 import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
 import { sleep } from "../../utils/sleep.js";
-import type {
-  OnChannelIngressPendingDispositionCommitted,
-  ResolveChannelIngressPendingDisposition,
-} from "./ingress-drain-pending-disposition.js";
 import {
   createChannelIngressDrain,
   type ChannelIngressDrain,
@@ -138,22 +134,6 @@ export type ChannelIngressMonitorDrainOptions<TStoredPayload, TMetadata> = Omit<
   "queue" | "dispatchClaimedEvent" | "abortSignal" | "now" | "ownerId" | "claimLeaseMs"
 >;
 
-type InternalChannelIngressMonitorDrainOptions<TStoredPayload, TMetadata> =
-  ChannelIngressMonitorDrainOptions<TStoredPayload, TMetadata> & {
-    resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TStoredPayload, TMetadata>;
-    onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<
-      TStoredPayload,
-      TMetadata
-    >;
-  };
-
-type InternalCreateChannelIngressMonitorOptions<TRaw, TBody, TStoredPayload, TMetadata> = Omit<
-  CreateChannelIngressMonitorOptions<TRaw, TBody, TStoredPayload, TMetadata>,
-  "drain"
-> & {
-  drain?: InternalChannelIngressMonitorDrainOptions<TStoredPayload, TMetadata>;
-};
-
 export type CreateChannelIngressMonitorOptions<TRaw, TBody, TStoredPayload, TMetadata> = {
   queue:
     | ChannelIngressQueue<TStoredPayload, TMetadata>
@@ -204,13 +184,6 @@ export type CreateChannelIngressMonitorOptions<TRaw, TBody, TStoredPayload, TMet
 export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetadata = unknown>(
   options: CreateChannelIngressMonitorOptions<TRaw, TBody, TStoredPayload, TMetadata>,
 ) {
-  const internalOptions = options as InternalCreateChannelIngressMonitorOptions<
-    TRaw,
-    TBody,
-    TStoredPayload,
-    TMetadata
-  >;
-  const drainOptions = internalOptions.drain;
   const now = options.now ?? Date.now;
   const waitForDeliveryIdleBeforeRepump = options.waitForDeliveryIdleBeforeRepump ?? false;
   const retention =
@@ -334,15 +307,15 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
 
   const getDrain = (): ChannelIngressDrain => {
     drain ??= createChannelIngressDrain<TStoredPayload, TMetadata>({
-      ...drainOptions,
+      ...options.drain,
       queue: getQueue(),
       abortSignal: drainAbortSignal,
       now,
-      retryPolicy: drainOptions?.retryPolicy ?? {
+      retryPolicy: options.drain?.retryPolicy ?? {
         maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
         deadLetterMinAgeMs: DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
       },
-      formatError: drainOptions?.formatError ?? formatErrorMessage,
+      formatError: options.drain?.formatError ?? formatErrorMessage,
       dispatchClaimedEvent: async (claim, lifecycle) => {
         if (!running || isAborted() || lifecycle.abortSignal.aborted) {
           return { kind: "failed-retryable", error: createStoppedError() };
@@ -361,7 +334,7 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
           throw options.payload.createClaimError("invalid-version", claim);
         }
         const raw = options.payload.deserialize(decoded.body, { claim });
-        const claimedLaneKey = claim.laneKey ?? drainOptions?.deriveLaneKey?.(claim);
+        const claimedLaneKey = claim.laneKey ?? options.drain?.deriveLaneKey?.(claim);
         const facts = options.inspect(raw, {
           phase: "claim",
           claimedId: claim.id,
@@ -543,8 +516,8 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
             shouldStop: () =>
               !running ||
               isAborted() ||
-              (drainOptions?.startLimit !== undefined &&
-                activeDeliveries.size >= drainOptions.startLimit),
+              (options.drain?.startLimit !== undefined &&
+                activeDeliveries.size >= options.drain.startLimit),
           }),
         );
         if (waitForDeliveryIdleBeforeRepump) {
