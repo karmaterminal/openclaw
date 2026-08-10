@@ -66,7 +66,7 @@ The previous lane narrowed the exported `CreateChannelIngressDrainOptions` /
 behind `as InternalChannelIngressDrainOptions` casts. Because Discord is a plugin
 and plugin production code may not import `src/**` or `src/plugin-sdk-internal/**`
 (root `AGENTS.md` Architecture), no typed internal seam was reachable: anything
-Discord can legally type against *is* public Plugin SDK. The cast was therefore an
+Discord can legally type against _is_ public Plugin SDK. The cast was therefore an
 unsafe cross-package private ABI, and it left four attributable CI failures.
 
 Canonical fix: delete the pre-claim disposition seam from core entirely and move
@@ -99,7 +99,7 @@ turn, no typing indicator, no reply — and no new public contract names.
 
 `hasHydrateableDiscordReplyReference` previously only failed open when
 `referenced_message` was absent, while canonical hydration also refetches a
-*mismatched* nested payload. A stale GuildText reply carrying a mismatched nested
+_mismatched_ nested payload. A stale GuildText reply carrying a mismatched nested
 payload could therefore be terminally failed before hydration proved the referenced
 author was the bot. Both sites now consume the shared classifier and treat
 `!== "complete"` (missing **or** invalid) as hydrateable. Red-then-green proven:
@@ -117,7 +117,7 @@ emits only on a committed `stale-ambient-backlog` write; `stop()` clears the map
 
 ### Behavior change disclosed honestly
 
-Pre-claim disposition ran over *all* pending rows regardless of retry backoff.
+Pre-claim disposition ran over _all_ pending rows regardless of retry backoff.
 Post-claim, a stale ambient row that already suffered a transient delivery failure
 enters retry backoff (`DEFAULT_INGRESS_RETRY_BASE_MS` 1000ms, capped at 3*60_000ms)
 and, as the oldest retained row, holds its lane until claimable again — then is
