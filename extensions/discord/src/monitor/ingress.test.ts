@@ -596,7 +596,11 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it.each([ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread])(
+  it.each([
+    ChannelType.PublicThread,
+    ChannelType.PrivateThread,
+    ChannelType.AnnouncementThread,
+  ] as const)(
     "keeps stale persisted thread-channel type %s out of ambient suppression",
     async (type) => {
       await withQueue(async (queue) => {
