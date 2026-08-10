@@ -187,7 +187,7 @@ async function expectDispatches(params: {
   );
 }
 
-async function expectFailsAsAmbient(params: {
+async function expectSuppressedAsAmbient(params: {
   rawMessage: APIMessage;
   clock: number;
   guildEntries?: DiscordGuildEntries;
@@ -204,24 +204,36 @@ async function expectFailsAsAmbient(params: {
       const dispatch = vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
         await lifecycle.onAdopted();
       });
+      const log = vi.fn();
+      const error = vi.fn();
       const monitor = createMonitor({
         queue,
         now: () => params.clock,
         guildEntries: params.guildEntries,
         cfg: params.cfg,
+        runtime: { error, log },
         dispatch,
       });
       monitor.start();
       try {
         await vi.waitFor(
           async () => {
-            expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-              { id: params.rawMessage.id, reason: "stale-ambient-backlog" },
-            ]);
+            expect(log).toHaveBeenCalledWith(
+              expect.objectContaining({
+                eventId: params.rawMessage.id,
+                reason: "stale-ambient-backlog",
+                disposition: "suppressed",
+              }),
+              "discord ingress stale ambient backlog suppressed",
+            );
           },
           { timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS },
         );
         expect(dispatch).not.toHaveBeenCalled();
+        // Handled policy outcome settles as a completion, never a dead letter.
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        expect(error).not.toHaveBeenCalled();
       } finally {
         await monitor.stop();
       }
@@ -414,10 +426,13 @@ describe("Discord direct-configured stale ingress", () => {
         });
 
         const dispatched: string[] = [];
+        const log = vi.fn();
+        const error = vi.fn();
         const monitor = createMonitor({
           queue,
           now: () => clock,
           guildEntries: mentionRequiredGuildEntries(channelId),
+          runtime: { error, log },
           dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
             if (!event.id) {
               throw new Error("expected dispatched Discord event id");
@@ -431,10 +446,19 @@ describe("Discord direct-configured stale ingress", () => {
           await vi.waitFor(() => expect(dispatched).toEqual([fresh.id]), {
             timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS,
           });
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: "stale-ambient-a", reason: "stale-ambient-backlog" },
-            { id: "stale-ambient-b", reason: "stale-ambient-backlog" },
-          ]);
+          await vi.waitFor(async () => {
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
+          });
+          for (const id of ["stale-ambient-a", "stale-ambient-b"]) {
+            expect(log).toHaveBeenCalledWith(
+              expect.objectContaining({ eventId: id, reason: "stale-ambient-backlog" }),
+              "discord ingress stale ambient backlog suppressed",
+            );
+          }
+          // Backlog suppression is routine policy, so a restart-sized backlog
+          // must never accumulate dead letters that alarm doctor/health.
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+          expect(error).not.toHaveBeenCalled();
         } finally {
           await monitor.stop();
         }
@@ -458,26 +482,9 @@ describe("Discord direct-configured stale ingress", () => {
           laneKey: `channel:${DIRECT_OPEN_CHANNEL_ID}`,
           receivedAt: clock,
         });
-        const firstDispatch = vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
-          await lifecycle.onAdopted();
-        });
-        const firstMonitor = createMonitor({
-          queue,
-          now: () => clock,
-          guildEntries: mentionRequiredGuildEntries(),
-          dispatch: firstDispatch,
-        });
-        firstMonitor.start();
-        try {
-          await vi.waitFor(async () => {
-            expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-              { id: messageId, reason: "stale-ambient-backlog" },
-            ]);
-          });
-          expect(firstDispatch).not.toHaveBeenCalled();
-        } finally {
-          await firstMonitor.stop();
-        }
+        // Real dead letter, not a policy suppression: suppression settles as a
+        // completion, so only genuine failures reach the resubmit surface.
+        await queue.fail(messageId, { reason: "invalid-event", message: "durable decode failed" });
 
         clock += 5 * 60 * 1_000;
         if (!queue.resubmit) {
@@ -711,7 +718,7 @@ describe("Discord direct-configured stale ingress", () => {
     "suppresses stale $name in a suppression-eligible mention-required raw channel",
     async (testCase) => {
       const clock = 1_780_000_700_000;
-      await expectFailsAsAmbient({
+      await expectSuppressedAsAmbient({
         rawMessage: staleGuildTextMessage(testCase.id, clock, testCase.overrides),
         guildEntries: mentionRequiredGuildEntries(MENTION_REQUIRED_CHANNEL_ID),
         cfg: testCase.cfg,

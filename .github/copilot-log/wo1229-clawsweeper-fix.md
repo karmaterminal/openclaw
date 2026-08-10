@@ -329,3 +329,297 @@ contains `checks-node-core-src-security`, whose only failing test is the same
 base-owned file (`1 failed | 359 passed | 2 skipped`, `ReferenceError:
 createTempDir is not defined` at `src/sessions/user-turn-transcript.test.ts:548`).
 `check-docs` is now explicitly `success` in the gate's own selected results.
+
+## Lane 6 — Codex review response on head `fca00a74055bf5b0c433b58bfbd3a6448da9aba8`
+
+Reviewer identity: the request-changes review is authored by
+`chatgpt-codex-connector[bot]`. `gh api repos/karmaterminal/openclaw/pulls/1237/reviews`
+and `.../comments` return no human reviewer and no issue comments, so all four
+findings below are that bot's.
+
+### Finding `3748032892` (P2) — obsolete, filed against stale head `5a5ca7b`
+
+It asks for a test-only typed seam or casts so
+`resolvePendingDisposition` / `onPendingDispositionCommitted` keep typechecking.
+That seam no longer exists anywhere:
+
+```console
+$ rg -n 'PendingDisposition' -g '!docs/.generated' .
+(no matches)
+$ git ls-files | rg 'ingress-drain-pending-disposition'
+(no output)
+```
+
+Both `src/channels/message/ingress-drain-pending-disposition.ts` and
+`ingress-drain-pending-disposition.test.ts` were deleted in Lane 2, and the
+freshness/retry-delay tests were rewritten onto the canonical claimed-delivery
+path. The core test-type lane confirms zero residual callsites:
+
+```console
+$ node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.core.test.json \
+    --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core-test.tsbuildinfo
+src/sessions/user-turn-transcript.test.ts(548,19): error TS2304: Cannot find name 'createTempDir'.
+ui/src/app-session-route-paths.ts(4,8): error TS2307: Cannot find module '@openclaw/session-url-contract/parse' ...
+```
+
+The first is base-owned (`git diff --quiet origin/codeagent/wo1229-upstream-pr HEAD --
+src/sessions/user-turn-transcript.test.ts` exits `0`). The second is a
+local-only artifact of an absent `dist` in this linked worktree and never
+appears in CI. Review requirements 1 and 2 are therefore satisfied by deletion
+rather than by adding an internal seam; adding one now would reintroduce exactly
+the surface the maintainer rejected.
+
+### Finding `3748671291` (P1) — not reproducible
+
+It predicts the CAS-loss assertion `args[0] === "1027"` breaks because `fail`
+may now receive a claim object. The `fail` wrapper normalizes with
+`typeof idOrClaim === "string" ? idOrClaim : idOrClaim.id`, and the suite is
+green:
+
+```console
+$ node scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts
+Test Files  1 passed (1)
+     Tests  28 passed (28)
+```
+
+### Finding `3748798826` (P2) — valid, fixed in this lane
+
+Core `applyFailureDisposition` emitted
+`spooled update ... failed with non-retryable ...; dead-lettered` through
+`options.onLog`, which Discord routes to `params.runtime.error?.(danger(...))`.
+An intentional stale-ambient suppression is deliberate product policy, not an
+operator fault, so this was a real regression against the base PR's
+debug-receipt-only behavior.
+
+A first pass added an `intentional?: boolean` marker that only silenced the log.
+That was rejected on review and is superseded: silencing the line still left a
+durable `status = "failed"` row. `countFailedChannelIngressQueueEntries`
+(`src/channels/message/ingress-queue.ts:533`) selects `status = "failed"` with
+no reason predicate, and it feeds `openclaw doctor`
+(`src/commands/doctor-channel-ingress.ts:20`) plus gateway delivery-queue health
+(`src/gateway/health/delivery-queue.ts:36`, `src/commands/health.ts:196`), which
+renders `Delivery queue: warning (dead-lettered entries ...)`. With Discord's
+`failedMaxEntries: 5_000`, one reconnect-sized suppressed backlog becomes a
+permanent false alarm. See Lane 7 for the canonical fix.
+
+### Finding `3748671288` (P2) — accepted, named tradeoff
+
+Post-claim suppression means a stale ambient row already sitting in retry
+backoff holds its lane until the backoff expires. The window is bounded and
+narrow: `DISCORD_STALE_AMBIENT_BACKLOG_MS` is 15 minutes while
+`DEFAULT_INGRESS_RETRY_MAX_MS` is 3 minutes, so the row must have failed
+transiently within the last 3 minutes while already being more than 15 minutes
+old. Closing it fully requires a pre-claim decision seam, which is the exact
+public surface the maintainer rejected. Recording it here as a deliberate
+decision, not an oversight.
+
+### Required black-box regression — global `mentionPatterns`
+
+The pre-existing `1013` `it.each` matrix never reached the terminal branch:
+`canExpireDiscordStaleAmbientBacklog` needs a raw non-thread channel
+(`typeof channelInfo.type === "number"`) plus `requireMention: true`, and that
+case supplies neither, so it fails open on missing-raw-channel regardless of
+mention configuration.
+
+New `1023` case in `extensions/discord/src/monitor/ingress.test.ts` supplies
+both, uses `cfg: { messages: { groupChat: { mentionPatterns: ["openclaw"] } } }`
+with content `"openclaw can you check the incident"`, and drives the real
+`createDiscordIngressMonitor` end to end. Red proof, with
+`matchesConfiguredDiscordMentionText` disabled:
+
+```console
+AssertionError: expected [] to deeply equal [ '1023' ]
+```
+
+`1013` still passed under that same probe, confirming it was toothless for this
+invariant.
+
+## Lane 7 — handled settlement replaces the dead-letter row
+
+Supersedes the Lane 6 first pass on finding `3748798826`. The reviewer's point
+was confirmed at the durable layer, not just the log layer: suppression must not
+produce a `status = "failed"` row at all.
+
+### Root cause
+
+`countFailedChannelIngressQueueEntries` (`src/channels/message/ingress-queue.ts:533`)
+is reason-agnostic. Every consumer of it therefore counts a deliberate policy
+drop as operator-actionable breakage:
+
+- `openclaw doctor` via `src/commands/doctor-channel-ingress.ts:20`, invoked from
+  `src/flows/doctor-health-contribution-runners.state.ts:95`;
+- gateway health via `src/gateway/health/delivery-queue.ts:36` and
+  `src/commands/health.ts:196`, which prints
+  `Delivery queue: warning (dead-lettered entries ...)`.
+
+### Canonical fix
+
+The queue already owns two terminal outcomes: the dead-letter row and the
+successful completion tombstone. A handled policy decision is the second one, so
+it settles there.
+
+- `src/channels/message/ingress-retry-policy.ts`: `IngressNonRetryableFailure`
+  gains `settlement?: "dead-letter" | "handled"`, defaulting to `"dead-letter"`.
+  `resolveIngressFailureDisposition` maps `"handled"` to a third internal
+  disposition kind. The union stays internal; the field rides the pre-existing
+  public `drain.resolveNonRetryableFailure` hook, so no new public callback
+  contract name appears.
+- `src/channels/message/ingress-drain.ts`: `applyFailureDisposition` settles
+  `kind === "handled"` through `completeClaimWithRetry(claim)` and returns before
+  the dead-letter branch. The dead-letter `log()` is restored to its unmodified
+  base form, so real failures are untouched.
+- `extensions/discord/src/monitor/ingress.ts`: the queue `fail` wrapper became a
+  `complete` wrapper. It reads the pending receipt, awaits
+  `baseQueue.complete(...)`, deletes the entry, and emits only when `complete()`
+  returned `true`. Ordinary completions find no pending receipt and emit nothing.
+  The receipt's `disposition` field is now `"suppressed"`, not `"failed"`.
+
+Core stays channel-agnostic: no Discord reason string, no health-query
+exclusion, no schema change and no schema-version bump.
+
+### Accepted tradeoff
+
+`resubmit` (`src/channels/message/ingress-queue.ts:1249`) only transitions rows
+with `status = "failed"`; a `completed` row returns `{ kind: "completed" }`.
+Operators can therefore no longer replay a stale-suppressed Discord message via
+dead-letter resubmit. Judged acceptable: suppression is deliberate policy on
+ambient chatter older than 15 minutes in a mention-required channel, and a
+permanent false health warning outranks a marginal replay path. The resubmit
+machinery keeps its coverage — the
+`treats dead-letter resubmit as fresh operator intent` test now drives a genuine
+`invalid-event` dead letter instead of relying on suppression.
+
+### Red proof — failure-shaped tests break if the handled path calls `fail`
+
+Forcing `kind: "fail"` in `resolveIngressFailureDisposition`:
+
+```console
+$ node scripts/run-vitest.mjs extensions/discord/src/monitor/ingress.test.ts \
+    extensions/discord/src/monitor/ingress-stale-direct-config.test.ts
+Tests  12 failed | 36 passed (48)
+```
+
+Restored, the same command is `48 passed (48)`.
+
+### Health-count proof
+
+`src/channels/message/ingress-drain.test.ts` gains
+`settles a channel-handled outcome as a completion the operator surfaces ignore`.
+It drains one handled row and one genuine dead-letter row, spies on `queue.fail`,
+and asserts `listFailed()` holds only the genuine failure,
+`countFailedChannelIngressQueueEntries(stateDir)` reports `count: 1`,
+`listPending()` is empty, `fail` was never called with the handled claim, and no
+policy string reached `onLog`.
+
+### Validation on the working tree
+
+```console
+$ node scripts/run-vitest.mjs src/channels/message
+Test Files  32 passed (32)     Tests  369 passed (369)
+$ node scripts/run-vitest.mjs extensions/discord
+Test Files  215 passed (215)   Tests  2619 passed (2619)
+$ node scripts/run-vitest.mjs extensions/telegram/src/monitor extensions/slack/src/monitor
+Test Files  48 passed (48)     Tests  1045 passed (1045)
+$ node scripts/run-tsgo.mjs -p tsconfig.core.json ...                       no errors
+$ node scripts/run-tsgo.mjs -p tsconfig.extensions.json ...                 no errors
+$ node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json  no errors
+$ node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.test.root.json        no errors
+$ node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.core.test.json
+src/sessions/user-turn-transcript.test.ts(548,19): error TS2304: Cannot find name 'createTempDir'.
+ui/src/app-session-route-paths.ts(4,8): error TS2307: Cannot find module '@openclaw/session-url-contract/parse' ...
+$ git diff --quiet origin/codeagent/wo1229-upstream-pr -- \
+    src/sessions/user-turn-transcript.test.ts ui/src/app-session-route-paths.ts
+(exit 0 — both files byte-identical to base 02bd9d77142248a07e4ad50387a166db1823b494)
+$ node scripts/check-max-lines-ratchet.mjs
+max-lines ratchet OK: 980 grandfathered suppressions.
+$ ./node_modules/.bin/oxlint --config .oxlintrc.json src/channels/message extensions/discord/src/monitor
+oxlint exit=0
+$ node scripts/plugin-sdk-surface-report.mjs --check                        exit 0
+$ node scripts/sync-plugin-sdk-exports.mjs --check
+plugin-sdk exports synced.
+$ node scripts/check-extension-plugin-sdk-boundary.mjs --mode=src-outside-plugin-sdk
+No extension plugin-sdk boundary violations found.
+$ node --import tsx scripts/generate-plugin-sdk-api-baseline.ts --check
+OK docs/.generated/plugin-sdk-api-baseline.sha256
+$ git --no-pager diff --check
+(clean)
+```
+
+Sibling Telegram and Slack ingress suites are included because
+`resolveNonRetryableFailure` is a shared public hook. `settlement` is optional
+and those channels never set it, so they keep the unchanged dead-letter path.
+
+### Plugin SDK baseline churn is closure-hash-only
+
+```console
+$ git --no-pager diff --numstat -- docs/.generated/plugin-sdk-api-baseline.sha256
+32      32
+$ diff <(awk '{print $2}' base.sha256 | sort) <(awk '{print $2}' new.sha256 | sort) | wc -l
+0
+```
+
+Both files hold 151 entries with an identical symbol set; only `module/*`
+closure hashes moved, and every changed line is a `module/` entry rather than a
+named export. `IngressNonRetryableFailure` is exported from neither
+`src/channels/message/index.ts` nor `src/plugin-sdk/plugin-state-test-runtime.ts`,
+and plugins satisfy `resolveNonRetryableFailure` structurally, so an optional
+field can only move a closure hash.
+
+### Production versus test LOC against base `02bd9d77142248a07e4ad50387a166db1823b494`
+
+```console
+$ git --no-pager diff --numstat origin/codeagent/wo1229-upstream-pr -- src extensions
+277  82  extensions/discord/src/monitor/ingress-stale-direct-config.test.ts
+ 84  38  extensions/discord/src/monitor/ingress.test.ts
+128  93  extensions/discord/src/monitor/ingress.ts
+ 11  30  extensions/discord/src/monitor/message-handler.hydration.ts
+ 40   0  extensions/discord/src/monitor/message-handler.reply-reference.ts
+  0   5  src/channels/message/index.ts
+ 60  64  src/channels/message/ingress-drain.freshness.test.ts
+  0 117  src/channels/message/ingress-drain-pending-disposition.test.ts
+  0  99  src/channels/message/ingress-drain-pending-disposition.ts
+  0  47  src/channels/message/ingress-drain-retry-delay.test.ts
+ 50   0  src/channels/message/ingress-drain.test.ts
+ 10  21  src/channels/message/ingress-drain.ts
+ 19   0  src/channels/message/ingress-retry-policy.test.ts
+ 14   1  src/channels/message/ingress-retry-policy.ts
+```
+
+Production is `+203 / -249`, net `-46`. Tests are `+490 / -348`, net `+142`. The
+generated baseline is excluded from both counts. The negative production delta
+comes from deleting the rejected pre-claim seam module and folding Discord's
+duplicated reply-reference logic into one shared classifier.
+
+### Blocked proof in this environment
+
+- `check-dependencies` cannot run locally: `pnpm dlx knip@6.8.0` fails with
+  `MODULE_NOT_FOUND` for an evicted dlx store entry under
+  `.../openclaw-local-ci-pnpm-store/v11/links/@/knip/6.8.0/.../bin/knip.js`.
+  Mitigation evidence:
+  `git --no-pager diff -U0 -- src extensions | grep -E '^\+.*\bexport\b'`
+  returns nothing, so this lane introduces no new export that could go unused.
+  CI owns the authoritative result.
+- `autoreview` cannot reach any engine here. `--engine codex` exits 1 with no
+  model output, `--engine claude` returns
+  `API Error: 400 Not a valid API key for this workspace`, and `--engine copilot`
+  is refused by the skill itself.
+- The substitute independent read-only reviewer was also unavailable: it stalled
+  and was cancelled after 45 tool calls and 662s with zero turns emitted. That is
+  recorded as **review unavailable**, not as approval, and no finding from it is
+  claimed.
+- Compensating control: the parent agent directly reviewed the final production
+  and test diff against base
+  `02bd9d77142248a07e4ad50387a166db1823b494` and found no additional defect in
+  commit ordering, CAS-loss handling, retry/default behavior, the
+  tombstone/health projection, or sibling-channel impact. Specifics checked:
+  `applyFailureDisposition` routes `handled` to `completeClaimWithRetry` before
+  the dead-letter branch and returns, so the retry/release/dead-letter paths keep
+  their base behavior; `completeClaimWithRetry` uses `label: "tombstone"` with
+  `falseMeansReclaimed: true`, so a lost CAS is treated as reclaimed rather than
+  as a completion; `createSettleOwner` still only marks the state settled after
+  the write commits; the Discord `complete` wrapper emits the receipt strictly
+  after `baseQueue.complete(...)` resolves `true`, and deletes the pending entry
+  only after the await, so a retried commit still reports and a failed commit
+  does not; `settlement` is optional and unset by all other channels, so their
+  dead-letter path is byte-identical.
+- Live recovered-Discord gateway proof remains owed and is not claimed.

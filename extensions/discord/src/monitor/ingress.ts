@@ -440,16 +440,22 @@ export function createDiscordIngressMonitor(params: {
     });
   // Suppression receipts are recorded where the durable fact commits: a lost
   // claim race or a failed write must never claim a message was suppressed.
+  // Suppressed events settle as completions, so ordinary completions simply
+  // find no pending receipt and emit nothing.
   const pendingReceipts = new Map<string, () => void>();
   const queue: ChannelIngressQueue<DiscordIngressPayload> = {
     ...baseQueue,
-    fail: async (idOrClaim, failOptions) => {
+    complete: async (idOrClaim, completeOptions) => {
       const eventId = typeof idOrClaim === "string" ? idOrClaim : idOrClaim.id;
       const emitReceipt = pendingReceipts.get(eventId);
+      const committed = await baseQueue.complete(idOrClaim, completeOptions);
+      if (!emitReceipt) {
+        return committed;
+      }
+      // Delete only once the write resolves so a retried commit still reports.
       pendingReceipts.delete(eventId);
-      const committed = await baseQueue.fail(idOrClaim, failOptions);
-      if (committed && failOptions.reason === "stale-ambient-backlog") {
-        emitReceipt?.();
+      if (committed) {
+        emitReceipt();
       }
       return committed;
     },
@@ -500,7 +506,7 @@ export function createDiscordIngressMonitor(params: {
               receivedAt: new Date(claim.receivedAt).toISOString(),
               ageMs: Math.max(0, nowMs() - suppressed.sentAt),
               thresholdMs: DISCORD_STALE_AMBIENT_BACKLOG_MS,
-              disposition: "failed",
+              disposition: "suppressed",
               reason: "stale-ambient-backlog",
             },
             "discord ingress stale ambient backlog suppressed",
@@ -532,7 +538,13 @@ export function createDiscordIngressMonitor(params: {
           return { reason: "invalid-event", message: error.message };
         }
         if (error instanceof DiscordStaleAmbientBacklogError) {
-          return { reason: "stale-ambient-backlog", message: error.message };
+          // Handled policy outcome, not breakage: core tombstones it via
+          // complete() and the structured receipt below is the recorded fact.
+          return {
+            reason: "stale-ambient-backlog",
+            message: error.message,
+            settlement: "handled",
+          };
         }
         if (isDiscordAuthenticationFailure(error)) {
           return { reason: "authentication-failed", message: formatErrorMessage(error) };

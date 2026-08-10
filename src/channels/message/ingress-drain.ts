@@ -330,6 +330,13 @@ export function createChannelIngressDrain<
       config: options.retryPolicy,
       now: now(),
     });
+    if (disposition.kind === "handled") {
+      // Channel policy already recorded this outcome, so the event is done, not
+      // broken. Settling through the canonical completion tombstone keeps it out
+      // of dead-letter counts, doctor output, and delivery-queue health.
+      await completeClaimWithRetry(claim);
+      return;
+    }
     if (disposition.kind === "fail") {
       // Operator-visible dead-letter line. Prefer numeric id when the event id
       // is a zero-padded telegram update_id so logs stay human-readable.
