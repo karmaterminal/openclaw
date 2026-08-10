@@ -623,3 +623,91 @@ duplicated reply-reference logic into one shared classifier.
   does not; `settlement` is optional and unset by all other channels, so their
   dead-letter path is byte-identical.
 - Live recovered-Discord gateway proof remains owed and is not claimed.
+
+## Lane 8 — inherited `createTempDir` test repair on head `8d412da31bd22516421ae50b0d34102d1a022982`
+
+### Hosted check triage on the exact head
+
+```console
+$ gh api "repos/karmaterminal/openclaw/commits/8d412da31bd.../check-runs?per_page=100" \
+    --jq '.check_runs[] | "\(.conclusion // .status)\t\(.name)"' | sort | uniq -c
+88 success
+ 8 skipped
+ 4 failure   (auto-response x2, checks-node-core-src-security, openclaw/ci-gate)
+```
+
+`check-test-types`, `check-lint`, `check-docs`, `check-dependencies`, and the
+plugin SDK lanes are all green on this head, so the Lane 1-7 attributable
+blockers are cleared. `openclaw/ci-gate` is the aggregate gate and only mirrors
+the two real children below.
+
+### `auto-response` — external, fork GitHub App private key absent
+
+```console
+$ gh api repos/karmaterminal/openclaw/actions/jobs/93498861174/logs | grep -i private-key
+Error: The 'private-key' input must be set to a non-empty string. If using a
+secret or variable, ensure it is available in this workflow context.
+```
+
+`actions/create-github-app-token` has no app private key on this fork. No
+workflow was weakened and no credential was added or exposed; the correct owner
+is the repository secret configuration, not this diff.
+
+### `checks-node-core-src-security` — inherited but code-addressable, fixed here
+
+The shard failed on exactly one test:
+
+```console
+[shard:core-unit-src-security] ❯ unit-src src/sessions/user-turn-transcript.test.ts (40 tests | 1 failed)
+[shard:core-unit-src-security]   × waits for a deferred projection rebuild before returning admission identity
+[shard:core-unit-src-security] ReferenceError: createTempDir is not defined
+[shard:core-unit-src-security]   548| const dir = createTempDir("openclaw-user-turn-recorder-projectio…
+```
+
+The blob is byte-identical to base `02bd9d77142248a07e4ad50387a166db1823b494`,
+so the defect is inherited rather than introduced here. It is nonetheless a
+one-line mechanical repair, so Pathfinder applies: no `createTempDir` symbol is
+exported anywhere in the repository (only `createTempDirTracker` in
+`test/helpers/temp-dir.ts` and `createTempDirHarness` in a QA Lab helper), and
+the file already binds the canonical tracker at its top:
+
+```ts
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+```
+
+Every other temp dir in the file — 20+ call sites at lines 253, 312, 345, 381,
+442, 522, 590, 638, 672, 710 and beyond — uses `tempDirs.make(prefix)`. Line 548
+was the single divergence. The fix restores the file's own convention and also
+puts the directory under automatic cleanup, which the undefined call never did.
+
+```diff
+-      const dir = createTempDir("openclaw-user-turn-recorder-projection-");
++      const dir = tempDirs.make("openclaw-user-turn-recorder-projection-");
+```
+
+### Proof
+
+```console
+$ node scripts/run-vitest.mjs src/sessions/user-turn-transcript.test.ts
+✓ waits for a deferred projection rebuild before returning admission identity  893ms
+Test Files  1 passed (1)     Tests  40 passed (40)
+$ node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.core.test.json ...
+ui/src/app-session-route-paths.ts(4,8): error TS2307: Cannot find module '@openclaw/session-url-contract/parse' ...
+$ ./node_modules/.bin/oxfmt --check src/sessions/user-turn-transcript.test.ts
+All matched files use the correct format.
+$ ./node_modules/.bin/oxlint --config .oxlintrc.json src/sessions/user-turn-transcript.test.ts
+oxlint exit=0
+$ git --no-pager diff --check
+(clean)
+$ git --no-pager diff --numstat
+1       1       src/sessions/user-turn-transcript.test.ts
+```
+
+The `createTempDir` TS2304 is gone from the core test type lane. The remaining
+TS2307 is a local-only artifact of an absent `dist/` in this linked worktree and
+never appears in CI, which is why hosted `check-test-types` is already green on
+this head.
+
+Production LOC delta for this lane is `0`; test LOC delta is `+1 / -1`.
+
+Live recovered-Discord gateway proof remains owed and is still not claimed.
