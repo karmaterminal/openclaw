@@ -277,29 +277,26 @@ function canExpireDiscordStaleAmbientBacklog(
 
   const channelId = nonEmptyString(rawMessage.channel_id);
   const channelInfo = resolveDiscordChannelInfoSafe((rawMessage as { channel?: unknown }).channel);
-  const channelSlug = channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "";
-  const parentSlug = channelInfo.parentName ? normalizeDiscordSlug(channelInfo.parentName) : "";
-  const channelConfig = channelId
-    ? resolveDiscordChannelConfigWithFallback({
-        guildInfo,
-        channelId,
-        channelName: channelInfo.name,
-        channelSlug,
-        parentId: channelInfo.parentId,
-        parentName: channelInfo.parentName,
-        parentSlug,
-        scope: isDiscordThreadChannelType(channelInfo.type) ? "thread" : "channel",
-      })
-    : null;
-
-  if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
-    return false;
-  }
   const rawNonThreadChannel =
     typeof channelInfo.type === "number" && !isDiscordThreadChannelType(channelInfo.type);
-  // Stale expiry is a freshness fence, not mention admission. Only raw channel
-  // type proves this is not an unhydrated thread; direct config can name either.
-  return rawNonThreadChannel;
+  if (!rawNonThreadChannel || !channelId) {
+    return false;
+  }
+  const channelSlug = channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "";
+  const parentSlug = channelInfo.parentName ? normalizeDiscordSlug(channelInfo.parentName) : "";
+  const channelConfig = resolveDiscordChannelConfigWithFallback({
+    guildInfo,
+    channelId,
+    channelName: channelInfo.name,
+    channelSlug,
+    parentId: channelInfo.parentId,
+    parentName: channelInfo.parentName,
+    parentSlug,
+    scope: "channel",
+  });
+  // Stale expiry is a freshness fence, not mention admission. Only a raw
+  // MESSAGE_CREATE channel object proves this is not an unhydrated thread.
+  return hasConfiguredDiscordChannels(guildInfo) ? channelConfig?.allowed !== false : true;
 }
 
 async function matchesConfiguredDiscordMentionText(

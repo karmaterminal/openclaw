@@ -873,6 +873,33 @@ describe("channel ingress queue", () => {
       });
     });
 
+    it("skips a corrupt pending row and still claims a later lane", async () => {
+      await withTempState(async (stateDir) => {
+        const queue = createTestIngressQueue<{ text: string }>(stateDir);
+
+        insertCorruptRow(stateDir, '["test","account"]', "bad-first", {
+          payload_json: "{corrupt",
+        });
+        await queue.enqueue("good-second", { text: "claimable" }, { receivedAt: 300 });
+
+        const claimed = await queue.claimNext({ scanLimit: 1 });
+        expect(claimed).toMatchObject({ id: "good-second", payload: { text: "claimable" } });
+        expect((await queue.listPending({ limit: "all" })).map((record) => record.id)).toEqual([]);
+        expect(
+          executeSqliteQueryTakeFirstSync(
+            openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir } }).db,
+            getNodeSqliteKysely<ChannelIngressTestDatabase>(
+              openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir } }).db,
+            )
+              .selectFrom("channel_ingress_events")
+              .select(["status", "failed_reason"])
+              .where("queue_name", "=", '["test","account"]')
+              .where("event_id", "=", "bad-first"),
+          ),
+        ).toEqual({ status: "failed", failed_reason: "corrupt_payload" });
+      });
+    });
+
     it("handles valid JSON null payload correctly", async () => {
       await withTempState(async (stateDir) => {
         const queue = createTestIngressQueue<null>(stateDir);
