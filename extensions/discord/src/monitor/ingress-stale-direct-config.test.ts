@@ -531,4 +531,53 @@ describe("Discord direct-configured stale ingress", () => {
       clock,
     });
   });
+
+  it("preserves stale addressed mentions even with known raw channel type", async () => {
+    // Regression test: an explicitly addressed message (with bot mention) should
+    // never be dead-lettered as stale-ambient, even if it's older than 15 minutes
+    // and has a raw authoritative channel type. Stale-ambient is a default-closed
+    // policy for unaddressed backlog only.
+    const clock = 1_780_000_600_000;
+    const staleMentionId = `stale-addressed-mention-${DIRECT_OPEN_CHANNEL_ID}`;
+    await withQueue(
+      () => clock,
+      async (queue) => {
+        const staleSentAt = clock - 20 * 60 * 1_000; // 20 minutes old
+        const staleAddressedMention = createRawMessage(staleMentionId, DIRECT_OPEN_CHANNEL_ID, {
+          guild_id: "guild-1",
+          channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID), // Raw known channel type
+          content: "old question <@bot-1> what is this?",
+          mentions: [{ id: "bot-1" }] as APIMessage["mentions"], // Explicit bot mention
+          timestamp: new Date(staleSentAt).toISOString(),
+        } as RawMessageOverrides);
+        await queue.enqueue(staleMentionId, payloadFor(staleAddressedMention, clock), {
+          laneKey: `channel:${DIRECT_OPEN_CHANNEL_ID}`,
+          receivedAt: clock,
+        });
+
+        const dispatched: string[] = [];
+        const monitor = createMonitor({
+          queue,
+          now: () => clock,
+          dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+            if (!event.id) {
+              throw new Error("expected dispatched Discord event id");
+            }
+            dispatched.push(event.id);
+            await lifecycle.onAdopted();
+          },
+        });
+        monitor.start();
+        try {
+          await vi.waitFor(() => expect(dispatched).toEqual([staleMentionId]), {
+            timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS,
+          });
+          // Verify it was NOT dead-lettered as stale-ambient
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        } finally {
+          await monitor.stop();
+        }
+      },
+    );
+  });
 });
