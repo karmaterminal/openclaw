@@ -7,6 +7,7 @@ import {
   type APIVoiceState,
   type GatewayGuildCreateDispatchData,
   type GatewayGuildDeleteDispatchData,
+  type GatewayMessageCreateDispatchData,
   type GatewayPresenceUpdateDispatchData,
   type GatewayThreadDeleteDispatchData,
   type GatewayThreadUpdateDispatchData,
@@ -73,7 +74,10 @@ export abstract class GuildDeleteListener extends BaseListener {
 
 export abstract class MessageCreateListener extends BaseListener {
   readonly type = GatewayDispatchEvents.MessageCreate;
-  abstract override handle(data: APIMessage, client: Client): Promise<void> | void;
+  abstract override handle(
+    data: GatewayMessageCreateDispatchData,
+    client: Client,
+  ): Promise<void> | void;
 }
 
 export abstract class InteractionCreateListener extends BaseListener {

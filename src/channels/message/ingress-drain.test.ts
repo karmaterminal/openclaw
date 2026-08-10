@@ -2,6 +2,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-state.js";
 import {
   bindIngressLifecycleToReplyOptions,
   createChannelIngressDrain,
@@ -13,15 +14,7 @@ import {
   type IngressDrainTestPayload as Payload,
   withTempState,
 } from "./ingress-drain.test-helpers.js";
-
-// Module-private in ingress-drain.ts; derive from the factory signature.
-type ChannelIngressDispatchLifecycle = Parameters<
-  Parameters<typeof createChannelIngressDrain>[0]["dispatchClaimedEvent"]
->[1];
-import {
-  DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-  DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-} from "./ingress-retry-policy.js";
+import { countFailedChannelIngressQueueEntries } from "./ingress-queue.js";
 
 describe("channel ingress drain", () => {
   beforeEach(() => {
@@ -298,6 +291,55 @@ describe("channel ingress drain", () => {
         { id: "non-retryable", reason: "invalid-input", message: "fatal input" },
         { id: "retry-limit", reason: "retry-limit-exceeded", message: "still broken" },
       ]);
+      drain.dispose();
+    });
+  });
+
+  it("settles a channel-handled outcome as a completion the operator surfaces ignore", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue(stateDir, { now: () => 10_000 });
+      const fail = vi.spyOn(queue, "fail");
+      await queue.enqueue("handled", { text: "x" }, { laneKey: "one", receivedAt: 1 });
+      await queue.enqueue("dead-letter", { text: "x" }, { laneKey: "two", receivedAt: 1 });
+      const lifecycles = new Map<string, ChannelIngressDispatchLifecycle>();
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => 10_000,
+        deferredLaneOccupancy: "release",
+        onLog: (message) => logs.push(message),
+        resolveNonRetryableFailure: (error) =>
+          error instanceof Error && error.message === "policy drop"
+            ? { reason: "channel-policy", message: error.message, settlement: "handled" }
+            : { reason: "invalid-input", message: "fatal input" },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          lifecycles.set(event.id, lifecycle);
+          return { kind: "deferred" };
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 2 });
+      await vi.waitFor(() => expect(lifecycles.size).toBe(2));
+      await expectDefined(
+        expectDefined(lifecycles.get("handled"), "handled lifecycle").onFailed,
+        "handled failure lifecycle",
+      )(new Error("policy drop"));
+      await expectDefined(
+        expectDefined(lifecycles.get("dead-letter"), "dead-letter lifecycle").onFailed,
+        "dead-letter failure lifecycle",
+      )(new Error("broken"));
+
+      // Only the genuine failure reaches the dead-letter surface that doctor and
+      // delivery-queue health count; the handled outcome is a completed tombstone.
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        { id: "dead-letter", reason: "invalid-input" },
+      ]);
+      expect(countFailedChannelIngressQueueEntries(stateDir)).toMatchObject([{ count: 1 }]);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(fail.mock.calls.map(([idOrClaim]) => idOrClaim)).not.toContainEqual(
+        expect.objectContaining({ id: "handled" }),
+      );
+      expect(logs.some((message) => message.includes("channel-policy"))).toBe(false);
       drain.dispose();
     });
   });
@@ -636,64 +678,6 @@ describe("channel ingress drain", () => {
       hold();
       await drain.waitForIdle();
       drain.dispose();
-    });
-  });
-
-  it("dead-letter needs both attempt floor and age (releases when age insufficient)", async () => {
-    await withTempState(async (stateDir) => {
-      const receivedAt = 100;
-      let clock = receivedAt;
-      const queue = createTestIngressQueue(stateDir, { now: () => clock });
-      await queue.enqueue("poison", { text: "x" }, { laneKey: "l", receivedAt });
-
-      // Burn attempts without aging past the gate.
-      for (let i = 0; i < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; i += 1) {
-        clock += 1;
-        const drain = createChannelIngressDrain<Payload>({
-          queue,
-          now: () => clock,
-          retryPolicy: {
-            maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-            deadLetterMinAgeMs: DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-            baseMs: 0,
-            maxMs: 0,
-          },
-          dispatchClaimedEvent: async () => {
-            throw new Error("still broken");
-          },
-        });
-        await drain.drainOnce();
-        await drain.waitForIdle();
-        drain.dispose();
-      }
-
-      const pending = await queue.listPending({ limit: "all" });
-      expect(pending).toHaveLength(1);
-      expect(pending[0]?.attempts).toBeGreaterThanOrEqual(DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS);
-
-      // Age past the gate → next failure dead-letters.
-      clock = receivedAt + DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS;
-      const finalDrain = createChannelIngressDrain<Payload>({
-        queue,
-        now: () => clock,
-        retryPolicy: {
-          maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-          deadLetterMinAgeMs: DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-          baseMs: 0,
-          maxMs: 0,
-        },
-        dispatchClaimedEvent: async () => {
-          throw new Error("still broken");
-        },
-      });
-      await finalDrain.drainOnce();
-      await finalDrain.waitForIdle();
-      const status = await queue.enqueue("poison", { text: "x" });
-      expect(status.kind).toBe("failed");
-      if (status.kind === "failed") {
-        expect(status.record.reason).toBe("retry-limit-exceeded");
-      }
-      finalDrain.dispose();
     });
   });
 
