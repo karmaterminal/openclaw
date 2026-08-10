@@ -1,13 +1,13 @@
 import { resolveLaneKey } from "./ingress-drain-state.js";
 import type { ChannelIngressQueue, ChannelIngressQueueRecord } from "./ingress-queue.js";
 
-export type ChannelIngressPendingDisposition = {
+type ChannelIngressPendingDisposition = {
   kind: "fail";
   reason: string;
   message: string;
 };
 
-export type ChannelIngressPendingDispositionContext = {
+type ChannelIngressPendingDispositionContext = {
   laneKey: string;
   now: number;
 };
@@ -42,7 +42,7 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
   log: (message: string) => void;
 };
 
-export type AppliedIngressPendingDispositions<TPayload, TMetadata> = {
+type AppliedIngressPendingDispositions<TPayload, TMetadata> = {
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   blockedLaneKeys: Set<string>;
 };

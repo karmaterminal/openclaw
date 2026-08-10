@@ -1,10 +1,6 @@
 // Pending-disposition drain tests cover multi-drain CAS fencing.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
-import type {
-  ChannelIngressPendingDisposition,
-  ChannelIngressPendingDispositionContext,
-} from "./ingress-drain-pending-disposition.js";
 import { createChannelIngressDrain } from "./ingress-drain.js";
 import {
   createTestIngressQueue,
@@ -14,6 +10,17 @@ import {
 import type { ChannelIngressQueueRecord } from "./ingress-queue.js";
 
 const STALE_AMBIENT_PENDING_MS = 15 * 60 * 1_000;
+
+type ChannelIngressPendingDisposition = {
+  kind: "fail";
+  reason: string;
+  message: string;
+};
+
+type ChannelIngressPendingDispositionContext = {
+  laneKey: string;
+  now: number;
+};
 
 function resolveStaleAmbientPendingDisposition(
   event: ChannelIngressQueueRecord<Payload>,
