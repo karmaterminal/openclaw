@@ -1,5 +1,9 @@
 // Discord plugin module owns raw gateway-message durable ingress and replay draining.
-import { ChannelType, GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
+import {
+  ChannelType,
+  GatewayDispatchEvents,
+  type GatewayMessageCreateDispatchData,
+} from "discord-api-types/v10";
 import {
   createChannelIngressError,
   createChannelIngressMonitor,
@@ -22,13 +26,11 @@ import type { Client } from "../internal/discord.js";
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
 import {
-  normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
   resolveDiscordGuildEntry,
   resolveDiscordShouldRequireMention,
   type DiscordGuildEntryResolved,
 } from "./allow-list.js";
-import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
 import type { DiscordMessageEvent } from "./listeners.js";
 import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
 import { resolveDiscordReplyReferenceState } from "./message-handler.reply-reference.js";
@@ -42,10 +44,18 @@ const loadMentionRuntime = createLazyRuntimeModule(
   () => import("openclaw/plugin-sdk/channel-inbound"),
 );
 
+type DiscordIngressChannelKind = "non-thread" | "thread";
+
+type DiscordIngressEvent = {
+  rawMessage: GatewayMessageCreateDispatchData;
+  channelKind?: DiscordIngressChannelKind;
+};
+
 type DiscordIngressPayload = {
   version: 1;
   receivedAt: number;
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
+  channelKind?: DiscordIngressChannelKind;
 };
 
 type DiscordIngressBody = Omit<DiscordIngressPayload, "version">;
@@ -66,7 +76,7 @@ type DiscordThreadBindingLookup = {
 };
 
 type DiscordIngressMonitor = {
-  accept: (rawMessage: APIMessage) => Promise<void>;
+  accept: (rawMessage: GatewayMessageCreateDispatchData) => Promise<void>;
   start: () => void;
   stop: () => Promise<void>;
 };
@@ -92,6 +102,32 @@ function inspectDiscordMessage(rawMessage: unknown): { eventId: string; laneKey:
   return { eventId, laneKey: `channel:${channelId}` };
 }
 
+function inspectDiscordIngressEvent(event: unknown): { eventId: string; laneKey: string } {
+  if (!event || typeof event !== "object" || Array.isArray(event)) {
+    throw new DiscordIngressPayloadError("Discord ingress event must be an object");
+  }
+  return inspectDiscordMessage((event as { rawMessage?: unknown }).rawMessage);
+}
+
+function resolveDiscordIngressChannelKind(type: unknown): DiscordIngressChannelKind | undefined {
+  if (isDiscordThreadChannelType(type)) {
+    return "thread";
+  }
+  if (
+    type !== ChannelType.GuildText &&
+    type !== ChannelType.GuildAnnouncement &&
+    type !== ChannelType.GuildVoice &&
+    type !== ChannelType.GuildStageVoice
+  ) {
+    return undefined;
+  }
+  return "non-thread";
+}
+
+function decodeDiscordIngressChannelKind(value: unknown): DiscordIngressChannelKind | undefined {
+  return value === "non-thread" || value === "thread" ? value : undefined;
+}
+
 function decodeDiscordIngressPayload(
   payload: DiscordIngressPayload,
   claimedId: string,
@@ -107,11 +143,13 @@ function decodeDiscordIngressPayload(
       cause: error,
     });
   }
+  const channelKind = decodeDiscordIngressChannelKind(candidate.channelKind);
   return {
     version: candidate.version,
     body: {
       receivedAt: candidate.receivedAt as number,
-      rawMessage: candidate.rawMessage as APIMessage,
+      rawMessage: candidate.rawMessage as GatewayMessageCreateDispatchData,
+      ...(channelKind ? { channelKind } : {}),
     },
   };
 }
@@ -130,16 +168,16 @@ function isDiscordAuthenticationFailure(error: unknown): boolean {
   return false;
 }
 
-function discordMessageSentAtMs(rawMessage: APIMessage): number | null {
+function discordMessageSentAtMs(rawMessage: GatewayMessageCreateDispatchData): number | null {
   const sentAt = Date.parse(rawMessage.timestamp);
   return Number.isFinite(sentAt) ? sentAt : null;
 }
 
-function isDiscordGuildMessage(rawMessage: APIMessage): boolean {
+function isDiscordGuildMessage(rawMessage: GatewayMessageCreateDispatchData): boolean {
   return typeof (rawMessage as { guild_id?: unknown }).guild_id === "string";
 }
 
-function hasPotentialDiscordAudioAttachment(rawMessage: APIMessage): boolean {
+function hasPotentialDiscordAudioAttachment(rawMessage: GatewayMessageCreateDispatchData): boolean {
   for (const attachment of rawMessage.attachments ?? []) {
     const contentType = nonEmptyString(
       (attachment as { content_type?: unknown; contentType?: unknown }).content_type ??
@@ -198,23 +236,10 @@ function hasConfiguredDiscordChannels(guildInfo: DiscordGuildEntryResolved | nul
   return Boolean(guildInfo?.channels && Object.keys(guildInfo.channels).length > 0);
 }
 
-function hasCachedThreadChannel(rawMessage: APIMessage): boolean {
-  const channel = (rawMessage as { channel?: unknown }).channel;
-  if (!channel || typeof channel !== "object") {
-    return false;
-  }
-  const isThread = (channel as { isThread?: unknown }).isThread;
-  if (typeof isThread === "function") {
-    try {
-      return isThread() === true;
-    } catch {
-      return true;
-    }
-  }
-  return isDiscordThreadChannelType((channel as { type?: unknown }).type);
-}
-
-function hasBoundThread(rawMessage: APIMessage, threadBindings?: DiscordThreadBindingLookup) {
+function hasBoundThread(
+  rawMessage: GatewayMessageCreateDispatchData,
+  threadBindings?: DiscordThreadBindingLookup,
+) {
   const channelId = nonEmptyString(rawMessage.channel_id);
   if (!channelId || typeof threadBindings?.getByThreadId !== "function") {
     return false;
@@ -226,7 +251,10 @@ function hasBoundThread(rawMessage: APIMessage, threadBindings?: DiscordThreadBi
   }
 }
 
-function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): boolean {
+function isDiscordAddressedMessage(
+  rawMessage: GatewayMessageCreateDispatchData,
+  botUserId?: string,
+): boolean {
   if (!isDiscordGuildMessage(rawMessage)) {
     return true;
   }
@@ -244,15 +272,18 @@ function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): 
   );
 }
 
-function hasHydrateableDiscordReplyReference(rawMessage: APIMessage): boolean {
+function hasHydrateableDiscordReplyReference(
+  rawMessage: GatewayMessageCreateDispatchData,
+): boolean {
   // `missing` and `invalid` both refetch in canonical hydration, so pre-claim
   // must keep both: only hydration can prove the referenced author is the bot.
   return resolveDiscordReplyReferenceState(rawMessage) !== "complete";
 }
 
 function canExpireDiscordStaleAmbientBacklog(
-  rawMessage: APIMessage,
+  rawMessage: GatewayMessageCreateDispatchData,
   params: {
+    channelKind?: DiscordIngressChannelKind;
     guildEntries?: Record<string, DiscordGuildEntryResolved>;
   },
 ): boolean {
@@ -266,42 +297,32 @@ function canExpireDiscordStaleAmbientBacklog(
   if (params.guildEntries && Object.keys(params.guildEntries).length > 0 && !guildInfo) {
     return false;
   }
-
   const channelId = nonEmptyString(rawMessage.channel_id);
-  const channelInfo = resolveDiscordChannelInfoSafe((rawMessage as { channel?: unknown }).channel);
-  const channelSlug = channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "";
-  const parentSlug = channelInfo.parentName ? normalizeDiscordSlug(channelInfo.parentName) : "";
   const channelConfig = channelId
     ? resolveDiscordChannelConfigWithFallback({
         guildInfo,
         channelId,
-        channelName: channelInfo.name,
-        channelSlug,
-        parentId: channelInfo.parentId,
-        parentName: channelInfo.parentName,
-        parentSlug,
-        scope: isDiscordThreadChannelType(channelInfo.type) ? "thread" : "channel",
+        channelSlug: "",
+        scope: params.channelKind === "thread" ? "thread" : "channel",
       })
     : null;
 
   if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
     return false;
   }
-  const rawNonThreadChannel =
-    typeof channelInfo.type === "number" && !isDiscordThreadChannelType(channelInfo.type);
   const requireMention = resolveDiscordShouldRequireMention({
     isGuildMessage: true,
     isThread: false,
     channelConfig,
     guildInfo,
   });
-  // Stale expiry is a freshness fence, not mention admission. Only raw channel
-  // type plus a mention-required route proves unmentioned content is ambient.
-  return rawNonThreadChannel && requireMention;
+  // Stale expiry is a freshness fence, not mention admission. Only a durable
+  // non-thread fact plus a mention-required route proves content is ambient.
+  return params.channelKind === "non-thread" && requireMention;
 }
 
 async function matchesConfiguredDiscordMentionText(
-  rawMessage: APIMessage,
+  rawMessage: GatewayMessageCreateDispatchData,
   params: {
     cfg?: OpenClawConfig;
     discordConfig?: DiscordAccountConfig | null;
@@ -343,7 +364,7 @@ async function matchesConfiguredDiscordMentionText(
 }
 
 function hasPotentialActiveDiscordTextControlCommand(
-  rawMessage: APIMessage,
+  rawMessage: GatewayMessageCreateDispatchData,
   cfg?: OpenClawConfig,
 ): boolean {
   const text = typeof rawMessage.content === "string" ? rawMessage.content : "";
@@ -364,7 +385,8 @@ function hasPotentialActiveDiscordTextControlCommand(
 }
 
 async function hasUnresolvedDiscordAddressForm(
-  rawMessage: APIMessage,
+  rawMessage: GatewayMessageCreateDispatchData,
+  channelKind: DiscordIngressChannelKind | undefined,
   params: {
     cfg?: OpenClawConfig;
     discordConfig?: DiscordAccountConfig | null;
@@ -376,13 +398,14 @@ async function hasUnresolvedDiscordAddressForm(
   return (
     hasHydrateableDiscordReplyReference(rawMessage) ||
     hasBoundThread(rawMessage, params.threadBindings) ||
-    hasCachedThreadChannel(rawMessage) ||
+    channelKind === "thread" ||
     (await matchesConfiguredDiscordMentionText(rawMessage, params))
   );
 }
 
 async function resolveDiscordStaleAmbientSuppression(
-  rawMessage: APIMessage,
+  rawMessage: GatewayMessageCreateDispatchData,
+  channelKind: DiscordIngressChannelKind | undefined,
   claim: ChannelIngressQueueClaim<DiscordIngressPayload>,
   params: {
     botUserId?: string;
@@ -410,10 +433,15 @@ async function resolveDiscordStaleAmbientSuppression(
   if (hasPotentialActiveDiscordTextControlCommand(rawMessage, params.cfg)) {
     return null;
   }
-  if (await hasUnresolvedDiscordAddressForm(rawMessage, params)) {
+  if (await hasUnresolvedDiscordAddressForm(rawMessage, channelKind, params)) {
     return null;
   }
-  if (!canExpireDiscordStaleAmbientBacklog(rawMessage, { guildEntries: params.guildEntries })) {
+  if (
+    !canExpireDiscordStaleAmbientBacklog(rawMessage, {
+      channelKind,
+      guildEntries: params.guildEntries,
+    })
+  ) {
     return null;
   }
   return { laneKey: claim.laneKey ?? `channel:${rawMessage.channel_id}`, sentAt };
@@ -461,17 +489,20 @@ export function createDiscordIngressMonitor(params: {
     },
   };
   const monitor = createChannelIngressMonitor<
-    APIMessage,
+    DiscordIngressEvent,
     DiscordIngressBody,
     DiscordIngressPayload
   >({
     queue,
     now: params.now,
-    inspect: inspectDiscordMessage,
+    inspect: inspectDiscordIngressEvent,
     payload: {
       version: DISCORD_INGRESS_PAYLOAD_VERSION,
-      serialize: (rawMessage, { receivedAt }) => ({ receivedAt, rawMessage }),
-      deserialize: (body) => body.rawMessage,
+      serialize: (event, { receivedAt }) => ({ receivedAt, ...event }),
+      deserialize: (body) => ({
+        rawMessage: body.rawMessage,
+        ...(body.channelKind ? { channelKind: body.channelKind } : {}),
+      }),
       encode: ({ body }) => ({ version: DISCORD_INGRESS_PAYLOAD_VERSION, ...body }),
       decode: (payload, { claim }) => decodeDiscordIngressPayload(payload, claim.id),
       createClaimError: (kind) =>
@@ -482,12 +513,13 @@ export function createDiscordIngressMonitor(params: {
         ),
     },
     // Gateway mapping is intentionally delayed until after the durable claim.
-    deliver: async (rawMessage, lifecycle, claim) => {
+    deliver: async ({ rawMessage, channelKind }, lifecycle, claim) => {
       // Stale ambient suppression runs on the claimed row so the terminal
       // decision stays on the canonical delivery lifecycle instead of a
       // Discord-only pre-claim seam on public channel SDK options.
       const suppressed = await resolveDiscordStaleAmbientSuppression(
         rawMessage,
+        channelKind,
         claim,
         params,
         nowMs(),
@@ -559,7 +591,8 @@ export function createDiscordIngressMonitor(params: {
 
   return {
     accept: async (rawMessage) => {
-      await monitor.admit(rawMessage);
+      const channelKind = resolveDiscordIngressChannelKind(rawMessage.channel_type);
+      await monitor.admit({ rawMessage, ...(channelKind ? { channelKind } : {}) });
     },
     start: monitor.start,
     stop: async () => {

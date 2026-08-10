@@ -1,7 +1,11 @@
 // Discord tests cover durable gateway-message admission and replay recovery.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ChannelType, type APIMessage } from "discord-api-types/v10";
+import {
+  ChannelType,
+  type APIMessage,
+  type GatewayMessageCreateDispatchData,
+} from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
 import type { DiscordAccountConfig, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
@@ -18,11 +22,11 @@ import { createDiscordIngressMonitor, type DiscordIngressLifecycle } from "./ing
 type DiscordIngressPayload = {
   version: 1;
   receivedAt: number;
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
+  channelKind?: "non-thread" | "thread";
 };
 
-type RawMessageOverrides = Partial<APIMessage> & {
-  channel?: unknown;
+type RawMessageOverrides = Partial<GatewayMessageCreateDispatchData> & {
   guild_id?: string;
 };
 
@@ -37,7 +41,7 @@ function createRawMessage(
   id: string,
   channelId = "channel-1",
   overrides: RawMessageOverrides = {},
-): APIMessage {
+): GatewayMessageCreateDispatchData {
   return {
     id,
     channel_id: channelId,
@@ -60,15 +64,40 @@ function createRawMessage(
     type: 0,
     tts: false,
     ...overrides,
-  } as unknown as APIMessage;
+  } as unknown as GatewayMessageCreateDispatchData;
 }
 
 function runtime(): Pick<RuntimeEnv, "error" | "log"> {
   return { error: vi.fn(), log: vi.fn() };
 }
 
-function payloadFor(rawMessage: APIMessage, receivedAt = Date.now()): DiscordIngressPayload {
-  return { version: 1, receivedAt, rawMessage };
+function channelKindFor(
+  channelType: GatewayMessageCreateDispatchData["channel_type"],
+): "non-thread" | "thread" | undefined {
+  if (
+    channelType === ChannelType.PublicThread ||
+    channelType === ChannelType.PrivateThread ||
+    channelType === ChannelType.AnnouncementThread
+  ) {
+    return "thread";
+  }
+  if (
+    channelType === ChannelType.GuildText ||
+    channelType === ChannelType.GuildAnnouncement ||
+    channelType === ChannelType.GuildVoice ||
+    channelType === ChannelType.GuildStageVoice
+  ) {
+    return "non-thread";
+  }
+  return undefined;
+}
+
+function payloadFor(
+  rawMessage: GatewayMessageCreateDispatchData,
+  receivedAt = Date.now(),
+): DiscordIngressPayload {
+  const channelKind = channelKindFor(rawMessage.channel_type);
+  return { version: 1, receivedAt, rawMessage, ...(channelKind ? { channelKind } : {}) };
 }
 
 async function withQueue<T>(
@@ -98,16 +127,12 @@ type DiscordIngressMonitor = ReturnType<typeof createDiscordIngressMonitor>;
 type DiscordThreadBindings = Parameters<typeof createDiscordIngressMonitor>[0]["threadBindings"];
 type DiscordGuildEntries = Record<string, DiscordGuildEntryResolved>;
 
-function guildTextChannel(id: string): unknown {
-  return { id, type: ChannelType.GuildText };
-}
-
 async function stopAll(monitors: DiscordIngressMonitor[]): Promise<void> {
   await Promise.allSettled(monitors.map((monitor) => monitor.stop()));
 }
 
 async function expectStaleMessageDispatches(params: {
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
   botUserId?: string;
   cfg?: OpenClawConfig;
   discordConfig?: DiscordAccountConfig;
@@ -160,7 +185,7 @@ async function expectStaleMessageDispatches(params: {
 }
 
 async function expectStaleMessageSuppressed(params: {
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
   botUserId?: string;
   cfg?: OpenClawConfig;
   discordConfig?: DiscordAccountConfig;
@@ -403,64 +428,6 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it("suppresses stale ambient guild backlog before dispatching a fresh bot mention", async () => {
-    await withQueue(async (queue) => {
-      const now = Date.now();
-      const stale = createRawMessage("1006", "channel-1", {
-        guild_id: "guild-1",
-        channel: guildTextChannel("channel-1"),
-        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
-      const fresh = createRawMessage("1007", "channel-1", {
-        guild_id: "guild-1",
-        content: "hello <@bot-1>",
-        mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
-        timestamp: new Date(now).toISOString(),
-      } as Partial<APIMessage>);
-      await queue.enqueue("1006", payloadFor(stale), {
-        laneKey: "channel:channel-1",
-        receivedAt: now - 16 * 60 * 1_000,
-      });
-      await queue.enqueue("1007", payloadFor(fresh), {
-        laneKey: "channel:channel-1",
-        receivedAt: now,
-      });
-
-      const dispatched: string[] = [];
-      const log = vi.fn();
-      const error = vi.fn();
-      const monitor = createDiscordIngressMonitor({
-        accountId: "default",
-        client: {} as never,
-        runtime: { error, log },
-        botUserId: "bot-1",
-        queue,
-        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
-          if (!event.id) {
-            throw new Error("expected dispatched Discord event id");
-          }
-          dispatched.push(event.id);
-          await lifecycle.onAdopted();
-        },
-      });
-      monitor.start();
-      try {
-        await vi.waitFor(() => expect(dispatched).toEqual(["1007"]));
-        await vi.waitFor(async () => {
-          expect(await queue.listPending({ limit: "all" })).toEqual([]);
-        });
-        expect(log).toHaveBeenCalledWith(
-          expect.objectContaining({ eventId: "1006", reason: "stale-ambient-backlog" }),
-          "discord ingress stale ambient backlog suppressed",
-        );
-        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
-        expect(error).not.toHaveBeenCalled();
-      } finally {
-        await monitor.stop();
-      }
-    });
-  });
-
   it("keeps stale bot mentions out of ambient backlog suppression", async () => {
     await withQueue(async (queue) => {
       const now = Date.now();
@@ -629,48 +596,47 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it("keeps stale cached thread-channel messages out of ambient backlog suppression", async () => {
-    await withQueue(async (queue) => {
-      const now = Date.now();
-      const cachedThreadMessage = createRawMessage("1012", "thread-cached-1", {
-        guild_id: "guild-1",
-        channel: {
-          id: "thread-cached-1",
-          type: ChannelType.PublicThread,
-          parent_id: "channel-1",
-        },
-        content: "old cached thread follow-up without mention",
-        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      });
-      await queue.enqueue("1012", payloadFor(cachedThreadMessage), {
-        laneKey: "channel:thread-cached-1",
-        receivedAt: now - 16 * 60 * 1_000,
-      });
+  it.each([ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread])(
+    "keeps stale persisted thread-channel type %s out of ambient suppression",
+    async (type) => {
+      await withQueue(async (queue) => {
+        const now = Date.now();
+        const cachedThreadMessage = createRawMessage("1012", "thread-cached-1", {
+          guild_id: "guild-1",
+          channel_type: type,
+          content: "old cached thread follow-up without mention",
+          timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+        });
+        await queue.enqueue("1012", payloadFor(cachedThreadMessage), {
+          laneKey: "channel:thread-cached-1",
+          receivedAt: now - 16 * 60 * 1_000,
+        });
 
-      const dispatched: string[] = [];
-      const monitor = createDiscordIngressMonitor({
-        accountId: "default",
-        client: {} as never,
-        runtime: runtime(),
-        botUserId: "bot-1",
-        queue,
-        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
-          if (!event.id) {
-            throw new Error("expected dispatched Discord event id");
-          }
-          dispatched.push(event.id);
-          await lifecycle.onAdopted();
-        },
+        const dispatched: string[] = [];
+        const monitor = createDiscordIngressMonitor({
+          accountId: "default",
+          client: {} as never,
+          runtime: runtime(),
+          botUserId: "bot-1",
+          queue,
+          dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+            if (!event.id) {
+              throw new Error("expected dispatched Discord event id");
+            }
+            dispatched.push(event.id);
+            await lifecycle.onAdopted();
+          },
+        });
+        monitor.start();
+        try {
+          await vi.waitFor(() => expect(dispatched).toEqual(["1012"]));
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        } finally {
+          await monitor.stop();
+        }
       });
-      monitor.start();
-      try {
-        await vi.waitFor(() => expect(dispatched).toEqual(["1012"]));
-        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
-      } finally {
-        await monitor.stop();
-      }
-    });
-  });
+    },
+  );
 
   it.each([
     {
@@ -767,7 +733,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageSuppressed({
       rawMessage: createRawMessage("1020", "channel-unmatched-identity-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-unmatched-identity-1"),
+        channel_type: ChannelType.GuildText,
         content: "unrelated room chatter",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -782,7 +748,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageSuppressed({
       rawMessage: createRawMessage("1021", "channel-denied-identity-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-denied-identity-1"),
+        channel_type: ChannelType.GuildText,
         content: "Molty can you check the incident?",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -814,7 +780,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageSuppressed({
       rawMessage: createRawMessage("1024", "channel-require-mention-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-require-mention-1"),
+        channel_type: ChannelType.GuildText,
         content: "old unmentioned room text",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -835,7 +801,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageDispatches({
       rawMessage: createRawMessage("1023", "channel-global-mention-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-global-mention-1"),
+        channel_type: ChannelType.GuildText,
         content: "openclaw can you check the incident",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -869,11 +835,11 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1025", "channel-debug-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-debug-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
-      await queue.enqueue("1025", payloadFor(rawMessage), {
+      await queue.enqueue("1025", payloadFor(rawMessage, now), {
         laneKey: "channel:channel-debug-1",
         receivedAt: now - 16 * 60 * 1_000,
       });
@@ -927,7 +893,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1027", "channel-cas-loss-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-cas-loss-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
@@ -972,7 +938,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1028", "channel-fail-throws-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-fail-throws-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
@@ -1010,7 +976,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1029", "channel-duplicate-debug-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-duplicate-debug-1"),
+        channel_type: ChannelType.GuildText,
         content: "old duplicate room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);

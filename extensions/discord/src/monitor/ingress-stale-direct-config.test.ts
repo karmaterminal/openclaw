@@ -6,6 +6,7 @@ import {
   MessageReferenceType,
   MessageType,
   type APIMessage,
+  type GatewayMessageCreateDispatchData,
 } from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
@@ -21,11 +22,11 @@ import { createDiscordIngressMonitor, type DiscordIngressLifecycle } from "./ing
 type DiscordIngressPayload = {
   version: 1;
   receivedAt: number;
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
+  channelKind?: "non-thread" | "thread";
 };
 
-type RawMessageOverrides = Partial<APIMessage> & {
-  channel?: unknown;
+type RawMessageOverrides = Partial<GatewayMessageCreateDispatchData> & {
   guild_id?: string;
 };
 
@@ -44,7 +45,7 @@ function createRawMessage(
   id: string,
   channelId = DIRECT_OPEN_CHANNEL_ID,
   overrides: RawMessageOverrides = {},
-): APIMessage {
+): GatewayMessageCreateDispatchData {
   return {
     id,
     channel_id: channelId,
@@ -67,11 +68,25 @@ function createRawMessage(
     type: 0,
     tts: false,
     ...overrides,
-  } as unknown as APIMessage;
+  } as unknown as GatewayMessageCreateDispatchData;
 }
 
-function payloadFor(rawMessage: APIMessage, receivedAt: number): DiscordIngressPayload {
-  return { version: 1, receivedAt, rawMessage };
+function payloadFor(
+  rawMessage: GatewayMessageCreateDispatchData,
+  receivedAt: number,
+): DiscordIngressPayload {
+  const channelKind =
+    rawMessage.channel_type === ChannelType.PublicThread ||
+    rawMessage.channel_type === ChannelType.PrivateThread ||
+    rawMessage.channel_type === ChannelType.AnnouncementThread
+      ? "thread"
+      : rawMessage.channel_type === ChannelType.GuildText ||
+          rawMessage.channel_type === ChannelType.GuildAnnouncement ||
+          rawMessage.channel_type === ChannelType.GuildVoice ||
+          rawMessage.channel_type === ChannelType.GuildStageVoice
+        ? "non-thread"
+        : undefined;
+  return { version: 1, receivedAt, rawMessage, ...(channelKind ? { channelKind } : {}) };
 }
 
 function runtime(): Pick<RuntimeEnv, "error" | "log"> {
@@ -96,10 +111,6 @@ function mentionRequiredGuildEntries(channelId = DIRECT_OPEN_CHANNEL_ID): Discor
       },
     },
   };
-}
-
-function guildTextChannel(id: string): unknown {
-  return { id, type: ChannelType.GuildText };
 }
 
 async function withQueue<T>(
@@ -250,10 +261,10 @@ function staleGuildTextMessage(
   id: string,
   clock: number,
   overrides: RawMessageOverrides = {},
-): APIMessage {
+): GatewayMessageCreateDispatchData {
   return createRawMessage(id, MENTION_REQUIRED_CHANNEL_ID, {
     guild_id: "guild-1",
-    channel: guildTextChannel(MENTION_REQUIRED_CHANNEL_ID),
+    channel_type: ChannelType.GuildText,
     content: "ordinary old room text",
     timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
     ...overrides,
@@ -333,13 +344,13 @@ describe("Discord direct-configured stale ingress", () => {
         const staleSentAt = clock - 16 * 60 * 1_000;
         const stale = createRawMessage(staleId, DIRECT_OPEN_CHANNEL_ID, {
           guild_id: "guild-1",
-          channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),
+          channel_type: ChannelType.GuildText,
           content: "ordinary old room text",
           timestamp: new Date(staleSentAt).toISOString(),
         } as RawMessageOverrides);
         const fresh = createRawMessage(freshId, DIRECT_OPEN_CHANNEL_ID, {
           guild_id: "guild-1",
-          channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),
+          channel_type: ChannelType.GuildText,
           content: "fresh direct ask <@bot-1>",
           mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
           timestamp: new Date(clock).toISOString(),
@@ -385,7 +396,7 @@ describe("Discord direct-configured stale ingress", () => {
       const clock = 1_780_000_100_000;
       const rawMessage = createRawMessage(`boundary-${ageMs}`, `direct-boundary-${ageMs}`, {
         guild_id: "guild-1",
-        channel: guildTextChannel(`direct-boundary-${ageMs}`),
+        channel_type: ChannelType.GuildText,
         content: "ordinary old room text",
         timestamp: new Date(clock - ageMs).toISOString(),
       } as RawMessageOverrides);
@@ -404,7 +415,7 @@ describe("Discord direct-configured stale ingress", () => {
           const sentAt = clock - STALE_MS - 1_000 - index;
           const stale = createRawMessage(id, channelId, {
             guild_id: "guild-1",
-            channel: guildTextChannel(channelId),
+            channel_type: ChannelType.GuildText,
             content: `old ambient room text ${index}`,
             timestamp: new Date(sentAt).toISOString(),
           } as RawMessageOverrides);
@@ -415,7 +426,7 @@ describe("Discord direct-configured stale ingress", () => {
         }
         const fresh = createRawMessage("fresh-mention-required", channelId, {
           guild_id: "guild-1",
-          channel: guildTextChannel(channelId),
+          channel_type: ChannelType.GuildText,
           content: "fresh direct ask <@bot-1>",
           mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
           timestamp: new Date(clock).toISOString(),
@@ -474,7 +485,7 @@ describe("Discord direct-configured stale ingress", () => {
       async (queue) => {
         const rawMessage = createRawMessage(messageId, DIRECT_OPEN_CHANNEL_ID, {
           guild_id: "guild-1",
-          channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),
+          channel_type: ChannelType.GuildText,
           content: "ordinary old room text",
           timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
         } as RawMessageOverrides);
