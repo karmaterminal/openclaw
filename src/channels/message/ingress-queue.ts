@@ -1641,6 +1641,9 @@ export function createChannelIngressQueue<
               }
             }
             const last = batch[batch.length - 1];
+            if (last === undefined) {
+              break;
+            }
             cursor = { updated_at: last.updated_at, event_id: last.event_id };
             if (batch.length < batchSize) {
               break;

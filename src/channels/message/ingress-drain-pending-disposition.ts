@@ -45,21 +45,24 @@ export type OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata> = (
   context: ChannelIngressPendingDispositionContext,
 ) => void | Promise<void>;
 
-type PendingDispositionQueue<TPayload, TMetadata, TCompletedMetadata> = {
-  fail: ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>["fail"];
+type PendingDispositionQueue<TPayload, TMetadata> = {
+  fail: ChannelIngressQueue<TPayload, TMetadata, unknown>["fail"];
+  /**
+   * Disposition completes always write suppression metadata. Use `unknown` here
+   * so free TCompletedMetadata queues remain structurally assignable; the drain
+   * factory still gates incompatible completed-metadata contracts at its edge.
+   */
   complete: (
-    idOrClaim: Parameters<
-      ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>["complete"]
-    >[0],
+    idOrClaim: Parameters<ChannelIngressQueue<TPayload, TMetadata, unknown>["complete"]>[0],
     options: {
       completedAt?: number;
-      metadata: ChannelIngressSuppressedCompletionMetadata;
+      metadata?: unknown;
       expectedPending: ChannelIngressPendingGenerationMatch;
     },
   ) => Promise<boolean>;
 };
 
-type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
+type ApplyPendingDispositionsParams<TPayload, TMetadata> = {
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   dispositionNow: number;
   /**
@@ -68,17 +71,9 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
    * Unexamined tails stay pending. Defaults to unlimited when omitted.
    */
   workLimit?: number;
-  queue: PendingDispositionQueue<TPayload, TMetadata, TCompletedMetadata>;
-  /**
-   * complete dispositions write ChannelIngressSuppressedCompletionMetadata.
-   * Only available when TCompletedMetadata accepts that shape (including unknown).
-   */
-  resolvePendingDisposition?: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
-    ? ResolveChannelIngressPendingDisposition<TPayload, TMetadata>
-    : never;
-  onPendingDispositionCommitted?: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
-    ? OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>
-    : never;
+  queue: PendingDispositionQueue<TPayload, TMetadata>;
+  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
   deriveLaneKey?: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string | undefined;
   reconcileStoredLaneKey?: (
     record: ChannelIngressQueueRecord<TPayload, TMetadata>,
@@ -122,8 +117,8 @@ function pendingGenerationMatch<TPayload, TMetadata>(
   };
 }
 
-async function settlePendingRecord<TPayload, TMetadata, TCompletedMetadata>(
-  queue: PendingDispositionQueue<TPayload, TMetadata, TCompletedMetadata>,
+async function settlePendingRecord<TPayload, TMetadata>(
+  queue: PendingDispositionQueue<TPayload, TMetadata>,
   record: ChannelIngressQueueRecord<TPayload, TMetadata>,
   disposition: ChannelIngressPendingDisposition,
   settledAt: number,
@@ -159,12 +154,8 @@ async function settlePendingRecord<TPayload, TMetadata, TCompletedMetadata>(
  * Callers must bound `pending` itself (typically `listPending({ limit: startLimit })`)
  * so large DB tails are never loaded under the admission lock.
  */
-export async function applyIngressPendingDispositions<
-  TPayload,
-  TMetadata,
-  TCompletedMetadata = ChannelIngressSuppressedCompletionMetadata,
->(
-  params: ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata>,
+export async function applyIngressPendingDispositions<TPayload, TMetadata>(
+  params: ApplyPendingDispositionsParams<TPayload, TMetadata>,
 ): Promise<AppliedIngressPendingDispositions<TPayload, TMetadata>> {
   if (!params.resolvePendingDisposition) {
     return {

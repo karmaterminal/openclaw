@@ -152,52 +152,6 @@ export type ChannelIngressDrain = {
   dispose: () => void;
 };
 
-/** No-disposition overload: queue metadata is unconstrained. */
-export function createChannelIngressDrain<
-  TPayload = unknown,
-  TMetadata = unknown,
-  TCompletedMetadata = unknown,
-  TQueue extends ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata> = ChannelIngressQueue<
-    TPayload,
-    TMetadata,
-    TCompletedMetadata
-  >,
->(
-  options: Omit<
-    CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
-    "queue"
-  > & {
-    queue: TQueue;
-    resolvePendingDisposition?: undefined;
-    onPendingDispositionCommitted?: undefined;
-  },
-): ChannelIngressDrain;
-/**
- * Disposition overload: requires the queue's completed metadata to store
- * suppressions. Incompatible queue contracts (including under partial type
- * arguments, via the queue brand + TQueue inference) reject at the call site.
- */
-export function createChannelIngressDrain<
-  TPayload = unknown,
-  TMetadata = unknown,
-  TCompletedMetadata = unknown,
-  TQueue extends ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata> = ChannelIngressQueue<
-    TPayload,
-    TMetadata,
-    TCompletedMetadata
-  >,
->(
-  options: ChannelIngressSuppressedCompletionMetadata extends ChannelIngressQueueCompletedMetadataOf<TQueue>
-    ? Omit<
-        CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
-        "queue"
-      > & {
-        queue: TQueue;
-      } & CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> & {
-          resolvePendingDisposition: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
-        }
-    : never,
-): ChannelIngressDrain;
 /** Creates a channel-agnostic durable ingress drain over an existing queue. */
 export function createChannelIngressDrain<
   TPayload = unknown,
@@ -789,7 +743,9 @@ export function createChannelIngressDrain<
       pending: pendingSnapshot,
       dispositionNow,
       workLimit: startLimit,
-      queue,
+      // Factory edge already gates completed-metadata compatibility; free
+      // TCompletedMetadata cannot re-prove structural complete assignability.
+      queue: queue as never,
       resolvePendingDisposition: options.resolvePendingDisposition,
       onPendingDispositionCommitted: options.onPendingDispositionCommitted,
       deriveLaneKey: options.deriveLaneKey,

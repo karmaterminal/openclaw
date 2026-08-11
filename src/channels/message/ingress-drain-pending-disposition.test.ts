@@ -749,4 +749,67 @@ describe("channel ingress pending disposition drain", () => {
       });
     });
   });
+
+  it("accepts monitor and plugin open paths with and without dispositions at compile time", () => {
+    type MonitorDrainOptions = import("./ingress-monitor.js").ChannelIngressMonitorDrainOptions<
+      Payload,
+      unknown
+    >;
+    type PluginOpenOptions = Omit<
+      import("./ingress-drain.js").CreateChannelIngressDrainOptions<Payload, unknown>,
+      "queue"
+    > & {
+      queue?: import("./ingress-queue.js").ChannelIngressQueue<Payload, unknown>;
+      accountId?: string;
+      stateDir?: string;
+    };
+
+    const resolvePendingDisposition = () => ({
+      kind: "complete" as const,
+      reason: "stale",
+      message: "stale",
+    });
+    const dispatchClaimedEvent = async () => {};
+
+    // Monitor drain options may omit disposition fields or include a resolver.
+    const monitorWithout: MonitorDrainOptions = { startLimit: 4 };
+    const monitorWith: MonitorDrainOptions = {
+      startLimit: 4,
+      resolvePendingDisposition,
+    };
+    // Assignability of optional drain bag into CreateChannelIngressDrainOptions
+    // (the shape monitor getDrain spreads) with and without dispositions.
+    type MonitorSpreadTarget = import("./ingress-drain.js").CreateChannelIngressDrainOptions<
+      Payload,
+      unknown
+    >;
+    const monitorSpreadWithout = {
+      ...monitorWithout,
+      queue: null as unknown as import("./ingress-queue.js").ChannelIngressQueue<Payload, unknown>,
+      dispatchClaimedEvent,
+    } satisfies MonitorSpreadTarget;
+    const monitorSpreadWith = {
+      ...monitorWith,
+      queue: null as unknown as import("./ingress-queue.js").ChannelIngressQueue<Payload, unknown>,
+      dispatchClaimedEvent,
+    } satisfies MonitorSpreadTarget;
+
+    // Plugin open options mirror CreateChannelIngressDrainOptions without queue.
+    const pluginWithout: PluginOpenOptions = {
+      dispatchClaimedEvent,
+      accountId: "acct",
+    };
+    const pluginWith: PluginOpenOptions = {
+      dispatchClaimedEvent,
+      resolvePendingDisposition,
+      accountId: "acct",
+    };
+
+    expect(monitorWithout.startLimit).toBe(4);
+    expect(typeof monitorWith.resolvePendingDisposition).toBe("function");
+    expect(monitorSpreadWithout.dispatchClaimedEvent).toBe(dispatchClaimedEvent);
+    expect(monitorSpreadWith.resolvePendingDisposition).toBe(resolvePendingDisposition);
+    expect(typeof pluginWithout.dispatchClaimedEvent).toBe("function");
+    expect(typeof pluginWith.resolvePendingDisposition).toBe("function");
+  });
 });

@@ -1,7 +1,10 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { normalizeOptionalAgentRuntimeId } from "../agents/agent-runtime-id.js";
-import { createChannelIngressDrain } from "../channels/message/ingress-drain.js";
+import {
+  createChannelIngressDrain,
+  type CreateChannelIngressDrainOptions,
+} from "../channels/message/ingress-drain.js";
 import { createChannelIngressQueue } from "../channels/message/ingress-queue.js";
 import {
   parseSqliteSessionFileMarker,
@@ -629,9 +632,7 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
             },
             openChannelIngressDrain: <TPayload, TMetadata = unknown, TCompletedMetadata = unknown>(
               options: Omit<
-                Parameters<
-                  typeof createChannelIngressDrain<TPayload, TMetadata, TCompletedMetadata>
-                >[0],
+                CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata>,
                 "queue"
               > & {
                 queue?: ReturnType<
@@ -659,7 +660,7 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
               return createChannelIngressDrain<TPayload, TMetadata, TCompletedMetadata>({
                 ...drainOptions,
                 queue,
-              });
+              } as CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata>);
             },
           } satisfies PluginRuntime["state"];
         }
