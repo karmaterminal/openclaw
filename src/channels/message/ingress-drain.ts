@@ -125,24 +125,20 @@ type ChannelIngressQueueCompletedMetadataOf<Q> =
  * the *queue value's* completed-metadata brand can store
  * ChannelIngressSuppressedCompletionMetadata.
  *
- * TQueue is constrained with `any` completed metadata so specialized queues
- * still assign/infer under partial factory type arguments instead of collapsing
- * to `ChannelIngressQueue<..., unknown>`. Incompatible queue contracts collapse
- * disposition fields to `never`.
+ * TQueue is constrained with `any` completed metadata so specialized queues can
+ * still be *inferred* under partial factory type arguments. The default falls
+ * back to free TCompletedMetadata (not `any`) so genuine one-/two-generic calls
+ * reject incompatible branded queues on the disposition-enabled path.
+ * Incompatible queue contracts collapse disposition fields to `never`.
  */
 export type CreateChannelIngressDrainOptions<
   TPayload = unknown,
   TMetadata = unknown,
   TCompletedMetadata = unknown,
-  /**
-   * Defaults to any-completed so partial factory type args still accept branded
-   * specialized queues. Disposition gating follows the inferred queue brand
-   * (or TCompletedMetadata when the queue is the default any-completed shape).
-   */
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    any
+    TCompletedMetadata
   >,
 > = Omit<CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>, "queue"> & {
   queue: TQueue;
@@ -159,7 +155,9 @@ export type CreateChannelIngressDrainOptions<
       });
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;
-  drainOnce: (options?: { shouldStop?: () => boolean }) => Promise<{ started: number }>;
+  drainOnce: (options?: {
+    shouldStop?: () => boolean;
+  }) => Promise<{ started: number; settled: number }>;
   activeLaneKeys: () => ReadonlySet<string>;
   waitForIdle: () => Promise<void>;
   dispose: () => void;
@@ -173,7 +171,7 @@ export function createChannelIngressDrain<
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    any
+    TCompletedMetadata
   >,
 >(
   options: Omit<
@@ -186,8 +184,9 @@ export function createChannelIngressDrain<
   },
 ): ChannelIngressDrain;
 /**
- * Disposition-required overload: rejects when the queue brand cannot store
- * suppressions (including under partial type arguments via TQueue inference).
+ * Disposition-required overload: rejects when the queue brand / free completed
+ * metadata cannot store suppressions. `queue: TQueue` sits outside the
+ * conditional so full inference still carries the concrete queue brand.
  */
 export function createChannelIngressDrain<
   TPayload = unknown,
@@ -196,21 +195,22 @@ export function createChannelIngressDrain<
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    any
+    TCompletedMetadata
   >,
 >(
-  options: ChannelIngressSuppressedCompletionMetadata extends ChannelIngressQueueCompletedMetadataOf<TQueue>
+  options: {
+    queue: TQueue;
+  } & (ChannelIngressSuppressedCompletionMetadata extends ChannelIngressQueueCompletedMetadataOf<TQueue>
     ? ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
       ? Omit<
           CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
           "queue"
-        > & {
-          queue: TQueue;
-        } & CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> & {
+        > &
+          CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> & {
             resolvePendingDisposition: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
           }
       : never
-    : never,
+    : never),
 ): ChannelIngressDrain;
 /**
  * Optional-disposition overload: used by monitor/plugin spreads where the
@@ -224,7 +224,7 @@ export function createChannelIngressDrain<
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    any
+    TCompletedMetadata
   >,
 >(
   options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
@@ -237,7 +237,7 @@ export function createChannelIngressDrain<
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    any
+    TCompletedMetadata
   >,
 >(
   options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
@@ -798,9 +798,9 @@ export function createChannelIngressDrain<
 
   const drainOnce = async (drainOptions?: {
     shouldStop?: () => boolean;
-  }): Promise<{ started: number }> => {
+  }): Promise<{ started: number; settled: number }> => {
     if (disposed) {
-      return { started: 0 };
+      return { started: 0, settled: 0 };
     }
     const shouldStop = () =>
       disposed || drainOptions?.shouldStop?.() === true || options.abortSignal?.aborted === true;
@@ -808,28 +808,9 @@ export function createChannelIngressDrain<
     await recoverStaleClaims();
 
     const dispositionNow = now();
-    // Bound pre-claim disposition load+visit+resolver work by startLimit so
-    // reconnect backlogs cannot scan an unbounded pending tail under the
-    // admission lock before claims. Without a disposition resolver the full
-    // pending set is still needed for retry/claim eligibility.
-    const pendingSnapshot = await queue.listPending({
-      limit: options.resolvePendingDisposition ? startLimit : "all",
-      orderBy,
-    });
-    const pendingDispositionResult = await applyIngressPendingDispositions({
-      pending: pendingSnapshot,
-      dispositionNow,
-      workLimit: startLimit,
-      // Factory edge already gates completed-metadata compatibility; free
-      // TCompletedMetadata cannot re-prove structural complete assignability.
-      queue: queue as never,
-      resolvePendingDisposition: options.resolvePendingDisposition,
-      onPendingDispositionCommitted: options.onPendingDispositionCommitted,
-      deriveLaneKey: options.deriveLaneKey,
-      reconcileStoredLaneKey: options.reconcileStoredLaneKey,
-      log,
-    });
-    const pending = pendingDispositionResult.pending;
+    // Load durable + local claim ownership before pending dispositions so a
+    // later same-lane predicted drop cannot settle while an older head claim
+    // (local or peer-held) still owns the lane.
     const claims = await queue.listClaims();
     const activeLaneKeys = new Set(laneOwnerByKey.keys());
     const claimedLaneKeys = new Set(
@@ -847,6 +828,33 @@ export function createChannelIngressDrain<
           resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
         ),
     );
+    const fencedLaneKeys = new Set<string>([
+      ...sortedKeys(activeLaneKeys),
+      ...sortedKeys(claimedLaneKeys),
+    ]);
+    // Bound pre-claim disposition load+visit+resolver work by startLimit so
+    // reconnect backlogs cannot scan an unbounded pending tail under the
+    // admission lock before claims. Without a disposition resolver the full
+    // pending set is still needed for retry/claim eligibility.
+    const pendingSnapshot = await queue.listPending({
+      limit: options.resolvePendingDisposition ? startLimit : "all",
+      orderBy,
+    });
+    const pendingDispositionResult = await applyIngressPendingDispositions({
+      pending: pendingSnapshot,
+      dispositionNow,
+      workLimit: startLimit,
+      fencedLaneKeys,
+      // Factory edge already gates completed-metadata compatibility; free
+      // TCompletedMetadata cannot re-prove structural complete assignability.
+      queue: queue as never,
+      resolvePendingDisposition: options.resolvePendingDisposition,
+      onPendingDispositionCommitted: options.onPendingDispositionCommitted,
+      deriveLaneKey: options.deriveLaneKey,
+      reconcileStoredLaneKey: options.reconcileStoredLaneKey,
+      log,
+    });
+    const pending = pendingDispositionResult.pending;
     const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
     const oldestRetainedPendingLaneKeys = new Set<string>();
     const retryDelayedLaneKeys = new Set<string>();
@@ -939,7 +947,7 @@ export function createChannelIngressDrain<
       blockedLaneKeys.add(laneKey);
       started += 1;
     }
-    return { started };
+    return { started, settled: pendingDispositionResult.settled };
   };
 
   return {

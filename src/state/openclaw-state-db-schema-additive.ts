@@ -46,6 +46,18 @@ export function ensureAgentDatabaseLeaseSchema(database: DatabaseSync): void {
   `);
 }
 
+/** Lazy additive side table for channel ingress pending-generation CAS fence. */
+export function ensureChannelIngressEventGenerationsSchema(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS channel_ingress_event_generations (
+      queue_name TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      generation INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (queue_name, event_id)
+    ) STRICT
+  `);
+}
+
 function resolveLegacyManagedImageRoot(recordJson: unknown): string | null {
   if (typeof recordJson !== "string") {
     return null;
@@ -370,7 +382,8 @@ export function ensureAdditiveStateColumns(db: DatabaseSync): void {
     "worker_environments",
     "teardown_terminal_state TEXT CHECK (teardown_terminal_state IN ('destroyed', 'failed'))",
   );
-  // Pending-generation fence for channel ingress complete/fail CAS (ABA-safe).
-  ensureColumn(db, "channel_ingress_events", "generation INTEGER NOT NULL DEFAULT 0");
+  // Pending-generation fence lives in a lazy additive side table so frozen-base
+  // new-to-old open is not refused for an unexpected events column.
+  ensureChannelIngressEventGenerationsSchema(db);
   ensureOperatorApprovalResolutionRefs(db);
 }

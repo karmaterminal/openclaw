@@ -90,7 +90,10 @@ describe("channel ingress pending disposition drain", () => {
       queue.complete = vi.fn(async (...args: Parameters<typeof queue.complete>) => {
         if (!raceInjected && args[0] === "stale-ambient") {
           raceInjected = true;
-          expect(await siblingDrain.drainOnce()).toEqual({ started: 1 });
+          expect(await siblingDrain.drainOnce()).toEqual({
+            started: 1,
+            settled: expect.any(Number),
+          });
           await siblingDrain.waitForIdle();
           return false;
         }
@@ -111,7 +114,7 @@ describe("channel ingress pending disposition drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane"]);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
@@ -119,7 +122,7 @@ describe("channel ingress pending disposition drain", () => {
         "fresh-addressed",
       ]);
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane", "fresh-addressed"]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
@@ -163,7 +166,7 @@ describe("channel ingress pending disposition drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      expect(await drain.drainOnce()).toEqual({ started: 0, settled: 3 });
       await drain.waitForIdle();
       // startLimit examinations/settlements; no claim budget remains; unexamined
       // same-lane tail stays fenced for this pass.
@@ -206,7 +209,7 @@ describe("channel ingress pending disposition drain", () => {
           await lifecycle.onAdopted();
         },
       });
-      expect(await zeroDrain.drainOnce()).toEqual({ started: 0 });
+      expect(await zeroDrain.drainOnce()).toEqual({ started: 0, settled: expect.any(Number) });
       expect(sql.selectCalls()).toBe(0);
       expect(sql.selectedRows()).toBe(0);
       zeroDrain.dispose();
@@ -225,7 +228,7 @@ describe("channel ingress pending disposition drain", () => {
           await lifecycle.onAdopted();
         },
       });
-      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      expect(await drain.drainOnce()).toEqual({ started: 0, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(examined).toBe(4);
       expect(sql.selectedRows()).toBe(4);
@@ -244,7 +247,7 @@ describe("channel ingress pending disposition drain", () => {
         await import("../../infra/kysely-sync.js");
       type ChannelIngressTestDatabase = Pick<
         import("../../state/openclaw-state-db.generated.js").DB,
-        "channel_ingress_events"
+        "channel_ingress_events" | "channel_ingress_event_generations"
       >;
       const database = openOpenClawStateDatabase({
         env: { OPENCLAW_STATE_DIR: stateDir },
@@ -267,8 +270,15 @@ describe("channel ingress pending disposition drain", () => {
             received_at: index,
             updated_at: index,
             attempts: 0,
-            generation: 1,
           } as import("kysely").Insertable<ChannelIngressTestDatabase["channel_ingress_events"]>),
+        );
+        executeSqliteQuerySync(
+          database.db,
+          kysely.insertInto("channel_ingress_event_generations").values({
+            queue_name: queueName,
+            event_id: `corrupt-${index}`,
+            generation: 1,
+          }),
         );
       }
       await queue.enqueue(
@@ -338,7 +348,7 @@ describe("channel ingress pending disposition drain", () => {
         return await drainOnce(...args);
       };
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(pumps).toBe(1);
       expect(adopted).toEqual(["fresh-addressed"]);
@@ -397,7 +407,7 @@ describe("channel ingress pending disposition drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane"]);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
@@ -442,7 +452,7 @@ describe("channel ingress pending disposition drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["fresh-addressed"]);
       expect(await queue.listPending({ limit: "all" })).toEqual([]);
@@ -488,7 +498,7 @@ describe("channel ingress pending disposition drain", () => {
       });
 
       // Durable CAS + later same-pass claim must survive the double throw.
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["fresh-addressed"]);
       expect(await queue.listPending({ limit: "all" })).toEqual([]);
@@ -538,7 +548,7 @@ describe("channel ingress pending disposition drain", () => {
           await lifecycle.onAdopted();
         },
       });
-      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      expect(await drain.drainOnce()).toEqual({ started: 0, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(await queue.listPending({ limit: "all" })).toEqual([]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
@@ -613,7 +623,7 @@ describe("channel ingress pending disposition drain", () => {
       });
       expect(resubmit).toMatchObject({ kind: "resubmitted" });
       releaseResolve();
-      expect(await drainPromise).toEqual({ started: 0 });
+      expect(await drainPromise).toEqual({ started: 0, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(sawResume).toBe(true);
       // Resubmitted generation must remain pending — not a suppression tombstone.
@@ -625,6 +635,85 @@ describe("channel ingress pending disposition drain", () => {
       });
       expect(replay).toMatchObject({ kind: "pending", duplicate: true });
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      drain.dispose();
+    });
+  });
+
+  it("does not let a later pending disposition overtake an older peer-held same-lane claim", async () => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const otherLane = "channel:other-room";
+      // Shared clock so peer lease recovery cannot fire during the disposition pass.
+      const clock = STALE_AMBIENT_PENDING_MS + 1_000;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+
+      await queue.enqueue(
+        "older-head",
+        { text: "in-flight head", kind: "addressed" },
+        { laneKey, receivedAt: clock - 10 },
+      );
+      let releasePeer!: () => void;
+      const peerHold = new Promise<void>((resolve) => {
+        releasePeer = resolve;
+      });
+      const peer = createChannelIngressDrain<Payload>({
+        queue,
+        // Auto-minted ownerId registers a live local instance so same-process
+        // peer claims are not recovered mid-hold.
+        startLimit: 1,
+        // Long lease + shared now keeps the peer claim live across the disposition pass.
+        claimLeaseMs: 60 * 60 * 1_000,
+        now: () => clock,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          expect(event.id).toBe("older-head");
+          await peerHold;
+          await lifecycle.onAdopted();
+        },
+      });
+      expect(await peer.drainOnce()).toEqual({ started: 1, settled: 0 });
+      expect((await queue.listClaims()).map((claim) => claim.id)).toEqual(["older-head"]);
+
+      // Later ambient is already past the stale threshold at the shared clock.
+      await queue.enqueue(
+        "later-ambient",
+        { text: "stale ambient tail", kind: "ambient" },
+        { laneKey, receivedAt: 0 },
+      );
+      await queue.enqueue(
+        "other-lane-work",
+        { text: "unrelated", kind: "addressed" },
+        { laneKey: otherLane, receivedAt: clock - 1 },
+      );
+
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        claimLeaseMs: 60 * 60 * 1_000,
+        now: () => clock,
+        startLimit: 8,
+        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: 0 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["other-lane-work"]);
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual([
+        "later-ambient",
+      ]);
+      expect((await queue.listClaims()).map((claim) => claim.id)).toEqual(["older-head"]);
+
+      releasePeer();
+      await peer.waitForIdle();
+      peer.dispose();
+      const afterHead = await drain.drainOnce();
+      await drain.waitForIdle();
+      expect(afterHead).toEqual({ started: 0, settled: 1 });
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual([]);
+      await expectCompletedTombstone(queue, "later-ambient");
       drain.dispose();
     });
   });
@@ -699,37 +788,19 @@ describe("channel ingress pending disposition drain", () => {
       dispatchClaimedEvent,
     });
 
-    // Partial free type args still carry the queue brand via the 4th TQueue parameter
-    // (TPayload/TMetadata alone default completed metadata to unknown and cannot
-    // reject; the brand is what gates disposition under partial specification).
-    createChannelIngressDrain<
-      Payload,
-      unknown,
-      unknown,
-      import("./ingress-queue.js").ChannelIngressQueue<
-        Payload,
-        unknown,
-        IncompatibleCompletedMetadata
-      >
-    >({
+    // Genuine one-generic / two-generic calls must reject (do not fake arity with
+    // a 4th TQueue type argument). Under partial free type args the incompatible
+    // queue brand fails assignability into the disposition-enabled options bag.
+    createChannelIngressDrain<Payload>({
+      // @ts-expect-error one-generic partial args + branded queue reject disposition path
       queue: incompatibleQueue,
-      // @ts-expect-error one-generic-style partial args + branded queue reject disposition resolver
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
 
-    createChannelIngressDrain<
-      Payload,
-      unknown,
-      unknown,
-      import("./ingress-queue.js").ChannelIngressQueue<
-        Payload,
-        unknown,
-        IncompatibleCompletedMetadata
-      >
-    >({
+    createChannelIngressDrain<Payload, unknown>({
+      // @ts-expect-error two-generic partial args + branded queue reject disposition path
       queue: incompatibleQueue,
-      // @ts-expect-error two-generic-style partial args + branded queue reject disposition resolver
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });

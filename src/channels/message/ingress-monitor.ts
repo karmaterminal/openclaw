@@ -511,7 +511,7 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
         const activeDrain = getDrain();
         // Claiming and durable admission are mutually exclusive so a row cannot
         // dispatch before its transport-owned post-append acknowledgement finishes.
-        const { started } = await withAdmissionClaimLock(() =>
+        const { started, settled } = await withAdmissionClaimLock(() =>
           activeDrain.drainOnce({
             shouldStop: () =>
               !running ||
@@ -520,6 +520,9 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
                 activeDeliveries.size >= options.drain.startLimit),
           }),
         );
+        // Disposition-only progress (settled>0, started===0) must still repump
+        // so startLimit-bounded backlog can clear without waiting for pollInterval.
+        const progressed = started + settled > 0;
         if (waitForDeliveryIdleBeforeRepump) {
           await waitForActiveDeliveries();
           await activeDrain.waitForIdle();
@@ -527,11 +530,14 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
           // Failed-retryable delivery settles after the channel callback returns.
           // Wake once the drain has released or failed those claims.
           scheduleDrainIdleWake(activeDrain);
+        } else if (settled > 0) {
+          // No claims started this pass; keep the pump loop alive immediately.
+          requested = true;
         }
         if (
           !running ||
           isAborted() ||
-          (!requested && (!waitForDeliveryIdleBeforeRepump || started === 0))
+          (!requested && (!waitForDeliveryIdleBeforeRepump || !progressed))
         ) {
           break;
         }

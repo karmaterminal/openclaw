@@ -1104,8 +1104,6 @@ CREATE TABLE IF NOT EXISTS channel_ingress_events (
   claim_owner TEXT,
   claimed_at INTEGER,
   attempts INTEGER NOT NULL DEFAULT 0,
-  -- Monotonic pending generation fence; bumps on enqueue/resubmit/release.
-  generation INTEGER NOT NULL DEFAULT 0,
   last_attempt_at INTEGER,
   last_error TEXT,
   failed_reason TEXT,
@@ -1123,6 +1121,14 @@ CREATE INDEX IF NOT EXISTS idx_channel_ingress_claims
 
 CREATE INDEX IF NOT EXISTS idx_channel_ingress_lane
   ON channel_ingress_events(queue_name, status, lane_key);
+
+
+CREATE TABLE IF NOT EXISTS channel_ingress_event_generations (
+  queue_name TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  generation INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (queue_name, event_id)
+) STRICT;
 
 CREATE TABLE IF NOT EXISTS plugin_blob_entries (
   plugin_id TEXT NOT NULL,

@@ -29,12 +29,12 @@ describe("channel ingress drain lanes", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await vi.waitFor(() => expect(dispatches).toEqual(["active"]));
       await queue.enqueue("candidate", { text: "topic" }, { laneKey: "control" });
       const claimNext = vi.spyOn(queue, "claimNext");
 
-      await expect(drain.drainOnce()).resolves.toEqual({ started: 1 });
+      await expect(drain.drainOnce()).resolves.toEqual({ started: 1, settled: expect.any(Number) });
       await vi.waitFor(() => expect(dispatches).toEqual(["active", "candidate"]));
       expect(claimNext).toHaveBeenCalledTimes(2);
       await expect(queue.enqueue("candidate", { text: "topic" })).resolves.toMatchObject({

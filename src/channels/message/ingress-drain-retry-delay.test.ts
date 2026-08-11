@@ -56,7 +56,7 @@ describe("channel ingress drain retry-delay lane ordering", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["eligible-head"]);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
@@ -100,7 +100,7 @@ describe("channel ingress drain retry-delay lane ordering", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane"]);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
@@ -109,10 +109,10 @@ describe("channel ingress drain retry-delay lane ordering", () => {
       ]);
 
       clock += 60_000;
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane", "retrying-head"]);
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane", "retrying-head", "fresh-addressed"]);
       drain.dispose();
@@ -156,7 +156,7 @@ describe("channel ingress drain retry-delay lane ordering", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["fresh-after-dead-letter"]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);

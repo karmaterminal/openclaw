@@ -11,6 +11,7 @@ import {
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
 } from "../../infra/kysely-sync.js";
+import { ensureChannelIngressEventGenerationsSchema } from "../../state/openclaw-state-db-schema-additive.js";
 import type {
   ChannelIngressEvents,
   DB as OpenClawStateKyselyDatabase,
@@ -64,8 +65,9 @@ export type ChannelIngressQueueClaimRef = {
 
 /**
  * Snapshot generation fence for pending-id complete/fail CAS. Matches the
- * durable monotonic `generation` column so fail+resubmit and claim+release
- * cannot recreate a prior fence via recycled timestamps/attempts (ABA).
+ * durable monotonic generation side-table value so fail+resubmit and
+ * claim+release cannot recreate a prior fence via recycled timestamps/attempts
+ * (ABA).
  */
 export type ChannelIngressPendingGenerationMatch = {
   generation: number;
@@ -303,7 +305,10 @@ export type CreateChannelIngressQueueOptions = {
   now?: () => number;
 };
 
-type ChannelIngressDatabase = Pick<OpenClawStateKyselyDatabase, "channel_ingress_events">;
+type ChannelIngressDatabase = Pick<
+  OpenClawStateKyselyDatabase,
+  "channel_ingress_events" | "channel_ingress_event_generations"
+>;
 type ChannelIngressRow = Selectable<ChannelIngressEvents>;
 
 // Failed rows need to distinguish a retained JSON null payload from the "null"
@@ -326,9 +331,13 @@ function createStateDirEnv(
 }
 
 function openStateDatabase(stateDir?: string) {
-  return openOpenClawStateDatabase({
+  const database = openOpenClawStateDatabase({
     env: stateDir ? createStateDirEnv(stateDir) : process.env,
   });
+  // Writable opens also ensure via ensureAdditiveStateColumns; keep a local
+  // guarantee so feature paths remain correct if called against a pre-ensure handle.
+  ensureChannelIngressEventGenerationsSchema(database.db);
+  return database;
 }
 
 function getChannelIngressKysely(db: DatabaseSync) {
@@ -337,6 +346,81 @@ function getChannelIngressKysely(db: DatabaseSync) {
 
 function affectedRows(result: { numAffectedRows?: bigint }): number {
   return Number(result.numAffectedRows ?? 0n);
+}
+
+function readEventGeneration(db: DatabaseSync, queueName: string, eventId: string): number {
+  const row = executeSqliteQueryTakeFirstSync(
+    db,
+    getChannelIngressKysely(db)
+      .selectFrom("channel_ingress_event_generations")
+      .select("generation")
+      .where("queue_name", "=", queueName)
+      .where("event_id", "=", eventId),
+  );
+  return Number(row?.generation ?? 0);
+}
+
+function loadEventGenerations(
+  db: DatabaseSync,
+  queueName: string,
+  eventIds: string[],
+): Map<string, number> {
+  const generations = new Map<string, number>();
+  if (eventIds.length === 0) {
+    return generations;
+  }
+  const rows = executeSqliteQuerySync(
+    db,
+    getChannelIngressKysely(db)
+      .selectFrom("channel_ingress_event_generations")
+      .select(["event_id", "generation"])
+      .where("queue_name", "=", queueName)
+      .where("event_id", "in", eventIds),
+  ).rows;
+  for (const row of rows) {
+    generations.set(row.event_id, Number(row.generation ?? 0));
+  }
+  return generations;
+}
+
+function writeEventGeneration(
+  db: DatabaseSync,
+  queueName: string,
+  eventId: string,
+  generation: number,
+): void {
+  executeSqliteQuerySync(
+    db,
+    getChannelIngressKysely(db)
+      .insertInto("channel_ingress_event_generations")
+      .values({
+        queue_name: queueName,
+        event_id: eventId,
+        generation,
+      })
+      .onConflict((conflict) =>
+        conflict.columns(["queue_name", "event_id"]).doUpdateSet({ generation }),
+      ),
+  );
+}
+
+function bumpEventGeneration(db: DatabaseSync, queueName: string, eventId: string): void {
+  // sqlite-allow-raw -- Atomic insert-or-increment for the generation fence side table.
+  db.prepare(
+    `INSERT INTO channel_ingress_event_generations (queue_name, event_id, generation)
+     VALUES (?, ?, 1)
+     ON CONFLICT(queue_name, event_id) DO UPDATE SET generation = generation + 1`,
+  ).run(queueName, eventId);
+}
+
+function clearEventGeneration(db: DatabaseSync, queueName: string, eventId: string): void {
+  executeSqliteQuerySync(
+    db,
+    getChannelIngressKysely(db)
+      .deleteFrom("channel_ingress_event_generations")
+      .where("queue_name", "=", queueName)
+      .where("event_id", "=", eventId),
+  );
 }
 
 type ParseJsonResult = { ok: true; value: unknown } | { ok: false };
@@ -355,6 +439,7 @@ function parseFailedPayload(value: string): ParseJsonResult {
 
 function baseRecord<TPayload, TMetadata>(
   row: ChannelIngressRow,
+  generation = 0,
 ): ChannelIngressQueueRecord<TPayload, TMetadata> | null {
   const payloadResult = parseJson(row.payload_json);
   if (!payloadResult.ok) {
@@ -370,7 +455,7 @@ function baseRecord<TPayload, TMetadata>(
     ...(metaResult === null || !metaResult.ok ? {} : { metadata: metaResult.value as TMetadata }),
     receivedAt: row.received_at,
     updatedAt: row.updated_at,
-    generation: Number(row.generation ?? 0),
+    generation,
     ...(row.lane_key === null ? {} : { laneKey: row.lane_key }),
     attempts: row.attempts,
     ...(row.last_attempt_at === null ? {} : { lastAttemptAt: row.last_attempt_at }),
@@ -380,8 +465,9 @@ function baseRecord<TPayload, TMetadata>(
 
 function claimedRecord<TPayload, TMetadata>(
   row: ChannelIngressRow,
+  generation = 0,
 ): ChannelIngressQueueClaim<TPayload, TMetadata> | null {
-  const base = baseRecord<TPayload, TMetadata>(row);
+  const base = baseRecord<TPayload, TMetadata>(row, generation);
   if (base === null) {
     return null;
   }
@@ -521,6 +607,7 @@ function claimTokenFrom(
 
 function rowToEnqueueResult<TPayload, TMetadata, TCompletedMetadata>(
   row: ChannelIngressRow,
+  generation = 0,
 ): ChannelIngressQueueEnqueueResult<TPayload, TMetadata, TCompletedMetadata> | null {
   if (row.status === "completed") {
     return { kind: "completed", duplicate: true, record: completedRecord(row) };
@@ -533,10 +620,10 @@ function rowToEnqueueResult<TPayload, TMetadata, TCompletedMetadata>(
     };
   }
   if (row.status === "claimed") {
-    const rec = claimedRecord<TPayload, TMetadata>(row);
+    const rec = claimedRecord<TPayload, TMetadata>(row, generation);
     return rec ? { kind: "claimed", duplicate: true, record: rec } : null;
   }
-  const rec = baseRecord<TPayload, TMetadata>(row);
+  const rec = baseRecord<TPayload, TMetadata>(row, generation);
   return rec ? { kind: "pending", duplicate: true, record: rec } : null;
 }
 
@@ -663,9 +750,6 @@ export function createChannelIngressQueue<
               received_at: receivedAt,
               updated_at: updatedAt,
               attempts: 0,
-              // Fresh accepts start at generation 1 so they never collide with
-              // pre-migration DEFAULT 0 rows that later bump on release/resubmit.
-              generation: 1,
             })
             .onConflict((conflict) => conflict.columns(["queue_name", "event_id"]).doNothing()),
         );
@@ -674,7 +758,10 @@ export function createChannelIngressQueue<
           throw new Error(`Failed to read channel ingress event ${queueName}/${eventId}`);
         }
         if (affectedRows(insert) > 0) {
-          const fresh = baseRecord<TPayload, TMetadata>(row);
+          // Fresh accepts start at generation 1 so they never collide with
+          // missing/default 0 side-table rows that later bump on release/resubmit.
+          writeEventGeneration(tx.db, queueName, eventId, 1);
+          const fresh = baseRecord<TPayload, TMetadata>(row, 1);
           if (fresh === null) {
             throw new Error(
               `Corrupt payload_json in channel ingress event ${queueName}/${eventId}`,
@@ -686,7 +773,10 @@ export function createChannelIngressQueue<
             record: fresh,
           };
         }
-        const dup = rowToEnqueueResult<TPayload, TMetadata, TCompletedMetadata>(row);
+        const dup = rowToEnqueueResult<TPayload, TMetadata, TCompletedMetadata>(
+          row,
+          readEventGeneration(tx.db, queueName, eventId),
+        );
         if (dup === null) {
           // A live claimant may already be producing external side effects.
           // Duplicate enqueue cannot prove ownership is stale, so leave claimed
@@ -773,10 +863,18 @@ export function createChannelIngressQueue<
           if (rows.length === 0) {
             break;
           }
+          const pageGenerations = loadEventGenerations(
+            tx.db,
+            queueName,
+            rows.map((row) => row.event_id),
+          );
           let pageAdvancedPastCorrupt = false;
           for (const row of rows) {
             selectedRows += 1;
-            const record = baseRecord<TPayload, TMetadata>(row);
+            const record = baseRecord<TPayload, TMetadata>(
+              row,
+              pageGenerations.get(row.event_id) ?? 0,
+            );
             if (record) {
               records.push(record);
             } else if (corruptReconciliations < limit) {
@@ -836,8 +934,13 @@ export function createChannelIngressQueue<
         .orderBy("received_at", "asc")
         .orderBy("event_id", "asc"),
     ).rows;
+    const generations = loadEventGenerations(
+      db,
+      queueName,
+      rows.map((row) => row.event_id),
+    );
     return rows
-      .map((row) => claimedRecord<TPayload, TMetadata>(row))
+      .map((row) => claimedRecord<TPayload, TMetadata>(row, generations.get(row.event_id) ?? 0))
       .filter((rec): rec is ChannelIngressQueueClaim<TPayload, TMetadata> => rec !== null);
   };
 
@@ -911,12 +1014,20 @@ export function createChannelIngressQueue<
               .where("status", "=", "claimed")
               .where("event_id", "in", candidateIds),
           ).rows;
+          const claimedCandidateGenerations = loadEventGenerations(
+            tx.db,
+            queueName,
+            claimedCandidateRows.map((row) => row.event_id),
+          );
           const claimedCandidateLaneKeys = claimedCandidateRows
             .map((row) => {
               if (row.lane_key && !claimOptions?.reconcileStoredLaneKey) {
                 return row.lane_key;
               }
-              const rec = baseRecord<TPayload, TMetadata>(row);
+              const rec = baseRecord<TPayload, TMetadata>(
+                row,
+                claimedCandidateGenerations.get(row.event_id) ?? 0,
+              );
               return rec ? resolveClaimLaneKey(rec) : (row.lane_key ?? undefined);
             })
             .filter((laneKey): laneKey is string => Boolean(laneKey));
@@ -950,9 +1061,14 @@ export function createChannelIngressQueue<
           | undefined;
         while (!selected) {
           const rows = executeSqliteQuerySync(tx.db, orderedSelect).rows;
+          const rowGenerations = loadEventGenerations(
+            tx.db,
+            queueName,
+            rows.map((row) => row.event_id),
+          );
           let tombstonedCorruptRow = false;
           for (const row of rows) {
-            const rec = baseRecord<TPayload, TMetadata>(row);
+            const rec = baseRecord<TPayload, TMetadata>(row, rowGenerations.get(row.event_id) ?? 0);
             if (rec === null) {
               if (corruptReconciliations >= MAX_CORRUPT_RECONCILIATIONS_PER_CLAIM) {
                 continue;
@@ -1009,7 +1125,12 @@ export function createChannelIngressQueue<
           return null;
         }
         const row = selectRow(tx.db, queueName, selected.row.event_id);
-        return row ? claimedRecord<TPayload, TMetadata>(row) : null;
+        return row
+          ? claimedRecord<TPayload, TMetadata>(
+              row,
+              readEventGeneration(tx.db, queueName, selected.row.event_id),
+            )
+          : null;
       },
       { path: database.path },
     );
@@ -1032,7 +1153,8 @@ export function createChannelIngressQueue<
         if (!pendingRow || pendingRow.status !== "pending") {
           return null;
         }
-        if (baseRecord<TPayload, TMetadata>(pendingRow) === null) {
+        const pendingGeneration = readEventGeneration(tx.db, queueName, eventId);
+        if (baseRecord<TPayload, TMetadata>(pendingRow, pendingGeneration) === null) {
           tombstoneCorruptPayloadRow({
             db: tx.db,
             row: pendingRow,
@@ -1062,7 +1184,7 @@ export function createChannelIngressQueue<
           return null;
         }
         const row = selectRow(tx.db, queueName, eventId);
-        return row ? claimedRecord<TPayload, TMetadata>(row) : null;
+        return row ? claimedRecord<TPayload, TMetadata>(row, pendingGeneration) : null;
       },
       { path: database.path },
     );
@@ -1114,10 +1236,6 @@ export function createChannelIngressQueue<
               claim_token: null,
               claim_owner: null,
               claimed_at: null,
-              // Stale recovery is a pending re-entry: bump generation so an async
-              // disposition snapshot taken before claim/recover cannot CAS-settle
-              // the recycled row after recoverStaleClaims.
-              generation: eb("generation", "+", 1),
               attempts: eb("attempts", "+", 1),
               last_attempt_at: releaseOptions.releasedAt,
               updated_at: releaseOptions.releasedAt,
@@ -1128,7 +1246,14 @@ export function createChannelIngressQueue<
             .where("claim_token", "=", claimRef.claim.token)
             .where("claimed_at", "<=", releaseOptions.cutoff),
         );
-        return affectedRows(result) > 0;
+        if (affectedRows(result) === 0) {
+          return false;
+        }
+        // Stale recovery is a pending re-entry: bump generation so an async
+        // disposition snapshot taken before claim/recover cannot CAS-settle
+        // the recycled row after recoverStaleClaims.
+        bumpEventGeneration(tx.db, queueName, eventId);
+        return true;
       },
       { path: database.path },
     );
@@ -1153,8 +1278,16 @@ export function createChannelIngressQueue<
         .where("claimed_at", "<=", cutoff),
     ).rows;
     let recovered = 0;
+    const claimedGenerations = loadEventGenerations(
+      database.db,
+      queueName,
+      claimedRows.map((row) => row.event_id),
+    );
     for (const row of claimedRows) {
-      const claimRec = claimedRecord<TPayload, TMetadata>(row);
+      const claimRec = claimedRecord<TPayload, TMetadata>(
+        row,
+        claimedGenerations.get(row.event_id) ?? 0,
+      );
       if (claimRec === null) {
         const shouldRecoverCorrupt = recoverOptions?.shouldRecoverCorrupt;
         if (shouldRecoverCorrupt) {
@@ -1229,11 +1362,16 @@ export function createChannelIngressQueue<
           token === null
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
-        if (token === null && expectedPending) {
-          update = update.where("generation", "=", expectedPending.generation);
+        if (
+          token === null &&
+          expectedPending &&
+          readEventGeneration(tx.db, queueName, eventId) !== expectedPending.generation
+        ) {
+          return false;
         }
         const result = executeSqliteQuerySync(tx.db, update);
         if (affectedRows(result) > 0) {
+          clearEventGeneration(tx.db, queueName, eventId);
           return true;
         }
         if (token !== null) {
@@ -1260,7 +1398,6 @@ export function createChannelIngressQueue<
               received_at: completedAt,
               updated_at: completedAt,
               attempts: 0,
-              generation: 0,
               completed_at: completedAt,
               completed_metadata_json:
                 completeOptions?.metadata === undefined
@@ -1269,7 +1406,11 @@ export function createChannelIngressQueue<
             })
             .onConflict((conflict) => conflict.columns(["queue_name", "event_id"]).doNothing()),
         );
-        return affectedRows(insert) > 0;
+        if (affectedRows(insert) > 0) {
+          clearEventGeneration(tx.db, queueName, eventId);
+          return true;
+        }
+        return false;
       },
       { path: database.path },
     );
@@ -1293,9 +1434,6 @@ export function createChannelIngressQueue<
             claim_token: null,
             claim_owner: null,
             claimed_at: null,
-            // Bump generation even for non-attempting releases so a stale
-            // disposition snapshot cannot ABA-match the recycled pending row.
-            generation: eb("generation", "+", 1),
             // A claim can lose its owner before processing starts. Returning it
             // must not consume retry budget or erase the previous real failure.
             ...(releaseOptions?.recordAttempt === false
@@ -1315,7 +1453,13 @@ export function createChannelIngressQueue<
           token === null
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
-        return affectedRows(executeSqliteQuerySync(tx.db, update)) > 0;
+        if (affectedRows(executeSqliteQuerySync(tx.db, update)) === 0) {
+          return false;
+        }
+        // Bump generation even for non-attempting releases so a stale
+        // disposition snapshot cannot ABA-match the recycled pending row.
+        bumpEventGeneration(tx.db, queueName, eventId);
+        return true;
       },
       { path: database.path },
     );
@@ -1357,9 +1501,15 @@ export function createChannelIngressQueue<
           token === null
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
-        if (token === null && expectedPending) {
-          update = update.where("generation", "=", expectedPending.generation);
+        if (
+          token === null &&
+          expectedPending &&
+          readEventGeneration(tx.db, queueName, eventId) !== expectedPending.generation
+        ) {
+          return false;
         }
+        // Keep the side-table generation on fail so resubmit can bump
+        // monotonically and stale disposition fences still lose CAS.
         return affectedRows(executeSqliteQuerySync(tx.db, update)) > 0;
       },
       { path: database.path },
@@ -1397,15 +1547,13 @@ export function createChannelIngressQueue<
           tx.db,
           getChannelIngressKysely(tx.db)
             .updateTable("channel_ingress_events")
-            .set((eb) => ({
+            .set({
               status: "pending",
               payload_json:
                 row.payload_json === FAILED_NULL_PAYLOAD_SENTINEL ? "null" : row.payload_json,
               received_at: resubmittedAt,
               updated_at: resubmittedAt,
               attempts: 0,
-              // New pending generation — stale disposition fences must lose CAS.
-              generation: eb("generation", "+", 1),
               last_attempt_at: null,
               last_error: null,
               failed_at: null,
@@ -1415,7 +1563,7 @@ export function createChannelIngressQueue<
               claimed_at: null,
               completed_at: null,
               completed_metadata_json: null,
-            }))
+            })
             .where("queue_name", "=", queueName)
             .where("event_id", "=", eventId)
             .where("status", "=", "failed"),
@@ -1423,8 +1571,11 @@ export function createChannelIngressQueue<
         if (affectedRows(result) === 0) {
           return { kind: "active", status: "pending" };
         }
+        // New pending generation — stale disposition fences must lose CAS.
+        bumpEventGeneration(tx.db, queueName, eventId);
         const updated = selectRow(tx.db, queueName, eventId);
-        const record = updated ? baseRecord<TPayload, TMetadata>(updated) : null;
+        const generation = readEventGeneration(tx.db, queueName, eventId);
+        const record = updated ? baseRecord<TPayload, TMetadata>(updated, generation) : null;
         if (!record) {
           throw new Error(
             `Failed to read resubmitted channel ingress event ${queueName}/${eventId}`,

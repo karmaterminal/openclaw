@@ -78,7 +78,7 @@ describe("channel ingress drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual([]);
 
@@ -94,7 +94,7 @@ describe("channel ingress drain", () => {
         { laneKey: "channel:other-room", receivedAt: clock + 1 },
       );
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane"]);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
@@ -103,10 +103,10 @@ describe("channel ingress drain", () => {
       ]);
 
       clock += 60_000;
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane", "retrying-head"]);
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane", "retrying-head", "fresh-addressed"]);
       drain.dispose();
@@ -129,7 +129,7 @@ describe("channel ingress drain", () => {
           throw new Error("transient Discord recovery failure");
         },
       });
-      expect(await firstDrain.drainOnce()).toEqual({ started: 1 });
+      expect(await firstDrain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await firstDrain.waitForIdle();
       firstDrain.dispose();
 
@@ -151,7 +151,7 @@ describe("channel ingress drain", () => {
         },
       });
 
-      expect(await secondDrain.drainOnce()).toEqual({ started: 1 });
+      expect(await secondDrain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await secondDrain.waitForIdle();
       expect(adopted).toEqual(["fresh-after-dead-letter"]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
@@ -192,7 +192,7 @@ describe("channel ingress drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["fresh-addressed"]);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).not.toContain(
@@ -227,18 +227,18 @@ describe("channel ingress drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await vi.waitFor(() => expect(adopted).toEqual(["active"]));
       await queue.enqueue("same-lane", { text: "same" }, { laneKey: "shared", receivedAt: 2 });
-      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      expect(await drain.drainOnce()).toEqual({ started: 0, settled: expect.any(Number) });
 
       await queue.enqueue("other-lane", { text: "other" }, { laneKey: "other", receivedAt: 3 });
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await vi.waitFor(() => expect(adopted).toEqual(["active", "other-lane"]));
 
       releaseActive();
       await drain.waitForIdle();
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["active", "other-lane", "same-lane"]);
       drain.dispose();
@@ -273,7 +273,7 @@ describe("channel ingress drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["stale-addressed"]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
@@ -312,7 +312,7 @@ describe("channel ingress drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["ambient-1"]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
@@ -351,7 +351,7 @@ describe("channel ingress drain", () => {
           await lifecycle.onAdopted();
         },
       });
-      expect(await firstDrain.drainOnce()).toEqual({ started: 1 });
+      expect(await firstDrain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await firstDrain.waitForIdle();
       firstDrain.dispose();
 
@@ -364,7 +364,7 @@ describe("channel ingress drain", () => {
           await lifecycle.onAdopted();
         },
       });
-      expect(await secondDrain.drainOnce()).toEqual({ started: 0 });
+      expect(await secondDrain.drainOnce()).toEqual({ started: 0, settled: expect.any(Number) });
       await secondDrain.waitForIdle();
 
       expect(adopted).toEqual(["fresh-addressed"]);
@@ -402,6 +402,7 @@ describe("channel ingress drain", () => {
 
         expect(await drain.drainOnce()).toEqual({
           started: expected.adopted.length,
+          settled: expect.any(Number),
         });
         await drain.waitForIdle();
         expect(adopted).toEqual(expected.adopted);

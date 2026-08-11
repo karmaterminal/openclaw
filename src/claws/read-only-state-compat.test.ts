@@ -28,7 +28,7 @@ function createBaseShapeState(params: {
   env: { OPENCLAW_STATE_DIR: string };
   packageRoot: string;
   workspace: string;
-  dropIngressGeneration?: boolean;
+  dropIngressGenerationSideTable?: boolean;
 }): string {
   const database = openOpenClawStateDatabase({ env: params.env });
   const databasePath = database.path;
@@ -50,55 +50,15 @@ function createBaseShapeState(params: {
     const [table, name] = column.split(".");
     database.db.exec(`ALTER TABLE ${table} DROP COLUMN ${name};`);
   }
-  if (params.dropIngressGeneration) {
-    // Rebuild ingress table without generation while keeping current user_version.
-    database.db.exec("PRAGMA foreign_keys = OFF;");
-    database.db.exec(`
-      CREATE TABLE channel_ingress_events__pre_gen (
-        queue_name TEXT NOT NULL,
-        event_id TEXT NOT NULL,
-        channel_id TEXT NOT NULL,
-        account_id TEXT NOT NULL,
-        status TEXT NOT NULL,
-        lane_key TEXT,
-        payload_json TEXT NOT NULL,
-        metadata_json TEXT,
-        received_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        claim_token TEXT,
-        claim_owner TEXT,
-        claimed_at INTEGER,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        last_attempt_at INTEGER,
-        last_error TEXT,
-        failed_reason TEXT,
-        failed_at INTEGER,
-        completed_at INTEGER,
-        completed_metadata_json TEXT,
-        PRIMARY KEY (queue_name, event_id)
-      ) STRICT;
-      INSERT INTO channel_ingress_events__pre_gen (
-        queue_name, event_id, channel_id, account_id, status, lane_key, payload_json,
-        metadata_json, received_at, updated_at, claim_token, claim_owner, claimed_at,
-        attempts, last_attempt_at, last_error, failed_reason, failed_at, completed_at,
-        completed_metadata_json
-      )
-      SELECT
-        queue_name, event_id, channel_id, account_id, status, lane_key, payload_json,
-        metadata_json, received_at, updated_at, claim_token, claim_owner, claimed_at,
-        attempts, last_attempt_at, last_error, failed_reason, failed_at, completed_at,
-        completed_metadata_json
-      FROM channel_ingress_events;
-      DROP TABLE channel_ingress_events;
-      ALTER TABLE channel_ingress_events__pre_gen RENAME TO channel_ingress_events;
-      CREATE INDEX IF NOT EXISTS idx_channel_ingress_pending
-        ON channel_ingress_events(queue_name, status, received_at, event_id);
-      CREATE INDEX IF NOT EXISTS idx_channel_ingress_claims
-        ON channel_ingress_events(queue_name, status, claimed_at);
-      CREATE INDEX IF NOT EXISTS idx_channel_ingress_lane
-        ON channel_ingress_events(queue_name, status, lane_key);
-    `);
+  if (params.dropIngressGenerationSideTable) {
+    // Lazy additive side table may be absent until a writable open ensures it.
+    database.db.exec("DROP TABLE IF EXISTS channel_ingress_event_generations;");
     database.db.exec(`PRAGMA user_version = ${OPENCLAW_STATE_SCHEMA_VERSION};`);
+    expect(
+      database.db
+        .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get("channel_ingress_event_generations"),
+    ).toBeUndefined();
     expect(tableHasColumn(database.db, "channel_ingress_events", "generation")).toBe(false);
   }
   closeOpenClawStateDatabaseForTest();
@@ -107,7 +67,7 @@ function createBaseShapeState(params: {
 
 async function createFixture(
   label: string,
-  options?: { dropIngressGeneration?: boolean },
+  options?: { dropIngressGenerationSideTable?: boolean },
 ): Promise<{
   env: { OPENCLAW_STATE_DIR: string };
   databasePath: string;
@@ -127,7 +87,7 @@ async function createFixture(
       env,
       packageRoot,
       workspace,
-      dropIngressGeneration: options?.dropIngressGeneration,
+      dropIngressGenerationSideTable: options?.dropIngressGenerationSideTable,
     }),
     packageRoot,
     workspace,
@@ -139,8 +99,8 @@ function sha256(bytes: Buffer): string {
 }
 
 describe("read-only Claw state compatibility", () => {
-  it("includes ingress generation in the read-only missing-column allowance", () => {
-    expect(STATE_READ_ONLY_COMPATIBLE_MISSING_COLUMNS).toContain(
+  it("does not treat ingress generation as a missing events column allowance", () => {
+    expect(STATE_READ_ONLY_COMPATIBLE_MISSING_COLUMNS).not.toContain(
       "channel_ingress_events.generation",
     );
   });
@@ -200,9 +160,9 @@ describe("read-only Claw state compatibility", () => {
     await expect(readFile(fixture.databasePath)).resolves.toEqual(before);
   });
 
-  it("opens a current-version DB missing ingress generation read-only without mutating it", async () => {
-    const fixture = await createFixture("openclaw-claw-pre-generation-", {
-      dropIngressGeneration: true,
+  it("opens a current-version DB missing ingress generation side table read-only without mutating it", async () => {
+    const fixture = await createFixture("openclaw-claw-pre-generation-side-", {
+      dropIngressGenerationSideTable: true,
     });
     const beforeBytes = await readFile(fixture.databasePath);
     const beforeSha = sha256(beforeBytes);
@@ -210,6 +170,11 @@ describe("read-only Claw state compatibility", () => {
     const prep = new DatabaseSync(fixture.databasePath, { readOnly: true });
     try {
       expect(tableHasColumn(prep, "channel_ingress_events", "generation")).toBe(false);
+      expect(
+        prep
+          .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+          .get("channel_ingress_event_generations"),
+      ).toBeUndefined();
       expect(
         (prep.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version,
       ).toBe(OPENCLAW_STATE_SCHEMA_VERSION);
@@ -220,6 +185,11 @@ describe("read-only Claw state compatibility", () => {
     const opened = await openExistingOpenClawStateDatabaseReadOnly({ path: fixture.databasePath });
     expect(opened).toBeDefined();
     expect(tableHasColumn(opened!.db, "channel_ingress_events", "generation")).toBe(false);
+    expect(
+      opened!.db
+        .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get("channel_ingress_event_generations"),
+    ).toBeUndefined();
     await opened!.walMaintenance.close();
 
     const afterOpenBytes = await readFile(fixture.databasePath);
@@ -268,6 +238,11 @@ describe("read-only Claw state compatibility", () => {
     const verify = new DatabaseSync(fixture.databasePath, { readOnly: true });
     try {
       expect(tableHasColumn(verify, "channel_ingress_events", "generation")).toBe(false);
+      expect(
+        verify
+          .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+          .get("channel_ingress_event_generations"),
+      ).toBeUndefined();
     } finally {
       verify.close();
     }

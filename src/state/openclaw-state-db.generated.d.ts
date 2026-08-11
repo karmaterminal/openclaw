@@ -227,7 +227,6 @@ export interface ChannelIngressEvents {
   event_id: string;
   failed_at: number | null;
   failed_reason: string | null;
-  generation: Generated<number>;
   lane_key: string | null;
   last_attempt_at: number | null;
   last_error: string | null;
@@ -237,6 +236,12 @@ export interface ChannelIngressEvents {
   received_at: number;
   status: string;
   updated_at: number;
+}
+
+export interface ChannelIngressEventGenerations {
+  event_id: string;
+  generation: Generated<number>;
+  queue_name: string;
 }
 
 export interface ChannelPairingAllowEntries {
@@ -1598,6 +1603,7 @@ export interface DB {
   capture_blobs: CaptureBlobs;
   capture_events: CaptureEvents;
   capture_sessions: CaptureSessions;
+  channel_ingress_event_generations: ChannelIngressEventGenerations;
   channel_ingress_events: ChannelIngressEvents;
   channel_pairing_allow_entries: ChannelPairingAllowEntries;
   channel_pairing_requests: ChannelPairingRequests;

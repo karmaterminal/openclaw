@@ -682,4 +682,69 @@ describe("channel ingress monitor", () => {
       await monitor.waitForIdle();
     });
   });
+
+  it("repumps disposition-only progress under startLimit without waiting for poll interval", async () => {
+    await withQueue(async (queue) => {
+      type KindedRaw = RawEvent & { kind?: "ambient" | "addressed" };
+      const staleMs = 15 * 60 * 1_000;
+      const clock = staleMs + 1_000;
+      const startLimit = 3;
+      const staleCount = startLimit + 2;
+      const delivered: string[] = [];
+
+      const monitor = createChannelIngressMonitor<KindedRaw, string, StoredEvent>({
+        queue,
+        now: () => clock,
+        pollIntervalMs: 60 * 60 * 1_000,
+        retention: { pruneIntervalMs: 60 * 60 * 1_000 },
+        inspect: (raw) => ({ eventId: raw.id, laneKey: `lane:${raw.lane}` }),
+        payload: {
+          storage: "raw-event",
+          version: 1,
+          serialize: (raw) => JSON.stringify(raw),
+          deserialize: (body) => JSON.parse(body) as KindedRaw,
+          createClaimError: (kind) => new PermanentIngressError(kind),
+        },
+        deliver: async (raw, lifecycle) => {
+          delivered.push(raw.id);
+          await lifecycle.onAdopted();
+        },
+        drain: {
+          startLimit,
+          adoptionStallTimeoutMs: 5_000,
+          retryPolicy: { baseMs: 1_000, maxMs: 1_000 },
+          resolvePendingDisposition: (record, context) => {
+            const raw = JSON.parse(record.payload.rawEvent) as KindedRaw;
+            if (raw.kind !== "ambient") {
+              return null;
+            }
+            if (context.now - record.receivedAt <= staleMs) {
+              return null;
+            }
+            return {
+              kind: "complete",
+              reason: "stale-ambient-backlog",
+              message: `stale ambient ${record.id}`,
+            };
+          },
+        },
+      });
+
+      monitor.start();
+      for (let index = 0; index < staleCount; index += 1) {
+        await monitor.admit(
+          { id: `stale-${index}`, lane: "room", text: `old ${index}`, kind: "ambient" },
+          { receivedAt: index },
+        );
+      }
+      await monitor.admit(
+        { id: "fresh-mention", lane: "room", text: "@bot now", kind: "addressed" },
+        { receivedAt: clock },
+      );
+
+      await vi.waitFor(() => expect(delivered).toEqual(["fresh-mention"]), { timeout: 2_000 });
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      await monitor.stop();
+    });
+  });
 });

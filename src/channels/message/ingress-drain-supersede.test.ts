@@ -27,14 +27,14 @@ describe("channel ingress drain supersede", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await vi.waitFor(() => expect(signals.size).toBe(1));
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await vi.waitFor(() => expect(signals.size).toBe(2));
       expect(await queue.listClaims()).toHaveLength(2);
 
       await queue.enqueue("abort", { text: "/abort" }, { laneKey: "shared" });
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
 
       expect([...signals.values()].every((signal) => signal.aborted)).toBe(true);
@@ -70,7 +70,7 @@ describe("channel ingress drain supersede", () => {
 
       await drain.drainOnce();
       await queue.enqueue("new", { text: "new" }, { laneKey: "shared" });
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
 
       expect(predicatePendingIds).toEqual(["old"]);
@@ -113,7 +113,7 @@ describe("channel ingress drain supersede", () => {
       await vi.waitFor(() => expect(signals.has("owner")).toBe(true));
       await queue.enqueue("abort", { text: "/abort" }, { laneKey: "shared" });
 
-      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      expect(await drain.drainOnce()).toEqual({ started: 0, settled: expect.any(Number) });
       expect(signals.get("released")?.aborted).toBe(true);
       expect(signals.get("owner")?.aborted).toBe(false);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([

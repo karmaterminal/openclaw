@@ -93,8 +93,6 @@ export {
  */
 export const STATE_READ_ONLY_COMPATIBLE_MISSING_COLUMNS = [
   ...CLAW_LAZY_ADDITIVE_STATE_COLUMNS,
-  // Ingress pending-generation fence (WO-1244); additive DEFAULT 0 column.
-  "channel_ingress_events.generation",
 ] as const;
 
 /**
@@ -608,9 +606,9 @@ function assertStateDatabaseIntegrityBeforeMutation(
       allowMissingColumns: true,
       validateAfterRepair: () =>
         assertCurrentStateRuntimeSchema(database, pathname, {
-          // Allow generation (and other open-path additive fences) only for this
-          // pre-ensure check; ensureAdditiveStateColumns below installs them
-          // before the final strict assert.
+          // Allow open-path additive fences only for this pre-ensure check;
+          // ensureAdditiveStateColumns below installs them before the final
+          // strict assert.
           allowedMissingColumns: STATE_OPEN_PATH_ADDITIVE_MISSING_COLUMNS,
         }),
     });

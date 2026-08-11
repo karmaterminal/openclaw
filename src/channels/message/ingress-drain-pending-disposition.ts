@@ -71,6 +71,13 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata> = {
    * Unexamined tails stay pending. Defaults to unlimited when omitted.
    */
   workLimit?: number;
+  /**
+   * Lanes already owned by an active local claim or peer-held durable claim.
+   * Pending rows on these lanes must not be settled this pass — leave them
+   * pending and keep the lane fenced so a later predicted drop cannot overtake
+   * an older in-flight same-lane head.
+   */
+  fencedLaneKeys?: ReadonlySet<string>;
   queue: PendingDispositionQueue<TPayload, TMetadata>;
   resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
   onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
@@ -176,6 +183,7 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata>(
   const workLimitedLaneKeys = new Set<string>();
   // Oldest retained row per lane fences later predicted drops on that lane.
   const retainedHeadLaneKeys = new Set<string>();
+  const fencedLaneKeys = params.fencedLaneKeys ?? new Set<string>();
   let visited = 0;
   let examined = 0;
   let settled = 0;
@@ -189,6 +197,14 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata>(
 
     if (retainedHeadLaneKeys.has(laneKey)) {
       retained.push(event);
+      continue;
+    }
+
+    // Active/peer-held claim owns this lane — do not settle pending tails yet.
+    if (fencedLaneKeys.has(laneKey)) {
+      retained.push(event);
+      retainedHeadLaneKeys.add(laneKey);
+      blockedLaneKeys.add(laneKey);
       continue;
     }
 

@@ -85,9 +85,9 @@ describe("channel ingress drain", () => {
       );
       const drain = createChannelIngressDrain<Payload>({ queue, dispatchClaimedEvent: dispatch });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
-      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      expect(await drain.drainOnce()).toEqual({ started: 0, settled: expect.any(Number) });
       expect(dispatch).toHaveBeenCalledTimes(1);
       expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
         id: "evt-replay",
@@ -179,12 +179,15 @@ describe("channel ingress drain", () => {
             return { kind: "deferred" };
           },
         });
-        expect(await drain.drainOnce()).toEqual({ started: 1 });
+        expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
         await vi.waitFor(() => expect(lifecycles).toHaveLength(1));
         expect(drain.activeLaneKeys().has("shared")).toBe(occupancy === "hold");
 
         await queue.enqueue("second", { text: "second" }, { laneKey: "shared" });
-        expect(await drain.drainOnce()).toEqual({ started: occupancy === "hold" ? 0 : 1 });
+        expect(await drain.drainOnce()).toEqual({
+          started: occupancy === "hold" ? 0 : 1,
+          settled: expect.any(Number),
+        });
         await vi.waitFor(() => expect(lifecycles).toHaveLength(occupancy === "hold" ? 1 : 2));
         expect((await queue.listClaims()).map((claim) => claim.id).toSorted()).toEqual(
           occupancy === "hold" ? ["first"] : ["first", "second"],
@@ -253,9 +256,9 @@ describe("channel ingress drain", () => {
       expect(await queue.listPending({ limit: "all" })).toMatchObject([
         { id: "late-failure", attempts: 1, lastError: "late provider failure" },
       ]);
-      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      expect(await drain.drainOnce()).toEqual({ started: 0, settled: expect.any(Number) });
       clock += 1_000;
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       drain.dispose();
     });
     await withTempState(async (stateDir) => {
@@ -278,7 +281,7 @@ describe("channel ingress drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 2 });
+      expect(await drain.drainOnce()).toEqual({ started: 2, settled: expect.any(Number) });
       await vi.waitFor(() => expect(lifecycles.size).toBe(2));
       await expectDefined(
         expectDefined(lifecycles.get("non-retryable"), "non-retryable lifecycle").onFailed,
@@ -1023,7 +1026,7 @@ describe("channel ingress drain", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(dispatches).toEqual(["evt-head"]);
       // Lifecycle owner must have retired the lane despite the swallowed error.
@@ -1034,7 +1037,7 @@ describe("channel ingress drain", () => {
       ]);
 
       // Immediate same-lane progress on the next pump (no heartbeat/timer advance).
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(dispatches).toEqual(["evt-head", "evt-tail"]);
       expect(drain.activeLaneKeys().size).toBe(0);
