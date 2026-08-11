@@ -47,6 +47,11 @@ export {
 } from "./reply-pipeline.js";
 export type { ChannelIngressDrain } from "./ingress-drain.js";
 export type {
+  ChannelIngressPendingDisposition,
+  ChannelIngressPendingDispositionContext,
+  ResolveChannelIngressPendingDisposition,
+} from "./ingress-drain-pending-disposition.js";
+export type {
   ChannelIngressMonitorDeliveryResult,
   ChannelIngressMonitorLifecycle,
 } from "./ingress-monitor.js";
