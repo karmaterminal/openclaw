@@ -1401,6 +1401,18 @@ export function createChannelIngressQueue<
           }
           deleted += affectedRows(executeSqliteQuerySync(tx.db, deleteQuery));
         }
+        const isSuppressedCompletionMetadata = (metadataJson: string | null): boolean => {
+          if (!metadataJson) {
+            return false;
+          }
+          try {
+            const parsed = JSON.parse(metadataJson) as { ingressDisposition?: unknown };
+            return parsed?.ingressDisposition === "suppressed";
+          } catch {
+            return false;
+          }
+        };
+
         const pruneMaxEntries = (status: string, maxEntries: number | null) => {
           if (maxEntries === null) {
             return;
@@ -1408,18 +1420,49 @@ export function createChannelIngressQueue<
           const batchSize = 500;
           const protectedSet = new Set(protectIds);
           while (true) {
-            const rowsToDelete = executeSqliteQuerySync(
+            // Keep the newest maxEntries; delete the overflow tail. For completed
+            // rows, rank intentional suppressions after delivery replay guards so
+            // drop churn is evicted first and cannot wipe delivered-message ids.
+            const ranked = executeSqliteQuerySync(
               tx.db,
               kysely
                 .selectFrom("channel_ingress_events")
-                .select("event_id")
+                .select(["event_id", "updated_at", "completed_metadata_json"])
                 .where("queue_name", "=", queueName)
                 .where("status", "=", status)
                 .orderBy("updated_at", "desc")
                 .orderBy("event_id", "desc")
                 .limit(maxEntries + batchSize),
-            ).rows.slice(maxEntries);
-            const ids = rowsToDelete
+            ).rows;
+            const ordered =
+              status === "completed"
+                ? [...ranked].sort((left, right) => {
+                    const leftSuppressed = isSuppressedCompletionMetadata(
+                      left.completed_metadata_json,
+                    )
+                      ? 1
+                      : 0;
+                    const rightSuppressed = isSuppressedCompletionMetadata(
+                      right.completed_metadata_json,
+                    )
+                      ? 1
+                      : 0;
+                    if (leftSuppressed !== rightSuppressed) {
+                      // Non-suppressed (0) sorts before suppressed (1) → kept first.
+                      return leftSuppressed - rightSuppressed;
+                    }
+                    if (right.updated_at !== left.updated_at) {
+                      return right.updated_at - left.updated_at;
+                    }
+                    return right.event_id < left.event_id
+                      ? -1
+                      : right.event_id > left.event_id
+                        ? 1
+                        : 0;
+                  })
+                : ranked;
+            const ids = ordered
+              .slice(maxEntries)
               .map((row) => row.event_id)
               .filter((id) => !protectedSet.has(id));
             if (ids.length === 0) {

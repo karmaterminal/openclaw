@@ -202,9 +202,7 @@ describe("Discord ingress channel-kind persistence", () => {
             { timeout: WAIT_TIMEOUT_MS },
           );
           expect(dispatch).not.toHaveBeenCalled();
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: "persisted-kind", reason: "stale-ambient-backlog" },
-          ]);
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
         } finally {
           await recovered.stop();
         }
@@ -338,13 +336,11 @@ describe("Discord ingress channel-kind persistence", () => {
             expect.objectContaining({
               eventId: "stale-kind",
               reason: "stale-ambient-backlog",
-              disposition: "failed",
+              disposition: "completed",
             }),
             "discord ingress stale ambient backlog suppressed",
           );
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: "stale-kind", reason: "stale-ambient-backlog" },
-          ]);
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
           expect(error).not.toHaveBeenCalled();
         } finally {
           await monitor.stop();

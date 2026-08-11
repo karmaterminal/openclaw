@@ -474,6 +474,8 @@ export function createDiscordIngressMonitor(params: {
   threadBindings?: DiscordThreadBindingLookup;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
   now?: () => number;
+  /** Test/control seam for bounded drain work; production leaves default. */
+  startLimit?: number;
 }): DiscordIngressMonitor {
   const queue =
     params.queue ??
@@ -522,8 +524,9 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
+      ...(params.startLimit !== undefined ? { startLimit: params.startLimit } : {}),
       onPendingDispositionCommitted: (record, disposition, context) => {
-        if (disposition.kind !== "fail" || disposition.reason !== "stale-ambient-backlog") {
+        if (disposition.reason !== "stale-ambient-backlog") {
           return;
         }
         const rawMessage = record.payload.rawMessage;
@@ -546,7 +549,7 @@ export function createDiscordIngressMonitor(params: {
             receivedAt: new Date(record.receivedAt).toISOString(),
             ageMs: Math.max(0, context.now - sentAt),
             thresholdMs: DISCORD_STALE_AMBIENT_BACKLOG_MS,
-            disposition: "failed",
+            disposition: disposition.kind === "complete" ? "completed" : disposition.kind,
             reason: "stale-ambient-backlog",
           },
           "discord ingress stale ambient backlog suppressed",
@@ -588,8 +591,10 @@ export function createDiscordIngressMonitor(params: {
         ) {
           return null;
         }
+        // Complete (not fail): duplicate-protected replay tombstone without
+        // dead-letter / ingressFailed / doctor pollution.
         return {
-          kind: "fail",
+          kind: "complete",
           reason: "stale-ambient-backlog",
           message:
             `Discord ambient message ${record.id} on ${context.laneKey} is older than ` +

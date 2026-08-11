@@ -145,7 +145,7 @@ describe("channel ingress drain retry-delay lane ordering", () => {
         resolvePendingDisposition: (event, context) =>
           event.id === "retrying-stale-head"
             ? {
-                kind: "fail",
+                kind: "complete",
                 reason: "stale-ambient-backlog",
                 message: `stale ambient backlog ${event.id} on ${context.laneKey}`,
               }
@@ -159,9 +159,11 @@ describe("channel ingress drain retry-delay lane ordering", () => {
       expect(await drain.drainOnce()).toEqual({ started: 1 });
       await drain.waitForIdle();
       expect(adopted).toEqual(["fresh-after-dead-letter"]);
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "retrying-stale-head", reason: "stale-ambient-backlog" },
-      ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect(await queue.enqueue("retrying-stale-head", { text: "probe" })).toMatchObject({
+        kind: "completed",
+        duplicate: true,
+      });
       drain.dispose();
     });
   });

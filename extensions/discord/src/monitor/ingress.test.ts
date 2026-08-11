@@ -221,13 +221,15 @@ async function expectStaleMessageFailsAsAmbient(params: {
       try {
         await vi.waitFor(
           async () => {
-            expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-              { id: messageId, reason: "stale-ambient-backlog" },
-            ]);
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
           },
           { timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS },
         );
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
         expect(dispatch).not.toHaveBeenCalled();
+        expect(
+          await queue.enqueue(messageId, payloadFor(params.rawMessage, receivedAt)),
+        ).toMatchObject({ kind: "completed", duplicate: true });
       } finally {
         await monitor.stop();
       }
@@ -453,9 +455,7 @@ describe("Discord durable ingress", () => {
       monitor.start();
       try {
         await vi.waitFor(() => expect(dispatched).toEqual(["1007"]));
-        expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-          { id: "1006", reason: "stale-ambient-backlog" },
-        ]);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         await monitor.stop();
       }
@@ -889,10 +889,9 @@ describe("Discord durable ingress", () => {
       monitor.start();
       try {
         await vi.waitFor(async () => {
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: "1025", reason: "stale-ambient-backlog" },
-          ]);
+          expect(await queue.listPending({ limit: "all" })).toEqual([]);
         });
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
         expect(log).toHaveBeenCalledTimes(1);
         expect(log).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -904,7 +903,7 @@ describe("Discord durable ingress", () => {
             laneKey: "channel:channel-debug-1",
             channelId: "channel-debug-1",
             thresholdMs: 15 * 60 * 1_000,
-            disposition: "failed",
+            disposition: "completed",
             reason: "stale-ambient-backlog",
           }),
           "discord ingress stale ambient backlog suppressed",
@@ -918,7 +917,7 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it("does not emit a stale suppression receipt when the durable fail loses its race", async () => {
+  it("does not emit a stale suppression receipt when the durable complete loses its race", async () => {
     await withQueue(async (queue) => {
       const now = Date.now();
       const rawMessage = createRawMessage("1027", "channel-cas-loss-1", {
@@ -932,7 +931,7 @@ describe("Discord durable ingress", () => {
         receivedAt: now - 16 * 60 * 1_000,
       });
 
-      const fail = vi.fn(async (...args: Parameters<typeof queue.fail>) => {
+      const complete = vi.fn(async (...args: Parameters<typeof queue.complete>) => {
         const peerClaim = await queue.claim("1027", { ownerId: "peer-drain" });
         expect(peerClaim).not.toBeNull();
         if (peerClaim) {
@@ -947,14 +946,14 @@ describe("Discord durable ingress", () => {
         client: {} as never,
         runtime: { error: vi.fn(), log },
         botUserId: "bot-1",
-        queue: { ...queue, fail },
+        queue: { ...queue, complete },
         dispatch: vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
           await lifecycle.onAdopted();
         }),
       });
       monitor.start();
       try {
-        await vi.waitFor(() => expect(fail).toHaveBeenCalledTimes(1));
+        await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
         expect(log).not.toHaveBeenCalled();
       } finally {
         await monitor.stop();
@@ -962,7 +961,7 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it("does not emit a stale suppression receipt when the durable fail write throws", async () => {
+  it("does not emit a stale suppression receipt when the durable complete write throws", async () => {
     await withQueue(async (queue) => {
       const now = Date.now();
       const rawMessage = createRawMessage("1028", "channel-fail-throws-1", {
@@ -976,8 +975,8 @@ describe("Discord durable ingress", () => {
         receivedAt: now - 16 * 60 * 1_000,
       });
 
-      const fail = vi.fn(async () => {
-        throw new Error("simulated durable fail write outage");
+      const complete = vi.fn(async () => {
+        throw new Error("simulated durable complete write outage");
       });
       const log = vi.fn();
       const monitor = createDiscordIngressMonitor({
@@ -985,14 +984,14 @@ describe("Discord durable ingress", () => {
         client: {} as never,
         runtime: { error: vi.fn(), log },
         botUserId: "bot-1",
-        queue: { ...queue, fail },
+        queue: { ...queue, complete },
         dispatch: vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
           await lifecycle.onAdopted();
         }),
       });
       monitor.start();
       try {
-        await vi.waitFor(() => expect(fail).toHaveBeenCalledTimes(1));
+        await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
         expect(log).not.toHaveBeenCalled();
       } finally {
         await monitor.stop();
@@ -1028,10 +1027,9 @@ describe("Discord durable ingress", () => {
       monitor.start();
       try {
         await vi.waitFor(async () => {
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: "1029", reason: "stale-ambient-backlog" },
-          ]);
+          expect(await queue.listPending({ limit: "all" })).toEqual([]);
         });
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
         expect(log).toHaveBeenCalledTimes(1);
 
         await monitor.accept(rawMessage);

@@ -660,9 +660,12 @@ export function createChannelIngressDrain<
     await recoverStaleClaims();
 
     const dispositionNow = now();
+    // Bound pre-claim disposition work by startLimit so reconnect backlogs cannot
+    // perform unbounded resolver/CAS work under the admission lock before claims.
     const pendingDispositionResult = await applyIngressPendingDispositions({
       pending: await queue.listPending({ limit: "all", orderBy }),
       dispositionNow,
+      workLimit: startLimit,
       queue,
       resolvePendingDisposition: options.resolvePendingDisposition,
       onPendingDispositionCommitted: options.onPendingDispositionCommitted,
@@ -714,6 +717,8 @@ export function createChannelIngressDrain<
       ...sortedKeys(claimedLaneKeys),
       ...sortedKeys(retryDelayedLaneKeys),
       ...sortedKeys(pendingDispositionResult.blockedLaneKeys),
+      // Do not claim past a same-lane head the disposition pass lacked budget to examine.
+      ...sortedKeys(pendingDispositionResult.workLimitedLaneKeys),
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
@@ -729,8 +734,11 @@ export function createChannelIngressDrain<
     }
 
     const candidateIds = new Set(eligiblePending.map((event) => event.id));
+    // Share startLimit across disposition settlements and claims so one pass cannot
+    // perform unbounded pre-claim work and then still start a full claim batch.
+    const claimBudget = Math.max(0, startLimit - pendingDispositionResult.settled);
     let started = 0;
-    while (started < startLimit) {
+    while (started < claimBudget) {
       if (shouldStop()) {
         break;
       }

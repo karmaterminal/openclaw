@@ -142,6 +142,7 @@ function createMonitor(params: {
   guildEntries?: DiscordGuildEntries;
   runtime?: Pick<RuntimeEnv, "error" | "log">;
   cfg?: OpenClawConfig;
+  startLimit?: number;
   dispatch: Parameters<typeof createDiscordIngressMonitor>[0]["dispatch"];
 }) {
   return createDiscordIngressMonitor({
@@ -154,6 +155,7 @@ function createMonitor(params: {
     now: params.now,
     queue: params.queue,
     dispatch: params.dispatch,
+    ...(params.startLimit !== undefined ? { startLimit: params.startLimit } : {}),
   });
 }
 
@@ -229,22 +231,26 @@ async function expectSuppressedAsAmbient(params: {
       try {
         await vi.waitFor(
           async () => {
-            expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-              { id: params.rawMessage.id, reason: "stale-ambient-backlog" },
-            ]);
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
           },
           { timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS },
         );
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
         expect(dispatch).not.toHaveBeenCalled();
         expect(log).toHaveBeenCalledWith(
           expect.objectContaining({
             eventId: params.rawMessage.id,
             reason: "stale-ambient-backlog",
-            disposition: "failed",
+            disposition: "completed",
           }),
           "discord ingress stale ambient backlog suppressed",
         );
-        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        expect(
+          await queue.enqueue(
+            params.rawMessage.id,
+            payloadFor(params.rawMessage, Date.parse(params.rawMessage.timestamp)),
+          ),
+        ).toMatchObject({ kind: "completed", duplicate: true });
         expect(error).not.toHaveBeenCalled();
       } finally {
         await monitor.stop();
@@ -467,13 +473,7 @@ describe("Discord direct-configured stale ingress", () => {
               "discord ingress stale ambient backlog suppressed",
             );
           }
-          expect(await queue.listFailed?.({ limit: "all" })).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ id: "stale-ambient-a", reason: "stale-ambient-backlog" }),
-              expect.objectContaining({ id: "stale-ambient-b", reason: "stale-ambient-backlog" }),
-            ]),
-          );
-          expect((await queue.listFailed?.({ limit: "all" })) ?? []).toHaveLength(2);
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
           expect(error).not.toHaveBeenCalled();
         } finally {
           await monitor.stop();
@@ -659,9 +659,7 @@ describe("Discord direct-configured stale ingress", () => {
                 (entry as { reason?: string }).reason === "stale-ambient-backlog",
             ),
           ).toHaveLength(1);
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: staleId, reason: "stale-ambient-backlog" },
-          ]);
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
           expect(error).not.toHaveBeenCalled();
         } finally {
           await monitor.stop();
@@ -748,8 +746,8 @@ describe("Discord direct-configured stale ingress", () => {
           await vi.waitFor(async () => {
             expect(await queue.listPending({ limit: "all" })).toEqual([]);
           });
-          // The whole backlog settles without serializing one claim/pump cycle
-          // per row, so the fresh mention is not delayed by backlog depth.
+          // Prefer a single first-wave settlement: with default startLimit the
+          // 12-row backlog plus fresh mention must not require one scan per row.
           expect(scanCount).toBeLessThan(staleIds.length);
           expect(
             log.mock.calls.filter(
@@ -758,14 +756,19 @@ describe("Discord direct-configured stale ingress", () => {
                 staleIds.includes((entry as { eventId?: string }).eventId ?? ""),
             ),
           ).toHaveLength(staleIds.length);
-          expect(await queue.listFailed?.({ limit: "all" })).toEqual(
-            expect.arrayContaining(
-              staleIds.map((id) =>
-                expect.objectContaining({ id, reason: "stale-ambient-backlog" }),
-              ),
-            ),
-          );
-          expect((await queue.listFailed?.({ limit: "all" })) ?? []).toHaveLength(staleIds.length);
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+          for (const id of staleIds) {
+            const raw = createRawMessage(id, channelId, {
+              guild_id: "guild-1",
+              channel_type: ChannelType.GuildText,
+              content: "probe",
+              timestamp: new Date(clock).toISOString(),
+            } as RawMessageOverrides);
+            expect(await queue.enqueue(id, payloadFor(raw, clock))).toMatchObject({
+              kind: "completed",
+              duplicate: true,
+            });
+          }
           expect(error).not.toHaveBeenCalled();
         } finally {
           await monitor.stop();

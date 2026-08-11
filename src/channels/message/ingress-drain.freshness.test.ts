@@ -32,7 +32,7 @@ function resolveStaleAmbientPendingDisposition(
     return null;
   }
   return {
-    kind: "fail",
+    kind: "complete",
     reason: "stale-ambient-backlog",
     message: `stale ambient backlog ${event.id} on ${context.laneKey}`,
   };
@@ -154,9 +154,10 @@ describe("channel ingress drain", () => {
       expect(await secondDrain.drainOnce()).toEqual({ started: 1 });
       await secondDrain.waitForIdle();
       expect(adopted).toEqual(["fresh-after-dead-letter"]);
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "retrying-stale-head", reason: "stale-ambient-backlog" },
-      ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect(
+        await queue.enqueue("retrying-stale-head", { text: "probe", kind: "ambient" }),
+      ).toMatchObject({ kind: "completed", duplicate: true });
       secondDrain.dispose();
     });
   });
@@ -182,7 +183,8 @@ describe("channel ingress drain", () => {
       const drain = createChannelIngressDrain<Payload>({
         queue,
         now: () => clock,
-        startLimit: 1,
+        // One settlement + one claim share startLimit.
+        startLimit: 2,
         resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
         dispatchClaimedEvent: async (event, lifecycle) => {
           adopted.push(event.id);
@@ -196,9 +198,10 @@ describe("channel ingress drain", () => {
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).not.toContain(
         "fresh-addressed",
       );
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "stale-ambient", reason: "stale-ambient-backlog" },
-      ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect(
+        await queue.enqueue("stale-ambient", { text: "probe", kind: "ambient" }),
+      ).toMatchObject({ kind: "completed", duplicate: true });
       drain.dispose();
     });
   });
@@ -365,23 +368,18 @@ describe("channel ingress drain", () => {
       await secondDrain.waitForIdle();
 
       expect(adopted).toEqual(["fresh-addressed"]);
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "stale-ambient", reason: "stale-ambient-backlog" },
-      ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       await expect(
         queue.enqueue("stale-ambient", { text: "old room history", kind: "ambient" }),
-      ).resolves.toMatchObject({ kind: "failed" });
+      ).resolves.toMatchObject({ kind: "completed", duplicate: true });
       secondDrain.dispose();
     });
   });
 
   it("stale ambient disposition uses a strict clock boundary", async () => {
     for (const [ageMs, expected] of [
-      [STALE_AMBIENT_PENDING_MS, { adopted: ["boundary-ambient"], failed: [] }],
-      [
-        STALE_AMBIENT_PENDING_MS + 1,
-        { adopted: [], failed: [{ id: "boundary-ambient", reason: "stale-ambient-backlog" }] },
-      ],
+      [STALE_AMBIENT_PENDING_MS, { adopted: ["boundary-ambient"], completed: false }],
+      [STALE_AMBIENT_PENDING_MS + 1, { adopted: [], completed: true }],
     ] as const) {
       await withTempState(async (stateDir) => {
         const queue = createTestIngressQueue(stateDir, { now: () => ageMs });
@@ -407,7 +405,14 @@ describe("channel ingress drain", () => {
         });
         await drain.waitForIdle();
         expect(adopted).toEqual(expected.adopted);
-        expect(await queue.listFailed?.({ limit: "all" })).toMatchObject(expected.failed);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        if (expected.completed) {
+          expect(
+            await queue.enqueue("boundary-ambient", { text: "probe", kind: "ambient" }),
+          ).toMatchObject({ kind: "completed", duplicate: true });
+        } else {
+          expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([]);
+        }
         drain.dispose();
       });
     }
