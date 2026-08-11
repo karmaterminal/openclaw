@@ -280,6 +280,30 @@ function hasHydrateableDiscordReplyReference(
   return resolveDiscordReplyReferenceState(rawMessage) !== "complete";
 }
 
+/** Discord snowflakes are numeric, so any other key can only match a name or slug. */
+const DISCORD_SNOWFLAKE_CHANNEL_KEY = /^\d+$/u;
+
+/**
+ * Whether a channel override exists that only a name or slug could match.
+ *
+ * A raw gateway payload carries no channel name, so pre-hydration lookup can
+ * only use the channel id. When such an entry exists and did not match by id,
+ * this channel's real mention policy is unproven.
+ */
+function hasUnresolvedDiscordChannelNameOverride(
+  guildInfo: DiscordGuildEntryResolved | null | undefined,
+  channelId: string | null,
+): boolean {
+  const channels = guildInfo?.channels;
+  if (!channels) {
+    return false;
+  }
+  return Object.keys(channels).some((key) => {
+    const trimmed = key.trim();
+    return trimmed !== "*" && trimmed !== channelId && !DISCORD_SNOWFLAKE_CHANNEL_KEY.test(trimmed);
+  });
+}
+
 function canExpireDiscordStaleAmbientBacklog(
   rawMessage: GatewayMessageCreateDispatchData,
   params: {
@@ -308,6 +332,15 @@ function canExpireDiscordStaleAmbientBacklog(
     : null;
 
   if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
+    return false;
+  }
+  // Fail open when a name/slug override could be this channel: an id-only
+  // lookup cannot see it, and it may carry `requireMention: false`, which would
+  // make a direct-open channel look ambient and get falsely suppressed.
+  if (
+    channelConfig?.matchKey !== channelId &&
+    hasUnresolvedDiscordChannelNameOverride(guildInfo, channelId)
+  ) {
     return false;
   }
   const requireMention = resolveDiscordShouldRequireMention({
@@ -569,7 +602,11 @@ export function createDiscordIngressMonitor(params: {
     retention: {
       // Discord previously pruned before every enqueue rather than on a timed cadence.
       pruneIntervalMs: 0,
-      completedMaxEntries: 5_000,
+      // Stale-ambient suppression settles as a completed tombstone rather than a
+      // dead letter, so its rows now share this bucket with real deliveries. Hold
+      // the combined capacity both classes had before that move so a reconnect
+      // backlog burst cannot evict the replay guards for delivered messages.
+      completedMaxEntries: 10_000,
       failedMaxEntries: 5_000,
     },
     appendRetryDelaysMs: [0],

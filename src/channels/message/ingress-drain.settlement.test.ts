@@ -119,6 +119,52 @@ describe("channel ingress drain settlement", () => {
     });
   });
 
+  it("frees the lane when a handled settlement loses the claim to another owner", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue(stateDir);
+      const fail = vi.spyOn(queue, "fail");
+      const release = vi.spyOn(queue, "release");
+      await queue.enqueue("handled-reclaimed", { text: "x" }, { laneKey: "lane-a" });
+
+      let completeCalls = 0;
+      // CAS loss, not an IO error: the row was reclaimed, so complete() reports
+      // false rather than throwing. Retrying cannot help.
+      queue.complete = async () => {
+        completeCalls += 1;
+        return false;
+      };
+
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        onLog: (message) => logs.push(message),
+        resolveNonRetryableFailure: (error) =>
+          error instanceof Error && error.message === "policy drop"
+            ? { reason: "channel-policy", message: error.message, settlement: "handled" }
+            : null,
+        dispatchClaimedEvent: async () => ({
+          kind: "failed-retryable" as const,
+          error: new Error("policy drop"),
+        }),
+      });
+
+      const idle = drain.waitForIdle();
+      await drain.drainOnce();
+      await vi.advanceTimersByTimeAsync(200_000);
+      await idle;
+
+      // One attempt only, and no downgrade of a terminal policy outcome.
+      expect(completeCalls).toBe(1);
+      expect(fail).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+      // The lane must not stay fenced until restart: another owner holds the
+      // row, so no settlement can ever happen in this drain.
+      expect(drain.activeLaneKeys()).toEqual(new Set());
+      expect(logs.some((line) => line.includes("reclaimed by another owner"))).toBe(true);
+      drain.dispose();
+    });
+  });
+
   it("retries tombstone complete failures then commits", async () => {
     await withTempState(async (stateDir) => {
       const queue = createTestIngressQueue(stateDir);

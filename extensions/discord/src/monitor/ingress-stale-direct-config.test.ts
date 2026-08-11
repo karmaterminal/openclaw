@@ -477,6 +477,82 @@ describe("Discord direct-configured stale ingress", () => {
     );
   });
 
+  it("does not suppress a stale ambient message when a name-keyed override could open it", async () => {
+    const clock = 1_780_000_190_000;
+    const channelId = "1310000000000000123";
+    const stale = createRawMessage("stale-name-keyed-override", channelId, {
+      guild_id: "guild-1",
+      channel_type: ChannelType.GuildText,
+      content: "old ambient room text",
+      timestamp: new Date(clock - STALE_MS - 1_000).toISOString(),
+    } as RawMessageOverrides);
+    // The wildcard resolves by id and reports `requireMention: true`, but the
+    // more specific `general` entry opens this channel and can only be matched
+    // by name. A raw gateway payload carries no channel name, so pre-claim
+    // lookup cannot see it and would otherwise suppress a direct-open channel.
+    await expectDispatches({
+      rawMessage: stale,
+      clock,
+      guildEntries: {
+        "guild-1": {
+          channels: {
+            "*": { enabled: true, requireMention: true },
+            general: { enabled: true, requireMention: false },
+          },
+        },
+      },
+    });
+  });
+
+  it("still suppresses a stale ambient message under a wildcard-only override", async () => {
+    const clock = 1_780_000_193_000;
+    const channelId = "1310000000000000123";
+    const stale = createRawMessage("stale-wildcard-only", channelId, {
+      guild_id: "guild-1",
+      channel_type: ChannelType.GuildText,
+      content: "old ambient room text",
+      timestamp: new Date(clock - STALE_MS - 1_000).toISOString(),
+    } as RawMessageOverrides);
+    // No name-only entry exists, so the wildcard policy is fully resolvable
+    // pre-hydration and the fail-open guard must not disable suppression.
+    await expectSuppressedAsAmbient({
+      rawMessage: stale,
+      clock,
+      guildEntries: {
+        "guild-1": {
+          channels: {
+            "*": { enabled: true, requireMention: true },
+          },
+        },
+      },
+    });
+  });
+
+  it("still suppresses a stale ambient message when every channel override is id-keyed", async () => {
+    const clock = 1_780_000_195_000;
+    const channelId = "1310000000000000123";
+    const stale = createRawMessage("stale-id-keyed-overrides", channelId, {
+      guild_id: "guild-1",
+      channel_type: ChannelType.GuildText,
+      content: "old ambient room text",
+      timestamp: new Date(clock - STALE_MS - 1_000).toISOString(),
+    } as RawMessageOverrides);
+    // Id-keyed entries are fully resolvable pre-hydration, so the fail-open
+    // guard must not disable stale suppression for ordinary configurations.
+    await expectSuppressedAsAmbient({
+      rawMessage: stale,
+      clock,
+      guildEntries: {
+        "guild-1": {
+          channels: {
+            [channelId]: { enabled: true, requireMention: true },
+            "1310000000000000999": { enabled: true, requireMention: true },
+          },
+        },
+      },
+    });
+  });
+
   it("does not fence a fresh bot mention behind a retry-delayed stale ambient head", async () => {
     const clock = 1_780_000_175_000;
     const channelId = "mention-required-retry-channel";

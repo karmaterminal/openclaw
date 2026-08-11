@@ -621,6 +621,18 @@ export function createChannelIngressDrain<
         if (state.guillotined || state.superseded) {
           return;
         }
+        // Definitive claim loss: the row is owned by another drain, so no
+        // settlement can ever happen here. Holding the lane in memory would
+        // fence it until restart, so drop ownership. An ambiguous write failure
+        // is different and still wedges below (wedged > duplicated).
+        if (isIngressAdoptionLostError(err) && err.code === "reclaimed") {
+          state.phase = "settled";
+          removeActive(state);
+          log(
+            `ingress drain: claim for event ${claim.id} was reclaimed by another owner; releasing lane ${state.laneKey}`,
+          );
+          return;
+        }
         // Adoption may have partially completed (tombstone retry wedge); keep claim.
         // Includes handler-completed path that moved to adopted before complete().
         if (state.phase === "adopted") {
