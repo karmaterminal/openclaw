@@ -629,13 +629,15 @@ export function createDiscordIngressMonitor(params: {
         }
         return null;
       },
-      // A stale ambient row released by a transient failure is already known to
-      // be non-actionable, so its backoff must not fence fresh addressed work
-      // behind it on the same channel lane. This only restores claim
-      // eligibility; `deliver` re-runs the identical classification on the
-      // claimed row and owns the terminal outcome. Side-effect free and safe to
-      // repeat: core may offer the same lane head on every drain pass.
-      shouldBypassRetryDelay: async (record) => {
+      // A stale ambient row is already known to be non-actionable: it will be
+      // suppressed, never delivered. Declaring that lets core settle a whole
+      // reconnect backlog in one pass instead of fencing each row behind retry
+      // backoff and lane serialization while a fresh mention waits behind it.
+      // This only changes scheduling; `deliver` re-runs the identical
+      // classification on the claimed row and owns the terminal outcome.
+      // Side-effect free and safe to repeat: core may offer the same row on
+      // every drain pass.
+      shouldDrainWithoutDelivery: async (record) => {
         const { body } = decodeDiscordIngressPayload(record.payload, record.id);
         return (
           (await resolveDiscordStaleAmbientSuppression(

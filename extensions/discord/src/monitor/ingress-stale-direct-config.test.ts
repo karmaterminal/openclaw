@@ -638,6 +638,103 @@ describe("Discord direct-configured stale ingress", () => {
     );
   });
 
+  it("clears a deep same-lane stale backlog without one pump per row", async () => {
+    const clock = 1_780_000_205_000;
+    const channelId = "mention-required-backlog-channel";
+    const laneKey = `channel:${channelId}`;
+    await withQueue(
+      () => clock,
+      async (queue) => {
+        // Reconnect-shaped backlog: many stale ambient rows on one channel lane
+        // with the user's fresh mention behind all of them.
+        const staleIds: string[] = [];
+        for (let index = 0; index < 12; index += 1) {
+          const staleId = `stale-backlog-${index}`;
+          staleIds.push(staleId);
+          const stale = createRawMessage(staleId, channelId, {
+            guild_id: "guild-1",
+            channel_type: ChannelType.GuildText,
+            content: `old ambient room text ${index}`,
+            timestamp: new Date(clock - STALE_MS - 60_000 + index).toISOString(),
+          } as RawMessageOverrides);
+          await queue.enqueue(staleId, payloadFor(stale, clock - STALE_MS - 60_000 + index), {
+            laneKey,
+            receivedAt: clock - STALE_MS - 60_000 + index,
+          });
+        }
+
+        // The oldest row also lost an attempt to a transient failure, so its
+        // lane is under retry backoff that never expires during this test.
+        const head = await queue.claim(staleIds[0] as string, { ownerId: "earlier-drain" });
+        expect(head).not.toBeNull();
+        if (head) {
+          await queue.release(head, {
+            recordAttempt: true,
+            lastError: "transient Discord gateway failure",
+            releasedAt: clock,
+          });
+        }
+
+        const fresh = createRawMessage("fresh-behind-backlog", channelId, {
+          guild_id: "guild-1",
+          channel_type: ChannelType.GuildText,
+          content: "fresh direct ask <@bot-1>",
+          mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
+          timestamp: new Date(clock).toISOString(),
+        } as RawMessageOverrides);
+        await queue.enqueue(fresh.id, payloadFor(fresh, clock), { laneKey, receivedAt: clock });
+
+        // One pending scan per drain pass, so this counts pump cycles.
+        let scanCount = 0;
+        const listPending = queue.listPending.bind(queue);
+        queue.listPending = async (...args: Parameters<typeof listPending>) => {
+          scanCount += 1;
+          return await listPending(...args);
+        };
+
+        const dispatched: string[] = [];
+        const log = vi.fn();
+        const error = vi.fn();
+        const monitor = createMonitor({
+          queue,
+          now: () => clock,
+          guildEntries: mentionRequiredGuildEntries(channelId),
+          runtime: { error, log },
+          dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+            if (!event.id) {
+              throw new Error("expected dispatched Discord event id");
+            }
+            dispatched.push(event.id);
+            await lifecycle.onAdopted();
+          },
+        });
+        monitor.start();
+        try {
+          await vi.waitFor(() => expect(dispatched).toEqual([fresh.id]), {
+            timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS,
+          });
+          await vi.waitFor(async () => {
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
+          });
+          // The whole backlog settles without serializing one claim/pump cycle
+          // per row, so the fresh mention is not delayed by backlog depth.
+          expect(scanCount).toBeLessThan(staleIds.length);
+          expect(
+            log.mock.calls.filter(
+              ([entry]) =>
+                (entry as { reason?: string }).reason === "stale-ambient-backlog" &&
+                staleIds.includes((entry as { eventId?: string }).eventId ?? ""),
+            ),
+          ).toHaveLength(staleIds.length);
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+          expect(error).not.toHaveBeenCalled();
+        } finally {
+          await monitor.stop();
+        }
+      },
+    );
+  });
+
   it("treats dead-letter resubmit as fresh operator intent", async () => {
     let clock = 1_780_000_200_000;
     const messageId = `resubmit-${DIRECT_OPEN_CHANNEL_ID}`;

@@ -190,73 +190,127 @@ describe("channel ingress drain", () => {
     });
   });
 
-  it("opt-in retry-delay bypass claims the delayed head first and still serializes the lane", async () => {
+  it("settles a same-lane stale backlog in one claimed run, not one pump per row", async () => {
     await withTempState(async (stateDir) => {
       let clock = 1_000;
       const laneKey = "channel:discord-room";
       const queue = createTestIngressQueue(stateDir, { now: () => clock });
-      await queue.enqueue(
-        "retrying-head",
-        { text: "ambient backlog head", kind: "ambient" },
-        { laneKey, receivedAt: clock },
-      );
-
-      const adopted: string[] = [];
-      const offered: Array<{ id: string; laneKey: string; retryDelayMs: number }> = [];
-      const drain = createChannelIngressDrain<Payload>({
-        queue,
-        now: () => clock,
-        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
-        shouldBypassRetryDelay: (record, context) => {
-          offered.push({
-            id: record.id,
-            laneKey: context.laneKey,
-            retryDelayMs: context.retryDelayMs,
-          });
-          return record.payload.kind === "ambient";
-        },
-        dispatchClaimedEvent: async (event, lifecycle) => {
-          if (event.id === "retrying-head" && event.attempts === 0) {
-            throw new Error("transient Discord recovery failure");
-          }
-          adopted.push(event.id);
-          await lifecycle.onAdopted();
-        },
+      const staleIds = Array.from({ length: 12 }, (_, index) => `stale-${index}`);
+      for (const id of staleIds) {
+        await queue.enqueue(
+          id,
+          { text: `ambient ${id}`, kind: "ambient" },
+          {
+            laneKey,
+            receivedAt: clock,
+          },
+        );
+      }
+      // Every stale row is past the ambient window, and the first one also
+      // carries a transient failure so its lane sits under retry backoff.
+      clock += STALE_AMBIENT_PENDING_MS + 1;
+      const head = await queue.claim("stale-0", { ownerId: "prior-owner" });
+      if (!head) {
+        throw new Error("expected to claim the backlog head");
+      }
+      await queue.release(head, {
+        recordAttempt: true,
+        lastError: "transient Discord recovery failure",
+        releasedAt: clock,
       });
-
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
-      await drain.waitForIdle();
-      expect(adopted).toEqual([]);
-
-      clock += 1_000;
       await queue.enqueue(
         "fresh-addressed",
         { text: "@openclaw current diagnostic ask", kind: "addressed" },
         { laneKey, receivedAt: clock },
       );
 
-      // No clock advance through the backoff: the bypass makes the delayed head
-      // claimable now, and lane serialization still holds the fresh tail for the
-      // next pass rather than letting it overtake.
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
-      await drain.waitForIdle();
-      expect(adopted).toEqual(["retrying-head"]);
-      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
-        "fresh-addressed",
-      ]);
+      const adopted: string[] = [];
+      const offered: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
+        shouldDrainWithoutDelivery: (record) => {
+          offered.push(record.id);
+          return (
+            record.payload.kind === "ambient" &&
+            clock - record.receivedAt > STALE_AMBIENT_PENDING_MS
+          );
+        },
+        ...staleAmbientDrainOptions(() => clock, adopted),
+      });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
-      await drain.waitForIdle();
-      expect(adopted).toEqual(["retrying-head", "fresh-addressed"]);
-
-      // Only the delayed lane head is ever offered, and the context reports the
-      // remaining backoff (60s base, 1s elapsed); eligible rows are never offered.
-      expect(offered).toEqual([{ id: "retrying-head", laneKey, retryDelayMs: 59_000 }]);
+      // No clock advance through the backoff. The whole backlog is claimed and
+      // settled by one run, so the fresh mention waits a bounded number of
+      // passes instead of one pass per backlog row.
+      let passes = 0;
+      while (passes < 10) {
+        const { started } = await drain.drainOnce();
+        passes += 1;
+        await drain.waitForIdle();
+        if (started === 0) {
+          break;
+        }
+      }
+      expect(adopted).toEqual(["fresh-addressed"]);
+      // Bounded and independent of backlog depth: claim the run, then dispatch.
+      expect(passes).toBeLessThanOrEqual(3);
+      expect(passes).toBeLessThan(staleIds.length);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      await expectHandledCompletion(queue, staleIds);
+      // Scheduling only: the fresh row was never treated as non-delivering.
+      expect(offered).toContain("fresh-addressed");
       drain.dispose();
     });
   });
 
-  it("retry-delay bypass fails closed when the predicate throws", async () => {
+  it("stops settling out of band when a scheduled row delivers after all", async () => {
+    await withTempState(async (stateDir) => {
+      const clock = 1_000;
+      const laneKey = "channel:discord-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "mispredicted",
+        { text: "actually addressed", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+      await queue.enqueue(
+        "follower",
+        { text: "@openclaw follow-up", kind: "addressed" },
+        { laneKey, receivedAt: clock + 1 },
+      );
+
+      const adopted: string[] = [];
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        onLog: (message) => logs.push(message),
+        // Wrong on purpose: both rows deliver.
+        shouldDrainWithoutDelivery: () => true,
+        ...staleAmbientDrainOptions(() => clock, adopted),
+      });
+
+      // Both rows are claimed for settlement, but the first one delivers, so
+      // the run stops and hands the rest back instead of settling them blind.
+      expect(await drain.drainOnce()).toEqual({ started: 2 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["mispredicted"]);
+      expect(logs.filter((line) => line.includes("resuming lane serialization"))).toHaveLength(1);
+      // The abandoned claim is released, not stranded, and keeps its attempt
+      // budget so normal lane serialization can still deliver it.
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
+        "follower",
+      ]);
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["mispredicted", "follower"]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      drain.dispose();
+    });
+  });
+
+  it("fails closed when the non-delivering predicate throws", async () => {
     await withTempState(async (stateDir) => {
       let clock = 1_000;
       const laneKey = "channel:discord-room";
@@ -274,7 +328,7 @@ describe("channel ingress drain", () => {
         now: () => clock,
         retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
         onLog: (message) => logs.push(message),
-        shouldBypassRetryDelay: () => {
+        shouldDrainWithoutDelivery: () => {
           throw new Error("classifier outage");
         },
         dispatchClaimedEvent: async (event, lifecycle) => {
@@ -302,7 +356,7 @@ describe("channel ingress drain", () => {
       expect(await drain.drainOnce()).toEqual({ started: 0 });
       await drain.waitForIdle();
       expect(adopted).toEqual([]);
-      expect(logs.some((line) => line.includes("retry-delay bypass predicate failed"))).toBe(true);
+      expect(logs.some((line) => line.includes("non-delivering predicate failed"))).toBe(true);
 
       clock += 60_000;
       expect(await drain.drainOnce()).toEqual({ started: 1 });

@@ -847,7 +847,7 @@ describe("channel ingress drain", () => {
     });
   });
 
-  it("throws IngressAdoptionLostError when complete returns false (lease reclaimed)", async () => {
+  it("releases the lane when complete returns false (lease reclaimed by another owner)", async () => {
     await withTempState(async (stateDir) => {
       const queue = createTestIngressQueue(stateDir);
       await queue.enqueue("evt-reclaim", { text: "x" }, { laneKey: "l1" });
@@ -871,8 +871,12 @@ describe("channel ingress drain", () => {
       await drain.waitForIdle();
       expect(isIngressAdoptionLostError(adoptError)).toBe(true);
       expect(isIngressAdoptionLostError(adoptError) && adoptError.code).toBe("reclaimed");
-      // Claim remains held — not settled as a false success.
-      expect(drain.activeLaneKeys().has("l1")).toBe(true);
+      // Never settled as a false success: this drain writes no terminal row.
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      // The row belongs to the owner that reclaimed it, so no settlement can
+      // ever happen here. Holding the lane in memory would fence it until
+      // restart, so ownership is dropped and the lane stays drainable.
+      expect(drain.activeLaneKeys().has("l1")).toBe(false);
       drain.dispose();
     });
   });

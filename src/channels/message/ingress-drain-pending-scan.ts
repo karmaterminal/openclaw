@@ -4,9 +4,10 @@ import {
   type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
 
-export type ChannelIngressRetryDelayBypassContext = {
+export type ChannelIngressPendingDeliveryContext = {
   laneKey: string;
   now: number;
+  /** Remaining retry backoff for this row, or 0 when it is already claimable. */
   retryDelayMs: number;
 };
 
@@ -15,16 +16,19 @@ type ResolvePendingScanParams<TPayload, TMetadata> = {
   now: number;
   retryPolicy?: IngressRetryPolicyConfig;
   resolveLaneKey: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string;
-  shouldBypassRetryDelay?: (
-    record: ChannelIngressQueueRecord<TPayload, TMetadata>,
-    context: ChannelIngressRetryDelayBypassContext,
-  ) => boolean | Promise<boolean>;
+  shouldDrainWithoutDelivery?:
+    | ((
+        record: ChannelIngressQueueRecord<TPayload, TMetadata>,
+        context: ChannelIngressPendingDeliveryContext,
+      ) => boolean | Promise<boolean>)
+    | undefined;
   formatError: (error: unknown) => string;
   log: (message: string) => void;
 };
 
 /**
- * Split one pending snapshot into claim candidates plus retry-fenced lanes.
+ * Split one pending snapshot into claim candidates, retry-fenced lanes, and
+ * rows the channel expects to settle without delivering.
  *
  * Retry eligibility is drain-owned: claimNext has no backoff predicate of its
  * own, so a row reaches delivery only by landing in `eligiblePending`.
@@ -36,16 +40,26 @@ export async function resolveChannelIngressPendingScan<TPayload, TMetadata>(
   eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   /** Lanes fenced because their oldest retained row is still under backoff. */
   retryDelayedLaneKeys: Set<string>;
+  /** Candidate ids the channel expects to settle without delivering. */
+  nonDeliveringIds: Set<string>;
 }> {
   const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
   const seenLaneKeys = new Set<string>();
   const retryDelayedLaneKeys = new Set<string>();
+  const nonDeliveringIds = new Set<string>();
 
   for (const event of params.pending) {
     const retryDelayMs = resolveIngressRetryDelayMs(event, params.retryPolicy, params.now);
     const laneKey = params.resolveLaneKey(event);
     const isLaneHead = !seenLaneKeys.has(laneKey);
     seenLaneKeys.add(laneKey);
+    // Evaluated for every pending row, not just lane heads: a backlog is only
+    // drainable in one pass if the whole run of non-delivering rows is known.
+    if (await drainsWithoutDelivery(event, laneKey, retryDelayMs, params)) {
+      eligiblePending.push(event);
+      nonDeliveringIds.add(event.id);
+      continue;
+    }
     if (retryDelayMs === 0) {
       eligiblePending.push(event);
       continue;
@@ -55,32 +69,33 @@ export async function resolveChannelIngressPendingScan<TPayload, TMetadata>(
     if (!isLaneHead) {
       continue;
     }
-    if (await bypassesRetryDelay(event, laneKey, retryDelayMs, params)) {
-      eligiblePending.push(event);
-      continue;
-    }
     retryDelayedLaneKeys.add(laneKey);
   }
 
-  return { eligiblePending, retryDelayedLaneKeys };
+  return { eligiblePending, retryDelayedLaneKeys, nonDeliveringIds };
 }
 
-async function bypassesRetryDelay<TPayload, TMetadata>(
+async function drainsWithoutDelivery<TPayload, TMetadata>(
   record: ChannelIngressQueueRecord<TPayload, TMetadata>,
   laneKey: string,
   retryDelayMs: number,
   params: ResolvePendingScanParams<TPayload, TMetadata>,
 ): Promise<boolean> {
-  if (!params.shouldBypassRetryDelay) {
+  if (!params.shouldDrainWithoutDelivery) {
     return false;
   }
   try {
-    return await params.shouldBypassRetryDelay(record, { laneKey, now: params.now, retryDelayMs });
+    return await params.shouldDrainWithoutDelivery(record, {
+      laneKey,
+      now: params.now,
+      retryDelayMs,
+    });
   } catch (err) {
-    // Fail closed: an unusable predicate must keep the backoff rather than
-    // release a lane, and must never take the drain pump down with it.
+    // Fail closed: an unusable predicate must keep normal backoff and lane
+    // serialization rather than release a lane, and must never take the drain
+    // pump down with it.
     params.log(
-      `ingress drain retry-delay bypass predicate failed for ${record.id}: ${params.formatError(err)}`,
+      `ingress drain non-delivering predicate failed for ${record.id}: ${params.formatError(err)}`,
     );
     return false;
   }
