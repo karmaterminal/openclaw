@@ -40,12 +40,25 @@ google-meet and channel drift.
 
 ### Full-suite tally
 
-_Pending / filled at completion._
+```
+command: node --import tsx scripts/test-projects.mts
+head:    c651be1d4abe36a7d5603418e11e26b1ece984d4 (suite run before output.md commit)
+result:  FAILED
+shards:  36 failed / 321 total in 1533.54s
+tests:   112 failed | 126769 passed | 292 skipped
+files:   1620 failed | 7976 passed | 18 skipped  (file count inflated by cascade shards)
+log:     /tmp/pr-review-full-suite.log
+```
+
+Ship decision is **not** “because suite red.” Independent static findings
+(dead mocks, leakage, delay split, design novel) already block presentation.
+Suite red is additional signal, partly contaminated by known-inherited flakes
+and mass import-cascade shards.
 
 ## Exact commands
 
 ```bash
-git rev-parse HEAD   # c651be1d4abe36a7d5603418e11e26b1ece984d4
+git rev-parse HEAD   # review worktree tip may include output.md commit
 git diff --shortstat upstream/main...c651be1d
 git grep -n 'karmaterminal' c651be1d -- ':!docs/.generated'
 # relative vi.mock existence scanner (python) against c651be1d
@@ -54,12 +67,13 @@ node --import tsx scripts/test-projects.mts
 
 ## Uncertainties
 
-- Full suite still running or incomplete at first write; mock integrity finding
-  does not depend on suite green/red.
+- Mock integrity finding does not depend on suite green/red.
 - Did not re-prove every hedge race live; coherence pass is static + call-site.
 - Known-inherited flakes listed in the workorder were not re-litigated.
 - Presentation tip `a7ef031` vs assembly `c651be1d` delta includes merge/repair
   train; review target was assembly head as ordered.
+- Full-suite file-failed count is not a clean “1620 broken tests” metric —
+  several shards collapsed en masse.
 
 ## Discord
 
