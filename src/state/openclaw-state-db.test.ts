@@ -23,10 +23,6 @@ import {
   FIRST_USE_STATE_TABLES,
   LAZY_ADDITIVE_STATE_TABLES,
 } from "./openclaw-state-db-contract.js";
-import {
-  CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME,
-  CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL,
-} from "./openclaw-state-db-schema-additive.js";
 import { tableHasColumn } from "./openclaw-state-db-schema-helpers.js";
 import {
   findOpenClawStateDatabaseSchemaMigrationRequiredError,
@@ -1236,20 +1232,8 @@ describe("openclaw state database", () => {
           {
             // Frozen base only knew first-use lazy tables; candidate lazy side
             // tables are extra and ignored by assertSqliteSchemaContains.
+            // No event-table triggers: frozen validators reject unexpected ones.
             allowedMissingTables: FIRST_USE_STATE_TABLES,
-            // Candidate installs a pending-reentry clear trigger on events; treat
-            // it as optional-canonical so new-to-old shape checks still pass.
-            optionalCanonicalTriggerGroups: [
-              {
-                tableName: "channel_ingress_events",
-                triggers: [
-                  {
-                    name: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME,
-                    sql: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL,
-                  },
-                ],
-              },
-            ],
           },
         ),
       ).not.toThrow();
@@ -1282,45 +1266,6 @@ describe("openclaw state database", () => {
     const worktreeNodeModules = path.join(worktree, "node_modules");
     if (!fs.existsSync(worktreeNodeModules)) {
       fs.symlinkSync(nodeModules, worktreeNodeModules, "dir");
-    }
-
-    // Patch frozen maintenance so the candidate pending-reentry clear trigger is
-    // optional-canonical. Exact frozen queue writers still run; only the schema
-    // allowlist is widened for the cross-version harness.
-    const frozenMaintenancePath = path.join(
-      worktree,
-      "src",
-      "state",
-      "openclaw-state-db-maintenance.ts",
-    );
-    const frozenMaintenance = fs.readFileSync(frozenMaintenancePath, "utf8");
-    if (!frozenMaintenance.includes("channel_ingress_events_au_pending_reentry_clear_generation")) {
-      const patched = frozenMaintenance.replace(
-        "allowedColumnDefinitions: {",
-        `optionalCanonicalTriggerGroups: [
-    {
-      tableName: "channel_ingress_events",
-      triggers: [
-        {
-          name: "channel_ingress_events_au_pending_reentry_clear_generation",
-          sql: \`CREATE TRIGGER channel_ingress_events_au_pending_reentry_clear_generation
-AFTER UPDATE OF status ON channel_ingress_events
-FOR EACH ROW
-WHEN NEW.status = 'pending' AND OLD.status IS NOT 'pending'
-BEGIN
-  DELETE FROM channel_ingress_event_generations
-  WHERE queue_name = NEW.queue_name AND event_id = NEW.event_id;
-END;\`,
-        },
-      ],
-    },
-  ],
-  allowedColumnDefinitions: {`,
-      );
-      if (patched === frozenMaintenance) {
-        throw new Error("failed to patch frozen-base maintenance trigger allowlist");
-      }
-      fs.writeFileSync(frozenMaintenancePath, patched, "utf8");
     }
 
     const { createChannelIngressQueue } = await import("../channels/message/ingress-queue.js");
@@ -1678,17 +1623,6 @@ process.stdout.write(JSON.stringify({ count, recovered }) + "\\n");
           createOlderV6StateSchemaWithoutWorkerSshFallbackPorts(),
           {
             allowedMissingTables: FIRST_USE_STATE_TABLES,
-            optionalCanonicalTriggerGroups: [
-              {
-                tableName: "channel_ingress_events",
-                triggers: [
-                  {
-                    name: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME,
-                    sql: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL,
-                  },
-                ],
-              },
-            ],
           },
         ),
       ).not.toThrow();

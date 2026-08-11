@@ -446,6 +446,42 @@ function compactGenerationCounters(db: DatabaseSync): void {
  * the per-event side-table row is cleared by complete/delete/prune and even
  * across historical queue-name churn.
  */
+/**
+ * Pending-row seal written into claim_token while status is pending.
+ * Frozen-base fail/resubmit, release, and stale recovery always null claim_token,
+ * so a stale {generation, receivedAt} fence cannot CAS-match after in-place
+ * recycle even when timestamps are identical. Not a claim capability: status
+ * remains pending and claim()/claimNext overwrite this with a real UUID.
+ */
+const PENDING_GENERATION_SEAL_PREFIX = "pg:";
+
+function pendingGenerationSeal(generation: number): string {
+  return `${PENDING_GENERATION_SEAL_PREFIX}${generation}`;
+}
+
+function isPendingGenerationSeal(
+  claimToken: string | null | undefined,
+  generation: number,
+): boolean {
+  return claimToken === pendingGenerationSeal(generation);
+}
+
+function writePendingGenerationSeal(
+  db: DatabaseSync,
+  queueName: string,
+  eventId: string,
+  generation: number,
+): void {
+  // sqlite-allow-raw -- Seal only applies while the row is still pending.
+  db.prepare(
+    `UPDATE channel_ingress_events
+     SET claim_token = ?
+     WHERE queue_name = ?
+       AND event_id = ?
+       AND status = 'pending'`,
+  ).run(pendingGenerationSeal(generation), queueName, eventId);
+}
+
 function allocateEventGeneration(db: DatabaseSync, queueName: string, eventId: string): number {
   compactGenerationCounters(db);
   // sqlite-allow-raw -- Atomic singleton monotonic generation allocator + side row.
@@ -462,12 +498,15 @@ function allocateEventGeneration(db: DatabaseSync, queueName: string, eventId: s
     throw new Error(`Failed to allocate channel ingress generation for ${queueName}`);
   }
   writeEventGeneration(db, queueName, eventId, generation);
+  // Bind the fence to a pending seal frozen writers cannot preserve.
+  writePendingGenerationSeal(db, queueName, eventId, generation);
   return generation;
 }
 
 /**
  * Return a durable generation for a live event row, minting one when the side
- * row is missing (frozen-base CASCADE delete + re-enqueue without allocate).
+ * row is missing (frozen-base CASCADE delete + re-enqueue without allocate) or
+ * when a pending row's claim_token seal was cleared by a frozen in-place writer.
  */
 function ensureEventGeneration(
   db: DatabaseSync,
@@ -475,10 +514,19 @@ function ensureEventGeneration(
   eventId: string,
   loaded?: number,
 ): number {
+  const eventRow = selectRow(db, queueName, eventId);
   const current = loaded ?? readEventGeneration(db, queueName, eventId);
+  if (eventRow?.status === "pending") {
+    if (current >= 1 && isPendingGenerationSeal(eventRow.claim_token, current)) {
+      return current;
+    }
+    // Missing side row or broken/missing pending seal after frozen recycle.
+    return allocateEventGeneration(db, queueName, eventId);
+  }
   if (current >= 1) {
     return current;
   }
+  // Non-pending without a side row: mint identity only (seal write is a no-op).
   return allocateEventGeneration(db, queueName, eventId);
 }
 
@@ -510,12 +558,12 @@ function pruneOrphanEventGenerations(db: DatabaseSync, queueName: string): numbe
 
 /**
  * Atomically decide whether a generation-fenced pending settlement may proceed.
- * Revalidates incarnation (generation + receivedAt) and live same-lane claims
- * inside the write transaction so listClaims/listPending TOCTOU cannot suppress
- * a later row while a peer holds the lane head (including corrupt claim rows
- * filtered from listClaims). Generation side rows CASCADE away on event DELETE,
- * so frozen-base delete/re-enqueue cannot reproduce a prior positive generation
- * even with identical receivedAt/updatedAt.
+ * Revalidates incarnation (generation + receivedAt + pending claim_token seal)
+ * and live same-lane claims inside the write transaction so listClaims/listPending
+ * TOCTOU cannot suppress a later row while a peer holds the lane head (including
+ * corrupt claim rows filtered from listClaims). Generation side rows CASCADE away
+ * on event DELETE; pending seals are cleared by frozen-base in-place re-entry
+ * (fail/resubmit/release/recover) which always nulls claim_token.
  */
 function pendingSettlementAllowed(
   db: DatabaseSync,
@@ -536,6 +584,12 @@ function pendingSettlementAllowed(
     return false;
   }
   if (Number(row.received_at) !== expectedPending.receivedAt) {
+    return false;
+  }
+  // Pending seal must still be intact. Frozen-base in-place re-entry nulls
+  // claim_token without touching the generation side table; identical
+  // receivedAt/updatedAt alone must not revive a stale fence.
+  if (!isPendingGenerationSeal(row.claim_token, expectedPending.generation)) {
     return false;
   }
   const laneKey = row.lane_key;

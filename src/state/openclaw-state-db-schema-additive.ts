@@ -47,36 +47,21 @@ export function ensureAgentDatabaseLeaseSchema(database: DatabaseSync): void {
 }
 
 /**
- * Clears the pending-generation fence when any writer (including frozen-base)
- * returns a row to pending in place — fail→resubmit, claim→release, and stale
- * recovery. CASCADE only covers DELETE; this trigger covers UPDATE re-entry so
- * stale complete/fail cannot reuse {generation, receivedAt} after an in-place
- * recycle with identical timestamps.
+ * Lazy additive side tables for channel ingress pending-generation CAS fence.
  *
- * Declared optional-canonical on candidate maintenance validation. Frozen-base
- * binaries without the allowlist still reject the trigger as unexpected; the
- * cross-version suite patches that allowlist so exact frozen queue writers can
- * exercise the DB-owned clear.
+ * In-place pending re-entry (fail→resubmit / release / stale recovery) is NOT
+ * handled by triggers: frozen-base schema validation rejects unexpected
+ * triggers on channel_ingress_events. Instead the queue owner seals pending
+ * rows via claim_token (see ingress-queue allocateEventGeneration); frozen
+ * writers always null claim_token on those transitions, breaking the seal.
  */
-export const CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME =
-  "channel_ingress_events_au_pending_reentry_clear_generation";
-
-export const CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL = `
-CREATE TRIGGER channel_ingress_events_au_pending_reentry_clear_generation
-AFTER UPDATE OF status ON channel_ingress_events
-FOR EACH ROW
-WHEN NEW.status = 'pending' AND OLD.status IS NOT 'pending'
-BEGIN
-  DELETE FROM channel_ingress_event_generations
-  WHERE queue_name = NEW.queue_name AND event_id = NEW.event_id;
-END;
-`;
-
-/** Lazy additive side tables for channel ingress pending-generation CAS fence. */
 export function ensureChannelIngressEventGenerationsSchema(database: DatabaseSync): void {
-  // Drop any prior candidate INSERT trigger — frozen-base schema validation
-  // rejects unexpected INSERT triggers on channel_ingress_events.
+  // Drop any prior candidate triggers — frozen-base schema validation rejects
+  // unexpected triggers on channel_ingress_events.
   database.exec(`DROP TRIGGER IF EXISTS channel_ingress_events_ai_alloc_generation`);
+  database.exec(
+    `DROP TRIGGER IF EXISTS channel_ingress_events_au_pending_reentry_clear_generation`,
+  );
 
   database.exec(`
     CREATE TABLE IF NOT EXISTS channel_ingress_generation_counters (
@@ -90,10 +75,9 @@ export function ensureChannelIngressEventGenerationsSchema(database: DatabaseSyn
   // token. Stale complete/fail then cannot match the missing generation, even
   // when receivedAt/updatedAt are identical after re-enqueue.
   //
-  // In-place pending re-entry (fail→resubmit / release / stale recovery) is
-  // covered by CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL:
-  // any status transition into pending deletes the side-table fence so a stale
-  // snapshot cannot CAS-settle the recycled row.
+  // In-place pending re-entry is sealed via claim_token on the event row by the
+  // queue owner (not a trigger): frozen writers null claim_token on fail,
+  // release, resubmit, and stale recovery.
   const eventsTable = database
     .prepare(
       `SELECT 1 AS ok FROM sqlite_master
@@ -160,14 +144,6 @@ export function ensureChannelIngressEventGenerationsSchema(database: DatabaseSyn
        RENAME TO channel_ingress_event_generations`,
     );
   }
-
-  // Install (or replace) the pending-reentry clear trigger. Present on candidate
-  // DBs so frozen in-place writers also invalidate the fence without calling
-  // allocateEventGeneration.
-  database.exec(
-    `DROP TRIGGER IF EXISTS channel_ingress_events_au_pending_reentry_clear_generation`,
-  );
-  database.exec(CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL);
 }
 
 function resolveLegacyManagedImageRoot(recordJson: unknown): string | null {
