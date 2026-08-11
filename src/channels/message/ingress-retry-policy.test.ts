@@ -132,6 +132,25 @@ describe("ingress retry policy", () => {
     });
   });
 
+  it("disposition settles a channel-handled outcome outside the dead-letter path", () => {
+    const disposition = resolveIngressFailureDisposition({
+      err: new Error("stale"),
+      event: { receivedAt: Date.now() - 60_000, attempts: 0 },
+      formatError: (err) => String(err),
+      resolveNonRetryableFailure: () => ({
+        reason: "stale-ambient-backlog",
+        message: "stale",
+        settlement: "handled",
+      }),
+    });
+    expect(disposition).toEqual({
+      kind: "handled",
+      reason: "stale-ambient-backlog",
+      message: "stale",
+      attempt: 1,
+    });
+  });
+
   it("disposition dead-letters only when both gates pass", () => {
     const receivedAt = 1_000;
     // Attempt floor met, age gate not → keep retrying.

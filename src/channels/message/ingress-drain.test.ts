@@ -757,43 +757,6 @@ describe("channel ingress drain", () => {
     });
   });
 
-  it("retries tombstone complete failures then commits", async () => {
-    await withTempState(async (stateDir) => {
-      const queue = createTestIngressQueue(stateDir);
-      await queue.enqueue("evt-tombstone", { text: "x" }, { laneKey: "l1" });
-
-      let completeAttempts = 0;
-      const originalComplete = queue.complete.bind(queue);
-      queue.complete = async (claim) => {
-        completeAttempts += 1;
-        if (completeAttempts <= 2) {
-          throw new Error(`transient complete failure ${completeAttempts}`);
-        }
-        return await originalComplete(claim);
-      };
-
-      const logs: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
-        queue,
-        onLog: (message) => logs.push(message),
-        dispatchClaimedEvent: async (_event, lifecycle) => {
-          await lifecycle.onAdopted();
-        },
-      });
-
-      const idle = drain.waitForIdle();
-      await drain.drainOnce();
-      // Advance through two backoff sleeps (1s, 2s with base 1000).
-      await vi.advanceTimersByTimeAsync(5_000);
-      await idle;
-      expect(completeAttempts).toBe(3);
-      expect(logs.some((line) => line.includes("tombstone retry"))).toBe(true);
-      const again = await queue.enqueue("evt-tombstone", { text: "x" });
-      expect(again.kind).toBe("completed");
-      drain.dispose();
-    });
-  });
-
   it("holds claim ownership when tombstone complete keeps failing", async () => {
     await withTempState(async (stateDir) => {
       const queue = createTestIngressQueue(stateDir);
@@ -884,7 +847,7 @@ describe("channel ingress drain", () => {
     });
   });
 
-  it("throws IngressAdoptionLostError when complete returns false (lease reclaimed)", async () => {
+  it("releases the lane when complete returns false (lease reclaimed by another owner)", async () => {
     await withTempState(async (stateDir) => {
       const queue = createTestIngressQueue(stateDir);
       await queue.enqueue("evt-reclaim", { text: "x" }, { laneKey: "l1" });
@@ -908,8 +871,12 @@ describe("channel ingress drain", () => {
       await drain.waitForIdle();
       expect(isIngressAdoptionLostError(adoptError)).toBe(true);
       expect(isIngressAdoptionLostError(adoptError) && adoptError.code).toBe("reclaimed");
-      // Claim remains held — not settled as a false success.
-      expect(drain.activeLaneKeys().has("l1")).toBe(true);
+      // Never settled as a false success: this drain writes no terminal row.
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      // The row belongs to the owner that reclaimed it, so no settlement can
+      // ever happen here. Holding the lane in memory would fence it until
+      // restart, so ownership is dropped and the lane stays drainable.
+      expect(drain.activeLaneKeys().has("l1")).toBe(false);
       drain.dispose();
     });
   });

@@ -66,9 +66,41 @@ accepted admissions, then aborts and disposes the drain, waits for the pump and
 active deliveries, and disposes again to close the lazy-creation race.
 
 Keep transport-specific redaction, raw-envelope validation, non-retryable
-classification, and persisted payload shape in the plugin. Webhook transports
+classification, and persisted payload shape in the plugin. `resolveNonRetryableFailure`
+settles an event as an operator-actionable dead letter by default. Return
+`settlement: "handled"` instead when the terminal outcome is a deliberate channel
+policy decision rather than breakage, such as suppressing a stale ambient backlog
+after a reconnect. A handled event settles as a completed tombstone, so it stays
+out of dead-letter listings, `openclaw doctor`, and delivery-queue health, and it
+can no longer be replayed with dead-letter resubmit. Only use it when the plugin
+already records its own terminal non-outcome, such as a receipt, log, or metric,
+so the drop stays explainable; anything an operator might need to retry or
+investigate must remain a dead letter. Webhook transports
 should acknowledge only after `admit` resolves; non-replay transports should
 surface durable append exhaustion rather than silently dispatching.
+
+Retry backoff and lane serialization both assume a pending row will eventually
+deliver. Some rows will not: a policy drop the plugin already knows it will
+suppress produces no agent turn, so there is nothing to order it against. Left
+alone, a reconnect backlog of such rows costs one claim and one pump each while
+a fresh addressed message waits behind backlog depth.
+
+The `drain` option `shouldDrainWithoutDelivery(record, context)` declares that,
+receiving `laneKey`, `now`, and the remaining `retryDelayMs` (`0` when the row
+is already claimable). Returning `true` settles nothing and grants no
+permission to skip the queue. It changes only scheduling: the drain claims such
+rows regardless of backoff and settles a run of them one at a time before lane
+serialization. Every row still goes through the atomic claim and the claimed
+delivery path, which stays the only owner of the terminal decision, so
+`deliver` must re-run the same classification on the claimed row and settle it
+— normally as `settlement: "handled"`.
+
+The prediction is checked, not trusted. If a row does deliver, the drain stops
+settling out of band, logs, and hands the rest of that lane back to lane
+serialization, so a wrong predicate degrades throughput rather than ordering.
+Implementations must be side-effect free and tolerate running many times for
+the same row, because every drain pass re-offers still-pending rows. A throw or
+rejection fails closed, keeping normal backoff and lane serialization.
 
 ## Adapter
 

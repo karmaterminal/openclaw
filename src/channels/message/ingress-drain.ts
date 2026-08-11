@@ -10,16 +10,14 @@ import {
   createIngressDrainOwnerId,
   deregisterLiveIngressDrainInstance,
   INGRESS_CLAIM_LEASE_MS,
-  isIngressClaimOwnedByOtherLiveProcess,
-  isIngressCorruptClaimOwnedByOtherLiveProcess,
-  isLiveLocalIngressDrainOwner,
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
+import { recoverStaleIngressClaims } from "./ingress-drain-claim-recovery.js";
+import { scheduleNonDeliveringIngressRun } from "./ingress-drain-out-of-band.js";
 import {
-  applyIngressPendingDispositions,
-  type OnChannelIngressPendingDispositionCommitted,
-  type ResolveChannelIngressPendingDisposition,
-} from "./ingress-drain-pending-disposition.js";
+  resolveChannelIngressPendingScan,
+  type ChannelIngressPendingDeliveryContext,
+} from "./ingress-drain-pending-scan.js";
 import {
   activeClaimKey,
   IngressAdoptionLostError,
@@ -44,7 +42,6 @@ import {
   DEFAULT_INGRESS_RETRY_BASE_MS,
   DEFAULT_INGRESS_RETRY_MAX_MS,
   resolveIngressFailureDisposition,
-  resolveIngressRetryDelayMs,
   type IngressNonRetryableFailure,
   type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
@@ -73,6 +70,27 @@ export type CreateChannelIngressDrainOptions<
     lifecycle: ChannelIngressDispatchLifecycle,
   ) => Promise<ChannelIngressDrainDispatchResult | void> | ChannelIngressDrainDispatchResult | void;
   resolveNonRetryableFailure?: (err: unknown) => IngressNonRetryableFailure | null;
+  /**
+   * Whether a pending row is expected to settle terminally without delivering.
+   *
+   * Such a row produces no agent turn, so there is nothing to order against
+   * same-lane work. The drain therefore claims it regardless of retry backoff
+   * and settles a run of them one at a time before lane serialization, so a
+   * reconnect backlog does not cost one pump per row while a fresh addressed
+   * message waits behind it.
+   *
+   * Returning true only changes scheduling: the row still goes through atomic
+   * claimNext and the claimed delivery path, which remains the sole owner of
+   * the terminal decision. If a row does deliver after all, the drain stops
+   * settling out of band and lane serialization owns the rest of that pass.
+   * Implementations must be side-effect free and may run many times for the
+   * same row across drain passes. A throw or rejection fails closed, keeping
+   * normal backoff and lane serialization.
+   */
+  shouldDrainWithoutDelivery?: (
+    record: ChannelIngressQueueRecord<TPayload, TMetadata>,
+    context: ChannelIngressPendingDeliveryContext,
+  ) => boolean | Promise<boolean>;
   shouldSupersedePending?: (
     newEvent:
       | ChannelIngressQueueRecord<TPayload, TMetadata>
@@ -85,8 +103,6 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
-  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
-  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -136,6 +152,8 @@ export function createChannelIngressDrain<
   const deferredLaneOccupancy = options.deferredLaneOccupancy ?? "hold";
   const activeByClaim = new Map<string, ActiveHandlerState<TPayload, TMetadata>>();
   const laneOwnerByKey = new Map<string, ActiveHandlerState<TPayload, TMetadata>>();
+  // Non-delivering settlement runs off the drain pass; tracked for waitForIdle.
+  const backgroundSettlements = new Set<Promise<void>>();
   let disposed = false;
 
   const log = (message: string) => {
@@ -326,9 +344,10 @@ export function createChannelIngressDrain<
   };
 
   const applyFailureDisposition = async (
-    claim: ChannelIngressQueueClaim<TPayload, TMetadata>,
+    state: ActiveHandlerState<TPayload, TMetadata>,
     err: unknown,
   ) => {
+    const claim = state.claim;
     const disposition = resolveIngressFailureDisposition({
       err,
       event: claim,
@@ -337,6 +356,20 @@ export function createChannelIngressDrain<
       config: options.retryPolicy,
       now: now(),
     });
+    if (disposition.kind === "handled") {
+      // Channel policy already recorded this outcome, so the event is done, not
+      // broken. Settling through the canonical completion tombstone keeps it out
+      // of dead-letter counts, doctor output, and delivery-queue health.
+      // Adopt before the tombstone retries for the same reason the normal
+      // completion path does: a failed write must wedge holding the claim, never
+      // release or dead-letter an event whose terminal policy decision already ran.
+      if (state.phase === "dispatching" || state.phase === "deferred") {
+        state.phase = "adopted";
+      }
+      await completeClaimWithRetry(claim);
+      state.settledWithoutDelivery = true;
+      return;
+    }
     if (disposition.kind === "fail") {
       // Operator-visible dead-letter line. Prefer numeric id when the event id
       // is a zero-padded telegram update_id so logs stay human-readable.
@@ -478,7 +511,7 @@ export function createChannelIngressDrain<
         }
         clearStallTimer(state);
         await state.settleOnce(async () => {
-          await applyFailureDisposition(state.claim, error);
+          await applyFailureDisposition(state, error);
         });
       },
       onAbandoned: async () => {
@@ -529,6 +562,7 @@ export function createChannelIngressDrain<
       occupiesLane: true,
       guillotined: false,
       superseded: false,
+      settledWithoutDelivery: false,
       task: Promise.resolve(),
       settleOnce: async () => {},
     } as ActiveHandlerState<TPayload, TMetadata>;
@@ -566,7 +600,7 @@ export function createChannelIngressDrain<
         if (result?.kind === "failed-retryable") {
           clearStallTimer(state);
           await state.settleOnce(async () => {
-            await applyFailureDisposition(claim, result.error);
+            await applyFailureDisposition(state, result.error);
           });
           return;
         }
@@ -595,6 +629,18 @@ export function createChannelIngressDrain<
         if (state.guillotined || state.superseded) {
           return;
         }
+        // Definitive claim loss: the row is owned by another drain, so no
+        // settlement can ever happen here. Holding the lane in memory would
+        // fence it until restart, so drop ownership. An ambiguous write failure
+        // is different and still wedges below (wedged > duplicated).
+        if (isIngressAdoptionLostError(err) && err.code === "reclaimed") {
+          state.phase = "settled";
+          removeActive(state);
+          log(
+            `ingress drain: claim for event ${claim.id} was reclaimed by another owner; releasing lane ${state.laneKey}`,
+          );
+          return;
+        }
         // Adoption may have partially completed (tombstone retry wedge); keep claim.
         // Includes handler-completed path that moved to adopted before complete().
         if (state.phase === "adopted") {
@@ -605,7 +651,7 @@ export function createChannelIngressDrain<
         }
         clearStallTimer(state);
         await state.settleOnce(async () => {
-          await applyFailureDisposition(claim, err);
+          await applyFailureDisposition(state, err);
         });
       }
     })();
@@ -615,38 +661,14 @@ export function createChannelIngressDrain<
     return state;
   };
 
-  const recoverStaleClaims = async (): Promise<number> => {
-    const activeLanes = new Set(laneOwnerByKey.keys());
-    return await queue.recoverStaleClaims({
-      staleMs: 0,
+  const recoverStaleClaims = async (): Promise<number> =>
+    await recoverStaleIngressClaims({
+      queue,
       now: now(),
-      shouldRecover: (claim) => {
-        if (activeByClaim.has(activeClaimKey(claim))) {
-          return false;
-        }
-        // Same-PID multi-drain: only recover when the owner instance is not live.
-        if (isLiveLocalIngressDrainOwner(claim.claim.ownerId)) {
-          return false;
-        }
-        return !isIngressClaimOwnedByOtherLiveProcess(claim, {
-          maxAgeMs: claimLeaseMs,
-          now: now(),
-        });
-      },
-      shouldRecoverCorrupt: (claim) => {
-        if (claim.laneKey && activeLanes.has(claim.laneKey)) {
-          return false;
-        }
-        if (isLiveLocalIngressDrainOwner(claim.claim.ownerId)) {
-          return false;
-        }
-        return !isIngressCorruptClaimOwnedByOtherLiveProcess(claim, {
-          maxAgeMs: claimLeaseMs,
-          now: now(),
-        });
-      },
+      claimLeaseMs,
+      activeClaimKeys: new Set(activeByClaim.keys()),
+      activeLaneKeys: new Set(laneOwnerByKey.keys()),
     });
-  };
 
   const drainOnce = async (drainOptions?: {
     shouldStop?: () => boolean;
@@ -659,18 +681,8 @@ export function createChannelIngressDrain<
 
     await recoverStaleClaims();
 
-    const dispositionNow = now();
-    const pendingDispositionResult = await applyIngressPendingDispositions({
-      pending: await queue.listPending({ limit: "all", orderBy }),
-      dispositionNow,
-      queue,
-      resolvePendingDisposition: options.resolvePendingDisposition,
-      onPendingDispositionCommitted: options.onPendingDispositionCommitted,
-      deriveLaneKey: options.deriveLaneKey,
-      reconcileStoredLaneKey: options.reconcileStoredLaneKey,
-      log,
-    });
-    const pending = pendingDispositionResult.pending;
+    const pendingScanNow = now();
+    const pending = await queue.listPending({ limit: "all", orderBy });
     const claims = await queue.listClaims();
     const activeLaneKeys = new Set(laneOwnerByKey.keys());
     const claimedLaneKeys = new Set(
@@ -688,37 +700,55 @@ export function createChannelIngressDrain<
           resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
         ),
     );
-    const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
-    const oldestRetainedPendingLaneKeys = new Set<string>();
-    const retryDelayedLaneKeys = new Set<string>();
-    for (const event of pending) {
-      const retryDelayMs = resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow);
-      if (retryDelayMs === 0) {
-        eligiblePending.push(event);
-      }
-      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
-      if (oldestRetainedPendingLaneKeys.has(laneKey)) {
-        continue;
-      }
-      oldestRetainedPendingLaneKeys.add(laneKey);
-      // Only the oldest retained row can block its lane for retry backoff. A
-      // delayed tail must not hide an eligible head from claimNext.
-      if (retryDelayMs > 0) {
-        retryDelayedLaneKeys.add(laneKey);
-      }
-    }
+    const { eligiblePending, retryDelayedLaneKeys, nonDeliveringIds } =
+      await resolveChannelIngressPendingScan({
+        pending,
+        now: pendingScanNow,
+        ...(options.retryPolicy ? { retryPolicy: options.retryPolicy } : {}),
+        resolveLaneKey: (record) =>
+          resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey),
+        shouldDrainWithoutDelivery: options.shouldDrainWithoutDelivery,
+        formatError,
+        log,
+      });
+
+    // Claim the non-delivering run inside the drain pass, but settle it
+    // afterwards: claiming is what the admission lock protects, while a
+    // settlement that ran under that lock would block durable admission until
+    // suppression finished. Claiming the whole run keeps a reconnect backlog to
+    // a bounded number of pumps instead of one claim and one pump per row.
+    const laneBusyKeys = new Set<string>([
+      ...sortedKeys(activeLaneKeys),
+      ...sortedKeys(claimedLaneKeys),
+    ]);
+    const { claimedIds, laneKeys } = await scheduleNonDeliveringIngressRun({
+      queue,
+      ownerId,
+      orderBy,
+      scanLimit,
+      nonDeliveringIds,
+      laneBusyKeys,
+      deriveLaneKey: options.deriveLaneKey,
+      reconcileStoredLaneKey: options.reconcileStoredLaneKey,
+      shouldStop,
+      runClaimed,
+      log,
+      formatError,
+      track: backgroundSettlements,
+    });
+    const laneOrderedPending = eligiblePending.filter((event) => !claimedIds.has(event.id));
 
     // Deterministic blocked set for claimNext lane serialization.
     const blockedLaneKeys = new Set<string>([
-      ...sortedKeys(activeLaneKeys),
-      ...sortedKeys(claimedLaneKeys),
+      ...laneBusyKeys,
       ...sortedKeys(retryDelayedLaneKeys),
-      ...sortedKeys(pendingDispositionResult.blockedLaneKeys),
+      // A lane settling out of band still owns its lane until that run ends.
+      ...sortedKeys(laneKeys),
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
     // Free the lane in blockedLaneKeys so claimNext can take the superseding event.
-    for (const event of eligiblePending) {
+    for (const event of laneOrderedPending) {
       if (shouldStop()) {
         break;
       }
@@ -728,8 +758,8 @@ export function createChannelIngressDrain<
       }
     }
 
-    const candidateIds = new Set(eligiblePending.map((event) => event.id));
-    let started = 0;
+    const candidateIds = new Set(laneOrderedPending.map((event) => event.id));
+    let started = claimedIds.size;
     while (started < startLimit) {
       if (shouldStop()) {
         break;
@@ -783,8 +813,13 @@ export function createChannelIngressDrain<
     drainOnce,
     activeLaneKeys: () => new Set(laneOwnerByKey.keys()),
     waitForIdle: async () => {
-      const tasks = [...activeByClaim.values()].map((state) => state.task);
-      await Promise.allSettled(tasks);
+      // Settlement runs start handlers after the drain pass returns, so await
+      // them before snapshotting active claims. Each run removes itself from
+      // the set before resolving, so this drains rather than spins.
+      while (backgroundSettlements.size > 0) {
+        await Promise.allSettled(backgroundSettlements);
+      }
+      await Promise.allSettled([...activeByClaim.values()].map((state) => state.task));
     },
     dispose: () => {
       disposed = true;

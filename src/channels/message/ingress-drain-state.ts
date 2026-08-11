@@ -89,6 +89,13 @@ export type ActiveHandlerState<TPayload, TMetadata> = {
   guillotined: boolean;
   /** Closed code: pre-adoption supersede has claimed settle ownership. */
   superseded: boolean;
+  /**
+   * Terminal channel-policy outcome that produced no delivery.
+   *
+   * The drain settles such rows outside lane serialization, so this records
+   * whether that prediction actually held.
+   */
+  settledWithoutDelivery: boolean;
   /** Single settle owner for complete / fail / release / supersede / guillotine. */
   settleOnce: (fn: () => Promise<void>) => Promise<void>;
 };

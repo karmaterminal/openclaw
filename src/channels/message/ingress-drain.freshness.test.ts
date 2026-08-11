@@ -3,17 +3,15 @@
 // repo max-lines budget; lifecycle/adoption invariants stay in the original.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
-import type {
-  ChannelIngressPendingDisposition,
-  ChannelIngressPendingDispositionContext,
-} from "./ingress-drain-pending-disposition.js";
-import { createChannelIngressDrain } from "./ingress-drain.js";
+import {
+  createChannelIngressDrain,
+  type CreateChannelIngressDrainOptions,
+} from "./ingress-drain.js";
 import {
   createTestIngressQueue,
   type IngressDrainTestPayload as Payload,
   withTempState,
 } from "./ingress-drain.test-helpers.js";
-import type { ChannelIngressQueueRecord } from "./ingress-queue.js";
 import {
   DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
@@ -21,21 +19,50 @@ import {
 
 const STALE_AMBIENT_PENDING_MS = 15 * 60 * 1_000;
 
-function resolveStaleAmbientPendingDisposition(
-  event: ChannelIngressQueueRecord<Payload>,
-  context: ChannelIngressPendingDispositionContext,
-): ChannelIngressPendingDisposition | null {
-  if (event.payload.kind !== "ambient") {
-    return null;
-  }
-  if (context.now - event.receivedAt <= STALE_AMBIENT_PENDING_MS) {
-    return null;
-  }
+/**
+ * Channel-owned stale-ambient policy on the canonical claimed delivery
+ * lifecycle: `deliver` refuses the claim and `resolveNonRetryableFailure` maps
+ * it terminally. Mirrors how Discord suppresses stale ambient backlog.
+ */
+class StaleAmbientBacklogError extends Error {}
+
+function staleAmbientDrainOptions(
+  now: () => number,
+  adopted: string[],
+): Pick<
+  CreateChannelIngressDrainOptions<Payload>,
+  "dispatchClaimedEvent" | "resolveNonRetryableFailure"
+> {
   return {
-    kind: "fail",
-    reason: "stale-ambient-backlog",
-    message: `stale ambient backlog ${event.id} on ${context.laneKey}`,
+    resolveNonRetryableFailure: (error) =>
+      error instanceof StaleAmbientBacklogError
+        ? { reason: "stale-ambient-backlog", message: error.message, settlement: "handled" }
+        : null,
+    dispatchClaimedEvent: async (event, lifecycle) => {
+      if (event.payload.kind === "ambient" && now() - event.receivedAt > STALE_AMBIENT_PENDING_MS) {
+        throw new StaleAmbientBacklogError(`stale ambient backlog ${event.id} on ${event.laneKey}`);
+      }
+      adopted.push(event.id);
+      await lifecycle.onAdopted();
+    },
   };
+}
+
+/**
+ * Discord maps stale-ambient suppression to `settlement: "handled"`, so the row
+ * must leave a completed tombstone: absent from every dead-letter surface, and
+ * still deduplicating a replay of the same id.
+ */
+async function expectHandledCompletion(
+  queue: ReturnType<typeof createTestIngressQueue>,
+  ids: readonly string[],
+) {
+  expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+  for (const id of ids) {
+    await expect(
+      queue.enqueue(id, { text: "replay probe", kind: "ambient" }),
+    ).resolves.toMatchObject({ kind: "completed" });
+  }
 }
 
 describe("channel ingress drain", () => {
@@ -144,20 +171,198 @@ describe("channel ingress drain", () => {
         queue,
         now: () => clock,
         retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
-        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        ...staleAmbientDrainOptions(() => clock, adopted),
+      });
+
+      // Retry backoff still owns claim eligibility: the stale head keeps its
+      // lane until it is claimable again, then delivery settles it terminally.
+      expect(await secondDrain.drainOnce()).toEqual({ started: 0 });
+      clock += 60_000;
+      expect(await secondDrain.drainOnce()).toEqual({ started: 1 });
+      await secondDrain.waitForIdle();
+      expect(adopted).toEqual([]);
+      await expectHandledCompletion(queue, ["retrying-stale-head"]);
+
+      expect(await secondDrain.drainOnce()).toEqual({ started: 1 });
+      await secondDrain.waitForIdle();
+      expect(adopted).toEqual(["fresh-after-dead-letter"]);
+      secondDrain.dispose();
+    });
+  });
+
+  it("settles a same-lane stale backlog in one claimed run, not one pump per row", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000;
+      const laneKey = "channel:discord-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      const staleIds = Array.from({ length: 12 }, (_, index) => `stale-${index}`);
+      for (const id of staleIds) {
+        await queue.enqueue(
+          id,
+          { text: `ambient ${id}`, kind: "ambient" },
+          {
+            laneKey,
+            receivedAt: clock,
+          },
+        );
+      }
+      // Every stale row is past the ambient window, and the first one also
+      // carries a transient failure so its lane sits under retry backoff.
+      clock += STALE_AMBIENT_PENDING_MS + 1;
+      const head = await queue.claim("stale-0", { ownerId: "prior-owner" });
+      if (!head) {
+        throw new Error("expected to claim the backlog head");
+      }
+      await queue.release(head, {
+        recordAttempt: true,
+        lastError: "transient Discord recovery failure",
+        releasedAt: clock,
+      });
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw current diagnostic ask", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const offered: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
+        shouldDrainWithoutDelivery: (record) => {
+          offered.push(record.id);
+          return (
+            record.payload.kind === "ambient" &&
+            clock - record.receivedAt > STALE_AMBIENT_PENDING_MS
+          );
+        },
+        ...staleAmbientDrainOptions(() => clock, adopted),
+      });
+
+      // No clock advance through the backoff. The whole backlog is claimed and
+      // settled by one run, so the fresh mention waits a bounded number of
+      // passes instead of one pass per backlog row.
+      let passes = 0;
+      while (passes < 10) {
+        const { started } = await drain.drainOnce();
+        passes += 1;
+        await drain.waitForIdle();
+        if (started === 0) {
+          break;
+        }
+      }
+      expect(adopted).toEqual(["fresh-addressed"]);
+      // Bounded and independent of backlog depth: claim the run, then dispatch.
+      expect(passes).toBeLessThanOrEqual(3);
+      expect(passes).toBeLessThan(staleIds.length);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      await expectHandledCompletion(queue, staleIds);
+      // Scheduling only: the fresh row was never treated as non-delivering.
+      expect(offered).toContain("fresh-addressed");
+      drain.dispose();
+    });
+  });
+
+  it("stops settling out of band when a scheduled row delivers after all", async () => {
+    await withTempState(async (stateDir) => {
+      const clock = 1_000;
+      const laneKey = "channel:discord-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "mispredicted",
+        { text: "actually addressed", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+      await queue.enqueue(
+        "follower",
+        { text: "@openclaw follow-up", kind: "addressed" },
+        { laneKey, receivedAt: clock + 1 },
+      );
+
+      const adopted: string[] = [];
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        onLog: (message) => logs.push(message),
+        // Wrong on purpose: both rows deliver.
+        shouldDrainWithoutDelivery: () => true,
+        ...staleAmbientDrainOptions(() => clock, adopted),
+      });
+
+      // Both rows are claimed for settlement, but the first one delivers, so
+      // the run stops and hands the rest back instead of settling them blind.
+      expect(await drain.drainOnce()).toEqual({ started: 2 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["mispredicted"]);
+      expect(logs.filter((line) => line.includes("resuming lane serialization"))).toHaveLength(1);
+      // The abandoned claim is released, not stranded, and keeps its attempt
+      // budget so normal lane serialization can still deliver it.
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
+        "follower",
+      ]);
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["mispredicted", "follower"]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      drain.dispose();
+    });
+  });
+
+  it("fails closed when the non-delivering predicate throws", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000;
+      const laneKey = "channel:discord-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "retrying-head",
+        { text: "ambient backlog head", kind: "ambient" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
+        onLog: (message) => logs.push(message),
+        shouldDrainWithoutDelivery: () => {
+          throw new Error("classifier outage");
+        },
         dispatchClaimedEvent: async (event, lifecycle) => {
+          if (event.id === "retrying-head" && event.attempts === 0) {
+            throw new Error("transient Discord recovery failure");
+          }
           adopted.push(event.id);
           await lifecycle.onAdopted();
         },
       });
 
-      expect(await secondDrain.drainOnce()).toEqual({ started: 1 });
-      await secondDrain.waitForIdle();
-      expect(adopted).toEqual(["fresh-after-dead-letter"]);
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "retrying-stale-head", reason: "stale-ambient-backlog" },
-      ]);
-      secondDrain.dispose();
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual([]);
+
+      clock += 1_000;
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw current diagnostic ask", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      // Unusable predicate keeps the default backoff fence instead of releasing
+      // the lane, and the pump survives to drain normally once it expires.
+      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual([]);
+      expect(logs.some((line) => line.includes("non-delivering predicate failed"))).toBe(true);
+
+      clock += 60_000;
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["retrying-head"]);
+      drain.dispose();
     });
   });
 
@@ -183,12 +388,15 @@ describe("channel ingress drain", () => {
         queue,
         now: () => clock,
         startLimit: 1,
-        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
-        dispatchClaimedEvent: async (event, lifecycle) => {
-          adopted.push(event.id);
-          await lifecycle.onAdopted();
-        },
+        ...staleAmbientDrainOptions(() => clock, adopted),
       });
+
+      // The stale ambient head is refused instead of adopted, so the fresh
+      // addressed event reaches dispatch on the very next claim cycle.
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual([]);
+      await expectHandledCompletion(queue, ["stale-ambient"]);
 
       expect(await drain.drainOnce()).toEqual({ started: 1 });
       await drain.waitForIdle();
@@ -196,9 +404,6 @@ describe("channel ingress drain", () => {
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).not.toContain(
         "fresh-addressed",
       );
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "stale-ambient", reason: "stale-ambient-backlog" },
-      ]);
       drain.dispose();
     });
   });
@@ -263,11 +468,7 @@ describe("channel ingress drain", () => {
         queue,
         now: () => clock,
         startLimit: 1,
-        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
-        dispatchClaimedEvent: async (event, lifecycle) => {
-          adopted.push(event.id);
-          await lifecycle.onAdopted();
-        },
+        ...staleAmbientDrainOptions(() => clock, adopted),
       });
 
       expect(await drain.drainOnce()).toEqual({ started: 1 });
@@ -302,11 +503,7 @@ describe("channel ingress drain", () => {
         queue,
         now: () => clock,
         startLimit: 1,
-        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
-        dispatchClaimedEvent: async (event, lifecycle) => {
-          adopted.push(event.id);
-          await lifecycle.onAdopted();
-        },
+        ...staleAmbientDrainOptions(() => clock, adopted),
       });
 
       expect(await drain.drainOnce()).toEqual({ started: 1 });
@@ -320,7 +517,7 @@ describe("channel ingress drain", () => {
     });
   });
 
-  it("restart recovery dispositions stale ambient claims before fresh addressed work", async () => {
+  it("restart recovery settles stale ambient claims before fresh addressed work", async () => {
     await withTempState(async (stateDir) => {
       const laneKey = "channel:discord-room";
       const clock = STALE_AMBIENT_PENDING_MS + 1;
@@ -342,46 +539,31 @@ describe("channel ingress drain", () => {
       const firstDrain = createChannelIngressDrain<Payload>({
         queue,
         now: () => clock,
-        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
-        dispatchClaimedEvent: async (event, lifecycle) => {
-          adopted.push(event.id);
-          await lifecycle.onAdopted();
-        },
+        ...staleAmbientDrainOptions(() => clock, adopted),
       });
       expect(await firstDrain.drainOnce()).toEqual({ started: 1 });
       await firstDrain.waitForIdle();
+      expect(adopted).toEqual([]);
       firstDrain.dispose();
 
       const secondDrain = createChannelIngressDrain<Payload>({
         queue,
         now: () => clock,
-        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
-        dispatchClaimedEvent: async (event, lifecycle) => {
-          adopted.push(event.id);
-          await lifecycle.onAdopted();
-        },
+        ...staleAmbientDrainOptions(() => clock, adopted),
       });
-      expect(await secondDrain.drainOnce()).toEqual({ started: 0 });
+      expect(await secondDrain.drainOnce()).toEqual({ started: 1 });
       await secondDrain.waitForIdle();
 
       expect(adopted).toEqual(["fresh-addressed"]);
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "stale-ambient", reason: "stale-ambient-backlog" },
-      ]);
-      await expect(
-        queue.enqueue("stale-ambient", { text: "old room history", kind: "ambient" }),
-      ).resolves.toMatchObject({ kind: "failed" });
+      await expectHandledCompletion(queue, ["stale-ambient"]);
       secondDrain.dispose();
     });
   });
 
-  it("stale ambient disposition uses a strict clock boundary", async () => {
+  it("stale ambient suppression uses a strict clock boundary", async () => {
     for (const [ageMs, expected] of [
-      [STALE_AMBIENT_PENDING_MS, { adopted: ["boundary-ambient"], failed: [] }],
-      [
-        STALE_AMBIENT_PENDING_MS + 1,
-        { adopted: [], failed: [{ id: "boundary-ambient", reason: "stale-ambient-backlog" }] },
-      ],
+      [STALE_AMBIENT_PENDING_MS, { adopted: ["boundary-ambient"], suppressed: [] }],
+      [STALE_AMBIENT_PENDING_MS + 1, { adopted: [], suppressed: ["boundary-ambient"] }],
     ] as const) {
       await withTempState(async (stateDir) => {
         const queue = createTestIngressQueue(stateDir, { now: () => ageMs });
@@ -395,19 +577,14 @@ describe("channel ingress drain", () => {
         const drain = createChannelIngressDrain<Payload>({
           queue,
           now: () => ageMs,
-          resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
-          dispatchClaimedEvent: async (event, lifecycle) => {
-            adopted.push(event.id);
-            await lifecycle.onAdopted();
-          },
+          ...staleAmbientDrainOptions(() => ageMs, adopted),
         });
 
-        expect(await drain.drainOnce()).toEqual({
-          started: expected.adopted.length,
-        });
+        // Both boundaries claim the row; only the strictly older one is refused.
+        expect(await drain.drainOnce()).toEqual({ started: 1 });
         await drain.waitForIdle();
         expect(adopted).toEqual(expected.adopted);
-        expect(await queue.listFailed?.({ limit: "all" })).toMatchObject(expected.failed);
+        await expectHandledCompletion(queue, expected.suppressed);
         drain.dispose();
       });
     }

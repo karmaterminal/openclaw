@@ -27,11 +27,24 @@ type IngressRetryEventFacts = {
 export type IngressNonRetryableFailure = {
   reason: string;
   message: string;
+  /**
+   * How the event settles. Default "dead-letter" records an operator-actionable
+   * failed row. "handled" is a channel policy decision the channel already
+   * recorded itself, so it settles as a completed tombstone and stays out of
+   * dead-letter counts, doctor output, and health warnings.
+   */
+  settlement?: "dead-letter" | "handled";
 };
 
 type IngressFailureDisposition =
   | {
       kind: "fail";
+      reason: string;
+      message: string;
+      attempt: number;
+    }
+  | {
+      kind: "handled";
       reason: string;
       message: string;
       attempt: number;
@@ -103,7 +116,7 @@ export function resolveIngressFailureDisposition(params: {
   const nonRetryable = params.resolveNonRetryableFailure?.(params.err) ?? null;
   if (nonRetryable) {
     return {
-      kind: "fail",
+      kind: nonRetryable.settlement === "handled" ? "handled" : "fail",
       reason: nonRetryable.reason,
       message: nonRetryable.message,
       attempt,
