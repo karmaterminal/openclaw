@@ -122,7 +122,6 @@ function pendingGenerationMatch<TPayload, TMetadata>(
   return {
     generation: record.generation,
     receivedAt: record.receivedAt,
-    updatedAt: record.updatedAt,
   };
 }
 

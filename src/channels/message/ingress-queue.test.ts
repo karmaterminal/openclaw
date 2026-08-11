@@ -959,7 +959,6 @@ describe("channel ingress queue", () => {
       const staleFence = {
         generation: snapshot!.generation,
         receivedAt: snapshot!.receivedAt,
-        updatedAt: snapshot!.updatedAt,
       };
 
       expect(await queue.fail("gen-resubmit", { reason: "operator", message: "drop" })).toBe(true);
@@ -992,7 +991,6 @@ describe("channel ingress queue", () => {
       const releaseFence = {
         generation: afterResubmit!.generation,
         receivedAt: afterResubmit!.receivedAt,
-        updatedAt: afterResubmit!.updatedAt,
       };
       const claim = await queue.claim("gen-resubmit", { ownerId: "worker" });
       expect(claim).not.toBeNull();
@@ -1029,7 +1027,6 @@ describe("channel ingress queue", () => {
       const preClaimFence = {
         generation: snapshot!.generation,
         receivedAt: snapshot!.receivedAt,
-        updatedAt: snapshot!.updatedAt,
       };
 
       const claim = await queue.claim("gen-recover", { ownerId: "stale-owner" });
@@ -1072,7 +1069,6 @@ describe("channel ingress queue", () => {
       const staleFence = {
         generation: first!.generation,
         receivedAt: first!.receivedAt,
-        updatedAt: first!.updatedAt,
       };
 
       expect(await queue.delete("aba-id")).toBe(true);
@@ -1104,7 +1100,6 @@ describe("channel ingress queue", () => {
       const liveFence = {
         generation: second!.generation,
         receivedAt: second!.receivedAt,
-        updatedAt: second!.updatedAt,
       };
       expect(await queue.prune({ pendingMaxEntries: 0, now: 100 })).toBeGreaterThan(0);
       {
@@ -1189,7 +1184,6 @@ describe("channel ingress queue", () => {
       const fence = {
         generation: tail!.generation,
         receivedAt: tail!.receivedAt,
-        updatedAt: tail!.updatedAt,
       };
       const headClaim = await queue.claim("head", { ownerId: "peer" });
       expect(headClaim).not.toBeNull();

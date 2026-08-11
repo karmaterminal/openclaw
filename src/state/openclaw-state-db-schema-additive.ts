@@ -48,20 +48,94 @@ export function ensureAgentDatabaseLeaseSchema(database: DatabaseSync): void {
 
 /** Lazy additive side tables for channel ingress pending-generation CAS fence. */
 export function ensureChannelIngressEventGenerationsSchema(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS channel_ingress_event_generations (
-      queue_name TEXT NOT NULL,
-      event_id TEXT NOT NULL,
-      generation INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (queue_name, event_id)
-    ) STRICT
-  `);
+  // Drop any prior candidate INSERT trigger — frozen-base schema validation
+  // rejects unexpected triggers on channel_ingress_events.
+  database.exec(`DROP TRIGGER IF EXISTS channel_ingress_events_ai_alloc_generation`);
+
   database.exec(`
     CREATE TABLE IF NOT EXISTS channel_ingress_generation_counters (
       queue_name TEXT PRIMARY KEY,
       next_generation INTEGER NOT NULL
     ) STRICT
   `);
+
+  // Prefer FK ON DELETE CASCADE so any DELETE of the event row (including
+  // frozen-base writers that never touch this side table) drops the fence
+  // token. Stale complete/fail then cannot match the missing generation, even
+  // when receivedAt/updatedAt are identical after re-enqueue. Do not install an
+  // INSERT trigger on channel_ingress_events: frozen-base schema validation
+  // rejects unexpected triggers on canonical tables.
+  const eventsTable = database
+    .prepare(
+      `SELECT 1 AS ok FROM sqlite_master
+       WHERE type = 'table' AND name = 'channel_ingress_events' LIMIT 1`,
+    )
+    .get() as { ok: number } | undefined;
+
+  const generationsSql = database
+    .prepare(
+      `SELECT sql AS sql FROM sqlite_master
+       WHERE type = 'table' AND name = 'channel_ingress_event_generations' LIMIT 1`,
+    )
+    .get() as { sql?: string } | undefined;
+
+  const hasCascade =
+    typeof generationsSql?.sql === "string" &&
+    /ON DELETE CASCADE/iu.test(generationsSql.sql) &&
+    /REFERENCES\s+channel_ingress_events/iu.test(generationsSql.sql);
+
+  if (!eventsTable) {
+    // Parent table not present yet (legacy repair before executeCanonical). Do
+    // not create a non-FK generations placeholder — CREATE IF NOT EXISTS later
+    // would leave it without CASCADE and fail schema-constraint asserts.
+    return;
+  }
+
+  if (!generationsSql) {
+    database.exec(`
+      CREATE TABLE channel_ingress_event_generations (
+        queue_name TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        generation INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (queue_name, event_id),
+        FOREIGN KEY (queue_name, event_id)
+          REFERENCES channel_ingress_events (queue_name, event_id)
+          ON DELETE CASCADE
+      ) STRICT
+    `);
+    return;
+  }
+
+  if (hasCascade) {
+    return;
+  }
+
+  // Rebuild pre-cascade lazy table in place so DELETE from any writer clears tokens.
+  database.exec(`
+    CREATE TABLE channel_ingress_event_generations__cascade (
+      queue_name TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      generation INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (queue_name, event_id),
+      FOREIGN KEY (queue_name, event_id)
+        REFERENCES channel_ingress_events (queue_name, event_id)
+        ON DELETE CASCADE
+    ) STRICT
+  `);
+  database.exec(`
+    INSERT INTO channel_ingress_event_generations__cascade (queue_name, event_id, generation)
+    SELECT g.queue_name, g.event_id, g.generation
+    FROM channel_ingress_event_generations AS g
+    WHERE EXISTS (
+      SELECT 1 FROM channel_ingress_events AS e
+      WHERE e.queue_name = g.queue_name AND e.event_id = g.event_id
+    )
+  `);
+  database.exec(`DROP TABLE channel_ingress_event_generations`);
+  database.exec(
+    `ALTER TABLE channel_ingress_event_generations__cascade
+     RENAME TO channel_ingress_event_generations`,
+  );
 }
 
 function resolveLegacyManagedImageRoot(recordJson: unknown): string | null {

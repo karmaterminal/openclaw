@@ -1279,11 +1279,15 @@ describe("openclaw state database", () => {
     await candidateQueue.enqueue("cross-id", { text: "candidate" }, { receivedAt: 10 });
     const [snap] = await candidateQueue.listPending();
     expect(snap?.generation).toBeGreaterThan(0);
+    // Capture fence before frozen rewrite. Frozen-base delete/re-enqueue below
+    // reuses the same ms clocks so receivedAt/updatedAt match; CASCADE delete
+    // of the generation side row means the prior positive generation cannot be
+    // reproduced by the frozen writer.
     const staleFence = {
       generation: snap!.generation,
       receivedAt: snap!.receivedAt,
-      updatedAt: snap!.updatedAt,
     };
+    const staleUpdatedAt = snap!.updatedAt;
     closeOpenClawStateDatabaseForTest();
 
     const frozenRunner = path.join(worktree, "frozen-cross-version-runner.mjs");
@@ -1319,11 +1323,13 @@ const writable = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir
 writable.db.prepare("SELECT COUNT(*) AS n FROM channel_ingress_events").get();
 closeOpenClawStateDatabaseForTest();
 
+// Identical wall-clock to the candidate enqueue so receivedAt/updatedAt match
+// the pre-delete incarnation exactly (same-ms frozen ABA shape).
 const queue = createChannelIngressQueue({
   channelId: "frozen-x",
   accountId: "a",
   stateDir,
-  now: () => 200,
+  now: () => 100,
 });
 const deleted = await queue.delete("cross-id");
 const enqueued = await queue.enqueue("cross-id", { text: "frozen-rewrite" }, { receivedAt: 10 });
@@ -1349,17 +1355,34 @@ process.stdout.write(JSON.stringify({ count, deleted, enqueuedKind: enqueued.kin
     expect(frozenResult.deleted).toBe(true);
     expect(frozenResult.enqueuedKind).toBe("accepted");
 
-    // Candidate must still refuse the pre-frozen fence against the replacement.
+    // Candidate must refuse the pre-frozen fence against the replacement even
+    // when every time field matches — CASCADE cleared the prior generation and
+    // listPending mints a fresh never-reuse token for the live row.
     closeOpenClawStateDatabaseForTest();
     const afterQueue = createChannelIngressQueue<{ text: string }>({
       channelId: "frozen-x",
       accountId: "a",
       stateDir,
-      now: () => 300,
+      now: () => 100,
     });
+    // Prove stale complete/fail lose before listPending allocates a live token.
+    expect(
+      await afterQueue.complete("cross-id", {
+        expectedPending: staleFence,
+        metadata: { note: "stale-pre-list" },
+      }),
+    ).toBe(false);
+    expect(
+      await afterQueue.fail("cross-id", {
+        reason: "stale",
+        message: "stale-pre-list",
+        expectedPending: staleFence,
+      }),
+    ).toBe(false);
     const [replacement] = await afterQueue.listPending();
     expect(replacement?.receivedAt).toBe(staleFence.receivedAt);
-    expect(replacement?.updatedAt).not.toBe(staleFence.updatedAt);
+    expect(replacement?.updatedAt).toBe(staleUpdatedAt);
+    expect(replacement?.generation).toBeGreaterThan(staleFence.generation);
     expect(
       await afterQueue.complete("cross-id", {
         expectedPending: staleFence,
@@ -1374,6 +1397,16 @@ process.stdout.write(JSON.stringify({ count, deleted, enqueuedKind: enqueued.kin
       }),
     ).toBe(false);
     expect((await afterQueue.listPending()).map((row) => row.id)).toEqual(["cross-id"]);
+    // Live fence with the replacement generation still settles.
+    expect(
+      await afterQueue.complete("cross-id", {
+        expectedPending: {
+          generation: replacement!.generation,
+          receivedAt: replacement!.receivedAt,
+        },
+        metadata: { note: "live" },
+      }),
+    ).toBe(true);
   });
 
   it("keeps the additive worker SSH fallback table compatible with older v6 containment", () => {

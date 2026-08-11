@@ -1123,14 +1123,20 @@ CREATE INDEX IF NOT EXISTS idx_channel_ingress_lane
   ON channel_ingress_events(queue_name, status, lane_key);
 
 
+-- ON DELETE CASCADE: any DELETE of the event row (including frozen-base writers)
+-- drops the fence token so stale complete/fail cannot ABA-match a re-enqueue
+-- with identical receivedAt/updatedAt. Lazy additive under schema v6.
 CREATE TABLE IF NOT EXISTS channel_ingress_event_generations (
   queue_name TEXT NOT NULL,
   event_id TEXT NOT NULL,
   generation INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (queue_name, event_id)
+  PRIMARY KEY (queue_name, event_id),
+  FOREIGN KEY (queue_name, event_id)
+    REFERENCES channel_ingress_events (queue_name, event_id)
+    ON DELETE CASCADE
 ) STRICT;
 
--- Per-queue monotonic allocator so pending-generation fences never reuse a value
+-- Singleton monotonic allocator so pending-generation fences never reuse a value
 -- after delete/prune/re-enqueue (ABA). Lazy additive under schema v6.
 CREATE TABLE IF NOT EXISTS channel_ingress_generation_counters (
   queue_name TEXT PRIMARY KEY,

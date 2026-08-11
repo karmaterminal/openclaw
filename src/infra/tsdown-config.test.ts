@@ -197,7 +197,9 @@ describe("tsdown config", () => {
       const mutated = `${originalSql}\n-- wo1244-schema-digest-bust\n`;
       writeFileSync(schemaPath, mutated, "utf8");
       utimesSync(schemaPath, new Date(previousMtime), new Date(previousMtime));
-      expect(statSync(schemaPath).mtimeMs).toBe(previousMtime);
+      // Filesystems may round mtime to whole ms; prove we did not rely on mtime
+      // advancement for cache busting.
+      expect(Math.abs(statSync(schemaPath).mtimeMs - previousMtime)).toBeLessThan(1.5);
 
       const second = plugin.resolveId?.("./openclaw-state-schema.js", importer);
       expect(second).toEqual(expect.stringMatching(digestRe));

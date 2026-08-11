@@ -33,8 +33,9 @@ export type ChannelIngressQueueRecord<TPayload, TMetadata = unknown> = {
   updatedAt: number;
   /**
    * Durable monotonic pending generation. Bumps on enqueue, resubmit, claim
-   * release, and stale-claim recovery so complete/fail CAS cannot ABA across
-   * recycled timestamps/attempts or claim/recover cycles.
+   * release, and stale-claim recovery. Side-table rows CASCADE-delete with the
+   * event row so frozen-base delete/re-enqueue cannot reproduce a prior fence
+   * token even when receivedAt/updatedAt are identical.
    */
   generation: number;
   laneKey?: string;
@@ -65,15 +66,13 @@ export type ChannelIngressQueueClaimRef = {
 
 /**
  * Snapshot fence for pending-id complete/fail CAS. Matches the durable
- * never-reused generation allocator plus the row's receivedAt/updatedAt
- * incarnation so fail+resubmit, delete/prune/re-enqueue, and frozen-base
- * writers that cannot advance the side-table token cannot ABA-settle a
- * replacement even when caller-supplied receivedAt is identical.
+ * never-reused generation allocator. Event DELETE CASCADE-clears the side-table
+ * token so frozen-base delete/re-enqueue cannot reproduce a prior fence even
+ * when receivedAt/updatedAt are identical.
  */
 export type ChannelIngressPendingGenerationMatch = {
   generation: number;
   receivedAt: number;
-  updatedAt: number;
 };
 
 /** Claim identity available when a stale row's payload cannot be decoded. */
@@ -466,6 +465,23 @@ function allocateEventGeneration(db: DatabaseSync, queueName: string, eventId: s
   return generation;
 }
 
+/**
+ * Return a durable generation for a live event row, minting one when the side
+ * row is missing (frozen-base CASCADE delete + re-enqueue without allocate).
+ */
+function ensureEventGeneration(
+  db: DatabaseSync,
+  queueName: string,
+  eventId: string,
+  loaded?: number,
+): number {
+  const current = loaded ?? readEventGeneration(db, queueName, eventId);
+  if (current >= 1) {
+    return current;
+  }
+  return allocateEventGeneration(db, queueName, eventId);
+}
+
 function clearEventGeneration(db: DatabaseSync, queueName: string, eventId: string): void {
   executeSqliteQuerySync(
     db,
@@ -497,7 +513,9 @@ function pruneOrphanEventGenerations(db: DatabaseSync, queueName: string): numbe
  * Revalidates incarnation (generation + receivedAt) and live same-lane claims
  * inside the write transaction so listClaims/listPending TOCTOU cannot suppress
  * a later row while a peer holds the lane head (including corrupt claim rows
- * filtered from listClaims).
+ * filtered from listClaims). Generation side rows CASCADE away on event DELETE,
+ * so frozen-base delete/re-enqueue cannot reproduce a prior positive generation
+ * even with identical receivedAt/updatedAt.
  */
 function pendingSettlementAllowed(
   db: DatabaseSync,
@@ -509,16 +527,15 @@ function pendingSettlementAllowed(
   if (!row || row.status !== "pending") {
     return false;
   }
-  if (readEventGeneration(db, queueName, eventId) !== expectedPending.generation) {
+  // Require a real allocated generation — missing side rows (0) never match a
+  // prior fence, which is how frozen-base DELETE CASCADE defeats ABA.
+  if (
+    expectedPending.generation < 1 ||
+    readEventGeneration(db, queueName, eventId) !== expectedPending.generation
+  ) {
     return false;
   }
   if (Number(row.received_at) !== expectedPending.receivedAt) {
-    return false;
-  }
-  // Frozen-base writers cannot advance the side-table generation token. They
-  // do rewrite updated_at on delete/re-enqueue, so identical receivedAt alone
-  // must not authorize settlement of a replacement incarnation.
-  if (Number(row.updated_at) !== expectedPending.updatedAt) {
     return false;
   }
   const laneKey = row.lane_key;
@@ -989,10 +1006,13 @@ export function createChannelIngressQueue<
           let pageAdvancedPastCorrupt = false;
           for (const row of rows) {
             selectedRows += 1;
-            const record = baseRecord<TPayload, TMetadata>(
-              row,
-              pageGenerations.get(row.event_id) ?? 0,
+            const generation = ensureEventGeneration(
+              tx.db,
+              queueName,
+              row.event_id,
+              pageGenerations.get(row.event_id),
             );
+            const record = baseRecord<TPayload, TMetadata>(row, generation);
             if (record) {
               records.push(record);
             } else if (corruptReconciliations < limit) {
@@ -1210,7 +1230,13 @@ export function createChannelIngressQueue<
           );
           let tombstonedCorruptRow = false;
           for (const row of rows) {
-            const rec = baseRecord<TPayload, TMetadata>(row, rowGenerations.get(row.event_id) ?? 0);
+            const generation = ensureEventGeneration(
+              tx.db,
+              queueName,
+              row.event_id,
+              rowGenerations.get(row.event_id),
+            );
+            const rec = baseRecord<TPayload, TMetadata>(row, generation);
             if (rec === null) {
               if (corruptReconciliations >= MAX_CORRUPT_RECONCILIATIONS_PER_CLAIM) {
                 continue;
@@ -1269,7 +1295,7 @@ export function createChannelIngressQueue<
         return row
           ? claimedRecord<TPayload, TMetadata>(
               row,
-              readEventGeneration(tx.db, queueName, selected.row.event_id),
+              ensureEventGeneration(tx.db, queueName, selected.row.event_id),
             )
           : null;
       },
@@ -1294,7 +1320,7 @@ export function createChannelIngressQueue<
         if (!pendingRow || pendingRow.status !== "pending") {
           return null;
         }
-        const pendingGeneration = readEventGeneration(tx.db, queueName, eventId);
+        const pendingGeneration = ensureEventGeneration(tx.db, queueName, eventId);
         if (baseRecord<TPayload, TMetadata>(pendingRow, pendingGeneration) === null) {
           tombstoneCorruptPayloadRow({
             db: tx.db,
