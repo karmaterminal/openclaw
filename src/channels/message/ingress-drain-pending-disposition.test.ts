@@ -649,7 +649,8 @@ describe("channel ingress pending disposition drain", () => {
     const acceptsCompatible: AcceptsCompatible = true;
     expect(acceptsCompatible).toBe(true);
 
-    // Actual public factory calls (inferred + partially explicit) must reject.
+    // Actual public factory calls must reject incompatible completed metadata for
+    // inferred, one-generic, two-generic, and fully explicit type arguments.
     void (async () => {
       const { createChannelIngressQueue } = await import("./ingress-queue.js");
       const incompatibleQueue = createChannelIngressQueue<
@@ -659,6 +660,18 @@ describe("channel ingress pending disposition drain", () => {
       >({
         channelId: "typecheck",
         accountId: "typecheck",
+      });
+      const compatibleQueue = createChannelIngressQueue<
+        Payload,
+        unknown,
+        import("./ingress-drain-pending-disposition.js").ChannelIngressSuppressedCompletionMetadata
+      >({
+        channelId: "typecheck-ok",
+        accountId: "typecheck-ok",
+      });
+      const defaultQueue = createChannelIngressQueue<Payload>({
+        channelId: "typecheck-default",
+        accountId: "typecheck-default",
       });
       const dispatchClaimedEvent = async () => {};
       const resolvePendingDisposition = () => ({
@@ -675,11 +688,62 @@ describe("channel ingress pending disposition drain", () => {
         dispatchClaimedEvent,
       });
 
-      // Partially explicit generics still reject.
-      // @ts-expect-error incompatible completed metadata rejects disposition resolver
+      // Genuinely partial: only Payload.
+      // @ts-expect-error one-generic incompatible completed metadata rejects disposition resolver
+      createChannelIngressDrain<Payload>({
+        queue: incompatibleQueue,
+        resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+
+      // Genuinely partial: Payload + Metadata.
+      // @ts-expect-error two-generic incompatible completed metadata rejects disposition resolver
+      createChannelIngressDrain<Payload, unknown>({
+        queue: incompatibleQueue,
+        resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+
+      // Fully explicit incompatible completed metadata.
+      // @ts-expect-error three-generic incompatible completed metadata rejects disposition resolver
       createChannelIngressDrain<Payload, unknown, IncompatibleCompletedMetadata>({
         queue: incompatibleQueue,
         resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+
+      // Compatible completed metadata is accepted under each arity.
+      createChannelIngressDrain({
+        queue: compatibleQueue,
+        resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+      createChannelIngressDrain<Payload>({
+        queue: defaultQueue,
+        resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+      createChannelIngressDrain<Payload, unknown>({
+        queue: defaultQueue,
+        resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+      createChannelIngressDrain<
+        Payload,
+        unknown,
+        import("./ingress-drain-pending-disposition.js").ChannelIngressSuppressedCompletionMetadata
+      >({
+        queue: compatibleQueue,
+        resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+      // No-disposition path remains open for incompatible queues.
+      createChannelIngressDrain({
+        queue: incompatibleQueue,
+        dispatchClaimedEvent,
+      });
+      createChannelIngressDrain<Payload, unknown, IncompatibleCompletedMetadata>({
+        queue: incompatibleQueue,
         dispatchClaimedEvent,
       });
     });

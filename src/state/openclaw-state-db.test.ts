@@ -20,6 +20,7 @@ import { loadTaskRegistryStateFromSqlite } from "../tasks/task-registry.store.sq
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { VERSION } from "../version.js";
 import { FIRST_USE_STATE_TABLES } from "./openclaw-state-db-contract.js";
+import { tableHasColumn } from "./openclaw-state-db-schema-helpers.js";
 import {
   findOpenClawStateDatabaseSchemaMigrationRequiredError,
   OpenClawStateDatabaseSchemaMigrationRequiredError,
@@ -1128,11 +1129,77 @@ describe("openclaw state database", () => {
         .prepare("SELECT strict FROM pragma_table_list WHERE name = 'apns_registration_tombstones'")
         .get(),
     ).toEqual({ strict: 1 });
+    // Brand-new DBs must include the ingress pending-generation fence column.
+    expect(tableHasColumn(database.db, "channel_ingress_events", "generation")).toBe(true);
     expect(() =>
       database.db
         .prepare("UPDATE schema_meta SET schema_version = ? WHERE meta_key = 'primary'")
         .run("not-an-integer"),
     ).toThrow();
+  });
+
+  it("additively ensures generation on existing current-version ingress tables and is idempotent", () => {
+    const stateDir = createTempStateDir();
+    const databasePath = materializeCurrentStateDatabase(stateDir);
+    const { DatabaseSync } = requireNodeSqlite();
+    const prep = new DatabaseSync(databasePath);
+    expect(tableHasColumn(prep, "channel_ingress_events", "generation")).toBe(true);
+    // Simulate a current-version DB whose ingress table predated the generation fence.
+    prep.exec("PRAGMA foreign_keys = OFF;");
+    prep.exec(`
+      CREATE TABLE channel_ingress_events__wo1244 (
+        queue_name TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        lane_key TEXT,
+        payload_json TEXT NOT NULL,
+        metadata_json TEXT,
+        received_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        claim_token TEXT,
+        claim_owner TEXT,
+        claimed_at INTEGER,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at INTEGER,
+        last_error TEXT,
+        failed_reason TEXT,
+        failed_at INTEGER,
+        completed_at INTEGER,
+        completed_metadata_json TEXT,
+        PRIMARY KEY (queue_name, event_id)
+      ) STRICT;
+      INSERT INTO channel_ingress_events__wo1244 (
+        queue_name, event_id, channel_id, account_id, status, lane_key, payload_json,
+        metadata_json, received_at, updated_at, claim_token, claim_owner, claimed_at,
+        attempts, last_attempt_at, last_error, failed_reason, failed_at, completed_at,
+        completed_metadata_json
+      )
+      SELECT
+        queue_name, event_id, channel_id, account_id, status, lane_key, payload_json,
+        metadata_json, received_at, updated_at, claim_token, claim_owner, claimed_at,
+        attempts, last_attempt_at, last_error, failed_reason, failed_at, completed_at,
+        completed_metadata_json
+      FROM channel_ingress_events;
+      DROP TABLE channel_ingress_events;
+      ALTER TABLE channel_ingress_events__wo1244 RENAME TO channel_ingress_events;
+    `);
+    prep.exec(`PRAGMA user_version = ${OPENCLAW_STATE_SCHEMA_VERSION};`);
+    expect(tableHasColumn(prep, "channel_ingress_events", "generation")).toBe(false);
+    prep.close();
+
+    const opened = openOpenClawStateDatabase({ path: databasePath });
+    expect(tableHasColumn(opened.db, "channel_ingress_events", "generation")).toBe(true);
+    closeOpenClawStateDatabaseForTest();
+
+    const reopened = openOpenClawStateDatabase({ path: databasePath });
+    expect(tableHasColumn(reopened.db, "channel_ingress_events", "generation")).toBe(true);
+    // Idempotent re-open must not disturb the additive column.
+    const cols = reopened.db.prepare("PRAGMA table_info(channel_ingress_events)").all() as Array<{
+      name?: unknown;
+    }>;
+    expect(cols.filter((row) => row.name === "generation")).toHaveLength(1);
   });
 
   it("keeps the additive worker SSH fallback table compatible with older v6 containment", () => {

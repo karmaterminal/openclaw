@@ -31,8 +31,9 @@ export type ChannelIngressQueueRecord<TPayload, TMetadata = unknown> = {
   receivedAt: number;
   updatedAt: number;
   /**
-   * Durable monotonic pending generation. Bumps on enqueue, resubmit, and claim
-   * release so complete/fail CAS cannot ABA across recycled timestamps/attempts.
+   * Durable monotonic pending generation. Bumps on enqueue, resubmit, claim
+   * release, and stale-claim recovery so complete/fail CAS cannot ABA across
+   * recycled timestamps/attempts or claim/recover cycles.
    */
   generation: number;
   laneKey?: string;
@@ -192,6 +193,13 @@ type ChannelIngressQueueEnqueueResult<TPayload, TMetadata, TCompletedMetadata> =
 
 /** Durable FIFO-ish ingress queue with claims, duplicate detection, and retention pruning. */
 export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadata = unknown> = {
+  /**
+   * Invariant completed-metadata brand. Optional at runtime; present only in the
+   * type system so method bivariance cannot collapse an incompatible queue
+   * contract to `unknown` when drain factory type arguments are partially
+   * specified (completed metadata must stay tied to the queue).
+   */
+  readonly __completedMetadataBrand?: (value: TCompletedMetadata) => TCompletedMetadata;
   enqueue(
     id: string,
     payload: TPayload,
@@ -1100,6 +1108,10 @@ export function createChannelIngressQueue<
               claim_token: null,
               claim_owner: null,
               claimed_at: null,
+              // Stale recovery is a pending re-entry: bump generation so an async
+              // disposition snapshot taken before claim/recover cannot CAS-settle
+              // the recycled row after recoverStaleClaims.
+              generation: eb("generation", "+", 1),
               attempts: eb("attempts", "+", 1),
               last_attempt_at: releaseOptions.releasedAt,
               updated_at: releaseOptions.releasedAt,

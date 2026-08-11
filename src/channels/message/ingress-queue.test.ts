@@ -906,6 +906,44 @@ describe("channel ingress queue", () => {
     });
   });
 
+  it("stale recovery bumps generation so pre-claim disposition snapshots lose complete/fail", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue<{ text: string }>(stateDir, { now: () => 1_000 });
+      await queue.enqueue("gen-recover", { text: "x" }, { receivedAt: 1_000 });
+      const [snapshot] = await queue.listPending();
+      expect(snapshot?.generation).toBe(1);
+      const preClaimFence = { generation: snapshot!.generation };
+
+      const claim = await queue.claim("gen-recover", { ownerId: "stale-owner" });
+      expect(claim).not.toBeNull();
+      if (!claim) {
+        throw new Error("expected claim");
+      }
+      // Snapshot taken before/around claim still carries the pre-recovery generation.
+      expect(preClaimFence.generation).toBe(snapshot!.generation);
+
+      expect(await queue.recoverStaleClaims({ staleMs: 0, now: 1_500 })).toBe(1);
+      const [recovered] = await queue.listPending();
+      expect(recovered?.id).toBe("gen-recover");
+      expect(recovered!.generation).toBeGreaterThan(preClaimFence.generation);
+
+      expect(
+        await queue.complete("gen-recover", {
+          expectedPending: preClaimFence,
+        }),
+      ).toBe(false);
+      expect(
+        await queue.fail("gen-recover", {
+          reason: "stale",
+          message: "stale disposition after recover",
+          expectedPending: preClaimFence,
+        }),
+      ).toBe(false);
+      expect((await queue.listPending()).map((row) => row.id)).toEqual(["gen-recover"]);
+      expect((await queue.listPending())[0]?.generation).toBe(recovered!.generation);
+    });
+  });
+
   describe("corrupt JSON resilience", () => {
     function insertCorruptRow(
       stateDir: string,

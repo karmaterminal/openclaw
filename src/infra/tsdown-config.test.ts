@@ -128,6 +128,43 @@ describe("tsdown config", () => {
     expect(watchedPaths).toEqual([schemaPath]);
   });
 
+  it.each([
+    {
+      exportName: "OPENCLAW_STATE_SCHEMA_SQL",
+      modulePath: "src/state/openclaw-state-schema.ts",
+      schemaPath: "src/state/openclaw-state-schema.sql",
+      sourceValue: OPENCLAW_STATE_SCHEMA_SQL,
+      suffix: "?v=vitest-hmr-1",
+    },
+    {
+      exportName: "OPENCLAW_AGENT_SCHEMA_SQL",
+      modulePath: "src/state/openclaw-agent-schema.ts",
+      schemaPath: "src/state/openclaw-agent-schema.sql",
+      sourceValue: OPENCLAW_AGENT_SCHEMA_SQL,
+      suffix: "?t=123456&lang=ts",
+    },
+  ])("inlines canonical schema bytes for suffixed module id $modulePath$suffix", (schema) => {
+    const rootDir = process.cwd();
+    const watchedPaths: string[] = [];
+    const plugin = createStateSchemaInlinePlugin(rootDir);
+    const suffixedId = `${path.resolve(rootDir, schema.modulePath)}${schema.suffix}`;
+    const result = plugin.load.call(
+      { addWatchFile: (filePath: string) => watchedPaths.push(filePath) },
+      suffixedId,
+    );
+    const schemaPath = path.resolve(rootDir, schema.schemaPath);
+    const canonicalSql = readFileSync(schemaPath, "utf8");
+
+    expect(result).not.toBeNull();
+    const match = result?.code.match(
+      new RegExp(`^export const ${schema.exportName} = (.*);\\n$`, "su"),
+    );
+    expect(match?.[1]).toBeDefined();
+    expect(JSON.parse(match?.[1] ?? "null")).toBe(canonicalSql);
+    expect(schema.sourceValue).toBe(canonicalSql);
+    expect(watchedPaths).toEqual([schemaPath]);
+  });
+
   it("installs schema inlining only on the unified runtime graph", () => {
     const unifiedGraph = requireUnifiedDistGraph();
     const inlinePlugins = asConfigArray(tsdownConfig).flatMap(
