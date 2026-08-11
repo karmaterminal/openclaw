@@ -98,7 +98,9 @@ describe("channel ingress pending disposition drain", () => {
       const drain = createChannelIngressDrain<Payload>({
         queue,
         now: () => clock,
-        startLimit: 2,
+        // Snapshot load is startLimit-bounded; include the unrelated lane so it
+        // remains claimable in the same pass while the raced lane stays fenced.
+        startLimit: 3,
         resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
         dispatchClaimedEvent: async (event, lifecycle) => {
           adopted.push(event.id);
@@ -165,6 +167,70 @@ describe("channel ingress pending disposition drain", () => {
       expect(examined).toBe(3);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
         ...staleIds.slice(3),
+        "fresh-addressed",
+      ]);
+      drain.dispose();
+    });
+  });
+
+  it("does not load or visit a large pending tail beyond startLimit", async () => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const clock = STALE_AMBIENT_PENDING_MS + 1;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      const staleIds = Array.from({ length: 80 }, (_, index) => `stale-tail-${index}`);
+      for (const [index, id] of staleIds.entries()) {
+        await queue.enqueue(
+          id,
+          { text: `old ambient ${index}`, kind: "ambient" },
+          { laneKey, receivedAt: index },
+        );
+      }
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw now", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const listCalls: Array<{ limit: number | "all" | undefined; returned: number }> = [];
+      const originalListPending = queue.listPending.bind(queue);
+      queue.listPending = async (options) => {
+        const rows = await originalListPending(options);
+        listCalls.push({ limit: options?.limit, returned: rows.length });
+        return rows;
+      };
+
+      let examined = 0;
+      const seenIds: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
+        startLimit: 4,
+        resolvePendingDisposition: (event, context) => {
+          examined += 1;
+          seenIds.push(event.id);
+          return resolveStaleAmbientPendingDisposition(event, context);
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      await drain.waitForIdle();
+
+      const dispositionListCalls = listCalls.filter((call) => call.limit !== "all");
+      expect(dispositionListCalls.length).toBeGreaterThanOrEqual(1);
+      expect(dispositionListCalls[0]?.limit).toBe(4);
+      expect(dispositionListCalls[0]?.returned).toBe(4);
+      // Large tail must never be loaded into the disposition snapshot or visited
+      // by the resolver under the admission lock.
+      expect(examined).toBe(4);
+      expect(seenIds).toEqual(staleIds.slice(0, 4));
+      expect(seenIds).not.toContain("fresh-addressed");
+      expect(seenIds.some((id) => id.endsWith("50"))).toBe(false);
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
+        ...staleIds.slice(4),
         "fresh-addressed",
       ]);
       drain.dispose();
@@ -323,23 +389,74 @@ describe("channel ingress pending disposition drain", () => {
     });
   });
 
-  it("keeps intentional completes out of failed health and preserves delivered replay guards under cap churn", async () => {
+  it("continues drain after observer and log sink both throw post-CAS", async () => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const clock = STALE_AMBIENT_PENDING_MS + 1;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "stale-ambient",
+        { text: "old room history", kind: "ambient" },
+        { laneKey, receivedAt: 0 },
+      );
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw now", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        startLimit: 4,
+        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        onPendingDispositionCommitted: () => {
+          throw new Error("observer exploded");
+        },
+        onLog: () => {
+          throw new Error("log sink exploded");
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      // Durable CAS + later same-pass claim must survive the double throw.
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["fresh-addressed"]);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      await expectCompletedTombstone(queue, "stale-ambient");
+      drain.dispose();
+    });
+  });
+
+  it("keeps intentional completes out of failed health and preserves partitioned completed replay guards under cap churn", async () => {
     await withTempState(async (stateDir) => {
       const clock = STALE_AMBIENT_PENDING_MS + 1;
       const queue = createTestIngressQueue(stateDir, { now: () => clock });
-      const completedMaxEntries = 3;
+      // Cap=4 → delivered partition=2, suppressed partition=2.
+      const completedMaxEntries = 4;
 
-      // Seed delivered-message replay guards (non-suppressed completions).
-      for (const id of ["delivered-a", "delivered-b", "delivered-c"]) {
-        await queue.enqueue(id, { text: id, kind: "addressed" }, { receivedAt: 1 });
+      // Fill the delivered partition (and overflow) with replay guards.
+      for (const [index, id] of [
+        "delivered-a",
+        "delivered-b",
+        "delivered-c",
+        "delivered-d",
+      ].entries()) {
+        await queue.enqueue(id, { text: id, kind: "addressed" }, { receivedAt: index + 1 });
         const claim = await queue.claim(id, { ownerId: "worker" });
         expect(claim).not.toBeNull();
         if (claim) {
-          expect(await queue.complete(claim, { completedAt: 2 })).toBe(true);
+          expect(await queue.complete(claim, { completedAt: index + 10 })).toBe(true);
         }
       }
 
-      // Churn many intentional suppressions via pending disposition.
+      // Add intentional suppressions via pending disposition (not fail/dead-letter).
       const laneKey = "channel:churn";
       for (let index = 0; index < 8; index += 1) {
         await queue.enqueue(
@@ -359,18 +476,25 @@ describe("channel ingress pending disposition drain", () => {
       });
       expect(await drain.drainOnce()).toEqual({ started: 0 });
       await drain.waitForIdle();
-      // All drops settled via complete; none claimed for delivery.
       expect(await queue.listPending({ limit: "all" })).toEqual([]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       expect(countFailedChannelIngressQueueEntries(stateDir)).toEqual([]);
 
-      await queue.prune({ completedMaxEntries, now: clock });
+      await queue.prune({ completedMaxEntries, now: clock + 100 });
 
-      // Delivered guards must survive suppression churn under the cap.
-      for (const id of ["delivered-a", "delivered-b", "delivered-c"]) {
+      // Newest delivered partition members remain duplicate-protected.
+      for (const id of ["delivered-c", "delivered-d"]) {
         const replay = await queue.enqueue(id, { text: "probe", kind: "addressed" });
         expect(replay).toMatchObject({ kind: "completed", duplicate: true });
       }
+      // Newest suppression tombstones also remain duplicate-protected under the
+      // partitioned cap (not returned to failed/dead-letter health).
+      for (const id of ["drop-6", "drop-7"]) {
+        const replay = await queue.enqueue(id, { text: "probe", kind: "ambient" });
+        expect(replay).toMatchObject({ kind: "completed", duplicate: true });
+      }
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect(countFailedChannelIngressQueueEntries(stateDir)).toEqual([]);
       drain.dispose();
     });
   });

@@ -139,7 +139,11 @@ export function createChannelIngressDrain<
   let disposed = false;
 
   const log = (message: string) => {
-    options.onLog?.(message);
+    try {
+      options.onLog?.(message);
+    } catch {
+      // Diagnostic sinks must not abort admission/drain after durable work.
+    }
   };
 
   const clearStallTimer = (state: ActiveHandlerState<TPayload, TMetadata>) => {
@@ -660,10 +664,16 @@ export function createChannelIngressDrain<
     await recoverStaleClaims();
 
     const dispositionNow = now();
-    // Bound pre-claim disposition work by startLimit so reconnect backlogs cannot
-    // perform unbounded resolver/CAS work under the admission lock before claims.
+    // Bound pre-claim disposition load+visit+resolver work by startLimit so
+    // reconnect backlogs cannot scan an unbounded pending tail under the
+    // admission lock before claims. Without a disposition resolver the full
+    // pending set is still needed for retry/claim eligibility.
+    const pendingSnapshot = await queue.listPending({
+      limit: options.resolvePendingDisposition ? startLimit : "all",
+      orderBy,
+    });
     const pendingDispositionResult = await applyIngressPendingDispositions({
-      pending: await queue.listPending({ limit: "all", orderBy }),
+      pending: pendingSnapshot,
       dispositionNow,
       workLimit: startLimit,
       queue,

@@ -1413,6 +1413,22 @@ export function createChannelIngressQueue<
           }
         };
 
+        const deleteStatusIds = (status: string, ids: string[]) => {
+          if (ids.length === 0) {
+            return;
+          }
+          deleted += affectedRows(
+            executeSqliteQuerySync(
+              tx.db,
+              kysely
+                .deleteFrom("channel_ingress_events")
+                .where("queue_name", "=", queueName)
+                .where("status", "=", status)
+                .where("event_id", "in", ids),
+            ),
+          );
+        };
+
         const pruneMaxEntries = (status: string, maxEntries: number | null) => {
           if (maxEntries === null) {
             return;
@@ -1420,68 +1436,135 @@ export function createChannelIngressQueue<
           const batchSize = 500;
           const protectedSet = new Set(protectIds);
           while (true) {
-            // Keep the newest maxEntries; delete the overflow tail. For completed
-            // rows, rank intentional suppressions after delivery replay guards so
-            // drop churn is evicted first and cannot wipe delivered-message ids.
+            // Keep the newest maxEntries; delete the overflow tail.
             const ranked = executeSqliteQuerySync(
               tx.db,
               kysely
                 .selectFrom("channel_ingress_events")
-                .select(["event_id", "updated_at", "completed_metadata_json"])
+                .select(["event_id", "updated_at"])
                 .where("queue_name", "=", queueName)
                 .where("status", "=", status)
                 .orderBy("updated_at", "desc")
                 .orderBy("event_id", "desc")
                 .limit(maxEntries + batchSize),
             ).rows;
-            const ordered =
-              status === "completed"
-                ? [...ranked].sort((left, right) => {
-                    const leftSuppressed = isSuppressedCompletionMetadata(
-                      left.completed_metadata_json,
-                    )
-                      ? 1
-                      : 0;
-                    const rightSuppressed = isSuppressedCompletionMetadata(
-                      right.completed_metadata_json,
-                    )
-                      ? 1
-                      : 0;
-                    if (leftSuppressed !== rightSuppressed) {
-                      // Non-suppressed (0) sorts before suppressed (1) → kept first.
-                      return leftSuppressed - rightSuppressed;
-                    }
-                    if (right.updated_at !== left.updated_at) {
-                      return right.updated_at - left.updated_at;
-                    }
-                    return right.event_id < left.event_id
-                      ? -1
-                      : right.event_id > left.event_id
-                        ? 1
-                        : 0;
-                  })
-                : ranked;
-            const ids = ordered
+            const ids = ranked
               .slice(maxEntries)
               .map((row) => row.event_id)
               .filter((id) => !protectedSet.has(id));
             if (ids.length === 0) {
               return;
             }
-            deleted += affectedRows(
-              executeSqliteQuerySync(
-                tx.db,
-                kysely
-                  .deleteFrom("channel_ingress_events")
-                  .where("queue_name", "=", queueName)
-                  .where("status", "=", status)
-                  .where("event_id", "in", ids),
-              ),
-            );
+            deleteStatusIds(status, ids);
           }
         };
+
+        // Partition completed retention so delivered replay guards and intentional
+        // suppression tombstones each keep duplicate protection under cap churn.
+        // Reserved seats per class prevent one class from wiping the other; unused
+        // reserved seats refill the other class by recency so a single-class
+        // workload still receives the full maxEntries budget.
+        const pruneCompletedMaxEntriesPartitioned = (maxEntries: number | null) => {
+          if (maxEntries === null) {
+            return;
+          }
+          if (maxEntries <= 0) {
+            pruneMaxEntries("completed", maxEntries);
+            return;
+          }
+          const batchSize = 500;
+          const protectedSet = new Set(protectIds);
+          type CompletedPruneRow = {
+            event_id: string;
+            updated_at: number;
+            completed_metadata_json: string | null;
+          };
+          const delivered: CompletedPruneRow[] = [];
+          const suppressed: CompletedPruneRow[] = [];
+          let cursor: { updated_at: number; event_id: string } | undefined;
+          while (true) {
+            let select = kysely
+              .selectFrom("channel_ingress_events")
+              .select(["event_id", "updated_at", "completed_metadata_json"])
+              .where("queue_name", "=", queueName)
+              .where("status", "=", "completed");
+            if (cursor) {
+              const cursorUpdatedAt = cursor.updated_at;
+              const cursorEventId = cursor.event_id;
+              select = select.where((eb) =>
+                eb.or([
+                  eb("updated_at", "<", cursorUpdatedAt),
+                  eb.and([
+                    eb("updated_at", "=", cursorUpdatedAt),
+                    eb("event_id", "<", cursorEventId),
+                  ]),
+                ]),
+              );
+            }
+            const batch = executeSqliteQuerySync(
+              tx.db,
+              select.orderBy("updated_at", "desc").orderBy("event_id", "desc").limit(batchSize),
+            ).rows as CompletedPruneRow[];
+            if (batch.length === 0) {
+              break;
+            }
+            for (const row of batch) {
+              if (protectedSet.has(row.event_id)) {
+                continue;
+              }
+              if (isSuppressedCompletionMetadata(row.completed_metadata_json)) {
+                suppressed.push(row);
+              } else {
+                delivered.push(row);
+              }
+            }
+            const last = batch[batch.length - 1];
+            cursor = { updated_at: last.updated_at, event_id: last.event_id };
+            if (batch.length < batchSize) {
+              break;
+            }
+          }
+
+          // Prefer leftover odd seat for delivered guards.
+          const suppressedReserve = Math.floor(maxEntries / 2);
+          const deliveredReserve = maxEntries - suppressedReserve;
+          const keepIds = new Set<string>();
+          for (const row of delivered.slice(0, deliveredReserve)) {
+            keepIds.add(row.event_id);
+          }
+          for (const row of suppressed.slice(0, suppressedReserve)) {
+            keepIds.add(row.event_id);
+          }
+          let remaining = maxEntries - keepIds.size;
+          if (remaining > 0) {
+            const overflow = [
+              ...delivered.slice(deliveredReserve),
+              ...suppressed.slice(suppressedReserve),
+            ].sort((left, right) => {
+              if (right.updated_at !== left.updated_at) {
+                return right.updated_at - left.updated_at;
+              }
+              return right.event_id < left.event_id ? -1 : right.event_id > left.event_id ? 1 : 0;
+            });
+            for (const row of overflow) {
+              if (remaining <= 0) {
+                break;
+              }
+              keepIds.add(row.event_id);
+              remaining -= 1;
+            }
+          }
+
+          const toDelete = [...delivered, ...suppressed]
+            .map((row) => row.event_id)
+            .filter((id) => !keepIds.has(id));
+          for (let offset = 0; offset < toDelete.length; offset += batchSize) {
+            deleteStatusIds("completed", toDelete.slice(offset, offset + batchSize));
+          }
+        };
+
         pruneMaxEntries("pending", pendingMaxEntries);
-        pruneMaxEntries("completed", completedMaxEntries);
+        pruneCompletedMaxEntriesPartitioned(completedMaxEntries);
         pruneMaxEntries("failed", failedMaxEntries);
         return deleted;
       },

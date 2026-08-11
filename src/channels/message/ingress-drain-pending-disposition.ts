@@ -38,7 +38,8 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   dispositionNow: number;
   /**
-   * Max pending rows that may be examined (resolver invoked) in one drain pass.
+   * Max pending rows that may be visited/examined in one drain pass.
+   * Callers should also bound the pending snapshot load to this limit.
    * Unexamined tails stay pending. Defaults to unlimited when omitted.
    */
   workLimit?: number;
@@ -63,11 +64,22 @@ export type AppliedIngressPendingDispositions<TPayload, TMetadata> = {
    * examination. Claim must not race past that unexamined head this pass.
    */
   workLimitedLaneKeys: Set<string>;
+  /** Rows touched under the admission pass (bounded by workLimit). */
+  visited: number;
   /** Resolver invocations performed this pass (bounded by workLimit). */
   examined: number;
   /** Durable fail/complete settlements that won CAS this pass. */
   settled: number;
 };
+
+/** Diagnostic logging must never abort durable settlement or later drain work. */
+function safeLog(log: (message: string) => void, message: string): void {
+  try {
+    log(message);
+  } catch {
+    // intentionally empty
+  }
+}
 
 async function settlePendingRecord<TPayload, TMetadata, TCompletedMetadata>(
   queue: Pick<ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>, "fail" | "complete">,
@@ -91,9 +103,12 @@ async function settlePendingRecord<TPayload, TMetadata, TCompletedMetadata>(
 }
 
 /**
- * Pre-claim pending policy pass. Examines rows in snapshot order under workLimit,
+ * Pre-claim pending policy pass. Visits rows in snapshot order under workLimit,
  * fences later same-lane tails behind any retained head, and isolates observer
- * failures after a successful CAS settlement.
+ * and log-sink failures after a successful CAS settlement.
+ *
+ * Callers must bound `pending` itself (typically `listPending({ limit: startLimit })`)
+ * so large DB tails are never loaded under the admission lock.
  */
 export async function applyIngressPendingDispositions<TPayload, TMetadata, TCompletedMetadata>(
   params: ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata>,
@@ -103,6 +118,7 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       pending: params.pending,
       blockedLaneKeys: new Set(),
       workLimitedLaneKeys: new Set(),
+      visited: 0,
       examined: 0,
       settled: 0,
     };
@@ -116,10 +132,15 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
   const workLimitedLaneKeys = new Set<string>();
   // Oldest retained row per lane fences later predicted drops on that lane.
   const retainedHeadLaneKeys = new Set<string>();
+  let visited = 0;
   let examined = 0;
   let settled = 0;
 
   for (const event of params.pending) {
+    // Callers bound the snapshot load to startLimit; visiting only that window
+    // keeps admission-lock work O(startLimit). Same-lane retained tails still
+    // fence without consuming the unique-row examine budget.
+    visited += 1;
     const laneKey = resolveLaneKey(event, params.deriveLaneKey, params.reconcileStoredLaneKey);
 
     if (retainedHeadLaneKeys.has(laneKey)) {
@@ -143,7 +164,8 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       });
     } catch (err) {
       // Resolver throws fail closed: keep the row and fence the lane head.
-      params.log(
+      safeLog(
+        params.log,
         `ingress drain: pending disposition resolver failed for event ${event.id}: ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -173,7 +195,7 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       params.dispositionNow,
     );
     if (!committed) {
-      params.log(`ingress drain: pending disposition lost race for event ${event.id}`);
+      safeLog(params.log, `ingress drain: pending disposition lost race for event ${event.id}`);
       retained.push(event);
       retainedHeadLaneKeys.add(laneKey);
       blockedLaneKeys.add(laneKey);
@@ -181,7 +203,8 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
     }
 
     settled += 1;
-    // Observer runs only after durable CAS success and must not abort the pass.
+    // Observer runs only after durable CAS success and must not abort the pass,
+    // even when both the observer and the diagnostic log sink throw.
     if (params.onPendingDispositionCommitted) {
       try {
         await params.onPendingDispositionCommitted(event, disposition, {
@@ -189,7 +212,8 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
           now: params.dispositionNow,
         });
       } catch (err) {
-        params.log(
+        safeLog(
+          params.log,
           `ingress drain: pending disposition observer failed for event ${event.id}: ${
             err instanceof Error ? err.message : String(err)
           }`,
@@ -202,6 +226,7 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
     pending: retained,
     blockedLaneKeys,
     workLimitedLaneKeys,
+    visited,
     examined,
     settled,
   };
