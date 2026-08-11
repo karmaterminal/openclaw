@@ -483,7 +483,13 @@ export function createDiscordIngressMonitor(params: {
       // Delete only once the write resolves so a retried commit still reports.
       pendingReceipts.delete(eventId);
       if (committed) {
-        emitReceipt();
+        try {
+          emitReceipt();
+        } catch {
+          // The durable completion already committed. A throwing log sink must
+          // not reject this write: the drain would retry, observe the row is no
+          // longer claimed, and strand the lane owner until restart.
+        }
       }
       return committed;
     },

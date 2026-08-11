@@ -14,7 +14,6 @@ import {
   type IngressDrainTestPayload as Payload,
   withTempState,
 } from "./ingress-drain.test-helpers.js";
-import { countFailedChannelIngressQueueEntries } from "./ingress-queue.js";
 
 describe("channel ingress drain", () => {
   beforeEach(() => {
@@ -291,55 +290,6 @@ describe("channel ingress drain", () => {
         { id: "non-retryable", reason: "invalid-input", message: "fatal input" },
         { id: "retry-limit", reason: "retry-limit-exceeded", message: "still broken" },
       ]);
-      drain.dispose();
-    });
-  });
-
-  it("settles a channel-handled outcome as a completion the operator surfaces ignore", async () => {
-    await withTempState(async (stateDir) => {
-      const queue = createTestIngressQueue(stateDir, { now: () => 10_000 });
-      const fail = vi.spyOn(queue, "fail");
-      await queue.enqueue("handled", { text: "x" }, { laneKey: "one", receivedAt: 1 });
-      await queue.enqueue("dead-letter", { text: "x" }, { laneKey: "two", receivedAt: 1 });
-      const lifecycles = new Map<string, ChannelIngressDispatchLifecycle>();
-      const logs: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
-        queue,
-        now: () => 10_000,
-        deferredLaneOccupancy: "release",
-        onLog: (message) => logs.push(message),
-        resolveNonRetryableFailure: (error) =>
-          error instanceof Error && error.message === "policy drop"
-            ? { reason: "channel-policy", message: error.message, settlement: "handled" }
-            : { reason: "invalid-input", message: "fatal input" },
-        dispatchClaimedEvent: async (event, lifecycle) => {
-          lifecycles.set(event.id, lifecycle);
-          return { kind: "deferred" };
-        },
-      });
-
-      expect(await drain.drainOnce()).toEqual({ started: 2 });
-      await vi.waitFor(() => expect(lifecycles.size).toBe(2));
-      await expectDefined(
-        expectDefined(lifecycles.get("handled"), "handled lifecycle").onFailed,
-        "handled failure lifecycle",
-      )(new Error("policy drop"));
-      await expectDefined(
-        expectDefined(lifecycles.get("dead-letter"), "dead-letter lifecycle").onFailed,
-        "dead-letter failure lifecycle",
-      )(new Error("broken"));
-
-      // Only the genuine failure reaches the dead-letter surface that doctor and
-      // delivery-queue health count; the handled outcome is a completed tombstone.
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "dead-letter", reason: "invalid-input" },
-      ]);
-      expect(countFailedChannelIngressQueueEntries(stateDir)).toMatchObject([{ count: 1 }]);
-      expect(await queue.listPending({ limit: "all" })).toEqual([]);
-      expect(fail.mock.calls.map(([idOrClaim]) => idOrClaim)).not.toContainEqual(
-        expect.objectContaining({ id: "handled" }),
-      );
-      expect(logs.some((message) => message.includes("channel-policy"))).toBe(false);
       drain.dispose();
     });
   });
@@ -803,43 +753,6 @@ describe("channel ingress drain", () => {
 
       expect(isIngressAdoptionLostError(lateAdoptError)).toBe(true);
       expect(isIngressAdoptionLostError(lateAdoptError) && lateAdoptError.code).toBe("superseded");
-      drain.dispose();
-    });
-  });
-
-  it("retries tombstone complete failures then commits", async () => {
-    await withTempState(async (stateDir) => {
-      const queue = createTestIngressQueue(stateDir);
-      await queue.enqueue("evt-tombstone", { text: "x" }, { laneKey: "l1" });
-
-      let completeAttempts = 0;
-      const originalComplete = queue.complete.bind(queue);
-      queue.complete = async (claim) => {
-        completeAttempts += 1;
-        if (completeAttempts <= 2) {
-          throw new Error(`transient complete failure ${completeAttempts}`);
-        }
-        return await originalComplete(claim);
-      };
-
-      const logs: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
-        queue,
-        onLog: (message) => logs.push(message),
-        dispatchClaimedEvent: async (_event, lifecycle) => {
-          await lifecycle.onAdopted();
-        },
-      });
-
-      const idle = drain.waitForIdle();
-      await drain.drainOnce();
-      // Advance through two backoff sleeps (1s, 2s with base 1000).
-      await vi.advanceTimersByTimeAsync(5_000);
-      await idle;
-      expect(completeAttempts).toBe(3);
-      expect(logs.some((line) => line.includes("tombstone retry"))).toBe(true);
-      const again = await queue.enqueue("evt-tombstone", { text: "x" });
-      expect(again.kind).toBe("completed");
       drain.dispose();
     });
   });

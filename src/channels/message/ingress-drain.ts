@@ -319,9 +319,10 @@ export function createChannelIngressDrain<
   };
 
   const applyFailureDisposition = async (
-    claim: ChannelIngressQueueClaim<TPayload, TMetadata>,
+    state: ActiveHandlerState<TPayload, TMetadata>,
     err: unknown,
   ) => {
+    const claim = state.claim;
     const disposition = resolveIngressFailureDisposition({
       err,
       event: claim,
@@ -334,6 +335,12 @@ export function createChannelIngressDrain<
       // Channel policy already recorded this outcome, so the event is done, not
       // broken. Settling through the canonical completion tombstone keeps it out
       // of dead-letter counts, doctor output, and delivery-queue health.
+      // Adopt before the tombstone retries for the same reason the normal
+      // completion path does: a failed write must wedge holding the claim, never
+      // release or dead-letter an event whose terminal policy decision already ran.
+      if (state.phase === "dispatching" || state.phase === "deferred") {
+        state.phase = "adopted";
+      }
       await completeClaimWithRetry(claim);
       return;
     }
@@ -478,7 +485,7 @@ export function createChannelIngressDrain<
         }
         clearStallTimer(state);
         await state.settleOnce(async () => {
-          await applyFailureDisposition(state.claim, error);
+          await applyFailureDisposition(state, error);
         });
       },
       onAbandoned: async () => {
@@ -566,7 +573,7 @@ export function createChannelIngressDrain<
         if (result?.kind === "failed-retryable") {
           clearStallTimer(state);
           await state.settleOnce(async () => {
-            await applyFailureDisposition(claim, result.error);
+            await applyFailureDisposition(state, result.error);
           });
           return;
         }
@@ -605,7 +612,7 @@ export function createChannelIngressDrain<
         }
         clearStallTimer(state);
         await state.settleOnce(async () => {
-          await applyFailureDisposition(claim, err);
+          await applyFailureDisposition(state, err);
         });
       }
     })();

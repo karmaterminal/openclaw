@@ -907,13 +907,11 @@ describe("Discord durable ingress", () => {
       });
 
       const complete = vi.fn(async (...args: Parameters<typeof queue.complete>) => {
-        const peerClaim = await queue.claim("1027", { ownerId: "peer-drain" });
-        expect(peerClaim).not.toBeNull();
-        if (peerClaim) {
-          await queue.release(peerClaim, { recordAttempt: false });
-        }
         const idOrClaim = args[0];
         expect(typeof idOrClaim === "string" ? idOrClaim : idOrClaim.id).toBe("1027");
+        // CAS loss: the claim token no longer matches the durable row, so the
+        // write commits nothing. Returning false is the only faithful shape —
+        // re-claiming here is impossible while the drain still owns the row.
         return false;
       });
       const log = vi.fn();
@@ -969,6 +967,51 @@ describe("Discord durable ingress", () => {
       try {
         await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
         expect(log).not.toHaveBeenCalled();
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("keeps a throwing receipt sink from rejecting the committed completion", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      const rawMessage = createRawMessage("1030", "channel-log-throws-1", {
+        guild_id: "guild-1",
+        channel_type: ChannelType.GuildText,
+        content: "old room history must not be logged",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as Partial<APIMessage>);
+      await queue.enqueue("1030", payloadFor(rawMessage), {
+        laneKey: "channel:channel-log-throws-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const complete = vi.fn(queue.complete.bind(queue));
+      const log = vi.fn(() => {
+        throw new Error("log sink outage");
+      });
+      const error = vi.fn();
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: { error, log },
+        botUserId: "bot-1",
+        queue: { ...queue, complete },
+        dispatch: vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
+          await lifecycle.onAdopted();
+        }),
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(log).toHaveBeenCalledTimes(1));
+        // The tombstone already committed, so the sink failure must not make the
+        // drain retry the write, read back a lost claim, and strand the lane.
+        expect(complete).toHaveBeenCalledTimes(1);
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        expect(await queue.listClaims()).toEqual([]);
+        expect(error).not.toHaveBeenCalled();
       } finally {
         await monitor.stop();
       }

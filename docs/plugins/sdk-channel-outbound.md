@@ -66,7 +66,16 @@ accepted admissions, then aborts and disposes the drain, waits for the pump and
 active deliveries, and disposes again to close the lazy-creation race.
 
 Keep transport-specific redaction, raw-envelope validation, non-retryable
-classification, and persisted payload shape in the plugin. Webhook transports
+classification, and persisted payload shape in the plugin. `resolveNonRetryableFailure`
+settles an event as an operator-actionable dead letter by default. Return
+`settlement: "handled"` instead when the terminal outcome is a deliberate channel
+policy decision rather than breakage, such as suppressing a stale ambient backlog
+after a reconnect. A handled event settles as a completed tombstone, so it stays
+out of dead-letter listings, `openclaw doctor`, and delivery-queue health, and it
+can no longer be replayed with dead-letter resubmit. Only use it when the plugin
+already records its own terminal non-outcome, such as a receipt, log, or metric,
+so the drop stays explainable; anything an operator might need to retry or
+investigate must remain a dead letter. Webhook transports
 should acknowledge only after `admit` resolves; non-replay transports should
 surface durable append exhaustion rather than silently dispatching.
 
