@@ -8,7 +8,7 @@ import {
   createChannelIngressError,
   createChannelIngressMonitor,
   type ChannelIngressQueue,
-  type ChannelIngressQueueClaim,
+  type ChannelIngressQueueRecord,
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
 } from "openclaw/plugin-sdk/channel-outbound";
@@ -406,7 +406,10 @@ async function hasUnresolvedDiscordAddressForm(
 async function resolveDiscordStaleAmbientSuppression(
   rawMessage: GatewayMessageCreateDispatchData,
   channelKind: DiscordIngressChannelKind | undefined,
-  claim: ChannelIngressQueueClaim<DiscordIngressPayload>,
+  // Record, not claim: the same conservative classification runs during the
+  // pre-claim retry-delay scan and again on the claimed row in `deliver`, which
+  // stays the sole owner of the terminal decision.
+  claim: ChannelIngressQueueRecord<DiscordIngressPayload>,
   params: {
     botUserId?: string;
     cfg?: OpenClawConfig;
@@ -588,6 +591,24 @@ export function createDiscordIngressMonitor(params: {
           return { reason: "authentication-failed", message: formatErrorMessage(error) };
         }
         return null;
+      },
+      // A stale ambient row released by a transient failure is already known to
+      // be non-actionable, so its backoff must not fence fresh addressed work
+      // behind it on the same channel lane. This only restores claim
+      // eligibility; `deliver` re-runs the identical classification on the
+      // claimed row and owns the terminal outcome. Side-effect free and safe to
+      // repeat: core may offer the same lane head on every drain pass.
+      shouldBypassRetryDelay: async (record) => {
+        const { body } = decodeDiscordIngressPayload(record.payload, record.id);
+        return (
+          (await resolveDiscordStaleAmbientSuppression(
+            body.rawMessage,
+            body.channelKind,
+            record,
+            params,
+            nowMs(),
+          )) !== null
+        );
       },
       onLog: (message) => params.runtime.error?.(danger(`discord ingress: ${message}`)),
     },

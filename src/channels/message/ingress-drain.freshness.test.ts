@@ -190,6 +190,128 @@ describe("channel ingress drain", () => {
     });
   });
 
+  it("opt-in retry-delay bypass claims the delayed head first and still serializes the lane", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000;
+      const laneKey = "channel:discord-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "retrying-head",
+        { text: "ambient backlog head", kind: "ambient" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const offered: Array<{ id: string; laneKey: string; retryDelayMs: number }> = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
+        shouldBypassRetryDelay: (record, context) => {
+          offered.push({
+            id: record.id,
+            laneKey: context.laneKey,
+            retryDelayMs: context.retryDelayMs,
+          });
+          return record.payload.kind === "ambient";
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          if (event.id === "retrying-head" && event.attempts === 0) {
+            throw new Error("transient Discord recovery failure");
+          }
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual([]);
+
+      clock += 1_000;
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw current diagnostic ask", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      // No clock advance through the backoff: the bypass makes the delayed head
+      // claimable now, and lane serialization still holds the fresh tail for the
+      // next pass rather than letting it overtake.
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["retrying-head"]);
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
+        "fresh-addressed",
+      ]);
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["retrying-head", "fresh-addressed"]);
+
+      // Only the delayed lane head is ever offered, and the context reports the
+      // remaining backoff (60s base, 1s elapsed); eligible rows are never offered.
+      expect(offered).toEqual([{ id: "retrying-head", laneKey, retryDelayMs: 59_000 }]);
+      drain.dispose();
+    });
+  });
+
+  it("retry-delay bypass fails closed when the predicate throws", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000;
+      const laneKey = "channel:discord-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "retrying-head",
+        { text: "ambient backlog head", kind: "ambient" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
+        onLog: (message) => logs.push(message),
+        shouldBypassRetryDelay: () => {
+          throw new Error("classifier outage");
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          if (event.id === "retrying-head" && event.attempts === 0) {
+            throw new Error("transient Discord recovery failure");
+          }
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual([]);
+
+      clock += 1_000;
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw current diagnostic ask", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      // Unusable predicate keeps the default backoff fence instead of releasing
+      // the lane, and the pump survives to drain normally once it expires.
+      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual([]);
+      expect(logs.some((line) => line.includes("retry-delay bypass predicate failed"))).toBe(true);
+
+      clock += 60_000;
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["retrying-head"]);
+      drain.dispose();
+    });
+  });
+
   it("red: stale Discord ambient backlog is not adopted before a fresh addressed event", async () => {
     await withTempState(async (stateDir) => {
       const laneKey = "channel:discord-room";

@@ -79,6 +79,20 @@ investigate must remain a dead letter. Webhook transports
 should acknowledge only after `admit` resolves; non-replay transports should
 surface durable append exhaustion rather than silently dispatching.
 
+A lane head released after a transient failure normally waits out its retry
+backoff, and lane serialization holds the rest of that lane behind it. When the
+plugin already knows the head is non-actionable, that backoff would fence fresh
+work for no benefit. The `drain` option `shouldBypassRetryDelay(record, context)`
+lets a plugin restore claim eligibility early: the drain offers only the oldest
+retained pending row per lane, with `laneKey`, `now`, and the remaining
+`retryDelayMs`. Returning `true` does not settle anything. The row still goes
+through the atomic claim, lane serialization, and the claimed delivery path,
+which stays the only owner of the terminal decision, so `deliver` must re-run
+the same classification on the claimed row. Implementations must be side-effect
+free and tolerate running many times for the same row, because every drain pass
+re-offers a still-delayed lane head. A throw or rejection fails closed and keeps
+the backoff.
+
 ## Adapter
 
 Most plugins define one `message` adapter:

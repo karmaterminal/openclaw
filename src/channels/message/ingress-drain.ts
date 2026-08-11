@@ -16,6 +16,10 @@ import {
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
 import {
+  resolveChannelIngressPendingScan,
+  type ChannelIngressRetryDelayBypassContext,
+} from "./ingress-drain-pending-scan.js";
+import {
   activeClaimKey,
   IngressAdoptionLostError,
   isIngressAdoptionLostError,
@@ -39,7 +43,6 @@ import {
   DEFAULT_INGRESS_RETRY_BASE_MS,
   DEFAULT_INGRESS_RETRY_MAX_MS,
   resolveIngressFailureDisposition,
-  resolveIngressRetryDelayMs,
   type IngressNonRetryableFailure,
   type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
@@ -68,6 +71,22 @@ export type CreateChannelIngressDrainOptions<
     lifecycle: ChannelIngressDispatchLifecycle,
   ) => Promise<ChannelIngressDrainDispatchResult | void> | ChannelIngressDrainDispatchResult | void;
   resolveNonRetryableFailure?: (err: unknown) => IngressNonRetryableFailure | null;
+  /**
+   * Whether a retry-delayed lane head may be claimed before its backoff expires.
+   * Only the oldest retained pending row per lane is offered, so a channel can
+   * release a lane whose head is already known to be terminally non-actionable
+   * instead of fencing fresh same-lane work behind that backoff.
+   *
+   * Returning true only restores claim eligibility: the row still goes through
+   * atomic claimNext, lane serialization, and the claimed delivery path, which
+   * remains the sole owner of the terminal decision. Implementations must be
+   * side-effect free and may run many times for the same row across drain
+   * passes. A throw or rejection fails closed, keeping the backoff.
+   */
+  shouldBypassRetryDelay?: (
+    record: ChannelIngressQueueRecord<TPayload, TMetadata>,
+    context: ChannelIngressRetryDelayBypassContext,
+  ) => boolean | Promise<boolean>;
   shouldSupersedePending?: (
     newEvent:
       | ChannelIngressQueueRecord<TPayload, TMetadata>
@@ -685,25 +704,18 @@ export function createChannelIngressDrain<
           resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
         ),
     );
-    const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
-    const oldestRetainedPendingLaneKeys = new Set<string>();
-    const retryDelayedLaneKeys = new Set<string>();
-    for (const event of pending) {
-      const retryDelayMs = resolveIngressRetryDelayMs(event, options.retryPolicy, pendingScanNow);
-      if (retryDelayMs === 0) {
-        eligiblePending.push(event);
-      }
-      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
-      if (oldestRetainedPendingLaneKeys.has(laneKey)) {
-        continue;
-      }
-      oldestRetainedPendingLaneKeys.add(laneKey);
-      // Only the oldest retained row can block its lane for retry backoff. A
-      // delayed tail must not hide an eligible head from claimNext.
-      if (retryDelayMs > 0) {
-        retryDelayedLaneKeys.add(laneKey);
-      }
-    }
+    const { eligiblePending, retryDelayedLaneKeys } = await resolveChannelIngressPendingScan({
+      pending,
+      now: pendingScanNow,
+      ...(options.retryPolicy ? { retryPolicy: options.retryPolicy } : {}),
+      resolveLaneKey: (record) =>
+        resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey),
+      ...(options.shouldBypassRetryDelay
+        ? { shouldBypassRetryDelay: options.shouldBypassRetryDelay }
+        : {}),
+      formatError,
+      log,
+    });
 
     // Deterministic blocked set for claimNext lane serialization.
     const blockedLaneKeys = new Set<string>([

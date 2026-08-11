@@ -477,6 +477,91 @@ describe("Discord direct-configured stale ingress", () => {
     );
   });
 
+  it("does not fence a fresh bot mention behind a retry-delayed stale ambient head", async () => {
+    const clock = 1_780_000_175_000;
+    const channelId = "mention-required-retry-channel";
+    const laneKey = `channel:${channelId}`;
+    await withQueue(
+      () => clock,
+      async (queue) => {
+        const staleId = "stale-ambient-retry-delayed";
+        const stale = createRawMessage(staleId, channelId, {
+          guild_id: "guild-1",
+          channel_type: ChannelType.GuildText,
+          content: "old ambient room text",
+          timestamp: new Date(clock - STALE_MS - 1_000).toISOString(),
+        } as RawMessageOverrides);
+        await queue.enqueue(staleId, payloadFor(stale, clock - 10_000), {
+          laneKey,
+          receivedAt: clock - 10_000,
+        });
+
+        // The lane head already lost a delivery attempt to a transient failure,
+        // so it sits under retry backoff that has not expired.
+        const claim = await queue.claim(staleId, { ownerId: "earlier-drain" });
+        expect(claim).not.toBeNull();
+        if (claim) {
+          await queue.release(claim, {
+            recordAttempt: true,
+            lastError: "transient Discord gateway failure",
+            releasedAt: clock,
+          });
+        }
+        const delayed = await queue.listPending({ limit: "all" });
+        expect(delayed.map((event) => event.id)).toEqual([staleId]);
+        expect(delayed[0]?.attempts).toBeGreaterThan(0);
+
+        const fresh = createRawMessage("fresh-behind-retry-delay", channelId, {
+          guild_id: "guild-1",
+          channel_type: ChannelType.GuildText,
+          content: "fresh direct ask <@bot-1>",
+          mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
+          timestamp: new Date(clock).toISOString(),
+        } as RawMessageOverrides);
+        await queue.enqueue(fresh.id, payloadFor(fresh, clock), { laneKey, receivedAt: clock });
+
+        const dispatched: string[] = [];
+        const log = vi.fn();
+        const error = vi.fn();
+        const monitor = createMonitor({
+          queue,
+          now: () => clock,
+          guildEntries: mentionRequiredGuildEntries(channelId),
+          runtime: { error, log },
+          dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+            if (!event.id) {
+              throw new Error("expected dispatched Discord event id");
+            }
+            dispatched.push(event.id);
+            await lifecycle.onAdopted();
+          },
+        });
+        monitor.start();
+        try {
+          // No clock advance through the backoff: the user's new mention must
+          // not wait behind a row already known to be non-actionable.
+          await vi.waitFor(() => expect(dispatched).toEqual([fresh.id]), {
+            timeout: DISCORD_INGRESS_WAIT_TIMEOUT_MS,
+          });
+          await vi.waitFor(async () => {
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
+          });
+          expect(
+            log.mock.calls.filter(
+              ([entry]) =>
+                (entry as { eventId?: string; reason?: string }).eventId === staleId &&
+                (entry as { reason?: string }).reason === "stale-ambient-backlog",
+            ),
+          ).toHaveLength(1);
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+          expect(error).not.toHaveBeenCalled();
+        } finally {
+          await monitor.stop();
+        }
+      },
+    );
+  });
+
   it("treats dead-letter resubmit as fresh operator intent", async () => {
     let clock = 1_780_000_200_000;
     const messageId = `resubmit-${DIRECT_OPEN_CHANNEL_ID}`;
