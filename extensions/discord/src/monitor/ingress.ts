@@ -1,5 +1,11 @@
 // Discord plugin module owns raw gateway-message durable ingress and replay draining.
-import { GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
+import {
+  ChannelType,
+  GatewayDispatchEvents,
+  MessageReferenceType,
+  MessageType,
+  type APIMessage,
+} from "discord-api-types/v10";
 import {
   createChannelIngressError,
   createChannelIngressMonitor,
@@ -7,16 +13,37 @@ import {
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
 } from "openclaw/plugin-sdk/channel-outbound";
+import { hasControlCommand } from "openclaw/plugin-sdk/command-detection";
+import { shouldHandleTextCommands } from "openclaw/plugin-sdk/command-surface";
+import type { DiscordAccountConfig, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 import { danger, type RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
-import { normalizeNullableString as nonEmptyString } from "openclaw/plugin-sdk/string-coerce-runtime";
+import {
+  isRecord,
+  normalizeNullableString as nonEmptyString,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { Client } from "../internal/discord.js";
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
+import {
+  normalizeDiscordSlug,
+  resolveDiscordChannelConfigWithFallback,
+  resolveDiscordGuildEntry,
+  type DiscordGuildEntryResolved,
+} from "./allow-list.js";
+import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
 import type { DiscordMessageEvent } from "./listeners.js";
+import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
 
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
+const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
+const DISCORD_AUDIO_ATTACHMENT_EXTENSIONS =
+  /\.(?:aac|caf|flac|m4a|mp3|oga|ogg|opus|wav)(?:[?#]|$)/i;
+const loadMentionRuntime = createLazyRuntimeModule(
+  () => import("openclaw/plugin-sdk/channel-inbound"),
+);
 
 type DiscordIngressPayload = {
   version: 1;
@@ -34,6 +61,12 @@ type DiscordIngressDispatch = (
   event: DiscordMessageEvent,
   lifecycle: DiscordIngressLifecycle,
 ) => Promise<DiscordIngressDispatchResult | void> | DiscordIngressDispatchResult | void;
+
+type DiscordThreadBindingLookup = {
+  getByThreadId?: (threadId: string) => unknown;
+  listBySessionKey?: (targetSessionKey: string) => unknown[];
+  touchThread?: (params: { threadId: string; at?: number; persist?: boolean }) => unknown;
+};
 
 type DiscordIngressMonitor = {
   accept: (rawMessage: APIMessage) => Promise<void>;
@@ -97,12 +130,271 @@ function isDiscordAuthenticationFailure(error: unknown): boolean {
   return false;
 }
 
+function discordMessageSentAtMs(rawMessage: APIMessage): number | null {
+  const sentAt = Date.parse(rawMessage.timestamp);
+  return Number.isFinite(sentAt) ? sentAt : null;
+}
+
+function isDiscordGuildMessage(rawMessage: APIMessage): boolean {
+  return typeof (rawMessage as { guild_id?: unknown }).guild_id === "string";
+}
+
+function hasPotentialDiscordAudioAttachment(rawMessage: APIMessage): boolean {
+  for (const attachment of rawMessage.attachments ?? []) {
+    const contentType = nonEmptyString(
+      (attachment as { content_type?: unknown; contentType?: unknown }).content_type ??
+        (attachment as { contentType?: unknown }).contentType,
+    );
+    if (contentType?.startsWith("audio/")) {
+      return true;
+    }
+    if (typeof (attachment as { duration_secs?: unknown }).duration_secs === "number") {
+      return true;
+    }
+    if (nonEmptyString((attachment as { waveform?: unknown }).waveform)) {
+      return true;
+    }
+    const filename = nonEmptyString((attachment as { filename?: unknown }).filename);
+    const url = nonEmptyString((attachment as { url?: unknown }).url);
+    if (
+      (filename && DISCORD_AUDIO_ATTACHMENT_EXTENSIONS.test(filename)) ||
+      (url && DISCORD_AUDIO_ATTACHMENT_EXTENSIONS.test(url))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function listConfiguredAgentIds(cfg?: OpenClawConfig): string[] {
+  const ids = new Set<string>();
+  const agents = cfg?.agents;
+  if (isRecord(agents?.entries)) {
+    for (const id of Object.keys(agents.entries)) {
+      const normalized = nonEmptyString(id);
+      if (normalized) {
+        ids.add(normalized);
+      }
+    }
+  }
+  for (const entry of agents?.list ?? []) {
+    const normalized = nonEmptyString(entry?.id);
+    if (normalized) {
+      ids.add(normalized);
+    }
+  }
+  return [...ids];
+}
+
+function isDiscordThreadChannelType(type: unknown): boolean {
+  return (
+    type === ChannelType.PublicThread ||
+    type === ChannelType.PrivateThread ||
+    type === ChannelType.AnnouncementThread
+  );
+}
+
+function hasConfiguredDiscordChannels(guildInfo: DiscordGuildEntryResolved | null): boolean {
+  return Boolean(guildInfo?.channels && Object.keys(guildInfo.channels).length > 0);
+}
+
+function hasCachedThreadChannel(rawMessage: APIMessage): boolean {
+  const channel = (rawMessage as { channel?: unknown }).channel;
+  if (!channel || typeof channel !== "object") {
+    return false;
+  }
+  const isThread = (channel as { isThread?: unknown }).isThread;
+  if (typeof isThread === "function") {
+    try {
+      return isThread() === true;
+    } catch {
+      return true;
+    }
+  }
+  return isDiscordThreadChannelType((channel as { type?: unknown }).type);
+}
+
+function hasBoundThread(rawMessage: APIMessage, threadBindings?: DiscordThreadBindingLookup) {
+  const channelId = nonEmptyString(rawMessage.channel_id);
+  if (!channelId || typeof threadBindings?.getByThreadId !== "function") {
+    return false;
+  }
+  try {
+    return Boolean(threadBindings.getByThreadId(channelId));
+  } catch {
+    return true;
+  }
+}
+
+function isDiscordAddressedMessage(rawMessage: APIMessage, botUserId?: string): boolean {
+  if (!isDiscordGuildMessage(rawMessage)) {
+    return true;
+  }
+  if (rawMessage.mention_everyone) {
+    return true;
+  }
+  const botId = nonEmptyString(botUserId);
+  if (!botId) {
+    return true;
+  }
+  return (
+    rawMessage.mentions?.some((user) => user.id === botId) ||
+    rawMessage.referenced_message?.author?.id === botId ||
+    hasRawDiscordUserMention(rawMessage.content ?? "", botId)
+  );
+}
+
+function hasHydrateableDiscordReplyReference(rawMessage: APIMessage): boolean {
+  const reference = rawMessage.message_reference;
+  if (!reference || !nonEmptyString(reference.message_id)) {
+    return false;
+  }
+  if (reference.type != null && reference.type !== MessageReferenceType.Default) {
+    return false;
+  }
+  if (rawMessage.type != null && rawMessage.type !== MessageType.Reply) {
+    return false;
+  }
+  return !Object.hasOwn(rawMessage, "referenced_message");
+}
+
+function canExpireDiscordStaleAmbientBacklog(
+  rawMessage: APIMessage,
+  params: {
+    guildEntries?: Record<string, DiscordGuildEntryResolved>;
+  },
+): boolean {
+  if (!isDiscordGuildMessage(rawMessage)) {
+    return false;
+  }
+  const guildInfo = resolveDiscordGuildEntry({
+    guildId: nonEmptyString((rawMessage as { guild_id?: unknown }).guild_id),
+    guildEntries: params.guildEntries,
+  });
+  if (params.guildEntries && Object.keys(params.guildEntries).length > 0 && !guildInfo) {
+    return false;
+  }
+
+  const channelId = nonEmptyString(rawMessage.channel_id);
+  const channelInfo = resolveDiscordChannelInfoSafe((rawMessage as { channel?: unknown }).channel);
+  const channelSlug = channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "";
+  const parentSlug = channelInfo.parentName ? normalizeDiscordSlug(channelInfo.parentName) : "";
+  const channelConfig = channelId
+    ? resolveDiscordChannelConfigWithFallback({
+        guildInfo,
+        channelId,
+        channelName: channelInfo.name,
+        channelSlug,
+        parentId: channelInfo.parentId,
+        parentName: channelInfo.parentName,
+        parentSlug,
+        scope: isDiscordThreadChannelType(channelInfo.type) ? "thread" : "channel",
+      })
+    : null;
+
+  if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
+    return false;
+  }
+  const rawNonThreadChannel =
+    typeof channelInfo.type === "number" && !isDiscordThreadChannelType(channelInfo.type);
+  // Stale expiry is a freshness fence, not mention admission. Only raw channel
+  // type proves this is not an unhydrated thread; direct config can name either.
+  return rawNonThreadChannel;
+}
+
+async function matchesConfiguredDiscordMentionText(
+  rawMessage: APIMessage,
+  params: {
+    cfg?: OpenClawConfig;
+    discordConfig?: DiscordAccountConfig | null;
+  },
+): Promise<boolean> {
+  const text = typeof rawMessage.content === "string" ? rawMessage.content : "";
+  const conversationId = nonEmptyString(rawMessage.channel_id);
+  const agentIds = listConfiguredAgentIds(params.cfg);
+  // Audio-only messages can satisfy preflight after transcription; pre-claim
+  // cannot transcribe, so a configured mention regex is enough to preserve them.
+  const hasAudioOnlyMentionCandidate =
+    !text.trim() && hasPotentialDiscordAudioAttachment(rawMessage);
+  if (!text.trim() && !hasAudioOnlyMentionCandidate) {
+    return false;
+  }
+  if (!params.cfg) {
+    return false;
+  }
+  try {
+    const { buildMentionRegexes, matchesMentionPatterns } = await loadMentionRuntime();
+    for (const agentId of [undefined, ...agentIds]) {
+      const mentionRegexes = buildMentionRegexes(params.cfg, agentId, {
+        provider: "discord",
+        conversationId,
+        providerPolicy: params.discordConfig?.mentionPatterns,
+      });
+      if (hasAudioOnlyMentionCandidate && mentionRegexes.length > 0) {
+        return true;
+      }
+      if (matchesMentionPatterns(text, mentionRegexes)) {
+        return true;
+      }
+    }
+  } catch {
+    // Missing or rejected regex state makes addressability unproven, not ambient.
+    return true;
+  }
+  return false;
+}
+
+function hasPotentialActiveDiscordTextControlCommand(
+  rawMessage: APIMessage,
+  cfg?: OpenClawConfig,
+): boolean {
+  const text = typeof rawMessage.content === "string" ? rawMessage.content : "";
+  if (!hasControlCommand(text, cfg)) {
+    return false;
+  }
+  try {
+    return shouldHandleTextCommands({
+      cfg: cfg ?? {},
+      surface: "discord",
+      commandSource: "text",
+    });
+  } catch {
+    // Pre-claim cannot prove registry/surface state; preserve possible control
+    // commands for the canonical preflight authorization gate.
+    return true;
+  }
+}
+
+async function hasUnresolvedDiscordAddressForm(
+  rawMessage: APIMessage,
+  params: {
+    cfg?: OpenClawConfig;
+    discordConfig?: DiscordAccountConfig | null;
+    threadBindings?: DiscordThreadBindingLookup;
+  },
+): Promise<boolean> {
+  // Pre-claim rows do not have route/preflight facts. Preserve rows when a
+  // later preflight path may prove them addressed instead of dead-lettering.
+  return (
+    hasHydrateableDiscordReplyReference(rawMessage) ||
+    hasBoundThread(rawMessage, params.threadBindings) ||
+    hasCachedThreadChannel(rawMessage) ||
+    (await matchesConfiguredDiscordMentionText(rawMessage, params))
+  );
+}
+
 export function createDiscordIngressMonitor(params: {
   accountId: string;
   client: Client;
   runtime: Pick<RuntimeEnv, "error" | "log">;
   dispatch: DiscordIngressDispatch;
+  botUserId?: string;
+  cfg?: OpenClawConfig;
+  discordConfig?: DiscordAccountConfig | null;
+  guildEntries?: Record<string, DiscordGuildEntryResolved>;
+  threadBindings?: DiscordThreadBindingLookup;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
+  now?: () => number;
 }): DiscordIngressMonitor {
   const queue =
     params.queue ??
@@ -115,6 +407,7 @@ export function createDiscordIngressMonitor(params: {
     DiscordIngressPayload
   >({
     queue,
+    now: params.now,
     inspect: inspectDiscordMessage,
     payload: {
       version: DISCORD_INGRESS_PAYLOAD_VERSION,
@@ -147,6 +440,76 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
+      onPendingDispositionCommitted: (record, disposition, context) => {
+        if (disposition.kind !== "fail" || disposition.reason !== "stale-ambient-backlog") {
+          return;
+        }
+        const rawMessage = record.payload.rawMessage;
+        const payloadReceivedAt = Number.isFinite(record.payload.receivedAt)
+          ? record.payload.receivedAt
+          : record.receivedAt;
+        const sentAt =
+          record.receivedAt > payloadReceivedAt
+            ? record.receivedAt
+            : (discordMessageSentAtMs(rawMessage) ?? record.receivedAt);
+        params.runtime.log?.(
+          {
+            level: "debug",
+            source: "discord",
+            accountId: params.accountId,
+            eventId: record.id,
+            sourceEventId: rawMessage.id,
+            laneKey: context.laneKey,
+            channelId: rawMessage.channel_id,
+            receivedAt: new Date(record.receivedAt).toISOString(),
+            ageMs: Math.max(0, context.now - sentAt),
+            thresholdMs: DISCORD_STALE_AMBIENT_BACKLOG_MS,
+            disposition: "failed",
+            reason: "stale-ambient-backlog",
+          },
+          "discord ingress stale ambient backlog suppressed",
+        );
+      },
+      resolvePendingDisposition: async (record, context) => {
+        const rawMessage = record.payload.rawMessage;
+        if (isDiscordAddressedMessage(rawMessage, params.botUserId)) {
+          return null;
+        }
+        const payloadReceivedAt = Number.isFinite(record.payload.receivedAt)
+          ? record.payload.receivedAt
+          : record.receivedAt;
+        const sentAt =
+          record.receivedAt > payloadReceivedAt
+            ? record.receivedAt
+            : (discordMessageSentAtMs(rawMessage) ?? record.receivedAt);
+        if (context.now - sentAt <= DISCORD_STALE_AMBIENT_BACKLOG_MS) {
+          return null;
+        }
+        if (hasPotentialActiveDiscordTextControlCommand(rawMessage, params.cfg)) {
+          return null;
+        }
+        if (
+          await hasUnresolvedDiscordAddressForm(rawMessage, {
+            cfg: params.cfg,
+            discordConfig: params.discordConfig,
+            threadBindings: params.threadBindings,
+          })
+        ) {
+          return null;
+        }
+        if (
+          !canExpireDiscordStaleAmbientBacklog(rawMessage, { guildEntries: params.guildEntries })
+        ) {
+          return null;
+        }
+        return {
+          kind: "fail",
+          reason: "stale-ambient-backlog",
+          message:
+            `Discord ambient message ${record.id} on ${context.laneKey} is older than ` +
+            `${DISCORD_STALE_AMBIENT_BACKLOG_MS}ms; suppressing stale backlog before dispatch.`,
+        };
+      },
       resolveNonRetryableFailure: (error) => {
         if (error instanceof DiscordIngressPayloadError) {
           return { reason: "invalid-event", message: error.message };
