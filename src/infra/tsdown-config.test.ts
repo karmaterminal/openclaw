@@ -1,5 +1,5 @@
 // Covers bundling rules encoded in the root tsdown config.
-import { readFileSync, statSync, utimesSync } from "node:fs";
+import { readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { bundledPluginRoot } from "openclaw/plugin-sdk/test-fixtures";
 import { describe, expect, it } from "vitest";
@@ -165,10 +165,10 @@ describe("tsdown config", () => {
     expect(watchedPaths).toEqual([schemaPath]);
   });
 
-  it("cache-busts resolved schema module ids when the SQL asset mtime changes", () => {
+  it("cache-busts resolved schema module ids from content digest, importer .js, and same-mtime byte changes", () => {
     const rootDir = process.cwd();
     const plugin = createStateSchemaInlinePlugin(rootDir) as {
-      resolveId?: (id: string) => string | null | undefined;
+      resolveId?: (id: string, importer?: string) => string | null | undefined;
       load: (
         this: { addWatchFile(id: string): void },
         id: string,
@@ -176,21 +176,38 @@ describe("tsdown config", () => {
     };
     const modulePath = path.resolve(rootDir, "src/state/openclaw-state-schema.ts");
     const schemaPath = path.resolve(rootDir, "src/state/openclaw-state-schema.sql");
+    const importer = path.resolve(rootDir, "src/state/openclaw-state-db.ts");
+    const digestRe = /\?openclaw-schema=[a-f0-9]{16}$/u;
+
+    // Absolute .ts path (unit-test style).
     const first = plugin.resolveId?.(modulePath);
-    expect(first).toEqual(expect.stringMatching(/\?openclaw-schema=\d+(?:\.\d+)?$/u));
+    expect(first).toEqual(expect.stringMatching(digestRe));
     const firstLoad = plugin.load.call({ addWatchFile: () => undefined }, first ?? modulePath);
     expect(firstLoad).not.toBeNull();
+
+    // Production-shaped relative .js specifier resolved against the importer.
+    const fromJs = plugin.resolveId?.("./openclaw-state-schema.js", importer);
+    expect(fromJs).toEqual(first);
+    expect(fromJs).toEqual(expect.stringMatching(digestRe));
+
+    const originalSql = readFileSync(schemaPath, "utf8");
     const previousMtime = statSync(schemaPath).mtimeMs;
-    const nextMtime = previousMtime + 1000;
-    utimesSync(schemaPath, new Date(nextMtime), new Date(nextMtime));
     try {
-      const second = plugin.resolveId?.(modulePath);
-      expect(second).toEqual(expect.stringMatching(/\?openclaw-schema=\d+(?:\.\d+)?$/u));
+      // Same-mtime byte change must still bust the resolved id and load output.
+      const mutated = `${originalSql}\n-- wo1244-schema-digest-bust\n`;
+      writeFileSync(schemaPath, mutated, "utf8");
+      utimesSync(schemaPath, new Date(previousMtime), new Date(previousMtime));
+      expect(statSync(schemaPath).mtimeMs).toBe(previousMtime);
+
+      const second = plugin.resolveId?.("./openclaw-state-schema.js", importer);
+      expect(second).toEqual(expect.stringMatching(digestRe));
       expect(second).not.toBe(first);
       const secondLoad = plugin.load.call({ addWatchFile: () => undefined }, second ?? modulePath);
       expect(secondLoad).not.toBeNull();
-      expect(secondLoad?.code).toBe(firstLoad?.code);
+      expect(secondLoad?.code).not.toBe(firstLoad?.code);
+      expect(secondLoad?.code).toContain("wo1244-schema-digest-bust");
     } finally {
+      writeFileSync(schemaPath, originalSql, "utf8");
       utimesSync(schemaPath, new Date(previousMtime), new Date(previousMtime));
     }
   });

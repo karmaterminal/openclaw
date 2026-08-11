@@ -630,23 +630,21 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
                 stateDir,
               });
             },
-            openChannelIngressDrain: <TPayload, TMetadata = unknown, TCompletedMetadata = unknown>(
-              options: Omit<
-                CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata>,
-                "queue"
-              > & {
-                queue?: ReturnType<
-                  typeof createChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>
-                >;
-                accountId?: string;
-                stateDir?: string;
-              },
-            ) => {
+            openChannelIngressDrain: ((options: {
+              queue?: import("../channels/message/ingress-queue.js").ChannelIngressQueue<
+                any,
+                any,
+                any
+              >;
+              accountId?: string;
+              stateDir?: string;
+              [key: string]: unknown;
+            }) => {
               assertPluginStateAllowed("openChannelIngressDrain");
               const stateDir = options.stateDir ?? baseState.resolveStateDir();
               const queue =
                 options.queue ??
-                createChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>({
+                createChannelIngressQueue({
                   channelId: pluginId,
                   accountId: options.accountId,
                   stateDir,
@@ -657,11 +655,11 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
                 stateDir: _stateDir,
                 ...drainOptions
               } = options;
-              return createChannelIngressDrain<TPayload, TMetadata, TCompletedMetadata>({
-                ...drainOptions,
+              return createChannelIngressDrain({
+                ...(drainOptions as object),
                 queue,
-              } as CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata>);
-            },
+              } as CreateChannelIngressDrainOptions<any, any, any, any>);
+            }) as PluginRuntime["state"]["openChannelIngressDrain"],
           } satisfies PluginRuntime["state"];
         }
         if (prop === "config") {

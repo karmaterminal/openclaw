@@ -477,20 +477,46 @@ export type PluginRuntimeCore = {
       TMetadata,
       TCompletedMetadata
     >;
-    openChannelIngressDrain: <TPayload, TMetadata = unknown, TCompletedMetadata = unknown>(
-      options: Omit<
-        CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata>,
-        "queue"
-      > & {
-        queue?: import("../../channels/message/ingress-queue.js").ChannelIngressQueue<
+    /**
+     * Queue-first brand inference when `queue` is supplied; explicit three-generic
+     * free completed-metadata when the runtime constructs the queue. Disposition
+     * incompatibility errors land on resolvePendingDisposition, not queue.
+     */
+    openChannelIngressDrain: {
+      <
+        TPayload,
+        TMetadata,
+        TCompletedMetadata,
+        TQueue extends import("../../channels/message/ingress-queue.js").ChannelIngressQueue<
+          TPayload,
+          TMetadata,
+          any
+        > = import("../../channels/message/ingress-queue.js").ChannelIngressQueue<
           TPayload,
           TMetadata,
           TCompletedMetadata
-        >;
-        accountId?: string;
-        stateDir?: string;
-      },
-    ) => import("../../channels/message/ingress-drain.js").ChannelIngressDrain;
+        >,
+      >(
+        options: Omit<
+          CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
+          "queue"
+        > & {
+          queue?: TQueue;
+          accountId?: string;
+          stateDir?: string;
+        },
+      ): import("../../channels/message/ingress-drain.js").ChannelIngressDrain;
+      <TQueue>(
+        options: Omit<
+          import("../../channels/message/ingress-drain.js").CreateChannelIngressDrainOptionsForQueue<TQueue>,
+          "queue"
+        > & {
+          queue?: TQueue;
+          accountId?: string;
+          stateDir?: string;
+        },
+      ): import("../../channels/message/ingress-drain.js").ChannelIngressDrain;
+    };
   };
   tasks: {
     runs: PluginRuntimeTaskRuns;

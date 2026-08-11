@@ -60,7 +60,7 @@ describe("channel ingress drain", () => {
       );
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         retryPolicy: {
@@ -121,7 +121,7 @@ describe("channel ingress drain", () => {
         { text: "old room history", kind: "ambient" },
         { laneKey, receivedAt: 0 },
       );
-      const firstDrain = createChannelIngressDrain<Payload>({
+      const firstDrain = createChannelIngressDrain({
         queue,
         now: () => clock,
         retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
@@ -140,7 +140,7 @@ describe("channel ingress drain", () => {
         { laneKey, receivedAt: clock },
       );
       const adopted: string[] = [];
-      const secondDrain = createChannelIngressDrain<Payload>({
+      const secondDrain = createChannelIngressDrain({
         queue,
         now: () => clock,
         retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
@@ -180,7 +180,7 @@ describe("channel ingress drain", () => {
       );
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         // One settlement + one claim share startLimit.
@@ -216,7 +216,7 @@ describe("channel ingress drain", () => {
         releaseActive = resolve;
       });
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         dispatchClaimedEvent: async (event, lifecycle) => {
           adopted.push(event.id);
@@ -262,7 +262,7 @@ describe("channel ingress drain", () => {
       );
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         startLimit: 1,
@@ -301,7 +301,7 @@ describe("channel ingress drain", () => {
       );
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         startLimit: 1,
@@ -342,7 +342,7 @@ describe("channel ingress drain", () => {
       );
 
       const adopted: string[] = [];
-      const firstDrain = createChannelIngressDrain<Payload>({
+      const firstDrain = createChannelIngressDrain({
         queue,
         now: () => clock,
         resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
@@ -355,7 +355,7 @@ describe("channel ingress drain", () => {
       await firstDrain.waitForIdle();
       firstDrain.dispose();
 
-      const secondDrain = createChannelIngressDrain<Payload>({
+      const secondDrain = createChannelIngressDrain({
         queue,
         now: () => clock,
         resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
@@ -390,7 +390,7 @@ describe("channel ingress drain", () => {
         );
 
         const adopted: string[] = [];
-        const drain = createChannelIngressDrain<Payload>({
+        const drain = createChannelIngressDrain({
           queue,
           now: () => ageMs,
           resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
@@ -429,7 +429,7 @@ describe("channel ingress drain", () => {
       // Burn attempts without aging past the gate.
       for (let i = 0; i < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; i += 1) {
         clock += 1;
-        const drain = createChannelIngressDrain<Payload>({
+        const drain = createChannelIngressDrain({
           queue,
           now: () => clock,
           retryPolicy: {
@@ -453,7 +453,7 @@ describe("channel ingress drain", () => {
 
       // Age past the gate → next failure dead-letters.
       clock = receivedAt + DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS;
-      const finalDrain = createChannelIngressDrain<Payload>({
+      const finalDrain = createChannelIngressDrain({
         queue,
         now: () => clock,
         retryPolicy: {

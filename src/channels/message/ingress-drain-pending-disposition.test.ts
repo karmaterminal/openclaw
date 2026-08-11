@@ -78,7 +78,7 @@ describe("channel ingress pending disposition drain", () => {
 
       const complete = queue.complete.bind(queue);
       let raceInjected = false;
-      const siblingDrain = createChannelIngressDrain<Payload>({
+      const siblingDrain = createChannelIngressDrain({
         queue,
         ownerId: "sibling-drain",
         startLimit: 1,
@@ -101,7 +101,7 @@ describe("channel ingress pending disposition drain", () => {
       });
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         // Snapshot load is startLimit-bounded; include the unrelated lane so it
@@ -153,7 +153,7 @@ describe("channel ingress pending disposition drain", () => {
       );
 
       let examined = 0;
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
         startLimit: 3,
@@ -200,7 +200,7 @@ describe("channel ingress pending disposition drain", () => {
 
       // startLimit 0 must not open a SQL page.
       sql.reset();
-      const zeroDrain = createChannelIngressDrain<Payload>({
+      const zeroDrain = createChannelIngressDrain({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
         startLimit: 0,
@@ -216,7 +216,7 @@ describe("channel ingress pending disposition drain", () => {
 
       sql.reset();
       let examined = 0;
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
         startLimit: 4,
@@ -288,7 +288,7 @@ describe("channel ingress pending disposition drain", () => {
       );
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
         startLimit: 2,
@@ -332,7 +332,7 @@ describe("channel ingress pending disposition drain", () => {
 
       let pumps = 0;
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
         startLimit: 32,
@@ -395,7 +395,7 @@ describe("channel ingress pending disposition drain", () => {
       );
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         startLimit: 8,
@@ -437,7 +437,7 @@ describe("channel ingress pending disposition drain", () => {
 
       const logs: string[] = [];
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         startLimit: 4,
@@ -480,7 +480,7 @@ describe("channel ingress pending disposition drain", () => {
       );
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         startLimit: 4,
@@ -539,7 +539,7 @@ describe("channel ingress pending disposition drain", () => {
           { laneKey, receivedAt: index },
         );
       }
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
         startLimit: 32,
@@ -594,7 +594,7 @@ describe("channel ingress pending disposition drain", () => {
         releaseResolve = resolve;
       });
       let sawResume = false;
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
         startLimit: 4,
@@ -656,7 +656,7 @@ describe("channel ingress pending disposition drain", () => {
       const peerHold = new Promise<void>((resolve) => {
         releasePeer = resolve;
       });
-      const peer = createChannelIngressDrain<Payload>({
+      const peer = createChannelIngressDrain({
         queue,
         // Auto-minted ownerId registers a live local instance so same-process
         // peer claims are not recovered mid-hold.
@@ -686,7 +686,7 @@ describe("channel ingress pending disposition drain", () => {
       );
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         claimLeaseMs: 60 * 60 * 1_000,
         now: () => clock,
@@ -780,7 +780,8 @@ describe("channel ingress pending disposition drain", () => {
       message: "stale",
     });
 
-    // Inferred generics from the incompatible queue — reject resolver, not queue.
+    // Queue-first factory (zero type args): brand inferred from queue. Rejects
+    // resolver only — never the queue property.
     createChannelIngressDrain({
       queue: incompatibleQueue,
       // @ts-expect-error incompatible completed metadata rejects disposition resolver
@@ -788,47 +789,54 @@ describe("channel ingress pending disposition drain", () => {
       dispatchClaimedEvent,
     });
 
-    // Partial payload/metadata type args with an inferred queue brand: TypeScript
-    // does not infer trailing defaults once leading type args are specified, so
-    // exercise the public Options surface the same way the factory gates brands
-    // (payload fixed, TQueue inferred from the queue value).
-    type OptionsWithInferredQueueBrand<
-      TPayload,
-      TMetadata,
-      TQueue extends import("./ingress-queue.js").ChannelIngressQueue<TPayload, TMetadata, any>,
-    > = import("./ingress-drain.js").CreateChannelIngressDrainOptions<
-      TPayload,
-      TMetadata,
+    // Payload-specialized queues exercise the one-payload brand path under
+    // queue-first inference (TS cannot soundly keep a trailing TQueue brand after
+    // partial `<Payload>` / `<Payload, Metadata>` type arguments).
+    type OnePayloadIncompatible =
+      import("./ingress-drain.js").CreateChannelIngressDrainOptionsForQueue<
+        typeof incompatibleQueue
+      >;
+    type OnePayloadCompatible =
+      import("./ingress-drain.js").CreateChannelIngressDrainOptionsForQueue<typeof compatibleQueue>;
+    type TwoPayloadMetaIncompatible = import("./ingress-drain.js").CreateChannelIngressDrainOptions<
+      Payload,
       unknown,
-      TQueue
+      IncompatibleCompletedMetadata,
+      typeof incompatibleQueue
     >;
-    const callWithPayloadBrand = <TPayload, TMetadata = unknown>() => {
-      return <
-        TQueue extends import("./ingress-queue.js").ChannelIngressQueue<TPayload, TMetadata, any>,
-      >(
-        _options: OptionsWithInferredQueueBrand<TPayload, TMetadata, TQueue>,
-      ) => undefined;
+    const onePayloadIncompatible: OnePayloadIncompatible = {
+      queue: incompatibleQueue,
+      // @ts-expect-error one-payload queue brand rejects disposition resolver
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
     };
-    callWithPayloadBrand<Payload>()({
-      queue: incompatibleQueue,
-      // @ts-expect-error one-generic partial args reject incompatible disposition resolver
+    const onePayloadCompatible: OnePayloadCompatible = {
+      queue: compatibleQueue,
       resolvePendingDisposition,
       dispatchClaimedEvent,
-    });
-    callWithPayloadBrand<Payload, unknown>()({
+    };
+    const twoPayloadMetaIncompatible: TwoPayloadMetaIncompatible = {
       queue: incompatibleQueue,
-      // @ts-expect-error two-generic partial args reject incompatible disposition resolver
+      // @ts-expect-error two-param Options brand rejects disposition resolver
       resolvePendingDisposition,
       dispatchClaimedEvent,
-    });
-    // Direct factory still accepts compatible queues under partial type args.
-    createChannelIngressDrain<Payload>({
+    };
+    void onePayloadIncompatible;
+    void onePayloadCompatible;
+    void twoPayloadMetaIncompatible;
+
+    createChannelIngressDrain({
       queue: compatibleQueue,
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
-    createChannelIngressDrain<Payload, unknown>({
-      queue: compatibleQueue,
+    createChannelIngressDrain({
+      queue: customCompatibleQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain({
+      queue: defaultQueue,
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
@@ -840,65 +848,18 @@ describe("channel ingress pending disposition drain", () => {
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
-
-    // Compatible specialized queues are accepted under partial generics (including
-    // custom metadata that still stores suppressions).
-    createChannelIngressDrain({
-      queue: compatibleQueue,
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    });
-    createChannelIngressDrain({
-      queue: customCompatibleQueue,
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    });
-    createChannelIngressDrain<Payload>({
-      queue: compatibleQueue,
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    });
-    createChannelIngressDrain<Payload>({
-      queue: customCompatibleQueue,
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    });
-    createChannelIngressDrain<Payload, unknown>({
-      queue: compatibleQueue,
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    });
-    createChannelIngressDrain<Payload, unknown>({
-      queue: customCompatibleQueue,
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    });
-    createChannelIngressDrain<Payload>({
-      queue: defaultQueue,
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    });
-    createChannelIngressDrain<Payload, unknown>({
-      queue: defaultQueue,
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    });
     createChannelIngressDrain<Payload, unknown, Suppressed>({
       queue: compatibleQueue,
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
     // No-disposition path remains open for incompatible and specialized queues
-    // under partial generics (must not reject on the queue property).
+    // (must not reject on the queue property).
     createChannelIngressDrain({
       queue: incompatibleQueue,
       dispatchClaimedEvent,
     });
-    createChannelIngressDrain<Payload>({
-      queue: incompatibleQueue,
-      dispatchClaimedEvent,
-    });
-    createChannelIngressDrain<Payload>({
+    createChannelIngressDrain({
       queue: compatibleQueue,
       dispatchClaimedEvent,
     });
@@ -954,8 +915,40 @@ describe("channel ingress pending disposition drain", () => {
       dispatchClaimedEvent,
     } satisfies MonitorSpreadTarget;
 
+    const compatiblePluginQueue = createChannelIngressQueue<Payload, unknown, Suppressed>({
+      channelId: "plugin-ok",
+      accountId: "plugin-ok",
+    });
+    const incompatiblePluginQueue = createChannelIngressQueue<
+      Payload,
+      unknown,
+      IncompatibleCompletedMetadata
+    >({
+      channelId: "plugin-bad",
+      accountId: "plugin-bad",
+    });
+
     // PluginRuntime.openChannelIngressDrain: type-level only (guarded by false).
+    // Queue-first brand inference + explicit three-generic free metadata.
     if (false as boolean) {
+      openChannelIngressDrain({
+        queue: compatiblePluginQueue,
+        dispatchClaimedEvent,
+        resolvePendingDisposition,
+        accountId: "acct",
+      });
+      openChannelIngressDrain({
+        queue: incompatiblePluginQueue,
+        dispatchClaimedEvent,
+        // @ts-expect-error plugin queue-first rejects incompatible disposition resolver
+        resolvePendingDisposition,
+        accountId: "acct",
+      });
+      openChannelIngressDrain({
+        queue: incompatiblePluginQueue,
+        dispatchClaimedEvent,
+        accountId: "acct",
+      });
       openChannelIngressDrain<Payload, unknown, Suppressed>({
         dispatchClaimedEvent,
         accountId: "acct",
@@ -1021,7 +1014,7 @@ describe("channel ingress pending disposition drain", () => {
       };
 
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         claimLeaseMs: 60 * 60 * 1_000,
         now: () => clock,

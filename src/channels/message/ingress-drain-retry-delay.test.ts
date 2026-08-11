@@ -46,7 +46,7 @@ describe("channel ingress drain retry-delay lane ordering", () => {
 
       clock += 1_000;
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
@@ -90,7 +90,7 @@ describe("channel ingress drain retry-delay lane ordering", () => {
 
       clock += 1_000;
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
@@ -138,7 +138,7 @@ describe("channel ingress drain retry-delay lane ordering", () => {
 
       clock += 1_000;
       const adopted: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         retryPolicy: { baseMs: 60_000, maxMs: 60_000 },

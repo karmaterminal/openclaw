@@ -13,7 +13,7 @@ describe("channel ingress drain supersede", () => {
       await queue.enqueue("album-1", { text: "first" }, { laneKey: "shared" });
       await queue.enqueue("album-2", { text: "second" }, { laneKey: "shared" });
       const signals = new Map<string, AbortSignal>();
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         deferredLaneOccupancy: "release",
         shouldSupersedePending: (candidate) => candidate.id === "abort",
@@ -52,7 +52,7 @@ describe("channel ingress drain supersede", () => {
       await queue.enqueue("old", { text: "old" }, { laneKey: "shared" });
       const predicatePendingIds: string[] = [];
       let oldSignal: AbortSignal | undefined;
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         shouldSupersedePending: (candidate, pending) => {
           predicatePendingIds.push(pending.id);
@@ -91,7 +91,7 @@ describe("channel ingress drain supersede", () => {
         releaseOwner = resolve;
       });
       const signals = new Map<string, AbortSignal>();
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         deferredLaneOccupancy: "release",
         shouldSupersedePending: (candidate, pending) =>

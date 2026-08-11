@@ -36,7 +36,7 @@ describe("channel ingress drain", () => {
       expect(orphanClaim).not.toBeNull();
 
       const dispatches: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => 1_000,
         dispatchClaimedEvent: async (event, lifecycle) => {
@@ -83,7 +83,7 @@ describe("channel ingress drain", () => {
           await lifecycle.onAdopted();
         },
       );
-      const drain = createChannelIngressDrain<Payload>({ queue, dispatchClaimedEvent: dispatch });
+      const drain = createChannelIngressDrain({ queue, dispatchClaimedEvent: dispatch });
 
       expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
@@ -108,7 +108,7 @@ describe("channel ingress drain", () => {
         settleResolve = resolve;
       });
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         dispatchClaimedEvent: async (_event, lifecycle) => {
           await lifecycle.onAdopted();
@@ -138,7 +138,7 @@ describe("channel ingress drain", () => {
 
       const capturedLifecycles: ChannelIngressDispatchLifecycle[] = [];
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         dispatchClaimedEvent: async (_event, lifecycle) => {
           capturedLifecycles.push(lifecycle);
@@ -171,7 +171,7 @@ describe("channel ingress drain", () => {
         const queue = createTestIngressQueue(stateDir);
         await queue.enqueue("first", { text: "first" }, { laneKey: "shared" });
         const lifecycles: ChannelIngressDispatchLifecycle[] = [];
-        const drain = createChannelIngressDrain<Payload>({
+        const drain = createChannelIngressDrain({
           queue,
           ...(occupancy === "release" ? { deferredLaneOccupancy: occupancy } : {}),
           dispatchClaimedEvent: async (_event, lifecycle) => {
@@ -204,7 +204,7 @@ describe("channel ingress drain", () => {
       await queue.enqueue("released-stall", { text: "x" }, { laneKey: "shared" });
       const refreshClaim = vi.fn(async () => true);
       queue.refreshClaim = refreshClaim;
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         claimLeaseMs: 3_000,
@@ -234,7 +234,7 @@ describe("channel ingress drain", () => {
       const queue = createTestIngressQueue(stateDir, { now: () => clock });
       await queue.enqueue("late-failure", { text: "x" }, { laneKey: "shared", receivedAt: clock });
       const lifecycles: ChannelIngressDispatchLifecycle[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         deferredLaneOccupancy: "release",
@@ -266,7 +266,7 @@ describe("channel ingress drain", () => {
       await queue.enqueue("non-retryable", { text: "x" }, { laneKey: "one", receivedAt: 1 });
       await queue.enqueue("retry-limit", { text: "x" }, { laneKey: "two", receivedAt: 1 });
       const lifecycles = new Map<string, ChannelIngressDispatchLifecycle>();
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => 10_000,
         deferredLaneOccupancy: "release",
@@ -305,7 +305,7 @@ describe("channel ingress drain", () => {
       const queue = createTestIngressQueue(stateDir);
       await queue.enqueue("released", { text: "x" }, { laneKey: "shared" });
       let aborted = false;
-      const first = createChannelIngressDrain<Payload>({
+      const first = createChannelIngressDrain({
         queue,
         deferredLaneOccupancy: "release",
         dispatchClaimedEvent: async (_event, lifecycle) => {
@@ -315,7 +315,7 @@ describe("channel ingress drain", () => {
           return { kind: "deferred" };
         },
       });
-      const second = createChannelIngressDrain<Payload>({
+      const second = createChannelIngressDrain({
         queue,
         dispatchClaimedEvent: async () => ({ kind: "deferred" }),
       });
@@ -346,7 +346,7 @@ describe("channel ingress drain", () => {
         return await queue.release(...args);
       });
       const capturedLifecycles: ChannelIngressDispatchLifecycle[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue: { ...queue, release },
         dispatchClaimedEvent: async (_event, lifecycle) => {
           capturedLifecycles.push(lifecycle);
@@ -381,7 +381,7 @@ describe("channel ingress drain", () => {
       const queue = createTestIngressQueue(stateDir);
       await queue.enqueue("evt-q", { text: "x" }, { laneKey: "l1" });
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         dispatchClaimedEvent: async (_event, lifecycle) => {
           const bound = bindIngressLifecycleToReplyOptions(lifecycle);
@@ -409,7 +409,7 @@ describe("channel ingress drain", () => {
       await queue.enqueue("evt-admit", { text: "x" }, { laneKey: "l1" });
 
       let adoptCount = 0;
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         dispatchClaimedEvent: async (_event, lifecycle) => {
           const bound = bindIngressLifecycleToReplyOptions(lifecycle);
@@ -444,7 +444,7 @@ describe("channel ingress drain", () => {
       const queue = createTestIngressQueue(stateDir, { now: () => clock });
       await queue.enqueue("evt-stall", { text: "x" }, { laneKey: "l1" });
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         adoptionStallTimeoutMs: 5_000,
@@ -475,7 +475,7 @@ describe("channel ingress drain", () => {
       const queue = createTestIngressQueue(stateDir, { now: () => clock });
       await queue.enqueue("evt-def-stall", { text: "x" }, { laneKey: "l1" });
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         adoptionStallTimeoutMs: 5_000,
@@ -512,7 +512,7 @@ describe("channel ingress drain", () => {
         settleResolve = resolve;
       });
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         adoptionStallTimeoutMs: 1_000,
@@ -550,7 +550,7 @@ describe("channel ingress drain", () => {
         releaseFirst = resolve;
       });
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         shouldSupersedePending: (next, pending) => next.id === "new" && pending.id === "old",
         dispatchClaimedEvent: async (event, lifecycle) => {
@@ -609,7 +609,7 @@ describe("channel ingress drain", () => {
       });
       let aborted = false;
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         // no shouldSupersedePending
         dispatchClaimedEvent: async (event, lifecycle) => {
@@ -684,7 +684,7 @@ describe("channel ingress drain", () => {
       const lifecycleCaptures: ChannelIngressDispatchLifecycle[] = [];
 
       const claimLeaseMs = 3_000;
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         claimLeaseMs,
@@ -732,7 +732,7 @@ describe("channel ingress drain", () => {
       });
       let lateAdoptError: unknown;
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         shouldSupersedePending: () => true,
         dispatchClaimedEvent: async (event, lifecycle) => {
@@ -779,7 +779,7 @@ describe("channel ingress drain", () => {
       };
 
       const logs: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         onLog: (message) => logs.push(message),
         dispatchClaimedEvent: async (_event, lifecycle) => {
@@ -810,7 +810,7 @@ describe("channel ingress drain", () => {
       };
 
       const logs: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         onLog: (message) => logs.push(message),
         dispatchClaimedEvent: async (_event, lifecycle) => {
@@ -849,7 +849,7 @@ describe("channel ingress drain", () => {
       const secondDispatches: string[] = [];
       const firstAbort = new AbortController();
 
-      const first = createChannelIngressDrain<Payload>({
+      const first = createChannelIngressDrain({
         queue,
         abortSignal: firstAbort.signal,
         dispatchClaimedEvent: async (event, lifecycle) => {
@@ -858,7 +858,7 @@ describe("channel ingress drain", () => {
           await lifecycle.onAdopted();
         },
       });
-      const second = createChannelIngressDrain<Payload>({
+      const second = createChannelIngressDrain({
         queue,
         dispatchClaimedEvent: async (event, lifecycle) => {
           secondDispatches.push(event.id);
@@ -909,7 +909,7 @@ describe("channel ingress drain", () => {
       };
 
       let adoptError: unknown;
-      const first = createChannelIngressDrain<Payload>({
+      const first = createChannelIngressDrain({
         queue,
         ownerId: "first-owner",
         startLimit: 1,
@@ -937,7 +937,7 @@ describe("channel ingress drain", () => {
 
       first.dispose();
       const secondDispatches: string[] = [];
-      const second = createChannelIngressDrain<Payload>({
+      const second = createChannelIngressDrain({
         queue,
         ownerId: "second-owner",
         startLimit: 4,
@@ -1004,7 +1004,7 @@ describe("channel ingress drain", () => {
       };
 
       const dispatches: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         ownerId: "steer-owner",
         startLimit: 4,
@@ -1058,7 +1058,7 @@ describe("channel ingress drain", () => {
         releaseFirstDispatch = resolve;
       });
 
-      const first = createChannelIngressDrain<Payload>({
+      const first = createChannelIngressDrain({
         queue,
         ownerId: "first-owner",
         startLimit: 1,
@@ -1093,7 +1093,7 @@ describe("channel ingress drain", () => {
       const peerSettleHold = new Promise<void>((resolve) => {
         releasePeerSettle = resolve;
       });
-      const peer = createChannelIngressDrain<Payload>({
+      const peer = createChannelIngressDrain({
         queue,
         ownerId: "peer-owner",
         startLimit: 4,
@@ -1154,7 +1154,7 @@ describe("channel ingress drain", () => {
       };
 
       const dispatches: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         dispatchClaimedEvent: async (event) => {
           dispatches.push(event.id);
@@ -1202,7 +1202,7 @@ describe("channel ingress drain", () => {
       });
 
       const claimLeaseMs = 3_000;
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         now: () => clock,
         claimLeaseMs,
@@ -1257,7 +1257,7 @@ describe("channel ingress drain", () => {
       let oldAdopted = false;
       let oldAborted = false;
 
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         shouldSupersedePending: async () => {
           predicateStarted = true;

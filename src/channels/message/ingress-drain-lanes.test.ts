@@ -16,7 +16,7 @@ describe("channel ingress drain lanes", () => {
         releaseActive = resolve;
       });
       const dispatches: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
+      const drain = createChannelIngressDrain({
         queue,
         deriveLaneKey: (record) => record.payload.text,
         reconcileStoredLaneKey: () => false,

@@ -117,8 +117,13 @@ type CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> = {
  * Completed-metadata contract carried by a queue value. Used so disposition
  * gating follows the queue even when factory type arguments are partial.
  */
-type ChannelIngressQueueCompletedMetadataOf<Q> =
-  Q extends ChannelIngressQueue<infer _P, infer _M, infer C> ? C : unknown;
+export type ChannelIngressQueueCompletedMetadataOf<Q> = Q extends {
+  readonly __completedMetadataBrand?: (value: infer C) => infer _C;
+}
+  ? C
+  : Q extends ChannelIngressQueue<infer _P, infer _M, infer C>
+    ? C
+    : unknown;
 
 /**
  * Public drain options. Disposition resolvers are only part of the surface when
@@ -126,18 +131,16 @@ type ChannelIngressQueueCompletedMetadataOf<Q> =
  * ChannelIngressSuppressedCompletionMetadata.
  *
  * TQueue is constrained with `any` completed metadata so specialized queues can
- * still be *inferred* under partial factory type arguments. The default falls
- * back to free TCompletedMetadata (not `any`) so genuine one-/two-generic calls
- * reject incompatible branded queues on the disposition-enabled path.
- * Incompatible queue contracts collapse disposition fields to `never`.
+ * still be supplied. Prefer the queue-first factory overload so TQueue is inferred
+ * from `options.queue` (TypeScript cannot infer a trailing brand parameter once
+ * leading type arguments are supplied without an any-default that fails open).
+ * Incompatible queue contracts collapse disposition fields to `never` (errors
+ * land on resolvePendingDisposition, not the queue property).
  */
 export type CreateChannelIngressDrainOptions<
   TPayload = unknown,
   TMetadata = unknown,
   TCompletedMetadata = unknown,
-  // Default completed-metadata to `any` so partial type args still accept
-  // specialized compatible queue brands (queue is invariant in TCompletedMetadata).
-  // Disposition safety is gated on the inferred queue brand and free metadata.
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
@@ -156,6 +159,29 @@ export type CreateChannelIngressDrainOptions<
         resolvePendingDisposition?: never;
         onPendingDispositionCommitted?: never;
       });
+
+/**
+ * Recover queue type params from compile-time brand fields (method bivariance
+ * makes `extends ChannelIngressQueue<infer P, …>` collapse to unknown).
+ */
+type ChannelIngressQueueParamsOf<TQueue> = TQueue extends {
+  readonly __payloadBrand?: (value: infer P) => infer _P;
+  readonly __metadataBrand?: (value: infer M) => infer _M;
+  readonly __completedMetadataBrand?: (value: infer C) => infer _C;
+}
+  ? [P, M, C]
+  : never;
+
+/**
+ * Options inferred entirely from a queue value. Used by the queue-first factory
+ * overload so one-/two-payload call sites keep brand safety without supplying an
+ * any-metadata default for a trailing TQueue parameter.
+ */
+export type CreateChannelIngressDrainOptionsForQueue<TQueue> =
+  ChannelIngressQueueParamsOf<TQueue> extends [infer P, infer M, infer C]
+    ? CreateChannelIngressDrainOptions<P, M, C, TQueue & ChannelIngressQueue<P, M, C>>
+    : never;
+
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;
   drainOnce: (options?: {
@@ -166,92 +192,49 @@ export type ChannelIngressDrain = {
   dispose: () => void;
 };
 
-/** No-disposition overload: queue metadata is unconstrained. */
-export function createChannelIngressDrain<
-  TPayload = unknown,
-  TMetadata = unknown,
-  TCompletedMetadata = unknown,
-  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
-    TPayload,
-    TMetadata,
-    any
-  >,
->(
-  options: Omit<
-    CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
-    "queue"
-  > & {
-    queue: TQueue;
-    resolvePendingDisposition?: undefined;
-    onPendingDispositionCommitted?: undefined;
-  },
-): ChannelIngressDrain;
 /**
- * Disposition overload: rejects when the queue brand / free completed metadata
- * cannot store suppressions. Errors land on the resolver field.
+ * Explicit free completed-metadata call (`<Payload, Metadata, CompletedMetadata>`).
+ * Queue brand still participates when a specialized queue is supplied.
  */
 export function createChannelIngressDrain<
-  TPayload = unknown,
-  TMetadata = unknown,
-  TCompletedMetadata = unknown,
+  TPayload,
+  TMetadata,
+  TCompletedMetadata,
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    any
-  >,
->(
-  options: {
-    queue: TQueue;
-  } & (ChannelIngressSuppressedCompletionMetadata extends ChannelIngressQueueCompletedMetadataOf<TQueue>
-    ? ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
-      ? Omit<
-          CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
-          "queue"
-        > &
-          CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> & {
-            resolvePendingDisposition: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
-          }
-      : Omit<
-          CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
-          "queue"
-        > & {
-          resolvePendingDisposition?: never;
-          onPendingDispositionCommitted?: never;
-        }
-    : Omit<
-        CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
-        "queue"
-      > & {
-        resolvePendingDisposition?: never;
-        onPendingDispositionCommitted?: never;
-      }),
-): ChannelIngressDrain;
-/**
- * Optional-disposition overload: monitor/plugin spreads. Gates via
- * CreateChannelIngressDrainOptions (queue brand + free completed metadata).
- */
-export function createChannelIngressDrain<
-  TPayload = unknown,
-  TMetadata = unknown,
-  TCompletedMetadata = unknown,
-  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
-    TPayload,
-    TMetadata,
-    any
+    TCompletedMetadata
   >,
 >(
   options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
 ): ChannelIngressDrain;
-/** Creates a channel-agnostic durable ingress drain over an existing queue. */
-export function createChannelIngressDrain<
-  TPayload = unknown,
-  TMetadata = unknown,
-  TCompletedMetadata = unknown,
-  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
-    TPayload,
-    TMetadata,
-    any
+/**
+ * Queue-first call (zero type arguments, or payload fixed only via the queue
+ * brand). Infers payload/metadata/completed-metadata from `options.queue` so
+ * incompatible disposition resolvers fail on resolvePendingDisposition.
+ *
+ * TQueue is unconstrained so invariance of ChannelIngressQueue does not block
+ * inferring a specialized payload brand (extends ChannelIngressQueue<any,...>
+ * would reject ChannelIngressQueue<Payload> under method invariance).
+ *
+ * Prefer this overload for ordinary construction — TypeScript cannot soundly
+ * infer a trailing queue brand after partial `<Payload>` / `<Payload, Metadata>`
+ * type arguments without an any-default that fails the gate open.
+ */
+export function createChannelIngressDrain<TQueue>(
+  options: CreateChannelIngressDrainOptionsForQueue<
+    TQueue extends ChannelIngressQueue<any, any, any> ? TQueue : never
   >,
+): ChannelIngressDrain;
+/**
+ * Creates a channel-agnostic durable ingress drain over an existing queue.
+ * Implementation generics are erased at call sites by the overloads above.
+ */
+export function createChannelIngressDrain<
+  TPayload = any,
+  TMetadata = any,
+  TCompletedMetadata = any,
+  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = any,
 >(
   options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
 ): ChannelIngressDrain {

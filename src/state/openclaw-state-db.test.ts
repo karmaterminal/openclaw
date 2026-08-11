@@ -1282,6 +1282,7 @@ describe("openclaw state database", () => {
     const staleFence = {
       generation: snap!.generation,
       receivedAt: snap!.receivedAt,
+      updatedAt: snap!.updatedAt,
     };
     closeOpenClawStateDatabaseForTest();
 
@@ -1325,7 +1326,7 @@ const queue = createChannelIngressQueue({
   now: () => 200,
 });
 const deleted = await queue.delete("cross-id");
-const enqueued = await queue.enqueue("cross-id", { text: "frozen-rewrite" }, { receivedAt: 20 });
+const enqueued = await queue.enqueue("cross-id", { text: "frozen-rewrite" }, { receivedAt: 10 });
 closeOpenClawStateDatabaseForTest();
 process.stdout.write(JSON.stringify({ count, deleted, enqueuedKind: enqueued.kind }) + "\\n");
 `,
@@ -1356,6 +1357,9 @@ process.stdout.write(JSON.stringify({ count, deleted, enqueuedKind: enqueued.kin
       stateDir,
       now: () => 300,
     });
+    const [replacement] = await afterQueue.listPending();
+    expect(replacement?.receivedAt).toBe(staleFence.receivedAt);
+    expect(replacement?.updatedAt).not.toBe(staleFence.updatedAt);
     expect(
       await afterQueue.complete("cross-id", {
         expectedPending: staleFence,

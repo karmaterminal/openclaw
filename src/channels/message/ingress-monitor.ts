@@ -306,7 +306,9 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
   };
 
   const getDrain = (): ChannelIngressDrain => {
-    drain ??= createChannelIngressDrain<TStoredPayload, TMetadata>({
+    // Queue-first inference: payload/metadata brands flow from getQueue() so
+    // disposition gating stays sound without partial factory type arguments.
+    drain ??= createChannelIngressDrain({
       ...options.drain,
       queue: getQueue(),
       abortSignal: drainAbortSignal,

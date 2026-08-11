@@ -65,13 +65,15 @@ export type ChannelIngressQueueClaimRef = {
 
 /**
  * Snapshot fence for pending-id complete/fail CAS. Matches the durable
- * never-reused generation allocator plus the row's receivedAt incarnation so
- * fail+resubmit, delete/prune/re-enqueue, and frozen-base writers that cannot
- * advance the side-table token cannot ABA-settle a replacement row.
+ * never-reused generation allocator plus the row's receivedAt/updatedAt
+ * incarnation so fail+resubmit, delete/prune/re-enqueue, and frozen-base
+ * writers that cannot advance the side-table token cannot ABA-settle a
+ * replacement even when caller-supplied receivedAt is identical.
  */
 export type ChannelIngressPendingGenerationMatch = {
   generation: number;
   receivedAt: number;
+  updatedAt: number;
 };
 
 /** Claim identity available when a stale row's payload cannot be decoded. */
@@ -203,11 +205,12 @@ type ChannelIngressQueueEnqueueResult<TPayload, TMetadata, TCompletedMetadata> =
 /** Durable FIFO-ish ingress queue with claims, duplicate detection, and retention pruning. */
 export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadata = unknown> = {
   /**
-   * Invariant completed-metadata brand. Optional at runtime; present only in the
-   * type system so method bivariance cannot collapse an incompatible queue
-   * contract to `unknown` when drain factory type arguments are partially
-   * specified (completed metadata must stay tied to the queue).
+   * Compile-time-only brands. Optional at runtime; present so conditional types
+   * can recover payload/metadata/completed-metadata despite method bivariance
+   * collapsing bare `extends ChannelIngressQueue<infer P, …>` to `unknown`.
    */
+  readonly __payloadBrand?: (value: TPayload) => TPayload;
+  readonly __metadataBrand?: (value: TMetadata) => TMetadata;
   readonly __completedMetadataBrand?: (value: TCompletedMetadata) => TCompletedMetadata;
   enqueue(
     id: string,
@@ -408,11 +411,45 @@ function writeEventGeneration(
 }
 
 /**
- * Allocate a queue-local generation that never reuses a prior value, even after
- * the per-event side-table row is cleared by complete/delete/prune.
+ * Singleton allocator key. Queue names historically churn with plugin/account
+ * identity; a single never-reuse counter bounds storage while remaining
+ * monotonic across every queue scope in the database.
+ */
+const INGRESS_GENERATION_COUNTER_KEY = "";
+
+/**
+ * Fold legacy per-queue counters into the singleton high-water mark and drop
+ * the unbounded per-name rows. Safe to call on every allocate/prune.
+ */
+function compactGenerationCounters(db: DatabaseSync): void {
+  // sqlite-allow-raw -- Singleton high-water fold + prune of per-queue counter rows.
+  const maxRow = db
+    .prepare(
+      `SELECT COALESCE(MAX(next_generation), 0) AS n
+       FROM channel_ingress_generation_counters`,
+    )
+    .get() as { n: number } | undefined;
+  const highWater = Number(maxRow?.n ?? 0);
+  db.prepare(
+    `INSERT INTO channel_ingress_generation_counters (queue_name, next_generation)
+     VALUES (?, ?)
+     ON CONFLICT(queue_name) DO UPDATE SET
+       next_generation = MAX(next_generation, excluded.next_generation)`,
+  ).run(INGRESS_GENERATION_COUNTER_KEY, highWater);
+  db.prepare(
+    `DELETE FROM channel_ingress_generation_counters
+     WHERE queue_name != ?`,
+  ).run(INGRESS_GENERATION_COUNTER_KEY);
+}
+
+/**
+ * Allocate a DB-global generation that never reuses a prior value, even after
+ * the per-event side-table row is cleared by complete/delete/prune and even
+ * across historical queue-name churn.
  */
 function allocateEventGeneration(db: DatabaseSync, queueName: string, eventId: string): number {
-  // sqlite-allow-raw -- Atomic per-queue monotonic generation allocator + side row.
+  compactGenerationCounters(db);
+  // sqlite-allow-raw -- Atomic singleton monotonic generation allocator + side row.
   const row = db
     .prepare(
       `INSERT INTO channel_ingress_generation_counters (queue_name, next_generation)
@@ -420,7 +457,7 @@ function allocateEventGeneration(db: DatabaseSync, queueName: string, eventId: s
        ON CONFLICT(queue_name) DO UPDATE SET next_generation = next_generation + 1
        RETURNING next_generation`,
     )
-    .get(queueName) as { next_generation: number } | undefined;
+    .get(INGRESS_GENERATION_COUNTER_KEY) as { next_generation: number } | undefined;
   const generation = Number(row?.next_generation ?? 0);
   if (!Number.isFinite(generation) || generation < 1) {
     throw new Error(`Failed to allocate channel ingress generation for ${queueName}`);
@@ -451,6 +488,7 @@ function pruneOrphanEventGenerations(db: DatabaseSync, queueName: string): numbe
          )`,
     )
     .run(queueName, queueName);
+  compactGenerationCounters(db);
   return Number(result.changes ?? 0);
 }
 
@@ -475,6 +513,12 @@ function pendingSettlementAllowed(
     return false;
   }
   if (Number(row.received_at) !== expectedPending.receivedAt) {
+    return false;
+  }
+  // Frozen-base writers cannot advance the side-table generation token. They
+  // do rewrite updated_at on delete/re-enqueue, so identical receivedAt alone
+  // must not authorize settlement of a replacement incarnation.
+  if (Number(row.updated_at) !== expectedPending.updatedAt) {
     return false;
   }
   const laneKey = row.lane_key;
@@ -1051,6 +1095,7 @@ export function createChannelIngressQueue<
     if (candidateIds?.length === 0) {
       return null;
     }
+    const ownerId = normalizePart(claimOptions?.ownerId, `${process.pid}`);
     const resolveClaimLaneKey = (
       record: ChannelIngressQueueRecord<TPayload, TMetadata>,
     ): string | undefined => {
@@ -1075,10 +1120,35 @@ export function createChannelIngressQueue<
     return runOpenClawStateWriteTransaction(
       (tx) => {
         const kysely = getChannelIngressKysely(tx.db);
-        let effectiveBlocked = blocked;
-        if (candidateIds && candidateIds.length > 0) {
-          // Candidate snapshots can race a sibling drainer. If an earlier
-          // candidate is now claimed, its lane must block later same-lane rows.
+        // Always re-read raw live *peer* claimed lanes under the claim
+        // transaction — including non-candidate and corrupt-payload rows that
+        // listClaims filters out — so a concurrent peer claim between the
+        // drain's pre-claim listClaims and this CAS cannot leave the lane
+        // unfenced (TOCTOU). Candidate membership must never gate fencing.
+        // Self-owned claims are intentionally omitted: deferredLaneOccupancy
+        // "release" keeps the claim token while freeing the lane, and the
+        // drain already decided which self-held rows belong in blockedLaneKeys.
+        // sqlite-allow-raw -- Raw peer claimed-lane fence (no payload decode).
+        const liveClaimedLanes = tx.db
+          .prepare(
+            `SELECT DISTINCT lane_key AS laneKey
+             FROM channel_ingress_events
+             WHERE queue_name = ?
+               AND status = 'claimed'
+               AND lane_key IS NOT NULL
+               AND TRIM(lane_key) != ''
+               AND (claim_owner IS NULL OR claim_owner != ?)`,
+          )
+          .all(queueName, ownerId) as Array<{ laneKey: string }>;
+        const effectiveBlocked = new Set(blocked);
+        for (const claimed of liveClaimedLanes) {
+          if (typeof claimed.laneKey === "string" && claimed.laneKey.length > 0) {
+            effectiveBlocked.add(claimed.laneKey);
+          }
+        }
+        // Ephemeral deriveLaneKey paths may fence lanes not stored on the row.
+        // Re-resolve those only for currently-claimed candidates under the tx.
+        if (claimOptions?.deriveLaneKey && candidateIds && candidateIds.length > 0) {
           const claimedCandidateRows = executeSqliteQuerySync(
             tx.db,
             kysely
@@ -1093,20 +1163,18 @@ export function createChannelIngressQueue<
             queueName,
             claimedCandidateRows.map((row) => row.event_id),
           );
-          const claimedCandidateLaneKeys = claimedCandidateRows
-            .map((row) => {
-              if (row.lane_key && !claimOptions?.reconcileStoredLaneKey) {
-                return row.lane_key;
-              }
-              const rec = baseRecord<TPayload, TMetadata>(
-                row,
-                claimedCandidateGenerations.get(row.event_id) ?? 0,
-              );
-              return rec ? resolveClaimLaneKey(rec) : (row.lane_key ?? undefined);
-            })
-            .filter((laneKey): laneKey is string => Boolean(laneKey));
-          if (claimedCandidateLaneKeys.length > 0) {
-            effectiveBlocked = new Set([...blocked, ...claimedCandidateLaneKeys]);
+          for (const row of claimedCandidateRows) {
+            const rec = baseRecord<TPayload, TMetadata>(
+              row,
+              claimedCandidateGenerations.get(row.event_id) ?? 0,
+            );
+            if (!rec) {
+              continue;
+            }
+            const derived = resolveClaimLaneKey(rec);
+            if (derived) {
+              effectiveBlocked.add(derived);
+            }
           }
         }
         const baseSelect = kysely
@@ -1178,7 +1246,6 @@ export function createChannelIngressQueue<
         }
         const derivedLaneKey = resolveClaimLaneKey(selected.record);
         const token = randomUUID();
-        const ownerId = normalizePart(claimOptions?.ownerId, `${process.pid}`);
         const result = executeSqliteQuerySync(
           tx.db,
           kysely

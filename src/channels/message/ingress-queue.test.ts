@@ -959,6 +959,7 @@ describe("channel ingress queue", () => {
       const staleFence = {
         generation: snapshot!.generation,
         receivedAt: snapshot!.receivedAt,
+        updatedAt: snapshot!.updatedAt,
       };
 
       expect(await queue.fail("gen-resubmit", { reason: "operator", message: "drop" })).toBe(true);
@@ -991,6 +992,7 @@ describe("channel ingress queue", () => {
       const releaseFence = {
         generation: afterResubmit!.generation,
         receivedAt: afterResubmit!.receivedAt,
+        updatedAt: afterResubmit!.updatedAt,
       };
       const claim = await queue.claim("gen-resubmit", { ownerId: "worker" });
       expect(claim).not.toBeNull();
@@ -1027,6 +1029,7 @@ describe("channel ingress queue", () => {
       const preClaimFence = {
         generation: snapshot!.generation,
         receivedAt: snapshot!.receivedAt,
+        updatedAt: snapshot!.updatedAt,
       };
 
       const claim = await queue.claim("gen-recover", { ownerId: "stale-owner" });
@@ -1069,6 +1072,7 @@ describe("channel ingress queue", () => {
       const staleFence = {
         generation: first!.generation,
         receivedAt: first!.receivedAt,
+        updatedAt: first!.updatedAt,
       };
 
       expect(await queue.delete("aba-id")).toBe(true);
@@ -1100,6 +1104,7 @@ describe("channel ingress queue", () => {
       const liveFence = {
         generation: second!.generation,
         receivedAt: second!.receivedAt,
+        updatedAt: second!.updatedAt,
       };
       expect(await queue.prune({ pendingMaxEntries: 0, now: 100 })).toBeGreaterThan(0);
       {
@@ -1181,7 +1186,11 @@ describe("channel ingress queue", () => {
       await queue.enqueue("head", { text: "h" }, { laneKey: "lane:x", receivedAt: 1 });
       await queue.enqueue("tail", { text: "t" }, { laneKey: "lane:x", receivedAt: 2 });
       const [tail] = (await queue.listPending({ limit: "all" })).filter((r) => r.id === "tail");
-      const fence = { generation: tail!.generation, receivedAt: tail!.receivedAt };
+      const fence = {
+        generation: tail!.generation,
+        receivedAt: tail!.receivedAt,
+        updatedAt: tail!.updatedAt,
+      };
       const headClaim = await queue.claim("head", { ownerId: "peer" });
       expect(headClaim).not.toBeNull();
       expect(
@@ -1192,6 +1201,131 @@ describe("channel ingress queue", () => {
       ).toBe(false);
       expect((await queue.listPending({ limit: "all" })).map((r) => r.id)).toEqual(["tail"]);
       expect((await queue.listClaims()).map((c) => c.id)).toEqual(["head"]);
+    });
+  });
+
+  it("claimNext always fences raw live same-lane claims including non-candidate and corrupt heads", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue<{ text: string }>(stateDir, { now: () => 1_000 });
+      const laneKey = "lane:peer";
+      const otherLane = "lane:other";
+      await queue.enqueue("head", { text: "h" }, { laneKey, receivedAt: 1 });
+      await queue.enqueue("tail", { text: "t" }, { laneKey, receivedAt: 2 });
+      await queue.enqueue("other", { text: "o" }, { laneKey: otherLane, receivedAt: 3 });
+
+      // Peer holds head outside the later claimNext candidate set (TOCTOU: drain
+      // listClaims can miss non-candidate / corrupt live claims).
+      const headClaim = await queue.claim("head", { ownerId: "peer" });
+      expect(headClaim).not.toBeNull();
+
+      const claimed = await queue.claimNext({
+        ownerId: "drainer",
+        candidateIds: ["tail", "other"],
+        blockedLaneKeys: [],
+      });
+      // Same-lane tail must stay pending; unrelated lane advances.
+      expect(claimed?.id).toBe("other");
+      expect((await queue.listPending({ limit: "all" })).map((r) => r.id)).toEqual(["tail"]);
+      expect((await queue.listClaims()).map((c) => c.id).toSorted()).toEqual(["head", "other"]);
+
+      // Corrupt live claim (payload decode fails → listClaims omits it) still fences.
+      const { DatabaseSync } = await import("node:sqlite");
+      const { resolveOpenClawStateSqlitePath } =
+        await import("../../state/openclaw-state-db.paths.js");
+      const dbPath = resolveOpenClawStateSqlitePath({ OPENCLAW_STATE_DIR: stateDir });
+      closeOpenClawStateDatabaseForTest();
+      const db = new DatabaseSync(dbPath);
+      try {
+        db.prepare(
+          `UPDATE channel_ingress_events
+           SET status = 'pending', claim_owner = NULL, claim_token = NULL
+           WHERE event_id = 'head'`,
+        ).run();
+        db.prepare(
+          `UPDATE channel_ingress_events
+           SET status = 'claimed',
+               claim_owner = 'corrupt-peer',
+               claim_token = 'tok',
+               payload_json = '{corrupt'
+           WHERE event_id = 'head'`,
+        ).run();
+      } finally {
+        db.close();
+      }
+      // Re-open queue against mutated DB.
+      const queue2 = createTestIngressQueue<{ text: string }>(stateDir, { now: () => 1_000 });
+      expect((await queue2.listClaims()).map((c) => c.id)).toEqual(["other"]);
+      const claimedAfterCorrupt = await queue2.claimNext({
+        ownerId: "drainer-2",
+        candidateIds: ["tail"],
+        blockedLaneKeys: [],
+      });
+      expect(claimedAfterCorrupt).toBeNull();
+      expect((await queue2.listPending({ limit: "all" })).map((r) => r.id)).toEqual(["tail"]);
+    });
+  });
+
+  it("bounds generation counters to a singleton across queue-name churn", async () => {
+    await withTempState(async (stateDir) => {
+      const { resolveOpenClawStateSqlitePath } =
+        await import("../../state/openclaw-state-db.paths.js");
+      const { DatabaseSync } = await import("node:sqlite");
+      // Many distinct queue scopes (plugin/account churn).
+      for (let i = 0; i < 12; i += 1) {
+        const q = createChannelIngressQueue<{ text: string }>({
+          channelId: `churn-${i}`,
+          accountId: `acct-${i}`,
+          stateDir,
+          now: () => i + 1,
+        });
+        await q.enqueue(`evt-${i}`, { text: String(i) }, { receivedAt: i });
+      }
+      closeOpenClawStateDatabaseForTest();
+      const dbPath = resolveOpenClawStateSqlitePath({ OPENCLAW_STATE_DIR: stateDir });
+      const inspect = new DatabaseSync(dbPath, { readOnly: true });
+      try {
+        const counterRows = inspect
+          .prepare("SELECT COUNT(*) AS n FROM channel_ingress_generation_counters")
+          .get() as { n: number };
+        expect(Number(counterRows.n)).toBe(1);
+        const highWater = inspect
+          .prepare("SELECT next_generation AS n FROM channel_ingress_generation_counters")
+          .get() as { n: number };
+        expect(Number(highWater.n)).toBeGreaterThanOrEqual(12);
+        const genRows = inspect
+          .prepare("SELECT COUNT(*) AS n FROM channel_ingress_event_generations")
+          .get() as { n: number };
+        expect(Number(genRows.n)).toBe(12);
+      } finally {
+        inspect.close();
+      }
+      // Delete via one queue then re-enqueue under a fresh name — never-reuse holds.
+      const first = createChannelIngressQueue<{ text: string }>({
+        channelId: "churn-0",
+        accountId: "acct-0",
+        stateDir,
+        now: () => 100,
+      });
+      expect(await first.delete("evt-0")).toBe(true);
+      const fresh = createChannelIngressQueue<{ text: string }>({
+        channelId: "brand-new-scope",
+        accountId: "brand-new",
+        stateDir,
+        now: () => 200,
+      });
+      await fresh.enqueue("fresh", { text: "x" }, { receivedAt: 200 });
+      const [row] = await fresh.listPending();
+      expect(row!.generation).toBeGreaterThan(12);
+      closeOpenClawStateDatabaseForTest();
+      const inspect2 = new DatabaseSync(dbPath, { readOnly: true });
+      try {
+        const counterRows = inspect2
+          .prepare("SELECT COUNT(*) AS n FROM channel_ingress_generation_counters")
+          .get() as { n: number };
+        expect(Number(counterRows.n)).toBe(1);
+      } finally {
+        inspect2.close();
+      }
     });
   });
 
