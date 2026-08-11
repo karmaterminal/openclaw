@@ -227,6 +227,7 @@ export interface ChannelIngressEvents {
   event_id: string;
   failed_at: number | null;
   failed_reason: string | null;
+  generation: Generated<number>;
   lane_key: string | null;
   last_attempt_at: number | null;
   last_error: string | null;

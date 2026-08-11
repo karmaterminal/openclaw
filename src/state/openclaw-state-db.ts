@@ -433,6 +433,10 @@ function ensureSchema(db: DatabaseSync, pathname: string): void {
         executeCanonicalStateSchema(db, {
           includeVersionLazyAdditiveTables: previousVersion !== OPENCLAW_STATE_SCHEMA_VERSION,
         });
+        // Re-run additive ensures after CREATE TABLE IF NOT EXISTS so brand-new
+        // databases still pick up columns added to existing tables (ensureColumn
+        // is a no-op when the table is absent on the first pass).
+        ensureAdditiveStateColumns(db);
         migrateLegacyCronRunLogsToTaskRuns(db);
         if (previousVersion < OPENCLAW_STATE_STRICT_SCHEMA_VERSION) {
           repairLegacyGatewayRestartHandoffsForStrictMigration(db);

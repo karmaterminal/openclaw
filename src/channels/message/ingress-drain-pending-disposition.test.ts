@@ -177,11 +177,11 @@ describe("channel ingress pending disposition drain", () => {
     await withTempState(async (stateDir) => {
       const laneKey = "channel:discord-room";
       const clock = STALE_AMBIENT_PENDING_MS + 1;
-      const pages: Array<{ requested: number; selected: number }> = [];
       const queue = createTestIngressQueue(stateDir, {
         now: () => clock,
-        onListPendingPage: (page) => pages.push(page),
       });
+      const { instrumentPendingListSql } = await import("./ingress-drain.test-helpers.js");
+      const sql = instrumentPendingListSql(stateDir);
 
       // >100 rows so an unbounded 100-row page walker would over-read.
       for (let index = 0; index < 120; index += 1) {
@@ -193,7 +193,7 @@ describe("channel ingress pending disposition drain", () => {
       }
 
       // startLimit 0 must not open a SQL page.
-      pages.length = 0;
+      sql.reset();
       const zeroDrain = createChannelIngressDrain<Payload>({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
@@ -204,10 +204,11 @@ describe("channel ingress pending disposition drain", () => {
         },
       });
       expect(await zeroDrain.drainOnce()).toEqual({ started: 0 });
-      expect(pages).toEqual([]);
+      expect(sql.selectCalls()).toBe(0);
+      expect(sql.selectedRows()).toBe(0);
       zeroDrain.dispose();
 
-      pages.length = 0;
+      sql.reset();
       let examined = 0;
       const drain = createChannelIngressDrain<Payload>({
         queue,
@@ -224,9 +225,70 @@ describe("channel ingress pending disposition drain", () => {
       expect(await drain.drainOnce()).toEqual({ started: 0 });
       await drain.waitForIdle();
       expect(examined).toBe(4);
-      expect(pages.reduce((sum, page) => sum + page.selected, 0)).toBe(4);
-      expect(pages.every((page) => page.requested <= 4)).toBe(true);
-      expect(pages.reduce((sum, page) => sum + page.requested, 0)).toBeLessThanOrEqual(4);
+      expect(sql.selectedRows()).toBe(4);
+      expect(sql.selectedRows()).toBeLessThanOrEqual(4);
+      drain.dispose();
+    });
+  });
+
+  it("repeated drains reconcile a corrupt prefix under startLimit until valid work dispatches", async () => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const clock = STALE_AMBIENT_PENDING_MS + 1;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      const { openOpenClawStateDatabase } = await import("../../state/openclaw-state-db.js");
+      const { executeSqliteQuerySync, getNodeSqliteKysely } =
+        await import("../../infra/kysely-sync.js");
+      const database = openOpenClawStateDatabase({
+        env: { OPENCLAW_STATE_DIR: stateDir },
+      });
+      const kysely = getNodeSqliteKysely(database.db);
+      const queueName = JSON.stringify(["test", "a"]);
+      // More corrupt rows than startLimit so one pass cannot clear the prefix.
+      for (let index = 0; index < 5; index += 1) {
+        executeSqliteQuerySync(
+          database.db,
+          kysely.insertInto("channel_ingress_events").values({
+            queue_name: queueName,
+            event_id: `corrupt-${index}`,
+            channel_id: "test",
+            account_id: "a",
+            status: "pending",
+            lane_key: laneKey,
+            payload_json: "{corrupt",
+            metadata_json: null,
+            received_at: index,
+            updated_at: index,
+            attempts: 0,
+          }),
+        );
+      }
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw now", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
+        startLimit: 2,
+        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      for (let pump = 0; pump < 6 && adopted.length === 0; pump += 1) {
+        await drain.drainOnce();
+        await drain.waitForIdle();
+      }
+      expect(adopted).toEqual(["fresh-addressed"]);
+      expect((await queue.listFailed?.({ limit: "all" }))?.map((row) => row.reason)).toEqual(
+        Array.from({ length: 5 }, () => "corrupt_payload"),
+      );
       drain.dispose();
     });
   });
@@ -586,5 +648,40 @@ describe("channel ingress pending disposition drain", () => {
     type AcceptsCompatible = CompatibleResolve extends (...args: never) => unknown ? true : false;
     const acceptsCompatible: AcceptsCompatible = true;
     expect(acceptsCompatible).toBe(true);
+
+    // Actual public factory calls (inferred + partially explicit) must reject.
+    void (async () => {
+      const { createChannelIngressQueue } = await import("./ingress-queue.js");
+      const incompatibleQueue = createChannelIngressQueue<
+        Payload,
+        unknown,
+        IncompatibleCompletedMetadata
+      >({
+        channelId: "typecheck",
+        accountId: "typecheck",
+      });
+      const dispatchClaimedEvent = async () => {};
+      const resolvePendingDisposition = () => ({
+        kind: "complete" as const,
+        reason: "stale",
+        message: "stale",
+      });
+
+      // Inferred generics from the incompatible queue.
+      // @ts-expect-error incompatible completed metadata rejects disposition resolver
+      createChannelIngressDrain({
+        queue: incompatibleQueue,
+        resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+
+      // Partially explicit generics still reject.
+      // @ts-expect-error incompatible completed metadata rejects disposition resolver
+      createChannelIngressDrain<Payload, unknown, IncompatibleCompletedMetadata>({
+        queue: incompatibleQueue,
+        resolvePendingDisposition,
+        dispatchClaimedEvent,
+      });
+    });
   });
 });

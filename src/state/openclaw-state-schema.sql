@@ -1104,6 +1104,8 @@ CREATE TABLE IF NOT EXISTS channel_ingress_events (
   claim_owner TEXT,
   claimed_at INTEGER,
   attempts INTEGER NOT NULL DEFAULT 0,
+  -- Monotonic pending generation fence; bumps on enqueue/resubmit/release.
+  generation INTEGER NOT NULL DEFAULT 0,
   last_attempt_at INTEGER,
   last_error TEXT,
   failed_reason TEXT,

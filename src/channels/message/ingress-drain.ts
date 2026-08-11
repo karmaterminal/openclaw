@@ -58,7 +58,7 @@ const INGRESS_TOMBSTONE_RETRY_MAX_ATTEMPTS = 8;
 
 type DeferredLaneOccupancy = "hold" | "release";
 
-export type CreateChannelIngressDrainOptions<
+type CreateChannelIngressDrainCoreOptions<
   TPayload,
   TMetadata = unknown,
   TCompletedMetadata = unknown,
@@ -86,16 +86,6 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
-  /**
-   * complete dispositions write ChannelIngressSuppressedCompletionMetadata.
-   * Only available when TCompletedMetadata accepts that shape (including unknown).
-   */
-  resolvePendingDisposition?: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
-    ? ResolveChannelIngressPendingDisposition<TPayload, TMetadata>
-    : never;
-  onPendingDispositionCommitted?: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
-    ? OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>
-    : never;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -114,6 +104,33 @@ export type CreateChannelIngressDrainOptions<
   startLimit?: number;
 };
 
+type CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> = {
+  /**
+   * complete dispositions write ChannelIngressSuppressedCompletionMetadata.
+   * Only available when TCompletedMetadata accepts that shape (including unknown).
+   */
+  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
+};
+
+/**
+ * Public drain options. Disposition resolvers are only part of the surface when
+ * `TCompletedMetadata` can store ChannelIngressSuppressedCompletionMetadata
+ * (including the default `unknown`). Incompatible metadata collapses those
+ * fields to `never` so factory inference rejects them.
+ */
+export type CreateChannelIngressDrainOptions<
+  TPayload,
+  TMetadata = unknown,
+  TCompletedMetadata = unknown,
+> = CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata> &
+  (ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
+    ? CreateChannelIngressDrainDispositionFields<TPayload, TMetadata>
+    : {
+        resolvePendingDisposition?: never;
+        onPendingDispositionCommitted?: never;
+      });
+
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;
   drainOnce: (options?: { shouldStop?: () => boolean }) => Promise<{ started: number }>;
@@ -122,6 +139,34 @@ export type ChannelIngressDrain = {
   dispose: () => void;
 };
 
+/** No-disposition overload: queue metadata is unconstrained. */
+export function createChannelIngressDrain<
+  TPayload,
+  TMetadata = unknown,
+  TCompletedMetadata = unknown,
+>(
+  options: CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata> & {
+    resolvePendingDisposition?: undefined;
+    onPendingDispositionCommitted?: undefined;
+  },
+): ChannelIngressDrain;
+/**
+ * Disposition overload: requires completed metadata that can store suppressions.
+ * Incompatible `TCompletedMetadata` makes this overload unsatisfiable so both
+ * inferred and partially-explicit factory calls reject at the call site.
+ */
+export function createChannelIngressDrain<
+  TPayload,
+  TMetadata = unknown,
+  TCompletedMetadata = unknown,
+>(
+  options: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
+    ? CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata> &
+        CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> & {
+          resolvePendingDisposition: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+        }
+    : never,
+): ChannelIngressDrain;
 /** Creates a channel-agnostic durable ingress drain over an existing queue. */
 export function createChannelIngressDrain<
   TPayload,

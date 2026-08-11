@@ -25,7 +25,9 @@ export function createStateSchemaInlinePlugin(rootDir = process.cwd()) {
   return {
     name: STATE_SCHEMA_INLINE_PLUGIN_NAME,
     load(id) {
-      const schema = schemasByModulePath.get(path.resolve(id));
+      // Vitest may append query suffixes (e.g. ?v=...); strip before lookup.
+      const resolvedId = path.resolve(String(id).split("?")[0] ?? id);
+      const schema = schemasByModulePath.get(resolvedId);
       if (!schema) {
         return null;
       }

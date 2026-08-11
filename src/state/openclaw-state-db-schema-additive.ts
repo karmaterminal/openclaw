@@ -370,5 +370,7 @@ export function ensureAdditiveStateColumns(db: DatabaseSync): void {
     "worker_environments",
     "teardown_terminal_state TEXT CHECK (teardown_terminal_state IN ('destroyed', 'failed'))",
   );
+  // Pending-generation fence for channel ingress complete/fail CAS (ABA-safe).
+  ensureColumn(db, "channel_ingress_events", "generation INTEGER NOT NULL DEFAULT 0");
   ensureOperatorApprovalResolutionRefs(db);
 }

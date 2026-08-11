@@ -30,6 +30,11 @@ export type ChannelIngressQueueRecord<TPayload, TMetadata = unknown> = {
   metadata?: TMetadata;
   receivedAt: number;
   updatedAt: number;
+  /**
+   * Durable monotonic pending generation. Bumps on enqueue, resubmit, and claim
+   * release so complete/fail CAS cannot ABA across recycled timestamps/attempts.
+   */
+  generation: number;
   laneKey?: string;
   attempts: number;
   lastAttemptAt?: number;
@@ -57,13 +62,12 @@ export type ChannelIngressQueueClaimRef = {
 };
 
 /**
- * Snapshot generation fence for pending-id complete/fail CAS. A concurrent
- * fail+resubmit changes these fields, so a stale disposition must not settle.
+ * Snapshot generation fence for pending-id complete/fail CAS. Matches the
+ * durable monotonic `generation` column so fail+resubmit and claim+release
+ * cannot recreate a prior fence via recycled timestamps/attempts (ABA).
  */
 export type ChannelIngressPendingGenerationMatch = {
-  receivedAt: number;
-  updatedAt: number;
-  attempts: number;
+  generation: number;
 };
 
 /** Claim identity available when a stale row's payload cannot be decoded. */
@@ -283,11 +287,6 @@ export type CreateChannelIngressQueueOptions = {
   accountId?: string;
   stateDir?: string;
   now?: () => number;
-  /**
-   * Diagnostic seam fired once per listPending SQL page with the requested page
-   * size and the number of SQLite rows actually selected (valid + corrupt).
-   */
-  onListPendingPage?: (page: { requested: number; selected: number }) => void;
 };
 
 type ChannelIngressDatabase = Pick<OpenClawStateKyselyDatabase, "channel_ingress_events">;
@@ -357,6 +356,7 @@ function baseRecord<TPayload, TMetadata>(
     ...(metaResult === null || !metaResult.ok ? {} : { metadata: metaResult.value as TMetadata }),
     receivedAt: row.received_at,
     updatedAt: row.updated_at,
+    generation: Number(row.generation ?? 0),
     ...(row.lane_key === null ? {} : { laneKey: row.lane_key }),
     attempts: row.attempts,
     ...(row.last_attempt_at === null ? {} : { lastAttemptAt: row.last_attempt_at }),
@@ -649,6 +649,9 @@ export function createChannelIngressQueue<
               received_at: receivedAt,
               updated_at: updatedAt,
               attempts: 0,
+              // Fresh accepts start at generation 1 so they never collide with
+              // pre-migration DEFAULT 0 rows that later bump on release/resubmit.
+              generation: 1,
             })
             .onConflict((conflict) => conflict.columns(["queue_name", "event_id"]).doNothing()),
         );
@@ -710,60 +713,95 @@ export function createChannelIngressQueue<
     TMetadata,
     TCompletedMetadata
   >["listPending"] = async (listOptions) => {
-    const { db } = openStateDatabase(options.stateDir);
-    const kysely = getChannelIngressKysely(db);
+    const database = openStateDatabase(options.stateDir);
     const limit = normalizeLimit(listOptions?.limit);
     // Bound SQLite rows selected (valid + corrupt), not only decoded records.
     if (limit === 0) {
       return [];
     }
-    const records: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
-    let lastRow: ChannelIngressRow | undefined;
-    let selectedRows = 0;
-    while (selectedRows < limit) {
-      const pageSize = Math.min(LIST_PENDING_BATCH_SIZE, limit - selectedRows);
-      let pageQuery = kysely
-        .selectFrom("channel_ingress_events")
-        .selectAll()
-        .where("queue_name", "=", queueName)
-        .where("status", "=", "pending");
-      if (lastRow) {
-        const cursor = lastRow;
-        pageQuery =
-          listOptions?.orderBy === "id"
-            ? pageQuery.where("event_id", ">", cursor.event_id)
-            : pageQuery.where((eb) =>
-                eb.or([
-                  eb("received_at", ">", cursor.received_at),
-                  eb.and([
-                    eb("received_at", "=", cursor.received_at),
-                    eb("event_id", ">", cursor.event_id),
-                  ]),
-                ]),
-              );
-      }
-      const orderedQuery =
-        listOptions?.orderBy === "id"
-          ? pageQuery.orderBy("event_id", "asc")
-          : pageQuery.orderBy("received_at", "asc").orderBy("event_id", "asc");
-      const rows = executeSqliteQuerySync(db, orderedQuery.limit(pageSize)).rows;
-      options.onListPendingPage?.({ requested: pageSize, selected: rows.length });
-      for (const row of rows) {
-        selectedRows += 1;
-        const record = baseRecord<TPayload, TMetadata>(row);
-        if (record) {
-          records.push(record);
+    // Corrupt prefixes must make durable progress under the same per-pass budget
+    // so repeated pumps eventually reach valid work without unbounded scans.
+    return runOpenClawStateWriteTransaction(
+      (tx) => {
+        const kysely = getChannelIngressKysely(tx.db);
+        const records: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
+        let lastRow: ChannelIngressRow | undefined;
+        let selectedRows = 0;
+        let corruptReconciliations = 0;
+        const failedAt = now();
+        while (selectedRows < limit) {
+          const pageSize = Math.min(LIST_PENDING_BATCH_SIZE, limit - selectedRows);
+          let pageQuery = kysely
+            .selectFrom("channel_ingress_events")
+            .selectAll()
+            .where("queue_name", "=", queueName)
+            .where("status", "=", "pending");
+          if (lastRow) {
+            const cursor = lastRow;
+            pageQuery =
+              listOptions?.orderBy === "id"
+                ? pageQuery.where("event_id", ">", cursor.event_id)
+                : pageQuery.where((eb) =>
+                    eb.or([
+                      eb("received_at", ">", cursor.received_at),
+                      eb.and([
+                        eb("received_at", "=", cursor.received_at),
+                        eb("event_id", ">", cursor.event_id),
+                      ]),
+                    ]),
+                  );
+          }
+          const orderedQuery =
+            listOptions?.orderBy === "id"
+              ? pageQuery.orderBy("event_id", "asc")
+              : pageQuery.orderBy("received_at", "asc").orderBy("event_id", "asc");
+          const rows = executeSqliteQuerySync(tx.db, orderedQuery.limit(pageSize)).rows;
+          if (rows.length === 0) {
+            break;
+          }
+          let pageAdvancedPastCorrupt = false;
+          for (const row of rows) {
+            selectedRows += 1;
+            const record = baseRecord<TPayload, TMetadata>(row);
+            if (record) {
+              records.push(record);
+            } else if (corruptReconciliations < limit) {
+              // Durable tombstone so the next pump's SQL window slides forward.
+              if (
+                tombstoneCorruptPayloadRow({
+                  db: tx.db,
+                  row,
+                  expectedStatus: "pending",
+                  failedAt,
+                })
+              ) {
+                corruptReconciliations += 1;
+                pageAdvancedPastCorrupt = true;
+              }
+            }
+            if (selectedRows >= limit) {
+              break;
+            }
+          }
+          if (selectedRows >= limit) {
+            break;
+          }
+          if (rows.length < pageSize) {
+            break;
+          }
+          // When the page was pure corrupt and we reconciled, re-query from the
+          // same cursor origin is wrong (rows are gone). Advance cursor to the
+          // last visited row identity even if tombstoned so ORDER BY pagination
+          // does not re-read earlier keys; tombstoned rows no longer match pending.
+          lastRow = rows.at(-1);
+          if (!lastRow && !pageAdvancedPastCorrupt) {
+            break;
+          }
         }
-        if (selectedRows >= limit) {
-          break;
-        }
-      }
-      if (rows.length < pageSize) {
-        break;
-      }
-      lastRow = rows.at(-1);
-    }
-    return records;
+        return records;
+      },
+      { path: database.path },
+    );
   };
 
   const listClaims: ChannelIngressQueue<
@@ -1174,10 +1212,7 @@ export function createChannelIngressQueue<
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
         if (token === null && expectedPending) {
-          update = update
-            .where("received_at", "=", expectedPending.receivedAt)
-            .where("updated_at", "=", expectedPending.updatedAt)
-            .where("attempts", "=", expectedPending.attempts);
+          update = update.where("generation", "=", expectedPending.generation);
         }
         const result = executeSqliteQuerySync(tx.db, update);
         if (affectedRows(result) > 0) {
@@ -1207,6 +1242,7 @@ export function createChannelIngressQueue<
               received_at: completedAt,
               updated_at: completedAt,
               attempts: 0,
+              generation: 0,
               completed_at: completedAt,
               completed_metadata_json:
                 completeOptions?.metadata === undefined
@@ -1239,6 +1275,9 @@ export function createChannelIngressQueue<
             claim_token: null,
             claim_owner: null,
             claimed_at: null,
+            // Bump generation even for non-attempting releases so a stale
+            // disposition snapshot cannot ABA-match the recycled pending row.
+            generation: eb("generation", "+", 1),
             // A claim can lose its owner before processing starts. Returning it
             // must not consume retry budget or erase the previous real failure.
             ...(releaseOptions?.recordAttempt === false
@@ -1301,10 +1340,7 @@ export function createChannelIngressQueue<
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
         if (token === null && expectedPending) {
-          update = update
-            .where("received_at", "=", expectedPending.receivedAt)
-            .where("updated_at", "=", expectedPending.updatedAt)
-            .where("attempts", "=", expectedPending.attempts);
+          update = update.where("generation", "=", expectedPending.generation);
         }
         return affectedRows(executeSqliteQuerySync(tx.db, update)) > 0;
       },
@@ -1343,13 +1379,15 @@ export function createChannelIngressQueue<
           tx.db,
           getChannelIngressKysely(tx.db)
             .updateTable("channel_ingress_events")
-            .set({
+            .set((eb) => ({
               status: "pending",
               payload_json:
                 row.payload_json === FAILED_NULL_PAYLOAD_SENTINEL ? "null" : row.payload_json,
               received_at: resubmittedAt,
               updated_at: resubmittedAt,
               attempts: 0,
+              // New pending generation — stale disposition fences must lose CAS.
+              generation: eb("generation", "+", 1),
               last_attempt_at: null,
               last_error: null,
               failed_at: null,
@@ -1359,7 +1397,7 @@ export function createChannelIngressQueue<
               claimed_at: null,
               completed_at: null,
               completed_metadata_json: null,
-            })
+            }))
             .where("queue_name", "=", queueName)
             .where("event_id", "=", eventId)
             .where("status", "=", "failed"),

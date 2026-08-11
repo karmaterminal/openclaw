@@ -609,6 +609,17 @@ describe("channel ingress queue", () => {
       maxNonProtected: 0,
     },
     {
+      name: "cap 0 keeps protected rows above the cap",
+      cap: 0,
+      delivered: ["d1"],
+      suppressed: ["s-protect"],
+      protectIds: ["s-protect"],
+      expectProtected: ["s-protect"],
+      expectDuplicate: ["s-protect"],
+      expectMissing: ["d1"],
+      maxNonProtected: 0,
+    },
+    {
       name: "cap 1 delivered-only keeps newest delivered full capacity",
       cap: 1,
       delivered: ["d-old", "d-new"],
@@ -642,6 +653,50 @@ describe("channel ingress queue", () => {
       maxNonProtected: 1,
     },
     {
+      name: "cap 1 protected equal to cap keeps only protected",
+      cap: 1,
+      delivered: ["d-new"],
+      suppressed: ["s-protect"],
+      protectIds: ["s-protect"],
+      expectProtected: ["s-protect"],
+      expectDuplicate: ["s-protect"],
+      expectMissing: ["d-new"],
+      maxNonProtected: 0,
+    },
+    {
+      name: "cap 1 protected above cap still retains all protected",
+      cap: 1,
+      delivered: ["d-new"],
+      suppressed: ["s-p1", "s-p2"],
+      protectIds: ["s-p1", "s-p2"],
+      expectProtected: ["s-p1", "s-p2"],
+      expectDuplicate: ["s-p1", "s-p2"],
+      expectMissing: ["d-new"],
+      maxNonProtected: 0,
+    },
+    {
+      name: "cap 2 delivered-only keeps newest two full capacity",
+      cap: 2,
+      delivered: ["d1", "d2", "d3"],
+      suppressed: [] as string[],
+      protectIds: [] as string[],
+      expectProtected: [] as string[],
+      expectDuplicate: ["d2", "d3"],
+      expectMissing: ["d1"],
+      maxNonProtected: 2,
+    },
+    {
+      name: "cap 2 suppression-only keeps newest two full capacity",
+      cap: 2,
+      delivered: [] as string[],
+      suppressed: ["s1", "s2", "s3"],
+      protectIds: [] as string[],
+      expectProtected: [] as string[],
+      expectDuplicate: ["s2", "s3"],
+      expectMissing: ["s1"],
+      maxNonProtected: 2,
+    },
+    {
       name: "cap 2 mixed keeps one delivered and one suppressed",
       cap: 2,
       delivered: ["d-old", "d-new"],
@@ -663,6 +718,17 @@ describe("channel ingress queue", () => {
       expectDuplicate: ["s-protect", "s-new"],
       expectMissing: ["d-a", "d-b", "d-c"],
       maxNonProtected: 1,
+    },
+    {
+      name: "cap 2 protected count above cap retains protected and zero non-protected",
+      cap: 2,
+      delivered: ["d-new"],
+      suppressed: ["s-p1", "s-p2", "s-p3"],
+      protectIds: ["s-p1", "s-p2", "s-p3"],
+      expectProtected: ["s-p1", "s-p2", "s-p3"],
+      expectDuplicate: ["s-p1", "s-p2", "s-p3"],
+      expectMissing: ["d-new"],
+      maxNonProtected: 0,
     },
   ])(
     "completed retention contract: $name",
@@ -747,6 +813,99 @@ describe("channel ingress queue", () => {
     },
   );
 
+  it("completed retention breaks equal-timestamp ties by event_id desc", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue<
+        { text: string },
+        unknown,
+        { ingressDisposition?: string }
+      >(stateDir, { now: () => 1 });
+      // Same completedAt; lexicographically larger event_id must win the single seat.
+      for (const id of ["tie-a", "tie-c", "tie-b"]) {
+        await queue.enqueue(id, { text: id }, { receivedAt: 1 });
+        expect(
+          await queue.complete(id, {
+            completedAt: 50,
+            metadata: {
+              ingressDisposition: "suppressed",
+              reason: "stale",
+              message: "stale",
+            },
+          }),
+        ).toBe(true);
+      }
+      await queue.prune({ completedMaxEntries: 1, now: 100 });
+      const replayC = await queue.enqueue("tie-c", { text: "probe" });
+      const replayB = await queue.enqueue("tie-b", { text: "probe" });
+      const replayA = await queue.enqueue("tie-a", { text: "probe" });
+      expect(replayC).toMatchObject({ kind: "completed", duplicate: true });
+      expect(replayB.kind).not.toBe("completed");
+      expect(replayA.kind).not.toBe("completed");
+    });
+  });
+
+  it("generation fence rejects ABA complete/fail after resubmit and non-attempt release", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue<{ text: string }>(stateDir, { now: () => 100 });
+      await queue.enqueue("gen-resubmit", { text: "x" }, { receivedAt: 100 });
+      const [snapshot] = await queue.listPending();
+      expect(snapshot?.generation).toBe(1);
+      const staleFence = { generation: snapshot!.generation };
+
+      expect(await queue.fail("gen-resubmit", { reason: "operator", message: "drop" })).toBe(true);
+      // Recreate the original timestamp/attempt tuple on purpose.
+      const resubmit = await queue.resubmit?.("gen-resubmit", { resubmittedAt: 100 });
+      expect(resubmit).toMatchObject({ kind: "resubmitted" });
+      const [afterResubmit] = await queue.listPending();
+      expect(afterResubmit).toMatchObject({
+        id: "gen-resubmit",
+        receivedAt: 100,
+        updatedAt: 100,
+        attempts: 0,
+      });
+      expect(afterResubmit!.generation).toBeGreaterThan(staleFence.generation);
+      expect(
+        await queue.complete("gen-resubmit", {
+          expectedPending: staleFence,
+        }),
+      ).toBe(false);
+      expect(
+        await queue.fail("gen-resubmit", {
+          reason: "stale",
+          message: "stale",
+          expectedPending: staleFence,
+        }),
+      ).toBe(false);
+      expect((await queue.listPending()).map((row) => row.id)).toEqual(["gen-resubmit"]);
+
+      // Claim + non-attempting release can recycle timestamps/attempts; generation must still move.
+      const releaseFence = { generation: afterResubmit!.generation };
+      const claim = await queue.claim("gen-resubmit", { ownerId: "worker" });
+      expect(claim).not.toBeNull();
+      if (!claim) {
+        throw new Error("expected claim");
+      }
+      expect(
+        await queue.release(claim, { recordAttempt: false, releasedAt: afterResubmit!.updatedAt }),
+      ).toBe(true);
+      const [afterRelease] = await queue.listPending();
+      expect(afterRelease).toMatchObject({
+        id: "gen-resubmit",
+        receivedAt: 100,
+        updatedAt: 100,
+        attempts: 0,
+      });
+      expect(afterRelease!.generation).toBeGreaterThan(releaseFence.generation);
+      expect(await queue.complete("gen-resubmit", { expectedPending: releaseFence })).toBe(false);
+      expect(
+        await queue.fail("gen-resubmit", {
+          reason: "stale",
+          expectedPending: releaseFence,
+        }),
+      ).toBe(false);
+    });
+  });
+
   describe("corrupt JSON resilience", () => {
     function insertCorruptRow(
       stateDir: string,
@@ -791,7 +950,7 @@ describe("channel ingress queue", () => {
       );
     }
 
-    it("skips a pending row with corrupt payload_json in listPending", async () => {
+    it("reconciles a corrupt pending row during listPending and returns valid neighbors", async () => {
       await withTempState(async (stateDir) => {
         const queue = createTestIngressQueue<{ text: string }>(stateDir);
 
@@ -804,15 +963,18 @@ describe("channel ingress queue", () => {
         const pending = await queue.listPending();
         expect(pending).toHaveLength(2);
         expect(pending.map((r) => r.id).toSorted()).toEqual(["good-1", "good-2"]);
+        const failed = await queue.listFailed?.({ limit: "all" });
+        expect(failed?.map((row) => row.id)).toEqual(["bad-1"]);
+        expect(failed?.[0]?.reason).toBe("corrupt_payload");
       });
     });
 
     it("bounds listPending SQL selection by limit including corrupt rows and zero", async () => {
       await withTempState(async (stateDir) => {
-        const pages: Array<{ requested: number; selected: number }> = [];
-        const queue = createTestIngressQueue<{ text: string }>(stateDir, {
-          onListPendingPage: (page) => pages.push(page),
-        });
+        const { instrumentPendingListSql } = await import("./ingress-drain.test-helpers.js");
+        // Open the cached DB before instrumentation wraps prepare.
+        const queue = createTestIngressQueue<{ text: string }>(stateDir);
+        const sql = instrumentPendingListSql(stateDir);
         for (let index = 0; index < 120; index += 1) {
           insertCorruptRow(
             stateDir,
@@ -823,17 +985,42 @@ describe("channel ingress queue", () => {
         }
         await queue.enqueue("good-second", { text: "visible" }, { receivedAt: 10_000 });
 
-        pages.length = 0;
+        sql.reset();
         expect(await queue.listPending({ limit: 0 })).toEqual([]);
-        expect(pages).toEqual([]);
+        expect(sql.selectCalls()).toBe(0);
+        expect(sql.selectedRows()).toBe(0);
 
-        pages.length = 0;
+        sql.reset();
         const pending = await queue.listPending({ limit: 4 });
         // Corrupt prefix consumes the row budget; do not walk the full 100-row page.
         expect(pending).toEqual([]);
-        expect(pages.reduce((sum, page) => sum + page.selected, 0)).toBe(4);
-        expect(pages.every((page) => page.requested <= 4)).toBe(true);
-        expect(pages.reduce((sum, page) => sum + page.requested, 0)).toBeLessThanOrEqual(4);
+        expect(sql.selectedRows()).toBe(4);
+        expect(sql.selectedRows()).toBeLessThanOrEqual(4);
+      });
+    });
+
+    it("repeated bounded listPending reconciles a corrupt prefix until valid work appears", async () => {
+      await withTempState(async (stateDir) => {
+        const queue = createTestIngressQueue<{ text: string }>(stateDir);
+        for (let index = 0; index < 5; index += 1) {
+          insertCorruptRow(stateDir, '["test","account"]', `bad-${index}`, {
+            payload_json: "{corrupt",
+          });
+        }
+        await queue.enqueue("good-tail", { text: "reachable" }, { receivedAt: 10_000 });
+
+        const startLimit = 2;
+        let sawGood = false;
+        for (let pump = 0; pump < 5; pump += 1) {
+          const pending = await queue.listPending({ limit: startLimit });
+          if (pending.some((row) => row.id === "good-tail")) {
+            sawGood = true;
+            break;
+          }
+          expect(pending.length).toBeLessThanOrEqual(startLimit);
+        }
+        expect(sawGood).toBe(true);
+        expect((await queue.listFailed?.({ limit: "all" }))?.length).toBe(5);
       });
     });
 

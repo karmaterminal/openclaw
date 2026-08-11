@@ -959,6 +959,99 @@ describe("channel ingress drain", () => {
     });
   });
 
+  it("real peer recovery fences stale owner callbacks and progresses same-lane tail after settlement", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue("evt-head", { text: "head" }, { laneKey: "l1", receivedAt: 1 });
+      await queue.enqueue("evt-tail", { text: "tail" }, { laneKey: "l1", receivedAt: 2 });
+
+      let firstClaimed!: { id: string; claim: { token: string } };
+      let releaseFirstDispatch!: () => void;
+      const firstDispatchHold = new Promise<void>((resolve) => {
+        releaseFirstDispatch = resolve;
+      });
+
+      const first = createChannelIngressDrain<Payload>({
+        queue,
+        ownerId: "first-owner",
+        startLimit: 1,
+        claimLeaseMs: 1_000,
+        now: () => clock,
+        dispatchClaimedEvent: async (event, _lifecycle) => {
+          firstClaimed = event;
+          // Stay in dispatching without adopting so recovery can reclaim the lease.
+          await firstDispatchHold;
+          return { kind: "deferred" };
+        },
+      });
+      await first.drainOnce();
+      // Allow deferred registration to settle.
+      await vi.waitFor(async () => {
+        expect((await queue.listClaims()).map((claim) => claim.id)).toEqual(["evt-head"]);
+      });
+      expect(firstClaimed.id).toBe("evt-head");
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual([
+        "evt-tail",
+      ]);
+
+      // Expire the first owner's lease while it is still claimed, then peer-recover.
+      clock += 5_000;
+      // Retire live local ownership so recovery is not fenced by the first instance.
+      first.dispose();
+      releaseFirstDispatch();
+      await first.waitForIdle();
+
+      const peerDispatches: string[] = [];
+      let releasePeerSettle!: () => void;
+      const peerSettleHold = new Promise<void>((resolve) => {
+        releasePeerSettle = resolve;
+      });
+      const peer = createChannelIngressDrain<Payload>({
+        queue,
+        ownerId: "peer-owner",
+        startLimit: 4,
+        claimLeaseMs: 1_000,
+        now: () => clock,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          peerDispatches.push(event.id);
+          if (event.id === "evt-head") {
+            await peerSettleHold;
+          }
+          await lifecycle.onAdopted();
+        },
+      });
+      // Claim may already be pending if dispose released it; either path yields peer ownership.
+      await peer.recoverStaleClaims();
+      await peer.drainOnce();
+      expect(peerDispatches).toEqual(["evt-head"]);
+      const peerClaims = await queue.listClaims();
+      expect(peerClaims).toHaveLength(1);
+      expect(peerClaims[0]?.claim.token).not.toBe(firstClaimed.claim.token);
+
+      // Stale first-owner callbacks must not mutate peer-owned durable state.
+      expect(await queue.refreshClaim?.(firstClaimed)).toBe(false);
+      expect(await queue.complete(firstClaimed)).toBe(false);
+      expect(await queue.release(firstClaimed, { recordAttempt: false })).toBe(false);
+      expect(await queue.fail(firstClaimed, { reason: "stale-owner" })).toBe(false);
+      expect((await queue.listClaims())[0]?.claim.token).toBe(peerClaims[0]?.claim.token);
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual([
+        "evt-tail",
+      ]);
+
+      // Peer settles the head; same-lane tail progresses only after that settlement.
+      releasePeerSettle();
+      await peer.waitForIdle();
+      expect(peerDispatches).toEqual(["evt-head"]);
+      await peer.drainOnce();
+      await peer.waitForIdle();
+      expect(peerDispatches).toEqual(["evt-head", "evt-tail"]);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listClaims()).toEqual([]);
+      peer.dispose();
+    });
+  });
+
   it("exports default adoption stall matching Telegram product default", () => {
     expect(DEFAULT_INGRESS_ADOPTION_STALL_MS).toBe(5 * 60 * 1000);
   });
