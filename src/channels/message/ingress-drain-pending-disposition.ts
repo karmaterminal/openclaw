@@ -121,6 +121,7 @@ function pendingGenerationMatch<TPayload, TMetadata>(
 ): ChannelIngressPendingGenerationMatch {
   return {
     generation: record.generation,
+    receivedAt: record.receivedAt,
   };
 }
 

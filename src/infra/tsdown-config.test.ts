@@ -1,5 +1,5 @@
 // Covers bundling rules encoded in the root tsdown config.
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync, utimesSync } from "node:fs";
 import path from "node:path";
 import { bundledPluginRoot } from "openclaw/plugin-sdk/test-fixtures";
 import { describe, expect, it } from "vitest";
@@ -163,6 +163,36 @@ describe("tsdown config", () => {
     expect(JSON.parse(match?.[1] ?? "null")).toBe(canonicalSql);
     expect(schema.sourceValue).toBe(canonicalSql);
     expect(watchedPaths).toEqual([schemaPath]);
+  });
+
+  it("cache-busts resolved schema module ids when the SQL asset mtime changes", () => {
+    const rootDir = process.cwd();
+    const plugin = createStateSchemaInlinePlugin(rootDir) as {
+      resolveId?: (id: string) => string | null | undefined;
+      load: (
+        this: { addWatchFile(id: string): void },
+        id: string,
+      ) => { code: string; moduleType: "js" } | null;
+    };
+    const modulePath = path.resolve(rootDir, "src/state/openclaw-state-schema.ts");
+    const schemaPath = path.resolve(rootDir, "src/state/openclaw-state-schema.sql");
+    const first = plugin.resolveId?.(modulePath);
+    expect(first).toEqual(expect.stringMatching(/\?openclaw-schema=\d+(?:\.\d+)?$/u));
+    const firstLoad = plugin.load.call({ addWatchFile: () => undefined }, first ?? modulePath);
+    expect(firstLoad).not.toBeNull();
+    const previousMtime = statSync(schemaPath).mtimeMs;
+    const nextMtime = previousMtime + 1000;
+    utimesSync(schemaPath, new Date(nextMtime), new Date(nextMtime));
+    try {
+      const second = plugin.resolveId?.(modulePath);
+      expect(second).toEqual(expect.stringMatching(/\?openclaw-schema=\d+(?:\.\d+)?$/u));
+      expect(second).not.toBe(first);
+      const secondLoad = plugin.load.call({ addWatchFile: () => undefined }, second ?? modulePath);
+      expect(secondLoad).not.toBeNull();
+      expect(secondLoad?.code).toBe(firstLoad?.code);
+    } finally {
+      utimesSync(schemaPath, new Date(previousMtime), new Date(previousMtime));
+    }
   });
 
   it("installs schema inlining only on the unified runtime graph", () => {

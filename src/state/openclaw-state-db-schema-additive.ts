@@ -46,7 +46,7 @@ export function ensureAgentDatabaseLeaseSchema(database: DatabaseSync): void {
   `);
 }
 
-/** Lazy additive side table for channel ingress pending-generation CAS fence. */
+/** Lazy additive side tables for channel ingress pending-generation CAS fence. */
 export function ensureChannelIngressEventGenerationsSchema(database: DatabaseSync): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS channel_ingress_event_generations (
@@ -54,6 +54,12 @@ export function ensureChannelIngressEventGenerationsSchema(database: DatabaseSyn
       event_id TEXT NOT NULL,
       generation INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (queue_name, event_id)
+    ) STRICT
+  `);
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS channel_ingress_generation_counters (
+      queue_name TEXT PRIMARY KEY,
+      next_generation INTEGER NOT NULL
     ) STRICT
   `);
 }

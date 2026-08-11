@@ -1130,6 +1130,13 @@ CREATE TABLE IF NOT EXISTS channel_ingress_event_generations (
   PRIMARY KEY (queue_name, event_id)
 ) STRICT;
 
+-- Per-queue monotonic allocator so pending-generation fences never reuse a value
+-- after delete/prune/re-enqueue (ABA). Lazy additive under schema v6.
+CREATE TABLE IF NOT EXISTS channel_ingress_generation_counters (
+  queue_name TEXT PRIMARY KEY,
+  next_generation INTEGER NOT NULL
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS plugin_blob_entries (
   plugin_id TEXT NOT NULL,
   namespace TEXT NOT NULL,

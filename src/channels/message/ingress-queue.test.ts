@@ -956,7 +956,10 @@ describe("channel ingress queue", () => {
       await queue.enqueue("gen-resubmit", { text: "x" }, { receivedAt: 100 });
       const [snapshot] = await queue.listPending();
       expect(snapshot?.generation).toBe(1);
-      const staleFence = { generation: snapshot!.generation };
+      const staleFence = {
+        generation: snapshot!.generation,
+        receivedAt: snapshot!.receivedAt,
+      };
 
       expect(await queue.fail("gen-resubmit", { reason: "operator", message: "drop" })).toBe(true);
       // Recreate the original timestamp/attempt tuple on purpose.
@@ -985,7 +988,10 @@ describe("channel ingress queue", () => {
       expect((await queue.listPending()).map((row) => row.id)).toEqual(["gen-resubmit"]);
 
       // Claim + non-attempting release can recycle timestamps/attempts; generation must still move.
-      const releaseFence = { generation: afterResubmit!.generation };
+      const releaseFence = {
+        generation: afterResubmit!.generation,
+        receivedAt: afterResubmit!.receivedAt,
+      };
       const claim = await queue.claim("gen-resubmit", { ownerId: "worker" });
       expect(claim).not.toBeNull();
       if (!claim) {
@@ -1018,7 +1024,10 @@ describe("channel ingress queue", () => {
       await queue.enqueue("gen-recover", { text: "x" }, { receivedAt: 1_000 });
       const [snapshot] = await queue.listPending();
       expect(snapshot?.generation).toBe(1);
-      const preClaimFence = { generation: snapshot!.generation };
+      const preClaimFence = {
+        generation: snapshot!.generation,
+        receivedAt: snapshot!.receivedAt,
+      };
 
       const claim = await queue.claim("gen-recover", { ownerId: "stale-owner" });
       expect(claim).not.toBeNull();
@@ -1047,6 +1056,142 @@ describe("channel ingress queue", () => {
       ).toBe(false);
       expect((await queue.listPending()).map((row) => row.id)).toEqual(["gen-recover"]);
       expect((await queue.listPending())[0]?.generation).toBe(recovered!.generation);
+    });
+  });
+
+  it("delete/prune/re-enqueue never reuses generation fences for stale complete/fail", async () => {
+    await withTempState(async (stateDir) => {
+      const { openOpenClawStateDatabase } = await import("../../state/openclaw-state-db.js");
+      const queue = createTestIngressQueue<{ text: string }>(stateDir, { now: () => 50 });
+      await queue.enqueue("aba-id", { text: "first" }, { receivedAt: 10, laneKey: "lane:a" });
+      const [first] = await queue.listPending();
+      expect(first?.generation).toBe(1);
+      const staleFence = {
+        generation: first!.generation,
+        receivedAt: first!.receivedAt,
+      };
+
+      expect(await queue.delete("aba-id")).toBe(true);
+      const re = await queue.enqueue(
+        "aba-id",
+        { text: "second" },
+        { receivedAt: 10, laneKey: "lane:a" },
+      );
+      expect(re).toMatchObject({ kind: "accepted", duplicate: false });
+      const [second] = await queue.listPending();
+      expect(second!.generation).toBeGreaterThan(staleFence.generation);
+      expect(
+        await queue.complete("aba-id", {
+          expectedPending: staleFence,
+          metadata: { ingressDisposition: "suppressed", reason: "stale", message: "stale" },
+        }),
+      ).toBe(false);
+      expect(
+        await queue.fail("aba-id", {
+          reason: "stale",
+          message: "stale",
+          expectedPending: staleFence,
+        }),
+      ).toBe(false);
+      expect((await queue.listPending()).map((row) => row.id)).toEqual(["aba-id"]);
+      expect((await queue.listPending())[0]?.generation).toBe(second!.generation);
+
+      // Prune the live row, re-enqueue same id — fence must still advance.
+      const liveFence = {
+        generation: second!.generation,
+        receivedAt: second!.receivedAt,
+      };
+      expect(await queue.prune({ pendingMaxEntries: 0, now: 100 })).toBeGreaterThan(0);
+      {
+        const { DatabaseSync } = await import("node:sqlite");
+        const { resolveOpenClawStateSqlitePath } =
+          await import("../../state/openclaw-state-db.paths.js");
+        const dbPath = resolveOpenClawStateSqlitePath({ OPENCLAW_STATE_DIR: stateDir });
+        const inspect = new DatabaseSync(dbPath, { readOnly: true });
+        try {
+          const orphanGens = inspect
+            .prepare(
+              "SELECT COUNT(*) AS n FROM channel_ingress_event_generations WHERE queue_name LIKE ?",
+            )
+            .get("%test%") as { n: number };
+          expect(Number(orphanGens.n)).toBe(0);
+        } finally {
+          inspect.close();
+        }
+      }
+      const third = await queue.enqueue(
+        "aba-id",
+        { text: "third" },
+        { receivedAt: 10, laneKey: "lane:a" },
+      );
+      expect(third).toMatchObject({ kind: "accepted" });
+      const [afterPrune] = await queue.listPending();
+      expect(afterPrune!.generation).toBeGreaterThan(liveFence.generation);
+      expect(await queue.complete("aba-id", { expectedPending: liveFence })).toBe(false);
+      expect(await queue.fail("aba-id", { reason: "stale", expectedPending: liveFence })).toBe(
+        false,
+      );
+    });
+  });
+
+  it("bounds generation side-table orphans after unique-id prune churn", async () => {
+    await withTempState(async (stateDir) => {
+      const { openOpenClawStateDatabase } = await import("../../state/openclaw-state-db.js");
+      const queue = createTestIngressQueue<{ text: string }>(stateDir, { now: () => 1 });
+      for (let i = 0; i < 8; i += 1) {
+        await queue.enqueue(`id-${i}`, { text: String(i) }, { receivedAt: i });
+      }
+      expect(await queue.prune({ pendingMaxEntries: 2, now: 100 })).toBeGreaterThan(0);
+      {
+        const { DatabaseSync } = await import("node:sqlite");
+        const { resolveOpenClawStateSqlitePath } =
+          await import("../../state/openclaw-state-db.paths.js");
+        const dbPath = resolveOpenClawStateSqlitePath({ OPENCLAW_STATE_DIR: stateDir });
+        const inspect = new DatabaseSync(dbPath, { readOnly: true });
+        try {
+          const events = inspect
+            .prepare("SELECT COUNT(*) AS n FROM channel_ingress_events")
+            .get() as { n: number };
+          const gens = inspect
+            .prepare("SELECT COUNT(*) AS n FROM channel_ingress_event_generations")
+            .get() as { n: number };
+          expect(Number(events.n)).toBe(2);
+          expect(Number(gens.n)).toBe(2);
+          const counter = inspect
+            .prepare("SELECT next_generation AS n FROM channel_ingress_generation_counters")
+            .get() as { n: number } | undefined;
+          expect(Number(counter?.n ?? 0)).toBeGreaterThanOrEqual(8);
+        } finally {
+          inspect.close();
+        }
+      }
+      // Re-enqueue a pruned id — allocator continues past prior values.
+      const again = await queue.enqueue("id-0", { text: "again" }, { receivedAt: 0 });
+      expect(again).toMatchObject({ kind: "accepted" });
+      const [row] = await queue.listPending({ limit: "all" });
+      const matching = (await queue.listPending({ limit: "all" })).find((r) => r.id === "id-0");
+      expect(matching!.generation).toBeGreaterThan(8);
+      void row;
+    });
+  });
+
+  it("pending settlement refuses when a same-lane claim appears after the disposition snapshot", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue<{ text: string }>(stateDir, { now: () => 1_000 });
+      await queue.enqueue("head", { text: "h" }, { laneKey: "lane:x", receivedAt: 1 });
+      await queue.enqueue("tail", { text: "t" }, { laneKey: "lane:x", receivedAt: 2 });
+      const [tail] = (await queue.listPending({ limit: "all" })).filter((r) => r.id === "tail");
+      const fence = { generation: tail!.generation, receivedAt: tail!.receivedAt };
+      const headClaim = await queue.claim("head", { ownerId: "peer" });
+      expect(headClaim).not.toBeNull();
+      expect(
+        await queue.complete("tail", {
+          expectedPending: fence,
+          metadata: { ingressDisposition: "suppressed", reason: "stale", message: "stale" },
+        }),
+      ).toBe(false);
+      expect((await queue.listPending({ limit: "all" })).map((r) => r.id)).toEqual(["tail"]);
+      expect((await queue.listClaims()).map((c) => c.id)).toEqual(["head"]);
     });
   });
 

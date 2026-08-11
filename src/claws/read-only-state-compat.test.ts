@@ -51,13 +51,19 @@ function createBaseShapeState(params: {
     database.db.exec(`ALTER TABLE ${table} DROP COLUMN ${name};`);
   }
   if (params.dropIngressGenerationSideTable) {
-    // Lazy additive side table may be absent until a writable open ensures it.
+    // Lazy additive side tables may be absent until a writable open ensures them.
     database.db.exec("DROP TABLE IF EXISTS channel_ingress_event_generations;");
+    database.db.exec("DROP TABLE IF EXISTS channel_ingress_generation_counters;");
     database.db.exec(`PRAGMA user_version = ${OPENCLAW_STATE_SCHEMA_VERSION};`);
     expect(
       database.db
         .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
         .get("channel_ingress_event_generations"),
+    ).toBeUndefined();
+    expect(
+      database.db
+        .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get("channel_ingress_generation_counters"),
     ).toBeUndefined();
     expect(tableHasColumn(database.db, "channel_ingress_events", "generation")).toBe(false);
   }

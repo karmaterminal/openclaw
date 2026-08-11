@@ -135,10 +135,13 @@ export type CreateChannelIngressDrainOptions<
   TPayload = unknown,
   TMetadata = unknown,
   TCompletedMetadata = unknown,
+  // Default completed-metadata to `any` so partial type args still accept
+  // specialized compatible queue brands (queue is invariant in TCompletedMetadata).
+  // Disposition safety is gated on the inferred queue brand and free metadata.
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    TCompletedMetadata
+    any
   >,
 > = Omit<CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>, "queue"> & {
   queue: TQueue;
@@ -171,7 +174,7 @@ export function createChannelIngressDrain<
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    TCompletedMetadata
+    any
   >,
 >(
   options: Omit<
@@ -184,9 +187,8 @@ export function createChannelIngressDrain<
   },
 ): ChannelIngressDrain;
 /**
- * Disposition-required overload: rejects when the queue brand / free completed
- * metadata cannot store suppressions. `queue: TQueue` sits outside the
- * conditional so full inference still carries the concrete queue brand.
+ * Disposition overload: rejects when the queue brand / free completed metadata
+ * cannot store suppressions. Errors land on the resolver field.
  */
 export function createChannelIngressDrain<
   TPayload = unknown,
@@ -195,7 +197,7 @@ export function createChannelIngressDrain<
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    TCompletedMetadata
+    any
   >,
 >(
   options: {
@@ -209,13 +211,24 @@ export function createChannelIngressDrain<
           CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> & {
             resolvePendingDisposition: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
           }
-      : never
-    : never),
+      : Omit<
+          CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
+          "queue"
+        > & {
+          resolvePendingDisposition?: never;
+          onPendingDispositionCommitted?: never;
+        }
+    : Omit<
+        CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
+        "queue"
+      > & {
+        resolvePendingDisposition?: never;
+        onPendingDispositionCommitted?: never;
+      }),
 ): ChannelIngressDrain;
 /**
- * Optional-disposition overload: used by monitor/plugin spreads where the
- * resolver may be present or absent. Still gates incompatible queue brands via
- * CreateChannelIngressDrainOptions.
+ * Optional-disposition overload: monitor/plugin spreads. Gates via
+ * CreateChannelIngressDrainOptions (queue brand + free completed metadata).
  */
 export function createChannelIngressDrain<
   TPayload = unknown,
@@ -224,7 +237,7 @@ export function createChannelIngressDrain<
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    TCompletedMetadata
+    any
   >,
 >(
   options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
@@ -237,7 +250,7 @@ export function createChannelIngressDrain<
   TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    TCompletedMetadata
+    any
   >,
 >(
   options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,

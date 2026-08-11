@@ -692,9 +692,41 @@ describe("channel ingress monitor", () => {
       const staleCount = startLimit + 2;
       const delivered: string[] = [];
 
+      // Seed the durable queue before the sole pump request so admissions cannot
+      // independently requestDrain and contaminate the settlement-only repump proof.
+      for (let index = 0; index < staleCount; index += 1) {
+        await queue.enqueue(
+          `stale-${index}`,
+          {
+            version: 1,
+            rawEvent: JSON.stringify({
+              id: `stale-${index}`,
+              lane: "room",
+              text: `old ${index}`,
+              kind: "ambient",
+            } satisfies KindedRaw),
+          },
+          { laneKey: "lane:room", receivedAt: index },
+        );
+      }
+      await queue.enqueue(
+        "fresh-mention",
+        {
+          version: 1,
+          rawEvent: JSON.stringify({
+            id: "fresh-mention",
+            lane: "room",
+            text: "@bot now",
+            kind: "addressed",
+          } satisfies KindedRaw),
+        },
+        { laneKey: "lane:room", receivedAt: clock },
+      );
+
       const monitor = createChannelIngressMonitor<KindedRaw, string, StoredEvent>({
         queue,
         now: () => clock,
+        // Inhibit polling — only start()'s single requestDrain may pump.
         pollIntervalMs: 60 * 60 * 1_000,
         retention: { pruneIntervalMs: 60 * 60 * 1_000 },
         inspect: (raw) => ({ eventId: raw.id, laneKey: `lane:${raw.lane}` }),
@@ -731,17 +763,6 @@ describe("channel ingress monitor", () => {
       });
 
       monitor.start();
-      for (let index = 0; index < staleCount; index += 1) {
-        await monitor.admit(
-          { id: `stale-${index}`, lane: "room", text: `old ${index}`, kind: "ambient" },
-          { receivedAt: index },
-        );
-      }
-      await monitor.admit(
-        { id: "fresh-mention", lane: "room", text: "@bot now", kind: "addressed" },
-        { receivedAt: clock },
-      );
-
       await vi.waitFor(() => expect(delivered).toEqual(["fresh-mention"]), { timeout: 2_000 });
       expect(await queue.listPending({ limit: "all" })).toEqual([]);
       await monitor.stop();

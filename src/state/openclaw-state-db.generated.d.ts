@@ -244,6 +244,11 @@ export interface ChannelIngressEventGenerations {
   queue_name: string;
 }
 
+export interface ChannelIngressGenerationCounters {
+  next_generation: number;
+  queue_name: string;
+}
+
 export interface ChannelPairingAllowEntries {
   account_id: string;
   channel_key: string;
@@ -1605,6 +1610,7 @@ export interface DB {
   capture_sessions: CaptureSessions;
   channel_ingress_event_generations: ChannelIngressEventGenerations;
   channel_ingress_events: ChannelIngressEvents;
+  channel_ingress_generation_counters: ChannelIngressGenerationCounters;
   channel_pairing_allow_entries: ChannelPairingAllowEntries;
   channel_pairing_requests: ChannelPairingRequests;
   claw_cron_refs: ClawCronRefs;

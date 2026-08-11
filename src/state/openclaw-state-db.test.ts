@@ -1157,8 +1157,9 @@ describe("openclaw state database", () => {
         .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
         .get("channel_ingress_event_generations"),
     ).toEqual({ name: "channel_ingress_event_generations" });
-    // Simulate a current-version DB that predates the generation side table.
+    // Simulate a current-version DB that predates the generation side tables.
     prep.exec("DROP TABLE channel_ingress_event_generations;");
+    prep.exec("DROP TABLE IF EXISTS channel_ingress_generation_counters;");
     prep.exec(`PRAGMA user_version = ${OPENCLAW_STATE_SCHEMA_VERSION};`);
     expect(
       prep
@@ -1174,6 +1175,11 @@ describe("openclaw state database", () => {
         .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
         .get("channel_ingress_event_generations"),
     ).toEqual({ name: "channel_ingress_event_generations" });
+    expect(
+      opened.db
+        .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get("channel_ingress_generation_counters"),
+    ).toEqual({ name: "channel_ingress_generation_counters" });
     closeOpenClawStateDatabaseForTest();
 
     const reopened = openOpenClawStateDatabase({ path: databasePath });
@@ -1182,6 +1188,11 @@ describe("openclaw state database", () => {
         .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
         .get("channel_ingress_event_generations"),
     ).toEqual({ name: "channel_ingress_event_generations" });
+    expect(
+      reopened.db
+        .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get("channel_ingress_generation_counters"),
+    ).toEqual({ name: "channel_ingress_generation_counters" });
     // Events table must remain free of the generation column after ensure.
     expect(tableHasColumn(reopened.db, "channel_ingress_events", "generation")).toBe(false);
   });
@@ -1195,6 +1206,11 @@ describe("openclaw state database", () => {
           .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
           .get("channel_ingress_event_generations"),
       ).toEqual({ name: "channel_ingress_event_generations" });
+      expect(
+        database
+          .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+          .get("channel_ingress_generation_counters"),
+      ).toEqual({ name: "channel_ingress_generation_counters" });
       // Frozen base at the pre-generation-column schema. Extra side tables are
       // allowed; unexpected columns on shared tables are not.
       const frozenBaseSchemaSql = execFileSync(
@@ -1204,6 +1220,7 @@ describe("openclaw state database", () => {
       );
       expect(frozenBaseSchemaSql).toContain("CREATE TABLE IF NOT EXISTS channel_ingress_events");
       expect(frozenBaseSchemaSql).not.toContain("channel_ingress_event_generations");
+      expect(frozenBaseSchemaSql).not.toContain("channel_ingress_generation_counters");
       expect(frozenBaseSchemaSql).not.toMatch(
         /CREATE TABLE IF NOT EXISTS channel_ingress_events[\s\S]*?\bgeneration\b[\s\S]*?\) STRICT;/u,
       );
@@ -1220,9 +1237,139 @@ describe("openclaw state database", () => {
         ),
       ).not.toThrow();
       expect(LAZY_ADDITIVE_STATE_TABLES).toContain("channel_ingress_event_generations");
+      expect(LAZY_ADDITIVE_STATE_TABLES).toContain("channel_ingress_generation_counters");
     } finally {
       database.close();
     }
+  });
+
+  it("executes frozen-base RO/writable/queue paths after candidate generation mutation", async () => {
+    const FROZEN_SHA = "02bd9d77142248a07e4ad50387a166db1823b494";
+    const repoRoot = path.resolve(import.meta.dirname, "../..");
+    const worktree = path.join(os.tmpdir(), `wo1244-frozen-base-${FROZEN_SHA.slice(0, 12)}`);
+    if (!fs.existsSync(path.join(worktree, "src", "state", "openclaw-state-db.ts"))) {
+      try {
+        execFileSync("git", ["worktree", "remove", "--force", worktree], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+      } catch {
+        // worktree may not exist yet
+      }
+      execFileSync("git", ["worktree", "add", "--detach", worktree, FROZEN_SHA], {
+        cwd: repoRoot,
+        stdio: "ignore",
+      });
+    }
+    const nodeModules = path.join(repoRoot, "node_modules");
+    const worktreeNodeModules = path.join(worktree, "node_modules");
+    if (!fs.existsSync(worktreeNodeModules)) {
+      fs.symlinkSync(nodeModules, worktreeNodeModules, "dir");
+    }
+
+    const stateDir = createTempStateDir();
+    const { createChannelIngressQueue } = await import("../channels/message/ingress-queue.js");
+    closeOpenClawStateDatabaseForTest();
+    const candidateQueue = createChannelIngressQueue<{ text: string }>({
+      channelId: "frozen-x",
+      accountId: "a",
+      stateDir,
+      now: () => 100,
+    });
+    await candidateQueue.enqueue("cross-id", { text: "candidate" }, { receivedAt: 10 });
+    const [snap] = await candidateQueue.listPending();
+    expect(snap?.generation).toBeGreaterThan(0);
+    const staleFence = {
+      generation: snap!.generation,
+      receivedAt: snap!.receivedAt,
+    };
+    closeOpenClawStateDatabaseForTest();
+
+    const frozenRunner = path.join(worktree, "frozen-cross-version-runner.mjs");
+    fs.writeFileSync(
+      frozenRunner,
+      `import fs from "node:fs";
+import { createChannelIngressQueue } from "./src/channels/message/ingress-queue.ts";
+import {
+  closeOpenClawStateDatabaseForTest,
+  openExistingOpenClawStateDatabaseReadOnly,
+  openOpenClawStateDatabase,
+} from "./src/state/openclaw-state-db.ts";
+import { resolveOpenClawStateSqlitePath } from "./src/state/openclaw-state-db.paths.ts";
+
+const stateDir = process.env.OPENCLAW_STATE_DIR;
+if (!stateDir) throw new Error("missing OPENCLAW_STATE_DIR");
+const dbPath = resolveOpenClawStateSqlitePath({ OPENCLAW_STATE_DIR: stateDir });
+
+const before = fs.readFileSync(dbPath);
+const ro = await openExistingOpenClawStateDatabaseReadOnly({
+  env: { OPENCLAW_STATE_DIR: stateDir },
+});
+if (!ro) throw new Error("frozen-base read-only open returned undefined");
+const count = ro.db.prepare("SELECT COUNT(*) AS n FROM channel_ingress_events").get();
+ro.db.close();
+closeOpenClawStateDatabaseForTest();
+const afterRo = fs.readFileSync(dbPath);
+if (!before.equals(afterRo)) {
+  throw new Error("frozen-base read-only open mutated database bytes");
+}
+
+const writable = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir } });
+writable.db.prepare("SELECT COUNT(*) AS n FROM channel_ingress_events").get();
+closeOpenClawStateDatabaseForTest();
+
+const queue = createChannelIngressQueue({
+  channelId: "frozen-x",
+  accountId: "a",
+  stateDir,
+  now: () => 200,
+});
+const deleted = await queue.delete("cross-id");
+const enqueued = await queue.enqueue("cross-id", { text: "frozen-rewrite" }, { receivedAt: 20 });
+closeOpenClawStateDatabaseForTest();
+process.stdout.write(JSON.stringify({ count, deleted, enqueuedKind: enqueued.kind }) + "\\n");
+`,
+      "utf8",
+    );
+
+    const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
+    const output = execFileSync(tsxBin, [frozenRunner], {
+      cwd: worktree,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        OPENCLAW_STATE_DIR: stateDir,
+      },
+    });
+    const frozenResult = JSON.parse(output.trim().split("\n").at(-1) ?? "{}") as {
+      deleted?: boolean;
+      enqueuedKind?: string;
+    };
+    expect(frozenResult.deleted).toBe(true);
+    expect(frozenResult.enqueuedKind).toBe("accepted");
+
+    // Candidate must still refuse the pre-frozen fence against the replacement.
+    closeOpenClawStateDatabaseForTest();
+    const afterQueue = createChannelIngressQueue<{ text: string }>({
+      channelId: "frozen-x",
+      accountId: "a",
+      stateDir,
+      now: () => 300,
+    });
+    expect(
+      await afterQueue.complete("cross-id", {
+        expectedPending: staleFence,
+        metadata: { note: "stale" },
+      }),
+    ).toBe(false);
+    expect(
+      await afterQueue.fail("cross-id", {
+        reason: "stale",
+        message: "stale",
+        expectedPending: staleFence,
+      }),
+    ).toBe(false);
+    expect((await afterQueue.listPending()).map((row) => row.id)).toEqual(["cross-id"]);
   });
 
   it("keeps the additive worker SSH fallback table compatible with older v6 containment", () => {

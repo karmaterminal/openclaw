@@ -14,6 +14,7 @@ export const FIRST_USE_STATE_INDEXES = ["execution_identity_contexts_run_created
 export const LAZY_ADDITIVE_STATE_TABLES = [
   ...FIRST_USE_STATE_TABLES,
   "channel_ingress_event_generations",
+  "channel_ingress_generation_counters",
   "model_catalog_remote",
   "gateway_origin_device_tokens",
   "sidebar_sections",

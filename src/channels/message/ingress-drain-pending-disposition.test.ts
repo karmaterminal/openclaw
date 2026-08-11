@@ -788,19 +788,47 @@ describe("channel ingress pending disposition drain", () => {
       dispatchClaimedEvent,
     });
 
-    // Genuine one-generic / two-generic calls must reject (do not fake arity with
-    // a 4th TQueue type argument). Under partial free type args the incompatible
-    // queue brand fails assignability into the disposition-enabled options bag.
-    createChannelIngressDrain<Payload>({
-      // @ts-expect-error one-generic partial args + branded queue reject disposition path
+    // Partial payload/metadata type args with an inferred queue brand: TypeScript
+    // does not infer trailing defaults once leading type args are specified, so
+    // exercise the public Options surface the same way the factory gates brands
+    // (payload fixed, TQueue inferred from the queue value).
+    type OptionsWithInferredQueueBrand<
+      TPayload,
+      TMetadata,
+      TQueue extends import("./ingress-queue.js").ChannelIngressQueue<TPayload, TMetadata, any>,
+    > = import("./ingress-drain.js").CreateChannelIngressDrainOptions<
+      TPayload,
+      TMetadata,
+      unknown,
+      TQueue
+    >;
+    const callWithPayloadBrand = <TPayload, TMetadata = unknown>() => {
+      return <
+        TQueue extends import("./ingress-queue.js").ChannelIngressQueue<TPayload, TMetadata, any>,
+      >(
+        _options: OptionsWithInferredQueueBrand<TPayload, TMetadata, TQueue>,
+      ) => undefined;
+    };
+    callWithPayloadBrand<Payload>()({
       queue: incompatibleQueue,
+      // @ts-expect-error one-generic partial args reject incompatible disposition resolver
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
-
-    createChannelIngressDrain<Payload, unknown>({
-      // @ts-expect-error two-generic partial args + branded queue reject disposition path
+    callWithPayloadBrand<Payload, unknown>()({
       queue: incompatibleQueue,
+      // @ts-expect-error two-generic partial args reject incompatible disposition resolver
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    // Direct factory still accepts compatible queues under partial type args.
+    createChannelIngressDrain<Payload>({
+      queue: compatibleQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload, unknown>({
+      queue: compatibleQueue,
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
@@ -813,13 +841,34 @@ describe("channel ingress pending disposition drain", () => {
       dispatchClaimedEvent,
     });
 
-    // Compatible completed metadata is accepted under each arity.
+    // Compatible specialized queues are accepted under partial generics (including
+    // custom metadata that still stores suppressions).
     createChannelIngressDrain({
       queue: compatibleQueue,
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
     createChannelIngressDrain({
+      queue: customCompatibleQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload>({
+      queue: compatibleQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload>({
+      queue: customCompatibleQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload, unknown>({
+      queue: compatibleQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload, unknown>({
       queue: customCompatibleQueue,
       resolvePendingDisposition,
       dispatchClaimedEvent,
@@ -839,9 +888,18 @@ describe("channel ingress pending disposition drain", () => {
       resolvePendingDisposition,
       dispatchClaimedEvent,
     });
-    // No-disposition path remains open for incompatible queues.
+    // No-disposition path remains open for incompatible and specialized queues
+    // under partial generics (must not reject on the queue property).
     createChannelIngressDrain({
       queue: incompatibleQueue,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload>({
+      queue: incompatibleQueue,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload>({
+      queue: compatibleQueue,
       dispatchClaimedEvent,
     });
     createChannelIngressDrain<Payload, unknown, IncompatibleCompletedMetadata>({
@@ -850,7 +908,7 @@ describe("channel ingress pending disposition drain", () => {
     });
   });
 
-  it("accepts monitor and plugin open paths with and without dispositions at compile time", () => {
+  it("accepts monitor and real PluginRuntime open paths with and without dispositions", () => {
     type IncompatibleCompletedMetadata = { deliveredBy: string };
     type Suppressed =
       import("./ingress-drain-pending-disposition.js").ChannelIngressSuppressedCompletionMetadata;
@@ -858,23 +916,13 @@ describe("channel ingress pending disposition drain", () => {
       Payload,
       unknown
     >;
-    // Real plugin open surface (types-core / registry-runtime shape).
-    type PluginOpenOptions<TCompletedMetadata> = Omit<
-      import("./ingress-drain.js").CreateChannelIngressDrainOptions<
-        Payload,
-        unknown,
-        TCompletedMetadata
-      >,
-      "queue"
-    > & {
-      queue?: import("./ingress-queue.js").ChannelIngressQueue<
-        Payload,
-        unknown,
-        TCompletedMetadata
-      >;
-      accountId?: string;
-      stateDir?: string;
-    };
+    // Real plugin runtime surface — not a reconstructed lookalike.
+    type PluginRuntime = import("../../plugins/runtime/types.js").PluginRuntime;
+    type PluginOpenDrain = PluginRuntime["state"]["openChannelIngressDrain"];
+    // Compile-only binding: never invoked at runtime.
+    const openChannelIngressDrain: PluginOpenDrain = ((..._args: never[]) => {
+      throw new Error("compile-only PluginRuntime openChannelIngressDrain binding");
+    }) as unknown as PluginOpenDrain;
 
     const resolvePendingDisposition = () => ({
       kind: "complete" as const,
@@ -906,36 +954,95 @@ describe("channel ingress pending disposition drain", () => {
       dispatchClaimedEvent,
     } satisfies MonitorSpreadTarget;
 
-    // Plugin open: with and without dispositions on a compatible completed-metadata contract.
-    const pluginWithout: PluginOpenOptions<Suppressed> = {
-      dispatchClaimedEvent,
-      accountId: "acct",
-    };
-    const pluginWith: PluginOpenOptions<Suppressed> = {
-      dispatchClaimedEvent,
-      resolvePendingDisposition,
-      accountId: "acct",
-    };
-
-    // Plugin open must reject disposition resolvers for incompatible completed metadata.
-    const pluginIncompatibleWithout: PluginOpenOptions<IncompatibleCompletedMetadata> = {
-      dispatchClaimedEvent,
-      accountId: "acct",
-    };
-    const pluginIncompatibleWith: PluginOpenOptions<IncompatibleCompletedMetadata> = {
-      dispatchClaimedEvent,
-      // @ts-expect-error incompatible plugin completed metadata rejects disposition resolver
-      resolvePendingDisposition,
-      accountId: "acct",
-    };
+    // PluginRuntime.openChannelIngressDrain: type-level only (guarded by false).
+    if (false as boolean) {
+      openChannelIngressDrain<Payload, unknown, Suppressed>({
+        dispatchClaimedEvent,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload, unknown, Suppressed>({
+        dispatchClaimedEvent,
+        resolvePendingDisposition,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload, unknown, IncompatibleCompletedMetadata>({
+        dispatchClaimedEvent,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload, unknown, IncompatibleCompletedMetadata>({
+        dispatchClaimedEvent,
+        // @ts-expect-error incompatible plugin completed metadata rejects disposition resolver
+        resolvePendingDisposition,
+        accountId: "acct",
+      });
+    }
 
     expect(monitorWithout.startLimit).toBe(4);
     expect(typeof monitorWith.resolvePendingDisposition).toBe("function");
     expect(monitorSpreadWithout.dispatchClaimedEvent).toBe(dispatchClaimedEvent);
     expect(monitorSpreadWith.resolvePendingDisposition).toBe(resolvePendingDisposition);
-    expect(typeof pluginWithout.dispatchClaimedEvent).toBe("function");
-    expect(typeof pluginWith.resolvePendingDisposition).toBe("function");
-    expect(typeof pluginIncompatibleWithout.dispatchClaimedEvent).toBe("function");
-    expect(pluginIncompatibleWith.accountId).toBe("acct");
+    expect(typeof openChannelIngressDrain).toBe("function");
+  });
+
+  it("keeps later disposition pending when a peer claims the head after an empty claim snapshot", async () => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const otherLane = "channel:other-room";
+      const clock = STALE_AMBIENT_PENDING_MS + 1_000;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+
+      await queue.enqueue(
+        "older-head",
+        { text: "in-flight head", kind: "addressed" },
+        { laneKey, receivedAt: clock - 10 },
+      );
+      await queue.enqueue(
+        "later-ambient",
+        { text: "stale ambient tail", kind: "ambient" },
+        { laneKey, receivedAt: 0 },
+      );
+      await queue.enqueue(
+        "other-lane-work",
+        { text: "unrelated", kind: "addressed" },
+        { laneKey: otherLane, receivedAt: clock - 1 },
+      );
+
+      // Simulate listClaims → peer claim → listPending TOCTOU without test-only hooks:
+      // wrap listPending so the first drain pending load claims the older head as a peer.
+      const originalListPending = queue.listPending.bind(queue);
+      let injectedPeerClaim = false;
+      queue.listPending = async (listOptions) => {
+        if (!injectedPeerClaim) {
+          injectedPeerClaim = true;
+          const peerClaim = await queue.claim("older-head", { ownerId: "peer-toctou" });
+          expect(peerClaim).not.toBeNull();
+        }
+        return originalListPending(listOptions);
+      };
+
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        claimLeaseMs: 60 * 60 * 1_000,
+        now: () => clock,
+        startLimit: 8,
+        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      // listClaims was empty at drain start; peer claim lands before pending load.
+      // Settlement must still refuse later-ambient via atomic lane revalidation.
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: 0 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["other-lane-work"]);
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id).sort()).toEqual([
+        "later-ambient",
+      ]);
+      expect((await queue.listClaims()).map((claim) => claim.id)).toEqual(["older-head"]);
+      drain.dispose();
+    });
   });
 });

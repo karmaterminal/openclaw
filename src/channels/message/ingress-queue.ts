@@ -64,13 +64,14 @@ export type ChannelIngressQueueClaimRef = {
 };
 
 /**
- * Snapshot generation fence for pending-id complete/fail CAS. Matches the
- * durable monotonic generation side-table value so fail+resubmit and
- * claim+release cannot recreate a prior fence via recycled timestamps/attempts
- * (ABA).
+ * Snapshot fence for pending-id complete/fail CAS. Matches the durable
+ * never-reused generation allocator plus the row's receivedAt incarnation so
+ * fail+resubmit, delete/prune/re-enqueue, and frozen-base writers that cannot
+ * advance the side-table token cannot ABA-settle a replacement row.
  */
 export type ChannelIngressPendingGenerationMatch = {
   generation: number;
+  receivedAt: number;
 };
 
 /** Claim identity available when a stale row's payload cannot be decoded. */
@@ -307,7 +308,9 @@ export type CreateChannelIngressQueueOptions = {
 
 type ChannelIngressDatabase = Pick<
   OpenClawStateKyselyDatabase,
-  "channel_ingress_events" | "channel_ingress_event_generations"
+  | "channel_ingress_events"
+  | "channel_ingress_event_generations"
+  | "channel_ingress_generation_counters"
 >;
 type ChannelIngressRow = Selectable<ChannelIngressEvents>;
 
@@ -404,13 +407,26 @@ function writeEventGeneration(
   );
 }
 
-function bumpEventGeneration(db: DatabaseSync, queueName: string, eventId: string): void {
-  // sqlite-allow-raw -- Atomic insert-or-increment for the generation fence side table.
-  db.prepare(
-    `INSERT INTO channel_ingress_event_generations (queue_name, event_id, generation)
-     VALUES (?, ?, 1)
-     ON CONFLICT(queue_name, event_id) DO UPDATE SET generation = generation + 1`,
-  ).run(queueName, eventId);
+/**
+ * Allocate a queue-local generation that never reuses a prior value, even after
+ * the per-event side-table row is cleared by complete/delete/prune.
+ */
+function allocateEventGeneration(db: DatabaseSync, queueName: string, eventId: string): number {
+  // sqlite-allow-raw -- Atomic per-queue monotonic generation allocator + side row.
+  const row = db
+    .prepare(
+      `INSERT INTO channel_ingress_generation_counters (queue_name, next_generation)
+       VALUES (?, 1)
+       ON CONFLICT(queue_name) DO UPDATE SET next_generation = next_generation + 1
+       RETURNING next_generation`,
+    )
+    .get(queueName) as { next_generation: number } | undefined;
+  const generation = Number(row?.next_generation ?? 0);
+  if (!Number.isFinite(generation) || generation < 1) {
+    throw new Error(`Failed to allocate channel ingress generation for ${queueName}`);
+  }
+  writeEventGeneration(db, queueName, eventId, generation);
+  return generation;
 }
 
 function clearEventGeneration(db: DatabaseSync, queueName: string, eventId: string): void {
@@ -421,6 +437,64 @@ function clearEventGeneration(db: DatabaseSync, queueName: string, eventId: stri
       .where("queue_name", "=", queueName)
       .where("event_id", "=", eventId),
   );
+}
+
+/** Drop generation side rows whose event rows are gone (bounded by live events). */
+function pruneOrphanEventGenerations(db: DatabaseSync, queueName: string): number {
+  // sqlite-allow-raw -- Orphan cleanup for generation side table after event deletes.
+  const result = db
+    .prepare(
+      `DELETE FROM channel_ingress_event_generations
+       WHERE queue_name = ?
+         AND event_id NOT IN (
+           SELECT event_id FROM channel_ingress_events WHERE queue_name = ?
+         )`,
+    )
+    .run(queueName, queueName);
+  return Number(result.changes ?? 0);
+}
+
+/**
+ * Atomically decide whether a generation-fenced pending settlement may proceed.
+ * Revalidates incarnation (generation + receivedAt) and live same-lane claims
+ * inside the write transaction so listClaims/listPending TOCTOU cannot suppress
+ * a later row while a peer holds the lane head (including corrupt claim rows
+ * filtered from listClaims).
+ */
+function pendingSettlementAllowed(
+  db: DatabaseSync,
+  queueName: string,
+  eventId: string,
+  expectedPending: ChannelIngressPendingGenerationMatch,
+): boolean {
+  const row = selectRow(db, queueName, eventId);
+  if (!row || row.status !== "pending") {
+    return false;
+  }
+  if (readEventGeneration(db, queueName, eventId) !== expectedPending.generation) {
+    return false;
+  }
+  if (Number(row.received_at) !== expectedPending.receivedAt) {
+    return false;
+  }
+  const laneKey = row.lane_key;
+  if (typeof laneKey === "string" && laneKey.length > 0) {
+    // sqlite-allow-raw -- Lane-head claim fence must see corrupt rows listClaims drops.
+    const claimed = db
+      .prepare(
+        `SELECT 1 AS ok
+         FROM channel_ingress_events
+         WHERE queue_name = ?
+           AND status = 'claimed'
+           AND lane_key = ?
+         LIMIT 1`,
+      )
+      .get(queueName, laneKey) as { ok: number } | undefined;
+    if (claimed) {
+      return false;
+    }
+  }
+  return true;
 }
 
 type ParseJsonResult = { ok: true; value: unknown } | { ok: false };
@@ -758,10 +832,10 @@ export function createChannelIngressQueue<
           throw new Error(`Failed to read channel ingress event ${queueName}/${eventId}`);
         }
         if (affectedRows(insert) > 0) {
-          // Fresh accepts start at generation 1 so they never collide with
-          // missing/default 0 side-table rows that later bump on release/resubmit.
-          writeEventGeneration(tx.db, queueName, eventId, 1);
-          const fresh = baseRecord<TPayload, TMetadata>(row, 1);
+          // Never-reuse allocator: delete/prune/re-enqueue and frozen-base writers
+          // cannot recreate a prior fence value for this queue.
+          const generation = allocateEventGeneration(tx.db, queueName, eventId);
+          const fresh = baseRecord<TPayload, TMetadata>(row, generation);
           if (fresh === null) {
             throw new Error(
               `Corrupt payload_json in channel ingress event ${queueName}/${eventId}`,
@@ -1249,10 +1323,10 @@ export function createChannelIngressQueue<
         if (affectedRows(result) === 0) {
           return false;
         }
-        // Stale recovery is a pending re-entry: bump generation so an async
-        // disposition snapshot taken before claim/recover cannot CAS-settle
-        // the recycled row after recoverStaleClaims.
-        bumpEventGeneration(tx.db, queueName, eventId);
+        // Stale recovery is a pending re-entry: allocate a never-reused
+        // generation so an async disposition snapshot taken before recover
+        // cannot CAS-settle the recycled row.
+        allocateEventGeneration(tx.db, queueName, eventId);
         return true;
       },
       { path: database.path },
@@ -1362,12 +1436,11 @@ export function createChannelIngressQueue<
           token === null
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
-        if (
-          token === null &&
-          expectedPending &&
-          readEventGeneration(tx.db, queueName, eventId) !== expectedPending.generation
-        ) {
-          return false;
+        if (token === null && expectedPending) {
+          // Atomic incarnation + same-lane claim revalidation (closes listClaims TOCTOU).
+          if (!pendingSettlementAllowed(tx.db, queueName, eventId, expectedPending)) {
+            return false;
+          }
         }
         const result = executeSqliteQuerySync(tx.db, update);
         if (affectedRows(result) > 0) {
@@ -1456,9 +1529,9 @@ export function createChannelIngressQueue<
         if (affectedRows(executeSqliteQuerySync(tx.db, update)) === 0) {
           return false;
         }
-        // Bump generation even for non-attempting releases so a stale
-        // disposition snapshot cannot ABA-match the recycled pending row.
-        bumpEventGeneration(tx.db, queueName, eventId);
+        // Never-reuse allocation so a stale disposition snapshot cannot ABA-match
+        // the recycled pending row (including non-attempting releases).
+        allocateEventGeneration(tx.db, queueName, eventId);
         return true;
       },
       { path: database.path },
@@ -1501,15 +1574,13 @@ export function createChannelIngressQueue<
           token === null
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
-        if (
-          token === null &&
-          expectedPending &&
-          readEventGeneration(tx.db, queueName, eventId) !== expectedPending.generation
-        ) {
-          return false;
+        if (token === null && expectedPending) {
+          if (!pendingSettlementAllowed(tx.db, queueName, eventId, expectedPending)) {
+            return false;
+          }
         }
-        // Keep the side-table generation on fail so resubmit can bump
-        // monotonically and stale disposition fences still lose CAS.
+        // Keep the side-table generation on fail so resubmit allocates a new
+        // never-reused fence and stale disposition snapshots still lose CAS.
         return affectedRows(executeSqliteQuerySync(tx.db, update)) > 0;
       },
       { path: database.path },
@@ -1571,10 +1642,9 @@ export function createChannelIngressQueue<
         if (affectedRows(result) === 0) {
           return { kind: "active", status: "pending" };
         }
-        // New pending generation — stale disposition fences must lose CAS.
-        bumpEventGeneration(tx.db, queueName, eventId);
+        // New never-reused pending generation — stale disposition fences lose CAS.
+        const generation = allocateEventGeneration(tx.db, queueName, eventId);
         const updated = selectRow(tx.db, queueName, eventId);
-        const generation = readEventGeneration(tx.db, queueName, eventId);
         const record = updated ? baseRecord<TPayload, TMetadata>(updated, generation) : null;
         if (!record) {
           throw new Error(
@@ -1606,7 +1676,12 @@ export function createChannelIngressQueue<
           token === null
             ? baseDelete.where("status", "=", "pending")
             : baseDelete.where("status", "=", "claimed").where("claim_token", "=", token);
-        return affectedRows(executeSqliteQuerySync(tx.db, deleteQuery)) > 0;
+        if (affectedRows(executeSqliteQuerySync(tx.db, deleteQuery)) === 0) {
+          return false;
+        }
+        // Drop the per-event side row; the queue counter keeps fences never-reused.
+        clearEventGeneration(tx.db, queueName, eventId);
+        return true;
       },
       { path: database.path },
     );
@@ -1825,6 +1900,9 @@ export function createChannelIngressQueue<
         pruneMaxEntries("pending", pendingMaxEntries);
         pruneCompletedMaxEntriesPartitioned(completedMaxEntries);
         pruneMaxEntries("failed", failedMaxEntries);
+        // Side-table storage stays bounded by live event rows; the per-queue
+        // counter alone preserves never-reuse fences across re-enqueue.
+        pruneOrphanEventGenerations(tx.db, queueName);
         return deleted;
       },
       { path: database.path },

@@ -16,18 +16,39 @@ const STATE_SCHEMA_MODULES = [
   },
 ];
 
+const SCHEMA_QUERY_PREFIX = "openclaw-schema=";
+
 /** Inline canonical schema bytes so bundled consumers need no SQL asset. */
 export function createStateSchemaInlinePlugin(rootDir = process.cwd()) {
   const schemasByModulePath = new Map(
     STATE_SCHEMA_MODULES.map((schema) => [path.resolve(rootDir, schema.modulePath), schema]),
   );
 
+  function matchSchemaModule(id) {
+    const bareId = String(id).split("?")[0] ?? id;
+    const resolvedId = path.isAbsolute(bareId)
+      ? path.resolve(bareId)
+      : path.resolve(rootDir, bareId);
+    return { resolvedId, schema: schemasByModulePath.get(resolvedId) };
+  }
+
   return {
     name: STATE_SCHEMA_INLINE_PLUGIN_NAME,
+    resolveId(id) {
+      const { resolvedId, schema } = matchSchemaModule(id);
+      if (!schema) {
+        return null;
+      }
+      // Bust Vitest/Vite module cache when only the .sql asset changes. load()
+      // already re-reads SQL, but cached load output otherwise stays sticky across
+      // process restarts when the .ts module bytes are unchanged.
+      const schemaPath = path.resolve(rootDir, schema.schemaPath);
+      const stamp = fs.statSync(schemaPath).mtimeMs;
+      return `${resolvedId}?${SCHEMA_QUERY_PREFIX}${stamp}`;
+    },
     load(id) {
       // Vitest may append query suffixes (e.g. ?v=...); strip before lookup.
-      const resolvedId = path.resolve(String(id).split("?")[0] ?? id);
-      const schema = schemasByModulePath.get(resolvedId);
+      const { resolvedId, schema } = matchSchemaModule(id);
       if (!schema) {
         return null;
       }
