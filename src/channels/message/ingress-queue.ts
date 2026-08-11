@@ -56,6 +56,16 @@ export type ChannelIngressQueueClaimRef = {
   };
 };
 
+/**
+ * Snapshot generation fence for pending-id complete/fail CAS. A concurrent
+ * fail+resubmit changes these fields, so a stale disposition must not settle.
+ */
+export type ChannelIngressPendingGenerationMatch = {
+  receivedAt: number;
+  updatedAt: number;
+  attempts: number;
+};
+
 /** Claim identity available when a stale row's payload cannot be decoded. */
 export type ChannelIngressQueueCorruptClaim = {
   id: string;
@@ -221,7 +231,15 @@ export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadat
   ): Promise<boolean>;
   complete(
     idOrClaim: string | ChannelIngressQueueClaimRef,
-    options?: { metadata?: TCompletedMetadata; completedAt?: number },
+    options?: {
+      metadata?: TCompletedMetadata;
+      completedAt?: number;
+      /**
+       * When completing by id (pending path), require these generation fields so a
+       * disposition derived from an older snapshot cannot tombstone a resubmit.
+       */
+      expectedPending?: ChannelIngressPendingGenerationMatch;
+    },
   ): Promise<boolean>;
   release(
     idOrClaim: string | ChannelIngressQueueClaimRef,
@@ -229,7 +247,13 @@ export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadat
   ): Promise<boolean>;
   fail(
     idOrClaim: string | ChannelIngressQueueClaimRef,
-    options: { reason: string; message?: string; failedAt?: number },
+    options: {
+      reason: string;
+      message?: string;
+      failedAt?: number;
+      /** Generation fence for pending-id failures (async disposition CAS). */
+      expectedPending?: ChannelIngressPendingGenerationMatch;
+    },
   ): Promise<boolean>;
   /** Additive SDK seam; actual runtime queues support operator resubmission. */
   resubmit?(
@@ -259,6 +283,11 @@ export type CreateChannelIngressQueueOptions = {
   accountId?: string;
   stateDir?: string;
   now?: () => number;
+  /**
+   * Diagnostic seam fired once per listPending SQL page with the requested page
+   * size and the number of SQLite rows actually selected (valid + corrupt).
+   */
+  onListPendingPage?: (page: { requested: number; selected: number }) => void;
 };
 
 type ChannelIngressDatabase = Pick<OpenClawStateKyselyDatabase, "channel_ingress_events">;
@@ -498,7 +527,17 @@ function rowToEnqueueResult<TPayload, TMetadata, TCompletedMetadata>(
 }
 
 function normalizeLimit(limit: number | "all" | undefined): number {
-  return limit === "all" ? Number.MAX_SAFE_INTEGER : Math.max(1, Math.floor(limit ?? 100));
+  if (limit === "all") {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  if (limit === undefined) {
+    return 100;
+  }
+  // Preserve 0 so callers can request an empty snapshot without a minimum page of 1.
+  if (!Number.isFinite(limit)) {
+    return 100;
+  }
+  return Math.max(0, Math.floor(limit));
 }
 
 function normalizeScanLimit(limit: number | undefined): number {
@@ -674,9 +713,15 @@ export function createChannelIngressQueue<
     const { db } = openStateDatabase(options.stateDir);
     const kysely = getChannelIngressKysely(db);
     const limit = normalizeLimit(listOptions?.limit);
+    // Bound SQLite rows selected (valid + corrupt), not only decoded records.
+    if (limit === 0) {
+      return [];
+    }
     const records: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
     let lastRow: ChannelIngressRow | undefined;
-    while (records.length < limit) {
+    let selectedRows = 0;
+    while (selectedRows < limit) {
+      const pageSize = Math.min(LIST_PENDING_BATCH_SIZE, limit - selectedRows);
       let pageQuery = kysely
         .selectFrom("channel_ingress_events")
         .selectAll()
@@ -701,17 +746,19 @@ export function createChannelIngressQueue<
         listOptions?.orderBy === "id"
           ? pageQuery.orderBy("event_id", "asc")
           : pageQuery.orderBy("received_at", "asc").orderBy("event_id", "asc");
-      const rows = executeSqliteQuerySync(db, orderedQuery.limit(LIST_PENDING_BATCH_SIZE)).rows;
+      const rows = executeSqliteQuerySync(db, orderedQuery.limit(pageSize)).rows;
+      options.onListPendingPage?.({ requested: pageSize, selected: rows.length });
       for (const row of rows) {
+        selectedRows += 1;
         const record = baseRecord<TPayload, TMetadata>(row);
         if (record) {
           records.push(record);
-          if (records.length === limit) {
-            break;
-          }
+        }
+        if (selectedRows >= limit) {
+          break;
         }
       }
-      if (rows.length < LIST_PENDING_BATCH_SIZE) {
+      if (rows.length < pageSize) {
         break;
       }
       lastRow = rows.at(-1);
@@ -1097,6 +1144,7 @@ export function createChannelIngressQueue<
     const eventId = idFrom(idOrClaim);
     const token = claimTokenFrom(idOrClaim);
     const completedAt = completeOptions?.completedAt ?? now();
+    const expectedPending = completeOptions?.expectedPending;
     const database = openStateDatabase(options.stateDir);
     return runOpenClawStateWriteTransaction(
       (tx) => {
@@ -1121,15 +1169,26 @@ export function createChannelIngressQueue<
           })
           .where("queue_name", "=", queueName)
           .where("event_id", "=", eventId);
-        const update =
+        let update =
           token === null
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
+        if (token === null && expectedPending) {
+          update = update
+            .where("received_at", "=", expectedPending.receivedAt)
+            .where("updated_at", "=", expectedPending.updatedAt)
+            .where("attempts", "=", expectedPending.attempts);
+        }
         const result = executeSqliteQuerySync(tx.db, update);
         if (affectedRows(result) > 0) {
           return true;
         }
         if (token !== null) {
+          return false;
+        }
+        // Generation-fenced pending completes must not insert a fresh tombstone
+        // when the snapshot row was already replaced (fail+resubmit race).
+        if (expectedPending) {
           return false;
         }
         const insert = executeSqliteQuerySync(
@@ -1212,6 +1271,7 @@ export function createChannelIngressQueue<
     const eventId = idFrom(idOrClaim);
     const token = claimTokenFrom(idOrClaim);
     const failedAt = failOptions.failedAt ?? now();
+    const expectedPending = failOptions.expectedPending;
     const database = openStateDatabase(options.stateDir);
     return runOpenClawStateWriteTransaction(
       (tx) => {
@@ -1236,10 +1296,16 @@ export function createChannelIngressQueue<
           }))
           .where("queue_name", "=", queueName)
           .where("event_id", "=", eventId);
-        const update =
+        let update =
           token === null
             ? baseUpdate.where("status", "=", "pending")
             : baseUpdate.where("status", "=", "claimed").where("claim_token", "=", token);
+        if (token === null && expectedPending) {
+          update = update
+            .where("received_at", "=", expectedPending.receivedAt)
+            .where("updated_at", "=", expectedPending.updatedAt)
+            .where("attempts", "=", expectedPending.attempts);
+        }
         return affectedRows(executeSqliteQuerySync(tx.db, update)) > 0;
       },
       { path: database.path },
@@ -1459,17 +1525,15 @@ export function createChannelIngressQueue<
           }
         };
 
-        // Partition completed retention so delivered replay guards and intentional
-        // suppression tombstones each keep duplicate protection under cap churn.
-        // Reserved seats per class prevent one class from wiping the other; unused
-        // reserved seats refill the other class by recency so a single-class
-        // workload still receives the full maxEntries budget.
+        // Completed retention contract:
+        // - Globally bound non-protected keeps to maxEntries (protected always kept
+        //   and consume budget first; only when protected > maxEntries can total exceed).
+        // - Single-class workloads receive the full remaining capacity.
+        // - When both classes compete and remaining >= 2, reserve at least one seat
+        //   each; leftover odd seats prefer delivered; unused reserved seats refill
+        //   by recency. remaining === 1 keeps the single newest non-protected row.
         const pruneCompletedMaxEntriesPartitioned = (maxEntries: number | null) => {
           if (maxEntries === null) {
-            return;
-          }
-          if (maxEntries <= 0) {
-            pruneMaxEntries("completed", maxEntries);
             return;
           }
           const batchSize = 500;
@@ -1479,8 +1543,15 @@ export function createChannelIngressQueue<
             updated_at: number;
             completed_metadata_json: string | null;
           };
+          const compareRecency = (left: CompletedPruneRow, right: CompletedPruneRow): number => {
+            if (right.updated_at !== left.updated_at) {
+              return right.updated_at - left.updated_at;
+            }
+            return right.event_id < left.event_id ? -1 : right.event_id > left.event_id ? 1 : 0;
+          };
           const delivered: CompletedPruneRow[] = [];
           const suppressed: CompletedPruneRow[] = [];
+          const protectedRows: CompletedPruneRow[] = [];
           let cursor: { updated_at: number; event_id: string } | undefined;
           while (true) {
             let select = kysely
@@ -1510,6 +1581,7 @@ export function createChannelIngressQueue<
             }
             for (const row of batch) {
               if (protectedSet.has(row.event_id)) {
+                protectedRows.push(row);
                 continue;
               }
               if (isSuppressedCompletionMetadata(row.completed_metadata_json)) {
@@ -1525,39 +1597,63 @@ export function createChannelIngressQueue<
             }
           }
 
-          // Prefer leftover odd seat for delivered guards.
-          const suppressedReserve = Math.floor(maxEntries / 2);
-          const deliveredReserve = maxEntries - suppressedReserve;
           const keepIds = new Set<string>();
-          for (const row of delivered.slice(0, deliveredReserve)) {
+          // Protected IDs always retain duplicate protection and consume budget.
+          for (const row of protectedRows) {
             keepIds.add(row.event_id);
           }
-          for (const row of suppressed.slice(0, suppressedReserve)) {
-            keepIds.add(row.event_id);
-          }
-          let remaining = maxEntries - keepIds.size;
+          let remaining = Math.max(0, maxEntries - keepIds.size);
+
+          const take = (rows: CompletedPruneRow[], count: number): CompletedPruneRow[] => {
+            if (count <= 0) {
+              return [];
+            }
+            return rows.slice(0, count);
+          };
+
           if (remaining > 0) {
-            const overflow = [
-              ...delivered.slice(deliveredReserve),
-              ...suppressed.slice(suppressedReserve),
-            ].sort((left, right) => {
-              if (right.updated_at !== left.updated_at) {
-                return right.updated_at - left.updated_at;
+            if (delivered.length === 0) {
+              for (const row of take(suppressed, remaining)) {
+                keepIds.add(row.event_id);
               }
-              return right.event_id < left.event_id ? -1 : right.event_id > left.event_id ? 1 : 0;
-            });
-            for (const row of overflow) {
-              if (remaining <= 0) {
-                break;
+            } else if (suppressed.length === 0) {
+              for (const row of take(delivered, remaining)) {
+                keepIds.add(row.event_id);
               }
-              keepIds.add(row.event_id);
-              remaining -= 1;
+            } else if (remaining === 1) {
+              const newest = [delivered[0], suppressed[0]].sort(compareRecency)[0];
+              keepIds.add(newest.event_id);
+            } else {
+              const suppressedReserve = Math.floor(remaining / 2);
+              const deliveredReserve = remaining - suppressedReserve;
+              const keptDelivered = take(delivered, deliveredReserve);
+              const keptSuppressed = take(suppressed, suppressedReserve);
+              for (const row of keptDelivered) {
+                keepIds.add(row.event_id);
+              }
+              for (const row of keptSuppressed) {
+                keepIds.add(row.event_id);
+              }
+              let refill = remaining - keptDelivered.length - keptSuppressed.length;
+              if (refill > 0) {
+                const overflow = [
+                  ...delivered.slice(keptDelivered.length),
+                  ...suppressed.slice(keptSuppressed.length),
+                ].sort(compareRecency);
+                for (const row of overflow) {
+                  if (refill <= 0) {
+                    break;
+                  }
+                  keepIds.add(row.event_id);
+                  refill -= 1;
+                }
+              }
             }
           }
 
-          const toDelete = [...delivered, ...suppressed]
+          const toDelete = [...protectedRows, ...delivered, ...suppressed]
             .map((row) => row.event_id)
-            .filter((id) => !keepIds.has(id));
+            .filter((id) => !keepIds.has(id) && !protectedSet.has(id));
           for (let offset = 0; offset < toDelete.length; offset += batchSize) {
             deleteStatusIds("completed", toDelete.slice(offset, offset + batchSize));
           }

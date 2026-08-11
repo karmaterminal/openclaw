@@ -887,13 +887,26 @@ describe("channel ingress drain", () => {
   it("throws IngressAdoptionLostError when complete returns false (lease reclaimed)", async () => {
     await withTempState(async (stateDir) => {
       const queue = createTestIngressQueue(stateDir);
-      await queue.enqueue("evt-reclaim", { text: "x" }, { laneKey: "l1" });
+      await queue.enqueue("evt-reclaim", { text: "x" }, { laneKey: "l1", receivedAt: 1 });
+      await queue.enqueue("evt-tail", { text: "tail" }, { laneKey: "l1", receivedAt: 2 });
 
-      queue.complete = async () => false;
+      // Simulate peer reclaim of the head token: first complete loses CAS once.
+      const originalComplete = queue.complete.bind(queue);
+      let rejectNextComplete = true;
+      queue.complete = async (idOrClaim, options) => {
+        const id = typeof idOrClaim === "string" ? idOrClaim : idOrClaim.id;
+        if (rejectNextComplete && id === "evt-reclaim") {
+          rejectNextComplete = false;
+          return false;
+        }
+        return await originalComplete(idOrClaim, options);
+      };
 
       let adoptError: unknown;
-      const drain = createChannelIngressDrain<Payload>({
+      const first = createChannelIngressDrain<Payload>({
         queue,
+        ownerId: "first-owner",
+        startLimit: 1,
         dispatchClaimedEvent: async (_event, lifecycle) => {
           try {
             await lifecycle.onAdopted();
@@ -904,13 +917,45 @@ describe("channel ingress drain", () => {
         },
       });
 
-      await drain.drainOnce();
-      await drain.waitForIdle();
+      await first.drainOnce();
+      await first.waitForIdle();
       expect(isIngressAdoptionLostError(adoptError)).toBe(true);
       expect(isIngressAdoptionLostError(adoptError) && adoptError.code).toBe("reclaimed");
-      // Claim remains held — not settled as a false success.
-      expect(drain.activeLaneKeys().has("l1")).toBe(true);
-      drain.dispose();
+      // Definitive token loss retires local ownership so the lane is not wedged.
+      expect(first.activeLaneKeys().has("l1")).toBe(false);
+      expect((await queue.listClaims()).map((claim) => claim.id)).toEqual(["evt-reclaim"]);
+      // startLimit=1 leaves the same-lane tail pending under the fenced head claim.
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
+        "evt-tail",
+      ]);
+
+      first.dispose();
+      const secondDispatches: string[] = [];
+      const second = createChannelIngressDrain<Payload>({
+        queue,
+        ownerId: "second-owner",
+        startLimit: 4,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          secondDispatches.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      // Peer fencing while first was active already covered above (claim stayed first-owned).
+      const recovered = await second.recoverStaleClaims();
+      expect(recovered).toBeGreaterThanOrEqual(1);
+      await second.drainOnce();
+      await second.waitForIdle();
+      // Same-lane tail waits for the recovered head to settle, then progresses once.
+      await second.drainOnce();
+      await second.waitForIdle();
+      expect(secondDispatches).toEqual(["evt-reclaim", "evt-tail"]);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listClaims()).toEqual([]);
+      for (const id of ["evt-reclaim", "evt-tail"]) {
+        const replay = await queue.enqueue(id, { text: "probe" });
+        expect(replay).toMatchObject({ kind: "completed", duplicate: true });
+      }
+      second.dispose();
     });
   });
 

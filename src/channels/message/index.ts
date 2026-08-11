@@ -49,8 +49,10 @@ export type { ChannelIngressDrain } from "./ingress-drain.js";
 export type {
   ChannelIngressPendingDisposition,
   ChannelIngressPendingDispositionContext,
+  ChannelIngressSuppressedCompletionMetadata,
   ResolveChannelIngressPendingDisposition,
 } from "./ingress-drain-pending-disposition.js";
+export type { ChannelIngressPendingGenerationMatch } from "./ingress-queue.js";
 export type {
   ChannelIngressMonitorDeliveryResult,
   ChannelIngressMonitorLifecycle,

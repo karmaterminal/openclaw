@@ -674,6 +674,48 @@ describe("Discord durable ingress", () => {
     });
   });
 
+  it("fail-opens raw PublicThread channel_type without a synthetic channel object", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.now();
+      // Production reconnect rows carry channel_type alone — no hydrated channel.
+      const rawThreadMessage = createRawMessage("1012b", "thread-raw-1", {
+        guild_id: "guild-1",
+        channel_type: ChannelType.PublicThread,
+        content: "old raw thread follow-up without mention",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      } as RawMessageOverrides);
+      expect(rawThreadMessage).not.toHaveProperty("channel");
+      await queue.enqueue("1012b", payloadFor(rawThreadMessage), {
+        laneKey: "channel:thread-raw-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        queue,
+        dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
+          if (!event.id) {
+            throw new Error("expected dispatched Discord event id");
+          }
+          dispatched.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1012b"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
   it.each([
     {
       name: "configured text-mention policy",

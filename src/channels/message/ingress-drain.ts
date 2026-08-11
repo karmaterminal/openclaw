@@ -17,6 +17,7 @@ import {
 } from "./ingress-claim-owner.js";
 import {
   applyIngressPendingDispositions,
+  type ChannelIngressSuppressedCompletionMetadata,
   type OnChannelIngressPendingDispositionCommitted,
   type ResolveChannelIngressPendingDisposition,
 } from "./ingress-drain-pending-disposition.js";
@@ -85,8 +86,16 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
-  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
-  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
+  /**
+   * complete dispositions write ChannelIngressSuppressedCompletionMetadata.
+   * Only available when TCompletedMetadata accepts that shape (including unknown).
+   */
+  resolvePendingDisposition?: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
+    ? ResolveChannelIngressPendingDisposition<TPayload, TMetadata>
+    : never;
+  onPendingDispositionCommitted?: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
+    ? OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>
+    : never;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -189,7 +198,8 @@ export function createChannelIngressDrain<
 
   const markLeaseReclaimed = (state: ActiveHandlerState<TPayload, TMetadata>) => {
     // Guillotine-style closed flag: late onAdopted throws IngressAdoptionLostError.
-    // Do not release/fail — another owner holds the claim token.
+    // Do not release/fail the durable row — another owner holds the claim token.
+    // Retire local ownership so same-lane tails are not wedged forever.
     if (state.phase === "settled" || state.guillotined || state.superseded) {
       return;
     }
@@ -201,6 +211,7 @@ export function createChannelIngressDrain<
     } catch {
       // AbortController.abort is not fallible in practice.
     }
+    removeActive(state);
   };
 
   const armClaimRefresh = (state: ActiveHandlerState<TPayload, TMetadata>) => {
@@ -595,12 +606,22 @@ export function createChannelIngressDrain<
         if (state.phase === "settled") {
           return;
         }
+        // Definitive claim-token loss: retire local lane ownership without touching
+        // the peer-owned durable row so same-lane tails can progress later.
+        if (isIngressAdoptionLostError(err)) {
+          state.guillotined = true;
+          clearStallTimer(state);
+          clearClaimRefresh(state);
+          removeActive(state);
+          return;
+        }
         // Guillotine / supersede own settleOnce — do not fail/release again.
         if (state.guillotined || state.superseded) {
           return;
         }
         // Adoption may have partially completed (tombstone retry wedge); keep claim.
         // Includes handler-completed path that moved to adopted before complete().
+        // Only retain ownership when the claim token is still ours (IO failures).
         if (state.phase === "adopted") {
           log(
             `ingress drain: post-adoption error for event ${claim.id} while claim held: ${formatError(err)}`,

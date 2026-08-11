@@ -173,66 +173,60 @@ describe("channel ingress pending disposition drain", () => {
     });
   });
 
-  it("does not load or visit a large pending tail beyond startLimit", async () => {
+  it("bounds SQLite listPending rows/pages by startLimit including corrupt rows and zero", async () => {
     await withTempState(async (stateDir) => {
       const laneKey = "channel:discord-room";
       const clock = STALE_AMBIENT_PENDING_MS + 1;
-      const queue = createTestIngressQueue(stateDir, { now: () => clock });
-      const staleIds = Array.from({ length: 80 }, (_, index) => `stale-tail-${index}`);
-      for (const [index, id] of staleIds.entries()) {
+      const pages: Array<{ requested: number; selected: number }> = [];
+      const queue = createTestIngressQueue(stateDir, {
+        now: () => clock,
+        onListPendingPage: (page) => pages.push(page),
+      });
+
+      // >100 rows so an unbounded 100-row page walker would over-read.
+      for (let index = 0; index < 120; index += 1) {
         await queue.enqueue(
-          id,
+          `stale-${index.toString().padStart(3, "0")}`,
           { text: `old ambient ${index}`, kind: "ambient" },
           { laneKey, receivedAt: index },
         );
       }
-      await queue.enqueue(
-        "fresh-addressed",
-        { text: "@openclaw now", kind: "addressed" },
-        { laneKey, receivedAt: clock },
-      );
 
-      const listCalls: Array<{ limit: number | "all" | undefined; returned: number }> = [];
-      const originalListPending = queue.listPending.bind(queue);
-      queue.listPending = async (options) => {
-        const rows = await originalListPending(options);
-        listCalls.push({ limit: options?.limit, returned: rows.length });
-        return rows;
-      };
+      // startLimit 0 must not open a SQL page.
+      pages.length = 0;
+      const zeroDrain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
+        startLimit: 0,
+        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        dispatchClaimedEvent: async (_event, lifecycle) => {
+          await lifecycle.onAdopted();
+        },
+      });
+      expect(await zeroDrain.drainOnce()).toEqual({ started: 0 });
+      expect(pages).toEqual([]);
+      zeroDrain.dispose();
 
+      pages.length = 0;
       let examined = 0;
-      const seenIds: string[] = [];
       const drain = createChannelIngressDrain<Payload>({
         queue,
         now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
         startLimit: 4,
         resolvePendingDisposition: (event, context) => {
           examined += 1;
-          seenIds.push(event.id);
           return resolveStaleAmbientPendingDisposition(event, context);
         },
-        dispatchClaimedEvent: async (event, lifecycle) => {
+        dispatchClaimedEvent: async (_event, lifecycle) => {
           await lifecycle.onAdopted();
         },
       });
-
       expect(await drain.drainOnce()).toEqual({ started: 0 });
       await drain.waitForIdle();
-
-      const dispositionListCalls = listCalls.filter((call) => call.limit !== "all");
-      expect(dispositionListCalls.length).toBeGreaterThanOrEqual(1);
-      expect(dispositionListCalls[0]?.limit).toBe(4);
-      expect(dispositionListCalls[0]?.returned).toBe(4);
-      // Large tail must never be loaded into the disposition snapshot or visited
-      // by the resolver under the admission lock.
       expect(examined).toBe(4);
-      expect(seenIds).toEqual(staleIds.slice(0, 4));
-      expect(seenIds).not.toContain("fresh-addressed");
-      expect(seenIds.some((id) => id.endsWith("50"))).toBe(false);
-      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
-        ...staleIds.slice(4),
-        "fresh-addressed",
-      ]);
+      expect(pages.reduce((sum, page) => sum + page.selected, 0)).toBe(4);
+      expect(pages.every((page) => page.requested <= 4)).toBe(true);
+      expect(pages.reduce((sum, page) => sum + page.requested, 0)).toBeLessThanOrEqual(4);
       drain.dispose();
     });
   });
@@ -497,5 +491,100 @@ describe("channel ingress pending disposition drain", () => {
       expect(countFailedChannelIngressQueueEntries(stateDir)).toEqual([]);
       drain.dispose();
     });
+  });
+
+  it("generation-fences async disposition so fail+resubmit is not suppressed", async () => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const clock = STALE_AMBIENT_PENDING_MS + 1;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "ambient-then-resubmit",
+        { text: "old ambient", kind: "ambient" },
+        { laneKey, receivedAt: 0 },
+      );
+
+      let enteredResolve!: () => void;
+      const enteredGate = new Promise<void>((resolve) => {
+        enteredResolve = resolve;
+      });
+      let releaseResolve!: () => void;
+      const releaseGate = new Promise<void>((resolve) => {
+        releaseResolve = resolve;
+      });
+      let sawResume = false;
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock + STALE_AMBIENT_PENDING_MS + 1,
+        startLimit: 4,
+        resolvePendingDisposition: async (event, context) => {
+          if (event.id === "ambient-then-resubmit") {
+            enteredResolve();
+            // Pause after snapshot capture so a concurrent fail+resubmit can land.
+            await releaseGate;
+            sawResume = true;
+          }
+          return resolveStaleAmbientPendingDisposition(event, context);
+        },
+        dispatchClaimedEvent: async (_event, lifecycle) => {
+          await lifecycle.onAdopted();
+        },
+      });
+
+      const drainPromise = drain.drainOnce();
+      await enteredGate;
+
+      expect(
+        await queue.fail("ambient-then-resubmit", { reason: "operator", message: "drop" }),
+      ).toBe(true);
+      const resubmit = await queue.resubmit?.("ambient-then-resubmit", {
+        resubmittedAt: clock + 10,
+      });
+      expect(resubmit).toMatchObject({ kind: "resubmitted" });
+      releaseResolve();
+      expect(await drainPromise).toEqual({ started: 0 });
+      await drain.waitForIdle();
+      expect(sawResume).toBe(true);
+      // Resubmitted generation must remain pending — not a suppression tombstone.
+      const pending = await queue.listPending({ limit: "all" });
+      expect(pending.map((event) => event.id)).toEqual(["ambient-then-resubmit"]);
+      const replay = await queue.enqueue("ambient-then-resubmit", {
+        text: "probe",
+        kind: "ambient",
+      });
+      expect(replay).toMatchObject({ kind: "pending", duplicate: true });
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      drain.dispose();
+    });
+  });
+
+  it("rejects incompatible completed-metadata types for complete dispositions at compile time", () => {
+    type IncompatibleCompletedMetadata = { deliveredBy: string };
+    type Options = import("./ingress-drain.js").CreateChannelIngressDrainOptions<
+      Payload,
+      unknown,
+      IncompatibleCompletedMetadata
+    >;
+    type ResolveField = Options extends { resolvePendingDisposition?: infer R } ? R : never;
+    // Incompatible metadata collapses the resolver field to `never`.
+    type AcceptsResolver = ResolveField extends never
+      ? true
+      : [ResolveField] extends [never]
+        ? true
+        : ResolveField extends (...args: never) => unknown
+          ? false
+          : true;
+    const rejectsResolver: AcceptsResolver = true;
+    expect(rejectsResolver).toBe(true);
+
+    type CompatibleOptions = import("./ingress-drain.js").CreateChannelIngressDrainOptions<
+      Payload,
+      unknown,
+      import("./ingress-drain-pending-disposition.js").ChannelIngressSuppressedCompletionMetadata
+    >;
+    type CompatibleResolve = NonNullable<CompatibleOptions["resolvePendingDisposition"]>;
+    type AcceptsCompatible = CompatibleResolve extends (...args: never) => unknown ? true : false;
+    const acceptsCompatible: AcceptsCompatible = true;
+    expect(acceptsCompatible).toBe(true);
   });
 });

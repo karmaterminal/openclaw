@@ -1,5 +1,16 @@
 import { resolveLaneKey } from "./ingress-drain-state.js";
-import type { ChannelIngressQueue, ChannelIngressQueueRecord } from "./ingress-queue.js";
+import type {
+  ChannelIngressPendingGenerationMatch,
+  ChannelIngressQueue,
+  ChannelIngressQueueRecord,
+} from "./ingress-queue.js";
+
+/** Durable metadata written for intentional pending-disposition completes. */
+export type ChannelIngressSuppressedCompletionMetadata = {
+  ingressDisposition: "suppressed";
+  reason: string;
+  message: string;
+};
 
 export type ChannelIngressPendingDisposition =
   | {
@@ -34,6 +45,20 @@ export type OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata> = (
   context: ChannelIngressPendingDispositionContext,
 ) => void | Promise<void>;
 
+type PendingDispositionQueue<TPayload, TMetadata, TCompletedMetadata> = {
+  fail: ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>["fail"];
+  complete: (
+    idOrClaim: Parameters<
+      ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>["complete"]
+    >[0],
+    options: {
+      completedAt?: number;
+      metadata: ChannelIngressSuppressedCompletionMetadata;
+      expectedPending: ChannelIngressPendingGenerationMatch;
+    },
+  ) => Promise<boolean>;
+};
+
 type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   dispositionNow: number;
@@ -43,9 +68,17 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
    * Unexamined tails stay pending. Defaults to unlimited when omitted.
    */
   workLimit?: number;
-  queue: Pick<ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>, "fail" | "complete">;
-  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
-  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
+  queue: PendingDispositionQueue<TPayload, TMetadata, TCompletedMetadata>;
+  /**
+   * complete dispositions write ChannelIngressSuppressedCompletionMetadata.
+   * Only available when TCompletedMetadata accepts that shape (including unknown).
+   */
+  resolvePendingDisposition?: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
+    ? ResolveChannelIngressPendingDisposition<TPayload, TMetadata>
+    : never;
+  onPendingDispositionCommitted?: ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
+    ? OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>
+    : never;
   deriveLaneKey?: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string | undefined;
   reconcileStoredLaneKey?: (
     record: ChannelIngressQueueRecord<TPayload, TMetadata>,
@@ -81,36 +114,58 @@ function safeLog(log: (message: string) => void, message: string): void {
   }
 }
 
+function pendingGenerationMatch<TPayload, TMetadata>(
+  record: ChannelIngressQueueRecord<TPayload, TMetadata>,
+): ChannelIngressPendingGenerationMatch {
+  return {
+    receivedAt: record.receivedAt,
+    updatedAt: record.updatedAt,
+    attempts: record.attempts,
+  };
+}
+
 async function settlePendingRecord<TPayload, TMetadata, TCompletedMetadata>(
-  queue: Pick<ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>, "fail" | "complete">,
+  queue: PendingDispositionQueue<TPayload, TMetadata, TCompletedMetadata>,
   record: ChannelIngressQueueRecord<TPayload, TMetadata>,
   disposition: ChannelIngressPendingDisposition,
   settledAt: number,
 ): Promise<boolean> {
   const reason = disposition.reason.trim() || "pending-disposition";
   const message = disposition.message.trim() || reason;
+  const expectedPending = pendingGenerationMatch(record);
   if (disposition.kind === "complete") {
+    const metadata: ChannelIngressSuppressedCompletionMetadata = {
+      ingressDisposition: "suppressed",
+      reason,
+      message,
+    };
     return await queue.complete(record.id, {
       completedAt: settledAt,
-      metadata: {
-        ingressDisposition: "suppressed",
-        reason,
-        message,
-      } as TCompletedMetadata,
+      metadata,
+      expectedPending,
     });
   }
-  return await queue.fail(record.id, { reason, message, failedAt: settledAt });
+  return await queue.fail(record.id, {
+    reason,
+    message,
+    failedAt: settledAt,
+    expectedPending,
+  });
 }
 
 /**
  * Pre-claim pending policy pass. Visits rows in snapshot order under workLimit,
- * fences later same-lane tails behind any retained head, and isolates observer
- * and log-sink failures after a successful CAS settlement.
+ * fences later same-lane tails behind any retained head, generation-fences async
+ * settlements, and isolates observer and log-sink failures after durable CAS.
  *
  * Callers must bound `pending` itself (typically `listPending({ limit: startLimit })`)
  * so large DB tails are never loaded under the admission lock.
  */
-export async function applyIngressPendingDispositions<TPayload, TMetadata, TCompletedMetadata>(
+export async function applyIngressPendingDispositions<
+  TPayload,
+  TMetadata,
+  TCompletedMetadata = ChannelIngressSuppressedCompletionMetadata,
+>(
   params: ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata>,
 ): Promise<AppliedIngressPendingDispositions<TPayload, TMetadata>> {
   if (!params.resolvePendingDisposition) {

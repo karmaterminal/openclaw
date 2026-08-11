@@ -596,6 +596,157 @@ describe("channel ingress queue", () => {
     });
   });
 
+  it.each([
+    {
+      name: "cap 0 clears non-protected completed rows",
+      cap: 0,
+      delivered: ["d1", "d2"],
+      suppressed: ["s1"],
+      protectIds: [] as string[],
+      expectProtected: [] as string[],
+      expectDuplicate: [] as string[],
+      expectMissing: ["d1", "d2", "s1"],
+      maxNonProtected: 0,
+    },
+    {
+      name: "cap 1 delivered-only keeps newest delivered full capacity",
+      cap: 1,
+      delivered: ["d-old", "d-new"],
+      suppressed: [] as string[],
+      protectIds: [] as string[],
+      expectProtected: [] as string[],
+      expectDuplicate: ["d-new"],
+      expectMissing: ["d-old"],
+      maxNonProtected: 1,
+    },
+    {
+      name: "cap 1 suppression-only keeps newest suppression",
+      cap: 1,
+      delivered: [] as string[],
+      suppressed: ["s-old", "s-new"],
+      protectIds: [] as string[],
+      expectProtected: [] as string[],
+      expectDuplicate: ["s-new"],
+      expectMissing: ["s-old"],
+      maxNonProtected: 1,
+    },
+    {
+      name: "cap 1 mixed keeps single newest overall",
+      cap: 1,
+      delivered: ["d-mid"],
+      suppressed: ["s-newest"],
+      protectIds: [] as string[],
+      expectProtected: [] as string[],
+      expectDuplicate: ["s-newest"],
+      expectMissing: ["d-mid"],
+      maxNonProtected: 1,
+    },
+    {
+      name: "cap 2 mixed keeps one delivered and one suppressed",
+      cap: 2,
+      delivered: ["d-old", "d-new"],
+      suppressed: ["s-old", "s-new"],
+      protectIds: [] as string[],
+      expectProtected: [] as string[],
+      expectDuplicate: ["d-new", "s-new"],
+      expectMissing: ["d-old", "s-old"],
+      maxNonProtected: 2,
+    },
+    {
+      name: "cap 2 protects oldest suppressed and still bounds non-protected",
+      cap: 2,
+      delivered: ["d-a", "d-b", "d-c"],
+      suppressed: ["s-protect", "s-new"],
+      protectIds: ["s-protect"],
+      expectProtected: ["s-protect"],
+      // Protected consumes one seat; remaining seat keeps the newest non-protected row.
+      expectDuplicate: ["s-protect", "s-new"],
+      expectMissing: ["d-a", "d-b", "d-c"],
+      maxNonProtected: 1,
+    },
+  ])(
+    "completed retention contract: $name",
+    async ({
+      cap,
+      delivered,
+      suppressed,
+      protectIds,
+      expectProtected,
+      expectDuplicate,
+      expectMissing,
+      maxNonProtected,
+    }) => {
+      await withTempState(async (stateDir) => {
+        let tick = 1;
+        const queue = createTestIngressQueue<
+          { text: string },
+          unknown,
+          { ingressDisposition?: string }
+        >(stateDir, { now: () => tick });
+
+        for (const id of delivered) {
+          tick += 1;
+          await queue.enqueue(id, { text: id }, { receivedAt: tick });
+          const claim = await queue.claim(id, { ownerId: "worker" });
+          expect(claim).not.toBeNull();
+          if (claim) {
+            tick += 1;
+            expect(await queue.complete(claim, { completedAt: tick })).toBe(true);
+          }
+        }
+        for (const id of suppressed) {
+          tick += 1;
+          await queue.enqueue(id, { text: id }, { receivedAt: tick });
+          tick += 1;
+          expect(
+            await queue.complete(id, {
+              completedAt: tick,
+              metadata: {
+                ingressDisposition: "suppressed",
+                reason: "stale",
+                message: "stale",
+              },
+            }),
+          ).toBe(true);
+        }
+
+        tick += 1;
+        await queue.prune({
+          completedMaxEntries: cap,
+          protectIds,
+          now: tick,
+        });
+
+        const database = openOpenClawStateDatabase({
+          env: { OPENCLAW_STATE_DIR: stateDir },
+        });
+        const kysely = getNodeSqliteKysely<ChannelIngressTestDatabase>(database.db);
+        const completedRows = executeSqliteQuerySync(
+          database.db,
+          kysely
+            .selectFrom("channel_ingress_events")
+            .select(["event_id", "completed_metadata_json"])
+            .where("status", "=", "completed"),
+        ).rows as Array<{ event_id: string; completed_metadata_json: string | null }>;
+        const completedIds = new Set(completedRows.map((row) => row.event_id));
+        const nonProtectedCount = completedRows.filter(
+          (row) => !protectIds.includes(row.event_id),
+        ).length;
+        expect(nonProtectedCount).toBeLessThanOrEqual(maxNonProtected);
+        for (const id of expectProtected) {
+          expect(completedIds.has(id)).toBe(true);
+        }
+        for (const id of expectDuplicate) {
+          const replay = await queue.enqueue(id, { text: "probe" });
+          expect(replay).toMatchObject({ kind: "completed", duplicate: true });
+        }
+        for (const id of expectMissing) {
+          expect(completedIds.has(id)).toBe(false);
+        }
+      });
+    },
+  );
+
   describe("corrupt JSON resilience", () => {
     function insertCorruptRow(
       stateDir: string,
@@ -656,10 +807,13 @@ describe("channel ingress queue", () => {
       });
     });
 
-    it("applies listPending limits after excluding corrupt payloads", async () => {
+    it("bounds listPending SQL selection by limit including corrupt rows and zero", async () => {
       await withTempState(async (stateDir) => {
-        const queue = createTestIngressQueue<{ text: string }>(stateDir);
-        for (let index = 0; index < 100; index += 1) {
+        const pages: Array<{ requested: number; selected: number }> = [];
+        const queue = createTestIngressQueue<{ text: string }>(stateDir, {
+          onListPendingPage: (page) => pages.push(page),
+        });
+        for (let index = 0; index < 120; index += 1) {
           insertCorruptRow(
             stateDir,
             '["test","account"]',
@@ -667,11 +821,19 @@ describe("channel ingress queue", () => {
             { payload_json: "{corrupt" },
           );
         }
-        await queue.enqueue("good-second", { text: "visible" }, { receivedAt: 300 });
+        await queue.enqueue("good-second", { text: "visible" }, { receivedAt: 10_000 });
 
-        const pending = await queue.listPending({ limit: 1 });
+        pages.length = 0;
+        expect(await queue.listPending({ limit: 0 })).toEqual([]);
+        expect(pages).toEqual([]);
 
-        expect(pending.map((record) => record.id)).toEqual(["good-second"]);
+        pages.length = 0;
+        const pending = await queue.listPending({ limit: 4 });
+        // Corrupt prefix consumes the row budget; do not walk the full 100-row page.
+        expect(pending).toEqual([]);
+        expect(pages.reduce((sum, page) => sum + page.selected, 0)).toBe(4);
+        expect(pages.every((page) => page.requested <= 4)).toBe(true);
+        expect(pages.reduce((sum, page) => sum + page.requested, 0)).toBeLessThanOrEqual(4);
       });
     });
 
