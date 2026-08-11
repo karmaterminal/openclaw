@@ -772,7 +772,7 @@ describe("channel ingress queue", () => {
         const queue = createTestIngressQueue<
           { text: string },
           unknown,
-          { ingressDisposition?: string }
+          { ingressDisposition?: string; reason?: string; message?: string }
         >(stateDir, { now: () => tick });
 
         for (const id of delivered) {
@@ -865,7 +865,7 @@ describe("channel ingress queue", () => {
         const queue = createTestIngressQueue<
           { text: string },
           unknown,
-          { ingressDisposition?: string }
+          { ingressDisposition?: string; reason?: string; message?: string }
         >(stateDir, { now: () => tick });
 
         // One delivered replay guard, then many newer suppressions.
@@ -924,7 +924,7 @@ describe("channel ingress queue", () => {
       const queue = createTestIngressQueue<
         { text: string },
         unknown,
-        { ingressDisposition?: string }
+        { ingressDisposition?: string; reason?: string; message?: string }
       >(stateDir, { now: () => 1 });
       // Same completedAt; lexicographically larger event_id must win the single seat.
       for (const id of ["tie-a", "tie-c", "tie-b"]) {

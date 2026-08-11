@@ -122,28 +122,41 @@ type ChannelIngressQueueCompletedMetadataOf<Q> =
 
 /**
  * Public drain options. Disposition resolvers are only part of the surface when
- * the queue's completed-metadata type (not merely a defaulted free type
- * parameter) can store ChannelIngressSuppressedCompletionMetadata. Incompatible
- * queue contracts collapse those fields to `never`.
+ * the *queue value's* completed-metadata brand can store
+ * ChannelIngressSuppressedCompletionMetadata.
+ *
+ * TQueue is constrained with `any` completed metadata so specialized queues
+ * still assign/infer under partial factory type arguments instead of collapsing
+ * to `ChannelIngressQueue<..., unknown>`. Incompatible queue contracts collapse
+ * disposition fields to `never`.
  */
 export type CreateChannelIngressDrainOptions<
-  TPayload,
+  TPayload = unknown,
   TMetadata = unknown,
   TCompletedMetadata = unknown,
-  TQueue extends ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata> = ChannelIngressQueue<
+  /**
+   * Defaults to any-completed so partial factory type args still accept branded
+   * specialized queues. Disposition gating follows the inferred queue brand
+   * (or TCompletedMetadata when the queue is the default any-completed shape).
+   */
+  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    TCompletedMetadata
+    any
   >,
 > = Omit<CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>, "queue"> & {
   queue: TQueue;
 } & (ChannelIngressSuppressedCompletionMetadata extends ChannelIngressQueueCompletedMetadataOf<TQueue>
-    ? CreateChannelIngressDrainDispositionFields<TPayload, TMetadata>
+    ? ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
+      ? CreateChannelIngressDrainDispositionFields<TPayload, TMetadata>
+      : {
+          resolvePendingDisposition?: never;
+          onPendingDispositionCommitted?: never;
+        }
     : {
         resolvePendingDisposition?: never;
         onPendingDispositionCommitted?: never;
       });
-
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;
   drainOnce: (options?: { shouldStop?: () => boolean }) => Promise<{ started: number }>;
@@ -152,15 +165,79 @@ export type ChannelIngressDrain = {
   dispose: () => void;
 };
 
+/** No-disposition overload: queue metadata is unconstrained. */
+export function createChannelIngressDrain<
+  TPayload = unknown,
+  TMetadata = unknown,
+  TCompletedMetadata = unknown,
+  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
+    TPayload,
+    TMetadata,
+    any
+  >,
+>(
+  options: Omit<
+    CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
+    "queue"
+  > & {
+    queue: TQueue;
+    resolvePendingDisposition?: undefined;
+    onPendingDispositionCommitted?: undefined;
+  },
+): ChannelIngressDrain;
+/**
+ * Disposition-required overload: rejects when the queue brand cannot store
+ * suppressions (including under partial type arguments via TQueue inference).
+ */
+export function createChannelIngressDrain<
+  TPayload = unknown,
+  TMetadata = unknown,
+  TCompletedMetadata = unknown,
+  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
+    TPayload,
+    TMetadata,
+    any
+  >,
+>(
+  options: ChannelIngressSuppressedCompletionMetadata extends ChannelIngressQueueCompletedMetadataOf<TQueue>
+    ? ChannelIngressSuppressedCompletionMetadata extends TCompletedMetadata
+      ? Omit<
+          CreateChannelIngressDrainCoreOptions<TPayload, TMetadata, TCompletedMetadata>,
+          "queue"
+        > & {
+          queue: TQueue;
+        } & CreateChannelIngressDrainDispositionFields<TPayload, TMetadata> & {
+            resolvePendingDisposition: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+          }
+      : never
+    : never,
+): ChannelIngressDrain;
+/**
+ * Optional-disposition overload: used by monitor/plugin spreads where the
+ * resolver may be present or absent. Still gates incompatible queue brands via
+ * CreateChannelIngressDrainOptions.
+ */
+export function createChannelIngressDrain<
+  TPayload = unknown,
+  TMetadata = unknown,
+  TCompletedMetadata = unknown,
+  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
+    TPayload,
+    TMetadata,
+    any
+  >,
+>(
+  options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
+): ChannelIngressDrain;
 /** Creates a channel-agnostic durable ingress drain over an existing queue. */
 export function createChannelIngressDrain<
   TPayload = unknown,
   TMetadata = unknown,
   TCompletedMetadata = unknown,
-  TQueue extends ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata> = ChannelIngressQueue<
+  TQueue extends ChannelIngressQueue<TPayload, TMetadata, any> = ChannelIngressQueue<
     TPayload,
     TMetadata,
-    TCompletedMetadata
+    any
   >,
 >(
   options: CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
