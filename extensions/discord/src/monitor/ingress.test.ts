@@ -2,7 +2,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ChannelType, type APIMessage } from "discord-api-types/v10";
+import {
+  ChannelType,
+  type APIMessage,
+  type GatewayMessageCreateDispatchData,
+} from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
 import type { DiscordAccountConfig, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
@@ -15,15 +19,19 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { createDiscordIngressMonitor, type DiscordIngressLifecycle } from "./ingress.js";
 
+type DiscordIngressChannelKind = "non-thread" | "thread";
+
 type DiscordIngressPayload = {
   version: 1;
   receivedAt: number;
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
+  channelKind?: DiscordIngressChannelKind;
 };
 
-type RawMessageOverrides = Partial<APIMessage> & {
+type RawMessageOverrides = Partial<GatewayMessageCreateDispatchData> & {
   channel?: unknown;
   guild_id?: string;
+  channel_type?: GatewayMessageCreateDispatchData["channel_type"];
 };
 
 const DISCORD_INGRESS_WAIT_TIMEOUT_MS = 10_000;
@@ -36,7 +44,7 @@ function createRawMessage(
   id: string,
   channelId = "channel-1",
   overrides: RawMessageOverrides = {},
-): APIMessage {
+): GatewayMessageCreateDispatchData {
   return {
     id,
     channel_id: channelId,
@@ -59,15 +67,34 @@ function createRawMessage(
     type: 0,
     tts: false,
     ...overrides,
-  } as unknown as APIMessage;
+  } as unknown as GatewayMessageCreateDispatchData;
 }
 
 function runtime(): Pick<RuntimeEnv, "error" | "log"> {
   return { error: vi.fn(), log: vi.fn() };
 }
 
-function payloadFor(rawMessage: APIMessage, receivedAt = Date.now()): DiscordIngressPayload {
-  return { version: 1, receivedAt, rawMessage };
+function payloadFor(
+  rawMessage: GatewayMessageCreateDispatchData,
+  receivedAt = Date.now(),
+): DiscordIngressPayload {
+  const channelKind =
+    rawMessage.channel_type === ChannelType.PublicThread ||
+    rawMessage.channel_type === ChannelType.PrivateThread ||
+    rawMessage.channel_type === ChannelType.AnnouncementThread
+      ? "thread"
+      : rawMessage.channel_type === ChannelType.GuildText ||
+          rawMessage.channel_type === ChannelType.GuildAnnouncement ||
+          rawMessage.channel_type === ChannelType.GuildVoice ||
+          rawMessage.channel_type === ChannelType.GuildStageVoice
+        ? "non-thread"
+        : undefined;
+  return {
+    version: 1,
+    receivedAt,
+    rawMessage,
+    ...(channelKind ? { channelKind } : {}),
+  };
 }
 
 async function withQueue<T>(
@@ -103,7 +130,7 @@ async function stopAll(monitors: DiscordIngressMonitor[]): Promise<void> {
 }
 
 async function expectStaleMessageDispatches(params: {
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
   botUserId?: string;
   cfg?: OpenClawConfig;
   discordConfig?: DiscordAccountConfig;
@@ -156,7 +183,7 @@ async function expectStaleMessageDispatches(params: {
 }
 
 async function expectStaleMessageFailsAsAmbient(params: {
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
   botUserId?: string;
   cfg?: OpenClawConfig;
   discordConfig?: DiscordAccountConfig;
@@ -390,15 +417,15 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const stale = createRawMessage("1006", "channel-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-1"),
+        channel_type: ChannelType.GuildText,
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       const fresh = createRawMessage("1007", "channel-1", {
         guild_id: "guild-1",
         content: "hello <@bot-1>",
         mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
         timestamp: new Date(now).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1006", payloadFor(stale), {
         laneKey: "channel:channel-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -443,7 +470,7 @@ describe("Discord durable ingress", () => {
         content: "old but direct <@bot-1>",
         mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1008", payloadFor(mentioned), {
         laneKey: "channel:channel-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -487,13 +514,13 @@ describe("Discord durable ingress", () => {
           avatar: null,
           bot: true,
         },
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       const reply = createRawMessage("1009", "channel-1", {
         guild_id: "guild-1",
         content: "old but explicit reply",
         referenced_message: referencedBotMessage,
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1009", payloadFor(reply), {
         laneKey: "channel:channel-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -530,7 +557,7 @@ describe("Discord durable ingress", () => {
       const direct = createRawMessage("1010", "dm-1", {
         content: "old direct message",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1010", payloadFor(direct), {
         laneKey: "channel:dm-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -568,7 +595,7 @@ describe("Discord durable ingress", () => {
         guild_id: "guild-1",
         content: "old bound thread follow-up without mention",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1011", payloadFor(boundThreadMessage), {
         laneKey: "channel:thread-bound-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -608,6 +635,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const cachedThreadMessage = createRawMessage("1012", "thread-cached-1", {
         guild_id: "guild-1",
+        channel_type: ChannelType.PublicThread,
         channel: {
           id: "thread-cached-1",
           type: ChannelType.PublicThread,
@@ -615,7 +643,7 @@ describe("Discord durable ingress", () => {
         },
         content: "old cached thread follow-up without mention",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      });
+      } as RawMessageOverrides);
       await queue.enqueue("1012", payloadFor(cachedThreadMessage), {
         laneKey: "channel:thread-cached-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -731,7 +759,7 @@ describe("Discord durable ingress", () => {
         guild_id: "guild-1",
         content: "/status",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>),
+      } as RawMessageOverrides),
       cfg: {} satisfies OpenClawConfig,
     });
   });
@@ -741,10 +769,10 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1020", "channel-unmatched-identity-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-unmatched-identity-1"),
+        channel_type: ChannelType.GuildText,
         content: "unrelated room chatter",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>),
+      } as RawMessageOverrides),
       cfg: {
         agents: { list: [{ id: "main", identity: { name: "Molty", emoji: "🦀" } }] },
       } satisfies OpenClawConfig,
@@ -756,16 +784,33 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1021", "channel-denied-identity-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-denied-identity-1"),
+        channel_type: ChannelType.GuildText,
         content: "Molty can you check the incident?",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>),
+      } as RawMessageOverrides),
       cfg: {
         agents: { list: [{ id: "main", identity: { name: "Molty" } }] },
       } satisfies OpenClawConfig,
       discordConfig: {
         mentionPatterns: { mode: "allow", denyIn: ["channel-denied-identity-1"] },
       } satisfies DiscordAccountConfig,
+    });
+  });
+
+  it("suppresses stale ambient rows from the production raw MESSAGE_CREATE shape", async () => {
+    const now = Date.now();
+    const rawMessage = createRawMessage("1023", "channel-raw-envelope-1", {
+      guild_id: "guild-1",
+      channel_type: ChannelType.GuildText,
+      content: "old unmentioned room text",
+      timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+    } as RawMessageOverrides);
+    expect(rawMessage).not.toHaveProperty("channel");
+    await expectStaleMessageFailsAsAmbient({
+      rawMessage,
+      guildEntries: {
+        "guild-1": { requireMention: true },
+      },
     });
   });
 
@@ -776,7 +821,7 @@ describe("Discord durable ingress", () => {
         guild_id: "guild-1",
         content: "ordinary old room text",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>),
+      } as RawMessageOverrides),
       guildEntries: {
         "guild-1": { requireMention: false },
       },
@@ -788,10 +833,10 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1024", "channel-require-mention-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-require-mention-1"),
+        channel_type: ChannelType.GuildText,
         content: "old unmentioned room text",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>),
+      } as RawMessageOverrides),
       guildEntries: {
         "guild-1": {
           channels: {
@@ -809,7 +854,7 @@ describe("Discord durable ingress", () => {
         guild_id: "guild-1",
         content: "old unmentioned thread follow-up",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>),
+      } as RawMessageOverrides),
       guildEntries: {
         "guild-1": { requireMention: true },
       },
@@ -821,10 +866,10 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1025", "channel-debug-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-debug-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1025", payloadFor(rawMessage), {
         laneKey: "channel:channel-debug-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -878,10 +923,10 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1027", "channel-cas-loss-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-cas-loss-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1027", payloadFor(rawMessage), {
         laneKey: "channel:channel-cas-loss-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -922,10 +967,10 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1028", "channel-fail-throws-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-fail-throws-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1028", payloadFor(rawMessage), {
         laneKey: "channel:channel-fail-throws-1",
         receivedAt: now - 16 * 60 * 1_000,
@@ -960,10 +1005,10 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1029", "channel-duplicate-debug-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-duplicate-debug-1"),
+        channel_type: ChannelType.GuildText,
         content: "old duplicate room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      } as Partial<APIMessage>);
+      } as RawMessageOverrides);
       await queue.enqueue("1029", payloadFor(rawMessage), {
         laneKey: "channel:channel-duplicate-debug-1",
         receivedAt: now - 16 * 60 * 1_000,

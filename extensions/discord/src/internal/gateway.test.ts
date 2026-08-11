@@ -2,6 +2,7 @@
 import { EventEmitter } from "node:events";
 import { expectDefined } from "@openclaw/normalization-core";
 import {
+  ChannelType,
   GatewayCloseCodes,
   GatewayDispatchEvents,
   GatewayIntentBits,
@@ -322,6 +323,7 @@ describe("GatewayPlugin", () => {
       d: {
         id: "m1",
         channel_id: "c1",
+        channel_type: ChannelType.GuildText,
         content: "hello",
         attachments: [],
         timestamp: new Date().toISOString(),
@@ -337,10 +339,12 @@ describe("GatewayPlugin", () => {
     expect(dispatchGatewayEvent).toHaveBeenCalledTimes(1);
     const dispatched = firstDispatchedData(dispatchGatewayEvent) as {
       author?: { id: string };
+      channel_type?: ChannelType;
       message?: { author?: { id: string } | null; content?: string };
       content?: string;
     };
     expect(dispatched.author?.id).toBe("u1");
+    expect(dispatched.channel_type).toBe(ChannelType.GuildText);
     expect(dispatched.content).toBe("hello");
     expect(dispatched.message).toBeUndefined();
   });
