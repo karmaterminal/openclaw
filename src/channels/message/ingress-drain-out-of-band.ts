@@ -10,7 +10,7 @@
 import { resolveLaneKey, type ActiveHandlerState } from "./ingress-drain-state.js";
 import type { ChannelIngressQueue, ChannelIngressQueueClaim } from "./ingress-queue.js";
 
-export type ClaimedNonDeliveringRow<TPayload, TMetadata> = {
+type ClaimedNonDeliveringRow<TPayload, TMetadata> = {
   claim: ChannelIngressQueueClaim<TPayload, TMetadata>;
   laneKey: string;
 };
@@ -20,7 +20,7 @@ type ClaimNextOptions<TPayload, TMetadata, TCompletedMetadata> = NonNullable<
   Parameters<ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>["claimNext"]>[0]
 >;
 
-export type ClaimNonDeliveringRunOptions<TPayload, TMetadata, TCompletedMetadata> = {
+type ClaimNonDeliveringRunOptions<TPayload, TMetadata, TCompletedMetadata> = {
   queue: ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>;
   ownerId: string;
   orderBy: ClaimNextOptions<TPayload, TMetadata, TCompletedMetadata>["orderBy"];

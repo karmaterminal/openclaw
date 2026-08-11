@@ -9,7 +9,7 @@ import {
 import { activeClaimKey } from "./ingress-drain-state.js";
 import type { ChannelIngressQueue } from "./ingress-queue.js";
 
-export type RecoverStaleIngressClaimsOptions<TPayload, TMetadata, TCompletedMetadata> = {
+type RecoverStaleIngressClaimsOptions<TPayload, TMetadata, TCompletedMetadata> = {
   queue: ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>;
   now: number;
   claimLeaseMs: number;
