@@ -490,14 +490,14 @@ describe("channel ingress pending disposition drain", () => {
     });
   });
 
-  it("keeps intentional completes out of failed health and preserves partitioned completed replay guards under cap churn", async () => {
+  it("keeps intentional completes out of failed health and preserves independent completed class budgets under cap churn", async () => {
     await withTempState(async (stateDir) => {
       const clock = STALE_AMBIENT_PENDING_MS + 1;
       const queue = createTestIngressQueue(stateDir, { now: () => clock });
-      // Cap=4 → delivered partition=2, suppressed partition=2.
-      const completedMaxEntries = 4;
+      // Independent class budgets: each class keeps up to completedMaxEntries.
+      const completedMaxEntries = 2;
 
-      // Fill the delivered partition (and overflow) with replay guards.
+      // Overflow the delivered class with replay guards.
       for (const [index, id] of [
         "delivered-a",
         "delivered-b",
@@ -538,13 +538,14 @@ describe("channel ingress pending disposition drain", () => {
 
       await queue.prune({ completedMaxEntries, now: clock + 100 });
 
-      // Newest delivered partition members remain duplicate-protected.
+      // Newest delivered class members remain duplicate-protected even after
+      // suppression overflow (independent budgets).
       for (const id of ["delivered-c", "delivered-d"]) {
         const replay = await queue.enqueue(id, { text: "probe", kind: "addressed" });
         expect(replay).toMatchObject({ kind: "completed", duplicate: true });
       }
-      // Newest suppression tombstones also remain duplicate-protected under the
-      // partitioned cap (not returned to failed/dead-letter health).
+      // Newest suppression tombstones remain duplicate-protected under their own
+      // class budget (not returned to failed/dead-letter health).
       for (const id of ["drop-6", "drop-7"]) {
         const replay = await queue.enqueue(id, { text: "probe", kind: "ambient" });
         expect(replay).toMatchObject({ kind: "completed", duplicate: true });

@@ -157,6 +157,12 @@ export type ChannelIngressQueuePruneOptions = {
   completedTtlMs?: number;
   failedTtlMs?: number;
   pendingMaxEntries?: number;
+  /**
+   * Per-class completed retention budget. Delivered replay guards and intentional
+   * suppression tombstones are bounded independently to this many newest
+   * non-protected rows each, so suppression overflow cannot evict delivered
+   * duplicate protection (total completed may approach 2× this value).
+   */
   completedMaxEntries?: number;
   failedMaxEntries?: number;
   protectIds?: Iterable<string>;
@@ -1575,13 +1581,13 @@ export function createChannelIngressQueue<
           }
         };
 
-        // Completed retention contract:
-        // - Globally bound non-protected keeps to maxEntries (protected always kept
-        //   and consume budget first; only when protected > maxEntries can total exceed).
-        // - Single-class workloads receive the full remaining capacity.
-        // - When both classes compete and remaining >= 2, reserve at least one seat
-        //   each; leftover odd seats prefer delivered; unused reserved seats refill
-        //   by recency. remaining === 1 keeps the single newest non-protected row.
+        // Completed retention contract (independent classes):
+        // - Delivered replay guards and intentional-suppression tombstones each
+        //   keep up to maxEntries newest non-protected rows of their own class.
+        // - Suppression overflow never reduces delivered capacity (and vice versa).
+        // - Protected IDs always retain duplicate protection and do not consume
+        //   either class budget (total may exceed maxEntries when both classes
+        //   and/or protected rows are present).
         const pruneCompletedMaxEntriesPartitioned = (maxEntries: number | null) => {
           if (maxEntries === null) {
             return;
@@ -1592,12 +1598,6 @@ export function createChannelIngressQueue<
             event_id: string;
             updated_at: number;
             completed_metadata_json: string | null;
-          };
-          const compareRecency = (left: CompletedPruneRow, right: CompletedPruneRow): number => {
-            if (right.updated_at !== left.updated_at) {
-              return right.updated_at - left.updated_at;
-            }
-            return right.event_id < left.event_id ? -1 : right.event_id > left.event_id ? 1 : 0;
           };
           const delivered: CompletedPruneRow[] = [];
           const suppressed: CompletedPruneRow[] = [];
@@ -1648,57 +1648,16 @@ export function createChannelIngressQueue<
           }
 
           const keepIds = new Set<string>();
-          // Protected IDs always retain duplicate protection and consume budget.
           for (const row of protectedRows) {
             keepIds.add(row.event_id);
           }
-          let remaining = Math.max(0, maxEntries - keepIds.size);
-
-          const take = (rows: CompletedPruneRow[], count: number): CompletedPruneRow[] => {
-            if (count <= 0) {
-              return [];
-            }
-            return rows.slice(0, count);
-          };
-
-          if (remaining > 0) {
-            if (delivered.length === 0) {
-              for (const row of take(suppressed, remaining)) {
-                keepIds.add(row.event_id);
-              }
-            } else if (suppressed.length === 0) {
-              for (const row of take(delivered, remaining)) {
-                keepIds.add(row.event_id);
-              }
-            } else if (remaining === 1) {
-              const newest = [delivered[0], suppressed[0]].sort(compareRecency)[0];
-              keepIds.add(newest.event_id);
-            } else {
-              const suppressedReserve = Math.floor(remaining / 2);
-              const deliveredReserve = remaining - suppressedReserve;
-              const keptDelivered = take(delivered, deliveredReserve);
-              const keptSuppressed = take(suppressed, suppressedReserve);
-              for (const row of keptDelivered) {
-                keepIds.add(row.event_id);
-              }
-              for (const row of keptSuppressed) {
-                keepIds.add(row.event_id);
-              }
-              let refill = remaining - keptDelivered.length - keptSuppressed.length;
-              if (refill > 0) {
-                const overflow = [
-                  ...delivered.slice(keptDelivered.length),
-                  ...suppressed.slice(keptSuppressed.length),
-                ].sort(compareRecency);
-                for (const row of overflow) {
-                  if (refill <= 0) {
-                    break;
-                  }
-                  keepIds.add(row.event_id);
-                  refill -= 1;
-                }
-              }
-            }
+          // Independent per-class budgets — suppression churn cannot steal
+          // delivered replay-guard seats.
+          for (const row of delivered.slice(0, maxEntries)) {
+            keepIds.add(row.event_id);
+          }
+          for (const row of suppressed.slice(0, maxEntries)) {
+            keepIds.add(row.event_id);
           }
 
           const toDelete = [...protectedRows, ...delivered, ...suppressed]

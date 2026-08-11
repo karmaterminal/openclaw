@@ -606,7 +606,8 @@ describe("channel ingress queue", () => {
       expectProtected: [] as string[],
       expectDuplicate: [] as string[],
       expectMissing: ["d1", "d2", "s1"],
-      maxNonProtected: 0,
+      maxNonProtectedDelivered: 0,
+      maxNonProtectedSuppressed: 0,
     },
     {
       name: "cap 0 keeps protected rows above the cap",
@@ -617,10 +618,11 @@ describe("channel ingress queue", () => {
       expectProtected: ["s-protect"],
       expectDuplicate: ["s-protect"],
       expectMissing: ["d1"],
-      maxNonProtected: 0,
+      maxNonProtectedDelivered: 0,
+      maxNonProtectedSuppressed: 0,
     },
     {
-      name: "cap 1 delivered-only keeps newest delivered full capacity",
+      name: "cap 1 delivered-only keeps newest delivered full class capacity",
       cap: 1,
       delivered: ["d-old", "d-new"],
       suppressed: [] as string[],
@@ -628,10 +630,11 @@ describe("channel ingress queue", () => {
       expectProtected: [] as string[],
       expectDuplicate: ["d-new"],
       expectMissing: ["d-old"],
-      maxNonProtected: 1,
+      maxNonProtectedDelivered: 1,
+      maxNonProtectedSuppressed: 0,
     },
     {
-      name: "cap 1 suppression-only keeps newest suppression",
+      name: "cap 1 suppression-only keeps newest suppression full class capacity",
       cap: 1,
       delivered: [] as string[],
       suppressed: ["s-old", "s-new"],
@@ -639,43 +642,60 @@ describe("channel ingress queue", () => {
       expectProtected: [] as string[],
       expectDuplicate: ["s-new"],
       expectMissing: ["s-old"],
-      maxNonProtected: 1,
+      maxNonProtectedDelivered: 0,
+      maxNonProtectedSuppressed: 1,
     },
     {
-      name: "cap 1 mixed keeps single newest overall",
+      name: "cap 1 mixed keeps newest of each independent class",
       cap: 1,
       delivered: ["d-mid"],
       suppressed: ["s-newest"],
       protectIds: [] as string[],
       expectProtected: [] as string[],
-      expectDuplicate: ["s-newest"],
-      expectMissing: ["d-mid"],
-      maxNonProtected: 1,
+      // Independent budgets: suppression cannot evict the delivered guard.
+      expectDuplicate: ["d-mid", "s-newest"],
+      expectMissing: [] as string[],
+      maxNonProtectedDelivered: 1,
+      maxNonProtectedSuppressed: 1,
     },
     {
-      name: "cap 1 protected equal to cap keeps only protected",
+      name: "cap 1 mixed with suppression overflow still protects delivered",
+      cap: 1,
+      delivered: ["d-guard"],
+      suppressed: ["s-old", "s-new"],
+      protectIds: [] as string[],
+      expectProtected: [] as string[],
+      expectDuplicate: ["d-guard", "s-new"],
+      expectMissing: ["s-old"],
+      maxNonProtectedDelivered: 1,
+      maxNonProtectedSuppressed: 1,
+    },
+    {
+      name: "cap 1 protected plus delivered keeps both classes",
       cap: 1,
       delivered: ["d-new"],
       suppressed: ["s-protect"],
       protectIds: ["s-protect"],
       expectProtected: ["s-protect"],
-      expectDuplicate: ["s-protect"],
-      expectMissing: ["d-new"],
-      maxNonProtected: 0,
+      expectDuplicate: ["s-protect", "d-new"],
+      expectMissing: [] as string[],
+      maxNonProtectedDelivered: 1,
+      maxNonProtectedSuppressed: 0,
     },
     {
-      name: "cap 1 protected above cap still retains all protected",
+      name: "cap 1 protected above cap still retains all protected and class budget",
       cap: 1,
       delivered: ["d-new"],
-      suppressed: ["s-p1", "s-p2"],
+      suppressed: ["s-p1", "s-p2", "s-extra"],
       protectIds: ["s-p1", "s-p2"],
       expectProtected: ["s-p1", "s-p2"],
-      expectDuplicate: ["s-p1", "s-p2"],
-      expectMissing: ["d-new"],
-      maxNonProtected: 0,
+      expectDuplicate: ["s-p1", "s-p2", "d-new", "s-extra"],
+      expectMissing: [] as string[],
+      maxNonProtectedDelivered: 1,
+      maxNonProtectedSuppressed: 1,
     },
     {
-      name: "cap 2 delivered-only keeps newest two full capacity",
+      name: "cap 2 delivered-only keeps newest two full class capacity",
       cap: 2,
       delivered: ["d1", "d2", "d3"],
       suppressed: [] as string[],
@@ -683,10 +703,11 @@ describe("channel ingress queue", () => {
       expectProtected: [] as string[],
       expectDuplicate: ["d2", "d3"],
       expectMissing: ["d1"],
-      maxNonProtected: 2,
+      maxNonProtectedDelivered: 2,
+      maxNonProtectedSuppressed: 0,
     },
     {
-      name: "cap 2 suppression-only keeps newest two full capacity",
+      name: "cap 2 suppression-only keeps newest two full class capacity",
       cap: 2,
       delivered: [] as string[],
       suppressed: ["s1", "s2", "s3"],
@@ -694,41 +715,44 @@ describe("channel ingress queue", () => {
       expectProtected: [] as string[],
       expectDuplicate: ["s2", "s3"],
       expectMissing: ["s1"],
-      maxNonProtected: 2,
+      maxNonProtectedDelivered: 0,
+      maxNonProtectedSuppressed: 2,
     },
     {
-      name: "cap 2 mixed keeps one delivered and one suppressed",
+      name: "cap 2 mixed keeps full independent budgets for both classes",
       cap: 2,
-      delivered: ["d-old", "d-new"],
-      suppressed: ["s-old", "s-new"],
+      delivered: ["d-old", "d-mid", "d-new"],
+      suppressed: ["s-old", "s-mid", "s-new"],
       protectIds: [] as string[],
       expectProtected: [] as string[],
-      expectDuplicate: ["d-new", "s-new"],
+      expectDuplicate: ["d-mid", "d-new", "s-mid", "s-new"],
       expectMissing: ["d-old", "s-old"],
-      maxNonProtected: 2,
+      maxNonProtectedDelivered: 2,
+      maxNonProtectedSuppressed: 2,
     },
     {
-      name: "cap 2 protects oldest suppressed and still bounds non-protected",
+      name: "cap 2 protects oldest suppressed without reducing delivered class budget",
       cap: 2,
       delivered: ["d-a", "d-b", "d-c"],
-      suppressed: ["s-protect", "s-new"],
+      suppressed: ["s-protect", "s-new", "s-extra"],
       protectIds: ["s-protect"],
       expectProtected: ["s-protect"],
-      // Protected consumes one seat; remaining seat keeps the newest non-protected row.
-      expectDuplicate: ["s-protect", "s-new"],
-      expectMissing: ["d-a", "d-b", "d-c"],
-      maxNonProtected: 1,
+      expectDuplicate: ["s-protect", "s-new", "s-extra", "d-b", "d-c"],
+      expectMissing: ["d-a"],
+      maxNonProtectedDelivered: 2,
+      maxNonProtectedSuppressed: 2,
     },
     {
-      name: "cap 2 protected count above cap retains protected and zero non-protected",
+      name: "cap 2 protected count above class still retains protected and delivered budget",
       cap: 2,
       delivered: ["d-new"],
       suppressed: ["s-p1", "s-p2", "s-p3"],
       protectIds: ["s-p1", "s-p2", "s-p3"],
       expectProtected: ["s-p1", "s-p2", "s-p3"],
-      expectDuplicate: ["s-p1", "s-p2", "s-p3"],
-      expectMissing: ["d-new"],
-      maxNonProtected: 0,
+      expectDuplicate: ["s-p1", "s-p2", "s-p3", "d-new"],
+      expectMissing: [] as string[],
+      maxNonProtectedDelivered: 1,
+      maxNonProtectedSuppressed: 0,
     },
   ])(
     "completed retention contract: $name",
@@ -740,7 +764,8 @@ describe("channel ingress queue", () => {
       expectProtected,
       expectDuplicate,
       expectMissing,
-      maxNonProtected,
+      maxNonProtectedDelivered,
+      maxNonProtectedSuppressed,
     }) => {
       await withTempState(async (stateDir) => {
         let tick = 1;
@@ -795,10 +820,25 @@ describe("channel ingress queue", () => {
             .where("status", "=", "completed"),
         ).rows as Array<{ event_id: string; completed_metadata_json: string | null }>;
         const completedIds = new Set(completedRows.map((row) => row.event_id));
-        const nonProtectedCount = completedRows.filter(
-          (row) => !protectIds.includes(row.event_id),
+        const isSuppressed = (metadataJson: string | null): boolean => {
+          if (!metadataJson) {
+            return false;
+          }
+          try {
+            const parsed = JSON.parse(metadataJson) as { ingressDisposition?: unknown };
+            return parsed?.ingressDisposition === "suppressed";
+          } catch {
+            return false;
+          }
+        };
+        const nonProtectedDelivered = completedRows.filter(
+          (row) => !protectIds.includes(row.event_id) && !isSuppressed(row.completed_metadata_json),
         ).length;
-        expect(nonProtectedCount).toBeLessThanOrEqual(maxNonProtected);
+        const nonProtectedSuppressed = completedRows.filter(
+          (row) => !protectIds.includes(row.event_id) && isSuppressed(row.completed_metadata_json),
+        ).length;
+        expect(nonProtectedDelivered).toBeLessThanOrEqual(maxNonProtectedDelivered);
+        expect(nonProtectedSuppressed).toBeLessThanOrEqual(maxNonProtectedSuppressed);
         for (const id of expectProtected) {
           expect(completedIds.has(id)).toBe(true);
         }
@@ -808,6 +848,72 @@ describe("channel ingress queue", () => {
         }
         for (const id of expectMissing) {
           expect(completedIds.has(id)).toBe(false);
+        }
+      });
+    },
+  );
+
+  it.each([
+    { cap: 0, keepDelivered: false, keepSuppressedNewest: false },
+    { cap: 1, keepDelivered: true, keepSuppressedNewest: true },
+    { cap: 2, keepDelivered: true, keepSuppressedNewest: true },
+  ])(
+    "suppression overflow never reduces delivered replay guards at cap $cap",
+    async ({ cap, keepDelivered, keepSuppressedNewest }) => {
+      await withTempState(async (stateDir) => {
+        let tick = 1;
+        const queue = createTestIngressQueue<
+          { text: string },
+          unknown,
+          { ingressDisposition?: string }
+        >(stateDir, { now: () => tick });
+
+        // One delivered replay guard, then many newer suppressions.
+        tick += 1;
+        await queue.enqueue("delivered-guard", { text: "delivered" }, { receivedAt: tick });
+        const claim = await queue.claim("delivered-guard", { ownerId: "worker" });
+        expect(claim).not.toBeNull();
+        if (claim) {
+          tick += 1;
+          expect(await queue.complete(claim, { completedAt: tick })).toBe(true);
+        }
+        for (const id of ["s-old", "s-mid", "s-new"]) {
+          tick += 1;
+          await queue.enqueue(id, { text: id }, { receivedAt: tick });
+          tick += 1;
+          expect(
+            await queue.complete(id, {
+              completedAt: tick,
+              metadata: {
+                ingressDisposition: "suppressed",
+                reason: "stale",
+                message: "stale",
+              },
+            }),
+          ).toBe(true);
+        }
+
+        tick += 1;
+        await queue.prune({ completedMaxEntries: cap, now: tick });
+
+        const deliveredReplay = await queue.enqueue("delivered-guard", { text: "probe" });
+        if (keepDelivered) {
+          expect(deliveredReplay).toMatchObject({ kind: "completed", duplicate: true });
+        } else {
+          expect(deliveredReplay.kind).not.toBe("completed");
+        }
+
+        const newestSuppressedReplay = await queue.enqueue("s-new", { text: "probe" });
+        if (keepSuppressedNewest && cap > 0) {
+          expect(newestSuppressedReplay).toMatchObject({ kind: "completed", duplicate: true });
+        } else if (cap === 0) {
+          expect(newestSuppressedReplay.kind).not.toBe("completed");
+        }
+
+        // Older suppressions beyond the independent class budget are eligible to drop.
+        if (cap === 1) {
+          const oldSuppressed = await queue.enqueue("s-old", { text: "probe" });
+          expect(oldSuppressed.kind).not.toBe("completed");
         }
       });
     },
