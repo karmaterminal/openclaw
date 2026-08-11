@@ -789,41 +789,49 @@ describe("channel ingress pending disposition drain", () => {
       dispatchClaimedEvent,
     });
 
-    // Payload-specialized queues exercise the one-payload brand path under
-    // queue-first inference (TS cannot soundly keep a trailing TQueue brand after
-    // partial `<Payload>` / `<Payload, Metadata>` type arguments).
-    type OnePayloadIncompatible =
-      import("./ingress-drain.js").CreateChannelIngressDrainOptionsForQueue<
-        typeof incompatibleQueue
-      >;
-    type OnePayloadCompatible =
-      import("./ingress-drain.js").CreateChannelIngressDrainOptionsForQueue<typeof compatibleQueue>;
-    type TwoPayloadMetaIncompatible = import("./ingress-drain.js").CreateChannelIngressDrainOptions<
-      Payload,
-      unknown,
-      IncompatibleCompletedMetadata,
-      typeof incompatibleQueue
-    >;
-    const onePayloadIncompatible: OnePayloadIncompatible = {
-      queue: incompatibleQueue,
-      // @ts-expect-error one-payload queue brand rejects disposition resolver
-      resolvePendingDisposition,
-      dispatchClaimedEvent,
-    };
-    const onePayloadCompatible: OnePayloadCompatible = {
+    // Genuine one-generic single-call forms: createChannelIngressDrain<Payload>({...})
+    createChannelIngressDrain<Payload>({
       queue: compatibleQueue,
       resolvePendingDisposition,
       dispatchClaimedEvent,
-    };
-    const twoPayloadMetaIncompatible: TwoPayloadMetaIncompatible = {
+    });
+    createChannelIngressDrain<Payload>({
       queue: incompatibleQueue,
-      // @ts-expect-error two-param Options brand rejects disposition resolver
+      // @ts-expect-error one-generic incompatible completed metadata rejects disposition resolver
       resolvePendingDisposition,
       dispatchClaimedEvent,
-    };
-    void onePayloadIncompatible;
-    void onePayloadCompatible;
-    void twoPayloadMetaIncompatible;
+    });
+    createChannelIngressDrain<Payload>({
+      queue: incompatibleQueue,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload>({
+      queue: defaultQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload>({
+      queue: customCompatibleQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+
+    // Genuine two-generic single-call forms: createChannelIngressDrain<Payload, Metadata>({...})
+    createChannelIngressDrain<Payload, unknown>({
+      queue: compatibleQueue,
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload, unknown>({
+      queue: incompatibleQueue,
+      // @ts-expect-error two-generic incompatible completed metadata rejects disposition resolver
+      resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload, unknown>({
+      queue: incompatibleQueue,
+      dispatchClaimedEvent,
+    });
 
     createChannelIngressDrain({
       queue: compatibleQueue,
@@ -929,7 +937,7 @@ describe("channel ingress pending disposition drain", () => {
     });
 
     // PluginRuntime.openChannelIngressDrain: type-level only (guarded by false).
-    // Queue-first brand inference + explicit three-generic free metadata.
+    // Queue-first, genuine one/two-generic single-call, and three-generic free metadata.
     if (false as boolean) {
       openChannelIngressDrain({
         queue: compatiblePluginQueue,
@@ -947,6 +955,37 @@ describe("channel ingress pending disposition drain", () => {
       openChannelIngressDrain({
         queue: incompatiblePluginQueue,
         dispatchClaimedEvent,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload>({
+        queue: compatiblePluginQueue,
+        dispatchClaimedEvent,
+        resolvePendingDisposition,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload>({
+        queue: incompatiblePluginQueue,
+        dispatchClaimedEvent,
+        // @ts-expect-error plugin one-generic rejects incompatible disposition resolver
+        resolvePendingDisposition,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload>({
+        queue: incompatiblePluginQueue,
+        dispatchClaimedEvent,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload, unknown>({
+        queue: compatiblePluginQueue,
+        dispatchClaimedEvent,
+        resolvePendingDisposition,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload, unknown>({
+        queue: incompatiblePluginQueue,
+        dispatchClaimedEvent,
+        // @ts-expect-error plugin two-generic rejects incompatible disposition resolver
+        resolvePendingDisposition,
         accountId: "acct",
       });
       openChannelIngressDrain<Payload, unknown, Suppressed>({

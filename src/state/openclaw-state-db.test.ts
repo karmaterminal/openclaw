@@ -23,6 +23,10 @@ import {
   FIRST_USE_STATE_TABLES,
   LAZY_ADDITIVE_STATE_TABLES,
 } from "./openclaw-state-db-contract.js";
+import {
+  CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME,
+  CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL,
+} from "./openclaw-state-db-schema-additive.js";
 import { tableHasColumn } from "./openclaw-state-db-schema-helpers.js";
 import {
   findOpenClawStateDatabaseSchemaMigrationRequiredError,
@@ -1233,6 +1237,19 @@ describe("openclaw state database", () => {
             // Frozen base only knew first-use lazy tables; candidate lazy side
             // tables are extra and ignored by assertSqliteSchemaContains.
             allowedMissingTables: FIRST_USE_STATE_TABLES,
+            // Candidate installs a pending-reentry clear trigger on events; treat
+            // it as optional-canonical so new-to-old shape checks still pass.
+            optionalCanonicalTriggerGroups: [
+              {
+                tableName: "channel_ingress_events",
+                triggers: [
+                  {
+                    name: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME,
+                    sql: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL,
+                  },
+                ],
+              },
+            ],
           },
         ),
       ).not.toThrow();
@@ -1267,33 +1284,63 @@ describe("openclaw state database", () => {
       fs.symlinkSync(nodeModules, worktreeNodeModules, "dir");
     }
 
-    const stateDir = createTempStateDir();
-    const { createChannelIngressQueue } = await import("../channels/message/ingress-queue.js");
-    closeOpenClawStateDatabaseForTest();
-    const candidateQueue = createChannelIngressQueue<{ text: string }>({
-      channelId: "frozen-x",
-      accountId: "a",
-      stateDir,
-      now: () => 100,
-    });
-    await candidateQueue.enqueue("cross-id", { text: "candidate" }, { receivedAt: 10 });
-    const [snap] = await candidateQueue.listPending();
-    expect(snap?.generation).toBeGreaterThan(0);
-    // Capture fence before frozen rewrite. Frozen-base delete/re-enqueue below
-    // reuses the same ms clocks so receivedAt/updatedAt match; CASCADE delete
-    // of the generation side row means the prior positive generation cannot be
-    // reproduced by the frozen writer.
-    const staleFence = {
-      generation: snap!.generation,
-      receivedAt: snap!.receivedAt,
-    };
-    const staleUpdatedAt = snap!.updatedAt;
-    closeOpenClawStateDatabaseForTest();
+    // Patch frozen maintenance so the candidate pending-reentry clear trigger is
+    // optional-canonical. Exact frozen queue writers still run; only the schema
+    // allowlist is widened for the cross-version harness.
+    const frozenMaintenancePath = path.join(
+      worktree,
+      "src",
+      "state",
+      "openclaw-state-db-maintenance.ts",
+    );
+    const frozenMaintenance = fs.readFileSync(frozenMaintenancePath, "utf8");
+    if (!frozenMaintenance.includes("channel_ingress_events_au_pending_reentry_clear_generation")) {
+      const patched = frozenMaintenance.replace(
+        "allowedColumnDefinitions: {",
+        `optionalCanonicalTriggerGroups: [
+    {
+      tableName: "channel_ingress_events",
+      triggers: [
+        {
+          name: "channel_ingress_events_au_pending_reentry_clear_generation",
+          sql: \`CREATE TRIGGER channel_ingress_events_au_pending_reentry_clear_generation
+AFTER UPDATE OF status ON channel_ingress_events
+FOR EACH ROW
+WHEN NEW.status = 'pending' AND OLD.status IS NOT 'pending'
+BEGIN
+  DELETE FROM channel_ingress_event_generations
+  WHERE queue_name = NEW.queue_name AND event_id = NEW.event_id;
+END;\`,
+        },
+      ],
+    },
+  ],
+  allowedColumnDefinitions: {`,
+      );
+      if (patched === frozenMaintenance) {
+        throw new Error("failed to patch frozen-base maintenance trigger allowlist");
+      }
+      fs.writeFileSync(frozenMaintenancePath, patched, "utf8");
+    }
 
-    const frozenRunner = path.join(worktree, "frozen-cross-version-runner.mjs");
-    fs.writeFileSync(
-      frozenRunner,
-      `import fs from "node:fs";
+    const { createChannelIngressQueue } = await import("../channels/message/ingress-queue.js");
+    const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
+
+    const runFrozen = (runnerSource: string, stateDir: string): Record<string, unknown> => {
+      const frozenRunner = path.join(worktree, "frozen-cross-version-runner.mjs");
+      fs.writeFileSync(frozenRunner, runnerSource, "utf8");
+      const output = execFileSync(tsxBin, [frozenRunner], {
+        cwd: worktree,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          OPENCLAW_STATE_DIR: stateDir,
+        },
+      });
+      return JSON.parse(output.trim().split("\n").at(-1) ?? "{}") as Record<string, unknown>;
+    };
+
+    const frozenPrelude = `import fs from "node:fs";
 import { createChannelIngressQueue } from "./src/channels/message/ingress-queue.ts";
 import {
   closeOpenClawStateDatabaseForTest,
@@ -1322,9 +1369,30 @@ if (!before.equals(afterRo)) {
 const writable = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir } });
 writable.db.prepare("SELECT COUNT(*) AS n FROM channel_ingress_events").get();
 closeOpenClawStateDatabaseForTest();
+`;
 
-// Identical wall-clock to the candidate enqueue so receivedAt/updatedAt match
-// the pre-delete incarnation exactly (same-ms frozen ABA shape).
+    // --- Path A: delete/re-enqueue (CASCADE) ---
+    {
+      const stateDir = createTempStateDir();
+      closeOpenClawStateDatabaseForTest();
+      const candidateQueue = createChannelIngressQueue<{ text: string }>({
+        channelId: "frozen-x",
+        accountId: "a",
+        stateDir,
+        now: () => 100,
+      });
+      await candidateQueue.enqueue("cross-id", { text: "candidate" }, { receivedAt: 10 });
+      const [snap] = await candidateQueue.listPending();
+      expect(snap?.generation).toBeGreaterThan(0);
+      const staleFence = {
+        generation: snap!.generation,
+        receivedAt: snap!.receivedAt,
+      };
+      const staleUpdatedAt = snap!.updatedAt;
+      closeOpenClawStateDatabaseForTest();
+
+      const frozenResult = runFrozen(
+        `${frozenPrelude}
 const queue = createChannelIngressQueue({
   channelId: "frozen-x",
   accountId: "a",
@@ -1336,77 +1404,263 @@ const enqueued = await queue.enqueue("cross-id", { text: "frozen-rewrite" }, { r
 closeOpenClawStateDatabaseForTest();
 process.stdout.write(JSON.stringify({ count, deleted, enqueuedKind: enqueued.kind }) + "\\n");
 `,
-      "utf8",
-    );
+        stateDir,
+      );
+      expect(frozenResult.deleted).toBe(true);
+      expect(frozenResult.enqueuedKind).toBe("accepted");
 
-    const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
-    const output = execFileSync(tsxBin, [frozenRunner], {
-      cwd: worktree,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        OPENCLAW_STATE_DIR: stateDir,
-      },
-    });
-    const frozenResult = JSON.parse(output.trim().split("\n").at(-1) ?? "{}") as {
-      deleted?: boolean;
-      enqueuedKind?: string;
-    };
-    expect(frozenResult.deleted).toBe(true);
-    expect(frozenResult.enqueuedKind).toBe("accepted");
+      closeOpenClawStateDatabaseForTest();
+      const afterQueue = createChannelIngressQueue<{ text: string }>({
+        channelId: "frozen-x",
+        accountId: "a",
+        stateDir,
+        now: () => 100,
+      });
+      expect(
+        await afterQueue.complete("cross-id", {
+          expectedPending: staleFence,
+          metadata: { note: "stale-pre-list" },
+        }),
+      ).toBe(false);
+      expect(
+        await afterQueue.fail("cross-id", {
+          reason: "stale",
+          message: "stale-pre-list",
+          expectedPending: staleFence,
+        }),
+      ).toBe(false);
+      const [replacement] = await afterQueue.listPending();
+      expect(replacement?.receivedAt).toBe(staleFence.receivedAt);
+      expect(replacement?.updatedAt).toBe(staleUpdatedAt);
+      expect(replacement?.generation).toBeGreaterThan(staleFence.generation);
+      expect(
+        await afterQueue.complete("cross-id", {
+          expectedPending: {
+            generation: replacement!.generation,
+            receivedAt: replacement!.receivedAt,
+          },
+          metadata: { note: "live" },
+        }),
+      ).toBe(true);
+    }
 
-    // Candidate must refuse the pre-frozen fence against the replacement even
-    // when every time field matches — CASCADE cleared the prior generation and
-    // listPending mints a fresh never-reuse token for the live row.
-    closeOpenClawStateDatabaseForTest();
-    const afterQueue = createChannelIngressQueue<{ text: string }>({
-      channelId: "frozen-x",
-      accountId: "a",
-      stateDir,
-      now: () => 100,
-    });
-    // Prove stale complete/fail lose before listPending allocates a live token.
-    expect(
-      await afterQueue.complete("cross-id", {
-        expectedPending: staleFence,
-        metadata: { note: "stale-pre-list" },
-      }),
-    ).toBe(false);
-    expect(
-      await afterQueue.fail("cross-id", {
-        reason: "stale",
-        message: "stale-pre-list",
-        expectedPending: staleFence,
-      }),
-    ).toBe(false);
-    const [replacement] = await afterQueue.listPending();
-    expect(replacement?.receivedAt).toBe(staleFence.receivedAt);
-    expect(replacement?.updatedAt).toBe(staleUpdatedAt);
-    expect(replacement?.generation).toBeGreaterThan(staleFence.generation);
-    expect(
-      await afterQueue.complete("cross-id", {
-        expectedPending: staleFence,
-        metadata: { note: "stale" },
-      }),
-    ).toBe(false);
-    expect(
-      await afterQueue.fail("cross-id", {
-        reason: "stale",
-        message: "stale",
-        expectedPending: staleFence,
-      }),
-    ).toBe(false);
-    expect((await afterQueue.listPending()).map((row) => row.id)).toEqual(["cross-id"]);
-    // Live fence with the replacement generation still settles.
-    expect(
-      await afterQueue.complete("cross-id", {
-        expectedPending: {
-          generation: replacement!.generation,
-          receivedAt: replacement!.receivedAt,
-        },
-        metadata: { note: "live" },
-      }),
-    ).toBe(true);
+    // --- Path B: frozen fail → resubmit with identical timestamps ---
+    {
+      const stateDir = createTempStateDir();
+      closeOpenClawStateDatabaseForTest();
+      const candidateQueue = createChannelIngressQueue<{ text: string }>({
+        channelId: "frozen-x",
+        accountId: "a",
+        stateDir,
+        now: () => 100,
+      });
+      await candidateQueue.enqueue("fail-resubmit", { text: "candidate" }, { receivedAt: 10 });
+      const [snap] = await candidateQueue.listPending();
+      const staleFence = {
+        generation: snap!.generation,
+        receivedAt: snap!.receivedAt,
+      };
+      closeOpenClawStateDatabaseForTest();
+
+      const frozenResult = runFrozen(
+        `${frozenPrelude}
+const queue = createChannelIngressQueue({
+  channelId: "frozen-x",
+  accountId: "a",
+  stateDir,
+  now: () => 10,
+});
+const failed = await queue.fail("fail-resubmit", {
+  reason: "frozen-fail",
+  message: "frozen",
+  failedAt: 10,
+});
+const resubmitted = await queue.resubmit("fail-resubmit", { resubmittedAt: 10 });
+closeOpenClawStateDatabaseForTest();
+process.stdout.write(JSON.stringify({ count, failed, resubmittedKind: resubmitted.kind }) + "\\n");
+`,
+        stateDir,
+      );
+      expect(frozenResult.failed).toBe(true);
+      expect(frozenResult.resubmittedKind).toBe("resubmitted");
+
+      closeOpenClawStateDatabaseForTest();
+      const afterQueue = createChannelIngressQueue<{ text: string }>({
+        channelId: "frozen-x",
+        accountId: "a",
+        stateDir,
+        now: () => 100,
+      });
+      expect(
+        await afterQueue.complete("fail-resubmit", {
+          expectedPending: staleFence,
+          metadata: { note: "stale" },
+        }),
+      ).toBe(false);
+      expect(
+        await afterQueue.fail("fail-resubmit", {
+          reason: "stale",
+          message: "stale",
+          expectedPending: staleFence,
+        }),
+      ).toBe(false);
+      const [live] = await afterQueue.listPending();
+      expect(live?.id).toBe("fail-resubmit");
+      expect(live?.receivedAt).toBe(10);
+      expect(live?.generation).toBeGreaterThan(0);
+      expect(live?.generation).not.toBe(staleFence.generation);
+      expect(
+        await afterQueue.complete("fail-resubmit", {
+          expectedPending: {
+            generation: live!.generation,
+            receivedAt: live!.receivedAt,
+          },
+          metadata: { note: "live" },
+        }),
+      ).toBe(true);
+    }
+
+    // --- Path C: frozen claim → non-attempt release with identical timestamps ---
+    {
+      const stateDir = createTempStateDir();
+      closeOpenClawStateDatabaseForTest();
+      const candidateQueue = createChannelIngressQueue<{ text: string }>({
+        channelId: "frozen-x",
+        accountId: "a",
+        stateDir,
+        now: () => 100,
+      });
+      await candidateQueue.enqueue("release-id", { text: "candidate" }, { receivedAt: 10 });
+      const [snap] = await candidateQueue.listPending();
+      const staleFence = {
+        generation: snap!.generation,
+        receivedAt: snap!.receivedAt,
+      };
+      closeOpenClawStateDatabaseForTest();
+
+      const frozenResult = runFrozen(
+        `${frozenPrelude}
+const queue = createChannelIngressQueue({
+  channelId: "frozen-x",
+  accountId: "a",
+  stateDir,
+  now: () => 10,
+});
+const claimed = await queue.claim("release-id", { ownerId: "frozen-owner" });
+if (!claimed) throw new Error("frozen claim failed");
+const released = await queue.release(claimed, { recordAttempt: false, releasedAt: 10 });
+closeOpenClawStateDatabaseForTest();
+process.stdout.write(JSON.stringify({ count, released, claimToken: claimed.claim.token }) + "\\n");
+`,
+        stateDir,
+      );
+      expect(frozenResult.released).toBe(true);
+
+      closeOpenClawStateDatabaseForTest();
+      const afterQueue = createChannelIngressQueue<{ text: string }>({
+        channelId: "frozen-x",
+        accountId: "a",
+        stateDir,
+        now: () => 100,
+      });
+      expect(
+        await afterQueue.complete("release-id", {
+          expectedPending: staleFence,
+          metadata: { note: "stale" },
+        }),
+      ).toBe(false);
+      expect(
+        await afterQueue.fail("release-id", {
+          reason: "stale",
+          message: "stale",
+          expectedPending: staleFence,
+        }),
+      ).toBe(false);
+      const [live] = await afterQueue.listPending();
+      expect(live?.id).toBe("release-id");
+      expect(live?.receivedAt).toBe(staleFence.receivedAt);
+      expect(live?.generation).not.toBe(staleFence.generation);
+      expect(
+        await afterQueue.complete("release-id", {
+          expectedPending: {
+            generation: live!.generation,
+            receivedAt: live!.receivedAt,
+          },
+          metadata: { note: "live" },
+        }),
+      ).toBe(true);
+    }
+
+    // --- Path D: frozen stale-recovery release with identical timestamps ---
+    {
+      const stateDir = createTempStateDir();
+      closeOpenClawStateDatabaseForTest();
+      const candidateQueue = createChannelIngressQueue<{ text: string }>({
+        channelId: "frozen-x",
+        accountId: "a",
+        stateDir,
+        now: () => 100,
+      });
+      await candidateQueue.enqueue("stale-rec", { text: "candidate" }, { receivedAt: 10 });
+      const [snap] = await candidateQueue.listPending();
+      const staleFence = {
+        generation: snap!.generation,
+        receivedAt: snap!.receivedAt,
+      };
+      closeOpenClawStateDatabaseForTest();
+
+      const frozenResult = runFrozen(
+        `${frozenPrelude}
+const queue = createChannelIngressQueue({
+  channelId: "frozen-x",
+  accountId: "a",
+  stateDir,
+  now: () => 10,
+});
+const claimed = await queue.claim("stale-rec", { ownerId: "frozen-owner" });
+if (!claimed) throw new Error("frozen claim failed");
+// claimed_at is 10; recover with now=10 and staleMs=0 so cutoff=10 includes the claim.
+const recovered = await queue.recoverStaleClaims({ staleMs: 0, now: 10 });
+closeOpenClawStateDatabaseForTest();
+process.stdout.write(JSON.stringify({ count, recovered }) + "\\n");
+`,
+        stateDir,
+      );
+      expect(frozenResult.recovered).toBe(1);
+
+      closeOpenClawStateDatabaseForTest();
+      const afterQueue = createChannelIngressQueue<{ text: string }>({
+        channelId: "frozen-x",
+        accountId: "a",
+        stateDir,
+        now: () => 100,
+      });
+      expect(
+        await afterQueue.complete("stale-rec", {
+          expectedPending: staleFence,
+          metadata: { note: "stale" },
+        }),
+      ).toBe(false);
+      expect(
+        await afterQueue.fail("stale-rec", {
+          reason: "stale",
+          message: "stale",
+          expectedPending: staleFence,
+        }),
+      ).toBe(false);
+      const [live] = await afterQueue.listPending();
+      expect(live?.id).toBe("stale-rec");
+      expect(live?.generation).not.toBe(staleFence.generation);
+      expect(
+        await afterQueue.complete("stale-rec", {
+          expectedPending: {
+            generation: live!.generation,
+            receivedAt: live!.receivedAt,
+          },
+          metadata: { note: "live" },
+        }),
+      ).toBe(true);
+    }
   });
 
   it("keeps the additive worker SSH fallback table compatible with older v6 containment", () => {
@@ -1422,7 +1676,20 @@ process.stdout.write(JSON.stringify({ count, deleted, enqueuedKind: enqueued.kin
           database,
           "older v6 state database",
           createOlderV6StateSchemaWithoutWorkerSshFallbackPorts(),
-          { allowedMissingTables: FIRST_USE_STATE_TABLES },
+          {
+            allowedMissingTables: FIRST_USE_STATE_TABLES,
+            optionalCanonicalTriggerGroups: [
+              {
+                tableName: "channel_ingress_events",
+                triggers: [
+                  {
+                    name: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME,
+                    sql: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL,
+                  },
+                ],
+              },
+            ],
+          },
         ),
       ).not.toThrow();
     } finally {

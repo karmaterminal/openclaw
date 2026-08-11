@@ -483,22 +483,9 @@ export type PluginRuntimeCore = {
      * incompatibility errors land on resolvePendingDisposition, not queue.
      */
     openChannelIngressDrain: {
-      <
-        TPayload,
-        TMetadata,
-        TCompletedMetadata,
-        TQueue extends import("../../channels/message/ingress-queue.js").ChannelIngressQueue<
-          TPayload,
-          TMetadata,
-          any
-        > = import("../../channels/message/ingress-queue.js").ChannelIngressQueue<
-          TPayload,
-          TMetadata,
-          TCompletedMetadata
-        >,
-      >(
+      <TQueue>(
         options: Omit<
-          CreateChannelIngressDrainOptions<TPayload, TMetadata, TCompletedMetadata, TQueue>,
+          import("../../channels/message/ingress-drain.js").CreateChannelIngressDrainOptionsForQueue<TQueue>,
           "queue"
         > & {
           queue?: TQueue;
@@ -506,12 +493,91 @@ export type PluginRuntimeCore = {
           stateDir?: string;
         },
       ): import("../../channels/message/ingress-drain.js").ChannelIngressDrain;
-      <TQueue>(
+      <TPayload>(
         options: Omit<
-          import("../../channels/message/ingress-drain.js").CreateChannelIngressDrainOptionsForQueue<TQueue>,
+          import("../../channels/message/ingress-drain.js").CreateChannelIngressDrainPartialCompatibleOptions<TPayload>,
           "queue"
         > & {
-          queue?: TQueue;
+          queue?: import("../../channels/message/ingress-drain.js").ChannelIngressQueueAcceptsSuppressedWrite<TPayload>;
+          accountId?: string;
+          stateDir?: string;
+        },
+      ): import("../../channels/message/ingress-drain.js").ChannelIngressDrain;
+      <TPayload>(
+        options: Omit<
+          import("../../channels/message/ingress-drain.js").CreateChannelIngressDrainPartialFallbackOptions<TPayload>,
+          "queue"
+        > & {
+          queue?: import("../../channels/message/ingress-drain.js").ChannelIngressLoosePayloadQueueBrand<TPayload>;
+          accountId?: string;
+          stateDir?: string;
+        },
+      ): import("../../channels/message/ingress-drain.js").ChannelIngressDrain;
+      <TPayload, TMetadata>(
+        options: Omit<
+          import("../../channels/message/ingress-drain.js").CreateChannelIngressDrainPartialCompatibleOptions<
+            TPayload,
+            TMetadata
+          >,
+          "queue"
+        > & {
+          queue?: import("../../channels/message/ingress-drain.js").ChannelIngressQueueAcceptsSuppressedWrite<
+            TPayload,
+            TMetadata
+          >;
+          accountId?: string;
+          stateDir?: string;
+        },
+      ): import("../../channels/message/ingress-drain.js").ChannelIngressDrain;
+      <TPayload, TMetadata>(
+        options: Omit<
+          import("../../channels/message/ingress-drain.js").CreateChannelIngressDrainPartialFallbackOptions<
+            TPayload,
+            TMetadata
+          >,
+          "queue"
+        > & {
+          queue?: import("../../channels/message/ingress-drain.js").ChannelIngressLoosePayloadQueueBrand<
+            TPayload,
+            TMetadata
+          >;
+          accountId?: string;
+          stateDir?: string;
+        },
+      ): import("../../channels/message/ingress-drain.js").ChannelIngressDrain;
+      <
+        TPayload,
+        TMetadata,
+        TCompletedMetadata,
+        TQueue extends {
+          readonly __payloadBrand?: (value: TPayload) => unknown;
+          readonly __metadataBrand?: (value: TMetadata) => unknown;
+        } = import("../../channels/message/ingress-queue.js").ChannelIngressQueue<
+          TPayload,
+          TMetadata,
+          TCompletedMetadata
+        >,
+      >(
+        options: Omit<
+          CreateChannelIngressDrainOptions<
+            TPayload,
+            TMetadata,
+            TCompletedMetadata,
+            TQueue &
+              import("../../channels/message/ingress-queue.js").ChannelIngressQueue<
+                TPayload,
+                TMetadata,
+                TCompletedMetadata
+              >
+          >,
+          "queue"
+        > & {
+          queue?: TQueue &
+            import("../../channels/message/ingress-queue.js").ChannelIngressQueue<
+              TPayload,
+              TMetadata,
+              TCompletedMetadata
+            >;
           accountId?: string;
           stateDir?: string;
         },

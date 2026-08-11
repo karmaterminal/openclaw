@@ -15,6 +15,10 @@ import {
   OPENCLAW_STATE_SCHEMA_VERSION,
   type OpenClawStateDatabaseOptions,
 } from "./openclaw-state-db-contract.js";
+import {
+  CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME,
+  CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL,
+} from "./openclaw-state-db-schema-additive.js";
 import { resolveOpenClawStateSqlitePath } from "./openclaw-state-db.paths.js";
 import { OPENCLAW_STATE_SCHEMA_SQL } from "./openclaw-state-schema.js";
 
@@ -70,6 +74,19 @@ const OPENCLAW_STATE_MAINTENANCE_SCHEMA_COMPATIBILITY = {
     ],
     "operator_approvals.resolution_ref": ["resolution_ref TEXT"],
   },
+  // Pending-reentry generation clear is lazy-installed by the ingress queue owner.
+  // Allow it when present so candidate RO/writable open of upgraded DBs succeeds.
+  optionalCanonicalTriggerGroups: [
+    {
+      tableName: "channel_ingress_events",
+      triggers: [
+        {
+          name: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_NAME,
+          sql: CHANNEL_INGRESS_PENDING_REENTRY_CLEAR_GENERATION_TRIGGER_SQL,
+        },
+      ],
+    },
+  ],
 } satisfies SqliteSchemaCompatibility;
 
 const STATE_V5_ADDITIVE_TABLES = [
