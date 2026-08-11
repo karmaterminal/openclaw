@@ -468,7 +468,8 @@ export function createChannelIngressDrain<
       }
       settlePromise = (async () => {
         // Only mark settled after the tombstone/fail/release write commits.
-        // Write failure must keep heartbeat + in-memory ownership (wedged > duplicated).
+        // Ordinary write failure must keep heartbeat + in-memory ownership
+        // (wedged > duplicated). Definitive claim-token loss is handled below.
         await fn();
         settled = true;
         state.phase = "settled";
@@ -478,6 +479,16 @@ export function createChannelIngressDrain<
         await settlePromise;
       } catch (err) {
         settlePromise = undefined;
+        // Complete returned false / adoption lost: retire local lane ownership
+        // inside the lifecycle owner so steer-style callers that catch and return
+        // "completed" cannot leave the lane wedged until lease heartbeat.
+        // Ordinary I/O failures are not adoption-loss and keep ownership.
+        if (isIngressAdoptionLostError(err)) {
+          state.guillotined = true;
+          clearStallTimer(state);
+          clearClaimRefresh(state);
+          removeActive(state);
+        }
         throw err;
       }
     };

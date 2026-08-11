@@ -85,18 +85,23 @@ export {
   OPENCLAW_SQLITE_BUSY_TIMEOUT_MS,
   OPENCLAW_STATE_SCHEMA_VERSION,
 };
-export const STATE_READ_ONLY_COMPATIBLE_MISSING_COLUMNS = CLAW_LAZY_ADDITIVE_STATE_COLUMNS;
-
 /**
- * Columns that may be absent on a current-version DB until `ensureAdditiveStateColumns`
- * runs during open. Kept separate from read-only lazy columns so write opens can
- * self-heal schema fences (e.g. ingress generation) without mutating before
- * rejecting unrelated integrity failures.
+ * Additive columns a current-version DB may lack until a writable open ensures
+ * them. Read-only surfaces (update-plan, package-resume) must accept these so
+ * planning is not refused before it can report anything. Writable open still
+ * self-heals via `ensureAdditiveStateColumns`.
  */
-const STATE_OPEN_PATH_ADDITIVE_MISSING_COLUMNS = [
-  ...STATE_READ_ONLY_COMPATIBLE_MISSING_COLUMNS,
+export const STATE_READ_ONLY_COMPATIBLE_MISSING_COLUMNS = [
+  ...CLAW_LAZY_ADDITIVE_STATE_COLUMNS,
+  // Ingress pending-generation fence (WO-1244); additive DEFAULT 0 column.
   "channel_ingress_events.generation",
 ] as const;
+
+/**
+ * Same allowance as read-only plus any open-path-only fences. Currently identical;
+ * kept as a named alias so write-open validation can diverge if needed.
+ */
+const STATE_OPEN_PATH_ADDITIVE_MISSING_COLUMNS = STATE_READ_ONLY_COMPATIBLE_MISSING_COLUMNS;
 export type {
   OpenClawStateDatabase,
   OpenClawStateDatabaseOptions,

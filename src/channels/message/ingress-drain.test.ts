@@ -1,7 +1,10 @@
 // Durable ingress drain contract tests for lifecycle reliability invariants.
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import {
+  closeOpenClawStateDatabaseForTest,
+  openOpenClawStateDatabase,
+} from "../../state/openclaw-state-db.js";
 import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-state.js";
 import {
   bindIngressLifecycleToReplyOptions,
@@ -956,6 +959,86 @@ describe("channel ingress drain", () => {
         expect(replay).toMatchObject({ kind: "completed", duplicate: true });
       }
       second.dispose();
+    });
+  });
+
+  it("steer-style swallowed adoption loss still frees the lane before heartbeat", async () => {
+    await withTempState(async (stateDir) => {
+      // claimLeaseMs far larger than the test window so progress cannot rely on heartbeat.
+      const claimLeaseMs = 10 * 60 * 1000;
+      const queue = createTestIngressQueue(stateDir);
+      await queue.enqueue("evt-head", { text: "head" }, { laneKey: "lane-steer", receivedAt: 1 });
+      await queue.enqueue("evt-tail", { text: "tail" }, { laneKey: "lane-steer", receivedAt: 2 });
+
+      const originalComplete = queue.complete.bind(queue);
+      let rejectHeadComplete = true;
+      queue.complete = async (idOrClaim, options) => {
+        const id = typeof idOrClaim === "string" ? idOrClaim : idOrClaim.id;
+        if (rejectHeadComplete && id === "evt-head") {
+          rejectHeadComplete = false;
+          // Peer already won the durable race and tombstoned the head under a
+          // different claim token before this owner's complete CAS ran.
+          const database = openOpenClawStateDatabase({
+            env: { OPENCLAW_STATE_DIR: stateDir },
+          });
+          database.db
+            .prepare(
+              `UPDATE channel_ingress_events
+               SET status = 'completed',
+                   completed_at = 1,
+                   payload_json = 'null',
+                   metadata_json = NULL,
+                   claim_token = NULL,
+                   claim_owner = NULL,
+                   claimed_at = NULL,
+                   updated_at = 1
+               WHERE event_id = ? AND status = 'claimed'`,
+            )
+            .run("evt-head");
+          return false;
+        }
+        return await originalComplete(idOrClaim, options);
+      };
+
+      const dispatches: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        ownerId: "steer-owner",
+        startLimit: 4,
+        claimLeaseMs,
+        // No timers advanced — lane free must not depend on lease refresh reclaim.
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          dispatches.push(event.id);
+          // Production steer path: catch adoption loss and return completed/stop
+          // without rethrowing into outer drain cleanup.
+          try {
+            await lifecycle.onAdopted();
+          } catch (error) {
+            if (isIngressAdoptionLostError(error)) {
+              return { kind: "completed" };
+            }
+            throw error;
+          }
+          return { kind: "completed" };
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(dispatches).toEqual(["evt-head"]);
+      // Lifecycle owner must have retired the lane despite the swallowed error.
+      expect(drain.activeLaneKeys().has("lane-steer")).toBe(false);
+      expect((await queue.listClaims()).map((claim) => claim.id)).toEqual([]);
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
+        "evt-tail",
+      ]);
+
+      // Immediate same-lane progress on the next pump (no heartbeat/timer advance).
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(dispatches).toEqual(["evt-head", "evt-tail"]);
+      expect(drain.activeLaneKeys().size).toBe(0);
+      drain.dispose();
     });
   });
 
