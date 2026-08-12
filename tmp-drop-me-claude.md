@@ -391,3 +391,153 @@ No within-hunk interleave arose in any of the five hand-resolutions: each
 conflict was either a disjoint union, a whole-block relocation, or a whole-block
 upstream adoption. No `MIXED-CLOBBER:interleave` per-line discrimination was
 required this cycle.
+
+---
+
+## §4 — Gate 2 (feature bytes) and Gate 2.5 (semantic walk) — 2026-08-12T16:2xZ
+
+### Gate 2 — both required comparisons, 0 FAIL
+
+Walker: `tools/feature-cores-byte-check.sh` with
+`tools/drift-cure-gate.primitive-cores.txt`, `--upstream 282e6a47ae6`.
+
+| Comparison | invariants | FAIL | PASS-UPSTREAM | tombstone | exit |
+|---|---:|---:|---:|---:|---:|
+| assembly `8318e58bd22` → candidate | 34 | **0** | 3 | 2 | 2 (setup-class) |
+| presentation `2b07ba50956` → candidate | 34 | **0** | 4 | 2 | 2 (setup-class) |
+
+Both exits are **setup-class only**, from a single cores-list entry
+`ui/src/lib/config/index.ts` that resolves to 0 files. Verified it exists at
+**none** of presentation / assembly / candidate / upstream — it survives only at
+PR-creation `79d68e2c115`, because the barrel was long ago split into named
+modules (`config-draft-model.ts`, `config-state-model.ts`,
+`config-write-coordinator.ts`, …). This is **pre-existing cores-list staleness**,
+not a candidate defect. The runbook makes the cores list cohort-cosign-owned
+substrate updated only via PR-with-cosign, so I did **not** edit it. Surfaced as
+TROUBLE.
+
+`tools/feature-audit.sh`, which the workorder and runbook both require alongside
+Gate 2.7, **does not exist** in `openclaw-bootstrap` or `openclaw`. It could not
+be run. Surfaced as TROUBLE; recorded as an unmet requirement rather than
+silently skipped.
+
+### Gate 2.5 — semantic conflict walk, all green
+
+Enumerated every test file upstream changed across `ff73a14f5ae..282e6a47ae6`:
+
+| Quantity | Count |
+|---|---:|
+| upstream-changed test files in window | 596 |
+| still present in candidate | 584 |
+| **byte-diverging from upstream (the candidate set)** | **25** |
+| byte-identical to upstream (no semantic conflict possible) | 559 |
+
+The 12 enumerated-but-absent files were each checked individually: **all 12 are
+upstream deletions** (`git ls-tree upstream/main` returns 0 for each), so nothing
+was lost by the merge.
+
+Ran the full 25-file intersection on the candidate:
+**14 Vitest shards, 2,259 tests, 0 failures, 566s.** Gate 2.5 requirement — "run
+the test file at HEAD; it must PASS at the cure-bytes" — met for every
+intersecting file.
+
+---
+
+## §5 — Gate 3 and failure classification — 2026-08-12T16:3x–17:1xZ
+
+### First dispatch — run `31615994452` on `0f00b2174f3`
+
+Static gate failed → matrix skipped. `build:strict-smoke` **passed** (271s), as
+did `protocol:gen`, `plugins:assets:build`, `lint:ui:no-raw-window-open`. The
+only failing guard was the **max-lines suppression ratchet**, naming exactly one
+file: `src/agents/embedded-agent-subscribe.handlers.messages.lifecycle.ts`.
+
+**3-baseline matrix by actual gate execution** (per the runbook's explicit
+"do not grep and call it a byte-walk" discipline — every row below is an
+exit-code receipt from running `scripts/check-max-lines-ratchet.mts`):
+
+| Baseline | Result |
+|---|---|
+| upstream `282e6a47ae6` | **exit 0** — "max-lines ratchet OK: 922 grandfathered suppressions" |
+| assembly `8318e58bd22`, unmodified | **exit 1** — identical message, identical single file |
+| candidate `0f00b2174f3` | **exit 1** — identical |
+
+**Verdict: inherited assembly-class static failure.** Byte-identical before and
+after the merge; the merge neither introduced nor worsened it. The file is
+fork-owned (797 lines here vs upstream's 525) because our `09f47132f64`
+transposition moved the ~592-line `handleMessageEnd` delivery machine into it.
+
+I also proved the merge did **not** clobber the ratchet baseline.
+`config/max-lines-baseline.txt` went 934 → 922, and all 12 removed entries
+(`src/agents/cli-runner.ts`, `extensions/discord/src/voice/manager.ts`,
+`extensions/memory-core/src/memory/manager.ts`,
+`extensions/telegram/src/bot-native-commands.ts`,
+`ui/src/pages/chat/components/chat-thread.ts`, …) are **upstream's own ratchet
+shrinks** from its split refactors in this window (`31aa7c7c75d`, `90beb639e7e`,
+`7e42dae6119`). Zero fork entries lost; the absorption is correct.
+
+**Not fixed here, deliberately.** Root `AGENTS.md` forbids adding a `max-lines`
+suppression and forbids editing a baseline to silence a check without approval;
+splitting a 797-line fork-owned file is a refactor outside drift-phase scope.
+Recorded as a named follow-up for the trace-root lane.
+
+Re-dispatched with the documented, default-off
+`continue_tests_after_static_failure=true` plus a non-sensitive audit reason, so
+the sharded matrix publishes its independent evidence. **The aggregate stays
+red** — this is the sanctioned mechanism, not laundering.
+
+### Local full-suite run 1 — invalidated by self-inflicted contention
+
+The first local `scripts/test-projects.mts` run reported 53 failing files. Before
+classifying any of them I checked the error-signature distribution: **48 of them
+were `Error: Test timed out in Nms`**, plus a 13-minute stall in the
+`extension-discord` shard and `net::ERR_FILE_NOT_FOUND` in browser shards. That
+is a resource-contention signature, not a logic signature — I had run the suite
+at 12–16 workers while the GitNexus indexer pinned a core at 6.7 GB RSS in the
+same worktree. The concurrent Gate 3 CI matrix on a clean runner showed only a
+handful of failing packs over the same SHA, which corroborates it.
+
+**Discipline note:** a contended run is not evidence. Rather than classify 53
+noisy failures, I stopped the indexer and re-ran the suite clean. Only one
+failure from run 1 was investigated on its merits, because its signature was a
+real API error rather than a timeout — see below.
+
+### The one real failure found, and repaired
+
+`src/talk/agent-consult-runtime.test.ts` — 12 of 14 tests threw
+`TypeError: params.agentRuntime.session.resolveStorePath is not a function`.
+Reproduced in isolation with no contention, so it is real.
+
+Root cause: the test built its `agentRuntime.session` mock from the
+session-accessor **core** export names, while production correctly calls the
+runtime **facade** key. The canonical contract is explicit —
+`src/plugin-sdk/config-runtime.ts:144` exports
+`resolveSessionStorePathCore as resolveStorePath`, and
+`src/plugin-sdk/session-store-runtime.test.ts:143` asserts the runtime surface
+carries `resolveStorePath`. Production (`agent-consult-runtime.ts:71`, `:293`) was
+right; only the mock was stale.
+
+Provenance, by receipt rather than inference:
+
+| Ref | prod calls `resolveStorePath` | mock provides it |
+|---|---:|---|
+| merge base `ff73a14f5ae` | 2 | **yes** |
+| upstream `282e6a47ae6` | 2 | **yes** |
+| assembly `8318e58bd22` | 2 | **no** |
+| candidate (pre-fix) | 2 | **no** |
+
+Running the file at unmodified assembly reproduces the **same 12 failures**, so
+this is **inherited**, not merge-introduced. It is the identical defect class to
+the assembly's own `b2cb4e7c9de` repair.
+
+Fixed by renaming the two facade keys to match upstream. The file is now
+**byte-identical to upstream** and passes **14/14**. No production code touched.
+
+**Sibling sweep:** 66 test files reference the core names, but every other one is
+a `vi.mock` factory for `session-accessor.js`, where the core export names are
+the *correct* keys. The intersection of those 66 with the observed failure set is
+**empty** — no sibling shares this defect.
+
+Candidate advanced to `92cbacb74cea7573660da839ce460248fa66034e`. Per the
+no-proof-carry-forward rule the earlier CI run no longer covers the head, so
+Gate 3 was re-dispatched on the new SHA and the full suite re-run clean.
