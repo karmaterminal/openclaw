@@ -349,9 +349,13 @@ function canExpireDiscordStaleAmbientBacklog(
     channelConfig,
     guildInfo,
   });
-  // Stale expiry is a freshness fence, not mention admission. Only a durable
-  // non-thread fact plus a mention-required route proves content is ambient.
-  return params.channelKind === "non-thread" && requireMention;
+  // Fail SAFE, not OPEN: do NOT require channelKind === "non-thread".
+  // Gateway channel_type is optional and frequently absent on ordinary guild
+  // MESSAGE_CREATE; missing kind must still expire stale ambient backlog, or
+  // day-old rows stay claimable and later emit visible replies from obsolete
+  // context. Proven threads already bail out upstream
+  // (hasUnresolvedDiscordAddressForm: channelKind === "thread").
+  return params.channelKind !== "thread" && requireMention;
 }
 
 async function matchesConfiguredDiscordMentionText(
