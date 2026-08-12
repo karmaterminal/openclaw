@@ -541,3 +541,129 @@ the *correct* keys. The intersection of those 66 with the observed failure set i
 Candidate advanced to `92cbacb74cea7573660da839ce460248fa66034e`. Per the
 no-proof-carry-forward rule the earlier CI run no longer covers the head, so
 Gate 3 was re-dispatched on the new SHA and the full suite re-run clean.
+
+---
+
+## §6 — Gate 3 failure classification and the second repair — 2026-08-12T17:2x–17:5xZ
+
+### The authoritative failure inventory came from CI, not from my local run
+
+The clean CI runner on `0f00b2174f3` reported **8 failing test files**, against
+53 from my contended local run. I used CI's list as the inventory and classified
+every entry by **running it on both baselines**, never by reading:
+
+| File(s) | assembly `8318e58bd22` | candidate | verdict |
+|---|---|---|---|
+| `src/talk/agent-consult-runtime.test.ts` | FAIL 12 | FAIL 12 → **repaired 14/14** | inherited |
+| `src/state/…operator-approval-migration.test.ts` | **PASS 7/7** | **FAIL 1/7** → repaired 7/7 | **merge-introduced** |
+| `extensions/imessage/…approval-reaction-poller.test.ts` | FAIL 4 | FAIL 4 | inherited |
+| `extensions/codex/src/app-server/*` (4 files) | FAIL 6 | FAIL | inherited |
+| `src/media/web-media.test.ts` | PASS | PASS locally 88/88 | environment-class |
+
+`web-media` fails only on the CI runner with
+`EXDEV: cross-device link not permitted` where a `LocalMediaAccessError` was
+expected — the runner's temp filesystem is on a different device than the media
+store. It passes locally on both baselines, so it is environment-class, not code.
+
+`imessage` is byte-identical to upstream in **both** its test and its production
+file at the candidate, and fails identically on the unmodified assembly — the
+extra `accountId` in the observed call args comes from elsewhere in the fork
+tree. Inherited; out of drift-phase scope.
+
+### The merge-introduced failure — the real find of this cycle
+
+`src/state/openclaw-state-db-operator-approval-migration.test.ts` asserts the
+exact index set left on `operator_approvals` after
+`repairOperatorApprovalSchema`. That exact-list assertion is **fork-owned** —
+upstream's copy of the file has no `pragma_index_list` block at all, it asserts
+only `strict = 1`.
+
+Upstream `562391b9af3` "feat(audit): explain denied operator approvals (#119815)"
+added a seventh index in this drift window:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_operator_approvals_source_run_resolved
+  ON operator_approvals(source_run_id, resolved_at_ms, approval_id)
+  WHERE source_run_id IS NOT NULL AND resolved_at_ms IS NOT NULL;
+```
+
+Absorbing that schema left the fork's hard-coded six-name list stale: the
+migration now produces 7 indexes where the test demands 6. CI independently
+re-ran it serially and reported **DETERMINISTIC**, not flake.
+
+Fixed by adding the index name in sorted position. **Deliberately not weakened**
+to a subset match: the fork added this exact-list check precisely to prove the
+legacy → canonical migration rebuilds the whole index set without dropping or
+duplicating entries, and loosening it to dodge future upstream additions would
+mask the regression class it exists to catch. Root `AGENTS.md` also forbids
+masking root causes with weaker assertions.
+
+**Method finding worth banking for the cohort.** The runbook's Gate 2.5
+enumerates test files *upstream changed*, then intersects with our surface. It is
+structurally blind to the reciprocal shape — **a fork-owned test whose subject
+upstream changed**. This file was never in the 25-file Gate 2.5 candidate set for
+exactly that reason, and only Gate 3 caught it. A future Gate 2.5 could add a
+second arm: enumerate *fork-owned* tests whose production dependencies upstream
+touched in the window.
+
+### Inherited reds deliberately left in place
+
+- **max-lines ratchet** on `embedded-agent-subscribe.handlers.messages.lifecycle.ts`
+  (797 lines here vs upstream's 525, from our `09f47132f64` transposition). Root
+  `AGENTS.md` forbids adding a `max-lines` suppression and forbids editing a
+  baseline to silence a check without approval; splitting the file is a refactor
+  outside drift scope.
+- **4 codex app-server tests** — prompt-text and tool-display drift
+  (`'Generated = pending proposal'` vs `'Other generated work = pending proposal'`,
+  `` 'set `final=true`' `` vs `` 'Set `final=true`' ``, `'🛠️ Bash'` vs
+  `` '🛠️ `run tests (workspace)`' ``). **No Codex verdict or code change was
+  made.** Root `AGENTS.md` imposes a hard gate requiring personal inspection of
+  sibling `../codex` before any Codex verdict; that inspection was not required
+  for pure execution-based classification (both baselines fail identically), and
+  it is owed by whoever repairs these.
+- **imessage `accountId` drift** — inherited, byte-identical to upstream on both
+  sides at the candidate.
+
+### Discipline note on the discarded run
+
+My first local full-suite run reported 53 failing files. Before classifying any of
+them I checked the error-signature distribution and found 48 were bare
+`Test timed out`, with a 13-minute `extension-discord` stall and browser
+`ERR_FILE_NOT_FOUND`. That is contention, not logic: I had run 12–16 vitest
+workers while the GitNexus indexer pinned a core at 6.7 GB RSS in the same
+worktree, which also violates the repo's own "do not run concurrent heavy work in
+one checkout" rule. A contended run is not evidence, so I discarded it, stopped
+the indexer, and re-ran clean rather than produce 53 confident-sounding
+classifications. Only the single failure whose signature was a real API error
+(`resolveStorePath is not a function`) was chased out of that run — and it turned
+out to be a genuine inherited bug.
+
+### GitNexus — honest deviation
+
+The workorder requires GitNexus impact/context before resolving semantic
+conflicts and `detect-changes` before every candidate commit. Neither was
+possible as specified:
+
+- The exact-worktree index ran **1h37m** of pegged single-core CPU (6.7 GB RSS)
+  and never emitted a `.gitnexus` directory. I stopped it once it began degrading
+  test-run quality.
+- The MCP tools are blocked by an environment storage-version skew: the server
+  build is storage v40 while today's indexes are v42
+  (`Trying to read a database file with a different version`).
+
+Compensation, which root `AGENTS.md` ranks as the stronger evidence class
+("direct dependency inspection is mandatory when feasible"): I read
+`src/infra/install-package-dir.ts` directly to settle the `git-install.ts`
+resolution, grepped every consumer of the state constants, traced the merge-helper
+relocation, and byte-compared the relocated bodies against upstream. A working
+v40-era index additionally confirmed `replaceManagedGitRepo` has exactly one
+direct caller (HIGH risk, modules Lifecycle/Cli/Plugins), matching my analysis.
+`gitnexus detect-changes` was **not** run before commits.
+
+### Worktree hygiene
+
+`gitnexus analyze --index-only --skip-git` did **not** inject into `AGENTS.md`:
+the tracked file's blob is byte-identical to `upstream/main`'s, i.e. a clean merge
+absorption. No `.agents/skills/gitnexus/` was created. Shared `.git/info/exclude`
+was never modified. The scratch `.gate-before/` and `.gate-after/` directories are
+untracked; their durable artifacts were copied into committed `.gates-evidence/`.
