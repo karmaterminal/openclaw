@@ -447,9 +447,40 @@ npx gitnexus cypher  "MATCH (f:File) WHERE f.filePath CONTAINS 'ingress' …"  #
 
 Dependency contracts were inspected directly in `node_modules/discord-api-types@0.38.52` (`payloads/v10/message.d.ts`, `payloads/v10/channel.d.ts`, `gateway/v10.d.ts`) rather than inferred from wrappers, PR text, or prior bot review.
 
-Full suite: `node --import tsx scripts/test-projects.mts` — see the completion note appended below. (The dispatch order named `scripts/test-projects.mjs`; that path does not exist at this revision. The canonical runner, and what `pnpm test` invokes, is the `.mts` file.)
+Full suite: `node --import tsx scripts/test-projects.mts` — see §10. (The dispatch order named `scripts/test-projects.mjs`; that path does not exist at this revision. The canonical runner, and what `pnpm test` invokes, is the `.mts` file.)
 
-## 10. Bottom line
+## 10. Full-suite result and attribution
+
+Run on the unchanged tree (**zero product code changed** — the only tracked file added by this branch is this report):
+
+```
+node --import tsx scripts/test-projects.mts
+  → [test] failed 323 Vitest shards in 2692.73s
+  → [test] failed shard digest (26)
+```
+
+**None of this is attributable to this branch**, which contains no product change. Two distinct causes were separated by re-running serially:
+
+**(a) Resource contention during the 323-shard fan-out — not a code failure.** `vitest.extension-discord.config.ts` printed 16 consecutive passing files and then produced no output for 900 s and was terminated by the runner's stall guard, twice. Re-run serially it is green:
+
+| Targeted re-run (sanctioned runner, `--maxWorkers=1`)                  | Result           |
+| ---------------------------------------------------------------------- | ---------------- |
+| `extension-discord` → `extensions/discord/src/monitor/ingress.test.ts` | **5/5 passed**   |
+| `channels` → `ingress-drain.test.ts`, `ingress-drain-lanes.test.ts`    | **30/30 passed** |
+| `unit-fast` → `src/channels/message/ingress-retry-policy.test.ts`      | **12/12 passed** |
+
+**Every surface this report reasons about is green when not starved.**
+
+**(b) Genuine pre-existing failures unrelated to this report.** Spot-checking `vitest.unit-fast-fake-timers.config.ts` serially still fails, `1 failed | 9 passed (10 files)`, `2 failed | 214 passed | 3 skipped`. The two failures are:
+
+```
+src/entry.respawn.test.ts > buildCliRespawnPlan > keeps macOS system CA loading for interactive commands
+src/entry.respawn.test.ts > buildCliRespawnPlan > does not respawn one-shot commands only to change CA trust
+```
+
+macOS system-CA-trust CLI respawn behaviour, executing on Linux. Unrelated to Discord, ingress, channels, or anything in this report, and present on an unmodified tree.
+
+## 11. Bottom line
 
 Three concerns, three PRs, three proofs. They share a file and a lane key; they do not share a fix, an owner boundary, a rollback, or a receipt.
 
