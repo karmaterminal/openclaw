@@ -749,18 +749,13 @@ export function createDiscordIngressMonitor(params: {
 
   return {
     accept: async (rawMessage) => {
-      // Write-side cure: always try to persist a definite channelKind. Prefer the
-      // gateway envelope; when optional channel_type is absent, hydrate from the
-      // live client (cache/REST) while we still have connectivity. Rows re-read
-      // after restart keep this durable fact; read-side hydrate covers legacy
-      // rows and admit-time fetch failures only.
-      let channelKind = resolveDiscordIngressChannelKind(rawMessage.channel_type);
-      if (!channelKind) {
-        channelKind = await resolveDiscordIngressChannelKindFromClient(
-          params.client,
-          nonEmptyString(rawMessage.channel_id),
-        );
-      }
+      // The durable append is the first thing that happens to an inbound message
+      // and must never wait on network I/O: hydrating an absent channel_type here
+      // would trade the replay bug for outright message loss when the process dies
+      // mid-fetch. Accepted tradeoff: the kind stays optional at admit, and the
+      // drain path resolves it before any terminal no-reply decision — which it
+      // must do regardless, for rows admitted before this fix.
+      const channelKind = resolveDiscordIngressChannelKind(rawMessage.channel_type);
       await monitor.admit({ rawMessage, ...(channelKind ? { channelKind } : {}) });
     },
     start: monitor.start,

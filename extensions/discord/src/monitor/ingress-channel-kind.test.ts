@@ -328,14 +328,19 @@ describe("Discord ingress channel-kind persistence", () => {
     });
   });
 
-  it("write-side hydrates and persists kind when gateway channel_type is absent — cure for optional envelope field", async () => {
+  it("appends before any REST lookup when gateway channel_type is absent — durability must never wait on the network", async () => {
     await withQueue(async (queue) => {
+      const appendGate = createDeferred<void>();
+      const enqueue = vi.fn(async (...args: Parameters<typeof queue.enqueue>) => {
+        await appendGate.promise;
+        return await queue.enqueue(...args);
+      });
       const client = clientWithChannelType({ "absent-write": ChannelType.GuildText });
       const monitor = createDiscordIngressMonitor({
         accountId: "default",
         client: client as never,
         runtime: runtime(),
-        queue,
+        queue: { ...queue, enqueue },
         dispatch: vi.fn(),
       });
       try {
@@ -343,51 +348,29 @@ describe("Discord ingress channel-kind persistence", () => {
           guild_id: "guild-1",
         });
         expect(rawMessage).not.toHaveProperty("channel_type");
-        await monitor.accept(rawMessage);
-        const pending = await queue.listPending({ limit: "all" });
-        expect(pending).toEqual([
-          expect.objectContaining({
-            id: "absent-write",
-            payload: expect.objectContaining({ channelKind: "non-thread" }),
-          }),
-        ]);
-        expect(client.fetchChannel).toHaveBeenCalledWith("absent-write");
-      } finally {
-        await monitor.stop();
-      }
-    });
-  });
 
-  it("write-side hydrates thread kind when gateway channel_type is absent — autoThread / real threads must persist as thread", async () => {
-    await withQueue(async (queue) => {
-      const client = clientWithChannelType({ "absent-thread-write": ChannelType.PublicThread });
-      const monitor = createDiscordIngressMonitor({
-        accountId: "default",
-        client: client as never,
-        runtime: runtime(),
-        queue,
-        dispatch: vi.fn(),
-      });
-      try {
-        const rawMessage = createRawMessage("absent-thread-write", "absent-thread-write", {
-          guild_id: "guild-1",
-        });
-        await monitor.accept(rawMessage);
-        const pending = await queue.listPending({ limit: "all" });
-        expect(pending).toEqual([
-          expect.objectContaining({
-            id: "absent-thread-write",
-            payload: expect.objectContaining({ channelKind: "thread" }),
-          }),
-        ]);
+        const accepted = monitor.accept(rawMessage);
+        // Reaching enqueue while the append is still gated proves admit was not
+        // parked behind a channel fetch. Hydrating here would lose the message
+        // outright if the process died mid-REST, which is strictly worse than
+        // the replay it was meant to cure.
+        await vi.waitFor(() => expect(enqueue).toHaveBeenCalledTimes(1));
+        expect(client.fetchChannel).not.toHaveBeenCalled();
+        // Kind stays unproven at admit; the drain path resolves it before any
+        // terminal no-reply decision (see the read-side hydrate cases below).
+        expect(enqueue.mock.calls[0]?.[1]).not.toHaveProperty("channelKind");
+
+        appendGate.resolve();
+        await accepted;
       } finally {
+        appendGate.resolve();
         await monitor.stop();
       }
     });
   });
 
   describe("stale-ambient channelKind resolve-before-drop fence (regression spiderweb)", () => {
-    it("settles (does not emit) a stale guild row whose gateway channel_type was absent after write-side hydrate to non-thread — regression guard for 24h replay", async () => {
+    it("settles (does not emit) a stale guild row whose gateway channel_type was absent, resolved by drain-path hydrate — regression guard for 24h replay", async () => {
       const now = 1_780_000_050_000;
       await withQueue(
         async (queue) => {
@@ -409,12 +392,11 @@ describe("Discord ingress channel-kind persistence", () => {
           await producer.accept(rawMessage);
           await producer.stop();
           const pending = await queue.listPending({ limit: "all" });
-          expect(pending).toEqual([
-            expect.objectContaining({
-              id: "absent-kind",
-              payload: expect.objectContaining({ channelKind: "non-thread" }),
-            }),
-          ]);
+          expect(pending).toEqual([expect.objectContaining({ id: "absent-kind" })]);
+          // Admit records only what the envelope proved: no kind, and no REST
+          // lookup on the append path. Resolving it belongs to the drain below.
+          expect(pending[0]?.payload).not.toHaveProperty("channelKind");
+          expect(client.fetchChannel).not.toHaveBeenCalled();
 
           const log = vi.fn();
           const dispatch = vi.fn(async (_event, lifecycle: DiscordIngressLifecycle) => {
