@@ -667,3 +667,76 @@ the tracked file's blob is byte-identical to `upstream/main`'s, i.e. a clean mer
 absorption. No `.agents/skills/gitnexus/` was created. Shared `.git/info/exclude`
 was never modified. The scratch `.gate-before/` and `.gate-after/` directories are
 untracked; their durable artifacts were copied into committed `.gates-evidence/`.
+
+---
+
+## §7 — Final Gate 3 classification and lane close — 2026-08-12T18:3xZ
+
+### Every CI red on the final code SHA `985eb4628ff`, classified
+
+Run `31623086818`. Each verdict below is an **exit-code receipt from running the
+gate or test on both baselines**, never a reading.
+
+| CI failing job | Cause | Class | Receipt |
+|---|---|---|---|
+| `static gates` | max-lines ratchet, 1 file | **inherited** | upstream exit 0 (922 grandfathered); assembly exit 1 same file; candidate exit 1 |
+| `pack(core-runtime-infra-process, core-runtime-media-ui)` | `src/media/web-media.test.ts` `EXDEV: cross-device link not permitted` | **environment-class** | passes 88/88 locally at both baselines; only the CI runner's temp filesystem is on a different device |
+| `pack(agentic-control-plane-runtime-server, …-shared-token)` | `Internal Error … request to https://registry.npmjs.org/pnpm/-/pnpm-11.15.1.tgz` | **CI infrastructure** | corepack could not download pnpm; no test ran |
+| `pack(agentic-control-plane-startup-config, …-startup-core)` | `server-startup-secret-owner-isolation.test.ts` | **inherited** | assembly **9 failed / 20 passed**; candidate **9 failed / 20 passed** — identical |
+| `pack(agentic-agents-core-subagents, …-runner-cli-1)` | `embedded-agent-subscribe.subscribe-embedded-agent-session.continuation-responses.test.ts` | **inherited** | assembly 3 failed; candidate 3 failed — byte-identical assertions |
+| `pack(extension-feishu, extension-imessage)` | `approval-reaction-poller.test.ts` | **inherited** | assembly 4 failed; candidate 4 failed |
+| `pack(extension-codex-app-server-runtime, …-support)` | 4 codex app-server files | **inherited** | assembly 6 failed; candidate same |
+
+**No red on the final candidate is merge-introduced.** The single
+merge-introduced failure of this cycle was found, root-caused, and repaired
+(`985eb4628ff`), and both repairs are confirmed green on CI *and* in the local
+suite (`✓ operator-approval-migration (7 tests)`,
+`✓ agent-consult-runtime (14 tests)`).
+
+Two of the inherited reds deserve cohort attention because they are
+**fork-owned tests that were already failing on the assembly before this drift
+cycle**:
+
+- `continuation-responses.test.ts` exists at neither the merge base nor upstream —
+  it was created by our own `09f47132f64` subscribe-monolith transposition, and
+  its expectations already disagree with the assembly's behavior
+  (`['Hello','Hello\nSecond']` vs expected `['Hello','Second']`, i.e. the second
+  block is accumulating rather than replacing). That is a continuation-surface
+  behavior question, not drift.
+- `server-startup-secret-owner-isolation.test.ts` is byte-identical to upstream
+  and unchanged by the merge, yet 9 of its 29 tests fail on both baselines.
+
+### Local full suite — final tally
+
+`node --import tsx scripts/test-projects.mts` at `985eb4628ff`:
+
+```
+[test] failed 324 Vitest shards in 2194.89s
+passed = 151,852   failed = 156   distinct failing files = 51
+```
+
+The local number is materially worse than CI's because this is a **shared box**
+(19 logged-in sessions, other agents' GitNexus servers resident, load average
+5–18 through the run), and 46 of the local failures are bare
+`Error: Test timed out`. The dedicated CI runner is the authoritative surface for
+this candidate, and its inventory is the one classified above. The local run's
+value here is corroboration: both repairs are green in it, and no *new* failure
+class appears that CI did not also see.
+
+### Deliverables state at lane close
+
+- Candidate branch pushed; **code SHA `985eb4628ff33501e4e28439916ac559b3fb9277`**.
+  Commits after it are journal/evidence only (`git diff --name-only 985eb4628ff HEAD`
+  returns only `tmp-drop-me-claude.md` and `.gates-evidence/`), so the CI proof
+  still covers the exact code.
+- Draft tracking PR <https://github.com/karmaterminal/openclaw/pull/1250>, base
+  `scribe/20260709/1172-status-row-assembly`, **left as draft, not merged**.
+- Gate 1 savegames verified; canonical assembly and protected presentation
+  untouched.
+- Gate 2 0 FAIL ×2; Gate 2.5 25/25 green; Gate 2.7 exit 0 with FROZEN-STALE 0.
+- Shape gate +35, decomposed and shown to be a repair of a pre-existing red
+  static gate.
+- `output.md` at the worktree root (repo-gitignored) with a tracked copy at
+  `.gates-evidence/lane-output-summary.md`.
+
+Not claimed: merge-readiness, proof completion, Gate 4 / 4.5 / 5 / 6.
