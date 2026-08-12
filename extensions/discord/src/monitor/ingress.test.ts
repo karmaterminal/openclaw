@@ -820,9 +820,14 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it("keeps stale unhydrated thread rows out of guild-default ambient suppression", async () => {
+  it("settles stale unhydrated thread rows as guild-default ambient backlog", async () => {
+    // Fail safe: an unhydrated row carries no channelKind and no thread
+    // binding, so its thread-ness is unproven. A stale unaddressed
+    // mention-required row must settle as ambient backlog rather than replay a
+    // day-old follow-up; an active thread proves itself by a binding, a reply
+    // reference, a mention, or simply by being fresh (< 15m).
     const now = Date.now();
-    await expectStaleMessageDispatches({
+    await expectStaleMessageSuppressed({
       rawMessage: createRawMessage("1026", "thread-unhydrated-1", {
         guild_id: "guild-1",
         content: "old unmentioned thread follow-up",

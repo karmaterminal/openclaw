@@ -349,9 +349,13 @@ function canExpireDiscordStaleAmbientBacklog(
     channelConfig,
     guildInfo,
   });
-  // Stale expiry is a freshness fence, not mention admission. Only a durable
-  // non-thread fact plus a mention-required route proves content is ambient.
-  return params.channelKind === "non-thread" && requireMention;
+  // Stale expiry is a freshness fence, not mention admission. A proven thread
+  // already bailed out upstream via `hasUnresolvedDiscordAddressForm`, so any
+  // kind reaching here is non-thread or unproven. Fail safe: an unknown or
+  // absent channelKind on a mention-required route is expirable ambient
+  // backlog, so a stale unaddressed row settles instead of replaying obsolete
+  // context.
+  return params.channelKind !== "thread" && requireMention;
 }
 
 async function matchesConfiguredDiscordMentionText(

@@ -210,7 +210,81 @@ describe("Discord ingress channel-kind persistence", () => {
     );
   });
 
-  it("fails open for legacy, future, and malformed persisted channel kinds", async () => {
+  it("settles a stale guild backlog row whose gateway channel_type was absent without emitting", async () => {
+    // Fleet replay specimen: an ordinary guild MESSAGE_CREATE arrives without
+    // the optional gateway `channel_type`, so no durable channelKind is
+    // persisted. A day later the row is still claimable; the freshness fence
+    // must settle it as ambient backlog instead of replying to obsolete
+    // context.
+    const now = 1_780_000_050_000;
+    await withQueue(
+      async (queue) => {
+        const producer = createDiscordIngressMonitor({
+          accountId: "default",
+          client: {} as never,
+          runtime: runtime(),
+          queue,
+          now: () => now,
+          dispatch: vi.fn(),
+        });
+        const rawMessage = createRawMessage("absent-kind", "absent-kind", {
+          guild_id: "guild-1",
+          content: "ordinary old room text",
+          timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+        });
+        expect(rawMessage).not.toHaveProperty("channel_type");
+        await producer.accept(rawMessage);
+        await producer.stop();
+        // The gateway envelope carried no channel_type, so the durable row has
+        // no channelKind fact to classify it as non-thread.
+        expect(await queue.listPending({ limit: "all" })).toEqual([
+          expect.objectContaining({
+            id: "absent-kind",
+            payload: expect.not.objectContaining({ channelKind: expect.anything() }),
+          }),
+        ]);
+
+        const log = vi.fn();
+        const dispatch = vi.fn();
+        const recovered = createDiscordIngressMonitor({
+          accountId: "default",
+          client: {} as never,
+          runtime: { error: vi.fn(), log },
+          queue,
+          now: () => now,
+          botUserId: "bot-1",
+          guildEntries: { "guild-1": { requireMention: true } },
+          dispatch,
+        });
+        recovered.start();
+        try {
+          await vi.waitFor(
+            () =>
+              expect(log).toHaveBeenCalledWith(
+                expect.objectContaining({
+                  eventId: "absent-kind",
+                  reason: "stale-ambient-backlog",
+                }),
+                "discord ingress stale ambient backlog suppressed",
+              ),
+            { timeout: WAIT_TIMEOUT_MS },
+          );
+          expect(dispatch).not.toHaveBeenCalled();
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+          expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        } finally {
+          await recovered.stop();
+        }
+      },
+      () => now,
+    );
+  });
+
+  it("settles legacy, future, and malformed persisted channel kinds without emitting", async () => {
+    // Fail safe: rows whose persisted channelKind is absent (legacy), unknown
+    // (future gateway type), or malformed cannot prove they are threads, so a
+    // stale unaddressed mention-required row settles as ambient backlog instead
+    // of replaying obsolete context a day late.
     const now = 1_780_000_100_000;
     await withQueue(
       async (queue) => {
@@ -254,10 +328,11 @@ describe("Discord ingress channel-kind persistence", () => {
         );
 
         const dispatched: string[] = [];
+        const log = vi.fn();
         const monitor = createDiscordIngressMonitor({
           accountId: "default",
           client: {} as never,
-          runtime: runtime(),
+          runtime: { error: vi.fn(), log },
           queue,
           now: () => now,
           botUserId: "bot-1",
@@ -271,11 +346,19 @@ describe("Discord ingress channel-kind persistence", () => {
         });
         monitor.start();
         try {
-          await vi.waitFor(() => expect(dispatched).toHaveLength(3), {
-            timeout: WAIT_TIMEOUT_MS,
-          });
-          expect(dispatched.toSorted()).toEqual(["future-kind", "legacy-kind", "malformed-kind"]);
+          for (const eventId of ["legacy-kind", "future-kind", "malformed-kind"]) {
+            await vi.waitFor(
+              () =>
+                expect(log).toHaveBeenCalledWith(
+                  expect.objectContaining({ eventId, reason: "stale-ambient-backlog" }),
+                  "discord ingress stale ambient backlog suppressed",
+                ),
+              { timeout: WAIT_TIMEOUT_MS },
+            );
+          }
+          expect(dispatched).toEqual([]);
           expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+          expect(await queue.listPending({ limit: "all" })).toEqual([]);
         } finally {
           await monitor.stop();
         }
