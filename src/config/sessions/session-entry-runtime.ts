@@ -1,5 +1,6 @@
 // Runtime helpers normalize, merge, and project durable session entries.
 import crypto from "node:crypto";
+import { asNonNegativeFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
   SESSION_TOTAL_TOKENS_VERSION,
@@ -206,11 +207,7 @@ export function mergeSessionEntryPreserveActivity(
 export function resolveSessionTotalTokens(
   entry?: Pick<SessionEntry, "totalTokens"> | null,
 ): number | undefined {
-  const total = entry?.totalTokens;
-  if (typeof total !== "number" || !Number.isFinite(total) || total < 0) {
-    return undefined;
-  }
-  return total;
+  return asNonNegativeFiniteNumber(entry?.totalTokens);
 }
 
 export function resolveFreshSessionTotalTokens(

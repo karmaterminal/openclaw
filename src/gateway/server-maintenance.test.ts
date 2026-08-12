@@ -48,7 +48,7 @@ function createActiveRun(
 function createMaintenanceTimerDeps() {
   return {
     ...createGatewayMaintenanceStateForTest(),
-    logHealth: { error: vi.fn() },
+    logHealth: { info: vi.fn(), error: vi.fn() },
     runWorktreeGc: vi.fn(async () => undefined),
     runDeliveryQueueMediaGc: vi.fn(async () => undefined),
     runDelegateArtifactGc: vi.fn(async () => 0),
@@ -411,7 +411,7 @@ describe("startGatewayMaintenanceTimers", () => {
     const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const deps = {
       ...createMaintenanceTimerDeps(),
-      logHealth: { error: vi.fn() },
+      logHealth: { info: vi.fn(), error: vi.fn() },
     };
 
     const timers = startGatewayMaintenanceTimers({
