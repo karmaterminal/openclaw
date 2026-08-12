@@ -123,26 +123,46 @@ an audit reason; **the aggregate stays red** — sanctioned, not laundered.
 `build:strict-smoke`, `protocol:gen`, `plugins:assets:build`, and
 `lint:ui:no-raw-window-open` all **PASS**.
 
-**Full-suite tally.** The final clean run is
-`node --import tsx scripts/test-projects.mts` at `985eb4628ff` (log
-`/tmp/wo1217-fullsuite3.log`). The authoritative failure inventory came from the
-clean CI runner, which reported **8 failing files**, every one classified:
+**Full-suite tally (local, `985eb4628ff`):**
 
-| File(s) | assembly | candidate | verdict |
+```
+[test] failed 324 Vitest shards in 2194.89s
+passed = 151,852   failed = 156   distinct failing files = 51
+```
+
+The local box is shared (19 logged-in sessions, other agents' GitNexus servers
+resident, load average 5–18 through the run) and **46 of the local failures are
+bare `Error: Test timed out`**. The dedicated CI runner is therefore the
+authoritative surface; the local run's value is corroboration — both repairs are
+green in it and it surfaced no failure class CI did not also see.
+
+**Every CI red on the final code SHA is classified, and none is merge-introduced.**
+Run `31623086818`; each verdict is an exit-code receipt from running the gate or
+test on *both* baselines:
+
+| CI failing job | Cause | Class | Receipt |
 |---|---|---|---|
-| `src/talk/agent-consult-runtime.test.ts` | FAIL 12 | **fixed → 14/14** | inherited, repaired |
-| `src/state/…operator-approval-migration.test.ts` | PASS | **fixed → 7/7** | **merge-introduced**, repaired |
-| `extensions/imessage/…approval-reaction-poller.test.ts` | FAIL 4 | FAIL 4 | inherited |
-| `extensions/codex/src/app-server/*` (4 files) | FAIL 6 | FAIL | inherited |
-| `src/media/web-media.test.ts` | PASS | PASS locally (88/88) | environment-class (CI `EXDEV` cross-device hardlink) |
+| `static gates` | max-lines ratchet, 1 file | **inherited** | upstream exit 0; assembly exit 1 same file; candidate exit 1 |
+| `core-runtime-media-ui` | `web-media.test.ts` `EXDEV` | **environment-class** | 88/88 locally on both baselines; CI temp is on another device |
+| `agentic-control-plane-runtime-server` | corepack could not fetch `pnpm-11.15.1.tgz` | **CI infrastructure** | no test ran |
+| `agentic-control-plane-startup-core` | `server-startup-secret-owner-isolation.test.ts` | **inherited** | assembly 9 failed/20 passed; candidate identical |
+| `agentic-agents-core-runner-cli-1` | `…continuation-responses.test.ts` | **inherited** | assembly 3 failed; candidate 3 identical assertions |
+| `extension-imessage` | `approval-reaction-poller.test.ts` | **inherited** | assembly 4 failed; candidate 4 |
+| `extension-codex-app-server-*` | 4 codex files | **inherited** | assembly 6 failed; candidate same |
 
-**Honest correction:** my *first* local full-suite run reported 53 failing files.
-48 of 53 were bare `Test timed out`, plus a 13-minute `extension-discord` stall
-and browser `ERR_FILE_NOT_FOUND` — self-inflicted contention from running 12–16
-workers while the GitNexus indexer held a core at 6.7 GB RSS in the same
-worktree. I discarded that run rather than classify noise, stopped the indexer,
-and re-ran clean. Only the one failure with a real API-error signature was chased
-out of that run, and it turned out to be a genuine inherited bug.
+Both repairs from this lane are confirmed green on CI **and** locally
+(`✓ operator-approval-migration (7 tests)`, `✓ agent-consult-runtime (14 tests)`).
+
+**Two inherited reds flagged for cohort attention** — fork-owned tests that were
+already failing on the assembly before this drift cycle:
+
+- `continuation-responses.test.ts` exists at neither the merge base nor upstream;
+  our own `09f47132f64` transposition created it, and its expectations already
+  disagree with assembly behavior (`['Hello','Hello\nSecond']` vs expected
+  `['Hello','Second']` — the second block accumulates instead of replacing). That
+  is a continuation-surface behavior question, not drift.
+- `server-startup-secret-owner-isolation.test.ts` is byte-identical to upstream
+  and unchanged by the merge, yet 9 of 29 tests fail on both baselines.
 
 ---
 
