@@ -17,9 +17,9 @@ import { createDiagnosticsTraceRuntime } from "./service-traces.js";
 
 const OTEL_GLOBAL_API_KEY = Symbol.for("opentelemetry.js.api.1");
 
-// One session keeps one diagnostic trace id across turns. The exporter remembers
-// a trace-id root only for a context with no parent span, so the first turn's
-// root message span becomes the answer for every later ancestor lookup on it.
+// When turns share one diagnostic trace id, the exporter remembers a trace-id
+// root only for a context with no parent span, so the first turn's root message
+// span becomes the answer for every later ancestor lookup on that trace id.
 const SESSION_DIAGNOSTIC_TRACE_ID = "0af7651916cd43dd8448eb211c80319c";
 const OLDER_TURN_ROOT_SPAN_ID = "9999999999999999";
 // A turn scope always descends from an ancestor span, so a tracked turn context
