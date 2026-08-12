@@ -194,11 +194,30 @@ export type ChannelIngressDrain = {
 };
 
 /**
+ * Minimal operational queue surface required by partial-generic factory overloads.
+ * Brands alone are not enough — empty `{}` / brand-only objects must not type-check.
+ */
+type ChannelIngressQueueOperationalSurface<TPayload, TMetadata = unknown> = {
+  enqueue: ChannelIngressQueue<TPayload, TMetadata, any>["enqueue"];
+  listPending: ChannelIngressQueue<TPayload, TMetadata, any>["listPending"];
+  listClaims: ChannelIngressQueue<TPayload, TMetadata, any>["listClaims"];
+  claimNext: ChannelIngressQueue<TPayload, TMetadata, any>["claimNext"];
+  claim: ChannelIngressQueue<TPayload, TMetadata, any>["claim"];
+  complete: ChannelIngressQueue<TPayload, TMetadata, any>["complete"];
+  release: ChannelIngressQueue<TPayload, TMetadata, any>["release"];
+  fail: ChannelIngressQueue<TPayload, TMetadata, any>["fail"];
+  recoverStaleClaims: ChannelIngressQueue<TPayload, TMetadata, any>["recoverStaleClaims"];
+};
+
+/**
  * Structural queue brand that can store suppressed completion metadata.
  * Used by genuine one-/two-generic single-call overloads so disposition
  * compatibility is checked without a caller-visible trailing completion generic.
  */
-export type ChannelIngressQueueAcceptsSuppressedWrite<TPayload, TMetadata = unknown> = {
+export type ChannelIngressQueueAcceptsSuppressedWrite<
+  TPayload,
+  TMetadata = unknown,
+> = ChannelIngressQueueOperationalSurface<TPayload, TMetadata> & {
   readonly __payloadBrand?: (value: TPayload) => TPayload;
   readonly __metadataBrand?: (value: TMetadata) => TMetadata;
   readonly __completedMetadataBrand?: (
@@ -206,8 +225,11 @@ export type ChannelIngressQueueAcceptsSuppressedWrite<TPayload, TMetadata = unkn
   ) => unknown;
 };
 
-/** Payload/metadata brands only — avoids completed-metadata method invariance. */
-export type ChannelIngressLoosePayloadQueueBrand<TPayload, TMetadata = unknown> = {
+/** Payload/metadata brands + operational methods — rejects empty/brand-only queues. */
+export type ChannelIngressLoosePayloadQueueBrand<
+  TPayload,
+  TMetadata = unknown,
+> = ChannelIngressQueueOperationalSurface<TPayload, TMetadata> & {
   readonly __payloadBrand?: (value: TPayload) => TPayload;
   readonly __metadataBrand?: (value: TMetadata) => TMetadata;
 };
@@ -902,7 +924,8 @@ export function createChannelIngressDrain<
       limit: options.resolvePendingDisposition ? startLimit : "all",
       orderBy,
     });
-    const pendingDispositionResult = await applyIngressPendingDispositions({
+    let corruptReconciliations = pendingSnapshot.corruptReconciliations ?? 0;
+    let pendingDispositionResult = await applyIngressPendingDispositions({
       pending: pendingSnapshot,
       dispositionNow,
       workLimit: startLimit,
@@ -916,6 +939,99 @@ export function createChannelIngressDrain<
       reconcileStoredLaneKey: options.reconcileStoredLaneKey,
       log,
     });
+    // When a disposition-bounded window is filled by a same-lane prefix that
+    // leaves nothing immediately claimable (retry delay / lane fence / work
+    // limit), expand once with unique heads from other lanes. Do not expand
+    // after pure corrupt reconciliation or when the first window already has
+    // eligible work — keeps SQLite scan bounds tight for startLimit tests.
+    if (
+      options.resolvePendingDisposition &&
+      startLimit > 0 &&
+      pendingSnapshot.length >= startLimit
+    ) {
+      // Mirror claimNext lane blocking: only the oldest retained row per lane
+      // contributes retry-delay occupancy, and that delay fences the whole lane.
+      const oldestLaneSeen = new Set<string>();
+      const provisionalRetryDelayedLaneKeys = new Set<string>();
+      for (const event of pendingDispositionResult.pending) {
+        const laneKey = resolveLaneKey(
+          event,
+          options.deriveLaneKey,
+          options.reconcileStoredLaneKey,
+        );
+        if (oldestLaneSeen.has(laneKey)) {
+          continue;
+        }
+        oldestLaneSeen.add(laneKey);
+        if (resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow) > 0) {
+          provisionalRetryDelayedLaneKeys.add(laneKey);
+        }
+      }
+      const firstHasEligible = pendingDispositionResult.pending.some((event) => {
+        const laneKey = resolveLaneKey(
+          event,
+          options.deriveLaneKey,
+          options.reconcileStoredLaneKey,
+        );
+        if (pendingDispositionResult.blockedLaneKeys.has(laneKey)) {
+          return false;
+        }
+        if (pendingDispositionResult.workLimitedLaneKeys.has(laneKey)) {
+          return false;
+        }
+        if (provisionalRetryDelayedLaneKeys.has(laneKey)) {
+          return false;
+        }
+        return resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow) === 0;
+      });
+      const firstHasLaneOccupancy =
+        pendingDispositionResult.blockedLaneKeys.size > 0 ||
+        pendingDispositionResult.workLimitedLaneKeys.size > 0 ||
+        provisionalRetryDelayedLaneKeys.size > 0;
+      if (!firstHasEligible && firstHasLaneOccupancy) {
+        const snapshotLaneKeys = new Set<string>();
+        for (const event of pendingSnapshot) {
+          snapshotLaneKeys.add(
+            resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey),
+          );
+        }
+        const expansion = await queue.listPending({
+          limit: startLimit,
+          orderBy,
+          uniqueLaneHeads: true,
+          excludeLaneKeys: snapshotLaneKeys,
+        });
+        corruptReconciliations += expansion.corruptReconciliations ?? 0;
+        if (expansion.length > 0) {
+          const expansionDisposition = await applyIngressPendingDispositions({
+            pending: expansion,
+            dispositionNow,
+            workLimit: startLimit,
+            fencedLaneKeys,
+            queue: queue as never,
+            resolvePendingDisposition: options.resolvePendingDisposition,
+            onPendingDispositionCommitted: options.onPendingDispositionCommitted,
+            deriveLaneKey: options.deriveLaneKey,
+            reconcileStoredLaneKey: options.reconcileStoredLaneKey,
+            log,
+          });
+          pendingDispositionResult = {
+            pending: [...pendingDispositionResult.pending, ...expansionDisposition.pending],
+            blockedLaneKeys: new Set([
+              ...pendingDispositionResult.blockedLaneKeys,
+              ...expansionDisposition.blockedLaneKeys,
+            ]),
+            workLimitedLaneKeys: new Set([
+              ...pendingDispositionResult.workLimitedLaneKeys,
+              ...expansionDisposition.workLimitedLaneKeys,
+            ]),
+            visited: pendingDispositionResult.visited + expansionDisposition.visited,
+            examined: pendingDispositionResult.examined + expansionDisposition.examined,
+            settled: pendingDispositionResult.settled + expansionDisposition.settled,
+          };
+        }
+      }
+    }
     const pending = pendingDispositionResult.pending;
     const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
     const oldestRetainedPendingLaneKeys = new Set<string>();
@@ -1009,7 +1125,12 @@ export function createChannelIngressDrain<
       blockedLaneKeys.add(laneKey);
       started += 1;
     }
-    return { started, settled: pendingDispositionResult.settled };
+    // Corrupt tombstones are durable progress: monitor must immediate-repump
+    // past a corrupt prefix larger than startLimit without waiting for poll.
+    return {
+      started,
+      settled: pendingDispositionResult.settled + corruptReconciliations,
+    };
   };
 
   return {

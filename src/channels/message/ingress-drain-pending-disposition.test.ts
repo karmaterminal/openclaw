@@ -46,6 +46,18 @@ async function expectCompletedTombstone(
 }
 
 describe("channel ingress pending disposition drain", () => {
+  async function releasePendingForRetry(
+    queue: ReturnType<typeof createTestIngressQueue>,
+    id: string,
+    releasedAt: number,
+  ): Promise<void> {
+    const claim = await queue.claim(id, { ownerId: "pending-disposition-retry-setup" });
+    if (!claim) {
+      throw new Error(`expected claim for ${id}`);
+    }
+    await queue.release(claim, { lastError: "retry backoff", releasedAt });
+  }
+
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -718,6 +730,69 @@ describe("channel ingress pending disposition drain", () => {
     });
   });
 
+  it("does not starve an unrelated lane behind a retry-delayed same-lane prefix under startLimit", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000;
+      const delayedLane = "channel:delayed-room";
+      const otherLane = "channel:other-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      const startLimit = 3;
+      await queue.enqueue(
+        "retrying-head",
+        { text: "ambient backlog head" },
+        { laneKey: delayedLane, receivedAt: clock },
+      );
+      // Enough same-lane tails to fill a non-unique startLimit window alone.
+      for (let index = 0; index < startLimit; index += 1) {
+        await queue.enqueue(
+          `same-lane-tail-${index}`,
+          { text: `tail ${index}` },
+          { laneKey: delayedLane, receivedAt: clock + 1 + index },
+        );
+      }
+      await queue.enqueue(
+        "other-lane-eligible",
+        { text: "unrelated channel work" },
+        { laneKey: otherLane, receivedAt: clock + 100 },
+      );
+      await releasePendingForRetry(queue, "retrying-head", clock);
+
+      clock += 1_000;
+      const adopted: string[] = [];
+      let resolverCalls = 0;
+      const drain = createChannelIngressDrain({
+        queue,
+        now: () => clock,
+        startLimit,
+        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
+        // Disposition resolver enables bounded other-lane expansion when the
+        // first startLimit window is occupied by a delayed same-lane prefix.
+        resolvePendingDisposition: () => {
+          resolverCalls += 1;
+          return null;
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["other-lane-eligible"]);
+      // First window (startLimit) + one expansion unique-head pass (≤ startLimit).
+      expect(resolverCalls).toBeGreaterThan(0);
+      expect(resolverCalls).toBeLessThanOrEqual(startLimit * 2);
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
+        "retrying-head",
+        "same-lane-tail-0",
+        "same-lane-tail-1",
+        "same-lane-tail-2",
+      ]);
+      drain.dispose();
+    });
+  });
+
   it("rejects incompatible completed-metadata types for complete dispositions at compile time", () => {
     type IncompatibleCompletedMetadata = { deliveredBy: string };
     type Suppressed =
@@ -813,6 +888,27 @@ describe("channel ingress pending disposition drain", () => {
     createChannelIngressDrain<Payload>({
       queue: customCompatibleQueue,
       resolvePendingDisposition,
+      dispatchClaimedEvent,
+    });
+
+    // Empty / brand-only objects are not queues — reject on the queue property.
+    createChannelIngressDrain<Payload>({
+      // @ts-expect-error empty object is not an operational ingress queue
+      queue: {},
+      dispatchClaimedEvent,
+    });
+    const brandOnlyQueue = {
+      __payloadBrand: undefined as unknown as (value: Payload) => Payload,
+      __metadataBrand: undefined as unknown as (value: unknown) => unknown,
+    };
+    createChannelIngressDrain<Payload>({
+      // @ts-expect-error brand-only object lacks operational queue methods
+      queue: brandOnlyQueue,
+      dispatchClaimedEvent,
+    });
+    createChannelIngressDrain<Payload, unknown>({
+      // @ts-expect-error empty object is not an operational ingress queue
+      queue: {},
       dispatchClaimedEvent,
     });
 
@@ -961,6 +1057,20 @@ describe("channel ingress pending disposition drain", () => {
         queue: compatiblePluginQueue,
         dispatchClaimedEvent,
         resolvePendingDisposition,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload>({
+        // @ts-expect-error plugin one-generic rejects empty non-queue
+        queue: {},
+        dispatchClaimedEvent,
+        accountId: "acct",
+      });
+      openChannelIngressDrain<Payload, unknown>({
+        // @ts-expect-error plugin two-generic rejects brand-only non-queue
+        queue: {
+          __payloadBrand: undefined as unknown as (value: Payload) => Payload,
+        },
+        dispatchClaimedEvent,
         accountId: "acct",
       });
       openChannelIngressDrain<Payload>({

@@ -223,7 +223,20 @@ export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadat
   listPending(options?: {
     limit?: number | "all";
     orderBy?: "received" | "id";
-  }): Promise<Array<ChannelIngressQueueRecord<TPayload, TMetadata>>>;
+    /**
+     * Prefer oldest head per lane within the row budget so a retry-delayed
+     * same-lane prefix cannot starve unrelated lanes under startLimit.
+     * Scan work remains bounded by limit (and an internal max-scan multiple).
+     */
+    uniqueLaneHeads?: boolean;
+    /** Skip rows whose durable/derived lane is in this set (bounded expansion). */
+    excludeLaneKeys?: Iterable<string>;
+  }): Promise<
+    Array<ChannelIngressQueueRecord<TPayload, TMetadata>> & {
+      /** Corrupt pending rows durable-tombstoned during this list (progress signal). */
+      corruptReconciliations?: number;
+    }
+  >;
   listClaims(): Promise<Array<ChannelIngressQueueClaim<TPayload, TMetadata>>>;
   /** Additive SDK seam; optional so existing external queue test doubles remain compatible. */
   listFailed?(options?: {
@@ -1008,22 +1021,40 @@ export function createChannelIngressQueue<
   >["listPending"] = async (listOptions) => {
     const database = openStateDatabase(options.stateDir);
     const limit = normalizeLimit(listOptions?.limit);
+    const uniqueLaneHeads = listOptions?.uniqueLaneHeads === true;
+    const excludeLaneKeys = new Set(
+      [...(listOptions?.excludeLaneKeys ?? [])].map((key) => key.trim()).filter(Boolean),
+    );
     // Bound SQLite rows selected (valid + corrupt), not only decoded records.
     if (limit === 0) {
-      return [];
+      const empty = [] as Array<ChannelIngressQueueRecord<TPayload, TMetadata>> & {
+        corruptReconciliations?: number;
+      };
+      Object.defineProperty(empty, "corruptReconciliations", {
+        value: 0,
+        enumerable: false,
+        configurable: true,
+      });
+      return empty;
     }
+    // When collecting unique lane heads, allow a bounded extra scan so a long
+    // same-lane prefix cannot hide unrelated lane heads forever under startLimit.
+    const maxScanRows = uniqueLaneHeads ? Math.max(limit * 32, limit) : limit;
     // Corrupt prefixes must make durable progress under the same per-pass budget
     // so repeated pumps eventually reach valid work without unbounded scans.
     return runOpenClawStateWriteTransaction(
       (tx) => {
         const kysely = getChannelIngressKysely(tx.db);
-        const records: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
+        const records: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> & {
+          corruptReconciliations?: number;
+        } = [];
         let lastRow: ChannelIngressRow | undefined;
-        let selectedRows = 0;
+        let scannedRows = 0;
         let corruptReconciliations = 0;
+        const seenLaneKeys = new Set<string>();
         const failedAt = now();
-        while (selectedRows < limit) {
-          const pageSize = Math.min(LIST_PENDING_BATCH_SIZE, limit - selectedRows);
+        while (records.length < limit && scannedRows < maxScanRows) {
+          const pageSize = Math.min(LIST_PENDING_BATCH_SIZE, maxScanRows - scannedRows);
           let pageQuery = kysely
             .selectFrom("channel_ingress_events")
             .selectAll()
@@ -1059,7 +1090,7 @@ export function createChannelIngressQueue<
           );
           let pageAdvancedPastCorrupt = false;
           for (const row of rows) {
-            selectedRows += 1;
+            scannedRows += 1;
             const generation = ensureEventGeneration(
               tx.db,
               queueName,
@@ -1068,6 +1099,18 @@ export function createChannelIngressQueue<
             );
             const record = baseRecord<TPayload, TMetadata>(row, generation);
             if (record) {
+              const laneKey =
+                typeof row.lane_key === "string" && row.lane_key.trim() ? row.lane_key : record.id;
+              if (excludeLaneKeys.has(laneKey)) {
+                continue;
+              }
+              if (uniqueLaneHeads) {
+                if (seenLaneKeys.has(laneKey)) {
+                  // Same-lane tail: skip under unique-head budget; still advances scan.
+                  continue;
+                }
+                seenLaneKeys.add(laneKey);
+              }
               records.push(record);
             } else if (corruptReconciliations < limit) {
               // Durable tombstone so the next pump's SQL window slides forward.
@@ -1083,11 +1126,11 @@ export function createChannelIngressQueue<
                 pageAdvancedPastCorrupt = true;
               }
             }
-            if (selectedRows >= limit) {
+            if (records.length >= limit || scannedRows >= maxScanRows) {
               break;
             }
           }
-          if (selectedRows >= limit) {
+          if (records.length >= limit || scannedRows >= maxScanRows) {
             break;
           }
           if (rows.length < pageSize) {
@@ -1102,6 +1145,11 @@ export function createChannelIngressQueue<
             break;
           }
         }
+        Object.defineProperty(records, "corruptReconciliations", {
+          value: corruptReconciliations,
+          enumerable: false,
+          configurable: true,
+        });
         return records;
       },
       { path: database.path },

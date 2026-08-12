@@ -382,13 +382,20 @@ export function resolveDiscordGuildEntry(params: {
     return { ...byId, id: guildId };
   }
   if (!guild) {
-    // Raw pre-claim paths only have guild_id. Honor an unambiguous top-level
-    // wildcard policy so channels.discord.guilds: {"*": {requireMention: true}}
-    // can suppress stale ambient backlog before hydration. Do not attempt
-    // slug/name matching without a Guild — those stay fail-open.
-    const wildcardOnly = entries["*"];
-    if (wildcardOnly && guildId) {
-      return { ...wildcardOnly, id: guildId, slug: wildcardOnly.slug };
+    // Raw pre-claim paths only have guild_id. Honor a top-level wildcard only
+    // when the map is unambiguous: no other non-id keys that could resolve to a
+    // more-specific slug/name entry after hydration. Mixed {"*": …, "general": …}
+    // must fail open so pre-claim cannot suppress under a policy that would not
+    // apply post-hydration. Exact guild id still wins above.
+    const wildcard = entries["*"];
+    if (wildcard && guildId) {
+      const hasAmbiguousSpecificEntry = Object.keys(entries).some((key) => {
+        const trimmed = key.trim();
+        return trimmed !== "" && trimmed !== "*" && trimmed !== guildId;
+      });
+      if (!hasAmbiguousSpecificEntry) {
+        return { ...wildcard, id: guildId, slug: wildcard.slug };
+      }
     }
     return null;
   }

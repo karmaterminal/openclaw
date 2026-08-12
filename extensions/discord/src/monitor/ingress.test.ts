@@ -891,6 +891,25 @@ describe("Discord durable ingress", () => {
     });
   });
 
+  it("fails open for mixed guilds wildcard-plus-slug maps without hydration", async () => {
+    const now = Date.now();
+    const rawMessage = createRawMessage("1023mix", "channel-raw-guild-wildcard-mixed-1", {
+      guild_id: "guild-wildcard-mixed-1",
+      channel_type: ChannelType.GuildText,
+      content: "old ambient that must not suppress under ambiguous guild map",
+      timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+    } as RawMessageOverrides);
+    expect(rawMessage).not.toHaveProperty("channel");
+    // Wildcard would require mentions, but "general" may open ambient post-hydration.
+    await expectStaleMessageDispatches({
+      rawMessage,
+      guildEntries: {
+        "*": { requireMention: true },
+        general: { requireMention: false },
+      },
+    });
+  });
+
   it("keeps stale ordinary guild text with no direct raw channel facts fail-open", async () => {
     const now = Date.now();
     await expectStaleMessageDispatches({

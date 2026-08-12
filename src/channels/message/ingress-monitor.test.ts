@@ -768,4 +768,100 @@ describe("channel ingress monitor", () => {
       await monitor.stop();
     });
   });
+
+  it("immediate-repumps past a corrupt prefix larger than startLimit without waiting for poll", async () => {
+    const stateDir = tempDirs.make("openclaw-ingress-monitor-corrupt-");
+    closeOpenClawStateDatabaseForTest();
+    const startLimit = 2;
+    const corruptCount = startLimit + 3;
+    const delivered: string[] = [];
+    const queue = createChannelIngressQueue<StoredEvent>({
+      channelId: "test",
+      accountId: "a",
+      stateDir,
+    });
+    try {
+      const { openOpenClawStateDatabase } = await import("../../state/openclaw-state-db.js");
+      const { executeSqliteQuerySync, getNodeSqliteKysely } =
+        await import("../../infra/kysely-sync.js");
+      type ChannelIngressTestDatabase = Pick<
+        import("../../state/openclaw-state-db.generated.js").DB,
+        "channel_ingress_events" | "channel_ingress_event_generations"
+      >;
+      const database = openOpenClawStateDatabase({
+        env: { OPENCLAW_STATE_DIR: stateDir },
+      });
+      const kysely = getNodeSqliteKysely<ChannelIngressTestDatabase>(database.db);
+      const queueName = JSON.stringify(["test", "a"]);
+      for (let index = 0; index < corruptCount; index += 1) {
+        executeSqliteQuerySync(
+          database.db,
+          kysely.insertInto("channel_ingress_events").values({
+            queue_name: queueName,
+            event_id: `corrupt-${index}`,
+            channel_id: "test",
+            account_id: "a",
+            status: "pending",
+            lane_key: "lane:room",
+            payload_json: "{corrupt",
+            metadata_json: null,
+            received_at: index,
+            updated_at: index,
+            attempts: 0,
+          } as import("kysely").Insertable<ChannelIngressTestDatabase["channel_ingress_events"]>),
+        );
+        executeSqliteQuerySync(
+          database.db,
+          kysely.insertInto("channel_ingress_event_generations").values({
+            queue_name: queueName,
+            event_id: `corrupt-${index}`,
+            generation: 1,
+          }),
+        );
+      }
+      await queue.enqueue(
+        "valid-after-corrupt",
+        {
+          version: 1,
+          rawEvent: JSON.stringify({
+            id: "valid-after-corrupt",
+            lane: "room",
+            text: "ok",
+          } satisfies RawEvent),
+        },
+        { laneKey: "lane:room", receivedAt: 100 },
+      );
+
+      const monitor = createChannelIngressMonitor<RawEvent, string, StoredEvent>({
+        queue,
+        // Inhibit polling — only start()'s single requestDrain may pump/repump.
+        pollIntervalMs: 60 * 60 * 1_000,
+        retention: { pruneIntervalMs: 60 * 60 * 1_000 },
+        inspect: (raw) => ({ eventId: raw.id, laneKey: `lane:${raw.lane}` }),
+        payload: {
+          storage: "raw-event",
+          version: 1,
+          serialize: (raw) => JSON.stringify(raw),
+          deserialize: (body) => JSON.parse(body) as RawEvent,
+          createClaimError: (kind) => new PermanentIngressError(kind),
+        },
+        deliver: async (raw, lifecycle) => {
+          delivered.push(raw.id);
+          await lifecycle.onAdopted();
+        },
+        drain: {
+          startLimit,
+          adoptionStallTimeoutMs: 5_000,
+        },
+      });
+
+      monitor.start();
+      await vi.waitFor(() => expect(delivered).toEqual(["valid-after-corrupt"]), {
+        timeout: 2_000,
+      });
+      await monitor.stop();
+    } finally {
+      closeOpenClawStateDatabaseForTest();
+    }
+  });
 });
