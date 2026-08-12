@@ -226,7 +226,9 @@ export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadat
     /**
      * Prefer oldest head per lane within the row budget so a retry-delayed
      * same-lane prefix cannot starve unrelated lanes under startLimit.
-     * Scan work remains bounded by limit (and an internal max-scan multiple).
+     * Implemented via indexed/window distinct-lane selection (not a fixed
+     * row-multiplier scan), so arbitrarily long same-lane prefixes cannot
+     * hide other lanes forever under a bounded limit.
      */
     uniqueLaneHeads?: boolean;
     /** Skip rows whose durable/derived lane is in this set (bounded expansion). */
@@ -1037,83 +1039,121 @@ export function createChannelIngressQueue<
       });
       return empty;
     }
-    // When collecting unique lane heads, allow a bounded extra scan so a long
-    // same-lane prefix cannot hide unrelated lane heads forever under startLimit.
-    const maxScanRows = uniqueLaneHeads ? Math.max(limit * 32, limit) : limit;
-    // Corrupt prefixes must make durable progress under the same per-pass budget
-    // so repeated pumps eventually reach valid work without unbounded scans.
     return runOpenClawStateWriteTransaction(
       (tx) => {
         const kysely = getChannelIngressKysely(tx.db);
         const records: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> & {
           corruptReconciliations?: number;
         } = [];
-        let lastRow: ChannelIngressRow | undefined;
-        let scannedRows = 0;
         let corruptReconciliations = 0;
-        const seenLaneKeys = new Set<string>();
         const failedAt = now();
-        while (records.length < limit && scannedRows < maxScanRows) {
-          const pageSize = Math.min(LIST_PENDING_BATCH_SIZE, maxScanRows - scannedRows);
-          let pageQuery = kysely
-            .selectFrom("channel_ingress_events")
-            .selectAll()
-            .where("queue_name", "=", queueName)
-            .where("status", "=", "pending");
-          if (lastRow) {
-            const cursor = lastRow;
-            pageQuery =
-              listOptions?.orderBy === "id"
-                ? pageQuery.where("event_id", ">", cursor.event_id)
-                : pageQuery.where((eb) =>
-                    eb.or([
-                      eb("received_at", ">", cursor.received_at),
-                      eb.and([
-                        eb("received_at", "=", cursor.received_at),
-                        eb("event_id", ">", cursor.event_id),
-                      ]),
-                    ]),
-                  );
-          }
-          const orderedQuery =
-            listOptions?.orderBy === "id"
-              ? pageQuery.orderBy("event_id", "asc")
-              : pageQuery.orderBy("received_at", "asc").orderBy("event_id", "asc");
-          const rows = executeSqliteQuerySync(tx.db, orderedQuery.limit(pageSize)).rows;
-          if (rows.length === 0) {
-            break;
-          }
-          const pageGenerations = loadEventGenerations(
-            tx.db,
-            queueName,
-            rows.map((row) => row.event_id),
-          );
-          let pageAdvancedPastCorrupt = false;
-          for (const row of rows) {
-            scannedRows += 1;
-            const generation = ensureEventGeneration(
+
+        if (uniqueLaneHeads) {
+          // Distinct oldest head per lane via window function — O(limit) heads,
+          // not O(limit * N) same-lane scan. Re-query after corrupt tombstones so
+          // the next head of a lane can surface within the same bounded call.
+          const takenLaneKeys = new Set<string>(excludeLaneKeys);
+          let guard = 0;
+          while (records.length < limit && guard < limit + 2) {
+            guard += 1;
+            const need = limit - records.length;
+            const orderById = listOptions?.orderBy === "id";
+            const partitionOrder = orderById ? "event_id ASC" : "received_at ASC, event_id ASC";
+            const outerOrder = orderById ? "event_id ASC" : "received_at ASC, event_id ASC";
+            const excludeList = [...takenLaneKeys];
+            const excludeSql =
+              excludeList.length > 0
+                ? `AND (
+                     CASE
+                       WHEN lane_key IS NOT NULL AND length(trim(lane_key)) > 0 THEN lane_key
+                       ELSE event_id
+                     END
+                   ) NOT IN (${excludeList.map(() => "?").join(", ")})`
+                : "";
+            // sqlite-allow-raw -- Distinct pending lane heads (window), bounded by limit.
+            const sql = `
+              SELECT * FROM (
+                SELECT
+                  queue_name,
+                  event_id,
+                  channel_id,
+                  account_id,
+                  status,
+                  lane_key,
+                  payload_json,
+                  metadata_json,
+                  received_at,
+                  updated_at,
+                  claim_token,
+                  claim_owner,
+                  claimed_at,
+                  attempts,
+                  last_attempt_at,
+                  last_error,
+                  failed_reason,
+                  failed_at,
+                  completed_at,
+                  completed_metadata_json,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY CASE
+                      WHEN lane_key IS NOT NULL AND length(trim(lane_key)) > 0 THEN lane_key
+                      ELSE event_id
+                    END
+                    ORDER BY ${partitionOrder}
+                  ) AS __lane_rn
+                FROM channel_ingress_events
+                WHERE queue_name = ?
+                  AND status = 'pending'
+                  ${excludeSql}
+              ) AS lane_heads
+              WHERE __lane_rn = 1
+              ORDER BY ${outerOrder}
+              LIMIT ?
+            `;
+            const bind = [queueName, ...excludeList, need];
+            const rows = tx.db.prepare(sql).all(...bind) as Array<
+              ChannelIngressRow & { __lane_rn?: number }
+            >;
+            if (rows.length === 0) {
+              break;
+            }
+            let madeProgress = false;
+            const pageGenerations = loadEventGenerations(
               tx.db,
               queueName,
-              row.event_id,
-              pageGenerations.get(row.event_id),
+              rows.map((row) => row.event_id),
             );
-            const record = baseRecord<TPayload, TMetadata>(row, generation);
-            if (record) {
+            for (const raw of rows) {
+              const { __lane_rn: _rn, ...rowFields } = raw;
+              const row = rowFields as ChannelIngressRow;
+              const generation = ensureEventGeneration(
+                tx.db,
+                queueName,
+                row.event_id,
+                pageGenerations.get(row.event_id),
+              );
+              const record = baseRecord<TPayload, TMetadata>(row, generation);
               const laneKey =
-                typeof row.lane_key === "string" && row.lane_key.trim() ? row.lane_key : record.id;
-              if (excludeLaneKeys.has(laneKey)) {
-                continue;
-              }
-              if (uniqueLaneHeads) {
-                if (seenLaneKeys.has(laneKey)) {
-                  // Same-lane tail: skip under unique-head budget; still advances scan.
+                typeof row.lane_key === "string" && row.lane_key.trim()
+                  ? row.lane_key
+                  : row.event_id;
+              if (record) {
+                if (takenLaneKeys.has(laneKey)) {
                   continue;
                 }
-                seenLaneKeys.add(laneKey);
+                takenLaneKeys.add(laneKey);
+                records.push(record);
+                madeProgress = true;
+                if (records.length >= limit) {
+                  break;
+                }
+                continue;
               }
-              records.push(record);
-            } else if (corruptReconciliations < limit) {
-              // Durable tombstone so the next pump's SQL window slides forward.
+              if (corruptReconciliations >= limit) {
+                // Still mark lane taken so we do not spin on the same corrupt head.
+                takenLaneKeys.add(laneKey);
+                continue;
+              }
               if (
                 tombstoneCorruptPayloadRow({
                   db: tx.db,
@@ -1123,28 +1163,103 @@ export function createChannelIngressQueue<
                 })
               ) {
                 corruptReconciliations += 1;
-                pageAdvancedPastCorrupt = true;
+                madeProgress = true;
+                // Do not take the lane: next head may be valid after tombstone.
+              } else {
+                takenLaneKeys.add(laneKey);
               }
             }
-            if (records.length >= limit || scannedRows >= maxScanRows) {
+            if (!madeProgress) {
               break;
             }
           }
-          if (records.length >= limit || scannedRows >= maxScanRows) {
-            break;
-          }
-          if (rows.length < pageSize) {
-            break;
-          }
-          // When the page was pure corrupt and we reconciled, re-query from the
-          // same cursor origin is wrong (rows are gone). Advance cursor to the
-          // last visited row identity even if tombstoned so ORDER BY pagination
-          // does not re-read earlier keys; tombstoned rows no longer match pending.
-          lastRow = rows.at(-1);
-          if (!lastRow && !pageAdvancedPastCorrupt) {
-            break;
+        } else {
+          let lastRow: ChannelIngressRow | undefined;
+          let scannedRows = 0;
+          while (records.length < limit && scannedRows < limit) {
+            const pageSize = Math.min(LIST_PENDING_BATCH_SIZE, limit - scannedRows);
+            let pageQuery = kysely
+              .selectFrom("channel_ingress_events")
+              .selectAll()
+              .where("queue_name", "=", queueName)
+              .where("status", "=", "pending");
+            if (lastRow) {
+              const cursor = lastRow;
+              pageQuery =
+                listOptions?.orderBy === "id"
+                  ? pageQuery.where("event_id", ">", cursor.event_id)
+                  : pageQuery.where((eb) =>
+                      eb.or([
+                        eb("received_at", ">", cursor.received_at),
+                        eb.and([
+                          eb("received_at", "=", cursor.received_at),
+                          eb("event_id", ">", cursor.event_id),
+                        ]),
+                      ]),
+                    );
+            }
+            const orderedQuery =
+              listOptions?.orderBy === "id"
+                ? pageQuery.orderBy("event_id", "asc")
+                : pageQuery.orderBy("received_at", "asc").orderBy("event_id", "asc");
+            const rows = executeSqliteQuerySync(tx.db, orderedQuery.limit(pageSize)).rows;
+            if (rows.length === 0) {
+              break;
+            }
+            const pageGenerations = loadEventGenerations(
+              tx.db,
+              queueName,
+              rows.map((row) => row.event_id),
+            );
+            let pageAdvancedPastCorrupt = false;
+            for (const row of rows) {
+              scannedRows += 1;
+              const generation = ensureEventGeneration(
+                tx.db,
+                queueName,
+                row.event_id,
+                pageGenerations.get(row.event_id),
+              );
+              const record = baseRecord<TPayload, TMetadata>(row, generation);
+              if (record) {
+                const laneKey =
+                  typeof row.lane_key === "string" && row.lane_key.trim()
+                    ? row.lane_key
+                    : record.id;
+                if (excludeLaneKeys.has(laneKey)) {
+                  continue;
+                }
+                records.push(record);
+              } else if (corruptReconciliations < limit) {
+                if (
+                  tombstoneCorruptPayloadRow({
+                    db: tx.db,
+                    row,
+                    expectedStatus: "pending",
+                    failedAt,
+                  })
+                ) {
+                  corruptReconciliations += 1;
+                  pageAdvancedPastCorrupt = true;
+                }
+              }
+              if (records.length >= limit || scannedRows >= limit) {
+                break;
+              }
+            }
+            if (records.length >= limit || scannedRows >= limit) {
+              break;
+            }
+            if (rows.length < pageSize) {
+              break;
+            }
+            lastRow = rows.at(-1);
+            if (!lastRow && !pageAdvancedPastCorrupt) {
+              break;
+            }
           }
         }
+
         Object.defineProperty(records, "corruptReconciliations", {
           value: corruptReconciliations,
           enumerable: false,

@@ -488,7 +488,11 @@ export type PluginRuntimeCore = {
           import("../../channels/message/ingress-drain.js").CreateChannelIngressDrainOptionsForQueue<TQueue>,
           "queue"
         > & {
-          queue?: TQueue;
+          // Keep operational methods required even though queue is optional at
+          // runtime (accountId/stateDir can construct one). Brand-only objects
+          // must not type-check as TQueue alone.
+          queue?: TQueue &
+            import("../../channels/message/ingress-drain.js").ChannelIngressQueueOperationalSurface;
           accountId?: string;
           stateDir?: string;
         },

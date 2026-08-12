@@ -1083,6 +1083,59 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const FROZEN_BASE_SHA_FOR_INGRESS = "02bd9d77142248a07e4ad50387a166db1823b494";
+
+function removeDetachedFrozenWorktree(repoRoot: string, worktree: string): void {
+  try {
+    execFileSync("git", ["worktree", "remove", "--force", worktree], {
+      cwd: repoRoot,
+      stdio: "ignore",
+    });
+  } catch {
+    // worktree may already be gone
+  }
+  fs.rmSync(worktree, { recursive: true, force: true });
+}
+
+/**
+ * Create a detached frozen-base worktree at a unique path (or preferredPath).
+ * Always removes any prior content at the path and verifies exact HEAD so a
+ * contaminated cache cannot satisfy the cross-version regression.
+ */
+function ensureDetachedFrozenWorktree(params: {
+  repoRoot: string;
+  frozenSha?: string;
+  preferredPath?: string;
+}): string {
+  const frozenSha = params.frozenSha ?? FROZEN_BASE_SHA_FOR_INGRESS;
+  const worktree =
+    params.preferredPath ??
+    path.join(
+      os.tmpdir(),
+      `wo1244-frozen-base-${frozenSha.slice(0, 12)}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    );
+  removeDetachedFrozenWorktree(params.repoRoot, worktree);
+  execFileSync("git", ["worktree", "add", "--detach", worktree, frozenSha], {
+    cwd: params.repoRoot,
+    stdio: "ignore",
+  });
+  const head = execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  if (head !== frozenSha) {
+    removeDetachedFrozenWorktree(params.repoRoot, worktree);
+    throw new Error(`frozen worktree HEAD ${head} != ${frozenSha}`);
+  }
+  const dirty = execFileSync("git", ["-C", worktree, "status", "--porcelain"], {
+    encoding: "utf8",
+  }).trim();
+  if (dirty) {
+    removeDetachedFrozenWorktree(params.repoRoot, worktree);
+    throw new Error(`frozen worktree is dirty after create:\n${dirty}`);
+  }
+  return worktree;
+}
+
 describe("openclaw state database", () => {
   it("resolves under the shared state database directory", () => {
     const stateDir = createTempStateDir();
@@ -1244,48 +1297,67 @@ describe("openclaw state database", () => {
     }
   });
 
-  it("executes frozen-base RO/writable/queue paths after candidate generation mutation", async () => {
-    const FROZEN_SHA = "02bd9d77142248a07e4ad50387a166db1823b494";
+  it("restores literal frozen bytes when a cached frozen worktree is contaminated", () => {
+    const FROZEN_SHA = FROZEN_BASE_SHA_FOR_INGRESS;
     const repoRoot = path.resolve(import.meta.dirname, "../..");
-    const worktree = path.join(os.tmpdir(), `wo1244-frozen-base-${FROZEN_SHA.slice(0, 12)}`);
-    if (!fs.existsSync(path.join(worktree, "src", "state", "openclaw-state-db.ts"))) {
-      try {
-        execFileSync("git", ["worktree", "remove", "--force", worktree], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
-      } catch {
-        // worktree may not exist yet
-      }
-      execFileSync("git", ["worktree", "add", "--detach", worktree, FROZEN_SHA], {
-        cwd: repoRoot,
-        stdio: "ignore",
+    const probePath = path.join(
+      os.tmpdir(),
+      `wo1244-frozen-contaminate-${FROZEN_SHA.slice(0, 12)}-${process.pid}`,
+    );
+    const marker = path.join(probePath, "src", "state", "openclaw-state-db.ts");
+    try {
+      fs.mkdirSync(path.dirname(marker), { recursive: true });
+      fs.writeFileSync(marker, "// CONTAMINATED_NOT_FROZEN\n", "utf8");
+      const worktree = ensureDetachedFrozenWorktree({
+        repoRoot,
+        frozenSha: FROZEN_SHA,
+        preferredPath: probePath,
       });
-    }
-    const nodeModules = path.join(repoRoot, "node_modules");
-    const worktreeNodeModules = path.join(worktree, "node_modules");
-    if (!fs.existsSync(worktreeNodeModules)) {
-      fs.symlinkSync(nodeModules, worktreeNodeModules, "dir");
-    }
-
-    const { createChannelIngressQueue } = await import("../channels/message/ingress-queue.js");
-    const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
-
-    const runFrozen = (runnerSource: string, stateDir: string): Record<string, unknown> => {
-      const frozenRunner = path.join(worktree, "frozen-cross-version-runner.mjs");
-      fs.writeFileSync(frozenRunner, runnerSource, "utf8");
-      const output = execFileSync(tsxBin, [frozenRunner], {
-        cwd: worktree,
+      expect(worktree).toBe(probePath);
+      const head = execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], {
         encoding: "utf8",
-        env: {
-          ...process.env,
-          OPENCLAW_STATE_DIR: stateDir,
-        },
-      });
-      return JSON.parse(output.trim().split("\n").at(-1) ?? "{}") as Record<string, unknown>;
-    };
+      }).trim();
+      expect(head).toBe(FROZEN_SHA);
+      const restored = fs.readFileSync(marker, "utf8");
+      expect(restored).not.toContain("CONTAMINATED_NOT_FROZEN");
+      expect(restored).toContain("openOpenClawStateDatabase");
+    } finally {
+      removeDetachedFrozenWorktree(repoRoot, probePath);
+    }
+  });
 
-    const frozenPrelude = `import fs from "node:fs";
+  it("executes frozen-base RO/writable/queue paths after candidate generation mutation", async () => {
+    const FROZEN_SHA = FROZEN_BASE_SHA_FOR_INGRESS;
+    const repoRoot = path.resolve(import.meta.dirname, "../..");
+    const worktree = ensureDetachedFrozenWorktree({
+      repoRoot,
+      frozenSha: FROZEN_SHA,
+    });
+    try {
+      const nodeModules = path.join(repoRoot, "node_modules");
+      const worktreeNodeModules = path.join(worktree, "node_modules");
+      if (!fs.existsSync(worktreeNodeModules)) {
+        fs.symlinkSync(nodeModules, worktreeNodeModules, "dir");
+      }
+
+      const { createChannelIngressQueue } = await import("../channels/message/ingress-queue.js");
+      const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
+
+      const runFrozen = (runnerSource: string, stateDir: string): Record<string, unknown> => {
+        const frozenRunner = path.join(worktree, "frozen-cross-version-runner.mjs");
+        fs.writeFileSync(frozenRunner, runnerSource, "utf8");
+        const output = execFileSync(tsxBin, [frozenRunner], {
+          cwd: worktree,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            OPENCLAW_STATE_DIR: stateDir,
+          },
+        });
+        return JSON.parse(output.trim().split("\n").at(-1) ?? "{}") as Record<string, unknown>;
+      };
+
+      const frozenPrelude = `import fs from "node:fs";
 import { createChannelIngressQueue } from "./src/channels/message/ingress-queue.ts";
 import {
   closeOpenClawStateDatabaseForTest,
@@ -1316,28 +1388,28 @@ writable.db.prepare("SELECT COUNT(*) AS n FROM channel_ingress_events").get();
 closeOpenClawStateDatabaseForTest();
 `;
 
-    // --- Path A: delete/re-enqueue (CASCADE) ---
-    {
-      const stateDir = createTempStateDir();
-      closeOpenClawStateDatabaseForTest();
-      const candidateQueue = createChannelIngressQueue<{ text: string }>({
-        channelId: "frozen-x",
-        accountId: "a",
-        stateDir,
-        now: () => 100,
-      });
-      await candidateQueue.enqueue("cross-id", { text: "candidate" }, { receivedAt: 10 });
-      const [snap] = await candidateQueue.listPending();
-      expect(snap?.generation).toBeGreaterThan(0);
-      const staleFence = {
-        generation: snap!.generation,
-        receivedAt: snap!.receivedAt,
-      };
-      const staleUpdatedAt = snap!.updatedAt;
-      closeOpenClawStateDatabaseForTest();
+      // --- Path A: delete/re-enqueue (CASCADE) ---
+      {
+        const stateDir = createTempStateDir();
+        closeOpenClawStateDatabaseForTest();
+        const candidateQueue = createChannelIngressQueue<{ text: string }>({
+          channelId: "frozen-x",
+          accountId: "a",
+          stateDir,
+          now: () => 100,
+        });
+        await candidateQueue.enqueue("cross-id", { text: "candidate" }, { receivedAt: 10 });
+        const [snap] = await candidateQueue.listPending();
+        expect(snap?.generation).toBeGreaterThan(0);
+        const staleFence = {
+          generation: snap!.generation,
+          receivedAt: snap!.receivedAt,
+        };
+        const staleUpdatedAt = snap!.updatedAt;
+        closeOpenClawStateDatabaseForTest();
 
-      const frozenResult = runFrozen(
-        `${frozenPrelude}
+        const frozenResult = runFrozen(
+          `${frozenPrelude}
 const queue = createChannelIngressQueue({
   channelId: "frozen-x",
   accountId: "a",
@@ -1349,66 +1421,66 @@ const enqueued = await queue.enqueue("cross-id", { text: "frozen-rewrite" }, { r
 closeOpenClawStateDatabaseForTest();
 process.stdout.write(JSON.stringify({ count, deleted, enqueuedKind: enqueued.kind }) + "\\n");
 `,
-        stateDir,
-      );
-      expect(frozenResult.deleted).toBe(true);
-      expect(frozenResult.enqueuedKind).toBe("accepted");
+          stateDir,
+        );
+        expect(frozenResult.deleted).toBe(true);
+        expect(frozenResult.enqueuedKind).toBe("accepted");
 
-      closeOpenClawStateDatabaseForTest();
-      const afterQueue = createChannelIngressQueue<{ text: string }>({
-        channelId: "frozen-x",
-        accountId: "a",
-        stateDir,
-        now: () => 100,
-      });
-      expect(
-        await afterQueue.complete("cross-id", {
-          expectedPending: staleFence,
-          metadata: { note: "stale-pre-list" },
-        }),
-      ).toBe(false);
-      expect(
-        await afterQueue.fail("cross-id", {
-          reason: "stale",
-          message: "stale-pre-list",
-          expectedPending: staleFence,
-        }),
-      ).toBe(false);
-      const [replacement] = await afterQueue.listPending();
-      expect(replacement?.receivedAt).toBe(staleFence.receivedAt);
-      expect(replacement?.updatedAt).toBe(staleUpdatedAt);
-      expect(replacement?.generation).toBeGreaterThan(staleFence.generation);
-      expect(
-        await afterQueue.complete("cross-id", {
-          expectedPending: {
-            generation: replacement!.generation,
-            receivedAt: replacement!.receivedAt,
-          },
-          metadata: { note: "live" },
-        }),
-      ).toBe(true);
-    }
+        closeOpenClawStateDatabaseForTest();
+        const afterQueue = createChannelIngressQueue<{ text: string }>({
+          channelId: "frozen-x",
+          accountId: "a",
+          stateDir,
+          now: () => 100,
+        });
+        expect(
+          await afterQueue.complete("cross-id", {
+            expectedPending: staleFence,
+            metadata: { note: "stale-pre-list" },
+          }),
+        ).toBe(false);
+        expect(
+          await afterQueue.fail("cross-id", {
+            reason: "stale",
+            message: "stale-pre-list",
+            expectedPending: staleFence,
+          }),
+        ).toBe(false);
+        const [replacement] = await afterQueue.listPending();
+        expect(replacement?.receivedAt).toBe(staleFence.receivedAt);
+        expect(replacement?.updatedAt).toBe(staleUpdatedAt);
+        expect(replacement?.generation).toBeGreaterThan(staleFence.generation);
+        expect(
+          await afterQueue.complete("cross-id", {
+            expectedPending: {
+              generation: replacement!.generation,
+              receivedAt: replacement!.receivedAt,
+            },
+            metadata: { note: "live" },
+          }),
+        ).toBe(true);
+      }
 
-    // --- Path B: frozen fail → resubmit with identical timestamps ---
-    {
-      const stateDir = createTempStateDir();
-      closeOpenClawStateDatabaseForTest();
-      const candidateQueue = createChannelIngressQueue<{ text: string }>({
-        channelId: "frozen-x",
-        accountId: "a",
-        stateDir,
-        now: () => 100,
-      });
-      await candidateQueue.enqueue("fail-resubmit", { text: "candidate" }, { receivedAt: 10 });
-      const [snap] = await candidateQueue.listPending();
-      const staleFence = {
-        generation: snap!.generation,
-        receivedAt: snap!.receivedAt,
-      };
-      closeOpenClawStateDatabaseForTest();
+      // --- Path B: frozen fail → resubmit with identical timestamps ---
+      {
+        const stateDir = createTempStateDir();
+        closeOpenClawStateDatabaseForTest();
+        const candidateQueue = createChannelIngressQueue<{ text: string }>({
+          channelId: "frozen-x",
+          accountId: "a",
+          stateDir,
+          now: () => 100,
+        });
+        await candidateQueue.enqueue("fail-resubmit", { text: "candidate" }, { receivedAt: 10 });
+        const [snap] = await candidateQueue.listPending();
+        const staleFence = {
+          generation: snap!.generation,
+          receivedAt: snap!.receivedAt,
+        };
+        closeOpenClawStateDatabaseForTest();
 
-      const frozenResult = runFrozen(
-        `${frozenPrelude}
+        const frozenResult = runFrozen(
+          `${frozenPrelude}
 const queue = createChannelIngressQueue({
   channelId: "frozen-x",
   accountId: "a",
@@ -1424,67 +1496,67 @@ const resubmitted = await queue.resubmit("fail-resubmit", { resubmittedAt: 10 })
 closeOpenClawStateDatabaseForTest();
 process.stdout.write(JSON.stringify({ count, failed, resubmittedKind: resubmitted.kind }) + "\\n");
 `,
-        stateDir,
-      );
-      expect(frozenResult.failed).toBe(true);
-      expect(frozenResult.resubmittedKind).toBe("resubmitted");
+          stateDir,
+        );
+        expect(frozenResult.failed).toBe(true);
+        expect(frozenResult.resubmittedKind).toBe("resubmitted");
 
-      closeOpenClawStateDatabaseForTest();
-      const afterQueue = createChannelIngressQueue<{ text: string }>({
-        channelId: "frozen-x",
-        accountId: "a",
-        stateDir,
-        now: () => 100,
-      });
-      expect(
-        await afterQueue.complete("fail-resubmit", {
-          expectedPending: staleFence,
-          metadata: { note: "stale" },
-        }),
-      ).toBe(false);
-      expect(
-        await afterQueue.fail("fail-resubmit", {
-          reason: "stale",
-          message: "stale",
-          expectedPending: staleFence,
-        }),
-      ).toBe(false);
-      const [live] = await afterQueue.listPending();
-      expect(live?.id).toBe("fail-resubmit");
-      expect(live?.receivedAt).toBe(10);
-      expect(live?.generation).toBeGreaterThan(0);
-      expect(live?.generation).not.toBe(staleFence.generation);
-      expect(
-        await afterQueue.complete("fail-resubmit", {
-          expectedPending: {
-            generation: live!.generation,
-            receivedAt: live!.receivedAt,
-          },
-          metadata: { note: "live" },
-        }),
-      ).toBe(true);
-    }
+        closeOpenClawStateDatabaseForTest();
+        const afterQueue = createChannelIngressQueue<{ text: string }>({
+          channelId: "frozen-x",
+          accountId: "a",
+          stateDir,
+          now: () => 100,
+        });
+        expect(
+          await afterQueue.complete("fail-resubmit", {
+            expectedPending: staleFence,
+            metadata: { note: "stale" },
+          }),
+        ).toBe(false);
+        expect(
+          await afterQueue.fail("fail-resubmit", {
+            reason: "stale",
+            message: "stale",
+            expectedPending: staleFence,
+          }),
+        ).toBe(false);
+        const [live] = await afterQueue.listPending();
+        expect(live?.id).toBe("fail-resubmit");
+        expect(live?.receivedAt).toBe(10);
+        expect(live?.generation).toBeGreaterThan(0);
+        expect(live?.generation).not.toBe(staleFence.generation);
+        expect(
+          await afterQueue.complete("fail-resubmit", {
+            expectedPending: {
+              generation: live!.generation,
+              receivedAt: live!.receivedAt,
+            },
+            metadata: { note: "live" },
+          }),
+        ).toBe(true);
+      }
 
-    // --- Path C: frozen claim → non-attempt release with identical timestamps ---
-    {
-      const stateDir = createTempStateDir();
-      closeOpenClawStateDatabaseForTest();
-      const candidateQueue = createChannelIngressQueue<{ text: string }>({
-        channelId: "frozen-x",
-        accountId: "a",
-        stateDir,
-        now: () => 100,
-      });
-      await candidateQueue.enqueue("release-id", { text: "candidate" }, { receivedAt: 10 });
-      const [snap] = await candidateQueue.listPending();
-      const staleFence = {
-        generation: snap!.generation,
-        receivedAt: snap!.receivedAt,
-      };
-      closeOpenClawStateDatabaseForTest();
+      // --- Path C: frozen claim → non-attempt release with identical timestamps ---
+      {
+        const stateDir = createTempStateDir();
+        closeOpenClawStateDatabaseForTest();
+        const candidateQueue = createChannelIngressQueue<{ text: string }>({
+          channelId: "frozen-x",
+          accountId: "a",
+          stateDir,
+          now: () => 100,
+        });
+        await candidateQueue.enqueue("release-id", { text: "candidate" }, { receivedAt: 10 });
+        const [snap] = await candidateQueue.listPending();
+        const staleFence = {
+          generation: snap!.generation,
+          receivedAt: snap!.receivedAt,
+        };
+        closeOpenClawStateDatabaseForTest();
 
-      const frozenResult = runFrozen(
-        `${frozenPrelude}
+        const frozenResult = runFrozen(
+          `${frozenPrelude}
 const queue = createChannelIngressQueue({
   channelId: "frozen-x",
   accountId: "a",
@@ -1497,65 +1569,65 @@ const released = await queue.release(claimed, { recordAttempt: false, releasedAt
 closeOpenClawStateDatabaseForTest();
 process.stdout.write(JSON.stringify({ count, released, claimToken: claimed.claim.token }) + "\\n");
 `,
-        stateDir,
-      );
-      expect(frozenResult.released).toBe(true);
+          stateDir,
+        );
+        expect(frozenResult.released).toBe(true);
 
-      closeOpenClawStateDatabaseForTest();
-      const afterQueue = createChannelIngressQueue<{ text: string }>({
-        channelId: "frozen-x",
-        accountId: "a",
-        stateDir,
-        now: () => 100,
-      });
-      expect(
-        await afterQueue.complete("release-id", {
-          expectedPending: staleFence,
-          metadata: { note: "stale" },
-        }),
-      ).toBe(false);
-      expect(
-        await afterQueue.fail("release-id", {
-          reason: "stale",
-          message: "stale",
-          expectedPending: staleFence,
-        }),
-      ).toBe(false);
-      const [live] = await afterQueue.listPending();
-      expect(live?.id).toBe("release-id");
-      expect(live?.receivedAt).toBe(staleFence.receivedAt);
-      expect(live?.generation).not.toBe(staleFence.generation);
-      expect(
-        await afterQueue.complete("release-id", {
-          expectedPending: {
-            generation: live!.generation,
-            receivedAt: live!.receivedAt,
-          },
-          metadata: { note: "live" },
-        }),
-      ).toBe(true);
-    }
+        closeOpenClawStateDatabaseForTest();
+        const afterQueue = createChannelIngressQueue<{ text: string }>({
+          channelId: "frozen-x",
+          accountId: "a",
+          stateDir,
+          now: () => 100,
+        });
+        expect(
+          await afterQueue.complete("release-id", {
+            expectedPending: staleFence,
+            metadata: { note: "stale" },
+          }),
+        ).toBe(false);
+        expect(
+          await afterQueue.fail("release-id", {
+            reason: "stale",
+            message: "stale",
+            expectedPending: staleFence,
+          }),
+        ).toBe(false);
+        const [live] = await afterQueue.listPending();
+        expect(live?.id).toBe("release-id");
+        expect(live?.receivedAt).toBe(staleFence.receivedAt);
+        expect(live?.generation).not.toBe(staleFence.generation);
+        expect(
+          await afterQueue.complete("release-id", {
+            expectedPending: {
+              generation: live!.generation,
+              receivedAt: live!.receivedAt,
+            },
+            metadata: { note: "live" },
+          }),
+        ).toBe(true);
+      }
 
-    // --- Path D: frozen stale-recovery release with identical timestamps ---
-    {
-      const stateDir = createTempStateDir();
-      closeOpenClawStateDatabaseForTest();
-      const candidateQueue = createChannelIngressQueue<{ text: string }>({
-        channelId: "frozen-x",
-        accountId: "a",
-        stateDir,
-        now: () => 100,
-      });
-      await candidateQueue.enqueue("stale-rec", { text: "candidate" }, { receivedAt: 10 });
-      const [snap] = await candidateQueue.listPending();
-      const staleFence = {
-        generation: snap!.generation,
-        receivedAt: snap!.receivedAt,
-      };
-      closeOpenClawStateDatabaseForTest();
+      // --- Path D: frozen stale-recovery release with identical timestamps ---
+      {
+        const stateDir = createTempStateDir();
+        closeOpenClawStateDatabaseForTest();
+        const candidateQueue = createChannelIngressQueue<{ text: string }>({
+          channelId: "frozen-x",
+          accountId: "a",
+          stateDir,
+          now: () => 100,
+        });
+        await candidateQueue.enqueue("stale-rec", { text: "candidate" }, { receivedAt: 10 });
+        const [snap] = await candidateQueue.listPending();
+        const staleFence = {
+          generation: snap!.generation,
+          receivedAt: snap!.receivedAt,
+        };
+        closeOpenClawStateDatabaseForTest();
 
-      const frozenResult = runFrozen(
-        `${frozenPrelude}
+        const frozenResult = runFrozen(
+          `${frozenPrelude}
 const queue = createChannelIngressQueue({
   channelId: "frozen-x",
   accountId: "a",
@@ -1569,42 +1641,45 @@ const recovered = await queue.recoverStaleClaims({ staleMs: 0, now: 10 });
 closeOpenClawStateDatabaseForTest();
 process.stdout.write(JSON.stringify({ count, recovered }) + "\\n");
 `,
-        stateDir,
-      );
-      expect(frozenResult.recovered).toBe(1);
+          stateDir,
+        );
+        expect(frozenResult.recovered).toBe(1);
 
-      closeOpenClawStateDatabaseForTest();
-      const afterQueue = createChannelIngressQueue<{ text: string }>({
-        channelId: "frozen-x",
-        accountId: "a",
-        stateDir,
-        now: () => 100,
-      });
-      expect(
-        await afterQueue.complete("stale-rec", {
-          expectedPending: staleFence,
-          metadata: { note: "stale" },
-        }),
-      ).toBe(false);
-      expect(
-        await afterQueue.fail("stale-rec", {
-          reason: "stale",
-          message: "stale",
-          expectedPending: staleFence,
-        }),
-      ).toBe(false);
-      const [live] = await afterQueue.listPending();
-      expect(live?.id).toBe("stale-rec");
-      expect(live?.generation).not.toBe(staleFence.generation);
-      expect(
-        await afterQueue.complete("stale-rec", {
-          expectedPending: {
-            generation: live!.generation,
-            receivedAt: live!.receivedAt,
-          },
-          metadata: { note: "live" },
-        }),
-      ).toBe(true);
+        closeOpenClawStateDatabaseForTest();
+        const afterQueue = createChannelIngressQueue<{ text: string }>({
+          channelId: "frozen-x",
+          accountId: "a",
+          stateDir,
+          now: () => 100,
+        });
+        expect(
+          await afterQueue.complete("stale-rec", {
+            expectedPending: staleFence,
+            metadata: { note: "stale" },
+          }),
+        ).toBe(false);
+        expect(
+          await afterQueue.fail("stale-rec", {
+            reason: "stale",
+            message: "stale",
+            expectedPending: staleFence,
+          }),
+        ).toBe(false);
+        const [live] = await afterQueue.listPending();
+        expect(live?.id).toBe("stale-rec");
+        expect(live?.generation).not.toBe(staleFence.generation);
+        expect(
+          await afterQueue.complete("stale-rec", {
+            expectedPending: {
+              generation: live!.generation,
+              receivedAt: live!.receivedAt,
+            },
+            metadata: { note: "live" },
+          }),
+        ).toBe(true);
+      }
+    } finally {
+      removeDetachedFrozenWorktree(repoRoot, worktree);
     }
   });
 

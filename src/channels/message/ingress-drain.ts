@@ -180,7 +180,12 @@ type ChannelIngressQueueParamsOf<TQueue> = TQueue extends {
  */
 export type CreateChannelIngressDrainOptionsForQueue<TQueue> =
   ChannelIngressQueueParamsOf<TQueue> extends [infer P, infer M, infer C]
-    ? CreateChannelIngressDrainOptions<P, M, C, TQueue & ChannelIngressQueue<P, M, C>>
+    ? CreateChannelIngressDrainOptions<
+        P,
+        M,
+        C,
+        TQueue & ChannelIngressQueueOperationalSurface<P, M> & ChannelIngressQueue<P, M, C>
+      >
     : never;
 
 export type ChannelIngressDrain = {
@@ -197,7 +202,7 @@ export type ChannelIngressDrain = {
  * Minimal operational queue surface required by partial-generic factory overloads.
  * Brands alone are not enough — empty `{}` / brand-only objects must not type-check.
  */
-type ChannelIngressQueueOperationalSurface<TPayload, TMetadata = unknown> = {
+export type ChannelIngressQueueOperationalSurface<TPayload = unknown, TMetadata = unknown> = {
   enqueue: ChannelIngressQueue<TPayload, TMetadata, any>["enqueue"];
   listPending: ChannelIngressQueue<TPayload, TMetadata, any>["listPending"];
   listClaims: ChannelIngressQueue<TPayload, TMetadata, any>["listClaims"];
@@ -916,19 +921,22 @@ export function createChannelIngressDrain<
       ...sortedKeys(activeLaneKeys),
       ...sortedKeys(claimedLaneKeys),
     ]);
-    // Bound pre-claim disposition load+visit+resolver work by startLimit so
-    // reconnect backlogs cannot scan an unbounded pending tail under the
-    // admission lock before claims. Without a disposition resolver the full
-    // pending set is still needed for retry/claim eligibility.
+    // One shared startLimit budget across corrupt reconciliation, disposition
+    // resolver examinations, expansion, and claims. Without a disposition
+    // resolver the full pending set is still needed for retry/claim eligibility.
+    let remainingBudget = startLimit;
     const pendingSnapshot = await queue.listPending({
-      limit: options.resolvePendingDisposition ? startLimit : "all",
+      limit: options.resolvePendingDisposition ? remainingBudget : "all",
       orderBy,
     });
     let corruptReconciliations = pendingSnapshot.corruptReconciliations ?? 0;
+    if (options.resolvePendingDisposition) {
+      remainingBudget = Math.max(0, remainingBudget - corruptReconciliations);
+    }
     let pendingDispositionResult = await applyIngressPendingDispositions({
       pending: pendingSnapshot,
       dispositionNow,
-      workLimit: startLimit,
+      workLimit: options.resolvePendingDisposition ? remainingBudget : startLimit,
       fencedLaneKeys,
       // Factory edge already gates completed-metadata compatibility; free
       // TCompletedMetadata cannot re-prove structural complete assignability.
@@ -939,16 +947,14 @@ export function createChannelIngressDrain<
       reconcileStoredLaneKey: options.reconcileStoredLaneKey,
       log,
     });
+    if (options.resolvePendingDisposition) {
+      remainingBudget = Math.max(0, remainingBudget - pendingDispositionResult.examined);
+    }
     // When a disposition-bounded window is filled by a same-lane prefix that
     // leaves nothing immediately claimable (retry delay / lane fence / work
-    // limit), expand once with unique heads from other lanes. Do not expand
-    // after pure corrupt reconciliation or when the first window already has
-    // eligible work — keeps SQLite scan bounds tight for startLimit tests.
-    if (
-      options.resolvePendingDisposition &&
-      startLimit > 0 &&
-      pendingSnapshot.length >= startLimit
-    ) {
+    // limit), expand once with unique heads from other lanes using only the
+    // remaining shared budget (never a second full startLimit).
+    if (options.resolvePendingDisposition && remainingBudget > 0 && pendingSnapshot.length > 0) {
       // Mirror claimNext lane blocking: only the oldest retained row per lane
       // contributes retry-delay occupancy, and that delay fences the whole lane.
       const oldestLaneSeen = new Set<string>();
@@ -988,7 +994,12 @@ export function createChannelIngressDrain<
         pendingDispositionResult.blockedLaneKeys.size > 0 ||
         pendingDispositionResult.workLimitedLaneKeys.size > 0 ||
         provisionalRetryDelayedLaneKeys.size > 0;
-      if (!firstHasEligible && firstHasLaneOccupancy) {
+      // Expand when the first window produced no claimable work and is occupied
+      // by a blocking lane (or filled the initial load with same-lane rows).
+      const firstWindowSaturated =
+        pendingSnapshot.length + (pendingSnapshot.corruptReconciliations ?? 0) >= startLimit ||
+        firstHasLaneOccupancy;
+      if (!firstHasEligible && firstWindowSaturated) {
         const snapshotLaneKeys = new Set<string>();
         for (const event of pendingSnapshot) {
           snapshotLaneKeys.add(
@@ -996,17 +1007,19 @@ export function createChannelIngressDrain<
           );
         }
         const expansion = await queue.listPending({
-          limit: startLimit,
+          limit: remainingBudget,
           orderBy,
           uniqueLaneHeads: true,
           excludeLaneKeys: snapshotLaneKeys,
         });
-        corruptReconciliations += expansion.corruptReconciliations ?? 0;
-        if (expansion.length > 0) {
+        const expansionCorrupt = expansion.corruptReconciliations ?? 0;
+        corruptReconciliations += expansionCorrupt;
+        remainingBudget = Math.max(0, remainingBudget - expansionCorrupt);
+        if (expansion.length > 0 && remainingBudget > 0) {
           const expansionDisposition = await applyIngressPendingDispositions({
             pending: expansion,
             dispositionNow,
-            workLimit: startLimit,
+            workLimit: remainingBudget,
             fencedLaneKeys,
             queue: queue as never,
             resolvePendingDisposition: options.resolvePendingDisposition,
@@ -1015,6 +1028,7 @@ export function createChannelIngressDrain<
             reconcileStoredLaneKey: options.reconcileStoredLaneKey,
             log,
           });
+          remainingBudget = Math.max(0, remainingBudget - expansionDisposition.examined);
           pendingDispositionResult = {
             pending: [...pendingDispositionResult.pending, ...expansionDisposition.pending],
             blockedLaneKeys: new Set([
@@ -1076,9 +1090,10 @@ export function createChannelIngressDrain<
     }
 
     const candidateIds = new Set(eligiblePending.map((event) => event.id));
-    // Share startLimit across disposition settlements and claims so one pass cannot
-    // perform unbounded pre-claim work and then still start a full claim batch.
-    const claimBudget = Math.max(0, startLimit - pendingDispositionResult.settled);
+    // Shared remaining budget after corrupt + disposition examinations (incl. expansion).
+    const claimBudget = options.resolvePendingDisposition
+      ? remainingBudget
+      : Math.max(0, startLimit - pendingDispositionResult.settled);
     let started = 0;
     while (started < claimBudget) {
       if (shouldStop()) {

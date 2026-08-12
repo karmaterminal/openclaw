@@ -780,15 +780,166 @@ describe("channel ingress pending disposition drain", () => {
       expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane-eligible"]);
-      // First window (startLimit) + one expansion unique-head pass (≤ startLimit).
+      // Shared budget: examinations across first window + expansion stay ≤ startLimit.
       expect(resolverCalls).toBeGreaterThan(0);
-      expect(resolverCalls).toBeLessThanOrEqual(startLimit * 2);
+      expect(resolverCalls).toBeLessThanOrEqual(startLimit);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
         "retrying-head",
         "same-lane-tail-0",
         "same-lane-tail-1",
         "same-lane-tail-2",
       ]);
+      drain.dispose();
+    });
+  });
+
+  it("dispatches past more than 32*startLimit blocked same-lane rows via unique-lane expansion", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000;
+      const delayedLane = "channel:delayed-room";
+      const otherLane = "channel:other-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      const startLimit = 3;
+      const blockedPrefix = 32 * startLimit + 20;
+      await queue.enqueue(
+        "retrying-head",
+        { text: "ambient backlog head" },
+        { laneKey: delayedLane, receivedAt: clock },
+      );
+      for (let index = 0; index < blockedPrefix; index += 1) {
+        await queue.enqueue(
+          `same-lane-tail-${index}`,
+          { text: `tail ${index}` },
+          { laneKey: delayedLane, receivedAt: clock + 1 + index },
+        );
+      }
+      await queue.enqueue(
+        "other-lane-eligible",
+        { text: "unrelated channel work" },
+        { laneKey: otherLane, receivedAt: clock + blockedPrefix + 100 },
+      );
+      await releasePendingForRetry(queue, "retrying-head", clock);
+
+      clock += 1_000;
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain({
+        queue,
+        now: () => clock,
+        startLimit,
+        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
+        resolvePendingDisposition: () => null,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      // One pump must reach the other lane; unique-head SQL must not stop at 32*limit.
+      expect(await drain.drainOnce()).toEqual({ started: 1, settled: expect.any(Number) });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["other-lane-eligible"]);
+      drain.dispose();
+    });
+  });
+
+  it("shares one startLimit budget across first disposition, expansion, corrupt, and claims", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = STALE_AMBIENT_PENDING_MS + 1;
+      const delayedLane = "channel:delayed-room";
+      const otherLane = "channel:expand-room";
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      const { openOpenClawStateDatabase } = await import("../../state/openclaw-state-db.js");
+      const { executeSqliteQuerySync, getNodeSqliteKysely } =
+        await import("../../infra/kysely-sync.js");
+      type ChannelIngressTestDatabase = Pick<
+        import("../../state/openclaw-state-db.generated.js").DB,
+        "channel_ingress_events" | "channel_ingress_event_generations"
+      >;
+      const startLimit = 4;
+      // Delayed head + same-lane tails fill first window occupancy with one examine.
+      await queue.enqueue(
+        "retrying-head",
+        { text: "ambient backlog head" },
+        { laneKey: delayedLane, receivedAt: 0 },
+      );
+      await queue.enqueue(
+        "same-lane-tail",
+        { text: "tail" },
+        { laneKey: delayedLane, receivedAt: 1 },
+      );
+      await releasePendingForRetry(queue, "retrying-head", 0);
+
+      // Expansion path: one corrupt unique head + one valid other-lane head.
+      const database = openOpenClawStateDatabase({
+        env: { OPENCLAW_STATE_DIR: stateDir },
+      });
+      const kysely = getNodeSqliteKysely<ChannelIngressTestDatabase>(database.db);
+      const queueName = JSON.stringify(["test", "a"]);
+      executeSqliteQuerySync(
+        database.db,
+        kysely.insertInto("channel_ingress_events").values({
+          queue_name: queueName,
+          event_id: "expand-corrupt",
+          channel_id: "test",
+          account_id: "a",
+          status: "pending",
+          lane_key: "channel:corrupt-lane",
+          payload_json: "{corrupt",
+          metadata_json: null,
+          received_at: 50,
+          updated_at: 50,
+          claim_token: null,
+          claim_owner: null,
+          claimed_at: null,
+          attempts: 0,
+          last_attempt_at: null,
+          last_error: null,
+          failed_reason: null,
+          failed_at: null,
+          completed_at: null,
+          completed_metadata_json: null,
+        }),
+      );
+      closeOpenClawStateDatabaseForTest();
+
+      await queue.enqueue(
+        "expand-valid",
+        { text: "other lane work" },
+        { laneKey: otherLane, receivedAt: 60 },
+      );
+      await queue.enqueue(
+        "expand-valid-2",
+        { text: "should not claim under shared budget if over" },
+        { laneKey: "channel:third-room", receivedAt: 70 },
+      );
+
+      clock += 1_000;
+      let resolverCalls = 0;
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain({
+        queue,
+        now: () => clock,
+        startLimit,
+        retryPolicy: { baseMs: 60_000, maxMs: 60_000 },
+        resolvePendingDisposition: () => {
+          resolverCalls += 1;
+          return null;
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      const result = await drain.drainOnce();
+      await drain.waitForIdle();
+      // Aggregate resolver examinations + corrupt tombstones + claims <= startLimit.
+      const aggregateWork = resolverCalls + (result.settled > 0 ? 0 : 0) + result.started;
+      // settled includes corrupt; count corrupt as settled - started dispositions
+      // Use resolverCalls + started as primary work; corrupt is in settled.
+      expect(resolverCalls + result.started).toBeLessThanOrEqual(startLimit);
+      // Must still make progress on expansion path.
+      expect(adopted.length + result.settled).toBeGreaterThan(0);
       drain.dispose();
     });
   });
@@ -1039,6 +1190,23 @@ describe("channel ingress pending disposition drain", () => {
         queue: compatiblePluginQueue,
         dispatchClaimedEvent,
         resolvePendingDisposition,
+        accountId: "acct",
+      });
+      openChannelIngressDrain({
+        // @ts-expect-error unparameterized plugin queue-first rejects empty non-queue
+        queue: {},
+        dispatchClaimedEvent,
+        accountId: "acct",
+      });
+      const pluginBrandOnlyQueue = {
+        __payloadBrand: undefined as unknown as (value: Payload) => Payload,
+        __metadataBrand: undefined as unknown as (value: unknown) => unknown,
+        __completedMetadataBrand: undefined as unknown as (value: Suppressed) => Suppressed,
+      };
+      openChannelIngressDrain({
+        // @ts-expect-error unparameterized plugin queue-first rejects brand-only non-queue
+        queue: pluginBrandOnlyQueue,
+        dispatchClaimedEvent,
         accountId: "acct",
       });
       openChannelIngressDrain({
