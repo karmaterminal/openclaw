@@ -382,6 +382,14 @@ export function resolveDiscordGuildEntry(params: {
     return { ...byId, id: guildId };
   }
   if (!guild) {
+    // Raw pre-claim paths only have guild_id. Honor an unambiguous top-level
+    // wildcard policy so channels.discord.guilds: {"*": {requireMention: true}}
+    // can suppress stale ambient backlog before hydration. Do not attempt
+    // slug/name matching without a Guild — those stay fail-open.
+    const wildcardOnly = entries["*"];
+    if (wildcardOnly && guildId) {
+      return { ...wildcardOnly, id: guildId, slug: wildcardOnly.slug };
+    }
     return null;
   }
   const slug = normalizeDiscordSlug(guild.name ?? "");

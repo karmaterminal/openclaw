@@ -856,6 +856,41 @@ describe("Discord durable ingress", () => {
     });
   });
 
+  it("suppresses stale ambient rows under top-level guilds wildcard-only requireMention true", async () => {
+    const now = Date.now();
+    const rawMessage = createRawMessage("1023w", "channel-raw-guild-wildcard-1", {
+      guild_id: "guild-wildcard-1",
+      channel_type: ChannelType.GuildText,
+      content: "old unmentioned room text under guilds *",
+      timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+    } as RawMessageOverrides);
+    // Production pre-claim path: raw gateway payload has no synthetic channel object.
+    expect(rawMessage).not.toHaveProperty("channel");
+    await expectStaleMessageFailsAsAmbient({
+      rawMessage,
+      guildEntries: {
+        "*": { requireMention: true },
+      },
+    });
+  });
+
+  it("keeps top-level guilds wildcard-only requireMention false fail-open for stale ambient", async () => {
+    const now = Date.now();
+    const rawMessage = createRawMessage("1023wo", "channel-raw-guild-wildcard-open-1", {
+      guild_id: "guild-wildcard-open-1",
+      channel_type: ChannelType.GuildText,
+      content: "old ordinary room text under guilds * open",
+      timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+    } as RawMessageOverrides);
+    expect(rawMessage).not.toHaveProperty("channel");
+    await expectStaleMessageDispatches({
+      rawMessage,
+      guildEntries: {
+        "*": { requireMention: false },
+      },
+    });
+  });
+
   it("keeps stale ordinary guild text with no direct raw channel facts fail-open", async () => {
     const now = Date.now();
     await expectStaleMessageDispatches({
