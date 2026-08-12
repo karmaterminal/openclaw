@@ -6,44 +6,85 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { expect, test } from "vitest";
-import type { DiagnosticEventPayload, DiagnosticTraceContext } from "../api.js";
+import {
+  parseDiagnosticTraceparent,
+  type ContinuationTracer,
+  type DiagnosticEventPayload,
+  type DiagnosticTraceContext,
+} from "../api.js";
 import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
 import { createDiagnosticsTraceRuntime } from "./service-traces.js";
 
 const OTEL_GLOBAL_API_KEY = Symbol.for("opentelemetry.js.api.1");
 
-// A turn scope always descends from an ancestor span, so the tracked turn
-// context never registers as a trace-id root in the exporter.
+// One session keeps one diagnostic trace id across turns. The exporter remembers
+// a trace-id root only for a context with no parent span, so the first turn's
+// root message span becomes the answer for every later ancestor lookup on it.
+const SESSION_DIAGNOSTIC_TRACE_ID = "0af7651916cd43dd8448eb211c80319c";
+const OLDER_TURN_ROOT_SPAN_ID = "9999999999999999";
+// A turn scope always descends from an ancestor span, so a tracked turn context
+// never registers as a trace-id root itself.
 const TURN_ANCESTOR_SPAN_ID = "1111111111111111";
-const PROOF_TURNS = [
-  { traceSuffix: "01", spanDigit: "2" },
-  { traceSuffix: "02", spanDigit: "3" },
-] as const;
+const PROOF_TURN_SPAN_IDS = ["2222222222222222", "3333333333333333"] as const;
 
-function diagnosticTurnTrace(turn: (typeof PROOF_TURNS)[number]): DiagnosticTraceContext {
+function olderTurnRootTrace(): DiagnosticTraceContext {
   return {
-    traceId: `0af7651916cd43dd8448eb211c8031${turn.traceSuffix}`,
-    spanId: turn.spanDigit.repeat(16),
+    traceId: SESSION_DIAGNOSTIC_TRACE_ID,
+    spanId: OLDER_TURN_ROOT_SPAN_ID,
+    traceFlags: "01",
+  };
+}
+
+function diagnosticTurnTrace(spanId: string): DiagnosticTraceContext {
+  return {
+    traceId: SESSION_DIAGNOSTIC_TRACE_ID,
+    spanId,
     parentSpanId: TURN_ANCESTOR_SPAN_ID,
     traceFlags: "01",
   };
 }
 
-function toolExecutionStartedEvent(traceContext: DiagnosticTraceContext): DiagnosticEventPayload {
+function turnAncestorTrace(): DiagnosticTraceContext {
   return {
-    type: "tool.execution.started",
-    ts: Date.now(),
-    seq: 1,
-    toolName: "continue_delegate",
-    trace: traceContext,
+    traceId: SESSION_DIAGNOSTIC_TRACE_ID,
+    spanId: TURN_ANCESTOR_SPAN_ID,
+    traceFlags: "01",
   };
 }
 
-function expectTraceparent(traceparent: string | undefined): string {
-  if (!traceparent) {
+function trustedEvent(
+  type: "message.received" | "tool.execution.started",
+  traceContext: DiagnosticTraceContext,
+): DiagnosticEventPayload {
+  return type === "message.received"
+    ? { type, ts: Date.now(), seq: 1, channel: "test", source: "test", trace: traceContext }
+    : {
+        type,
+        ts: Date.now(),
+        seq: 1,
+        toolName: "continue_delegate",
+        trace: traceContext,
+      };
+}
+
+/**
+ * Production never starts a delayed continuation span straight from the stored
+ * string: `resolveContinuationTraceparent()` parses it and re-resolves it
+ * through the same exporter formatter first, falling back to the parsed context
+ * when the exporter resolves nothing.
+ */
+function reresolveCarriedTraceparent(
+  continuationTracer: ContinuationTracer,
+  carried: string | undefined,
+): string {
+  if (!carried) {
     throw new Error("expected a captured traceparent");
   }
-  return traceparent;
+  const parsed = parseDiagnosticTraceparent(carried);
+  if (!parsed) {
+    throw new Error(`expected a parseable traceparent, got ${carried}`);
+  }
+  return continuationTracer.formatTraceparent?.(parsed) ?? carried;
 }
 
 function expectTurn<T>(turn: T | undefined): T {
@@ -175,10 +216,11 @@ test("keeps one trace across a continue_delegate out-and-back hop", async () => 
   }
 });
 
-// Typed continuation tools capture the traceparent their delayed dispatch/fire
-// spans reconstruct from. Whichever diagnostic span id core hands the exporter
-// is looked up in the trusted-span registry, so this exercises the real
-// registry, the real adapter, and real SDK spans against both candidates.
+// Exporter-side characterization of the two capture candidates, against the real
+// trusted-span registry, the real adapter, and real SDK spans. The pre-fix
+// behavior lives here as a reproduction: the pre-fix-failing regression proof of
+// the capture change itself is
+// `src/agents/tools/continuation-tools.current-span-traceparent.test.ts`.
 test("keeps typed continuation dispatch and fire on the originating turn trace", async () => {
   const originalContextManager = registeredContextManager();
   context.disable();
@@ -197,53 +239,54 @@ test("keeps typed continuation dispatch and fire on the originating turn trace",
       resolveParentContext: traceRuntime.resolveTrustedParentContext,
     });
 
-    // An earlier message trace is still the ambient OTEL context. That is the
-    // state the reported cross-turn split fell back to.
-    const olderTurnSpan = provider.getTracer("test.older-turn").startSpan("older.turn.message");
-    const olderTurnContext = olderTurnSpan.spanContext();
+    // An earlier turn on this session already registered the trace-id root.
+    const olderTurnRootSpan = traceRuntime.trackTrustedSpan(
+      trustedEvent("message.received", olderTurnRootTrace()),
+      { trusted: true },
+      provider.getTracer("openclaw").startSpan("openclaw.message"),
+    );
+    const olderTurnContext = olderTurnRootSpan.spanContext();
 
-    const turnTraceparents = PROOF_TURNS.map((turn) => {
-      const turnTrace = diagnosticTurnTrace(turn);
+    const proofTurns = PROOF_TURN_SPAN_IDS.map((spanId) => {
+      const turnTrace = diagnosticTurnTrace(spanId);
       const toolSpan = traceRuntime.trackTrustedSpan(
-        toolExecutionStartedEvent(turnTrace),
+        trustedEvent("tool.execution.started", turnTrace),
         { trusted: true },
         provider.getTracer("openclaw").startSpan("openclaw.tool.execution"),
       );
-      // The tool runs while the older turn's span is still ambient.
-      const captured = context.with(trace.setSpan(context.active(), olderTurnSpan), () => ({
-        currentSpan: continuationTracer.formatTraceparent?.(turnTrace),
-        ancestor: continuationTracer.formatTraceparent?.({
-          traceId: turnTrace.traceId,
-          spanId: TURN_ANCESTOR_SPAN_ID,
-          traceFlags: turnTrace.traceFlags,
-        }),
-      }));
-      return { captured, toolSpanContext: toolSpan.spanContext() };
+      return {
+        captured: {
+          currentSpan: continuationTracer.formatTraceparent?.(turnTrace),
+          ancestor: continuationTracer.formatTraceparent?.(turnAncestorTrace()),
+        },
+        toolSpanContext: toolSpan.spanContext(),
+      };
     });
+    const firstTurn = expectTurn(proofTurns[0]);
+    const secondTurn = expectTurn(proofTurns[1]);
 
-    // Delayed hop: dispatch and fire reconstruct from the carried string alone,
-    // long after the tool span left the active context.
+    // Delayed hop: the stored string is re-resolved and reconstructed long after
+    // the originating tool span left the active context.
     const dispatch = continuationTracer.startSpan("continuation.delegate.dispatch", {
-      traceparent: expectTraceparent(turnTraceparents[0]?.captured.currentSpan),
+      traceparent: reresolveCarriedTraceparent(continuationTracer, firstTurn.captured.currentSpan),
     });
     const dispatchTraceparent = dispatch.traceparent?.();
     dispatch.end();
     const fire = continuationTracer.startSpan("continuation.delegate.fire", {
-      traceparent: expectTraceparent(dispatchTraceparent),
+      traceparent: reresolveCarriedTraceparent(continuationTracer, dispatchTraceparent),
     });
     fire.end();
     const secondTurnDispatch = continuationTracer.startSpan("continuation.delegate.dispatch", {
-      traceparent: expectTraceparent(turnTraceparents[1]?.captured.currentSpan),
+      traceparent: reresolveCarriedTraceparent(continuationTracer, secondTurn.captured.currentSpan),
     });
+    const secondTurnDispatchTraceparent = secondTurnDispatch.traceparent?.();
     secondTurnDispatch.end();
-    olderTurnSpan.end();
+    olderTurnRootSpan.end();
     await provider.forceFlush();
 
     const spans = exporter.getFinishedSpans();
     const dispatchSpan = spans.find((span) => span.name === "continuation.delegate.dispatch");
     const fireSpan = spans.find((span) => span.name === "continuation.delegate.fire");
-    const firstTurn = expectTurn(turnTraceparents[0]);
-    const secondTurn = expectTurn(turnTraceparents[1]);
 
     // Tool, dispatch, and fire share the proof turn's trace.
     expect(dispatchSpan?.spanContext().traceId).toBe(firstTurn.toolSpanContext.traceId);
@@ -254,11 +297,11 @@ test("keeps typed continuation dispatch and fire on the originating turn trace",
 
     // Consecutive turns stay on their own traces instead of accumulating.
     expect(secondTurn.toolSpanContext.traceId).not.toBe(firstTurn.toolSpanContext.traceId);
-    expect(secondTurnDispatch.traceparent?.()).toContain(secondTurn.toolSpanContext.traceId);
+    expect(secondTurnDispatchTraceparent).toContain(secondTurn.toolSpanContext.traceId);
 
-    // The ancestor span id was never exported, so it resolves to nothing in the
-    // registry and falls through to the ambient older turn — the defect this
-    // capture change removes.
+    // Reproduction: the ancestor span id is in no registry tier, so every turn
+    // resolves to the session's remembered trace-id root — the older message
+    // trace the reported dispatch/fire spans accumulated on.
     for (const turn of [firstTurn, secondTurn]) {
       expect(turn.captured.ancestor).toContain(olderTurnContext.traceId);
       expect(turn.captured.ancestor).not.toContain(turn.toolSpanContext.traceId);

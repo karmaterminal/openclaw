@@ -486,13 +486,13 @@ export function formatContinuationTraceparent(
 }
 
 /**
- * Stable-ancestor capture: resolves the active context's parent span so the
- * captured traceparent outlives the current scope. Background media schedules
- * its continuation long after the originating scope closes, so it anchors on an
- * ancestor that is still meaningful then.
+ * Ancestor capture: resolves the active context's parent span. Background media
+ * and bracket-signal continuation still capture this way, so the two capture
+ * shapes stay distinguishable at the call site.
  *
- * Callers that emit while their own scope is still open want
- * {@link formatCurrentSpanContinuationTraceparent} instead.
+ * Prefer {@link formatCurrentSpanContinuationTraceparent}: an exporter can
+ * resolve a live current span exactly, while an ancestor span id is often
+ * absent from its span registry entirely.
  */
 export function formatActiveContinuationTraceparent(): string | undefined {
   const activeContext = getActiveDiagnosticTraceContext();
@@ -511,9 +511,9 @@ export function formatActiveContinuationTraceparent(): string | undefined {
  * Current-span capture for typed continuation tools (`continue_delegate`,
  * `continue_work`, `request_compaction`). They run inside the live turn scope,
  * so the exporter can resolve that exact span. Substituting the logical ancestor
- * asks the exporter for a span it may never have exported, and the miss falls
- * through to whatever span is ambient — attaching dispatch/fire to an older
- * turn's trace and accumulating unrelated continuations there.
+ * asks the exporter for a span it may never have exported, and the miss resolves
+ * to whatever the exporter falls back to — an older turn's root or an ambient
+ * span — attaching dispatch/fire to that trace and accumulating there.
  */
 export function formatCurrentSpanContinuationTraceparent(): string | undefined {
   return formatContinuationTraceparent(getActiveDiagnosticTraceContext());
