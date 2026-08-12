@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
-import { formatActiveContinuationTraceparent } from "../../infra/continuation-tracer.js";
+import { formatCurrentSpanContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -182,7 +182,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       const reasonText = readToolStringParam(params, "reason", { required: true }).slice(0, 1024);
       const focusText = readToolStringParam(params, "focus")?.slice(0, 4096);
-      const traceparent = formatActiveContinuationTraceparent();
+      const traceparent = formatCurrentSpanContinuationTraceparent();
       const traceContextFields = traceparent ? { traceparent } : {};
 
       // ----- Guard 0: Dedup — compaction already pending -----
