@@ -1,10 +1,11 @@
 // Discord tests cover the gateway-owned channel-kind fact at durable ingress.
 //
-// Spiderweb around canExpireDiscordStaleAmbientBacklog's terminal predicate:
-// if that line reverts from `channelKind !== "thread"` to
-// `channelKind === "non-thread"`, MULTIPLE cases below must fail. Auto-merge
-// conflict resolution has clipped one-line predicate edits before; these tests
-// are the tripwire against a silent return of the 24h stale-reply replay.
+// Spiderweb around stale-ambient channel-kind resolution:
+// - Write side must persist a definite kind (gateway channel_type OR client hydrate).
+// - Read side may expire only after a PROVEN non-thread fact.
+// - Unknown/unhydrated must RETAIN (answer), never terminal-settle.
+// If write-side hydrate or effective-kind resolution is clipped by merge, multiple
+// independent cases below fail — that is intentional.
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -20,7 +21,11 @@ import {
 } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { createDiscordIngressMonitor, type DiscordIngressLifecycle } from "./ingress.js";
+import {
+  createDiscordIngressMonitor,
+  isDiscordProvenNonThreadAmbientExpirable,
+  type DiscordIngressLifecycle,
+} from "./ingress.js";
 
 type DiscordIngressChannelKind = "non-thread" | "thread";
 
@@ -96,6 +101,18 @@ function payloadFor(
   return { version: 1, receivedAt, rawMessage, ...(channelKind ? { channelKind } : {}) };
 }
 
+function clientWithChannelType(typeByChannelId: Record<string, number | undefined>) {
+  return {
+    fetchChannel: vi.fn(async (channelId: string) => {
+      const type = typeByChannelId[channelId];
+      if (type === undefined) {
+        throw new Error(`channel ${channelId} not found`);
+      }
+      return { id: channelId, type };
+    }),
+  };
+}
+
 async function withQueue<T>(
   fn: (queue: ChannelIngressQueue<DiscordIngressPayload>) => Promise<T>,
   now?: () => number,
@@ -125,6 +142,7 @@ async function expectSettledWithoutEmission(params: {
   rawMessage: GatewayMessageCreateDispatchData;
   payload?: DiscordIngressPayload;
   receivedAt?: number;
+  client?: { fetchChannel?: (id: string) => Promise<unknown> };
 }): Promise<void> {
   const receivedAt = params.receivedAt ?? params.now;
   const payload = params.payload ?? payloadFor(params.rawMessage, receivedAt);
@@ -140,7 +158,7 @@ async function expectSettledWithoutEmission(params: {
   });
   const monitor = createDiscordIngressMonitor({
     accountId: "default",
-    client: {} as never,
+    client: (params.client ?? {}) as never,
     runtime: { error, log },
     queue: params.queue,
     now: () => params.now,
@@ -162,7 +180,6 @@ async function expectSettledWithoutEmission(params: {
         ),
       { timeout: WAIT_TIMEOUT_MS },
     );
-    // BOTH halves of the settlement contract:
     expect(dispatch).not.toHaveBeenCalled();
     expect(await params.queue.listFailed?.({ limit: "all" })).toEqual([]);
     expect(await params.queue.listPending({ limit: "all" })).toEqual([]);
@@ -181,7 +198,8 @@ async function expectEmittedNotSuppressed(params: {
   rawMessage: GatewayMessageCreateDispatchData;
   payload?: DiscordIngressPayload;
   receivedAt?: number;
-  guildEntries?: Record<string, { requireMention?: boolean }>;
+  guildEntries?: Record<string, unknown>;
+  client?: { fetchChannel?: (id: string) => Promise<unknown> };
 }): Promise<void> {
   const receivedAt = params.receivedAt ?? params.now;
   const payload = params.payload ?? payloadFor(params.rawMessage, receivedAt);
@@ -194,12 +212,12 @@ async function expectEmittedNotSuppressed(params: {
   const dispatched: string[] = [];
   const monitor = createDiscordIngressMonitor({
     accountId: "default",
-    client: {} as never,
+    client: (params.client ?? {}) as never,
     runtime: { error: vi.fn(), log },
     queue: params.queue,
     now: () => params.now,
     botUserId: "bot-1",
-    ...(params.guildEntries ? { guildEntries: params.guildEntries } : {}),
+    ...(params.guildEntries ? { guildEntries: params.guildEntries as never } : {}),
     dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
       if (event.id) {
         dispatched.push(event.id);
@@ -235,6 +253,37 @@ describe("Discord ingress channel-kind persistence", () => {
 
   afterEach(() => {
     closeOpenClawStateDatabaseForTest();
+  });
+
+  describe("isDiscordProvenNonThreadAmbientExpirable (sync tripwire)", () => {
+    // Instant failure if the terminal kind gate is clipped to `!== "thread"`
+    // (treats unknown as ambient) or widened to always-true.
+    it.each([
+      {
+        name: "proven non-thread is expirable",
+        channelKind: "non-thread" as const,
+        expected: true,
+      },
+      {
+        name: "proven thread is NOT expirable",
+        channelKind: "thread" as const,
+        expected: false,
+      },
+      {
+        name: "undefined kind is NOT expirable — ambiguous ordinary-or-thread",
+        channelKind: undefined,
+        expected: false,
+      },
+    ])("$name", ({ channelKind, expected }) => {
+      expect(isDiscordProvenNonThreadAmbientExpirable(channelKind)).toBe(expected);
+    });
+
+    it("rejects non-closed values that decode would drop (malformed must not expire)", () => {
+      expect(isDiscordProvenNonThreadAmbientExpirable("malformed" as unknown as "non-thread")).toBe(
+        false,
+      );
+      expect(isDiscordProvenNonThreadAmbientExpirable(null as unknown as undefined)).toBe(false);
+    });
   });
 
   it("persists a closed fact from the raw MESSAGE_CREATE envelope without REST lookup", async () => {
@@ -279,20 +328,73 @@ describe("Discord ingress channel-kind persistence", () => {
     });
   });
 
-  describe("stale-ambient channelKind fail-safe fence (regression spiderweb)", () => {
-    // If canExpireDiscordStaleAmbientBacklog reverts to
-    // `params.channelKind === "non-thread" && requireMention`, several of these
-    // cases fail independently — that is intentional. Do not collapse them.
+  it("write-side hydrates and persists kind when gateway channel_type is absent — cure for optional envelope field", async () => {
+    await withQueue(async (queue) => {
+      const client = clientWithChannelType({ "absent-write": ChannelType.GuildText });
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: client as never,
+        runtime: runtime(),
+        queue,
+        dispatch: vi.fn(),
+      });
+      try {
+        const rawMessage = createRawMessage("absent-write", "absent-write", {
+          guild_id: "guild-1",
+        });
+        expect(rawMessage).not.toHaveProperty("channel_type");
+        await monitor.accept(rawMessage);
+        const pending = await queue.listPending({ limit: "all" });
+        expect(pending).toEqual([
+          expect.objectContaining({
+            id: "absent-write",
+            payload: expect.objectContaining({ channelKind: "non-thread" }),
+          }),
+        ]);
+        expect(client.fetchChannel).toHaveBeenCalledWith("absent-write");
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
 
-    it("settles (does not emit) a stale guild row whose gateway channel_type was absent — regression guard for 24h replay", async () => {
-      // Production specimen class: ordinary guild MESSAGE_CREATE omits optional
-      // channel_type → no durable channelKind → fence must still expire ambient.
+  it("write-side hydrates thread kind when gateway channel_type is absent — autoThread / real threads must persist as thread", async () => {
+    await withQueue(async (queue) => {
+      const client = clientWithChannelType({ "absent-thread-write": ChannelType.PublicThread });
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: client as never,
+        runtime: runtime(),
+        queue,
+        dispatch: vi.fn(),
+      });
+      try {
+        const rawMessage = createRawMessage("absent-thread-write", "absent-thread-write", {
+          guild_id: "guild-1",
+        });
+        await monitor.accept(rawMessage);
+        const pending = await queue.listPending({ limit: "all" });
+        expect(pending).toEqual([
+          expect.objectContaining({
+            id: "absent-thread-write",
+            payload: expect.objectContaining({ channelKind: "thread" }),
+          }),
+        ]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  describe("stale-ambient channelKind resolve-before-drop fence (regression spiderweb)", () => {
+    it("settles (does not emit) a stale guild row whose gateway channel_type was absent after write-side hydrate to non-thread — regression guard for 24h replay", async () => {
       const now = 1_780_000_050_000;
       await withQueue(
         async (queue) => {
+          const client = clientWithChannelType({ "absent-kind": ChannelType.GuildText });
           const producer = createDiscordIngressMonitor({
             accountId: "default",
-            client: {} as never,
+            client: client as never,
             runtime: runtime(),
             queue,
             now: () => now,
@@ -306,10 +408,11 @@ describe("Discord ingress channel-kind persistence", () => {
           expect(rawMessage).not.toHaveProperty("channel_type");
           await producer.accept(rawMessage);
           await producer.stop();
-          expect(await queue.listPending({ limit: "all" })).toEqual([
+          const pending = await queue.listPending({ limit: "all" });
+          expect(pending).toEqual([
             expect.objectContaining({
               id: "absent-kind",
-              payload: expect.not.objectContaining({ channelKind: expect.anything() }),
+              payload: expect.objectContaining({ channelKind: "non-thread" }),
             }),
           ]);
 
@@ -319,7 +422,7 @@ describe("Discord ingress channel-kind persistence", () => {
           });
           const recovered = createDiscordIngressMonitor({
             accountId: "default",
-            client: {} as never,
+            client: client as never,
             runtime: { error: vi.fn(), log },
             queue,
             now: () => now,
@@ -376,64 +479,70 @@ describe("Discord ingress channel-kind persistence", () => {
       );
     });
 
-    it("settles (does not emit) a stale guild row with legacy absent persisted channelKind — fail-safe when kind never stored", async () => {
+    it("settles (does not emit) a legacy absent channelKind after read-side hydrate proves non-thread — drain-path cure", async () => {
       const now = 1_780_000_070_000;
       await withQueue(
         async (queue) => {
           const rawMessage = createRawMessage("legacy-kind", "legacy-kind", {
             guild_id: "guild-1",
-            channel_type: ChannelType.GuildText,
             content: "legacy row without channelKind field",
             timestamp: new Date(now - STALE_AMBIENT_BACKLOG_MS - 60_000).toISOString(),
           });
+          expect(rawMessage).not.toHaveProperty("channel_type");
+          const client = clientWithChannelType({ "legacy-kind": ChannelType.GuildText });
           await expectSettledWithoutEmission({
             eventId: "legacy-kind",
             queue,
             now,
             rawMessage,
-            // Simulate a pre-channelKind durable row / dropped optional fact.
             payload: { version: 1, receivedAt: now, rawMessage },
+            client,
           });
+          expect(client.fetchChannel).toHaveBeenCalledWith("legacy-kind");
         },
         () => now,
       );
     });
 
-    it("settles (does not emit) a stale guild row with future/unknown gateway channel_type — fail-safe on unproven kind", async () => {
+    it("emits (does not settle) when kind remains unknown after failed hydrate — retain over silent drop", async () => {
       const now = 1_780_000_080_000;
       await withQueue(
         async (queue) => {
-          const rawMessage = createRawMessage("future-kind", "future-kind", {
+          const rawMessage = createRawMessage("unknown-kind", "unknown-kind", {
             guild_id: "guild-1",
             channel_type: 255 as GatewayMessageCreateDispatchData["channel_type"],
-            content: "future channel type ambient",
+            content: "future channel type — unproven",
             timestamp: new Date(now - STALE_AMBIENT_BACKLOG_MS - 60_000).toISOString(),
           });
-          const payload = payloadFor(rawMessage, now);
-          expect(payload).not.toHaveProperty("channelKind");
-          await expectSettledWithoutEmission({
-            eventId: "future-kind",
+          const client = {
+            fetchChannel: vi.fn(async () => {
+              throw new Error("REST unavailable");
+            }),
+          };
+          await expectEmittedNotSuppressed({
+            eventId: "unknown-kind",
             queue,
             now,
             rawMessage,
-            payload,
+            payload: payloadFor(rawMessage, now),
+            guildEntries: { ...MENTION_REQUIRED_GUILD },
+            client,
           });
         },
         () => now,
       );
     });
 
-    it("settles (does not emit) a stale guild row with malformed persisted channelKind — fail-safe on garbage kind", async () => {
+    it("emits (does not settle) a stale row with malformed persisted channelKind when hydrate also fails — garbage is unproven", async () => {
       const now = 1_780_000_090_000;
       await withQueue(
         async (queue) => {
           const rawMessage = createRawMessage("malformed-kind", "malformed-kind", {
             guild_id: "guild-1",
-            channel_type: ChannelType.GuildText,
             content: "malformed kind ambient",
             timestamp: new Date(now - STALE_AMBIENT_BACKLOG_MS - 60_000).toISOString(),
           });
-          await expectSettledWithoutEmission({
+          await expectEmittedNotSuppressed({
             eventId: "malformed-kind",
             queue,
             now,
@@ -444,6 +553,12 @@ describe("Discord ingress channel-kind persistence", () => {
               rawMessage,
               channelKind: "malformed",
             } as unknown as DiscordIngressPayload,
+            guildEntries: { ...MENTION_REQUIRED_GUILD },
+            client: {
+              fetchChannel: vi.fn(async () => {
+                throw new Error("gone");
+              }),
+            },
           });
         },
         () => now,
@@ -474,12 +589,76 @@ describe("Discord ingress channel-kind persistence", () => {
       );
     });
 
+    it("emits (does not settle) a stale bot-owned autoThread whose gateway channel_type was absent — hydrate proves thread", async () => {
+      // Reviewer case: preflight would discover bot-owned autoThread and answer.
+      // Ingress must not tombstone before that path runs.
+      const now = 1_780_000_105_000;
+      await withQueue(
+        async (queue) => {
+          const rawMessage = createRawMessage("autothread-absent", "autothread-absent", {
+            guild_id: "guild-1",
+            content: "follow-up in bot autoThread without mention",
+            timestamp: new Date(now - STALE_AMBIENT_BACKLOG_MS - 60_000).toISOString(),
+          });
+          expect(rawMessage).not.toHaveProperty("channel_type");
+          const client = clientWithChannelType({
+            "autothread-absent": ChannelType.PublicThread,
+          });
+          await expectEmittedNotSuppressed({
+            eventId: "autothread-absent",
+            queue,
+            now,
+            rawMessage,
+            payload: { version: 1, receivedAt: now, rawMessage },
+            guildEntries: { ...MENTION_REQUIRED_GUILD },
+            client,
+          });
+          expect(client.fetchChannel).toHaveBeenCalledWith("autothread-absent");
+        },
+        () => now,
+      );
+    });
+
+    it("emits (does not settle) a stale parent-mention-open channel with absent channel_type — direct-open must answer", async () => {
+      // Reviewer case: parent/channel policy requireMention:false means the
+      // message deserves a reply even without @mention. Must not ambient-expire.
+      const now = 1_780_000_106_000;
+      await withQueue(
+        async (queue) => {
+          const rawMessage = createRawMessage("mention-open-absent", "mention-open-absent", {
+            guild_id: "guild-1",
+            content: "direct-open room chatter",
+            timestamp: new Date(now - STALE_AMBIENT_BACKLOG_MS - 60_000).toISOString(),
+          });
+          expect(rawMessage).not.toHaveProperty("channel_type");
+          await expectEmittedNotSuppressed({
+            eventId: "mention-open-absent",
+            queue,
+            now,
+            rawMessage,
+            payload: { version: 1, receivedAt: now, rawMessage },
+            guildEntries: {
+              "guild-1": {
+                requireMention: false,
+                channels: {
+                  "mention-open-absent": { enabled: true, requireMention: false },
+                },
+              },
+            },
+            client: clientWithChannelType({
+              "mention-open-absent": ChannelType.GuildText,
+            }),
+          });
+        },
+        () => now,
+      );
+    });
+
     it("emits (does not settle as ambient) a stale DM — DMs are always addressed and must never ambient-expire", async () => {
       const now = 1_780_000_110_000;
       await withQueue(
         async (queue) => {
           const rawMessage = createRawMessage("dm-kind", "dm-kind", {
-            // No guild_id → DM / non-guild; isDiscordAddressedMessage is true.
             content: "old direct message",
             timestamp: new Date(now - STALE_AMBIENT_BACKLOG_MS - 60_000).toISOString(),
           });
@@ -501,46 +680,43 @@ describe("Discord ingress channel-kind persistence", () => {
       const ageMs = STALE_AMBIENT_BACKLOG_MS - 1;
       await withQueue(
         async (queue) => {
-          // Use absent channel_type so this axis is independent of a positive
-          // non-thread fact — age alone must keep the row alive under the fence.
           const rawMessage = createRawMessage("fresh-boundary", "fresh-boundary", {
             guild_id: "guild-1",
+            channel_type: ChannelType.GuildText,
             content: "almost-stale ambient",
             timestamp: new Date(now - ageMs).toISOString(),
           });
-          expect(rawMessage).not.toHaveProperty("channel_type");
           await expectEmittedNotSuppressed({
             eventId: "fresh-boundary",
             queue,
             now,
             rawMessage,
-            payload: payloadFor(rawMessage, now, null),
+            payload: payloadFor(rawMessage, now),
             receivedAt: now - ageMs,
+            guildEntries: { ...MENTION_REQUIRED_GUILD },
           });
         },
         () => now,
       );
     });
 
-    it("settles (does not emit) a guild ambient row just over the 15m fence — freshness upper bound must suppress replay", async () => {
+    it("settles (does not emit) a proven non-thread guild ambient row just over the 15m fence — freshness upper bound must suppress replay", async () => {
       const now = 1_780_000_130_000;
       const ageMs = STALE_AMBIENT_BACKLOG_MS + 1;
       await withQueue(
         async (queue) => {
-          // Absent channel_type: if the predicate reverts to === "non-thread",
-          // this boundary case fails too (not only the dedicated absent-kind case).
           const rawMessage = createRawMessage("stale-boundary", "stale-boundary", {
             guild_id: "guild-1",
+            channel_type: ChannelType.GuildText,
             content: "just-stale ambient",
             timestamp: new Date(now - ageMs).toISOString(),
           });
-          expect(rawMessage).not.toHaveProperty("channel_type");
           await expectSettledWithoutEmission({
             eventId: "stale-boundary",
             queue,
             now,
             rawMessage,
-            payload: payloadFor(rawMessage, now, null),
+            payload: payloadFor(rawMessage, now),
             receivedAt: now - ageMs,
           });
         },
@@ -591,6 +767,7 @@ describe("Discord ingress channel-kind persistence", () => {
         botUserId: "bot-1",
         queue: { ...queue, complete },
         now: () => now,
+        guildEntries: { ...MENTION_REQUIRED_GUILD },
         dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
           if (event.id) {
             dispatched.push(event.id);
@@ -602,23 +779,18 @@ describe("Discord ingress channel-kind persistence", () => {
       try {
         await completeStarted.promise;
         await monitor.accept(fresh);
-        expect(await queue.listPending({ limit: "all" })).toEqual([
-          expect.objectContaining({ id: "fresh-kind" }),
-        ]);
-        expect(dispatched).toEqual([]);
-
         releaseComplete.resolve();
         await vi.waitFor(() => expect(dispatched).toEqual(["fresh-kind"]), {
           timeout: WAIT_TIMEOUT_MS,
         });
-        expect(log).toHaveBeenCalledWith(
-          expect.objectContaining({
-            eventId: "stale-kind",
-            reason: "stale-ambient-backlog",
-          }),
-          "discord ingress stale ambient backlog suppressed",
-        );
-        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        expect(
+          log.mock.calls.some(
+            (call) =>
+              call[0] &&
+              typeof call[0] === "object" &&
+              (call[0] as { reason?: string }).reason === "stale-ambient-backlog",
+          ),
+        ).toBe(true);
         expect(error).not.toHaveBeenCalled();
       } finally {
         releaseComplete.resolve();

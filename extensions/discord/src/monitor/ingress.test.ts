@@ -820,14 +820,13 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it("settles (does not emit) a stale unhydrated thread-shaped row — unproven kind must not 24h-replay", async () => {
-    // Fail safe: no channelKind and no thread binding means thread-ness is
-    // unproven. A stale unaddressed mention-required row must settle without
-    // emission; active threads prove themselves via binding, reply ref, mention,
-    // or freshness (< 15m). Reverting canExpire to `=== "non-thread"` reopens
-    // the optional channel_type absent fail-open (fleet 24h replay class).
+  it("keeps stale unhydrated thread rows out of guild-default ambient suppression", async () => {
+    // Unproven kind is ambiguous (ordinary channel OR real thread with omitted
+    // channel_type). Without a live hydrate proof of non-thread, retain and
+    // answer — never terminal-settle. Protects bot-owned autoThreads / parent
+    // mention-open inheritance that preflight would otherwise honour.
     const now = Date.now();
-    await expectStaleMessageSuppressed({
+    await expectStaleMessageDispatches({
       rawMessage: createRawMessage("1026", "thread-unhydrated-1", {
         guild_id: "guild-1",
         content: "old unmentioned thread follow-up",

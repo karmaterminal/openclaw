@@ -31,6 +31,7 @@ import {
   resolveDiscordShouldRequireMention,
   type DiscordGuildEntryResolved,
 } from "./allow-list.js";
+import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
 import type { DiscordMessageEvent } from "./listeners.js";
 import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
 import { resolveDiscordReplyReferenceState } from "./message-handler.reply-reference.js";
@@ -126,6 +127,87 @@ function resolveDiscordIngressChannelKind(type: unknown): DiscordIngressChannelK
 
 function decodeDiscordIngressChannelKind(value: unknown): DiscordIngressChannelKind | undefined {
   return value === "non-thread" || value === "thread" ? value : undefined;
+}
+
+type DiscordIngressChannelClient = {
+  fetchChannel?: (channelId: string) => Promise<unknown>;
+};
+
+/**
+ * Terminal kind gate for stale ambient expiry.
+ * Only a *proven* non-thread may expire. Unknown/legacy/thread must not.
+ * Exported so unit tests pin this decision synchronously (no log-polling).
+ */
+export function isDiscordProvenNonThreadAmbientExpirable(
+  channelKind: DiscordIngressChannelKind | undefined,
+): boolean {
+  return channelKind === "non-thread";
+}
+
+function resolveDiscordIngressChannelKindFromChannel(
+  channel: unknown,
+): DiscordIngressChannelKind | undefined {
+  if (!channel || typeof channel !== "object") {
+    return undefined;
+  }
+  const isThread = (channel as { isThread?: unknown }).isThread;
+  if (typeof isThread === "function") {
+    try {
+      if (isThread.call(channel) === true) {
+        return "thread";
+      }
+    } catch {
+      // Fall through to type inspection; a throwing isThread is unproven.
+    }
+  }
+  const info = resolveDiscordChannelInfoSafe(channel);
+  const type =
+    info.type ??
+    (typeof (channel as { type?: unknown }).type === "number"
+      ? (channel as { type: number }).type
+      : undefined);
+  return resolveDiscordIngressChannelKind(type);
+}
+
+async function resolveDiscordIngressChannelKindFromClient(
+  client: DiscordIngressChannelClient | undefined,
+  channelId: string | null | undefined,
+): Promise<DiscordIngressChannelKind | undefined> {
+  if (!client || !channelId || typeof client.fetchChannel !== "function") {
+    return undefined;
+  }
+  try {
+    const channel = await client.fetchChannel(channelId);
+    return resolveDiscordIngressChannelKindFromChannel(channel);
+  } catch {
+    // Hydration failure is unproven, not ambient. Caller must retain the row.
+    return undefined;
+  }
+}
+
+/**
+ * Prefer durable admission fact, then gateway channel_type, then live hydrate.
+ * Never invent a kind. Undefined means "not yet proven" — never treat as ambient.
+ */
+async function resolveEffectiveDiscordIngressChannelKind(params: {
+  channelKind?: DiscordIngressChannelKind;
+  rawMessage: GatewayMessageCreateDispatchData;
+  client?: DiscordIngressChannelClient;
+}): Promise<DiscordIngressChannelKind | undefined> {
+  const fromPayload = decodeDiscordIngressChannelKind(params.channelKind);
+  if (fromPayload) {
+    return fromPayload;
+  }
+  const fromGateway = resolveDiscordIngressChannelKind(
+    (params.rawMessage as { channel_type?: unknown }).channel_type,
+  );
+  if (fromGateway) {
+    return fromGateway;
+  }
+  return await resolveDiscordIngressChannelKindFromClient(
+    params.client,
+    nonEmptyString(params.rawMessage.channel_id),
+  );
 }
 
 function decodeDiscordIngressPayload(
@@ -349,13 +431,12 @@ function canExpireDiscordStaleAmbientBacklog(
     channelConfig,
     guildInfo,
   });
-  // Fail SAFE, not OPEN: do NOT require channelKind === "non-thread".
-  // Gateway channel_type is optional and frequently absent on ordinary guild
-  // MESSAGE_CREATE; missing kind must still expire stale ambient backlog, or
-  // day-old rows stay claimable and later emit visible replies from obsolete
-  // context. Proven threads already bail out upstream
-  // (hasUnresolvedDiscordAddressForm: channelKind === "thread").
-  return params.channelKind !== "thread" && requireMention;
+  // Gateway channel_type is optional and absent for BOTH ordinary guild channels
+  // and real threads. Unknown must be resolved (write-side + hydrate) before a
+  // terminal no-reply decision — never assumed ambient (`!== "thread"`) and
+  // never left permanently claimable without a resolution attempt. Only a
+  // proven non-thread on a mention-required route may expire silently.
+  return isDiscordProvenNonThreadAmbientExpirable(params.channelKind) && requireMention;
 }
 
 async function matchesConfiguredDiscordMentionText(
@@ -453,6 +534,7 @@ async function resolveDiscordStaleAmbientSuppression(
     discordConfig?: DiscordAccountConfig | null;
     guildEntries?: Record<string, DiscordGuildEntryResolved>;
     threadBindings?: DiscordThreadBindingLookup;
+    client?: DiscordIngressChannelClient;
   },
   now: number,
 ): Promise<{ laneKey: string; sentAt: number } | null> {
@@ -473,12 +555,20 @@ async function resolveDiscordStaleAmbientSuppression(
   if (hasPotentialActiveDiscordTextControlCommand(rawMessage, params.cfg)) {
     return null;
   }
-  if (await hasUnresolvedDiscordAddressForm(rawMessage, channelKind, params)) {
+  // Disambiguate optional/missing gateway channel_type before any terminal
+  // settle. Prefer durable fact → envelope channel_type → live client hydrate.
+  // If still unknown, retain (do not silently drop real threads).
+  const effectiveChannelKind = await resolveEffectiveDiscordIngressChannelKind({
+    channelKind,
+    rawMessage,
+    client: params.client,
+  });
+  if (await hasUnresolvedDiscordAddressForm(rawMessage, effectiveChannelKind, params)) {
     return null;
   }
   if (
     !canExpireDiscordStaleAmbientBacklog(rawMessage, {
-      channelKind,
+      channelKind: effectiveChannelKind,
       guildEntries: params.guildEntries,
     })
   ) {
@@ -659,7 +749,18 @@ export function createDiscordIngressMonitor(params: {
 
   return {
     accept: async (rawMessage) => {
-      const channelKind = resolveDiscordIngressChannelKind(rawMessage.channel_type);
+      // Write-side cure: always try to persist a definite channelKind. Prefer the
+      // gateway envelope; when optional channel_type is absent, hydrate from the
+      // live client (cache/REST) while we still have connectivity. Rows re-read
+      // after restart keep this durable fact; read-side hydrate covers legacy
+      // rows and admit-time fetch failures only.
+      let channelKind = resolveDiscordIngressChannelKind(rawMessage.channel_type);
+      if (!channelKind) {
+        channelKind = await resolveDiscordIngressChannelKindFromClient(
+          params.client,
+          nonEmptyString(rawMessage.channel_id),
+        );
+      }
       await monitor.admit({ rawMessage, ...(channelKind ? { channelKind } : {}) });
     },
     start: monitor.start,
