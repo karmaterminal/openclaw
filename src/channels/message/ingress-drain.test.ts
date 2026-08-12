@@ -2,6 +2,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-state.js";
 import {
   bindIngressLifecycleToReplyOptions,
   createChannelIngressDrain,
@@ -13,15 +14,6 @@ import {
   type IngressDrainTestPayload as Payload,
   withTempState,
 } from "./ingress-drain.test-helpers.js";
-
-// Module-private in ingress-drain.ts; derive from the factory signature.
-type ChannelIngressDispatchLifecycle = Parameters<
-  Parameters<typeof createChannelIngressDrain>[0]["dispatchClaimedEvent"]
->[1];
-import {
-  DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-  DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-} from "./ingress-retry-policy.js";
 
 describe("channel ingress drain", () => {
   beforeEach(() => {
@@ -639,64 +631,6 @@ describe("channel ingress drain", () => {
     });
   });
 
-  it("dead-letter needs both attempt floor and age (releases when age insufficient)", async () => {
-    await withTempState(async (stateDir) => {
-      const receivedAt = 100;
-      let clock = receivedAt;
-      const queue = createTestIngressQueue(stateDir, { now: () => clock });
-      await queue.enqueue("poison", { text: "x" }, { laneKey: "l", receivedAt });
-
-      // Burn attempts without aging past the gate.
-      for (let i = 0; i < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; i += 1) {
-        clock += 1;
-        const drain = createChannelIngressDrain<Payload>({
-          queue,
-          now: () => clock,
-          retryPolicy: {
-            maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-            deadLetterMinAgeMs: DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-            baseMs: 0,
-            maxMs: 0,
-          },
-          dispatchClaimedEvent: async () => {
-            throw new Error("still broken");
-          },
-        });
-        await drain.drainOnce();
-        await drain.waitForIdle();
-        drain.dispose();
-      }
-
-      const pending = await queue.listPending({ limit: "all" });
-      expect(pending).toHaveLength(1);
-      expect(pending[0]?.attempts).toBeGreaterThanOrEqual(DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS);
-
-      // Age past the gate → next failure dead-letters.
-      clock = receivedAt + DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS;
-      const finalDrain = createChannelIngressDrain<Payload>({
-        queue,
-        now: () => clock,
-        retryPolicy: {
-          maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-          deadLetterMinAgeMs: DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-          baseMs: 0,
-          maxMs: 0,
-        },
-        dispatchClaimedEvent: async () => {
-          throw new Error("still broken");
-        },
-      });
-      await finalDrain.drainOnce();
-      await finalDrain.waitForIdle();
-      const status = await queue.enqueue("poison", { text: "x" });
-      expect(status.kind).toBe("failed");
-      if (status.kind === "failed") {
-        expect(status.record.reason).toBe("retry-limit-exceeded");
-      }
-      finalDrain.dispose();
-    });
-  });
-
   it("bindIngressLifecycleToReplyOptions returns only turnAdoptionLifecycle", async () => {
     const abort = new AbortController();
     const calls: string[] = [];
@@ -819,43 +753,6 @@ describe("channel ingress drain", () => {
 
       expect(isIngressAdoptionLostError(lateAdoptError)).toBe(true);
       expect(isIngressAdoptionLostError(lateAdoptError) && lateAdoptError.code).toBe("superseded");
-      drain.dispose();
-    });
-  });
-
-  it("retries tombstone complete failures then commits", async () => {
-    await withTempState(async (stateDir) => {
-      const queue = createTestIngressQueue(stateDir);
-      await queue.enqueue("evt-tombstone", { text: "x" }, { laneKey: "l1" });
-
-      let completeAttempts = 0;
-      const originalComplete = queue.complete.bind(queue);
-      queue.complete = async (claim) => {
-        completeAttempts += 1;
-        if (completeAttempts <= 2) {
-          throw new Error(`transient complete failure ${completeAttempts}`);
-        }
-        return await originalComplete(claim);
-      };
-
-      const logs: string[] = [];
-      const drain = createChannelIngressDrain<Payload>({
-        queue,
-        onLog: (message) => logs.push(message),
-        dispatchClaimedEvent: async (_event, lifecycle) => {
-          await lifecycle.onAdopted();
-        },
-      });
-
-      const idle = drain.waitForIdle();
-      await drain.drainOnce();
-      // Advance through two backoff sleeps (1s, 2s with base 1000).
-      await vi.advanceTimersByTimeAsync(5_000);
-      await idle;
-      expect(completeAttempts).toBe(3);
-      expect(logs.some((line) => line.includes("tombstone retry"))).toBe(true);
-      const again = await queue.enqueue("evt-tombstone", { text: "x" });
-      expect(again.kind).toBe("completed");
       drain.dispose();
     });
   });

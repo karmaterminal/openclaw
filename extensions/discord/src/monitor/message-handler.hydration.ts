@@ -1,12 +1,11 @@
-import {
-  MessageReferenceType,
-  MessageType,
-  type APIMessage,
-  type APIUser,
-} from "discord-api-types/v10";
+import type { APIMessage, APIUser } from "discord-api-types/v10";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { readStringValue as readString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { getChannelMessage, Message as DiscordMessage, type Message } from "../internal/discord.js";
+import {
+  resolveDiscordReplyReferenceState,
+  type DiscordReplyReferenceState,
+} from "./message-handler.reply-reference.js";
 import { resolveDiscordMessageText, type DiscordChannelInfo } from "./message-utils.js";
 
 function mergeFetchedDiscordMessage(base: Message, fetched: APIMessage): Message {
@@ -172,32 +171,14 @@ function shouldHydrateDiscordMessagePayload(params: { message: Message }) {
   return /<@!?\d+>|<@&\d+>|@everyone|@here/u.test(currentText);
 }
 
-type ReferencedMessagePayloadState = "complete" | "missing" | "invalid";
+type ReferencedMessagePayloadState = DiscordReplyReferenceState;
 
 function resolveReferencedMessagePayloadState(message: Message): ReferencedMessagePayloadState {
-  const reference = message.messageReference;
-  if (!reference?.message_id) {
-    return "complete";
-  }
-  if (reference.type != null && reference.type !== MessageReferenceType.Default) {
-    return "complete";
-  }
-  if (message.type != null && message.type !== MessageType.Reply) {
-    return "complete";
-  }
-  const rawData = readMessageRawData(message);
-  if (!Object.hasOwn(rawData, "referenced_message")) {
-    return "missing";
-  }
-  const referenced = rawData.referenced_message;
-  if (referenced == null) {
-    return "complete";
-  }
-  return typeof referenced === "object" &&
-    typeof referenced.id === "string" &&
-    referenced.id === reference.message_id
-    ? "complete"
-    : "invalid";
+  return resolveDiscordReplyReferenceState({
+    ...readMessageRawData(message),
+    message_reference: message.messageReference,
+    type: message.type,
+  });
 }
 
 async function hydrateDiscordReplyReference(params: {

@@ -16,6 +16,10 @@ import {
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
 import {
+  resolveChannelIngressPendingScan,
+  type ChannelIngressRetryDelayBypassContext,
+} from "./ingress-drain-pending-scan.js";
+import {
   activeClaimKey,
   IngressAdoptionLostError,
   isIngressAdoptionLostError,
@@ -23,9 +27,13 @@ import {
   sortedKeys,
   type ActiveHandlerState,
   type ChannelIngressDrainDispatchResult,
+  type ChannelIngressDispatchLifecycle,
 } from "./ingress-drain-state.js";
 import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
-export { isIngressAdoptionLostError } from "./ingress-drain-state.js";
+export {
+  bindIngressLifecycleToReplyOptions,
+  isIngressAdoptionLostError,
+} from "./ingress-drain-state.js";
 import type {
   ChannelIngressQueue,
   ChannelIngressQueueClaim,
@@ -35,7 +43,6 @@ import {
   DEFAULT_INGRESS_RETRY_BASE_MS,
   DEFAULT_INGRESS_RETRY_MAX_MS,
   resolveIngressFailureDisposition,
-  resolveIngressRetryDelayMs,
   type IngressNonRetryableFailure,
   type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
@@ -45,36 +52,6 @@ export const DEFAULT_INGRESS_ADOPTION_STALL_MS = 5 * 60 * 1000;
 
 /** Bounded tombstone write retries — wedged ownership beats silent double-dispatch. */
 const INGRESS_TOMBSTONE_RETRY_MAX_ATTEMPTS = 8;
-
-/** Full pre-adoption → adoption ownership lifecycle for one claimed event. */
-type ChannelIngressDispatchLifecycle = {
-  /** Pre-adoption only. After adopt the drain treats this signal as inert. */
-  abortSignal: AbortSignal;
-  /**
-   * Fires when recovery-relevant session/run state is durable.
-   * Drain completes (tombstones) the claim here — never at settle.
-   */
-  onAdopted: () => void | Promise<void>;
-  /**
-   * Turn ownership deferred to reply-lane admission (queued followup).
-   * Claim remains held until adopted or abandoned.
-   */
-  onDeferred: () => void;
-  /**
-   * Durable adoption finalization is in progress (e.g. settlement hold while
-   * committing dedupe). Clears the pre-adoption stall watchdog so a timeout
-   * settlement cannot race and dead-letter an about-to-complete claim.
-   * Claim stays held until onAdopted / onAbandoned / fail.
-   */
-  onAdoptionFinalizing: () => void;
-  /** Deferred work terminally failed after dispatch returned. */
-  onFailed?: (error: unknown) => void | Promise<void>;
-  /**
-   * Deferred turn finished without ever owning the reply lane.
-   * Drain releases the claim for retry.
-   */
-  onAbandoned: () => void | Promise<void>;
-};
 
 type DeferredLaneOccupancy = "hold" | "release";
 
@@ -94,6 +71,22 @@ export type CreateChannelIngressDrainOptions<
     lifecycle: ChannelIngressDispatchLifecycle,
   ) => Promise<ChannelIngressDrainDispatchResult | void> | ChannelIngressDrainDispatchResult | void;
   resolveNonRetryableFailure?: (err: unknown) => IngressNonRetryableFailure | null;
+  /**
+   * Whether a retry-delayed lane head may be claimed before its backoff expires.
+   * Only the oldest retained pending row per lane is offered, so a channel can
+   * release a lane whose head is already known to be terminally non-actionable
+   * instead of fencing fresh same-lane work behind that backoff.
+   *
+   * Returning true only restores claim eligibility: the row still goes through
+   * atomic claimNext, lane serialization, and the claimed delivery path, which
+   * remains the sole owner of the terminal decision. Implementations must be
+   * side-effect free and may run many times for the same row across drain
+   * passes. A throw or rejection fails closed, keeping the backoff.
+   */
+  shouldBypassRetryDelay?: (
+    record: ChannelIngressQueueRecord<TPayload, TMetadata>,
+    context: ChannelIngressRetryDelayBypassContext,
+  ) => boolean | Promise<boolean>;
   shouldSupersedePending?: (
     newEvent:
       | ChannelIngressQueueRecord<TPayload, TMetadata>
@@ -131,34 +124,6 @@ export type ChannelIngressDrain = {
   waitForIdle: () => Promise<void>;
   dispose: () => void;
 };
-
-/**
- * Maps a drain lifecycle onto reply options.
- * Single surface: turnAdoptionLifecycle only.
- * Marks exclusive admission so collect isolation is not inferred from onAbandoned.
- */
-export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDispatchLifecycle): {
-  turnAdoptionLifecycle: {
-    admission: "exclusive";
-    onAdopted: () => void | Promise<void>;
-    onDeferred: () => void;
-    onAbandoned: () => void | Promise<void>;
-    abortSignal: AbortSignal;
-  };
-} {
-  return {
-    turnAdoptionLifecycle: {
-      admission: "exclusive",
-      onAdopted: lifecycle.onAdopted,
-      onDeferred: lifecycle.onDeferred,
-      onAbandoned: lifecycle.onAbandoned,
-      abortSignal: lifecycle.abortSignal,
-    },
-  };
-}
-
-// onAdoptionFinalizing stays drain-only (not reply-options); channels call it
-// via the spooled-replay ALS lifecycle frame during settlement hold.
 
 /** Creates a channel-agnostic durable ingress drain over an existing queue. */
 export function createChannelIngressDrain<
@@ -373,9 +338,10 @@ export function createChannelIngressDrain<
   };
 
   const applyFailureDisposition = async (
-    claim: ChannelIngressQueueClaim<TPayload, TMetadata>,
+    state: ActiveHandlerState<TPayload, TMetadata>,
     err: unknown,
   ) => {
+    const claim = state.claim;
     const disposition = resolveIngressFailureDisposition({
       err,
       event: claim,
@@ -384,6 +350,19 @@ export function createChannelIngressDrain<
       config: options.retryPolicy,
       now: now(),
     });
+    if (disposition.kind === "handled") {
+      // Channel policy already recorded this outcome, so the event is done, not
+      // broken. Settling through the canonical completion tombstone keeps it out
+      // of dead-letter counts, doctor output, and delivery-queue health.
+      // Adopt before the tombstone retries for the same reason the normal
+      // completion path does: a failed write must wedge holding the claim, never
+      // release or dead-letter an event whose terminal policy decision already ran.
+      if (state.phase === "dispatching" || state.phase === "deferred") {
+        state.phase = "adopted";
+      }
+      await completeClaimWithRetry(claim);
+      return;
+    }
     if (disposition.kind === "fail") {
       // Operator-visible dead-letter line. Prefer numeric id when the event id
       // is a zero-padded telegram update_id so logs stay human-readable.
@@ -525,7 +504,7 @@ export function createChannelIngressDrain<
         }
         clearStallTimer(state);
         await state.settleOnce(async () => {
-          await applyFailureDisposition(state.claim, error);
+          await applyFailureDisposition(state, error);
         });
       },
       onAbandoned: async () => {
@@ -613,7 +592,7 @@ export function createChannelIngressDrain<
         if (result?.kind === "failed-retryable") {
           clearStallTimer(state);
           await state.settleOnce(async () => {
-            await applyFailureDisposition(claim, result.error);
+            await applyFailureDisposition(state, result.error);
           });
           return;
         }
@@ -642,6 +621,18 @@ export function createChannelIngressDrain<
         if (state.guillotined || state.superseded) {
           return;
         }
+        // Definitive claim loss: the row is owned by another drain, so no
+        // settlement can ever happen here. Holding the lane in memory would
+        // fence it until restart, so drop ownership. An ambiguous write failure
+        // is different and still wedges below (wedged > duplicated).
+        if (isIngressAdoptionLostError(err) && err.code === "reclaimed") {
+          state.phase = "settled";
+          removeActive(state);
+          log(
+            `ingress drain: claim for event ${claim.id} was reclaimed by another owner; releasing lane ${state.laneKey}`,
+          );
+          return;
+        }
         // Adoption may have partially completed (tombstone retry wedge); keep claim.
         // Includes handler-completed path that moved to adopted before complete().
         if (state.phase === "adopted") {
@@ -652,7 +643,7 @@ export function createChannelIngressDrain<
         }
         clearStallTimer(state);
         await state.settleOnce(async () => {
-          await applyFailureDisposition(claim, err);
+          await applyFailureDisposition(state, err);
         });
       }
     })();
@@ -706,6 +697,7 @@ export function createChannelIngressDrain<
 
     await recoverStaleClaims();
 
+    const pendingScanNow = now();
     const pending = await queue.listPending({ limit: "all", orderBy });
     const claims = await queue.listClaims();
     const activeLaneKeys = new Set(laneOwnerByKey.keys());
@@ -724,14 +716,18 @@ export function createChannelIngressDrain<
           resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
         ),
     );
-    const retryDelayedLaneKeys = new Set<string>();
-    for (const event of pending) {
-      if (resolveIngressRetryDelayMs(event, options.retryPolicy, now()) > 0) {
-        retryDelayedLaneKeys.add(
-          resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey),
-        );
-      }
-    }
+    const { eligiblePending, retryDelayedLaneKeys } = await resolveChannelIngressPendingScan({
+      pending,
+      now: pendingScanNow,
+      ...(options.retryPolicy ? { retryPolicy: options.retryPolicy } : {}),
+      resolveLaneKey: (record) =>
+        resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey),
+      ...(options.shouldBypassRetryDelay
+        ? { shouldBypassRetryDelay: options.shouldBypassRetryDelay }
+        : {}),
+      formatError,
+      log,
+    });
 
     // Deterministic blocked set for claimNext lane serialization.
     const blockedLaneKeys = new Set<string>([
@@ -742,7 +738,7 @@ export function createChannelIngressDrain<
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
     // Free the lane in blockedLaneKeys so claimNext can take the superseding event.
-    for (const event of pending) {
+    for (const event of eligiblePending) {
       if (shouldStop()) {
         break;
       }
@@ -752,7 +748,7 @@ export function createChannelIngressDrain<
       }
     }
 
-    const candidateIds = new Set(pending.map((event) => event.id));
+    const candidateIds = new Set(eligiblePending.map((event) => event.id));
     let started = 0;
     while (started < startLimit) {
       if (shouldStop()) {
