@@ -1,4 +1,4 @@
-import { context, trace } from "@opentelemetry/api";
+import { context, metrics, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
   BasicTracerProvider,
@@ -8,27 +8,41 @@ import {
 import { runWithDiagnosticTraceContext } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { expect, test } from "vitest";
 // Test-only crossing into core. The invariant under test spans both packages —
-// core decides which span a typed continuation tool captures, this plugin
-// decides what that captured id resolves to — so proving it needs the real
-// halves on both sides. Plugin production code stays on `openclaw/plugin-sdk/*`.
+// core decides which span a typed continuation tool captures, schedules the
+// durable wake, and fires it, while this plugin decides what the captured id
+// resolves to — so proving it needs the real halves on both sides. Plugin
+// production code stays on `openclaw/plugin-sdk/*`.
 import {
   createContinueWorkTool,
   type ContinueWorkRequest,
 } from "../../../src/agents/tools/continue-work-tool.js";
+import type { ContinuationRuntimeConfig } from "../../../src/auto-reply/continuation/types.js";
+import { executePendingContinuationWork } from "../../../src/auto-reply/continuation/work-dispatch-execution.js";
 import {
-  emitContinuationWorkFireSpan,
-  emitContinuationWorkSpan,
-  resolveContinuationTraceparent,
-} from "../../../src/infra/continuation-tracer.js";
+  classifyContinuationWorkReason,
+  resetContinuationWorkDispatchForTests,
+  scheduleContinuationWorkBatch,
+} from "../../../src/auto-reply/continuation/work-dispatch.js";
+import { decodeWorkState } from "../../../src/auto-reply/continuation/work-flow-state.js";
+import { consumePendingWork } from "../../../src/auto-reply/continuation/work-store.js";
+import { resetSystemEventsForTest } from "../../../src/infra/system-events.js";
+import { listTaskFlowsForOwnerKey } from "../../../src/tasks/task-flow-runtime-internal.js";
+import { resetTaskFlowRegistryForTests } from "../../../src/tasks/task-runtime.test-helpers.js";
 import {
   parseDiagnosticTraceparent,
   resetContinuationTracer,
   setContinuationTracer,
   type ContinuationTracer,
+  type DiagnosticEventMetadata,
   type DiagnosticEventPayload,
   type DiagnosticTraceContext,
 } from "../api.js";
 import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
+import { resolveContentCapturePolicy } from "./service-content-normalization.js";
+import { createDiagnosticsMetrics } from "./service-metrics.js";
+import { createDiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
+import { createHarnessRecorders } from "./service-recorders-harness.js";
+import { createUsageRecorders } from "./service-recorders-usage.js";
 import { createDiagnosticsTraceRuntime } from "./service-traces.js";
 
 const OTEL_GLOBAL_API_KEY = Symbol.for("opentelemetry.js.api.1");
@@ -83,6 +97,47 @@ function trustedEvent(
       };
 }
 
+type DiagnosticEventOfType<T extends DiagnosticEventPayload["type"]> = Extract<
+  DiagnosticEventPayload,
+  { type: T }
+>;
+
+const TRUSTED_EVENT_METADATA: DiagnosticEventMetadata = { trusted: true };
+
+/**
+ * The pair that opens and closes an earlier turn's root message span.
+ * `service-recorders-usage.ts` starts `openclaw.message.processed` on dispatch
+ * and completes it on `message.processed`; a parentless trace context is what
+ * makes the exporter remember it as the trace id's root, and completing it is
+ * what leaves it retained rather than active.
+ */
+function messageDispatchStartedEvent(
+  traceContext: DiagnosticTraceContext,
+): DiagnosticEventOfType<"message.dispatch.started"> {
+  return {
+    type: "message.dispatch.started",
+    ts: Date.now(),
+    seq: 1,
+    channel: "test",
+    source: "test",
+    trace: traceContext,
+  };
+}
+
+function messageProcessedEvent(
+  traceContext: DiagnosticTraceContext,
+): DiagnosticEventOfType<"message.processed"> {
+  return {
+    type: "message.processed",
+    ts: Date.now(),
+    seq: 2,
+    channel: "test",
+    outcome: "completed",
+    durationMs: 1,
+    trace: traceContext,
+  };
+}
+
 /**
  * The event that opens the harness/run span the typed tool executes inside.
  * `service-recorders-harness.ts::recordHarnessRunStarted` tracks exactly this
@@ -91,13 +146,29 @@ function trustedEvent(
 function harnessRunStartedEvent(
   runId: string,
   traceContext: DiagnosticTraceContext,
-): DiagnosticEventPayload {
+): DiagnosticEventOfType<"harness.run.started"> {
   return {
     type: "harness.run.started",
     ts: Date.now(),
-    seq: 1,
+    seq: 3,
     runId,
     harnessId: "openclaw",
+    trace: traceContext,
+  };
+}
+
+function harnessRunCompletedEvent(
+  runId: string,
+  traceContext: DiagnosticTraceContext,
+): DiagnosticEventOfType<"harness.run.completed"> {
+  return {
+    type: "harness.run.completed",
+    ts: Date.now(),
+    seq: 4,
+    runId,
+    harnessId: "openclaw",
+    durationMs: 1,
+    outcome: "completed",
     trace: traceContext,
   };
 }
@@ -356,26 +427,108 @@ test("keeps typed continuation dispatch and fire on the originating turn trace",
 
 const CONTINUATION_WORK_SESSION_KEY = "agent:main:otel-boundary";
 const CONTINUATION_TURN_PLANS = [
-  { chainId: "chain-turn-one", spanId: PROOF_TURN_SPAN_IDS[0] },
-  { chainId: "chain-turn-two", spanId: PROOF_TURN_SPAN_IDS[1] },
+  { chainId: "chain-turn-one", runId: "run-turn-one", spanId: PROOF_TURN_SPAN_IDS[0] },
+  { chainId: "chain-turn-two", runId: "run-turn-two", spanId: PROOF_TURN_SPAN_IDS[1] },
 ] as const;
 
+const CONTINUATION_RUNTIME_CONFIG: ContinuationRuntimeConfig = {
+  enabled: true,
+  defaultDelayMs: 0,
+  minDelayMs: 0,
+  maxDelayMs: 1_000,
+  maxChainLength: 8,
+  costCapTokens: 1_000_000,
+  maxDelegatesPerTurn: 5,
+  maxPendingWork: 4,
+  crossSessionTargeting: "disabled",
+};
+
+// `executionPolicyForWork()` derives this from runtime config; the wake path
+// under test never branches on the retry knobs, so only the reason category is
+// taken from production's classifier.
+const CONTINUATION_RETRY_POLICY = {
+  busyRetryDelayMs: 1_000,
+  idleRetryHedgeMs: 1_000,
+  mainCommandLane: "main",
+} as const;
+
 /**
- * Drives one production turn end to end against the installed adapter:
- * a tracked harness/run span, the run context bound in async-local storage,
- * a real `continue_work` invocation, then the production dispatch and fire
- * emitters fed by whatever that invocation persisted.
+ * Mirrors `service.ts::start()`: the same trace runtime, recorder set, and
+ * continuation adapter the plugin installs in production, pointed at an
+ * in-memory span exporter (metrics land on the API's no-op meter — only spans
+ * are under test). Building it here rather than tracking spans by hand is the
+ * point: parent selection for the message root and the harness/run span has to
+ * be production's, not the test's.
  */
-async function runContinuationTurnThroughInstalledTracer(params: {
-  traceRuntime: ReturnType<typeof createDiagnosticsTraceRuntime>;
-  tracer: ReturnType<BasicTracerProvider["getTracer"]>;
-  runTrace: DiagnosticTraceContext;
-  chainId: string;
+function installProductionDiagnostics(provider: BasicTracerProvider) {
+  const traces = createDiagnosticsTraceRuntime(provider.getTracer("openclaw"));
+  const recorderRuntime = createDiagnosticsRecorderRuntime({
+    contentCapturePolicy: resolveContentCapturePolicy(undefined),
+    metrics: createDiagnosticsMetrics(metrics.getMeter("openclaw")),
+    traces,
+    tracesEnabled: true,
+  });
+  setContinuationTracer(
+    createContinuationOtelTracerAdapter({
+      tracerProvider: provider,
+      resolveSpanContext: traces.resolveTrustedSpanContext,
+      resolveParentContext: traces.resolveTrustedParentContext,
+    }),
+  );
+  return {
+    traces,
+    recorders: {
+      ...createUsageRecorders(recorderRuntime),
+      ...createHarnessRecorders(recorderRuntime),
+    },
+  };
+}
+
+function exportedSpans(exporter: InMemorySpanExporter, name: string) {
+  return exporter.getFinishedSpans().filter((span) => span.name === name);
+}
+
+function spanForChain(exporter: InMemorySpanExporter, name: string, chainId: string) {
+  const span = exportedSpans(exporter, name).find(
+    (candidate) => candidate.attributes["chain.id"] === chainId,
+  );
+  if (!span) {
+    throw new Error(`expected an exported ${name} span for chain ${chainId}`);
+  }
+  return span;
+}
+
+/** The traceparent the durable row carries, read back through production's decoder. */
+function durableQueuedWorkTraceparent(sessionKey: string): string | undefined {
+  const queued = listTaskFlowsForOwnerKey(sessionKey).find((flow) => flow.status === "queued");
+  return queued ? decodeWorkState(queued)?.traceparent : undefined;
+}
+
+/**
+ * One production turn, end to end, with nothing hand-built: the recorder opens
+ * the harness/run span, the run's diagnostic context is bound the way
+ * `agents/harness` binds it, a real `continue_work` call runs inside it, and
+ * whatever that call persisted is handed to the real scheduler. The run then
+ * ends — a wake matures after its electing turn — and the durable row is
+ * claimed and executed by the production path that emits `.fire`.
+ */
+async function runProductionContinuationTurn(params: {
+  exporter: InMemorySpanExporter;
+  recorders: ReturnType<typeof installProductionDiagnostics>["recorders"];
+  plan: (typeof CONTINUATION_TURN_PLANS)[number];
 }) {
-  const harnessSpan = params.traceRuntime.trackTrustedSpan(
-    harnessRunStartedEvent(params.chainId, params.runTrace),
-    { trusted: true },
-    params.tracer.startSpan("openclaw.harness.run"),
+  const runTrace: DiagnosticTraceContext = {
+    traceId: SESSION_DIAGNOSTIC_TRACE_ID,
+    spanId: params.plan.spanId,
+    // The ancestor the run scope names is a logical turn span id that no
+    // recorder ever tracked — the shape that sends an ancestor capture into
+    // `firstTrustedSpanContextForTraceId`.
+    parentSpanId: TURN_ANCESTOR_SPAN_ID,
+    traceFlags: "01",
+  };
+  params.recorders.recordHarnessRunStarted(
+    harnessRunStartedEvent(params.plan.runId, runTrace),
+    TRUSTED_EVENT_METADATA,
   );
 
   const requests: ContinueWorkRequest[] = [];
@@ -383,46 +536,66 @@ async function runContinuationTurnThroughInstalledTracer(params: {
     agentSessionKey: CONTINUATION_WORK_SESSION_KEY,
     requestContinuation: (request) => requests.push(request),
   });
-  await runWithDiagnosticTraceContext(params.runTrace, () =>
+  await runWithDiagnosticTraceContext(runTrace, () =>
     tool.execute("call-1", { reason: "finish this turn's follow-up work" }),
   );
-  const request = requests.at(0);
-  if (!request) {
-    throw new Error("expected continue_work to record a continuation request");
+
+  const batch = await scheduleContinuationWorkBatch({
+    sessionKey: CONTINUATION_WORK_SESSION_KEY,
+    chainState: {
+      currentChainCount: 0,
+      chainStartedAt: Date.now(),
+      accumulatedChainTokens: 0,
+      chainId: params.plan.chainId,
+    },
+    requests,
+    config: CONTINUATION_RUNTIME_CONFIG,
+  });
+  if (batch.scheduledCount !== 1) {
+    throw new Error(`expected one scheduled continuation wake, got ${batch.scheduledCount}`);
+  }
+  const durableTraceparent = durableQueuedWorkTraceparent(CONTINUATION_WORK_SESSION_KEY);
+
+  params.recorders.recordHarnessRunCompleted(
+    harnessRunCompletedEvent(params.plan.runId, runTrace),
+    TRUSTED_EVENT_METADATA,
+    {},
+  );
+  const runSpan = exportedSpans(params.exporter, "openclaw.harness.run").at(-1);
+  if (!runSpan) {
+    throw new Error("expected the recorder to export this turn's harness run span");
   }
 
-  // Dispatch carries the persisted string as `work-dispatch.ts` does; fire
-  // re-resolves it through the adapter as `work-dispatch-execution.ts` does.
-  const fireTraceparent = resolveContinuationTraceparent(request.traceparent);
-  emitContinuationWorkSpan({
-    chainId: params.chainId,
-    chainStepRemaining: 4,
-    delayMs: 0,
-    reason: request.reason,
-    ...(request.traceparent !== undefined ? { traceparent: request.traceparent } : {}),
-  });
-  emitContinuationWorkFireSpan({
-    chainId: params.chainId,
-    chainStepRemainingAtDispatch: 4,
-    delayMs: 0,
-    fireDeferredMs: 0,
-    reason: request.reason,
-    ...(fireTraceparent !== undefined ? { traceparent: fireTraceparent } : {}),
+  const [claimed] = consumePendingWork(CONTINUATION_WORK_SESSION_KEY);
+  if (!claimed) {
+    throw new Error("expected the durable continuation row to be claimable");
+  }
+  // Emits `continuation.work.fire` before it tries to drive the turn. The turn
+  // itself cannot run here (no session entry), which is why nothing further
+  // needs mocking: the wake terminalizes after the span is already exported.
+  await executePendingContinuationWork(claimed, {
+    ...CONTINUATION_RETRY_POLICY,
+    reasonCategory: classifyContinuationWorkReason(claimed.reason),
   });
 
-  return { harnessSpanContext: harnessSpan.spanContext(), persisted: request.traceparent };
+  return {
+    runSpanContext: runSpan.spanContext(),
+    persisted: claimed.traceparent,
+    durableTraceparent,
+  };
 }
 
-// The complete in-process seam in one case: core's typed-tool capture running
-// under the real diagnostics-otel adapter installed through
-// `setContinuationTracer`, with the run context bound in async-local storage the
-// way `agents/harness` and `agents/cli-runner` bind it. Nothing here hand-builds
-// a traceparent — the tool persists whatever production resolves, and dispatch
-// and fire re-enter from that stored string. The run scope's `parentSpanId` is
-// the session's older remembered trace-id root, so capturing the ancestor
-// instead of the current span is exactly what pulled the reported dispatch/fire
-// spans onto an older message trace and accumulated later turns there.
-test("keeps a typed continuation tool's dispatch and fire on its executing turn's trace", async () => {
+// The complete in-process seam in one case, with no hand-built span, no
+// hand-built traceparent, and no hand-called span emitter. The production
+// recorder opens and completes an earlier turn's root message span, so the
+// exporter remembers it for this session's diagnostic trace id; every later run
+// scope names a logical ancestor that is in no registry tier. Capturing that
+// ancestor therefore resolves through `firstTrustedSpanContextForTraceId` to the
+// older remembered root, which is what pulled the reported dispatch/fire spans
+// onto an older message trace and accumulated consecutive turns there. Capturing
+// the live current span resolves exactly, so each turn's wake stays on the run
+// that elected it.
+test("keeps a typed continuation tool's dispatch and fire on its executing turn's span", async () => {
   const originalContextManager = registeredContextManager();
   context.disable();
   const contextManager = new AsyncLocalStorageContextManager().enable();
@@ -432,84 +605,73 @@ test("keeps a typed continuation tool's dispatch and fire on its executing turn'
   const provider = new BasicTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
+  resetTaskFlowRegistryForTests({ persist: false });
+  const { traces, recorders } = installProductionDiagnostics(provider);
   try {
-    const tracer = provider.getTracer("openclaw");
-    const traceRuntime = createDiagnosticsTraceRuntime(tracer);
-    setContinuationTracer(
-      createContinuationOtelTracerAdapter({
-        tracerProvider: provider,
-        resolveSpanContext: traceRuntime.resolveTrustedSpanContext,
-        resolveParentContext: traceRuntime.resolveTrustedParentContext,
-      }),
+    // An earlier turn on this session opens and finishes its root message span.
+    const olderRootTrace = olderTurnRootTrace();
+    recorders.recordMessageDispatchStarted(
+      messageDispatchStartedEvent(olderRootTrace),
+      TRUSTED_EVENT_METADATA,
     );
-
-    // An earlier turn on this session already registered the trace-id root, and
-    // its span id is what every later run scope names as its ancestor.
-    const olderTurnRootSpan = traceRuntime.trackTrustedSpan(
-      trustedEvent("message.received", olderTurnRootTrace()),
-      { trusted: true },
-      tracer.startSpan("openclaw.message"),
-    );
-    const olderTurnContext = olderTurnRootSpan.spanContext();
+    recorders.recordMessageProcessed(messageProcessedEvent(olderRootTrace), TRUSTED_EVENT_METADATA);
+    const olderRootSpan = exportedSpans(exporter, "openclaw.message.processed").at(0);
+    if (!olderRootSpan) {
+      throw new Error("expected the recorder to export the older turn's root message span");
+    }
+    const olderRootSpanContext = olderRootSpan.spanContext();
 
     const turns = [];
     for (const plan of CONTINUATION_TURN_PLANS) {
-      turns.push(
-        await runContinuationTurnThroughInstalledTracer({
-          traceRuntime,
-          tracer,
-          runTrace: {
-            traceId: SESSION_DIAGNOSTIC_TRACE_ID,
-            spanId: plan.spanId,
-            parentSpanId: OLDER_TURN_ROOT_SPAN_ID,
-            traceFlags: "01",
-          },
-          chainId: plan.chainId,
-        }),
-      );
+      turns.push(await runProductionContinuationTurn({ exporter, recorders, plan }));
     }
     const firstTurn = expectTurn(turns[0]);
     const secondTurn = expectTurn(turns[1]);
-    olderTurnRootSpan.end();
+
+    // Characterizes the miss the ancestor capture rode, through the same
+    // resolver the adapter calls: the run scope's ancestor is in no active,
+    // alias, or retained tier, so it falls through to the remembered trace-id
+    // root. Read before teardown clears the registry.
+    const ancestorResolution = traces.resolveTrustedSpanContext({
+      traceId: SESSION_DIAGNOSTIC_TRACE_ID,
+      spanId: TURN_ANCESTOR_SPAN_ID,
+      traceFlags: "01",
+    });
     await provider.forceFlush();
 
-    const spanFor = (chainId: string, name: string) =>
-      exporter
-        .getFinishedSpans()
-        .find((span) => span.name === name && span.attributes["chain.id"] === chainId);
-
-    const [firstPlan, secondPlan] = CONTINUATION_TURN_PLANS;
-    const dispatchSpan = spanFor(firstPlan.chainId, "continuation.work");
-    const fireSpan = spanFor(firstPlan.chainId, "continuation.work.fire");
-    const secondDispatchSpan = spanFor(secondPlan.chainId, "continuation.work");
-    expect([dispatchSpan?.name, fireSpan?.name, secondDispatchSpan?.name]).toEqual([
-      "continuation.work",
-      "continuation.work.fire",
-      "continuation.work",
-    ]);
-
-    // The tool captured its own turn, and both continuation spans landed on it.
     // Ordered so a regression names the older remembered root it fell back to
     // before it reports the span it should have captured.
-    for (const turn of [firstTurn, secondTurn]) {
-      expect(turn.persisted).not.toContain(olderTurnContext.traceId);
-    }
-    expect(firstTurn.persisted).toBe(
-      `00-${firstTurn.harnessSpanContext.traceId}-${firstTurn.harnessSpanContext.spanId}-01`,
+    expect(ancestorResolution?.spanId).toBe(olderRootSpanContext.spanId);
+    expect(turns.map((turn) => parseDiagnosticTraceparent(turn.persisted)?.spanId)).not.toContain(
+      olderRootSpanContext.spanId,
     );
-    for (const span of [dispatchSpan, fireSpan]) {
-      expect(span?.spanContext().traceId).toBe(firstTurn.harnessSpanContext.traceId);
-      expect(span?.parentSpanContext?.spanId).toBe(firstTurn.harnessSpanContext.spanId);
-    }
-    expect(dispatchSpan?.spanContext().traceId).not.toBe(olderTurnContext.traceId);
 
-    // Consecutive turns export separate traces instead of accumulating on the
-    // ancestor both run scopes name.
-    expect(secondTurn.harnessSpanContext.traceId).not.toBe(firstTurn.harnessSpanContext.traceId);
-    expect(secondDispatchSpan?.spanContext().traceId).toBe(secondTurn.harnessSpanContext.traceId);
-    expect(secondDispatchSpan?.spanContext().traceId).not.toBe(dispatchSpan?.spanContext().traceId);
+    for (const [index, turn] of turns.entries()) {
+      const plan = expectTurn(CONTINUATION_TURN_PLANS[index]);
+      const expectedTraceparent = `00-${turn.runSpanContext.traceId}-${turn.runSpanContext.spanId}-01`;
+      // The tool captured its executing run, and the durable row kept it.
+      expect(turn.persisted).toBe(expectedTraceparent);
+      expect(turn.durableTraceparent).toBe(expectedTraceparent);
+      // Production dispatch and fire both re-entered from that stored string.
+      for (const name of ["continuation.work", "continuation.work.fire"]) {
+        const span = spanForChain(exporter, name, plan.chainId);
+        expect(span.spanContext().traceId).toBe(turn.runSpanContext.traceId);
+        expect(span.parentSpanContext?.spanId).toBe(turn.runSpanContext.spanId);
+      }
+    }
+
+    // Consecutive turns stay on their own run span instead of accumulating on
+    // the ancestor both run scopes name.
+    expect(secondTurn.runSpanContext.spanId).not.toBe(firstTurn.runSpanContext.spanId);
+    expect(secondTurn.persisted).not.toBe(firstTurn.persisted);
   } finally {
     resetContinuationTracer();
+    resetContinuationWorkDispatchForTests();
+    resetTaskFlowRegistryForTests({ persist: false });
+    // The ungranted wake enqueues a real continuation warning; drop it so the
+    // module-level session queue stays clean for a non-isolated runner.
+    resetSystemEventsForTest();
+    traces.stopActiveTrustedSpans();
     await provider.shutdown();
     if (registeredContextManager() !== originalContextManager) {
       context.disable();
