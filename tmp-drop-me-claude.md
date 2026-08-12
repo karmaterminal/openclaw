@@ -163,3 +163,231 @@ upstream than presentation (946) despite being +71 commits ahead of it.
 
 Rebaseline clean. FROZEN-STALE 0, conflicts flat at 70, shape baseline 899.
 No pause condition triggered. Cleared to Gate 1 (savegames).
+
+---
+
+## §1 — Gate 1 savegames — 2026-08-12T15:30Z
+
+Both current heads preserved on origin before any motion, pushed as `karmafeast`
+and verified with `git ls-remote` (the runbook's mandatory verification step):
+
+| Ref | Resolves to |
+|---|---|
+| `savegame/20260812-1530Z/wo1217-assembly-8318e58b-pre-drift` | `8318e58bd22186ffd4bd317ccb05b8592570ad57` |
+| `savegame/20260812-1530Z/wo1217-presentation-2b07ba50-pre-drift` | `2b07ba509564bd8a8f1031bf58dd107c1a24c78f` |
+
+Neither canonical branch was moved. Gate 1 GREEN.
+
+---
+
+## §2 — Back-merge and semantic resolution — 2026-08-12T15:5xZ
+
+Merge commit `7076c7716ad06072fa236381d41f2ef2e08067e9`, two parents
+(`5b43d94eeaf` journal-tip of assembly lineage, `282e6a47ae6` upstream).
+`git merge --no-ff` under `-c merge.conflictstyle=zdiff3`. No rebase, no squash,
+no force. 70 conflicts, exactly the predicted split.
+
+**Deviation recorded:** `rerere` was already enabled in the shared user config and
+recorded pre-images/resolutions during the merge. I did not enable or disable it
+— mutating shared git config from a worktree that sibling agents share would be
+unsafe. `zdiff3` was passed per-invocation with `-c` for the same reason rather
+than written to the shared `.git/config`.
+
+### The five semantic resolutions
+
+Full byte-level rationale is in the merge commit body; the decision-critical
+reasoning is preserved here.
+
+**1. `src/state/openclaw-state-db-contract.ts` — union.**
+Base had `FIRST_USE_STATE_INDEXES` as a single-line array; both sides expanded it
+to multi-line, which is why it conflicted at all. Kept our five
+`delegate_artifact_*` tables + five `idx_delegate_artifact_*` indexes and added
+upstream's `execution_decision_facts` + its two indexes. Checked every consumer
+before deciding order was safe to choose freely: `openclaw-state-db.test.ts`
+(`for..of`), `openclaw-state-db-maintenance.ts` (spread), and
+`openclaw-state-schema-compatibility.ts` (`allowedMissingTables`) all treat these
+as membership sets. Schema version stays 6 / strict 3 — no autonomous bump, per
+both the workorder and root AGENTS.md. Verified the canonical
+`openclaw-state-schema.sql` auto-merged carrying both table families.
+
+**2. `src/config/sessions/types.ts` — relocation-aware, and the one that could
+have silently reverted upstream.**
+Our local `4018b96af02` moved the merge-helper cluster into fork-owned
+`session-entry-runtime.ts`. Upstream's conflicting block is therefore stale here,
+and re-adding it would have produced duplicate helpers — the exact
+"do not duplicate stale merge functions" trap. Took our side.
+
+The subtle part: upstream's real delta in the window was two commits, and a plain
+"take ours" would have kept one and destroyed the other.
+- `77d89b2fa84` (#121278) `laneId` `@deprecated` doc — auto-merged, retained (verified present).
+- `b080dd1e765` (#122458) "consolidate coercion contracts" rewrote
+  `resolveSessionTotalTokens` to call `asNonNegativeFiniteNumber`. That function
+  no longer lives in `types.ts`, so taking our side alone **would have silently
+  reverted upstream's refactor**. Ported it into `session-entry-runtime.ts`
+  instead, with the import.
+  Semantics checked at the source, not assumed: `asNonNegativeFiniteNumber` is
+  `asFiniteNumber(v)` then `number && number < 0 ? undefined : number`, so 0
+  survives and negative/non-finite become undefined — identical to the
+  hand-rolled guard it replaces.
+Also verified the other five relocated bodies (`resolveMergedUpdatedAt`,
+`normalizeMergedUpdatedAt`, `mergeSessionEntryWithPolicy`,
+`stripRetiredSessionEntryLocators`, `resolveFreshSessionTotalTokens`) are still
+byte-identical to upstream's copies, so the relocation carries no other drift.
+
+**3. `src/plugins/git-install.ts` — highest semantic risk, both sides real.**
+Upstream `5a643e35431` (#121174) added deferred package-install transaction
+ownership. Our `b53f0db43c9` added `stagedRepoIsTargetLocal`: when the staging
+dir falls back off the target filesystem, copy target-local first so
+`replaceDirectoryAtomic`'s rename stays atomic.
+
+Read `src/infra/install-package-dir.ts` directly rather than trusting the diff.
+`installPackageDir` does
+`stageDir = await fs.mkdtemp(path.join(installBaseRealPath, ".openclaw-install-stage-"))`
+where `installBaseRealPath` is the realpath of the target's own parent — it
+**already** re-stages target-local unconditionally. So the deferred branch needs
+no second target-local copy; adding one would be the duplicated replacement path
+the workorder forbids. Result: one replacement mechanism per branch — deferred
+goes through `installPackageDir`, immediate keeps our guard. Two inline comments
+record that cross-path invariant at the code site.
+Caller wiring (`deferCommit`, `transaction`, `attachPluginInstallTransaction`)
+auto-merged correctly and `emitPluginInstallSecurityEvent` is intact.
+
+*Named follow-up (Pathfinder rule, deliberately NOT done here):* the immediate
+branch could arguably be collapsed onto `installPackageDir` too, deleting our
+`stagedRepoIsTargetLocal` threading entirely and yielding one canonical flow with
+negative production LOC. Not done in the drift phase because upstream
+deliberately keeps `replaceDirectoryAtomic` for the non-deferred case; unifying
+would be a product change to a security-sensitive install path and would create
+fresh fork divergence, which is the opposite of drift-phase intent. Recorded for
+the trace-root/proof lane.
+
+**4. `src/auto-reply/reply/get-reply.ts` — import adjacency only.**
+Union of our `isContinuationHeartbeatEquivalent` and upstream's
+`resolveRuntimePolicySessionKey`, alphabetical. Both verified used (lines 431 and
+212). Upstream's 144-line media local-path self-serve composition auto-merged and
+is retained.
+
+**5. `src/audit/audit-event-writer.test.ts` — took upstream wholesale, on byte evidence.**
+Our *entire* fork delta on this file since the merge base was a retry wrapper
+around the standalone "returns immediately under SQLite contention" test.
+Upstream `b5292178780` (#122369) deleted that test by consolidating four tests
+into two. A retry guarding a deleted test is dead code, and repo canon is to
+delete tests for removed paths rather than update them. The nonblocking-under-
+held-lock property it protected still has coverage inside upstream's consolidated
+test. The file is now **byte-identical to upstream** — the ideal SAFE-CURRENT
+outcome for a shared test file, and it consequently leaves the reviewer-visible
+diff set entirely.
+Both ownership families remain covered elsewhere: 10 delegate-artifact test files
+plus upstream's newly absorbed `src/audit/execution-decision-facts.test.ts`.
+*Watch item:* our retry existed for a real transient flake. The consolidated
+upstream test asserts the same property with different setup, so if it flakes it
+is now upstream-owned — flagged for Gate 3 classification.
+
+### Generated baselines — regenerated, never hand-composed
+
+Procedure: seeded `docs/.generated/plugin-sdk-api-baseline/` from upstream, then
+regenerated from the merged owning source.
+
+| Item | Value |
+|---|---|
+| generator | `pnpm plugin-sdk:api:gen` (`scripts/generate-plugin-sdk-api-baseline.ts --write`) |
+| verifier | `pnpm plugin-sdk:api:check` → **exit 0** |
+| source SHA | merge result `7076c7716ad` |
+| records rewritten | 98 |
+
+Each record is one line: `sha256(JSON.stringify(contractSurface))` over the
+entrypoint's export surface (`src/plugin-sdk/api-baseline.ts:393`) — content
+derived, no paths, timestamps, or versions.
+
+---
+
+## §3 — Shape/fluff gate + Gate 2.7 after — 2026-08-12T16:0xZ
+
+### Shape gate — +35 files, fully decomposed, and it is a REPAIR not fluff
+
+| Axis | Files |
+|---|---:|
+| assembly ↔ upstream (baseline) | 899 |
+| candidate ↔ upstream | 934 |
+| delta | **+35** |
+
+Above the +10 threshold, so surfaced as TROUBLE to #sprites. Decomposition —
+every one of the 36 candidate-only files is accounted for, and no new top-level
+subsystem appears:
+
+| Group | Count | Class |
+|---|---:|---|
+| `docs/.generated/plugin-sdk-api-baseline/*.json` | 33 | generated artifact |
+| `tmp-drop-me-claude.md` + 2 × `.gates-evidence/*` | 3 | runbook-mandated lane evidence |
+| `src/audit/audit-event-writer.test.ts` **leaving** the set | −1 | converged to upstream (improvement) |
+
+**The decisive finding.** Two controls were run rather than assuming:
+
+1. *Is the generator environment-dependent?* Ran `pnpm plugin-sdk:api:check` in a
+   throwaway worktree at pure `upstream/main` on this seat with this
+   `node_modules` → **exit 0**. It reproduces upstream's committed baselines
+   exactly, so the hashes are content-derived and machine-independent, and are
+   safe to ship into CI.
+2. *Was the assembly already drifted?* Ran the same check at unmodified assembly
+   `8318e58bd22` → **exit 1, "Modified: 33; missing: 0; stale: 0"**.
+
+The assembly was shipping a **red `plugin-sdk:api:check`** with exactly 33 stale
+records — precisely the 33 files in the shape delta. So the +33 is not stacking
+complexity; it is the repair of a pre-existing static-gate failure the assembly
+was carrying, which would otherwise have blocked Gate 3's static lane. Shape gate
+explained and cleared.
+
+### Gate 2.7 after resolution — `.gate-after`
+
+```
+tools/drift-cure-gate.sh upstream/main HEAD 79d68e2c115e11683e1d08039e6b48a3143d2abe .gate-after
+```
+Runtime 3m55s. **Exit 0.**
+
+| Class | before | after | delta |
+|---|---:|---:|---:|
+| files examined | 899 | 934 | +35 |
+| GENUINE | 257 | 293 | +36 |
+| MIXED-CLOBBER | 366 | **362** | **−4** |
+| SAFE-NEW | 276 | 279 | +3 |
+| **FROZEN-STALE** | **0** | **0** | **0** |
+
+**FROZEN-STALE = 0. Gate 2.7 requirement met.**
+
+MIXED went *down*, which is the signal that the merge absorbed upstream rather
+than clobbering it. Quantified across the whole queue:
+
+- **0 entries regressed** (no file's dropped-upstream-line count increased).
+- **20 entries improved, recovering 285 dropped upstream lines.**
+
+Every file I hand-resolved improved sharply: `get-reply.ts` 103→2,
+`get-reply-run.media-only.test.ts` 44→1, `git-install.ts` 28→1,
+`server-maintenance.ts` 18→2, `audit-event-writer.ts` 15→4, `types.ts` 14→12, and
+`audit-event-writer.test.ts` left MIXED entirely.
+
+### High-count MIXED walk (workorder requirement)
+
+The top of the queue after resolution:
+
+| dropped | file | upstream commits in `ff73a14f5ae..upstream/main` | before→after |
+|---:|---|---:|---|
+| 159 | `src/gateway/server-restart-sentinel.ts` | **0** | 159→159 |
+| 137 | `src/agents/openclaw-tools.ts` | **0** | 137→137 |
+| 133 | `src/agents/command/attempt-execution.ts` | **0** | 133→133 |
+| 131 | `src/agents/subagents/announce/subagent-announce.ts` | **0** | 131→131 |
+| 125 | `src/auto-reply/reply/agent-runner-result-complete.ts` | **0** | 125→125 |
+
+Justification: upstream made **zero** changes to any of these inside the drift
+window, and their counts are byte-identical before and after the merge. This
+cycle therefore neither introduced nor worsened them — mechanically it could not
+have. They are pre-existing fork feature-rewrite surface inherited from the
+presentation lineage, anchoring on upstream content that predates the merge base.
+Per the runbook, MIXED is a ranked triage queue in which legitimate feature
+rewrites are expected entries; these belong to the feature-surface review
+(Gate 2 family), not to drift absorption, and the drift phase must not mutate
+feature bytes to "fix" them.
+
+No within-hunk interleave arose in any of the five hand-resolutions: each
+conflict was either a disjoint union, a whole-block relocation, or a whole-block
+upstream adoption. No `MIXED-CLOBBER:interleave` per-line discrimination was
+required this cycle.
