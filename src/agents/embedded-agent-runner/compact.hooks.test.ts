@@ -8,10 +8,9 @@ import type { AgentMessage } from "openclaw/plugin-sdk/agent-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { createReplyOperation } from "../../auto-reply/reply/reply-run-registry.js";
-import { upsertSessionEntry } from "../../config/sessions/session-accessor.js";
+import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
 import {
-  acquireSessionWriteLockMock,
   acquireAgentRunPreparedModelRuntimeMock,
   applyExtraParamsToAgentMock,
   applyAgentCompactionSettingsFromConfigMock,
@@ -58,7 +57,7 @@ import {
   sessionMessages,
   sessionCompactImpl,
   sessionManualCompactionMock,
-  triggerInternalHook,
+  triggerInternalHookMock,
 } from "./compact.hooks.harness.js";
 import {
   abortEmbeddedAgentRun,
@@ -73,7 +72,6 @@ let compactEmbeddedAgentSession: typeof import("./compact.queued.js").compactEmb
 let compactTesting: typeof import("./compact.js").testing;
 let onSessionTranscriptUpdate: typeof import("../../sessions/transcript-events.js").onSessionTranscriptUpdate;
 let onInternalSessionTranscriptUpdate: typeof import("../../sessions/transcript-events.js").onInternalSessionTranscriptUpdate;
-let withOwnedSessionTranscriptWrites: typeof import("../../config/sessions/transcript-write-context.js").withOwnedSessionTranscriptWrites;
 
 const TEST_SESSION_ID = "session-1";
 const TEST_SESSION_KEY = "agent:main:session-1";
@@ -261,7 +259,7 @@ function createPreparedCodexCompactionPlans(modelId = "gpt-5.5") {
 }
 
 const sessionHook = (action: string): SessionHookEvent | undefined =>
-  triggerInternalHook.mock.calls.find((call) => {
+  triggerInternalHookMock.mock.calls.find((call) => {
     const event = call[0] as SessionHookEvent | undefined;
     return event?.type === "session" && event.action === action;
   })?.[0] as SessionHookEvent | undefined;
@@ -318,7 +316,6 @@ beforeAll(async () => {
   compactTesting = loaded.testing;
   onSessionTranscriptUpdate = loaded.onSessionTranscriptUpdate;
   onInternalSessionTranscriptUpdate = loaded.onInternalSessionTranscriptUpdate;
-  withOwnedSessionTranscriptWrites = loaded.withOwnedSessionTranscriptWrites;
 });
 
 afterAll(async () => {
@@ -332,7 +329,7 @@ beforeEach(() => {
 
 describe("compactEmbeddedAgentSessionDirect hooks", () => {
   beforeEach(() => {
-    triggerInternalHook.mockClear();
+    triggerInternalHookMock.mockClear();
     hookRunner.hasHooks.mockReset();
     hookRunner.runBeforeCompaction.mockReset();
     hookRunner.runAfterCompaction.mockReset();
@@ -345,41 +342,6 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
       details: { ok: true },
     });
     resetCompactSessionStateMocks();
-  });
-
-  it("acquires the normal session lock without process-wide reentry", async () => {
-    const result = await compactEmbeddedAgentSessionDirect(wrappedCompactionArgs());
-
-    expect(result).toMatchObject({ ok: true, compacted: true });
-    const lockOptions = mockCallArg(acquireSessionWriteLockMock);
-    expect(lockOptions).toMatchObject({
-      sessionFile: expect.any(String),
-      targetKind: "session-key",
-    });
-    expect(lockOptions.sessionFile).not.toBe(TEST_SESSION_KEY);
-    expect(lockOptions).not.toHaveProperty("allowReentrant");
-  });
-
-  it("reuses the matching logical writer lock during direct compaction", async () => {
-    const withSessionWriteLockCall = vi.fn();
-    const withSessionWriteLock = async <T>(run: () => Promise<T> | T): Promise<T> => {
-      withSessionWriteLockCall();
-      return await run();
-    };
-
-    const result = await withOwnedSessionTranscriptWrites(
-      {
-        sessionKey: TEST_SESSION_KEY,
-        sessionTarget: wrappedCompactionArgs().sessionTarget,
-        assertOwned: () => undefined,
-        withSessionWriteLock,
-      },
-      async () => await compactEmbeddedAgentSessionDirect(wrappedCompactionArgs()),
-    );
-
-    expect(result).toMatchObject({ ok: true, compacted: true });
-    expect(withSessionWriteLockCall).toHaveBeenCalledOnce();
-    expect(acquireSessionWriteLockMock).not.toHaveBeenCalled();
   });
 
   it("fails closed before generic compaction for a model-locked native session", async () => {
@@ -835,7 +797,7 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
     );
   });
 
-  it("keeps the embedded compaction system prompt after active tool selection", async () => {
+  it("keeps the compaction prompt and durable provider resources after disposal", async () => {
     buildEmbeddedSystemPromptMock.mockReturnValueOnce("compaction system prompt");
 
     await compactEmbeddedAgentSessionDirect({
@@ -1942,7 +1904,7 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
 
   it("forwards internal compaction hook messages to the caller", async () => {
     const onHookMessages = vi.fn();
-    triggerInternalHook.mockImplementation((event: unknown) => {
+    triggerInternalHookMock.mockImplementation((event: unknown) => {
       const hookEvent = event as { action?: string; messages?: string[] };
       hookEvent.messages?.push(`${hookEvent.action} notice`);
     });
@@ -2452,7 +2414,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
     const sessionId = "9d6c8436-7cb2-4bd5-a302-e33305bfc8c4";
     const sessionKey = "agent:main:telegram:direct:reporter";
     try {
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey, storePath },
         { sessionId, updatedAt: 1 },
       );
@@ -4455,7 +4417,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
       },
     } as never);
     try {
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         {
           agentId: "main",
           sessionKey: delegatedSessionKey,
@@ -4499,7 +4461,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
       },
     } as never);
     try {
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey: delegatedSessionKey, storePath },
         { sessionId: "stored-session", updatedAt: 1 },
       );
@@ -4617,7 +4579,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
       },
     } as never);
     try {
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey: TEST_SESSION_KEY, storePath },
         { sessionId: TEST_SESSION_ID, updatedAt: 1 },
       );

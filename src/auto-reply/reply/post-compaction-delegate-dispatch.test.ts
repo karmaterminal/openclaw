@@ -11,7 +11,7 @@ import {
   enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
-import { withTempDir } from "../../test-helpers/temp-dir.js";
+import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
   deliverQueuedPostCompactionDelegate,
@@ -33,7 +33,8 @@ const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
 }));
 
-vi.mock("../../agents/subagent-registry-read.js", () => ({
+vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getSubagentRunByChildSessionKey: (childSessionKey: string) =>
     mockRegistryState.acceptedChildSessionKeys.has(childSessionKey)
       ? { runId: `run:${childSessionKey}`, childSessionKey }
@@ -238,13 +239,13 @@ function createDeliveryDeps(params: {
     ),
     log,
     now: vi.fn(() => DELIVERY_NOW_MS),
-    patchSessionEntry: sessionAccessorModule.patchSessionEntry,
+    patchSessionEntryCore: sessionAccessorModule.patchSessionEntryCore,
     resolveContinuationRuntimeConfig: vi.fn(() => ({
       ...defaultRuntimeConfig,
       ...params.runtimeConfig,
     })),
     resolveSessionAgentId: vi.fn(() => "main"),
-    resolveStorePath: vi.fn(() => params.storePath),
+    resolveSessionStorePathCore: vi.fn(() => params.storePath),
     spawnSubagentDirect,
     revalidatePendingDelegateForSpawn: vi.fn(() => ({ allowed: true }) as const),
     markPendingDelegateSpawnAccepted,
@@ -273,12 +274,12 @@ async function seedSessionStore(
 ): Promise<void> {
   await Promise.all(
     Object.entries(store).map(async ([sessionKey, entry]) => {
-      await sessionAccessorModule.upsertSessionEntry({ storePath, sessionKey }, entry);
+      await sessionAccessorModule.upsertSessionEntryCore({ storePath, sessionKey }, entry);
     }),
   );
 }
 
-// upsertSessionEntry canonicalizes a bare seed key ("main" -> "agent:main:main"),
+// upsertSessionEntryCore canonicalizes a bare seed key ("main" -> "agent:main:main"),
 // so read entries back through the same accessor production writes with instead
 // of indexing the raw key on a listing.
 function readSessionEntry(storePath: string, sessionKey = "main"): SessionEntry | undefined {
@@ -396,7 +397,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("takes and clears pending delegates from the session store path", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-dispatch-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-dispatch-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: {
@@ -420,7 +421,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("keeps supplied session snapshots synchronized with durable persist and take", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-sync-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-sync-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: {

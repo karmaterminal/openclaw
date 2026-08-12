@@ -3,7 +3,7 @@ import type { callGateway as defaultCallGateway, CallGatewayOptions } from "../g
 import {
   deleteSubagentSessionForCleanup,
   resetSubagentSessionCleanupForTests,
-} from "./subagent-session-cleanup.js";
+} from "./subagents/registry/subagent-session-cleanup.js";
 
 const hasLiveOrRecentlyDispatchedContinuationWorkMock = vi.hoisted(() => vi.fn(() => false));
 const hasRecoverablePendingDelegateMock = vi.hoisted(() => vi.fn(() => false));
@@ -33,7 +33,11 @@ vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
   failStagedPostCompactionDelegatesForCleanup: failStagedPostCompactionDelegatesForCleanupMock,
 }));
 
-vi.mock("./subagent-registry-runtime.js", () => ({
+vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  countActiveDescendantRuns: countActiveDescendantRunsMock,
+}));
+vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
   countActiveDescendantRuns: countActiveDescendantRunsMock,
 }));
 

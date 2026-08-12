@@ -114,7 +114,10 @@ function readPluginSdkEntrypointBudgetEnv(
 }
 
 const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
-  core: 2,
+  // +1 each: legacy AgentHarness remains projected through the core and plugin-entry
+  // compatibility barrels while external harnesses migrate to AgentHarnessV2.
+  core: 3,
+  "plugin-entry": 1,
   routing: 1,
   health: 0,
   // +1: shipped channel setup state-migration declaration during its migration window.
@@ -142,7 +145,11 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "text-runtime": 192,
   "agent-runtime": 2,
   "channel-secret-runtime": 23,
-  "agent-harness-runtime": 4,
+  // +4: session-write lease no-op compatibility stubs through the 2026.10 train.
+  // +4: legacy AgentHarness, attempt, embedded-run, and side-question contracts remain
+  // deprecated while external harnesses migrate to required-capability V2 contracts.
+  "agent-harness": 2,
+  "agent-harness-runtime": 12,
   "agent-config-primitives": 2,
   "command-auth": 78,
   discord: 47,
@@ -186,7 +193,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: dependency-light agent scope helpers for doctor migration enumeration.
       // +1: dependency-light channel streaming config readers for doctor closures
       //     (realtime-voice-activation is private-local and not counted here).
-      151,
+      // +1: registry-bound plugin command planning and exact selected execution.
+      152,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -252,8 +260,18 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +3: channel streaming config reader re-exports and session-agent scope resolver.
       // +3: session-catalog terminal-start provider request and Gateway params/result contracts.
       // +1: worker desktop endpoint contract for desktop-capable worker leases.
-      // +17: candidate continuation/#666 exports retained through this back-merge.
-      4865,
+      // +1: channel-account-bound native approval request selection.
+      // +6: required-capability V2 harness contracts through the focused and runtime barrels,
+      // including the side-question compatibility split.
+      // +1: add the account-aware native approval request selector.
+      // +3: add canonical coercion exports while retaining the shipped asString compatibility name.
+      // +17: continuation delegate/announce surface retained through this back-merge.
+      // +2: add high-use coercion primitives while retaining shipped object-record exports.
+      // +2: channel-neutral location and provider-update hook contracts.
+      // +1: QQBot 2.0.1 operator-approval Gateway client compatibility export.
+      // +2: narrow channel agent-run terminal reader and outcome contract.
+      // +5: narrow string, record, and error coercion helpers.
+      4895,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -309,7 +327,21 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +4: focused agent scope functions for doctor migration enumeration.
       // +3: channel streaming config reader functions and session-agent scope resolver.
       // +5: candidate continuation callable exports retained through this back-merge.
-      2925,
+      // +1: native command spec merger through the native-command-registry facade.
+      // +1: focused registry-bound plugin command runtime factory.
+      // -1: remove the unused WhatsApp-specific ack policy helper.
+      // -10: collapse inbound-dispatch callable aliases and wrappers.
+      // +7: restore still-existing deprecated inbound-dispatch callable re-exports.
+      // -3: keep the generic plugin-command reply carrier opaque and non-callable.
+      // +1: channel-account-bound native approval request selection.
+      // +1: add the account-aware native approval request selector.
+      // +3: add canonical coercion exports while retaining the shipped asString compatibility name.
+      // +5: continuation callable surface retained through this back-merge.
+      // +2: add high-use callable coercion primitives while retaining shipped object-record exports.
+      // +1: QQBot 2.0.1 operator-approval Gateway client compatibility export.
+      // +1: narrow channel agent-run terminal reader.
+      // +5: narrow string, record, and error coercion helpers.
+      2936,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -323,8 +355,12 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: shared ingress error factory projected through channel-message.
       // +1: shared ingress retention defaults projected through channel-message.
       // +1: shipped channel setup state-migration declaration during its migration window.
-      // +7: candidate continuation/#666 deprecated-compat exports retained through this back-merge.
-      1711,
+      // +4: candidate continuation/#666 deprecated-compat exports retained through this back-merge.
+      // +4: session-write lease no-op compatibility stubs through the 2026.10 train.
+      // +7: restore still-existing deprecated inbound-dispatch compatibility re-exports.
+      // +6: source-compatible harness contracts retained during the V2 migration window.
+      // +4: continuation deprecated-compat surface retained through this back-merge.
+      1720,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(
@@ -332,7 +368,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // -1: text-runtime now names its global-singleton exports explicitly.
       // -1: infra-runtime now names its error exports explicitly.
       // -1: candidate continuation names one more re-export explicitly.
-      79,
+      // -1: upstream's infra-runtime excludes the internal system-event receipt API.
+      // +1: upstream's runtime-doctor barrel re-exports runtime-doctor-migrations.
+      // -1: infra-runtime excludes the internal system-event receipt API.
+      // -2: text-runtime names record and string coercion compatibility exports explicitly.
+      76,
       env,
     ),
   };

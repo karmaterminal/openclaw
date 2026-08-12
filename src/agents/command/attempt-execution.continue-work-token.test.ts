@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CONTINUATION_WORK_CONTROLLER_ID } from "../../auto-reply/continuation/work-flow-state.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import { upsertSessionEntry } from "../../config/sessions/session-accessor.js";
+import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { clearSessionStoreCacheForTest } from "../../config/sessions/store-writer-state.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
@@ -31,6 +31,7 @@ import {
 } from "../../infra/diagnostic-trace-context.js";
 import { resetSystemEventsForTest } from "../../infra/system-events.js";
 import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-registry.js";
+import { createTestPreparedRunAdmission } from "../admitted-run-context.test-support.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { runAgentAttempt } from "./attempt-execution.js";
 
@@ -142,10 +143,11 @@ describe("subagent CONTINUE_WORK token self-continuation (token-form parity)", (
   ) {
     const sessionEntry = { sessionId: "session-embedded", updatedAt: Date.now() } as SessionEntry;
     const sessionStore = { [sessionKey]: sessionEntry };
-    expect(await upsertSessionEntry({ sessionKey, storePath }, sessionEntry)).not.toBeNull();
+    expect(await upsertSessionEntryCore({ sessionKey, storePath }, sessionEntry)).not.toBeNull();
     clearSessionStoreCacheForTest();
     runEmbeddedAgentMock.mockResolvedValueOnce(tokenRunResult(token));
     return runAgentAttempt({
+      preparedRunAdmission: createTestPreparedRunAdmission("run-test"),
       providerOverride: "anthropic",
       originalProvider: "anthropic",
       modelOverride: "claude-sonnet-4.7",

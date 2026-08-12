@@ -8,8 +8,8 @@ import {
   closeOpenClawStateDatabaseForTest,
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
-import { withTempDir } from "../test-helpers/temp-dir.js";
-import type { SubagentRunRecord } from "./subagent-registry.types.js";
+import { withTestDir } from "../test-helpers/temp-dir.js";
+import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.types.js";
 
 const sessionIds = vi.hoisted(() => new Map<string, string>());
 const registryRuns = vi.hoisted(() => new Map<string, SubagentRunRecord>());
@@ -25,9 +25,11 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
   };
 });
 
-vi.mock("./subagent-registry-announce-read.js", async () => {
-  const { listAncestorSessionKeysFromRuns } = await import("./subagent-registry-queries.js");
+vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal) => {
+  const { listAncestorSessionKeysFromRuns } =
+    await import("./subagents/registry/subagent-registry-queries.js");
   return {
+    ...(await importOriginal<Record<string, unknown>>()),
     listAncestorSessionKeys: (sessionKey: string) =>
       listAncestorSessionKeysFromRuns(registryRuns, sessionKey),
   };
@@ -114,7 +116,7 @@ describe("delegate artifact tree policy integration", () => {
   });
 
   it("freezes only causal ancestors and rejects later sibling, guessed, and incarnation drift", async () => {
-    await withTempDir({ prefix: "openclaw-tree-artifact-policy-" }, async (stateDir) => {
+    await withTestDir({ prefix: "openclaw-tree-artifact-policy-" }, async (stateDir) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       const cfg: OpenClawConfig = {
         session: { store: `${stateDir}/sessions.sqlite` },

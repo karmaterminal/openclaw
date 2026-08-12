@@ -1,9 +1,8 @@
 // Tests infra store file persistence and recovery.
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { withTempDir } from "../test-utils/temp-dir.js";
+import { withTestDir } from "../test-utils/temp-dir.js";
 import {
   getChannelActivity,
   recordChannelActivity,
@@ -16,11 +15,7 @@ import {
   resetDiagnosticEventsForTest,
 } from "./diagnostic-events.js";
 import { readSessionStoreJson5 } from "./state-migrations.fs.js";
-import {
-  loadVoiceWakeRoutingConfig,
-  resolveVoiceWakeRouteByTrigger,
-  setVoiceWakeRoutingConfig,
-} from "./voicewake-routing.js";
+import { loadVoiceWakeRoutingConfig, resolveVoiceWakeRouteByTrigger } from "./voicewake-routing.js";
 import {
   defaultVoiceWakeTriggers,
   loadVoiceWakeConfig,
@@ -53,7 +48,7 @@ const missingStoreDefaultCases = [
 describe("infra store", () => {
   describe("state migrations fs", () => {
     it("treats array session stores as invalid", async () => {
-      await withTempDir("openclaw-session-store-", async (dir) => {
+      await withTestDir("openclaw-session-store-", async (dir) => {
         const storePath = path.join(dir, "sessions.json");
         await fs.writeFile(storePath, "[]", "utf-8");
 
@@ -64,7 +59,7 @@ describe("infra store", () => {
     });
 
     it("parses JSON5 object session stores", async () => {
-      await withTempDir("openclaw-session-store-", async (dir) => {
+      await withTestDir("openclaw-session-store-", async (dir) => {
         const storePath = path.join(dir, "sessions.json");
         await fs.writeFile(
           storePath,
@@ -84,14 +79,14 @@ describe("infra store", () => {
     it.each(missingStoreDefaultCases)(
       "$name returns defaults when missing",
       async ({ assertDefaults, prefix }) => {
-        await withTempDir(prefix, assertDefaults);
+        await withTestDir(prefix, assertDefaults);
       },
     );
   });
 
   describe("voicewake store", () => {
     it("sanitizes and persists triggers", async () => {
-      await withTempDir("openclaw-voicewake-", async (baseDir) => {
+      await withTestDir("openclaw-voicewake-", async (baseDir) => {
         const saved = await setVoiceWakeTriggers(["  hi  ", "", "  there "], baseDir);
         expect(saved.triggers).toEqual(["hi", "there"]);
         expect(saved.updatedAtMs).toBeGreaterThan(0);
@@ -103,14 +98,14 @@ describe("infra store", () => {
     });
 
     it("falls back to defaults when triggers empty", async () => {
-      await withTempDir("openclaw-voicewake-", async (baseDir) => {
+      await withTestDir("openclaw-voicewake-", async (baseDir) => {
         const saved = await setVoiceWakeTriggers(["", "   "], baseDir);
         expect(saved.triggers).toEqual(defaultVoiceWakeTriggers());
       });
     });
 
     it("ignores retired JSON trigger files at runtime", async () => {
-      await withTempDir("openclaw-voicewake-", async (baseDir) => {
+      await withTestDir("openclaw-voicewake-", async (baseDir) => {
         await fs.mkdir(path.join(baseDir, "settings"), { recursive: true });
         await fs.writeFile(
           path.join(baseDir, "settings", "voicewake.json"),
@@ -129,25 +124,6 @@ describe("infra store", () => {
   });
 
   describe("voicewake routing store", () => {
-    it("normalizes and persists routing config", async () => {
-      const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-voicewake-routing-"));
-      const saved = await setVoiceWakeRoutingConfig(
-        {
-          defaultTarget: { mode: "current" },
-          routes: [
-            { trigger: "  Hello   Bot  ", target: { agentId: "main" } },
-            { trigger: "", target: { sessionKey: "agent:main:main" } },
-          ],
-        },
-        baseDir,
-      );
-      expect(saved.routes).toEqual([{ trigger: "hello bot", target: { agentId: "main" } }]);
-      expect(saved.updatedAtMs).toBeGreaterThan(0);
-
-      const loaded = await loadVoiceWakeRoutingConfig(baseDir);
-      expect(loaded.routes).toEqual([{ trigger: "hello bot", target: { agentId: "main" } }]);
-    });
-
     it("resolves routes by normalized trigger", () => {
       expect(
         resolveVoiceWakeRouteByTrigger({

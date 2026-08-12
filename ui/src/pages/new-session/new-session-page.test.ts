@@ -1,7 +1,8 @@
 import { render, type TemplateResult } from "lit";
-import { afterEach, describe, expect, it } from "vitest";
-import type { PendingCloudRecoveryState, SubmissionOutcomeReason } from "./cloud-recovery-state.ts";
-import type { CloudRecoveryRetirement } from "./cloud-submit.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ApplicationContext } from "../../app/context.ts";
+import type { ChatAttachment } from "../../lib/chat/chat-types.ts";
+import type { CloudSessionRecovery } from "../../lib/sessions/cloud-recovery.ts";
 import type { NewSessionRouteData } from "./location.ts";
 import "./new-session-page.ts";
 
@@ -10,20 +11,34 @@ type TestNewSessionPage = {
   folder: string;
   message: string;
   openedFor: string | null;
-  pendingCloud: PendingCloudRecoveryState;
-  renderDraftBlock(): TemplateResult;
-  submissionOutcomeUnknown: SubmissionOutcomeReason | null;
   visibility: "normal" | "draft" | "incognito";
   worktree: boolean;
+  agentId: string;
+  cloudProfileId: string;
+  context: ApplicationContext;
+  error: string | null;
+  submitting: boolean;
+  gatewayClient: ApplicationContext["gateway"]["snapshot"]["client"];
+  gatewayConnected: boolean;
+  gatewayRecoveryScope: string;
+  gatewayUrl: string;
+  projectRecents: unknown;
+  projectsTask: {
+    run(
+      args: readonly [ApplicationContext["gateway"]["snapshot"]["client"], boolean, number],
+    ): Promise<unknown>;
+  };
+  pendingCloud: { capture(): CloudSessionRecovery | null };
+  attachmentDraft: {
+    attachments: ChatAttachment[];
+    replace(attachments: ChatAttachment[]): void;
+  };
+  canSubmit(): boolean;
+  submissionAccess(): { allowed: true };
+  submit(): Promise<void>;
   setMessageFromUser(message: string): void;
+  renderPlaceSelect(): TemplateResult;
   updated(): void;
-  clearPendingCloudRecoveryFor(
-    gatewayUrl: string,
-    recoveryScope: string,
-    sessionKey: string,
-    retirement: CloudRecoveryRetirement,
-  ): void;
-  showCloudDraftOwnershipLost(): void;
 };
 
 function routeData(agentId: string, catalogId = ""): NewSessionRouteData {
@@ -38,45 +53,9 @@ function routeData(agentId: string, catalogId = ""): NewSessionRouteData {
 }
 
 afterEach(() => {
+  document.querySelectorAll("openclaw-new-session-page").forEach((element) => element.remove());
+  sessionStorage.clear();
   window.history.replaceState({}, "", "/");
-});
-
-describe("new session page outcomes", () => {
-  it("renders the ownership-lost cloud outcome", () => {
-    const page = document.createElement(
-      "openclaw-new-session-page",
-    ) as unknown as TestNewSessionPage;
-    const host = document.createElement("div");
-
-    page.showCloudDraftOwnershipLost();
-    render(page.renderDraftBlock(), host);
-
-    expect(host.querySelector(".new-session-page__error")?.textContent).toContain(
-      "Another window took over this cloud session. Check recent sessions before starting this task again.",
-    );
-  });
-
-  it("preserves an interrupted outcome when retiring accepted delivery", () => {
-    const page = document.createElement(
-      "openclaw-new-session-page",
-    ) as unknown as TestNewSessionPage;
-    const host = document.createElement("div");
-    const gatewayUrl = "ws://gateway.example";
-    const recoveryScope = "principal-a";
-    const sessionKey = "agent:cloud:interrupted";
-    page.pendingCloud.gatewayUrl = gatewayUrl;
-    page.pendingCloud.recoveryScope = recoveryScope;
-    page.pendingCloud.sessionKey = sessionKey;
-    page.submissionOutcomeUnknown = "cloud-interrupted";
-
-    page.clearPendingCloudRecoveryFor(gatewayUrl, recoveryScope, sessionKey, "interrupted");
-    render(page.renderDraftBlock(), host);
-
-    expect(page.pendingCloud.sessionKey).toBe("");
-    expect(host.querySelector(".new-session-page__error")?.textContent).toContain(
-      "This cloud session's setup was interrupted. Check recent sessions before starting this task again.",
-    );
-  });
 });
 
 describe("new session draft route ownership", () => {
@@ -142,5 +121,141 @@ describe("new session draft route ownership", () => {
     page.updated();
 
     expect(page.message).toBe("");
+  });
+
+  it("hands cloud startup to the application owner and navigates immediately", async () => {
+    window.history.replaceState({}, "", "/new");
+    const page = document.createElement(
+      "openclaw-new-session-page",
+    ) as unknown as TestNewSessionPage;
+    Object.defineProperty(page, "isConnected", { configurable: true, value: true });
+    const client = { recoveryScope: "principal-a", recoveryScopeReady: true };
+    const createResult = vi.fn(async (params: Record<string, unknown>) => ({
+      key: String(params.key),
+      initialRun: { status: "idle" as const },
+    }));
+    const start = vi.fn(
+      (_input: Parameters<ApplicationContext["cloudStartup"]["start"]>[0]) =>
+        new Promise<void>(() => {
+          // The application owner keeps loading after this route commits.
+        }),
+    );
+    const navigate = vi.fn();
+    const setSessionKey = vi.fn();
+    const selectAgent = vi.fn();
+    page.context = {
+      basePath: "",
+      gateway: {
+        connection: { gatewayUrl: "ws://gateway.example" },
+        snapshot: {
+          phase: "connected",
+          client,
+          hello: { auth: { role: "operator", scopes: ["operator.admin"] } },
+        },
+        setSessionKey,
+      },
+      agents: { state: { agentsList: null } },
+      agentSelection: { state: { selectedId: "cloud" }, set: selectAgent },
+      sessions: { state: { result: null }, createResult },
+      cloudStartup: { start },
+      navigate,
+    } as unknown as ApplicationContext;
+    page.agentId = "cloud";
+    page.cloudProfileId = "aws";
+    page.message = "keep this cloud task";
+    page.visibility = "normal";
+    page.worktree = true;
+    page.gatewayClient = client as ApplicationContext["gateway"]["snapshot"]["client"];
+    page.gatewayConnected = true;
+    page.gatewayRecoveryScope = client.recoveryScope;
+    page.gatewayUrl = "ws://gateway.example";
+    page.canSubmit = () => true;
+    page.submissionAccess = () => ({ allowed: true });
+    page.attachmentDraft.replace([
+      {
+        id: "attachment-1",
+        dataUrl: "data:text/plain;base64,SGk=",
+        mimeType: "text/plain",
+        fileName: "note.txt",
+      },
+    ]);
+
+    await page.submit();
+    expect(start).toHaveBeenCalledOnce();
+    expect(start.mock.calls[0]?.[0].recovery).toMatchObject({
+      message: "keep this cloud task",
+      attachments: [{ fileName: "note.txt", content: "SGk=" }],
+      phase: "dispatching",
+    });
+    expect(page.pendingCloud.capture()).toBeNull();
+    expect(page.attachmentDraft.attachments).toHaveLength(0);
+    expect(page.submitting).toBe(false);
+    expect(createResult).toHaveBeenCalledOnce();
+    expect(setSessionKey).toHaveBeenCalledWith(start.mock.calls[0]?.[0].recovery.sessionKey);
+    expect(selectAgent).toHaveBeenCalledWith("cloud");
+    expect(navigate).toHaveBeenCalledOnce();
+  });
+});
+
+describe("new session project recents", () => {
+  const recentSession = { execCwd: "/workspace/recent" };
+
+  function createRecentsPage(request: (method: string) => Promise<unknown>) {
+    const page = document.createElement(
+      "openclaw-new-session-page",
+    ) as unknown as TestNewSessionPage;
+    const client = { request } as unknown as ApplicationContext["gateway"]["snapshot"]["client"];
+    page.agentId = "main";
+    page.gatewayClient = client;
+    page.gatewayConnected = true;
+    page.gatewayUrl = "ws://gateway.example";
+    page.context = {
+      gateway: {
+        connection: { gatewayUrl: page.gatewayUrl },
+        snapshot: {
+          phase: "connected",
+          client,
+          selfUser: { id: "profile-a" },
+          hello: { auth: { role: "operator", scopes: ["operator.read"] } },
+        },
+      },
+      agents: {
+        state: {
+          agentsList: {
+            defaultId: "main",
+            mainKey: "main",
+            agents: [{ id: "main", workspace: "/workspace" }],
+          },
+        },
+      },
+      sessions: { state: { result: { sessions: [recentSession] } } },
+      config: { current: {} },
+    } as unknown as ApplicationContext;
+    return { client, page };
+  }
+
+  async function expectRosterRecent(page: TestNewSessionPage) {
+    expect(page.projectRecents).toBeUndefined();
+    const host = document.createElement("div");
+    render(page.renderPlaceSelect(), host);
+    expect(host.querySelector('[data-value="recent::/workspace/recent"]')).not.toBeNull();
+  }
+
+  it("falls back to roster recents when projects.list omits server recents", async () => {
+    const { client, page } = createRecentsPage(async () => ({ projects: [] }));
+
+    await page.projectsTask.run([client, true, 1]);
+
+    await expectRosterRecent(page);
+  });
+
+  it("falls back to roster recents when projects.list fails", async () => {
+    const { client, page } = createRecentsPage(async () => {
+      throw new Error("projects unavailable");
+    });
+
+    await page.projectsTask.run([client, true, 1]);
+
+    await expectRosterRecent(page);
   });
 });

@@ -33,13 +33,13 @@ import {
 import { prepareDelegateArtifactPolicy } from "../delegate-artifact-policy.js";
 import { removeUnacceptedDelegateArtifactPolicy } from "../delegate-artifacts.js";
 import { optionalStringEnum } from "../schema/typebox.js";
-import { validateSubagentAttachments } from "../subagent-attachments.js";
+import { validateSubagentAttachments } from "../subagents/spawn/subagent-attachments.js";
 import type { AnyAgentTool } from "./common.js";
 import {
   jsonResult,
   normalizeToolModelOverride,
   readNumberParam,
-  readStringParam,
+  readToolStringParam,
   ToolInputError,
 } from "./common.js";
 
@@ -415,7 +415,7 @@ export function createContinueDelegateTool(opts: {
         );
       }
 
-      const task = readStringParam(params, "task", { required: true });
+      const task = readToolStringParam(params, "task", { required: true });
       if (!task.trim()) {
         throw new ToolInputError("task must be a non-empty string describing the delegated work.");
       }
@@ -448,9 +448,9 @@ export function createContinueDelegateTool(opts: {
       }
       const mode = (modeRaw || "normal") as (typeof DELEGATE_MODES)[number];
       const isPostCompaction = mode === "post-compaction";
-      const targetSessionKey = readStringParam(params, "targetSessionKey");
+      const targetSessionKey = readToolStringParam(params, "targetSessionKey");
       const targetSessionKeys = readStrictStringArrayParam(params, "targetSessionKeys");
-      const fanoutModeRaw = readStringParam(params, "fanoutMode");
+      const fanoutModeRaw = readToolStringParam(params, "fanoutMode");
       const fanoutMode = fanoutModeRaw?.toLowerCase();
       if (fanoutMode && !FANOUT_MODES.includes(fanoutMode as (typeof FANOUT_MODES)[number])) {
         throw new ToolInputError(
@@ -481,7 +481,7 @@ export function createContinueDelegateTool(opts: {
       const traceparent = formatActiveContinuationTraceparent();
       const traceContextFields = traceparent ? { traceparent } : {};
 
-      const modelOverride = normalizeToolModelOverride(readStringParam(params, "model"));
+      const modelOverride = normalizeToolModelOverride(readToolStringParam(params, "model"));
       const modelField = modelOverride ? { model: modelOverride } : {};
 
       const continuationConfig = resolveContinuationRuntimeConfig(runtimeConfig);

@@ -67,21 +67,21 @@ import {
   getRuntimeConfig,
   setRuntimeConfigSnapshot,
 } from "../config/config.js";
-import { resolveStorePath } from "../config/sessions.js";
-import { upsertSessionEntry } from "../config/sessions/session-accessor.js";
+import { resolveSessionStorePathCore } from "../config/sessions.js";
+import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { emitAgentEvent, resetAgentEventsForTest } from "../infra/agent-events.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
-import { loadSessionEntryByKey } from "./subagent-announce-delivery.js";
-import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
-import { listSubagentRunsForRequester } from "./subagent-registry-announce-read.js";
-import { getSubagentRunByChildSessionKey } from "./subagent-registry-read.js";
-import "./subagent-registry.js";
-import { resetSubagentRegistryForTests } from "./subagent-registry.test-helpers.js";
-import { spawnSubagentDirect } from "./subagent-spawn.js";
+import { loadSessionEntryByKey } from "./subagents/announce/subagent-announce-delivery.js";
+import { listSubagentRunsForRequester } from "./subagents/registry/subagent-registry-read.js";
+import { getSubagentRunByChildSessionKey } from "./subagents/registry/subagent-registry-read.js";
+import { resetSubagentRegistryForTests } from "./subagents/registry/subagent-registry.test-helpers.js";
+import "./subagents/registry/subagent-registry.js";
+import { getSubagentDepthFromSessionStore } from "./subagents/spawn/subagent-depth.js";
+import { spawnSubagentDirect } from "./subagents/spawn/subagent-spawn.js";
 
 const rootSessionKey = "agent:main:root";
 let stateDir: string;
@@ -112,11 +112,11 @@ function makeConfig(): OpenClawConfig {
 }
 
 async function upsertMainSessionEntry(sessionKey: string, sessionId: string, updatedAt: number) {
-  await upsertSessionEntry(
+  await upsertSessionEntryCore(
     {
       sessionKey,
       agentId: "main",
-      storePath: resolveStorePath(undefined, { agentId: "main" }),
+      storePath: resolveSessionStorePathCore(undefined, { agentId: "main" }),
     },
     { sessionId, updatedAt },
   );

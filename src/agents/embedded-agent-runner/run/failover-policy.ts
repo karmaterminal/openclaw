@@ -154,13 +154,12 @@ export function mergeRetryFailoverReason(params: {
   failoverReason: FailoverReason | null;
   timedOut?: boolean;
 }): FailoverReason | null {
-  // timedOut takes precedence — timeout must always surface as the reason
-  // to prevent session-lock deadlock (#86). A pre-existing failoverReason
-  // (e.g. "rate_limit") must not mask a timeout condition.
-  if (params.timedOut) {
-    return "timeout";
-  }
-  return params.failoverReason ?? params.previous;
+  // This value is a carried label for reporting; it is not a control signal.
+  // Nothing branches on it — the timeout control path is decided separately
+  // (see prompt-failure.ts, which computes `promptFailoverReason === "timeout"`
+  // independently). So a concrete classified reason is more useful than a
+  // coarse timeout, and a timeout still surfaces when nothing else is known.
+  return params.failoverReason ?? params.previous ?? (params.timedOut ? "timeout" : null);
 }
 
 export function resolveRunFailoverDecision(
@@ -191,8 +190,8 @@ export function resolveRunFailoverDecision(params: RunFailoverDecisionParams): R
 
   if (params.stage === "prompt") {
     if (params.failoverCode === "cli_max_turns") {
-      // A CLI may have completed tool actions before reaching this terminal
-      // limit. Replaying against another profile/model could repeat effects.
+      // Plugin-harness errors can propagate arbitrary string codes through failover-error normalization;
+      // normal CLI paths are protected in model-fallback-runner instead.
       return {
         action: "surface_error",
         reason: params.failoverReason,

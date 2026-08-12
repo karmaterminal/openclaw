@@ -29,11 +29,12 @@ const loggerRecords: Array<{ level: string; message: string }> = [];
 const spawnSubagentDirectMock = vi.fn();
 let flowIdCounter = 0;
 
-vi.mock("../../agents/subagent-spawn.js", () => ({
+vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
 
-vi.mock("../../agents/subagent-registry-read.js", () => ({
+vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getSubagentRunByChildSessionKey: () => null,
   hasLiveContinuationDelegateChildRun: () => false,
   isSubagentRunLive: () => false,

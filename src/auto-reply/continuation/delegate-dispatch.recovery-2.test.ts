@@ -41,7 +41,7 @@ let updateSessionStoreForRecoveryShouldThrow = false;
 let updateSessionStoreForRecoveryRequiredWriteCalls = 0;
 let updateSessionStoreForRecoveryThrowOnRequiredWriteCall: number | undefined;
 
-vi.mock("../../agents/subagent-spawn.js", () => ({
+vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
 
@@ -53,7 +53,8 @@ vi.mock("../../agents/delegate-artifacts.js", async (importOriginal) => ({
   removeUnacceptedDelegateArtifactPolicy: removeUnacceptedDelegateArtifactPolicyMock,
 }));
 
-vi.mock("../../agents/subagent-registry-read.js", () => ({
+vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getSubagentRunByChildSessionKey: (childSessionKey: string) =>
     activeRegistryChildSessionKeys.has(childSessionKey)
       ? { runId: "run-active", childSessionKey }

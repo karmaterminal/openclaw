@@ -1,6 +1,6 @@
 // "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 /**
- * Queued post-compaction delivery lifecycle regressions (karmaterminal/openclaw#1198).
+ * Queued post-compaction delivery lifecycle regressions.
  *
  * Two contracts live here because they share the same delivery entry point:
  *
@@ -23,7 +23,7 @@ import {
   enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
-import { withTempDir } from "../../test-helpers/temp-dir.js";
+import { withTestDir } from "../../test-helpers/temp-dir.js";
 import { POST_COMPACTION_DELEGATE_TTL_MS } from "../continuation/post-compaction-staleness.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
@@ -48,7 +48,8 @@ vi.mock("../../agents/delegate-artifacts.js", async (importOriginal) => ({
   removeUnacceptedDelegateArtifactPolicy: removeUnacceptedDelegateArtifactPolicyMock,
 }));
 
-vi.mock("../../agents/subagent-registry-read.js", () => ({
+vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getSubagentRunByChildSessionKey: (childSessionKey: string) =>
     mockRegistryState.acceptedChildSessionKeys.has(childSessionKey)
       ? { runId: `run:${childSessionKey}`, childSessionKey }
@@ -134,13 +135,13 @@ function createDeliveryDeps(params: {
     loadSessionEntry,
     log,
     now: vi.fn(() => DELIVERY_NOW_MS),
-    patchSessionEntry: sessionAccessorModule.patchSessionEntry,
+    patchSessionEntryCore: sessionAccessorModule.patchSessionEntryCore,
     resolveContinuationRuntimeConfig: vi.fn(() => ({
       ...defaultRuntimeConfig,
       ...params.runtimeConfig,
     })),
     resolveSessionAgentId: vi.fn(() => "main"),
-    resolveStorePath: vi.fn(() => params.storePath),
+    resolveSessionStorePathCore: vi.fn(() => params.storePath),
     spawnSubagentDirect,
     revalidatePendingDelegateForSpawn,
     markPendingDelegateSpawnAccepted,
@@ -165,12 +166,12 @@ async function seedSessionStore(
 ): Promise<void> {
   await Promise.all(
     Object.entries(store).map(async ([sessionKey, entry]) => {
-      await sessionAccessorModule.upsertSessionEntry({ storePath, sessionKey }, entry);
+      await sessionAccessorModule.upsertSessionEntryCore({ storePath, sessionKey }, entry);
     }),
   );
 }
 
-// upsertSessionEntry canonicalizes a bare seed key ("main" -> "agent:main:main"),
+// upsertSessionEntryCore canonicalizes a bare seed key ("main" -> "agent:main:main"),
 // so read entries back through the same accessor production writes with instead
 // of indexing the raw key on a listing.
 function readSessionEntry(storePath: string, sessionKey = "main"): SessionEntry | undefined {
@@ -180,7 +181,7 @@ function readSessionEntry(storePath: string, sessionKey = "main"): SessionEntry 
 function readSessionStore(storePath: string): Record<string, SessionEntry> {
   return Object.fromEntries(
     sessionAccessorModule
-      .listSessionEntries({ storePath })
+      .listSessionEntriesCore({ storePath })
       .map(({ sessionKey, entry }) => [sessionKey, entry]),
   );
 }
@@ -204,8 +205,8 @@ afterEach(() => {
 });
 
 describe("post-compaction delivery: continuation depth follows accepted children", () => {
-  it("consumes zero chain budget when a pre-acceptance failure retries (karmaterminal/openclaw#1198)", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+  it("consumes zero chain budget when a pre-acceptance failure retries", async () => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const { deps, reserveAcceptedPostCompactionChainHop } = createDeliveryDeps({
@@ -243,7 +244,7 @@ describe("post-compaction delivery: continuation depth follows accepted children
   });
 
   it("charges exactly one chain hop for one accepted child", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: { sessionId: "session", updatedAt: Date.now(), continuationChainCount: 1 },
@@ -274,7 +275,7 @@ describe("post-compaction delivery: continuation depth follows accepted children
   });
 
   it("re-persists the marker hop instead of advancing again when an accepted child replays", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: {
@@ -314,7 +315,7 @@ describe("post-compaction delivery: continuation depth follows accepted children
   });
 
   it("charges the accepted hop when a replay finds no marker (crash before the marker landed)", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: { sessionId: "session", updatedAt: Date.now(), continuationChainCount: 1 },
@@ -347,7 +348,7 @@ describe("post-compaction delivery: continuation depth follows accepted children
   });
 
   it("stays retryable at maxChainLength - 1 across repeated pre-acceptance failures", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: { sessionId: "session", updatedAt: Date.now(), continuationChainCount: 3 },
@@ -385,7 +386,7 @@ describe("post-compaction delivery: continuation depth follows accepted children
   });
 
   it("does not re-spawn a source-less entry whose post-acceptance chain persist failed", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-sourceless-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-sourceless-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const { deps, spawnSubagentDirect } = createDeliveryDeps({ storePath });
@@ -393,9 +394,9 @@ describe("post-compaction delivery: continuation depth follows accepted children
       // `normalizePostCompactionDelegate`, so their queue entries are source-less.
       const entry = createQueuedEntry({ id: "queue-sourceless" });
 
-      const persist = vi.fn<typeof sessionAccessorModule.patchSessionEntry>();
+      const persist = vi.fn<typeof sessionAccessorModule.patchSessionEntryCore>();
       persist.mockRejectedValueOnce(new Error("persist failed"));
-      deps.patchSessionEntry = persist;
+      deps.patchSessionEntryCore = persist;
       await expect(deliverQueuedPostCompactionDelegate({ entry }, deps)).rejects.toThrow(
         "persist failed",
       );
@@ -404,11 +405,11 @@ describe("post-compaction delivery: continuation depth follows accepted children
       // The child the first attempt accepted is keyed off the QUEUE ENTRY ID,
       // because that is what the spawn passes as `continuationDelegateFlowId`.
       // The replay guard must derive it the same way or this retry duplicates
-      // the child (karmaterminal/openclaw#1198).
+      // the child.
       mockRegistryState.acceptedChildSessionKeys.add(
         deriveTestContinuationChildSessionKey("main", "queue-sourceless"),
       );
-      deps.patchSessionEntry = sessionAccessorModule.patchSessionEntry;
+      deps.patchSessionEntryCore = sessionAccessorModule.patchSessionEntryCore;
       await deliverQueuedPostCompactionDelegate({ entry }, deps);
       expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
       // No durable marker exists for a source-less row, so the replay reclaims
@@ -422,7 +423,7 @@ describe("post-compaction delivery: continuation depth follows accepted children
 
 describe("post-compaction delivery: RFC §4.4 stale work dies before materialization", () => {
   it("terminalizes a released entry past the TTL without spawning or materializing attachments", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const harness = createDeliveryDeps({ storePath });
@@ -471,7 +472,7 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
   });
 
   it("still releases work at exactly the TTL and drops it one millisecond later", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
 
@@ -503,7 +504,7 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
   });
 
   it("prefers firstArmedAt over createdAt and treats an unstamped row as freshly armed", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
 
@@ -530,7 +531,7 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
   });
 
   it("terminalizes stale work even while continuation is disabled, so it cannot be revived", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const disabled = createDeliveryDeps({
@@ -557,7 +558,7 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
   });
 
   it("finalizes an accepted child even when the entry is stale, instead of stranding a live run", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       mockRegistryState.acceptedChildSessionKeys.add(
@@ -583,7 +584,7 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
   });
 
   it("drops a stale entry during a queue drain without re-queuing it for a later restart", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-stale-drain-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-stale-drain-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const deliveryId = await enqueuePostCompactionDelegateDeliveryQueue(

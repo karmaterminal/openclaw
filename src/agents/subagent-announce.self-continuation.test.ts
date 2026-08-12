@@ -13,7 +13,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./subagent-announce.runtime.js", async (importOriginal) => ({
+vi.mock("./subagents/announce/subagent-announce.runtime.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   readSessionMessagesAsync: vi.fn(async () => []),
 }));
@@ -27,7 +27,7 @@ vi.mock("../gateway/call.js", () => ({
   }),
 }));
 
-vi.mock("./subagent-depth.js", () => ({
+vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => 1,
 }));
 
@@ -37,7 +37,18 @@ vi.mock("./embedded-agent.js", () => ({
   waitForEmbeddedAgentRunEnd: async () => true,
 }));
 
-vi.mock("./subagent-registry-runtime.js", () => ({
+vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  countActiveDescendantRuns: () => 0,
+  countPendingDescendantRuns: () => 0,
+  countPendingDescendantRunsExcludingRun: () => 0,
+  isSubagentSessionRunActive: () => true,
+  listSubagentRunsForRequester: () => [],
+  replaceSubagentRunAfterSteer: () => true,
+  resolveRequesterForChildSession: () => null,
+  shouldIgnorePostCompletionAnnounceForSession: () => false,
+}));
+vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
   countActiveDescendantRuns: () => 0,
   countPendingDescendantRuns: () => 0,
   countPendingDescendantRunsExcludingRun: () => 0,
@@ -67,7 +78,7 @@ vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
 const deliverSubagentAnnouncementMock = vi.hoisted(() =>
   vi.fn(async (_announcement: unknown) => ({ delivered: true, path: "direct" as const })),
 );
-vi.mock("./subagent-announce-delivery.js", async (importOriginal) => ({
+vi.mock("./subagents/announce/subagent-announce-delivery.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   deliverSubagentAnnouncement: deliverSubagentAnnouncementMock,
 }));
@@ -79,7 +90,7 @@ import {
   scheduleContinuationWork,
 } from "../auto-reply/continuation/work-dispatch.js";
 import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
-import { resolveStorePath } from "../config/sessions.js";
+import { resolveSessionStorePathCore } from "../config/sessions.js";
 import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
 import { saveLegacySessionStore as saveSessionStore } from "../infra/state-migrations.legacy-session-store.js";
 import { listTaskFlowsForOwnerKey } from "../tasks/task-flow-registry.js";
@@ -88,7 +99,7 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../test-utils/openclaw-test-state.js";
-import { runSubagentAnnounceFlow } from "./subagent-announce.js";
+import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 
 type AnnounceFlowParams = Parameters<typeof runSubagentAnnounceFlow>[0];
 
@@ -117,7 +128,7 @@ function makeConfig() {
 }
 
 async function writeSessionStore(data: Record<string, unknown>) {
-  const storePath = resolveStorePath(undefined, { agentId: "main" });
+  const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
   await saveSessionStore(storePath, data as Parameters<typeof saveSessionStore>[1], {
     skipMaintenance: true,
   });

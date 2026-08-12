@@ -24,9 +24,9 @@ import {
   appendTranscriptEvent,
   loadSessionEntry as loadAccessorSessionEntry,
   loadTranscriptEvents,
-  patchSessionEntry as patchAccessorSessionEntry,
+  patchSessionEntryCore as patchAccessorSessionEntry,
   replaceSessionEntry,
-  upsertSessionEntry,
+  upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import { loadPendingSessionDeliveries } from "../infra/session-delivery-queue-storage.js";
 import { peekSystemEvents } from "../infra/system-events.js";
@@ -41,7 +41,7 @@ import {
   runExclusiveSessionLifecycleMutation,
 } from "../sessions/session-lifecycle-admission.js";
 import { resetTaskFlowRegistryForTests } from "../tasks/task-runtime.test-helpers.js";
-import { withTempDir } from "../test-helpers/temp-dir.js";
+import { withTestDir } from "../test-helpers/temp-dir.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import {
   embeddedRunMock,
@@ -150,7 +150,7 @@ async function seedSessionEntry(params: {
   sessionKey: string;
   storePath: string;
 }): Promise<void> {
-  await upsertSessionEntry(
+  await upsertSessionEntryCore(
     {
       ...(params.agentId ? { agentId: params.agentId } : {}),
       sessionKey: params.sessionKey,
@@ -332,18 +332,6 @@ test("sessions.compaction.* lists checkpoints and branches or restores from comp
     sessionId: checkpointEntry.sessionId,
     sessionKey: checkpointEntry.sessionKey,
   });
-
-  const checkpoint = await rpcReq<{
-    ok: true;
-    key: string;
-    checkpoint: { checkpointId: string; preCompaction: { sessionFile?: string } };
-  }>(ws, "sessions.compaction.get", {
-    key: "main",
-    checkpointId: "checkpoint-1",
-  });
-  expect(checkpoint.ok).toBe(true);
-  expect(checkpoint.payload?.checkpoint.checkpointId).toBe("checkpoint-1");
-  expect(checkpoint.payload?.checkpoint.preCompaction.sessionFile).toBeUndefined();
 
   const sessionManagerOpenSpy = vi.spyOn(SessionManager, "open");
   let branched: Awaited<
@@ -562,18 +550,6 @@ test("sessions.compaction list/get scopes selected global checkpoints to the req
     summary: "work checkpoint",
   });
 
-  const got = await directSessionReq<{
-    checkpoint?: { checkpointId?: string; summary?: string };
-  }>(
-    "sessions.compaction.get",
-    { key: "global", agentId: "work", checkpointId: "checkpoint-work" },
-    { context: { getRuntimeConfig: () => runtimeConfig } },
-  );
-  expect(got.ok).toBe(true);
-  expect(got.payload?.checkpoint).toMatchObject({
-    checkpointId: "checkpoint-work",
-    summary: "work checkpoint",
-  });
   expect(
     loadSessionEntry({ agentId: "main", sessionKey: "global", storePath: mainStorePath })
       ?.sessionId,
@@ -595,7 +571,7 @@ test("sessions.compact without maxLines runs embedded manual compaction for chec
     sessionKey: "agent:main:main",
     storePath,
   };
-  await upsertSessionEntry(sessionScope, {
+  await upsertSessionEntryCore(sessionScope, {
     ...sessionStoreEntry("sess-main", {
       spawnedCwd: "/tmp/task-repo",
       thinkingLevel: "medium",
@@ -1829,12 +1805,14 @@ test("sessions.patch waits for terminal compaction before archiving the session"
     expect(embeddedRunMock.compactEmbeddedAgentSession).toHaveBeenCalledTimes(1);
   });
   let archiveSettled = false;
-  const archiveResult = rpcReq(ws, "sessions.patch", { key: sessionKey, archived: true }).then(
-    (result) => {
-      archiveSettled = true;
-      return result;
-    },
-  );
+  const archiveResult = rpcReq(ws, "sessions.patch", {
+    key: sessionKey,
+    archived: true,
+    expectedSessionId: "sess-compact-archive",
+  }).then((result) => {
+    archiveSettled = true;
+    return result;
+  });
   await Promise.resolve();
   expect(archiveSettled).toBe(false);
 
@@ -2015,7 +1993,7 @@ test("sessions.compact maxLines does not interrupt an active run when no transcr
 });
 
 test("sessions.patch preserves nested model ids under provider overrides", async () => {
-  await withTempDir({ prefix: "openclaw-gw-sessions-nested-" }, async (dir) => {
+  await withTestDir({ prefix: "openclaw-gw-sessions-nested-" }, async (dir) => {
     const storePath = path.join(dir, "sessions.json");
     const runtimeConfig = {
       agents: {

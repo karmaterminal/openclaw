@@ -140,7 +140,7 @@ vi.mock("../../config/config.js", () => ({
 }));
 
 vi.mock("../../config/sessions/paths.js", () => ({
-  resolveStorePath: () => mockStorePath,
+  resolveSessionStorePathCore: () => mockStorePath,
 }));
 
 vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => ({
@@ -437,13 +437,13 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
   }),
 }));
 
-import { subagentRuns } from "../../agents/subagent-registry-memory.js";
-import type { SubagentRunRecord } from "../../agents/subagent-registry.types.js";
-import { STALE_UNENDED_SUBAGENT_RUN_MS } from "../../agents/subagent-run-liveness.js";
+import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
+import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
+import { STALE_UNENDED_SUBAGENT_RUN_MS } from "../../agents/subagents/registry/subagent-run-liveness.js";
 import {
   deleteSubagentSessionForCleanup,
   resetSubagentSessionCleanupForTests,
-} from "../../agents/subagent-session-cleanup.js";
+} from "../../agents/subagents/registry/subagent-session-cleanup.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { runWithGatewayRootWorkAdmissionForTest as runWithGatewayRootWorkAdmission } from "../../process/gateway-work-admission.test-helpers.js";
 import { getReplyFromConfig } from "../reply/get-reply.js";
@@ -766,8 +766,8 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     });
   });
 
-  it("folds Cael-style active body plus +20/+21/+22 delayed rows instead of sequential later turns", async () => {
-    const sessionKey = "agent:main:cael-active-overlap";
+  it("folds an active body plus +20/+21/+22 delayed rows instead of sequential later turns", async () => {
+    const sessionKey = "agent:main:active-overlap";
     mockSessionStore[sessionKey] = { sessionKey };
     for (const [index, delaySeconds] of [20, 21, 22].entries()) {
       enqueuePendingWork({
@@ -779,8 +779,8 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
         dueAt: Date.now(),
         maxChainLength: 8,
         reason: `+${delaySeconds} delayed row`,
-        chainId: "chain-cael",
-        originRunId: "run-cael",
+        chainId: "chain-alpha",
+        originRunId: "run-alpha",
       });
     }
     activeSessions.add(sessionKey);

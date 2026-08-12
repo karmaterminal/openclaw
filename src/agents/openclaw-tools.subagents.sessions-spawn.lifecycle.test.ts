@@ -22,10 +22,8 @@ import {
   setSessionsSpawnConfigOverride,
   waitForSessionsSpawnEvent,
 } from "./openclaw-tools.subagents.sessions-spawn.test-harness.js";
-import {
-  getLatestSubagentRunByChildSessionKey,
-  resetSubagentRegistryForTests,
-} from "./subagent-registry.test-helpers.js";
+import { getLatestSubagentRunByChildSessionKey } from "./subagents/registry/subagent-registry-read.js";
+import { resetSubagentRegistryForTests } from "./subagents/registry/subagent-registry.test-helpers.js";
 
 const fastModeEnv = vi.hoisted(() => {
   const previous = process.env.OPENCLAW_TEST_FAST;
@@ -177,12 +175,12 @@ describe("openclaw-tools: subagents (sessions_spawn lifecycle)", () => {
     testState = await createOpenClawTestState({ label: "sessions-spawn-lifecycle" });
     const state = testState;
     const sessions = await import("../config/sessions.js");
-    const resolveStorePath = vi
-      .spyOn(sessions, "resolveStorePath")
+    const resolveSessionStorePathCore = vi
+      .spyOn(sessions, "resolveSessionStorePathCore")
       .mockImplementation((_store, opts) =>
         path.join(state.sessionsDir(opts?.agentId), "sessions.json"),
       );
-    restoreSessionStorePath = () => resolveStorePath.mockRestore();
+    restoreSessionStorePath = () => resolveSessionStorePathCore.mockRestore();
     resetSessionsSpawnAnnounceFlowOverride();
     resetSessionsSpawnHookRunnerOverride();
     resetSessionsSpawnConfigOverride();
@@ -343,12 +341,12 @@ describe("openclaw-tools: subagents (sessions_spawn lifecycle)", () => {
   });
 
   it("sessions_spawn retires bundle MCP runtime when run-mode cleanup completes", async () => {
-    let resumeAnnounceFlow: ((value: boolean) => void) | undefined;
+    let resumeAnnounceFlow: ((value: "delivered") => void) | undefined;
     let announceFlowStarted: (() => void) | undefined;
     const announceFlowStartedPromise = new Promise<void>((resolve) => {
       announceFlowStarted = resolve;
     });
-    const announceFlowGate = new Promise<boolean>((resolve) => {
+    const announceFlowGate = new Promise<"delivered">((resolve) => {
       resumeAnnounceFlow = resolve;
     });
     setSessionsSpawnAnnounceFlowOverride(async () => {
@@ -384,7 +382,7 @@ describe("openclaw-tools: subagents (sessions_spawn lifecycle)", () => {
     });
     expect(bundleMcpRuntimeTesting.getCachedSessionIds()).toContain("session:subagent:mcp-retire");
 
-    resumeAnnounceFlow?.(true);
+    resumeAnnounceFlow?.("delivered");
     await waitForRunCleanup(child.sessionKey);
     await waitForSessionsSpawnEvent(
       "bundle MCP runtime retirement",

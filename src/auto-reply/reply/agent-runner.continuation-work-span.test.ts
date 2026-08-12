@@ -55,12 +55,15 @@ const patchSessionEntryMock = vi.hoisted(() => vi.fn());
 const updateSessionEntryMock = vi.hoisted(() => vi.fn());
 const loadSessionEntryMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../../agents/model-fallback.js", () => ({
+vi.mock("../../agents/model-fallback-runner.js", () => ({
   runWithModelFallback: (params: {
     provider: string;
     model: string;
     run: (provider: string, model: string) => Promise<unknown>;
   }) => runWithModelFallbackMock(params),
+}));
+
+vi.mock("../../agents/model-fallback-attempt.js", () => ({
   isFallbackSummaryError: (err: unknown) =>
     err instanceof Error &&
     err.name === "FallbackSummaryError" &&
@@ -98,7 +101,7 @@ vi.mock("../../agents/cli-runner.js", () => ({
   runCliAgent: (...args: unknown[]) => runCliAgentMock(...args),
 }));
 
-vi.mock("../../agents/subagent-spawn.js", () => ({
+vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   SUBAGENT_SPAWN_MODES: ["run", "session"],
   SUBAGENT_SPAWN_SANDBOX_MODES: ["inherit", "require"],
   SUBAGENT_SPAWN_CONTEXT_MODES: ["isolated", "fork"],
@@ -113,7 +116,7 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
       const implementation = loadSessionEntryMock.getMockImplementation();
       return implementation ? loadSessionEntryMock(...args) : actual.loadSessionEntry(...args);
     },
-    patchSessionEntry: (...args: unknown[]) => patchSessionEntryMock(...args),
+    patchSessionEntryCore: (...args: unknown[]) => patchSessionEntryMock(...args),
     // Final-delivery persistence now verifies the row it wrote, so this seam has
     // to behave like a real store instead of falling through to the unmocked one.
     updateSessionEntry: (...args: unknown[]) => updateSessionEntryMock(...args),
@@ -164,7 +167,7 @@ vi.mock("../../acp/control-plane/manager.js", () => ({
   }),
 }));
 
-vi.mock("../../agents/subagent-registry.js", () => ({
+vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   getLatestSubagentRunByChildSessionKey: () => null,
   getSwarmRunByLaunchReplayKey: () => undefined,
   initSubagentRegistry: () => {},

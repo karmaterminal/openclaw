@@ -1,8 +1,8 @@
 // "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 import { expectDefined } from "@openclaw/normalization-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createSubagentAnnounceDeliveryRuntimeMock } from "./subagent-announce.test-support.js";
-import type { SpawnSubagentResult } from "./subagent-spawn.js";
+import { createSubagentAnnounceDeliveryRuntimeMock } from "./subagents/announce/subagent-announce.test-support.js";
+import type { SpawnSubagentResult } from "./subagents/spawn/subagent-spawn.js";
 
 // Verify subagent-announce drains the child session's continue_delegate
 // queue after the child settles, using the child's inherited chain state
@@ -169,7 +169,7 @@ const { continuationTargetingMock, subagentRegistryRuntimeMock, deliverSubagentA
     deliverSubagentAnnouncementMock: vi.fn(async () => ({ delivered: true, path: "direct" })),
   }));
 
-vi.mock("./subagent-announce.runtime.js", () => ({
+vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
   dispatchGatewayMethodInProcess: vi.fn(),
   getRuntimeConfig: () => mockConfig,
@@ -177,7 +177,7 @@ vi.mock("./subagent-announce.runtime.js", () => ({
   loadConfig: () => mockConfig,
   loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
   readSessionMessagesAsync: vi.fn(async () => []),
-  readSessionEntry: (storePath: string, sessionKey: string) => {
+  readSubagentSessionEntry: (storePath: string, sessionKey: string) => {
     const store = loadSessionStoreMock(storePath) as Record<string, unknown> | undefined;
     return store?.[sessionKey];
   },
@@ -187,12 +187,13 @@ vi.mock("./subagent-announce.runtime.js", () => ({
   resolveAgentIdFromSessionKey: (sessionKey: string) =>
     resolveAgentIdFromSessionKeyMock(sessionKey),
   resolveMainSessionKey: (cfg: unknown) => resolveMainSessionKeyMock(cfg),
-  resolveStorePath: (store: unknown, options: unknown) => resolveStorePathMock(store, options),
+  resolveSessionStorePathCore: (store: unknown, options: unknown) =>
+    resolveStorePathMock(store, options),
   waitForEmbeddedAgentRunEnd: (sessionId: string, timeoutMs?: number) =>
     waitForEmbeddedAgentRunEndMock(sessionId, timeoutMs),
 }));
 
-vi.mock("./subagent-announce-delivery.runtime.js", () =>
+vi.mock("./subagents/announce/subagent-announce-delivery.runtime.js", () =>
   createSubagentAnnounceDeliveryRuntimeMock({
     callGateway: (request: unknown) => callGatewayMock(request),
     dispatchGatewayMethodInProcess: vi.fn(),
@@ -201,7 +202,8 @@ vi.mock("./subagent-announce-delivery.runtime.js", () =>
     resolveAgentIdFromSessionKey: (sessionKey: string) =>
       resolveAgentIdFromSessionKeyMock(sessionKey),
     resolveMainSessionKey: (cfg: unknown) => resolveMainSessionKeyMock(cfg),
-    resolveStorePath: (store: unknown, options: unknown) => resolveStorePathMock(store, options),
+    resolveSessionStorePathCore: (store: unknown, options: unknown) =>
+      resolveStorePathMock(store, options),
     isEmbeddedAgentRunActive: (sessionId: string) => isEmbeddedAgentRunActiveMock(sessionId),
     queueEmbeddedAgentMessageWithOutcome: (sessionId: string, text: string) => {
       const queued = queueEmbeddedAgentMessageMock(sessionId, text);
@@ -222,7 +224,7 @@ vi.mock("./subagent-announce-delivery.runtime.js", () =>
   }),
 );
 
-vi.mock("./subagent-announce-delivery.js", () => ({
+vi.mock("./subagents/announce/subagent-announce-delivery.js", () => ({
   deliverSubagentAnnouncement: deliverSubagentAnnouncementMock,
   loadRequesterSessionEntry: (sessionKey: string) => {
     const store = loadSessionStoreMock("/tmp/sessions.json");
@@ -242,7 +244,11 @@ vi.mock("./subagent-announce-delivery.js", () => ({
   runAnnounceDeliveryWithRetry: async <T>(params: { run: () => Promise<T> }) => await params.run(),
 }));
 
-vi.mock("./subagent-registry-runtime.js", () => subagentRegistryRuntimeMock);
+vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...subagentRegistryRuntimeMock,
+}));
+vi.mock("./subagents/registry/subagent-registry-runtime.js", () => subagentRegistryRuntimeMock);
 
 vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
   dispatchToolDelegates: (params: unknown) => dispatchToolDelegatesMock(params),
@@ -271,7 +277,7 @@ vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", async (i
     stagePostCompactionDelegateMock(sessionKey, delegate),
 }));
 
-vi.mock("./subagent-spawn.js", () => ({
+vi.mock("./subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (params: Record<string, unknown>, ctx: unknown) =>
     spawnSubagentDirectMock(params, ctx),
 }));
@@ -286,10 +292,6 @@ vi.mock("../config/sessions/targets.js", () => ({
   resolveAllAgentSessionStoreTargetsSync: () => [{ storePath: "/tmp/sessions.json" }],
 }));
 
-vi.mock("../config/sessions/store-load.js", () => ({
-  loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
-}));
-
 vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../config/sessions/session-accessor.js")>()),
   updateSessionEntry: (
@@ -299,7 +301,7 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => ({
   ) => updateSessionEntryMock(scope, update, options),
 }));
 
-import { runSubagentAnnounceFlow } from "./subagent-announce.js";
+import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 
 const splitLintUse = [expectDefined, validTraceparent];
 void splitLintUse;
@@ -855,7 +857,7 @@ describe("subagent-announce continuation drain (F7)", () => {
 
     expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(1);
     // Dispatch failure must not break the announce path — it is best-effort.
-    expect(didAnnounce).toBe(true);
+    expect(didAnnounce).toBe("delivered");
   });
 
   it("persists advanced child chain state after delegates dispatched", async () => {

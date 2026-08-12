@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // --- Mocks that DO intercept the SUT (non-barrel modules) ---
 
-vi.mock("./subagent-announce.runtime.js", async (importOriginal) => ({
+vi.mock("./subagents/announce/subagent-announce.runtime.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   readSessionMessagesAsync: vi.fn(async () => []),
 }));
@@ -21,7 +21,7 @@ vi.mock("../gateway/call.js", () => ({
   }),
 }));
 
-vi.mock("./subagent-depth.js", () => ({
+vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => 1,
 }));
 
@@ -31,7 +31,18 @@ vi.mock("./embedded-agent.js", () => ({
   waitForEmbeddedAgentRunEnd: async () => true,
 }));
 
-vi.mock("./subagent-registry-runtime.js", () => ({
+vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  countActiveDescendantRuns: () => 0,
+  countPendingDescendantRuns: () => 0,
+  countPendingDescendantRunsExcludingRun: () => 0,
+  isSubagentSessionRunActive: () => true,
+  listSubagentRunsForRequester: () => [],
+  replaceSubagentRunAfterSteer: () => true,
+  resolveRequesterForChildSession: () => null,
+  shouldIgnorePostCompletionAnnounceForSession: () => false,
+}));
+vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
   countActiveDescendantRuns: () => 0,
   countPendingDescendantRuns: () => 0,
   countPendingDescendantRunsExcludingRun: () => 0,
@@ -68,12 +79,12 @@ vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
 
 import { stagePostCompactionDelegate } from "../auto-reply/continuation/delegate-store-post-compaction.js";
 import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
-import { resolveStorePath } from "../config/sessions.js";
+import { resolveSessionStorePathCore } from "../config/sessions.js";
 import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
 import { saveLegacySessionStore as saveSessionStore } from "../infra/state-migrations.legacy-session-store.js";
 import { drainSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
-import { runSubagentAnnounceFlow } from "./subagent-announce.js";
-import * as subagentSpawn from "./subagent-spawn.js";
+import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
+import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
 type AnnounceFlowParams = Parameters<typeof runSubagentAnnounceFlow>[0];
 
@@ -96,7 +107,7 @@ function makeConfig() {
 }
 
 async function writeSessionStore(data: Record<string, unknown>) {
-  const storePath = resolveStorePath(undefined, { agentId: "main" });
+  const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
   await saveSessionStore(storePath, data as Parameters<typeof saveSessionStore>[1], {
     skipMaintenance: true,
   });
@@ -151,7 +162,7 @@ describe("announce-path post-compaction routing", () => {
     // The :995 fix: post-compaction routes to staging...
     expect(stageMock).toHaveBeenCalledTimes(1);
     // ...under the REQUESTER (parent) session key — NOT the leaf's childSessionKey.
-    // This is the documented semantic-timing limitation (Emeric/Ronan byte): the
+    // This is the documented semantic-timing limitation: the
     // announce path catches the bracket on the LEAF's COMPLETION, when the leaf
     // is already terminating, so the lifeboat can only stage under the parent's
     // session (consumed at the PARENT's next compaction, not the leaf's own).

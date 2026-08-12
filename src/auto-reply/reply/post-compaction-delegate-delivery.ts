@@ -8,17 +8,17 @@ import { deriveContinuationDelegateChildSessionKey } from "../../agents/subagent
 import {
   getSubagentRunByChildSessionKey,
   hasLiveContinuationDelegateChildRun,
-} from "../../agents/subagent-registry-read.js";
+} from "../../agents/subagents/registry/subagent-registry-read.js";
 import {
   spawnSubagentDirect,
   type SpawnSubagentContext,
   type SpawnSubagentParams,
-} from "../../agents/subagent-spawn.js";
+} from "../../agents/subagents/spawn/subagent-spawn.js";
 import { getRuntimeConfig } from "../../config/config.js";
-import { resolveStorePath } from "../../config/sessions/paths.js";
+import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import {
   loadSessionEntry,
-  patchSessionEntry,
+  patchSessionEntryCore,
   resolveSessionEntryFromStore,
 } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
@@ -70,10 +70,13 @@ export type PostCompactionDelegateDeliveryDeps = {
   loadSessionEntry(params: { storePath: string; sessionKey: string }): SessionEntry | undefined;
   log(message: string): void;
   now(): number;
-  patchSessionEntry: typeof patchSessionEntry;
+  patchSessionEntryCore: typeof patchSessionEntryCore;
   resolveContinuationRuntimeConfig(cfg: OpenClawConfig): ContinuationRuntimeConfig;
   resolveSessionAgentId(params: { sessionKey?: string; config?: OpenClawConfig }): string;
-  resolveStorePath(store?: string, opts?: { agentId?: string; env?: NodeJS.ProcessEnv }): string;
+  resolveSessionStorePathCore(
+    store?: string,
+    opts?: { agentId?: string; env?: NodeJS.ProcessEnv },
+  ): string;
   spawnSubagentDirect: PostCompactionDelegateSpawn;
   revalidatePendingDelegateForSpawn(
     delegate: { flowId?: string; expectedRevision?: number; task: string },
@@ -100,10 +103,10 @@ const defaultPostCompactionDelegateDeliveryDeps: PostCompactionDelegateDeliveryD
   loadSessionEntry,
   log: (message) => defaultRuntime.log(message),
   now: () => Date.now(),
-  patchSessionEntry,
+  patchSessionEntryCore,
   resolveContinuationRuntimeConfig,
   resolveSessionAgentId,
-  resolveStorePath,
+  resolveSessionStorePathCore,
   spawnSubagentDirect,
   revalidatePendingDelegateForSpawn,
   markPendingDelegateSpawnAccepted,
@@ -229,7 +232,7 @@ export async function persistPendingPostCompactionDelegates(params: {
       }).existing
     : undefined;
   const fallbackEntry = localStoredEntry ?? params.sessionEntry;
-  const persistedEntry = await patchSessionEntry(
+  const persistedEntry = await patchSessionEntryCore(
     { storePath: params.storePath, sessionKey: params.sessionKey },
     (current) => ({
       pendingPostCompactionDelegates: [
@@ -277,7 +280,7 @@ export async function takePendingPostCompactionDelegates(params: {
   }
 
   let persisted: SessionPostCompactionDelegate[] = [];
-  await patchSessionEntry(
+  await patchSessionEntryCore(
     { storePath: params.storePath, sessionKey: params.sessionKey },
     (current) => {
       persisted = (current.pendingPostCompactionDelegates ?? []).map(
@@ -348,8 +351,7 @@ function resolveQueuedPostCompactionTraceparent(
  * the source row BEFORE this session-entry patch and returns that same hop on
  * every later call, so a replayed delivery re-persists the identical count rather
  * than advancing depth again. Charging here rather than before the spawn is what
- * keeps a retry that never reached an accepted child at zero continuation budget
- * (karmaterminal/openclaw#1198).
+ * keeps a retry that never reached an accepted child at zero continuation budget.
  */
 async function commitAcceptedPostCompactionChainCharge(params: {
   deps: PostCompactionDelegateDeliveryDeps;
@@ -372,7 +374,7 @@ async function commitAcceptedPostCompactionChainCharge(params: {
   const { chainState } = reserved;
   let persistedEntry: SessionEntry | null;
   try {
-    persistedEntry = await deps.patchSessionEntry(
+    persistedEntry = await deps.patchSessionEntryCore(
       { storePath, sessionKey: entry.sessionKey },
       () => ({
         continuationChainCount: chainState.currentChainCount,
@@ -492,7 +494,7 @@ export async function deliverQueuedPostCompactionDelegate(
     agentId,
     resolveQueuedPostCompactionContinuationFlowId(params.entry),
   );
-  const storePath = deps.resolveStorePath(cfg.session?.store, { agentId });
+  const storePath = deps.resolveSessionStorePathCore(cfg.session?.store, { agentId });
   const artifactMode = params.entry.returnOptions?.artifacts;
   const removeRejectedArtifactPolicy = (): void => {
     if (params.entry.sourceFlowId && (artifactMode === "optional" || artifactMode === "required")) {
@@ -711,7 +713,7 @@ export async function deliverQueuedPostCompactionDelegate(
   // Charge the chain only now that a child is actually accepted. Everything
   // above this line — artifact policy, spawn fence, attachment materialization,
   // spawn rejection — leaves the persisted depth untouched, so a retry after any
-  // of those failures still has its full budget (karmaterminal/openclaw#1198).
+  // of those failures still has its full budget.
   const { expectedRevision: acceptedRevision } = await commitAcceptedPostCompactionChainCharge({
     deps,
     entry: params.entry,

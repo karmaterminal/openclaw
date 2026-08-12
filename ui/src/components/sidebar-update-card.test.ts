@@ -6,16 +6,36 @@ import {
   NATIVE_UPDATE_AVAILABILITY_CHANGED_EVENT,
   NATIVE_UPDATE_DECLINED_EVENT,
 } from "../app/native-link-routing.ts";
+import {
+  installDialogPolyfill,
+  nextFrame,
+  waitForRenderedModalDialog,
+} from "../test-helpers/modal-dialog.ts";
 import { createStorageMock } from "../test-helpers/storage.ts";
 import "./sidebar-update-card.ts";
 
 const DISMISS_KEY = "openclaw:control-ui:update-banner-dismissed:v1";
 
+/** Resolve the update confirmation the card opens, then let its dispatch settle. */
+async function resolveUpdateConfirmation(
+  label: "Cancel" | "Update and restart" | "Update Mac app and restart",
+) {
+  const { modal } = await waitForRenderedModalDialog(document.body);
+  const button = [...modal.querySelectorAll("button")].find(
+    (candidate) => candidate.textContent?.trim() === label,
+  );
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Expected ${label} button in the update confirmation`);
+  }
+  button.click();
+  await nextFrame();
+}
+
 type SidebarUpdateCardElement = HTMLElement & {
   updateAvailable: UpdateAvailable | null;
   updateSchedule: UpdateScheduleState | null;
   heldUpdateCampaignId: string | null;
-  updateRunning: boolean;
+  updateBusy: boolean;
   canUpdate: boolean;
   canHoldUpdate: boolean;
   onUpdate: () => void;
@@ -27,6 +47,7 @@ type SidebarUpdateCardElement = HTMLElement & {
 
 let originalWebkit: PropertyDescriptor | undefined;
 let originalLocalStorage: PropertyDescriptor | undefined;
+let restoreDialogPolyfill: () => void;
 
 async function mount(
   update: UpdateAvailable | null,
@@ -47,6 +68,7 @@ async function mount(
 }
 
 beforeEach(() => {
+  restoreDialogPolyfill = installDialogPolyfill();
   originalWebkit = Object.getOwnPropertyDescriptor(window, "webkit");
   originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   Object.defineProperty(globalThis, "localStorage", {
@@ -58,6 +80,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   document.body.replaceChildren();
+  restoreDialogPolyfill();
   if (originalLocalStorage) {
     Object.defineProperty(globalThis, "localStorage", originalLocalStorage);
   } else {
@@ -122,7 +145,7 @@ describe("SidebarUpdateCard", () => {
     expect(element.querySelector(".sidebar-update-card__dismiss")).toBeNull();
   });
 
-  it("labels a direct Gateway update and invokes its action", async () => {
+  it("labels a direct Gateway update and confirms before invoking its action", async () => {
     const element = await mount({
       currentVersion: "1.0.0",
       latestVersion: "2.0.0",
@@ -140,8 +163,26 @@ describe("SidebarUpdateCard", () => {
     expect(element.querySelector(".sidebar-update-card__subtitle")).toBeNull();
     expect(element.querySelector(".sidebar-update-card__arrow")).toBeNull();
     action?.click();
+    await nextFrame();
 
+    expect(onUpdate).not.toHaveBeenCalled();
+    await resolveUpdateConfirmation("Update and restart");
     expect(onUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the Gateway untouched when the operator cancels the confirmation", async () => {
+    const element = await mount({
+      currentVersion: "1.0.0",
+      latestVersion: "2.0.0",
+      channel: "stable",
+    });
+    const onUpdate = vi.fn();
+    element.onUpdate = onUpdate;
+
+    element.querySelector<HTMLButtonElement>(".sidebar-update-card__action")?.click();
+    await resolveUpdateConfirmation("Cancel");
+
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 
   it.each(["2026.7.2", "2026.7.2-beta.5"])(
@@ -198,8 +239,11 @@ describe("SidebarUpdateCard", () => {
     expect(action?.textContent).toContain("Update Mac app + Gateway");
     expect(action?.textContent).toContain("v2.0.0");
     action?.click();
+    await nextFrame();
 
-    expect(postMessage).toHaveBeenCalledWith({ type: "start-update" });
+    expect(postMessage).not.toHaveBeenCalled();
+    await resolveUpdateConfirmation("Update Mac app and restart");
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "start-update" });
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
@@ -241,8 +285,9 @@ describe("SidebarUpdateCard", () => {
       value: { messageHandlers: { openclawUpdate: { postMessage } } },
     });
     element.querySelector<HTMLButtonElement>(".sidebar-update-card__action")?.click();
+    await resolveUpdateConfirmation("Update Mac app and restart");
 
-    expect(postMessage).toHaveBeenCalledWith({ type: "start-update" });
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "start-update" });
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
@@ -258,11 +303,11 @@ describe("SidebarUpdateCard", () => {
     window.dispatchEvent(new CustomEvent(NATIVE_UPDATE_DECLINED_EVENT));
     expect(onUpdate).toHaveBeenCalledOnce();
 
-    element.updateRunning = true;
+    element.updateBusy = true;
     window.dispatchEvent(new CustomEvent(NATIVE_UPDATE_DECLINED_EVENT));
     expect(onUpdate).toHaveBeenCalledOnce();
 
-    element.updateRunning = false;
+    element.updateBusy = false;
     element.updateAvailable = null;
     window.dispatchEvent(new CustomEvent(NATIVE_UPDATE_DECLINED_EVENT));
     expect(onUpdate).toHaveBeenCalledOnce();
@@ -291,6 +336,7 @@ describe("SidebarUpdateCard", () => {
     expect(element.textContent).toContain("Update Gateway");
 
     element.querySelector<HTMLButtonElement>(".sidebar-update-card__action")?.click();
+    await resolveUpdateConfirmation("Update and restart");
     expect(onUpdate).toHaveBeenCalledTimes(2);
     expect(postMessage).not.toHaveBeenCalled();
 
@@ -298,7 +344,8 @@ describe("SidebarUpdateCard", () => {
     await element.updateComplete;
     expect(element.textContent).toContain("Update Mac app + Gateway");
     element.querySelector<HTMLButtonElement>(".sidebar-update-card__action")?.click();
-    expect(postMessage).toHaveBeenCalledWith({ type: "start-update" });
+    await resolveUpdateConfirmation("Update Mac app and restart");
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "start-update" });
     expect(onUpdate).toHaveBeenCalledTimes(2);
   });
 
@@ -324,22 +371,42 @@ describe("SidebarUpdateCard", () => {
 
     expect(element.textContent).toContain("Update Gateway");
     element.querySelector<HTMLButtonElement>(".sidebar-update-card__action")?.click();
+    await resolveUpdateConfirmation("Update and restart");
     expect(onUpdate).toHaveBeenCalledTimes(2);
     expect(postMessage).not.toHaveBeenCalled();
   });
 
-  it("disables the action while updating", async () => {
-    const element = await mount({
-      currentVersion: "1.0.0",
-      latestVersion: "2.0.0",
-      channel: "stable",
-    });
-    element.updateRunning = true;
-    await element.updateComplete;
+  it("narrates the whole update, including after the Gateway drops its metadata", async () => {
+    const element = await mount(
+      { currentVersion: "1.0.0", latestVersion: "1.0.0", channel: "dev", commitsBehind: 246 },
+      {
+        channel: "dev",
+        autoEnabled: false,
+        target: {
+          kind: "git",
+          upstreamRef: "origin/main",
+          upstreamSha: "abc1234def",
+          commitsBehind: 246,
+        },
+      },
+    );
+    expect(element.textContent).toContain("246 commits behind");
 
+    element.updateBusy = true;
+    await element.updateComplete;
     const action = element.querySelector<HTMLButtonElement>(".sidebar-update-card__action");
     expect(action?.disabled).toBe(true);
-    expect(action?.textContent).toContain("Updating…");
+    expect(action?.textContent).toContain("Updating Gateway…");
+    // The stale call to action must not survive into the install.
+    expect(element.textContent).not.toContain("246 commits behind");
+    expect(element.querySelector(".sidebar-update-card__dismiss")).toBeNull();
+
+    // The restarting Gateway takes its update metadata with it; the card is the
+    // operator's only remaining sign that an install is still running.
+    element.updateAvailable = null;
+    element.updateSchedule = null;
+    await element.updateComplete;
+    expect(element.textContent).toContain("Updating Gateway…");
   });
 
   it("renders a quiet live countdown, hides dismissal, and stops ticking on disconnect", async () => {
@@ -377,10 +444,10 @@ describe("SidebarUpdateCard", () => {
       "Hold 1 h",
     );
 
-    element.updateRunning = true;
+    element.updateBusy = true;
     await element.updateComplete;
     expect(element.querySelector(".sidebar-update-card__hold")).toBeNull();
-    element.updateRunning = false;
+    element.updateBusy = false;
     await element.updateComplete;
     expect(element.querySelector(".sidebar-update-card__hold")).not.toBeNull();
 

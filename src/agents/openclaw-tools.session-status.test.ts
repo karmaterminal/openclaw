@@ -4,7 +4,7 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { Value } from "typebox/value";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mergeSessionEntry } from "../config/sessions/session-entry-runtime.js";
-import { resolveSessionStoreEntry } from "../config/sessions/store-entry.js";
+import { resolveSessionStoreEntryCore } from "../config/sessions/store-entry.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import {
   clearInternalHooks,
@@ -22,6 +22,7 @@ import { compactToolOutputHint } from "./tool-schema-hints.js";
 const loadSessionStoreMock = vi.fn();
 const updateSessionStoreMock = vi.fn();
 const callGatewayMock = vi.fn();
+const agentToolGatewayCallMock = vi.fn();
 const buildStatusMessageMock = vi.hoisted(() =>
   vi.fn((_params?: unknown) => "OpenClaw\n🧠 Model: GPT-5.4"),
 );
@@ -129,7 +130,7 @@ function createSessionsModuleMock() {
       const storePath =
         scope.storePath ?? resolveMockStorePath(undefined, { agentId: scope.agentId });
       const store = loadSessionStoreMock(storePath) as Record<string, SessionEntry>;
-      const resolved = resolveSessionStoreEntry({ store, sessionKey: scope.sessionKey });
+      const resolved = resolveSessionStoreEntryCore({ store, sessionKey: scope.sessionKey });
       const existing = resolved.existing ?? options?.fallbackEntry;
       if (!existing) {
         return null;
@@ -160,7 +161,7 @@ function createSessionsModuleMock() {
         if (!candidateKey) {
           continue;
         }
-        const resolved = resolveSessionStoreEntry({ store, sessionKey: candidateKey });
+        const resolved = resolveSessionStoreEntryCore({ store, sessionKey: candidateKey });
         if (!resolved.existing) {
           continue;
         }
@@ -183,13 +184,19 @@ function createSessionsModuleMock() {
           }
         : null;
     },
-    resolveStorePath: resolveMockStorePath,
+    resolveSessionStorePathCore: resolveMockStorePath,
   };
 }
 
 function createGatewayCallModuleMock() {
   return {
     callGateway: (opts: unknown) => callGatewayMock(opts),
+  };
+}
+
+function createInProcessGatewayModuleMock() {
+  return {
+    callAgentToolGatewayRequest: (opts: unknown) => agentToolGatewayCallMock(opts),
   };
 }
 
@@ -316,6 +323,7 @@ function createCommandsStatusRuntimeModuleMock() {
 
 vi.mock("../config/sessions.js", createSessionsModuleMock);
 vi.mock("../gateway/call.js", createGatewayCallModuleMock);
+vi.mock("./tools/in-process-gateway.js", createInProcessGatewayModuleMock);
 vi.mock("../config/config.js", createConfigModuleMock);
 vi.mock("../agents/prepared-model-catalog.js", createModelCatalogModuleMock);
 vi.mock("../agents/provider-model-normalization.runtime.js", () => ({
@@ -332,14 +340,14 @@ vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
 vi.mock("../plugins/provider-thinking.js", () => ({
   resolveProviderBinaryThinking: () => undefined,
   resolveProviderDefaultThinkingLevel: () => undefined,
-  resolveProviderThinkingProfile: () => undefined,
+  resolveEffectiveThinkingProfile: () => undefined,
   resolveProviderXHighThinking: () => undefined,
 }));
 // Keep provider-runtime/plugin activation out of this focused tool test. The
 // session_status surface only needs model selection semantics here, not real
 // bundled provider registration.
 vi.mock("../plugins/providers.runtime.js", () => ({
-  resolvePluginProviders: () => [],
+  resolvePluginProvidersCore: () => [],
 }));
 vi.mock("../agents/auth-profiles.js", createAuthProfilesModuleMock);
 vi.mock("../agents/model-auth.js", createModelAuthModuleMock);
@@ -414,6 +422,8 @@ function resetSessionStore(inputStore: Record<string, SessionEntry>) {
   loadSessionStoreMock.mockClear();
   updateSessionStoreMock.mockClear();
   callGatewayMock.mockClear();
+  agentToolGatewayCallMock.mockReset();
+  agentToolGatewayCallMock.mockImplementation((opts: unknown) => callGatewayMock(opts));
   listTasksForRelatedSessionKeyForOwnerMock.mockClear();
   listTasksForRelatedSessionKeyForOwnerMock.mockReturnValue([]);
   getSessionStateVersionMock.mockReset();

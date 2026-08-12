@@ -2,7 +2,7 @@
 // wake delivery, and direct media fallback behavior.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  runWithOwnedSessionTranscriptWriteLock,
+  runWithOwnedSessionTranscriptWrite,
   withOwnedSessionTranscriptWrites,
 } from "../../config/sessions/transcript-write-context.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
@@ -47,7 +47,7 @@ const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
 };
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
-vi.mock("../subagent-announce-delivery.js", () => subagentAnnounceDeliveryMocks);
+vi.mock("../subagents/announce/subagent-announce-delivery.js", () => subagentAnnounceDeliveryMocks);
 vi.mock("../../config/sessions/session-accessor.js", async () => ({
   ...(await vi.importActual<typeof import("../../config/sessions/session-accessor.js")>(
     "../../config/sessions/session-accessor.js",
@@ -139,9 +139,9 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       releaseBackground = resolve;
     });
     let scheduled: Promise<void> | undefined;
-    const staleWriteLock = vi.fn();
-    const withStaleWriteLock = async <T>(operation: () => Promise<T> | T): Promise<T> => {
-      staleWriteLock();
+    const requesterTranscriptWrite = vi.fn();
+    const withRequesterTranscriptWrite = async <T>(operation: () => Promise<T> | T): Promise<T> => {
+      requesterTranscriptWrite();
       if (disposed) {
         throw new Error("attempt disposed before transcript write");
       }
@@ -149,7 +149,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
     };
     const freshTranscriptWrite = vi.fn(async () => {});
     const wakeTaskCompletion = vi.fn(async () => {
-      await runWithOwnedSessionTranscriptWriteLock({ sessionKey }, freshTranscriptWrite);
+      await runWithOwnedSessionTranscriptWrite({ sessionKey }, freshTranscriptWrite);
       return { status: "delivered" as const };
     });
     const completeTaskRun = vi.fn();
@@ -169,7 +169,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
     }));
 
     await withOwnedSessionTranscriptWrites(
-      { sessionKey, assertOwned: () => undefined, withSessionWriteLock: withStaleWriteLock },
+      { sessionKey, withTranscriptWrite: withRequesterTranscriptWrite },
       async () => {
         scheduleMediaGenerationTaskCompletion({
           lifecycle,
@@ -198,7 +198,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
     }
     await scheduled;
 
-    expect(staleWriteLock).not.toHaveBeenCalled();
+    expect(requesterTranscriptWrite).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalledOnce();
     expect(freshTranscriptWrite).toHaveBeenCalledOnce();
     expect(wakeTaskCompletion).toHaveBeenCalledOnce();

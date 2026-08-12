@@ -5,7 +5,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { loadPendingSessionDeliveries } from "../infra/session-delivery-queue-storage.js";
 import type { QueuedSessionDelivery } from "../infra/session-delivery-queue-storage.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
-import { withTempDir } from "../test-helpers/temp-dir.js";
+import { withTestDir } from "../test-helpers/temp-dir.js";
 
 const runtimeLogMock = vi.hoisted(() => vi.fn());
 const runtimeErrorMock = vi.hoisted(() => vi.fn());
@@ -47,7 +47,7 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../config/sessions/session-accessor.js")>();
   return {
     ...actual,
-    listSessionEntries: () =>
+    listSessionEntriesCore: () =>
       allSessionKeysMock().map((sessionKey: string) => ({ sessionKey, entry: {} })),
   };
 });
@@ -58,14 +58,14 @@ vi.mock("../config/sessions/targets.js", () => ({
   ],
 }));
 
-vi.mock("./subagent-announce.runtime.js", () => ({
+vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
   callGateway: vi.fn(async () => ({})),
   dispatchGatewayMethodInProcess: vi.fn(async () => ({})),
   getRuntimeConfig: () => mockConfig,
   isEmbeddedAgentRunActive: () => false,
   loadSessionStore: () => ({}),
   readSessionMessagesAsync: vi.fn(async () => []),
-  readSessionEntry: () => undefined,
+  readSubagentSessionEntry: () => undefined,
   resolveAgentIdFromSessionKey: (sessionKey: string) =>
     sessionKey.match(/^agent:([^:]+)/)?.[1] ?? "main",
   resolveContinuationRuntimeConfig: (_cfg?: unknown) => ({
@@ -79,11 +79,11 @@ vi.mock("./subagent-announce.runtime.js", () => ({
     contextPressureThreshold: undefined,
     crossSessionTargeting: mockCrossSessionTargeting,
   }),
-  resolveStorePath: () => "/tmp/sessions.json",
+  resolveSessionStorePathCore: () => "/tmp/sessions.json",
   waitForEmbeddedAgentRunEnd: vi.fn(async () => true),
 }));
 
-vi.mock("./subagent-announce-delivery.js", () => ({
+vi.mock("./subagents/announce/subagent-announce-delivery.js", () => ({
   deliverSubagentAnnouncement: async () => ({ delivered: true, path: "direct" }),
   loadRequesterSessionEntry: (sessionKey: string) => ({
     entry: {
@@ -105,13 +105,14 @@ vi.mock("./subagent-announce-delivery.js", () => ({
   runAnnounceDeliveryWithRetry: async <T>(params: { run: () => Promise<T> }) => await params.run(),
 }));
 
-vi.mock("./subagent-registry-runtime.js", () => registryRuntimeMock);
+vi.mock("./subagents/registry/subagent-registry-read.js", () => registryRuntimeMock);
+vi.mock("./subagents/registry/subagent-registry-runtime.js", () => registryRuntimeMock);
 
-vi.mock("./subagent-depth.js", () => ({
+vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => requesterDepthMock(),
 }));
 
-const { runSubagentAnnounceFlow } = await import("./subagent-announce.js");
+const { runSubagentAnnounceFlow } = await import("./subagents/announce/subagent-announce.js");
 
 async function readQueuedSystemEventDeliveries(stateDir: string): Promise<QueuedSessionDelivery[]> {
   return loadPendingSessionDeliveries(stateDir);
@@ -146,7 +147,7 @@ describe("subagent announce targeted continuation return integration", () => {
   });
 
   it("writes queue file, logs targeted-return, and drains the recipient System context", async () => {
-    await withTempDir({ prefix: "openclaw-targeted-return-runtime-" }, async (stateDir) => {
+    await withTestDir({ prefix: "openclaw-targeted-return-runtime-" }, async (stateDir) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       const nonce = "TARGETED-RUNTIME-PATH-NONCE-580";
       const targetSessionKey = "agent:main:recipient-runtime";
@@ -170,7 +171,7 @@ describe("subagent announce targeted continuation return integration", () => {
       });
 
       expect(runtimeErrorMock.mock.calls).toEqual([]);
-      expect(didAnnounce).toBe(true);
+      expect(didAnnounce).toBe("delivered");
 
       const queuedDeliveries = await loadPendingSessionDeliveries(stateDir);
       expect(queuedDeliveries).toHaveLength(1);
@@ -208,7 +209,7 @@ describe("subagent announce targeted continuation return integration", () => {
   });
 
   it("routes an explicit return past an inactive cleaned internal requester", async () => {
-    await withTempDir(
+    await withTestDir(
       { prefix: "openclaw-targeted-return-inactive-explicit-" },
       async (stateDir) => {
         vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
@@ -240,7 +241,7 @@ describe("subagent announce targeted continuation return integration", () => {
           continuationTargetSessionKey: targetSessionKey,
         });
 
-        expect(didAnnounce).toBe(true);
+        expect(didAnnounce).toBe("delivered");
         const queued = await loadPendingSessionDeliveries(stateDir);
         expect(queued).toHaveLength(1);
         expect(queued.at(0)).toEqual(expect.objectContaining({ sessionKey: targetSessionKey }));
@@ -251,7 +252,7 @@ describe("subagent announce targeted continuation return integration", () => {
   });
 
   it("delivers fanoutMode=tree returns after its inactive intermediate requester was cleaned up", async () => {
-    await withTempDir({ prefix: "openclaw-targeted-return-tree-" }, async (stateDir) => {
+    await withTestDir({ prefix: "openclaw-targeted-return-tree-" }, async (stateDir) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       const nonce = "TREE-TARGETED-RETURN-NONCE-641";
       const requesterSessionKey = "agent:main:subagent:dispatcher-tree";
@@ -284,7 +285,7 @@ describe("subagent announce targeted continuation return integration", () => {
       });
 
       expect(runtimeErrorMock.mock.calls).toEqual([]);
-      expect(didAnnounce).toBe(true);
+      expect(didAnnounce).toBe("delivered");
       expect(registryRuntimeMock.shouldIgnorePostCompletionAnnounceForSession).toHaveBeenCalledWith(
         requesterSessionKey,
       );
@@ -324,7 +325,7 @@ describe("subagent announce targeted continuation return integration", () => {
   });
 
   it("does not reopen a cleaned explicit return target", async () => {
-    await withTempDir(
+    await withTestDir(
       { prefix: "openclaw-targeted-return-explicit-cleaned-" },
       async (stateDir) => {
         vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
@@ -352,7 +353,7 @@ describe("subagent announce targeted continuation return integration", () => {
           continuationTargetSessionKey: requesterSessionKey,
         });
 
-        expect(didAnnounce).toBe(true);
+        expect(didAnnounce).toBe("delivered");
         expect(await readQueuedSystemEventDeliveries(stateDir)).toHaveLength(0);
         expect(peekSystemEventEntries(requesterSessionKey)).toHaveLength(0);
         expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
@@ -361,7 +362,7 @@ describe("subagent announce targeted continuation return integration", () => {
   });
 
   it("does not reopen cleaned recipients from an all-fanout return", async () => {
-    await withTempDir({ prefix: "openclaw-targeted-return-all-cleaned-" }, async (stateDir) => {
+    await withTestDir({ prefix: "openclaw-targeted-return-all-cleaned-" }, async (stateDir) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       const requesterSessionKey = "agent:main:subagent:all-cleaned";
       const liveSessionKey = "agent:main:root:all-live";
@@ -392,7 +393,7 @@ describe("subagent announce targeted continuation return integration", () => {
         continuationFanoutMode: "all",
       });
 
-      expect(didAnnounce).toBe(true);
+      expect(didAnnounce).toBe("delivered");
       expect(
         (await readQueuedSystemEventDeliveries(stateDir)).map((entry) => entry.sessionKey),
       ).toEqual([liveSessionKey]);
@@ -406,7 +407,7 @@ describe("subagent announce targeted continuation return integration", () => {
   });
 
   it("does not reopen a cleaned requester on the default silent-return path", async () => {
-    await withTempDir({ prefix: "openclaw-targeted-return-default-cleaned-" }, async (stateDir) => {
+    await withTestDir({ prefix: "openclaw-targeted-return-default-cleaned-" }, async (stateDir) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       const requesterSessionKey = "agent:main:subagent:default-cleaned";
       // The untargeted path must still take the inactive internal-requester
@@ -433,7 +434,7 @@ describe("subagent announce targeted continuation return integration", () => {
         wakeOnReturn: true,
       });
 
-      expect(didAnnounce).toBe(true);
+      expect(didAnnounce).toBe("delivered");
       expect(await readQueuedSystemEventDeliveries(stateDir)).toEqual([]);
       expect(peekSystemEventEntries(requesterSessionKey)).toEqual([]);
       expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
@@ -441,7 +442,7 @@ describe("subagent announce targeted continuation return integration", () => {
   });
 
   it("does not fall back to a cleaned requester when every tree recipient is filtered", async () => {
-    await withTempDir({ prefix: "openclaw-targeted-return-empty-tree-" }, async (stateDir) => {
+    await withTestDir({ prefix: "openclaw-targeted-return-empty-tree-" }, async (stateDir) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       const requesterSessionKey = "agent:main:subagent:cleaned-tree";
       registryRuntimeMock.listAncestorSessionKeys.mockReturnValueOnce([requesterSessionKey]);
@@ -465,7 +466,7 @@ describe("subagent announce targeted continuation return integration", () => {
         continuationFanoutMode: "tree",
       });
 
-      expect(didAnnounce).toBe(true);
+      expect(didAnnounce).toBe("delivered");
       expect(await readQueuedSystemEventDeliveries(stateDir)).toEqual([]);
       expect(peekSystemEventEntries(requesterSessionKey)).toEqual([]);
       expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
@@ -476,7 +477,7 @@ describe("subagent announce targeted continuation return integration", () => {
   });
 
   it("delivers post-compaction fanoutMode=tree returns like normal tree returns", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-tree-return-" }, async (stateDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-tree-return-" }, async (stateDir) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       const nonce = "POST-COMPACTION-TREE-RETURN-NONCE-642";
       const requesterSessionKey = "agent:main:post-compacted";
@@ -507,7 +508,7 @@ describe("subagent announce targeted continuation return integration", () => {
       });
 
       expect(runtimeErrorMock.mock.calls).toEqual([]);
-      expect(didAnnounce).toBe(true);
+      expect(didAnnounce).toBe("delivered");
 
       const persisted = await readQueuedSystemEventDeliveries(stateDir);
       expect(persisted).toHaveLength(2);

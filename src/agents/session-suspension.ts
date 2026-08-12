@@ -6,7 +6,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveAgentMaxConcurrent, resolveSubagentMaxConcurrent } from "../config/agent-limits.js";
 import { resolveCronMaxConcurrentRuns } from "../config/cron-limits.js";
-import { patchSessionEntry } from "../config/sessions/session-accessor.js";
+import { patchSessionEntryCore } from "../config/sessions/session-accessor.js";
 import type { QuotaSuspension } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -19,7 +19,7 @@ import {
 } from "../shared/number-coercion.js";
 import { resolveRegisteredAgentIdForDir } from "./agent-dir-registry.js";
 import { resolveStoredSessionKeyForSessionId } from "./command/session.js";
-import type { FailoverReason } from "./embedded-agent-helpers/types.js";
+import type { FailoverReason } from "./failover/signal.js";
 
 const log = createSubsystemLogger("session-suspension");
 
@@ -374,7 +374,7 @@ async function suspendSessionQueued(params: SessionSuspensionParams, queuedGener
   let persistedSuspension: boolean;
 
   try {
-    const patchedEntry = await patchSessionEntry(
+    const patchedEntry = await patchSessionEntryCore(
       { storePath, sessionKey },
       (entry) => {
         if (getSessionSuspensionState().cleanupGeneration !== suspensionGeneration) {
@@ -423,7 +423,7 @@ async function suspendSessionQueued(params: SessionSuspensionParams, queuedGener
     (postPatchState.cleanupActive || suspensionGeneration !== postPatchState.cleanupGeneration)
   ) {
     try {
-      await patchSessionEntry(
+      await patchSessionEntryCore(
         { storePath, sessionKey },
         (entry) =>
           entry.quotaSuspension?.suspendedAt === now &&

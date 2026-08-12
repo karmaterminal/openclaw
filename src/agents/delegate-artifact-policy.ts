@@ -3,7 +3,7 @@ import type {
   ContinuationRuntimeConfig,
   PendingContinuationDelegate,
 } from "../auto-reply/continuation/types.js";
-import { resolveAgentIdFromSessionKey, resolveStorePath } from "../config/sessions.js";
+import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../config/sessions.js";
 import {
   listSessionEntriesReadOnly,
   loadSessionEntry,
@@ -16,9 +16,11 @@ import {
   type DelegateArtifactRecipientV1,
   type DelegateArtifactRouteV1,
 } from "./delegate-artifacts.js";
-import { deriveContinuationDelegateChildRunId } from "./subagent-continuation-ids.js";
-import { deriveContinuationDelegateChildSessionKeyFromParent } from "./subagent-continuation-ids.js";
-import { listAncestorSessionKeys } from "./subagent-registry-announce-read.js";
+import {
+  deriveContinuationDelegateChildRunId,
+  deriveContinuationDelegateChildSessionKeyFromParent,
+} from "./subagent-continuation-ids.js";
+import { listAncestorSessionKeys } from "./subagents/registry/subagent-registry-read.js";
 
 export function formatDelegateArtifactTaskInstruction(
   delegate: Pick<PendingContinuationDelegate, "returnOptions">,
@@ -41,7 +43,7 @@ export function formatDelegateArtifactTaskInstruction(
 
 function loadSessionId(cfg: OpenClawConfig, sessionKey: string): string | undefined {
   const agentId = resolveAgentIdFromSessionKey(sessionKey);
-  const storePath = resolveStorePath(cfg.session?.store, { agentId });
+  const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
   return loadSessionEntry({
     agentId,
     sessionKey,

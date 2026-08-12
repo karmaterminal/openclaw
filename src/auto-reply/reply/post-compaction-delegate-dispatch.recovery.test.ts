@@ -1,3 +1,17 @@
+/**
+ * Scenario: post-compaction delegate recovery + one-way ownership.
+ *
+ * Covers:
+ * - recovery of accepted/replayed chain hops and source-less entries
+ * - batch dispatch vs single-entry delivery ownership stays one-way
+ * - restart-sentinel delivery may call the delivery owner, never dispatch
+ *
+ * Stubs: `subagents/registry/subagent-registry-read` for accepted-child
+ * lookup only. Ownership assertions are source inspection: delivery lives in
+ * `post-compaction-delegate-delivery.ts`; gateway restart sentinel imports that
+ * leaf via `../auto-reply/reply/post-compaction-delegate-delivery.js` and must
+ * not import the dispatch module.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -11,7 +25,7 @@ import {
   enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
-import { withTempDir } from "../../test-helpers/temp-dir.js";
+import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
   deliverQueuedPostCompactionDelegate,
@@ -33,7 +47,8 @@ const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
 }));
 
-vi.mock("../../agents/subagent-registry-read.js", () => ({
+vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getSubagentRunByChildSessionKey: (childSessionKey: string) =>
     mockRegistryState.acceptedChildSessionKeys.has(childSessionKey)
       ? { runId: `run:${childSessionKey}`, childSessionKey }
@@ -234,13 +249,13 @@ function createDeliveryDeps(params: {
     ),
     log,
     now: vi.fn(() => DELIVERY_NOW_MS),
-    patchSessionEntry: sessionAccessorModule.patchSessionEntry,
+    patchSessionEntryCore: sessionAccessorModule.patchSessionEntryCore,
     resolveContinuationRuntimeConfig: vi.fn(() => ({
       ...defaultRuntimeConfig,
       ...params.runtimeConfig,
     })),
     resolveSessionAgentId: vi.fn(() => "main"),
-    resolveStorePath: vi.fn(() => params.storePath),
+    resolveSessionStorePathCore: vi.fn(() => params.storePath),
     spawnSubagentDirect,
     revalidatePendingDelegateForSpawn: vi.fn(() => ({ allowed: true }) as const),
     markPendingDelegateSpawnAccepted,
@@ -269,12 +284,12 @@ async function seedSessionStore(
 ): Promise<void> {
   await Promise.all(
     Object.entries(store).map(async ([sessionKey, entry]) => {
-      await sessionAccessorModule.upsertSessionEntry({ storePath, sessionKey }, entry);
+      await sessionAccessorModule.upsertSessionEntryCore({ storePath, sessionKey }, entry);
     }),
   );
 }
 
-// upsertSessionEntry canonicalizes a bare seed key ("main" -> "agent:main:main"),
+// upsertSessionEntryCore canonicalizes a bare seed key ("main" -> "agent:main:main"),
 // so read entries back through the same accessor production writes with instead
 // of indexing the raw key on a listing.
 function readSessionEntry(storePath: string, sessionKey = "main"): SessionEntry | undefined {
@@ -302,7 +317,7 @@ void splitLintUse;
 
 describe("post-compaction delegate dispatch extraction", () => {
   it("allows queued self-targeting delivery when cross-session targeting is disabled", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: 1 } });
       const { deps, spawnSubagentDirect } = createDeliveryDeps({
@@ -323,7 +338,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("allows queued fanoutMode=tree post-compaction delivery when cross-session targeting is disabled", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: 1 } });
       const { deps, spawnSubagentDirect } = createDeliveryDeps({
@@ -378,7 +393,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("records retry metadata only for the selected session during a mixed-session drain", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-drain-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-drain-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: { sessionId: "main-session", updatedAt: 1 },
@@ -433,8 +448,8 @@ describe("post-compaction delegate dispatch extraction", () => {
     });
   });
 
-  it("does not re-spawn an accepted child when the post-acceptance chain persist fails (karmaterminal/openclaw#1198)", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-persist-fail-" }, async (tempDir) => {
+  it("does not re-spawn an accepted child when the post-acceptance chain persist fails", async () => {
+    await withTestDir({ prefix: "openclaw-post-compaction-persist-fail-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: 1 } });
       const { deps, log, markPendingDelegateSpawnAccepted, spawnSubagentDirect } =
@@ -447,9 +462,9 @@ describe("post-compaction delegate dispatch extraction", () => {
       // The chain is charged only after the child is accepted, so a persist
       // failure now happens with a live child. The delivery must reject (entry
       // stays pending) without committing acceptance.
-      const persist = vi.fn<typeof sessionAccessorModule.patchSessionEntry>();
+      const persist = vi.fn<typeof sessionAccessorModule.patchSessionEntryCore>();
       persist.mockRejectedValueOnce(new Error("persist failed"));
-      deps.patchSessionEntry = persist;
+      deps.patchSessionEntryCore = persist;
       await expect(deliverQueuedPostCompactionDelegate({ entry }, deps)).rejects.toBeDefined();
       expect(persist).toHaveBeenCalledWith(
         { storePath, sessionKey: "main" },
@@ -468,7 +483,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       mockRegistryState.acceptedChildSessionKeys.add(
         deriveTestContinuationChildSessionKey("main", "pc-flow-source"),
       );
-      deps.patchSessionEntry = sessionAccessorModule.patchSessionEntry;
+      deps.patchSessionEntryCore = sessionAccessorModule.patchSessionEntryCore;
       await deliverQueuedPostCompactionDelegate({ entry }, deps);
       expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
       expect(markPendingDelegateSpawnAccepted).toHaveBeenCalledTimes(1);
@@ -521,7 +536,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     const { deps } = createDispatchDeps({ staged, rejectEnqueueAt: 0 });
 
     const persistSpy = vi
-      .spyOn(sessionAccessorModule, "patchSessionEntry")
+      .spyOn(sessionAccessorModule, "patchSessionEntryCore")
       .mockRejectedValue(new Error("store write failed"));
     try {
       await dispatchPostCompactionDelegates(
@@ -633,12 +648,12 @@ describe("post-compaction delegate dispatch extraction", () => {
 
     expect(dispatchSource).toContain('from "./post-compaction-delegate-delivery.js"');
     expect(deliverySource).not.toContain("post-compaction-delegate-dispatch");
+    // Restart sentinel lives under gateway/, so its delivery import is absolute
+    // to the auto-reply reply leaf — not a same-directory `./` specifier.
     expect(restartDeliverySource).toContain(
       'from "../auto-reply/reply/post-compaction-delegate-delivery.js"',
     );
-    expect(restartDeliverySource).not.toContain(
-      'from "../auto-reply/reply/post-compaction-delegate-dispatch.js"',
-    );
+    expect(restartDeliverySource).not.toContain("post-compaction-delegate-dispatch");
     expect(
       combinedSource.match(/export async function deliverQueuedPostCompactionDelegate/g),
     ).toHaveLength(1);

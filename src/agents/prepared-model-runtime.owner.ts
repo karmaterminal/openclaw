@@ -20,6 +20,7 @@ import { resolveDefaultModelForAgent } from "./model-selection-config.js";
 import {
   startSerializedSnapshotBuild,
   startSerializedSnapshotBuildBatch,
+  type PreparedModelRuntimeBuildResult,
 } from "./prepared-model-runtime.build.js";
 import {
   PreparedModelRuntimeOwnerNotPublishedError,
@@ -317,10 +318,6 @@ export function hasSameLifecycleInput(
   );
 }
 
-export function toError(error: unknown): Error {
-  return toPreparedModelRuntimeError(error);
-}
-
 export function createPreparedModelRuntimeReplacement(): PreparedModelRuntimeReplacement {
   let resolve!: () => void;
   let reject!: (error: Error) => void;
@@ -394,6 +391,7 @@ export async function publishPreparedModelRuntimeOwnerBatch(params: {
   isBuildCurrent?: () => boolean;
   onBuildStats?: (stats: PreparedModelRuntimeBuildStats) => void;
   registerEntriesAfterBuildStart?: boolean;
+  reusePluginGenerations?: boolean;
 }): Promise<void> {
   const candidates = params.entries.map(({ owner, input }) => {
     owner.input = input;
@@ -433,12 +431,12 @@ export async function publishPreparedModelRuntimeOwnerBatch(params: {
       groups.set(candidate.catalogMode, [candidate]);
     }
   }
-  const snapshots = new Map<PreparedModelRuntimeOwner, PreparedModelRuntimeSnapshot>();
+  const results = new Map<PreparedModelRuntimeOwner, PreparedModelRuntimeBuildResult>();
   const publication = (async () => {
     try {
       while (true) {
         const attempt = candidates.filter(
-          (candidate) => candidate.isEligible() && !snapshots.has(candidate.owner),
+          (candidate) => candidate.isEligible() && !results.has(candidate.owner),
         );
         if (attempt.length === 0) {
           break;
@@ -448,7 +446,7 @@ export async function publishPreparedModelRuntimeOwnerBatch(params: {
           // so one mutation cannot reintroduce broad plugin/catalog fanout on constrained hosts.
           for (const [catalogMode, group] of groups) {
             const currentGroup = group.filter(
-              (candidate) => candidate.isEligible() && !snapshots.has(candidate.owner),
+              (candidate) => candidate.isEligible() && !results.has(candidate.owner),
             );
             if (currentGroup.length === 0) {
               continue;
@@ -466,6 +464,15 @@ export async function publishPreparedModelRuntimeOwnerBatch(params: {
                   .filter((candidate) => candidate.owner.provenance === "configured")
                   .map((candidate) => candidate.input),
               ),
+              params.reusePluginGenerations
+                ? new Map(
+                    currentGroup.flatMap((candidate) =>
+                      candidate.owner.pluginGeneration
+                        ? [[candidate.input, candidate.owner.pluginGeneration] as const]
+                        : [],
+                    ),
+                  )
+                : undefined,
             );
             for (const candidate of currentGroup) {
               if (params.registerEntriesAfterBuildStart === true) {
@@ -483,12 +490,12 @@ export async function publishPreparedModelRuntimeOwnerBatch(params: {
             }
             const built = await build.pending;
             for (const [index, candidate] of currentGroup.entries()) {
-              snapshots.set(candidate.owner, built[index]!);
+              results.set(candidate.owner, built[index]!);
             }
           }
           break;
         } catch (error) {
-          const refreshError = toError(error);
+          const refreshError = toPreparedModelRuntimeError(error);
           const lostCandidate = attempt.some((candidate) => !candidate.isCurrent());
           if (
             !(refreshError instanceof PreparedModelRuntimePublicationSupersededError) ||
@@ -505,18 +512,19 @@ export async function publishPreparedModelRuntimeOwnerBatch(params: {
         if (!candidate.isCurrent()) {
           continue;
         }
-        const snapshot = snapshots.get(candidate.owner);
-        if (!snapshot) {
+        const result = results.get(candidate.owner);
+        if (!result) {
           throw new Error(
             `prepared model runtime snapshot missing after auth refresh for ${candidate.input.agentDir}`,
           );
         }
-        candidate.owner.snapshot = snapshot;
+        candidate.owner.snapshot = result.snapshot;
+        candidate.owner.pluginGeneration = result.pluginGeneration;
         candidate.owner.pending = undefined;
         candidate.owner.needsRefresh = false;
       }
     } catch (error) {
-      const refreshError = toError(error);
+      const refreshError = toPreparedModelRuntimeError(error);
       for (const candidate of candidates) {
         if (!candidate.isCurrent()) {
           continue;
@@ -537,7 +545,7 @@ export async function publishPreparedModelRuntimeOwnerBatch(params: {
           `prepared model runtime publication was superseded for ${candidate.input.agentDir}`,
         );
       }
-      return snapshots.get(candidate.owner)!;
+      return results.get(candidate.owner)!.snapshot;
     });
     candidate.owner.pending = pending;
     void pending.catch(() => undefined);
@@ -563,6 +571,7 @@ export async function publishModelRuntimeSnapshot(
   owner.generation += 1;
   owner.needsRefresh = true;
   owner.refreshError = undefined;
+  owner.pluginGeneration = undefined;
   const generation = owner.generation;
   const build = startSerializedSnapshotBuild(
     input,
@@ -581,18 +590,19 @@ export async function publishModelRuntimeSnapshot(
   owners.set(key, owner);
   const publication = (async () => {
     try {
-      const snapshot = await build.pending;
+      const result = await build.pending;
       if (owner.generation !== generation || owners.get(key) !== owner) {
         throw new PreparedModelRuntimePublicationSupersededError(
           `prepared model runtime publication was superseded for ${input.agentDir}`,
         );
       }
-      owner.snapshot = snapshot;
+      owner.snapshot = result.snapshot;
+      owner.pluginGeneration = result.pluginGeneration;
       owner.pending = undefined;
       owner.needsRefresh = false;
-      return snapshot;
+      return result.snapshot;
     } catch (error) {
-      const refreshError = toError(error);
+      const refreshError = toPreparedModelRuntimeError(error);
       if (owner.generation === generation && owners.get(key) === owner) {
         owner.pending = undefined;
         owner.needsRefresh = true;

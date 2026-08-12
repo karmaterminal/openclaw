@@ -9,7 +9,6 @@ import {
 import { sanitizeForLog } from "../../packages/terminal-core/src/ansi.js";
 import type { OpenClawConfig } from "../config/types.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
-import { satisfiesPluginApiRange } from "../infra/clawhub.js";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
 import { resolveUserPath } from "../utils.js";
 import { resolveCompatibilityHostVersion } from "../version.js";
@@ -70,6 +69,7 @@ import {
   resolveOfficialExternalPluginId,
   resolveOfficialExternalPluginInstall,
 } from "./official-external-plugin-catalog.js";
+import { satisfiesPluginApiRange } from "./package-compat.js";
 import { resolvePackagePluginApiRange } from "./package-compat.js";
 import { isPathInside, safeRealpathSync, safeStatSync } from "./path-safety.js";
 import type { PluginKind } from "./plugin-kind.types.js";
@@ -988,7 +988,7 @@ function isSameGlobalPackageDuplicate(left: PluginCandidate, right: PluginCandid
   );
 }
 
-export function loadPluginManifestRegistry(
+export function loadPluginManifestRegistryCore(
   params: {
     config?: OpenClawConfig;
     workspaceDir?: string;
@@ -1281,7 +1281,7 @@ export function loadBundledPluginManifestRegistry(
 ): PluginManifestRegistry {
   const env = params.env ?? process.env;
   const installRecords: Record<string, PluginInstallRecord> = {};
-  return loadPluginManifestRegistry({
+  return loadPluginManifestRegistryCore({
     env,
     installRecords,
     discovery: discoverOpenClawPlugins({

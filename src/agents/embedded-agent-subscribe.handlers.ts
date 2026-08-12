@@ -1,6 +1,7 @@
 /**
  * Dispatches serialized embedded-agent subscription events to specific handlers.
  */
+import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import {
   handleAgentEnd,
   handleAgentStart,
@@ -9,13 +10,13 @@ import {
 } from "./embedded-agent-subscribe.handlers.lifecycle.js";
 import {
   capturePendingAssistantUsage,
-  handleMessageEnd,
   handleMessageStart,
-  handleMessageUpdate,
-  isTranscriptOnlyOpenClawAssistantMessage,
   preservePendingAssistantUsage,
   resetPendingAssistantUsage,
-} from "./embedded-agent-subscribe.handlers.messages.js";
+  handleMessageEnd,
+} from "./embedded-agent-subscribe.handlers.messages.lifecycle.js";
+import { isSubscribeTranscriptOnlyOpenClawAssistantMessage } from "./embedded-agent-subscribe.handlers.messages.stream.js";
+import { handleMessageUpdate } from "./embedded-agent-subscribe.handlers.messages.update.js";
 import {
   handleToolExecutionEnd,
   handleToolExecutionStart,
@@ -25,7 +26,6 @@ import type {
   EmbeddedAgentSubscribeContext,
   EmbeddedAgentSubscribeEvent,
 } from "./embedded-agent-subscribe.handlers.types.js";
-import { isPromiseLike } from "./embedded-agent-subscribe.promise.js";
 import type { AgentMessage } from "./runtime/index.js";
 
 /** Create the serialized event dispatcher for subscribed embedded-agent sessions. */
@@ -98,7 +98,7 @@ export function createEmbeddedAgentSessionEventHandler(ctx: EmbeddedAgentSubscri
     const messageRole = message?.role;
     if (
       evt.type.startsWith("tool_execution_") ||
-      (messageRole === "assistant" && !isTranscriptOnlyOpenClawAssistantMessage(message))
+      (messageRole === "assistant" && !isSubscribeTranscriptOnlyOpenClawAssistantMessage(message))
     ) {
       ctx.noteCompactionReplacementActivity(deliveryGeneration);
     }

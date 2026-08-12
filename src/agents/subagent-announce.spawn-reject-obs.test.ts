@@ -33,7 +33,7 @@ type DispatchToolDelegatesResult = Awaited<ReturnType<typeof dispatchToolDelegat
 
 // --- Mocks that DO intercept the SUT (non-barrel modules) ---
 
-vi.mock("./subagent-announce.runtime.js", async (importOriginal) => ({
+vi.mock("./subagents/announce/subagent-announce.runtime.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   readSessionMessagesAsync: vi.fn(async () => []),
 }));
@@ -47,7 +47,7 @@ vi.mock("../gateway/call.js", () => ({
   }),
 }));
 
-vi.mock("./subagent-depth.js", () => ({
+vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => 1,
 }));
 
@@ -57,7 +57,18 @@ vi.mock("./embedded-agent.js", () => ({
   waitForEmbeddedAgentRunEnd: async () => true,
 }));
 
-vi.mock("./subagent-registry-runtime.js", () => ({
+vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  countActiveDescendantRuns: () => 0,
+  countPendingDescendantRuns: () => 0,
+  countPendingDescendantRunsExcludingRun: () => 0,
+  isSubagentSessionRunActive: () => true,
+  listSubagentRunsForRequester: () => [],
+  replaceSubagentRunAfterSteer: () => true,
+  resolveRequesterForChildSession: () => null,
+  shouldIgnorePostCompletionAnnounceForSession: () => false,
+}));
+vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
   countActiveDescendantRuns: () => 0,
   countPendingDescendantRuns: () => 0,
   countPendingDescendantRunsExcludingRun: () => 0,
@@ -120,10 +131,10 @@ import {
   setRuntimeConfigSnapshot,
   type OpenClawConfig,
 } from "../config/config.js";
-import { resolveStorePath } from "../config/sessions.js";
+import { resolveSessionStorePathCore } from "../config/sessions.js";
 import { defaultRuntime } from "../runtime.js";
-import { runSubagentAnnounceFlow } from "./subagent-announce.js";
-import * as subagentSpawn from "./subagent-spawn.js";
+import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
+import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
 type AnnounceFlowParams = Parameters<typeof runSubagentAnnounceFlow>[0];
 
@@ -146,7 +157,7 @@ function makeConfig(): OpenClawConfig {
 }
 
 function writeSessionStore(data: Record<string, unknown>) {
-  const storePath = resolveStorePath(undefined, { agentId: "main" });
+  const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
   fs.writeFileSync(storePath, JSON.stringify(data), "utf8");
 }

@@ -26,12 +26,15 @@ const runEmbeddedAgentMock = vi.fn();
 const runWithModelFallbackMock = vi.fn();
 const consumePendingDelegatesMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../../agents/model-fallback.js", () => ({
+vi.mock("../../agents/model-fallback-runner.js", () => ({
   runWithModelFallback: (params: {
     provider: string;
     model: string;
     run: (provider: string, model: string) => Promise<unknown>;
   }) => runWithModelFallbackMock(params),
+}));
+
+vi.mock("../../agents/model-fallback-attempt.js", () => ({
   isFallbackSummaryError: () => false,
 }));
 
@@ -50,7 +53,7 @@ vi.mock("../../agents/embedded-agent.js", () => ({
 
 vi.mock("../../agents/cli-runner.js", () => ({ runCliAgent: vi.fn() }));
 
-vi.mock("../../agents/subagent-spawn.js", () => ({
+vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   SUBAGENT_SPAWN_MODES: ["run", "session"],
   SUBAGENT_SPAWN_SANDBOX_MODES: ["inherit", "require"],
   SUBAGENT_SPAWN_CONTEXT_MODES: ["isolated", "fork"],
@@ -93,7 +96,7 @@ vi.mock("../../acp/control-plane/manager.js", () => ({
   }),
 }));
 
-vi.mock("../../agents/subagent-registry.js", () => ({
+vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   getLatestSubagentRunByChildSessionKey: () => null,
   getSwarmRunByLaunchReplayKey: () => undefined,
   initSubagentRegistry: () => {},

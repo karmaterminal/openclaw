@@ -1,6 +1,6 @@
 /** Per-row execution for durable same-session continuation work. */
 
-import type { SubagentRunLiveness } from "../../agents/subagent-run-liveness.js";
+import type { SubagentRunLiveness } from "../../agents/subagents/registry/subagent-run-liveness.js";
 import {
   emitContinuationWorkFireSpan,
   resolveContinuationTraceparent,
@@ -121,8 +121,8 @@ async function readChildSessionRunLiveness(
   options: { now: number; staleCutoffMs?: number },
 ): Promise<SubagentRunLiveness> {
   const [{ subagentRuns }, { classifyChildSessionRunLivenessFromRuns }] = await Promise.all([
-    import("../../agents/subagent-registry-memory.js"),
-    import("../../agents/subagent-registry-queries.js"),
+    import("../../agents/subagents/registry/subagent-registry-memory.js"),
+    import("../../agents/subagents/registry/subagent-registry-queries.js"),
   ]);
   return classifyChildSessionRunLivenessFromRuns(subagentRuns, sessionKey, options);
 }
@@ -258,7 +258,7 @@ async function driveContinuationTurn(
 ): Promise<ContinuationTurnGrantResult> {
   const [
     { getRuntimeConfig },
-    { resolveStorePath },
+    { resolveSessionStorePathCore },
     { loadSessionEntry },
     { parseAgentSessionKey, isSubagentSessionKey },
     { resolveSessionLane },
@@ -301,7 +301,7 @@ async function driveContinuationTurn(
 
   const cfg = getRuntimeConfig();
   const agentId = parseAgentSessionKey(work.sessionKey)?.agentId;
-  const storePath = resolveStorePath(cfg.session?.store, { agentId });
+  const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
   const agentSessionEntry = loadSessionEntry({
     clone: false,
     hydrateSkillPromptRefs: false,

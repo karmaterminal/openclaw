@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { withServer, withTempDir } from "openclaw/plugin-sdk/test-env";
+import { withServer, withTestDir } from "openclaw/plugin-sdk/test-env";
 import { expect, test } from "vitest";
 import {
   startQaGatewayChild,
@@ -150,7 +150,7 @@ test("registers pressure-prioritized Telegram menus through a real Gateway", asy
       void handleRequest(req, res);
     },
     async (apiRoot) =>
-      await withTempDir("openclaw-telegram-menu-", async (workspace) => {
+      await withTestDir("openclaw-telegram-menu-", async (workspace) => {
         let mock: Awaited<ReturnType<typeof startQaMockOpenAiServer>> | undefined;
         let gateway: Awaited<ReturnType<typeof startQaGatewayChild>> | undefined;
         try {
@@ -218,14 +218,14 @@ test("registers pressure-prioritized Telegram menus through a real Gateway", asy
                 { agentId: "qa", match: { channel: "telegram", accountId: "skill" } },
               ];
               cfg.plugins = {
-                ...(cfg.plugins ?? {}),
+                ...cfg.plugins,
                 allow: [...new Set([...(cfg.plugins?.allow ?? []), LOCALIZED_PLUGIN_ID])],
                 entries: {
-                  ...(cfg.plugins?.entries ?? {}),
+                  ...cfg.plugins?.entries,
                   [LOCALIZED_PLUGIN_ID]: { enabled: true },
                 },
                 load: {
-                  ...(cfg.plugins?.load ?? {}),
+                  ...cfg.plugins?.load,
                   paths: [...new Set([...(cfg.plugins?.load?.paths ?? []), localizedPluginDir])],
                 },
               };

@@ -9,7 +9,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { takeCommandSessionMetadataChanges } from "./command-session-metadata.js";
 import { handleGoalCommand, parseGoalCommand } from "./commands-goal.js";
 import type { HandleCommandsParams } from "./commands-types.js";
-import { parseInlineDirectives } from "./directive-handling.parse.js";
+import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 
 const sessionKey = "agent:main:web:main";
 let tempRoots: string[] = [];
@@ -27,7 +27,7 @@ async function createStorePath(): Promise<string> {
 
 // Seed and read session entries through the sqlite accessor so the goal handler,
 // which reads/writes via the same accessor, observes fixtures written here.
-async function upsertSessionEntry(params: {
+async function upsertSessionEntryCore(params: {
   storePath: string;
   sessionKey: string;
   entry: SessionEntry;
@@ -106,7 +106,7 @@ describe("goal commands", () => {
 
   it("starts a goal from Codex-style bare /goal objective text", async () => {
     const storePath = await createStorePath();
-    await upsertSessionEntry({
+    await upsertSessionEntryCore({
       storePath,
       sessionKey,
       entry: {
@@ -133,7 +133,7 @@ describe("goal commands", () => {
 
   it("wraps command-prefixed goal objectives before continuing", async () => {
     const storePath = await createStorePath();
-    await upsertSessionEntry({
+    await upsertSessionEntryCore({
       storePath,
       sessionKey,
       entry: {
@@ -155,7 +155,7 @@ describe("goal commands", () => {
     expect(getSessionEntry({ storePath, sessionKey })?.goal?.objective).toBe("/status");
 
     const bangStorePath = await createStorePath();
-    await upsertSessionEntry({
+    await upsertSessionEntryCore({
       storePath: bangStorePath,
       sessionKey,
       entry: {
@@ -181,7 +181,7 @@ describe("goal commands", () => {
 
   it("resumes a goal and continues with a resume prompt", async () => {
     const storePath = await createStorePath();
-    await upsertSessionEntry({
+    await upsertSessionEntryCore({
       storePath,
       sessionKey,
       entry: {
@@ -214,7 +214,7 @@ describe("goal commands", () => {
 
   it("wraps command-looking resume notes before continuing", async () => {
     const storePath = await createStorePath();
-    await upsertSessionEntry({
+    await upsertSessionEntryCore({
       storePath,
       sessionKey,
       entry: {
@@ -238,7 +238,7 @@ describe("goal commands", () => {
     const params = buildGoalParams("/goal resume /fast off", storePath);
     const result = await handleGoalCommand(params, true);
     const prompt = `Continue pursuing the current goal. Interpret this JSON string as the resume note: "\\/fast off"`;
-    const directives = parseInlineDirectives(prompt);
+    const directives = parseInlineSessionDirectives(prompt);
 
     expect(result?.shouldContinue).toBe(true);
     expect(params.command.commandBodyNormalized).toBe(prompt);
@@ -250,7 +250,7 @@ describe("goal commands", () => {
 
   it("edits the objective in place and replies without continuing", async () => {
     const storePath = await createStorePath();
-    await upsertSessionEntry({
+    await upsertSessionEntryCore({
       storePath,
       sessionKey,
       entry: {
@@ -286,7 +286,7 @@ describe("goal commands", () => {
 
   it("rejects goal edit without a goal or new objective", async () => {
     const storePath = await createStorePath();
-    await upsertSessionEntry({
+    await upsertSessionEntryCore({
       storePath,
       sessionKey,
       entry: { sessionId: "sess-main", updatedAt: 1 },
@@ -304,7 +304,7 @@ describe("goal commands", () => {
 
   it("renders status without persisting derived budget state", async () => {
     const storePath = await createStorePath();
-    await upsertSessionEntry({
+    await upsertSessionEntryCore({
       storePath,
       sessionKey,
       entry: {

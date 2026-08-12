@@ -45,7 +45,7 @@ vi.mock("../auto-reply/continuation/state.js", async (importOriginal) => ({
     mocked.unregisterContinuationTimerHandleMock(...args),
 }));
 
-vi.mock("./subagent-depth.js", () => ({
+vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: (sessionKey: string) =>
     sessionKey.includes(":subagent:") ? 1 : 0,
 }));
@@ -57,7 +57,18 @@ vi.mock("./embedded-agent.js", () => ({
   waitForEmbeddedAgentRunEnd: async () => true,
 }));
 
-vi.mock("./subagent-registry-runtime.js", () => ({
+vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  countActiveDescendantRuns: (key: string) => mocked.countActiveDescendantRunsMock(key),
+  countPendingDescendantRuns: (key: string) => mocked.countPendingDescendantRunsMock(key),
+  countPendingDescendantRunsExcludingRun: () => 0,
+  isSubagentSessionRunActive: (key: string) => mocked.isSubagentSessionRunActiveMock(key),
+  listSubagentRunsForRequester: () => [],
+  replaceSubagentRunAfterSteer: () => true,
+  resolveRequesterForChildSession: (key: string) => mocked.resolveRequesterForChildSessionMock(key),
+  shouldIgnorePostCompletionAnnounceForSession: () => false,
+}));
+vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
   countActiveDescendantRuns: (key: string) => mocked.countActiveDescendantRunsMock(key),
   countPendingDescendantRuns: (key: string) => mocked.countPendingDescendantRunsMock(key),
   countPendingDescendantRunsExcludingRun: () => 0,
@@ -81,16 +92,16 @@ import {
   clearRuntimeConfigSnapshot,
   type OpenClawConfig,
 } from "../config/config.js";
-import { resolveStorePath } from "../config/sessions.js";
+import { resolveSessionStorePathCore } from "../config/sessions.js";
 import {
   applySessionEntryLifecycleMutation,
-  listSessionEntries,
+  listSessionEntriesCore,
   replaceSessionEntry,
 } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { drainSystemEventEntries } from "../infra/system-events.js";
-import { runSubagentAnnounceFlow } from "./subagent-announce.js";
-import * as subagentSpawn from "./subagent-spawn.js";
+import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
+import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
 /**
  * Seed session data through the SQLite-backed session-store facade.
@@ -98,8 +109,8 @@ import * as subagentSpawn from "./subagent-spawn.js";
  * so we use the real store instead of a module mock.
  */
 async function writeSessionStore(data: Record<string, unknown>) {
-  const storePath = resolveStorePath(undefined, { agentId: "main" });
-  const removals = listSessionEntries({ agentId: "main", storePath }).map(({ sessionKey }) => ({
+  const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
+  const removals = listSessionEntriesCore({ agentId: "main", storePath }).map(({ sessionKey }) => ({
     sessionKey,
   }));
   if (removals.length > 0) {
@@ -193,7 +204,7 @@ describe("subagent announce continuation chaining", () => {
     wakeOnReturn?: boolean;
   }) {
     // Write the child entry into the session store
-    const storePath = resolveStorePath(undefined, { agentId: "main" });
+    const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
     await replaceSessionEntry(
       { agentId: "main", sessionKey: params.childSessionKey, storePath },
       {

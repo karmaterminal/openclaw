@@ -1,3 +1,16 @@
+/**
+ * Scenario: post-compaction delivery guards for accepted retries and queue hops.
+ *
+ * Covers:
+ * - finalize an already-accepted source-backed retry before charging another hop
+ * - dead-letter / deferred queue outcomes stay isolated from chain budget
+ * - artifact policy prepare/remove stays behind the accepted-child gate
+ *
+ * Stubs:
+ * - `delegate-artifacts` prepare/remove helpers (assert policy only)
+ * - `subagents/registry/subagent-registry-read` accepted-child lookup
+ * Real session-store + delivery-queue paths stay live under temp dirs.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -13,7 +26,7 @@ import {
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
 } from "../../infra/session-delivery-queue-storage.js";
-import { withTempDir } from "../../test-helpers/temp-dir.js";
+import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
   deliverQueuedPostCompactionDelegate,
@@ -46,7 +59,8 @@ vi.mock("../../agents/delegate-artifacts.js", async (importOriginal) => ({
   removeUnacceptedDelegateArtifactPolicy: removeUnacceptedDelegateArtifactPolicyMock,
 }));
 
-vi.mock("../../agents/subagent-registry-read.js", () => ({
+vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getSubagentRunByChildSessionKey: (childSessionKey: string) =>
     mockRegistryState.acceptedChildSessionKeys.has(childSessionKey)
       ? { runId: `run:${childSessionKey}`, childSessionKey }
@@ -258,13 +272,13 @@ function createDeliveryDeps(params: {
     loadSessionEntry,
     log,
     now: vi.fn(() => DELIVERY_NOW_MS),
-    patchSessionEntry: sessionAccessorModule.patchSessionEntry,
+    patchSessionEntryCore: sessionAccessorModule.patchSessionEntryCore,
     resolveContinuationRuntimeConfig: vi.fn(() => ({
       ...defaultRuntimeConfig,
       ...params.runtimeConfig,
     })),
     resolveSessionAgentId: vi.fn(() => "main"),
-    resolveStorePath: vi.fn(() => params.storePath),
+    resolveSessionStorePathCore: vi.fn(() => params.storePath),
     spawnSubagentDirect,
     revalidatePendingDelegateForSpawn,
     markPendingDelegateSpawnAccepted,
@@ -295,7 +309,7 @@ async function seedSessionStore(
 ): Promise<void> {
   await Promise.all(
     Object.entries(store).map(async ([sessionKey, entry]) => {
-      await sessionAccessorModule.upsertSessionEntry({ storePath, sessionKey }, entry);
+      await sessionAccessorModule.upsertSessionEntryCore({ storePath, sessionKey }, entry);
     }),
   );
 }
@@ -303,7 +317,7 @@ async function seedSessionStore(
 function readSessionStore(storePath: string): Record<string, SessionEntry> {
   return Object.fromEntries(
     sessionAccessorModule
-      .listSessionEntries({ storePath })
+      .listSessionEntriesCore({ storePath })
       .map(({ sessionKey, entry }) => [sessionKey, entry]),
   );
 }
@@ -336,7 +350,7 @@ void splitLintUse;
 
 describe("post-compaction delegate dispatch extraction", () => {
   it("dead-letters a source cancelled after claim without spawning or retrying", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-source-cancelled-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-source-cancelled-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const {
@@ -378,7 +392,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("uses queued source flow ids for idempotent post-compaction spawns and commits accepted TaskFlow rows", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const { deps, enqueueSystemEvent, markPendingDelegateSpawnAccepted, spawnSubagentDirect } =
@@ -418,7 +432,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("keeps source-backed queued delivery retryable when accepted source-row commit fails", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const { deps, enqueueSystemEvent, markPendingDelegateSpawnAccepted, spawnSubagentDirect } =
@@ -457,7 +471,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("finalizes an already accepted source-backed retry before charging another chain hop", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: {
@@ -512,7 +526,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("fails source rows for forbidden delivery spawns but leaves transient spawn errors retryable", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const forbidden = createDeliveryDeps({
@@ -589,7 +603,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("preserves traceparent when queued post-compaction replay spawns a child", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
@@ -614,7 +628,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("does not trust an unmarked queued post-compaction traceparent", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       const attackerTraceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
@@ -636,7 +650,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("threads the delegate model override when queued post-compaction replay spawns a child", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const { deps, spawnSubagentDirect } = createDeliveryDeps({ storePath });
@@ -656,7 +670,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("persists attachment input in the durable queue and forwards it on replay", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       const stateDir = path.join(tempDir, "state");
       const attachments = [{ name: "state.md", content: "durable compacted input" }];
@@ -701,7 +715,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("defers disabled queued delivery without mutating source state and delivers exactly once after re-enable", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       const stateDir = path.join(tempDir, "state");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
@@ -759,7 +773,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("rejects queued delivery when the compaction chain length is already capped", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: { sessionId: "session", updatedAt: 1, continuationChainCount: 2 },
@@ -806,7 +820,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("rejects queued delivery when continuation tokens exceed the cost cap", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: { sessionId: "session", updatedAt: 1, continuationChainTokens: 11 },
@@ -853,7 +867,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("rejects an enabled-at-stage cross-session queued delegate when disabled at delivery", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: 1 } });
       const {
@@ -904,7 +918,7 @@ describe("post-compaction delegate dispatch extraction", () => {
   });
 
   it("allows queued cross-session delivery when targeting is still enabled", async () => {
-    await withTempDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: 1 } });
       const { deps, spawnSubagentDirect } = createDeliveryDeps({

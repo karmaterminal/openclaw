@@ -69,6 +69,7 @@ vi.mock("./agent-runner-post-compaction-release.js", () => ({
   releaseQueuedCompactionTolerant: mocks.releaseQueuedCompactionTolerant,
 }));
 
+import { createTestPreparedRunAdmission } from "../../agents/admitted-run-context.test-support.js";
 import { runEmbeddedFallbackCandidate } from "./agent-runner-embedded-candidate.js";
 
 function createTurn(config: AgentTurnParams["followupRun"]["run"]["config"]): AgentTurnParams {
@@ -134,6 +135,7 @@ function runCandidate(
   onCompactionCount = vi.fn(),
 ) {
   return runEmbeddedFallbackCandidate({
+    preparedRunAdmission: createTestPreparedRunAdmission("run-test"),
     turn: createTurn(config),
     effectiveRun: createTurn(config).followupRun.run,
     candidateRun: createTurn(config).followupRun.run,
@@ -159,7 +161,10 @@ function runCandidate(
     signalExecutionPhaseForTyping: vi.fn(),
     notifyAgentRunStart: vi.fn(),
     notifyUserAboutCompaction: false,
-    sourceRepliesAreToolOnly: false,
+    // sourceRepliesAreToolOnly is no longer a turn param: upstream derives it
+    // from the source-reply delivery runtime / followupRun.run.sourceReplyDeliveryMode.
+    // This fixture leaves that mode unset, so the derived value is false —
+    // identical to the explicit `false` this object used to carry.
     messageToolDeliveryState: { toolCallIds: new Set(), completed: false },
     preserveProgressCallbackStartOrder: false,
     presentation: {

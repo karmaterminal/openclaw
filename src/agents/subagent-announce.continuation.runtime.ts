@@ -16,7 +16,7 @@ import {
 import { hasCrossSessionDelegateTargeting } from "../auto-reply/continuation/targeting-pure.js";
 import { scheduleContinuationWorkBatch } from "../auto-reply/continuation/work-dispatch.js";
 import { hasLiveOrRecentlyDispatchedContinuationWork } from "../auto-reply/continuation/work-store.js";
-import { resolveAgentIdFromSessionKey, resolveStorePath } from "../config/sessions.js";
+import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../config/sessions.js";
 import { updateSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveContinuationTraceparent } from "../infra/continuation-tracer.js";
@@ -24,7 +24,6 @@ import { enqueueSystemEvent } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { removeUnacceptedDelegateArtifactPolicy } from "./delegate-artifacts.js";
-import { loadSessionEntryByKey } from "./subagent-announce-delivery.js";
 import {
   type ContinuationChainSource,
   type ContinuationChainState,
@@ -32,10 +31,11 @@ import {
   parseContinuationChainHop,
   prepareSubagentContinuationAccounting,
 } from "./subagent-announce.continuation.accounting.js";
-import { resolveContinuationRuntimeConfig } from "./subagent-announce.runtime.js";
 import { deriveContinuationDelegateChildSessionKeyFromParent } from "./subagent-continuation-ids.js";
-import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
-import { spawnSubagentDirect } from "./subagent-spawn.js";
+import { loadSessionEntryByKey } from "./subagents/announce/subagent-announce-delivery.js";
+import { resolveContinuationRuntimeConfig } from "./subagents/announce/subagent-announce.runtime.js";
+import { getSubagentDepthFromSessionStore } from "./subagents/spawn/subagent-depth.js";
+import { spawnSubagentDirect } from "./subagents/spawn/subagent-spawn.js";
 
 export { routeSubagentContinuationReturn } from "./subagent-announce.continuation-return.js";
 
@@ -110,7 +110,7 @@ async function drainChildContinuationQueue(params: {
       });
       try {
         const agentId = resolveAgentIdFromSessionKey(params.childSessionKey);
-        const storePath = resolveStorePath(params.cfg.session?.store, { agentId });
+        const storePath = resolveSessionStorePathCore(params.cfg.session?.store, { agentId });
         const persisted = await updateSessionEntry(
           { agentId, sessionKey: params.childSessionKey, storePath },
           () => ({
@@ -221,7 +221,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
       ...(result.chainState.chainId ? { chainId: result.chainState.chainId } : {}),
     });
     const agentId = resolveAgentIdFromSessionKey(params.childSessionKey);
-    const storePath = resolveStorePath(params.cfg.session?.store, { agentId });
+    const storePath = resolveSessionStorePathCore(params.cfg.session?.store, { agentId });
     const persisted = await updateSessionEntry(
       { agentId, sessionKey: params.childSessionKey, storePath },
       () => ({
