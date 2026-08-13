@@ -27,6 +27,7 @@ type DiscordIngressPayload = {
 
 type RawMessageOverrides = Partial<APIMessage> & {
   channel?: unknown;
+  channel_type?: number;
   guild_id?: string;
 };
 
@@ -86,10 +87,6 @@ function directOpenGuildEntries(channelId = DIRECT_OPEN_CHANNEL_ID): DiscordGuil
       },
     },
   };
-}
-
-function guildTextChannel(id: string): unknown {
-  return { id, type: ChannelType.GuildText };
 }
 
 async function withQueue<T>(
@@ -287,17 +284,19 @@ describe("Discord direct-configured stale ingress", () => {
         const staleSentAt = clock - 16 * 60 * 1_000;
         const stale = createRawMessage(staleId, DIRECT_OPEN_CHANNEL_ID, {
           guild_id: "guild-1",
-          channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),
+          channel_type: ChannelType.GuildText,
           content: "ordinary old room text",
           timestamp: new Date(staleSentAt).toISOString(),
         } as RawMessageOverrides);
         const fresh = createRawMessage(freshId, DIRECT_OPEN_CHANNEL_ID, {
           guild_id: "guild-1",
-          channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),
+          channel_type: ChannelType.GuildText,
           content: "fresh direct ask <@bot-1>",
           mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
           timestamp: new Date(clock).toISOString(),
         } as RawMessageOverrides);
+        expect(Object.hasOwn(stale, "channel")).toBe(false);
+        expect(Object.hasOwn(fresh, "channel")).toBe(false);
         await queue.enqueue(staleId, payloadFor(stale, clock), {
           laneKey: `channel:${DIRECT_OPEN_CHANNEL_ID}`,
           receivedAt: clock,
@@ -353,7 +352,7 @@ describe("Discord direct-configured stale ingress", () => {
     const clock = 1_780_000_100_000;
     const rawMessage = createRawMessage(`boundary-${ageMs}`, `direct-boundary-${ageMs}`, {
       guild_id: "guild-1",
-      channel: guildTextChannel(`direct-boundary-${ageMs}`),
+      channel_type: ChannelType.GuildText,
       content: "ordinary old room text",
       timestamp: new Date(clock - ageMs).toISOString(),
     } as RawMessageOverrides);
@@ -373,7 +372,7 @@ describe("Discord direct-configured stale ingress", () => {
       async (queue) => {
         const rawMessage = createRawMessage(messageId, DIRECT_OPEN_CHANNEL_ID, {
           guild_id: "guild-1",
-          channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),
+          channel_type: ChannelType.GuildText,
           content: "ordinary old room text",
           timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
         } as RawMessageOverrides);
@@ -475,6 +474,7 @@ describe("Discord direct-configured stale ingress", () => {
     await expectDispatches({
       rawMessage: createRawMessage(testCase.id, DIRECT_OPEN_CHANNEL_ID, {
         guild_id: "guild-1",
+        channel_type: ChannelType.GuildText,
         timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
         ...testCase.overrides,
       } as RawMessageOverrides),
@@ -507,7 +507,7 @@ describe("Discord direct-configured stale ingress", () => {
     await expectFailsAsAmbient({
       rawMessage: createRawMessage("1023-known-nonbot-reply", DIRECT_OPEN_CHANNEL_ID, {
         guild_id: "guild-1",
-        channel: guildTextChannel(DIRECT_OPEN_CHANNEL_ID),
+        channel_type: ChannelType.GuildText,
         content: "old reply to a human",
         type: MessageType.Reply,
         message_reference: {

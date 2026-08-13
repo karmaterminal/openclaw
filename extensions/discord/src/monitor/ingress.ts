@@ -278,6 +278,8 @@ function canExpireDiscordStaleAmbientBacklog(
 
   const channelId = nonEmptyString(rawMessage.channel_id);
   const channelInfo = resolveDiscordChannelInfoSafe((rawMessage as { channel?: unknown }).channel);
+  const rawChannelType = (rawMessage as { channel_type?: unknown }).channel_type;
+  const channelType = typeof rawChannelType === "number" ? rawChannelType : channelInfo.type;
   const channelSlug = channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "";
   const parentSlug = channelInfo.parentName ? normalizeDiscordSlug(channelInfo.parentName) : "";
   const channelConfig = channelId
@@ -289,7 +291,7 @@ function canExpireDiscordStaleAmbientBacklog(
         parentId: channelInfo.parentId,
         parentName: channelInfo.parentName,
         parentSlug,
-        scope: isDiscordThreadChannelType(channelInfo.type) ? "thread" : "channel",
+        scope: isDiscordThreadChannelType(channelType) ? "thread" : "channel",
       })
     : null;
 
@@ -297,7 +299,7 @@ function canExpireDiscordStaleAmbientBacklog(
     return false;
   }
   const rawNonThreadChannel =
-    typeof channelInfo.type === "number" && !isDiscordThreadChannelType(channelInfo.type);
+    typeof channelType === "number" && !isDiscordThreadChannelType(channelType);
   // Stale expiry is a freshness fence, not mention admission. Only raw channel
   // type proves this is not an unhydrated thread; direct config can name either.
   return rawNonThreadChannel;
