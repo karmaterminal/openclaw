@@ -4,7 +4,7 @@
 branches, services, queues, or rows were modified)
 **Research branch:** `codeagent/pr121204-deadletter-persistence`
 **Worktree HEAD at start:** `d5e89de9064`
-**Live inspection window:** 2026-08-14 22:28Z – 22:39Z
+**Live inspection window:** 2026-08-14 22:28Z – 22:47Z
 
 ---
 
@@ -244,7 +244,7 @@ automatic suppression reason are **perfectly complementary across the deploy bou
 
 | day | reason | rows |
 |---|---|---|
-| 2026-07-19 → 2026-08-09 | `handler-timeout` | 91 (spread thin, 1–23/day) |
+| 2026-07-19 → 2026-08-09 | `handler-timeout` | 92 (spread thin, 1–23/day) |
 | 2026-08-10 | `handler-timeout` | 214 |
 | 2026-08-11 | `handler-timeout` | 502 |
 | 2026-08-12 | `operator-drop-stale-backlog` / `handler-timeout` | 1451 / 124 |
@@ -356,6 +356,12 @@ The call chain is exclusive, verified at the composite SHA
 There is exactly one route to a `retry-limit-exceeded` settlement, and it runs only on dispatch
 failure. Every other way a row's `attempts` can advance bypasses the dead-letter decision
 entirely.
+
+Note that this is not a two-row curiosity: **62 `stale-ambient-backlog` rows also carry
+`attempts ≥ 8`** (max 12). Those settled through `resolvePendingDisposition`, which is evaluated
+*before* dispatch and is indifferent to `attempts` — so they too must have accrued their attempt
+counts outside the disposition path. Non-dispatch attempt inflation is the common case here, not
+the exception.
 
 > **Correction made during this investigation.** An earlier reading argued from "23 completed
 > rows carry no `last_error`". That inference is **invalid**: `complete()` explicitly sets
@@ -586,7 +592,42 @@ aggregate-only journal reads. `/tmp/20260814-1400-triage.txt` was not read.
 node --import tsx scripts/test-projects.mts     # == pnpm test
 ```
 
-<!--FULLSUITE-->
+**Result: 537 shards, 1866.55 s. 145,007 tests passed, 34 failed, 319 skipped (145,360 total)
+across 9,418 test-file entries; 13 shards exited non-zero, covering 14 distinct failing files.**
+
+**All 34 failures are pre-existing on `origin/main` and cannot be attributed to this lane.**
+Scoped proof — the branch touches no product file at all:
+
+```bash
+git diff --stat origin/main...HEAD
+#   output.md | 634 ++++++++++++++++++++++++++++++++++++
+#   1 file changed, 634 insertions(+)
+```
+
+Failing files (none under `extensions/discord/**`, `src/channels/message/**`, or any surface
+examined in this report):
+
+| shard | failing file | failed |
+|---|---|---|
+| `gateway-server` | `src/gateway/server-startup-secret-owner-isolation.test.ts` | 9 |
+| `ui` | `ui/src/styles/chat-file-link-presentation.browser.test.ts` | 6 |
+| `ui` | `ui/src/styles/cursor-policy.browser.test.ts` | 3 |
+| `plugins` | `src/plugins/npm-install-security-scan.release.test.ts` | 2 |
+| `tooling` | `test/scripts/full-release-validation-at-sha.test.ts` | 2 |
+| `unit-fast-isolated` | `src/entry.respawn.test.ts` | 2 |
+| `extension-telegram` | `extensions/telegram/src/bot.create-telegram-bot.test.ts` | 1 |
+| `extension-voice-call` | `extensions/voice-call/src/webhook.shutdown.lifecycle.test.ts` | 1 |
+| `gateway-core` | `src/gateway/portals/portal-http-proxy.test.ts` | 1 |
+| `gateway-core` | `src/gateway/worker-environments/node-workspace-transfer-service.test.ts` | 1 |
+| `infra` | `src/infra/exec-authorization-render.test.ts` | 1 |
+| `plugins` | `src/plugins/bundled-plugin-metadata.test.ts` | 1 |
+| `plugins` | `src/plugins/runtime/runtime-llm.runtime.test.ts` | 1 |
+| `unit-src` | `src/snapshot/git-backup.test.ts` | 1 |
+
+The set is dominated by environment-sensitive surfaces (browser/IndexedDB UI tests, git-backup,
+release-validation tooling, secret-owner isolation), consistent with a local baseline rather than
+a code regression. This lane has **no authority to modify product code**, so these are reported,
+not repaired; they are worth a separate look against a clean `origin/main` baseline run.
 
 **Key commands used**
 
