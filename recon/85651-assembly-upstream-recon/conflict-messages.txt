@@ -1,0 +1,340 @@
+Auto-merging apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json
+Auto-merging config/knip.config.ts
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/account-core.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/account-core.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/account-helpers.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/account-helpers.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/account-resolution.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/account-resolution.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/agent-media-payload.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/agent-media-payload.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/agent-scope-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/agent-scope-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/allowlist-config-edit.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/allowlist-config-edit.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/approval-auth-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/approval-auth-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/approval-client-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/approval-client-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/approval-delivery-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/approval-delivery-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/approval-gateway-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/approval-gateway-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/approval-handler-adapter-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/approval-handler-adapter-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/approval-handler-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/approval-handler-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/approval-native-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/approval-native-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/approval-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/approval-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-config-helpers.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-config-helpers.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-contract.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-contract.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-dm-policy.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-dm-policy.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-feedback.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-feedback.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-inbound-debounce.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-inbound-debounce.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-ingress-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-ingress-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-policy.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-policy.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-secret-basic-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-secret-basic-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-secret-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-secret-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-send-result.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-send-result.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/channel-setup.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/channel-setup.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/command-detection.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/command-detection.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/command-status.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/command-status.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/config-contracts.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/config-contracts.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/config-mutation.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/config-mutation.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/conversation-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/conversation-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/diagnostic-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/diagnostic-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/directory-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/directory-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/extension-shared.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/extension-shared.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/health.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/health.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/hook-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/hook-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/infra-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/infra-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/logging-core.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/logging-core.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/media-local-roots.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/media-local-roots.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/media-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/media-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/media-understanding-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/media-understanding-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/media-understanding.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/media-understanding.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/memory-core-host-engine-foundation.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/memory-core-host-engine-foundation.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/memory-host-core.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/memory-host-core.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/native-command-config-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/native-command-config-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/native-command-registry.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/native-command-registry.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/plugin-config-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/plugin-config-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/provider-auth.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/provider-auth.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/question-gateway-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/question-gateway-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/reply-chunking.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/reply-chunking.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/reply-payload.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/reply-payload.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/routing.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/routing.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/runtime-config-snapshot.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/runtime-config-snapshot.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/secret-input-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/secret-input-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/secret-ref-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/secret-ref-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/security-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/security-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/setup-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/setup-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/setup.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/setup.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/speech-settings.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/speech-settings.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/ssrf-policy.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/ssrf-policy.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/ssrf-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/ssrf-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/status-helpers.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/status-helpers.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/telegram-account.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/telegram-account.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/text-runtime.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/text-runtime.json left in tree.
+CONFLICT (modify/delete): docs/.generated/plugin-sdk-api-baseline/webhook-request-guards.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of docs/.generated/plugin-sdk-api-baseline/webhook-request-guards.json left in tree.
+Auto-merging docs/tools/subagents.md
+Auto-merging extensions/acpx/src/pi-session-catalog.test.ts
+Auto-merging extensions/codex/src/app-server/config.test.ts
+Auto-merging extensions/codex/src/app-server/dynamic-tools.ts
+Auto-merging extensions/codex/src/app-server/run-attempt.turn-watches.test.ts
+Auto-merging extensions/codex/src/app-server/runtime-artifact.test.ts
+Auto-merging extensions/copilot/src/tool-bridge.test.ts
+Auto-merging extensions/signal/src/monitor/event-handler.ingress-lifecycle.test.ts
+Auto-merging extensions/signal/src/monitor/event-handler.reply-session-conflict.test.ts
+Auto-merging extensions/signal/src/monitor/event-handler.ts
+Auto-merging extensions/telegram/src/bot.create-telegram-bot.test.ts
+Auto-merging packages/agent-core/src/agent-loop.ts
+Auto-merging packages/gateway-protocol/src/schema/agent.ts
+Auto-merging scripts/bench-agent-concurrency-worker.ts
+Auto-merging scripts/lib/ci-node-test-plan.mts
+CONFLICT (modify/delete): scripts/lib/export-name-collision-baseline.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of scripts/lib/export-name-collision-baseline.json left in tree.
+CONFLICT (modify/delete): scripts/lib/wrapper-shadowing-baseline.json deleted in 97a53a9b35a83406a11f250abb5a5a158a1cc04b and modified in 8318e58bd22186ffd4bd317ccb05b8592570ad57.  Version 8318e58bd22186ffd4bd317ccb05b8592570ad57 of scripts/lib/wrapper-shadowing-baseline.json left in tree.
+Auto-merging scripts/plugin-sdk-surface-report.mts
+CONFLICT (content): Merge conflict in scripts/plugin-sdk-surface-report.mts
+Auto-merging scripts/protocol-gen-swift.ts
+Auto-merging src/acp/runtime/session-meta.ts
+Auto-merging src/agents/agent-command.live-model-switch.test.ts
+Auto-merging src/agents/agent-hooks/compaction-safeguard.ts
+Auto-merging src/agents/agent-tools.policy.ts
+Auto-merging src/agents/agent-tools.ts
+Auto-merging src/agents/cli-runner/helpers.ts
+Auto-merging src/agents/command/attempt-execution.cli.test.ts
+Auto-merging src/agents/command/attempt-execution.ts
+Auto-merging src/agents/command/cli-compaction.ts
+Auto-merging src/agents/core-tool-factory-descriptors.ts
+Auto-merging src/agents/embedded-agent-runner/compact.hooks.harness.ts
+CONFLICT (content): Merge conflict in src/agents/embedded-agent-runner/compact.hooks.harness.ts
+Auto-merging src/agents/embedded-agent-runner/compact.hooks.test.ts
+Auto-merging src/agents/embedded-agent-runner/compact.types.ts
+Auto-merging src/agents/embedded-agent-runner/compaction-checkpoint.ts
+Auto-merging src/agents/embedded-agent-runner/prepared-compaction-runtime.ts
+Auto-merging src/agents/embedded-agent-runner/run-orchestrator.ts
+Auto-merging src/agents/embedded-agent-runner/run/attempt-execution-phase.ts
+Auto-merging src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts
+Auto-merging src/agents/embedded-agent-runner/run/attempt-stream-prepare.ts
+Auto-merging src/agents/embedded-agent-runner/run/attempt-system-prompt-prepare.ts
+Auto-merging src/agents/embedded-agent-runner/run/attempt-tool-prepare.ts
+Auto-merging src/agents/embedded-agent-runner/run/overflow-context-recovery.ts
+Auto-merging src/agents/embedded-agent-runner/run/params.ts
+Auto-merging src/agents/embedded-agent-runner/run/run-attempt-dispatch.ts
+Auto-merging src/agents/embedded-agent-runner/runs.force-clear-terminal.test.ts
+Auto-merging src/agents/embedded-agent-runner/runs.ts
+CONFLICT (content): Merge conflict in src/agents/embedded-agent-runner/runs.ts
+Auto-merging src/agents/embedded-agent-subscribe.handlers.tools.start.ts
+Auto-merging src/agents/embedded-agent-utils.ts
+Auto-merging src/agents/internal-events.ts
+Auto-merging src/agents/openclaw-tools.session-status.test.ts
+Auto-merging src/agents/openclaw-tools.sessions.test.ts
+Auto-merging src/agents/openclaw-tools.subagents.sessions-spawn.test-harness.ts
+Auto-merging src/agents/openclaw-tools.ts
+CONFLICT (content): Merge conflict in src/agents/openclaw-tools.ts
+Auto-merging src/agents/session-transcript-repair.ts
+Auto-merging src/agents/subagents/announce/subagent-announce-delivery.test.ts
+Auto-merging src/agents/subagents/announce/subagent-announce-delivery.ts
+CONFLICT (content): Merge conflict in src/agents/subagents/announce/subagent-announce-delivery.ts
+Auto-merging src/agents/subagents/announce/subagent-announce-output.ts
+Auto-merging src/agents/subagents/announce/subagent-announce.format.e2e.test.ts
+Auto-merging src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts
+Auto-merging src/agents/subagents/announce/subagent-announce.requester-settle-wake.ts
+Auto-merging src/agents/subagents/announce/subagent-announce.ts
+CONFLICT (content): Merge conflict in src/agents/subagents/announce/subagent-announce.ts
+Auto-merging src/agents/subagents/completion/subagent-completion-admission.store.ts
+Auto-merging src/agents/subagents/registry/subagent-control.test.ts
+Auto-merging src/agents/subagents/registry/subagent-control.ts
+CONFLICT (content): Merge conflict in src/agents/subagents/registry/subagent-control.ts
+Auto-merging src/agents/subagents/registry/subagent-registry-lifecycle.test.ts
+Auto-merging src/agents/subagents/registry/subagent-registry-queries.ts
+Auto-merging src/agents/subagents/registry/subagent-registry-read.ts
+Auto-merging src/agents/subagents/registry/subagent-registry-restore.ts
+Auto-merging src/agents/subagents/registry/subagent-registry-run-manager.ts
+CONFLICT (content): Merge conflict in src/agents/subagents/registry/subagent-registry-run-manager.ts
+Auto-merging src/agents/subagents/registry/subagent-registry-sweeper.ts
+Auto-merging src/agents/subagents/registry/subagent-registry.archive.e2e.test.ts
+Auto-merging src/agents/subagents/registry/subagent-registry.test.ts
+Auto-merging src/agents/subagents/registry/subagent-registry.ts
+Auto-merging src/agents/subagents/registry/subagent-registry.types.ts
+Auto-merging src/agents/subagents/spawn/acp-spawn.test.ts
+Auto-merging src/agents/subagents/spawn/subagent-spawn.in-process-gateway.test.ts
+Auto-merging src/agents/subagents/spawn/subagent-spawn.test.ts
+Auto-merging src/agents/subagents/spawn/subagent-spawn.ts
+CONFLICT (content): Merge conflict in src/agents/subagents/spawn/subagent-spawn.ts
+Auto-merging src/agents/system-prompt.test.ts
+Auto-merging src/agents/system-prompt.ts
+Auto-merging src/agents/tool-display-config.ts
+Auto-merging src/agents/tools-effective-inventory.ts
+Auto-merging src/agents/tools/media-generate-background-shared.ts
+Auto-merging src/agents/transcript-redact.test.ts
+Auto-merging src/agents/transcript-redact.ts
+Auto-merging src/audit/audit-event-writer.test.ts
+CONFLICT (content): Merge conflict in src/audit/audit-event-writer.test.ts
+Auto-merging src/audit/audit-event-writer.ts
+Auto-merging src/auto-reply/reply/agent-runner-cli-candidate.ts
+Auto-merging src/auto-reply/reply/agent-runner-core.ts
+Auto-merging src/auto-reply/reply/agent-runner-embedded-candidate.ts
+CONFLICT (content): Merge conflict in src/auto-reply/reply/agent-runner-embedded-candidate.ts
+Auto-merging src/auto-reply/reply/agent-runner-execute.ts
+Auto-merging src/auto-reply/reply/agent-runner-execution.test-support.ts
+Auto-merging src/auto-reply/reply/agent-runner-execution.ts
+Auto-merging src/auto-reply/reply/agent-runner-result-accounting.ts
+Auto-merging src/auto-reply/reply/agent-runner-result-complete.ts
+CONFLICT (content): Merge conflict in src/auto-reply/reply/agent-runner-result-complete.ts
+Auto-merging src/auto-reply/reply/agent-runner-result-payloads.ts
+Auto-merging src/auto-reply/reply/agent-runner-run.ts
+Auto-merging src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts
+Auto-merging src/auto-reply/reply/agent-runner.runreplyagent.e2e.test.ts
+Auto-merging src/auto-reply/reply/commands-compact.ts
+Auto-merging src/auto-reply/reply/commands-context-report.ts
+Auto-merging src/auto-reply/reply/commands-system-prompt.test.ts
+Auto-merging src/auto-reply/reply/commands-system-prompt.ts
+Auto-merging src/auto-reply/reply/get-reply-run-admission.ts
+CONFLICT (content): Merge conflict in src/auto-reply/reply/get-reply-run-admission.ts
+Auto-merging src/auto-reply/reply/get-reply-run-context.ts
+Auto-merging src/auto-reply/reply/get-reply-run-execute.ts
+CONFLICT (content): Merge conflict in src/auto-reply/reply/get-reply-run-execute.ts
+Auto-merging src/auto-reply/reply/get-reply-run.media-only.test.ts
+CONFLICT (content): Merge conflict in src/auto-reply/reply/get-reply-run.media-only.test.ts
+Auto-merging src/auto-reply/reply/get-reply.ts
+CONFLICT (content): Merge conflict in src/auto-reply/reply/get-reply.ts
+Auto-merging src/auto-reply/reply/queue.collect.test.ts
+Auto-merging src/auto-reply/reply/queue/drain.ts
+Auto-merging src/auto-reply/reply/queue/types.ts
+Auto-merging src/auto-reply/reply/reply-state.test.ts
+Auto-merging src/auto-reply/reply/session-updates.ts
+CONFLICT (content): Merge conflict in src/auto-reply/reply/session-updates.ts
+Auto-merging src/auto-reply/reply/session.test.ts
+Auto-merging src/cli/config-cli.test.ts
+Auto-merging src/cli/gateway-cli/run.option-collisions.test.ts
+Auto-merging src/cli/nodes-camera.test.ts
+Auto-merging src/cli/update-cli.test.ts
+Auto-merging src/commands/doctor/shared/active-tool-schema-warnings.ts
+Auto-merging src/commands/status-overview-rows.ts
+Auto-merging src/commands/status.command-report-data.ts
+Auto-merging src/config/sessions/session-accessor.conformance.test.ts
+Auto-merging src/config/sessions/session-accessor.sqlite-entry.ts
+Auto-merging src/config/sessions/session-accessor.sqlite-transcript-write.ts
+Auto-merging src/config/sessions/session-accessor.ts
+Auto-merging src/config/sessions/types.ts
+CONFLICT (content): Merge conflict in src/config/sessions/types.ts
+Auto-merging src/config/types.agent-defaults.ts
+Auto-merging src/config/zod-schema.agent-defaults.ts
+Auto-merging src/cron/isolated-agent/run.runtime.ts
+Auto-merging src/cron/service/state.ts
+Auto-merging src/cron/service/timer-execution.ts
+CONFLICT (content): Merge conflict in src/cron/service/timer-execution.ts
+Auto-merging src/cron/service/timer.regression.test.ts
+CONFLICT (content): Merge conflict in src/cron/service/timer.regression.test.ts
+Auto-merging src/flows/doctor-core-checks.runtime.ts
+Auto-merging src/gateway/agent-turn/agent-run-execution-phase.ts
+CONFLICT (content): Merge conflict in src/gateway/agent-turn/agent-run-execution-phase.ts
+Auto-merging src/gateway/agent-turn/agent-session-persist.ts
+Auto-merging src/gateway/agent-turn/agent-turn-service.ts
+Auto-merging src/gateway/chat-abort.ts
+Auto-merging src/gateway/config-reload.test.ts
+Auto-merging src/gateway/mcp-http.runtime.test.ts
+Auto-merging src/gateway/mcp-http.runtime.ts
+Auto-merging src/gateway/mcp-http.test.ts
+Auto-merging src/gateway/probe.device-auth-scope.test.ts
+Auto-merging src/gateway/server-chat.agent-events.test.ts
+Auto-merging src/gateway/server-chat.ts
+CONFLICT (content): Merge conflict in src/gateway/server-chat.ts
+Auto-merging src/gateway/server-close.test.ts
+Auto-merging src/gateway/server-close.ts
+Auto-merging src/gateway/server-lifecycle.ts
+Auto-merging src/gateway/server-maintenance.test.ts
+Auto-merging src/gateway/server-maintenance.ts
+CONFLICT (content): Merge conflict in src/gateway/server-maintenance.ts
+Auto-merging src/gateway/server-methods/artifacts.test.ts
+CONFLICT (content): Merge conflict in src/gateway/server-methods/artifacts.test.ts
+Auto-merging src/gateway/server-methods/chat-broadcast.ts
+CONFLICT (content): Merge conflict in src/gateway/server-methods/chat-broadcast.ts
+Auto-merging src/gateway/server-methods/chat-send-agent-dispatch.ts
+CONFLICT (content): Merge conflict in src/gateway/server-methods/chat-send-agent-dispatch.ts
+Auto-merging src/gateway/server-methods/chat-send-dispatch-errors.test.ts
+Auto-merging src/gateway/server-methods/chat-send-dispatch-errors.ts
+Auto-merging src/gateway/server-methods/chat-send-handler.ts
+Auto-merging src/gateway/server-methods/chat-send-nonagent-finalization.ts
+Auto-merging src/gateway/server-methods/chat.directive-tags.test.ts
+Auto-merging src/gateway/server-methods/server-methods.test.ts
+Auto-merging src/gateway/server-methods/sessions-compact.ts
+CONFLICT (content): Merge conflict in src/gateway/server-methods/sessions-compact.ts
+Auto-merging src/gateway/server-restart-sentinel-agent-delivery.ts
+Auto-merging src/gateway/server-restart-sentinel.test.ts
+CONFLICT (content): Merge conflict in src/gateway/server-restart-sentinel.test.ts
+Auto-merging src/gateway/server-restart-sentinel.ts
+CONFLICT (content): Merge conflict in src/gateway/server-restart-sentinel.ts
+Auto-merging src/gateway/server-runtime-services.test.ts
+Auto-merging src/gateway/server-runtime-services.ts
+Auto-merging src/gateway/server-runtime-subscriptions.test.ts
+CONFLICT (content): Merge conflict in src/gateway/server-runtime-subscriptions.test.ts
+Auto-merging src/gateway/server-runtime-subscriptions.ts
+CONFLICT (content): Merge conflict in src/gateway/server-runtime-subscriptions.ts
+Auto-merging src/gateway/server-startup-post-attach.test.ts
+Auto-merging src/gateway/server.chat.gateway-server-chat-b.test.ts
+Auto-merging src/gateway/server.sessions.compaction.test.ts
+Auto-merging src/gateway/session-compaction-checkpoints.ts
+Auto-merging src/gateway/session-utils-contracts.ts
+Auto-merging src/gateway/test/server-sessions.test-helpers.ts
+Auto-merging src/gateway/tool-resolution.test.ts
+Auto-merging src/gateway/tool-resolution.ts
+Auto-merging src/hooks/llm-slug-generator.ts
+Auto-merging src/index.ts
+Auto-merging src/infra/delivery-queue-sqlite-bound.ts
+Auto-merging src/infra/delivery-queue-sqlite.ts
+CONFLICT (content): Merge conflict in src/infra/delivery-queue-sqlite.ts
+Auto-merging src/infra/heartbeat-runner-config.ts
+Auto-merging src/infra/heartbeat-runner-delivery.ts
+Auto-merging src/infra/heartbeat-runner-execution.ts
+CONFLICT (content): Merge conflict in src/infra/heartbeat-runner-execution.ts
+Auto-merging src/infra/heartbeat-runner-run.ts
+CONFLICT (content): Merge conflict in src/infra/heartbeat-runner-run.ts
+Auto-merging src/infra/heartbeat-runner-scheduler.ts
+CONFLICT (content): Merge conflict in src/infra/heartbeat-runner-scheduler.ts
+Auto-merging src/infra/heartbeat-runner.returns-default-unset.test.ts
+Auto-merging src/infra/heartbeat-wake-policy.ts
+CONFLICT (content): Merge conflict in src/infra/heartbeat-wake-policy.ts
+Auto-merging src/infra/heartbeat-wake.test.ts
+Auto-merging src/infra/heartbeat-wake.ts
+CONFLICT (content): Merge conflict in src/infra/heartbeat-wake.ts
+Auto-merging src/infra/openclaw-cli-invocation.test.ts
+CONFLICT (content): Merge conflict in src/infra/openclaw-cli-invocation.test.ts
+Auto-merging src/infra/session-delivery-queue-runtime.test.ts
+Auto-merging src/infra/session-delivery-queue-storage.ts
+CONFLICT (content): Merge conflict in src/infra/session-delivery-queue-storage.ts
+Auto-merging src/infra/session-delivery-queue.recovery.test.ts
+CONFLICT (content): Merge conflict in src/infra/session-delivery-queue.recovery.test.ts
+Auto-merging src/infra/session-delivery-queue.storage.test.ts
+CONFLICT (content): Merge conflict in src/infra/session-delivery-queue.storage.test.ts
+Auto-merging src/infra/system-events.test.ts
+CONFLICT (content): Merge conflict in src/infra/system-events.test.ts
+Auto-merging src/logging/diagnostic-stability.ts
+Auto-merging src/logging/diagnostic.test.ts
+Auto-merging src/logging/diagnostic.ts
+CONFLICT (content): Merge conflict in src/logging/diagnostic.ts
+Auto-merging src/plugin-sdk/infra-runtime.ts
+Auto-merging src/plugin-sdk/provider-catalog-live-runtime.ts
+Auto-merging src/plugin-sdk/system-event-runtime.ts
+CONFLICT (content): Merge conflict in src/plugin-sdk/system-event-runtime.ts
+Auto-merging src/plugins/bundled-plugin-naming.test.ts
+Auto-merging src/plugins/git-install.ts
+CONFLICT (content): Merge conflict in src/plugins/git-install.ts
+Auto-merging src/process/command-queue.ts
+CONFLICT (content): Merge conflict in src/process/command-queue.ts
+Auto-merging src/state/openclaw-state-db-contract.ts
+CONFLICT (content): Merge conflict in src/state/openclaw-state-db-contract.ts
+Auto-merging src/state/openclaw-state-db-schema-additive.ts
+Auto-merging src/state/openclaw-state-db.generated.d.ts
+Auto-merging src/state/openclaw-state-db.test.ts
+Auto-merging src/state/openclaw-state-schema.sql
+Auto-merging src/status/summary.ts
+Auto-merging src/tasks/task-executor.ts
+Auto-merging src/tasks/task-flow-registry.store.sqlite.ts
+Auto-merging src/tasks/task-registry.maintenance.ts
+Auto-merging src/tasks/task-registry.test.ts
+Auto-merging src/tui/embedded-backend.test.ts
+Auto-merging src/tui/embedded-backend.ts
+Auto-merging src/tui/tui-event-handlers.test.ts
+Auto-merging src/tui/tui-event-handlers.ts
+Auto-merging test/scripts/check-export-name-collisions.test.ts
+Auto-merging test/scripts/check-wrapper-shadowing.test.ts
+CONFLICT (content): Merge conflict in test/scripts/check-wrapper-shadowing.test.ts
+Auto-merging test/scripts/lint-suppressions.test.ts
+Auto-merging test/scripts/package-mac-app.test.ts
+Auto-merging test/vitest-scoped-config.test.ts
+Auto-merging tsdown.config.ts
+Auto-merging ui/src/components/form-controls.browser.test.ts
+Auto-merging ui/src/e2e/session-management.groups.e2e.test.ts
+Auto-merging ui/src/lib/chat/tool-cards.ts
+Auto-merging ui/src/pages/chat/components/chat-tool-cards.node.test.ts
