@@ -43,9 +43,10 @@ against a **30-day TTL**. The population is bounded on two axes and has simply n
 touched either bound.
 
 **There is a real defect here, but it is neither 121204 nor retention.** `retry-limit-exceeded`
-has settled **zero rows in the table's entire history**, while live rows reach `attempts` of
-80, 98, and (right now) 12 against a configured `maxAttempts: 8`. That is a **retry-settlement
-ownership gap** (§5), and it is the correct follow-up.
+has settled **zero rows in the table's entire history**, while rows reach `attempts` of 80 and
+98 against a configured `maxAttempts: 8` — counts the dispatch-failure path is structurally
+incapable of producing. That is a **retry-settlement ownership gap** (§5), and it is the correct
+follow-up.
 
 ---
 
@@ -172,7 +173,7 @@ column containing message content, identifiers, or operator text was selected: `
 |---|---|---|
 | `completed` | **5000** | **exactly at the 5,000 cap** — prune provably active |
 | `failed` | **4633** | the reported ">4,600" |
-| `pending` | 7 → 10 | climbing during the sample window (§5) |
+| `pending` | 7 → 10 → 6 | small and churning; drains normally (§5) |
 | `claimed` | 0 | |
 
 ### 3c. Queue / lane cardinality (irreversible counts only)
@@ -323,17 +324,44 @@ deliberate, bounded, operator-inspectable dead-letter record — exactly what
 despite `31025273` explicitly configuring `deadLetterMinAgeMs: 0` to make that settlement fire
 promptly. Meanwhile rows carry `attempts` far beyond `maxAttempts: 8`:
 
-| status | rows with `attempts ≥ 8` | with `last_error` | without `last_error` | max `attempts` |
-|---|---|---|---|---|
-| `completed` | 23 | 0 | **23** | **98** |
-| `failed` | 68 | 68 | 0 | 80 |
-| `pending` | 1 → (climbing) | 1 | 0 | 10 → 12 |
+| status | reason settled as | rows with `attempts ≥ 8` | max `attempts` |
+|---|---|---|---|
+| `completed` | *(n/a — completed)* | 23 | **98** |
+| `failed` | `stale-ambient-backlog` | 62 | 12 |
+| `failed` | `operator-quarantine-session-identity-conflict-backlog` | 2 | **80** |
+| `failed` | `operator-palliative-replay-stall` | 2 | 16 |
+| `failed` | `handler-timeout` | 2 | 12 |
+| `failed` | `operator-palliative-replay-cycle` | 1 | 9 |
+| `failed` | **`retry-limit-exceeded`** | **0** | — |
 
-**23 completed rows reached up to 98 attempts carrying no `last_error` at all.** That is the
-tell. `applyFailureDisposition` always records an error on release
-(`ingress-drain.ts:347` → `releaseClaim(claim, { lastError: disposition.message })`). Attempts
-that advanced *without* an error were therefore advanced by a path that **never consults the
-retry policy**.
+**The structural argument.** The disposition path *cannot* produce these numbers.
+`resolveIngressFailureDisposition` (`ingress-retry-policy.ts:92-121`) evaluates every dispatch
+failure: a non-retryable error settles immediately, and otherwise
+`shouldDeadLetterRetryableIngressEvent` (`:81-89`) settles as soon as
+`attempt >= maxAttempts && now - receivedAt >= deadLetterMinAgeMs`. With Discord's
+`maxAttempts: 8` and `deadLetterMinAgeMs: 0` the age term is **always satisfied**, so *any*
+dispatch failure at `attempts >= 7` settles the row. **A row therefore cannot exceed ~8 attempts
+via dispatch failures at all.** Rows at **80** and **98** attempts prove those increments were
+applied by a path that never evaluates the policy.
+
+The call chain is exclusive, verified at the composite SHA
+(`git grep -n <symbol> 0dec2856 -- '*.ts' | grep -v '\.test\.ts'`):
+
+| symbol | defined | non-test callers |
+|---|---|---|
+| `shouldDeadLetterRetryableIngressEvent` | `ingress-retry-policy.ts:81` | **only** `ingress-retry-policy.ts:112` (inside `resolveIngressFailureDisposition`); `plugin-state-test-runtime.ts:32` is a test re-export, not a caller |
+| `resolveIngressFailureDisposition` | `ingress-retry-policy.ts:92` | **only** `ingress-drain.ts:332` (inside `applyFailureDisposition`) |
+| `applyFailureDisposition` | `ingress-drain.ts:328` | `ingress-drain.ts:481`, `:569`, `:608` — all three dispatch-failure sites |
+
+There is exactly one route to a `retry-limit-exceeded` settlement, and it runs only on dispatch
+failure. Every other way a row's `attempts` can advance bypasses the dead-letter decision
+entirely.
+
+> **Correction made during this investigation.** An earlier reading argued from "23 completed
+> rows carry no `last_error`". That inference is **invalid**: `complete()` explicitly sets
+> `last_error: null` and `last_attempt_at: null` (`ingress-queue.ts:1118-1119` @`0dec`), so a
+> completed row tells you nothing about how its attempts accrued. The argument above replaces it
+> and does not depend on `last_error` at all.
 
 **Owner.** `src/channels/message/ingress-queue.ts:1010-1022` @`0dec` — stale-claim recovery:
 
@@ -365,21 +393,35 @@ with early returns that skip settlement entirely when a claim was guillotined or
    `!event.lastError`. A lease-recovered row has no `lastError`, so it is re-claimed with **no
    delay** — a tight re-claim spin that inflates `attempts` toward the observed 98.
 
-**Live corroboration (payload-free, sampled 22:29Z / 22:35Z / 22:39Z):**
+**Live corroboration (payload-free, sampled 22:29Z → 22:47Z):**
 
-| sample (UTC) | pending | pending max attempts | newest completion | newest settlement |
-|---|---|---|---|---|
-| 22:29 | 7 | 9 | 2026-08-14 04:53:07 | 2026-08-14 21:49:46 |
-| 22:35 | 8 | 10 | 2026-08-14 04:53:07 | 2026-08-14 21:49:46 |
-| 22:39 | 10 | **12** | **2026-08-14 04:53:07** | 2026-08-14 21:49:46 |
+| sample (UTC) | pending | pending max attempts | failed | newest completion | newest settlement |
+|---|---|---|---|---|---|
+| 22:29 | 7 | 9 | 4633 | 2026-08-14 04:53:07 | 2026-08-14 21:49:46 |
+| 22:35 | 8 | 10 | 4633 | 2026-08-14 04:53:07 | 2026-08-14 21:49:46 |
+| 22:39 | 10 | 12 | 4633 | 2026-08-14 04:53:07 | 2026-08-14 21:49:46 |
+| 22:46 | 6 | 6 | — | 2026-08-14 04:53:07 | — |
+| 22:47 | 6 | 6 | **4641** | **2026-08-14 04:53:07** | **2026-08-14 22:45:05** |
 
-`pending` and `attempts` climb monotonically while `claimed` stays 0 and **neither** the newest
-completion **nor** the newest settlement advances. No ingress event has completed in
-**≈17.8 hours**. The gateway journal over the same window shows a repeating retryable failure
-class — `Session … changed while starting work. Retry.` — re-firing on exponential backoff
+**The lane is not wedged.** Between 22:39 and 22:47 the pending burst drained (10 → 6), max
+pending attempts fell (12 → 6), and eight rows settled — the newest settlement advanced from
+21:49:46 to 22:45:05. All eight settled as `stale-ambient-backlog` (attempts 4–12), i.e. 121204
+suppressing stale backlog **live, during this investigation**.
+
+**One anomaly does stand.** `newest_completion_utc` has not moved from **2026-08-14 04:53:07Z**
+across every sample — **≈17.9 hours with zero `completed` settlements** while failures continue.
+Because `completed` is pinned at its 5,000 cap and prune retains the newest rows by
+`updated_at DESC`, `MAX(completed_at)` is a faithful "last successful adoption" clock. This is
+*consistent with* a lane whose entire current inflow is ambient and stale (everything correctly
+suppressed, nothing to adopt), so it is **not by itself proof of a defect** — but it is the one
+signal worth a bounded follow-up check (§8).
+
+The gateway journal over the same window shows a repeating retryable failure class —
+`Session … changed while starting work. Retry.` — re-firing on exponential backoff
 (≈4 s → 8 s → 16 s → 32 s → 64 s, capping near the 180 s `DEFAULT_INGRESS_RETRY_MAX_MS`).
 This is the same failure the operator quarantined 18 rows against under
-`operator-quarantine-session-identity-conflict-backlog` (max `attempts` **80**).
+`operator-quarantine-session-identity-conflict-backlog` (max `attempts` **80**) — rows that
+reached 80 attempts precisely because nothing ever settled them automatically.
 
 **This is a session-identity conflict in the message-run path plus a retry-settlement ownership
 gap. It is not the stale-ambient fence, and 121204 neither caused it nor promised to prevent
@@ -455,7 +497,8 @@ follow-up is §5: `attempts` is consumed by stale-claim recovery
 policy, which (i) makes `retry-limit-exceeded` unreachable on that path — **0 rows ever**, and
 (ii) collapses backoff to zero via `ingress-retry-policy.ts:67-69`. The owner-boundary question
 worth asking: *should advancing `attempts` and evaluating dead-letter disposition be the same
-operation?* Today they are separable, and the live wedge in §5 is what that separation costs.
+operation?* Today they are separable, and the 80- and 98-attempt rows in §5 are what that
+separation costs.
 
 A second, narrower follow-up: the recurring `Session … changed while starting work. Retry.`
 class is currently the fleet's dominant live failure and has already forced one operator
@@ -465,7 +508,7 @@ quarantine sweep (18 rows, max `attempts` 80).
 
 Record `DEPLOY_MS` at cutover, then run this single read-only statement. It is payload-free,
 selects no content column, and answers all four questions at once — is the fence firing, is
-retention bounding, is settlement healthy, is the lane wedged:
+retention bounding, is settlement healthy, is the adoption clock advancing:
 
 ```bash
 ssh silas "sqlite3 -readonly /home/figs/.openclaw/state/openclaw.sqlite" <<SQL
@@ -493,9 +536,9 @@ SQL
 | `operator-*` reasons, `after_deploy` | `= 0` | `> 0` ⇒ palliative care still compensating for a dead code path |
 | `completed` rows | `= 5000` | `< 5000` for a busy lane ⇒ prune or pump not running |
 | `failed` rows | `≤ 5000` | `> 5000` ⇒ genuine retention defect (none today) |
-| `newest_completion_utc` | within minutes of now | hours stale while `pending > 0` ⇒ lane wedged (**today's live symptom**) |
+| `newest_completion_utc` | advances within the hour on a busy lane | many hours stale while settlements continue ⇒ re-check adoption path (**today's open signal**) |
 | `pending_max_att` | `< 8` | `≥ 8` ⇒ §5 settlement gap active |
-| `retry-limit-exceeded` rows | `> 0` once §5 is fixed | still `0` with `pending_max_att ≥ 8` ⇒ §5 unfixed |
+| `retry-limit-exceeded` rows | `> 0` once §5 is fixed | still `0` while rows exceed 8 attempts ⇒ §5 unfixed |
 
 Re-run ~1 h and ~24 h post-deploy; `stale-ambient-backlog` should show a **decaying** rate
 (backlog draining), not a flat one.
@@ -504,9 +547,11 @@ Re-run ~1 h and ~24 h post-deploy; `stale-ambient-backlog` should show a **decay
 
 ## 9. Risks and uncertainties
 
-1. **Live lane appears wedged right now.** ≈17.8 h with zero completions while `pending` and
-   `attempts` climb (§5). This is the most operationally urgent item found and is **independent
-   of 121204**. Diagnosis-only here — no mutation was performed, and
+1. **No `completed` settlement in ≈17.9 h**, while failures continue and the pending set churns
+   normally (§5). The lane is **not** wedged — it drains and settles — but the "last successful
+   adoption" clock has not moved since 2026-08-14 04:53:07Z. This is consistent with an all-stale
+   inflow being correctly suppressed, so it is a *signal to re-check*, not a proven defect, and it
+   is **independent of 121204**. Diagnosis-only here — no mutation was performed, and
    `fleet-replay-palliative-care` remains the sole mutating owner.
 2. **Deploy epoch is filesystem-derived.** Journal retention starts 2026-08-14T08:12Z, after the
    08-13 cutover, so `dist/` mtime (2026-08-13 08:00:51 -0700) is the epoch. It is a *lower*
@@ -583,5 +628,7 @@ working; retention is active because `completed` is pinned at 5,000) and is pres
 the branch. This document supersedes it, adding: merge-content proof that nothing was dropped
 (§1), the mechanism proof for why the pre-121204 fence could never fire (§2), product-vs-operator
 reason classification by source presence (§3d), the GitNexus disclosure (§7), the
-retry-settlement defect and live wedge evidence (§5), and the post-deploy verification SQL (§8).
-The earlier draft's claim that the state is "not a live lane wedge" is **corrected** by §5.
+the retry-settlement defect and live sampling (§5), and the post-deploy verification SQL (§8).
+The earlier draft's judgement that this is retained audit history rather than a live lane wedge
+is **confirmed** by §5's sampling; what it missed is the retry-settlement gap and the stalled
+adoption clock.
