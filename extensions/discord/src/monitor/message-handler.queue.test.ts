@@ -811,6 +811,71 @@ describe("createDiscordMessageHandler queue behavior", () => {
     });
   });
 
+  it("terminally settles a deferred session identity conflict and advances its lane", async () => {
+    await withDiscordQueue(async (queue) => {
+      const conflictId = "session-identity-conflict";
+      const laterId = "z-after-session-identity-conflict";
+      for (const id of [conflictId, laterId]) {
+        await queue.enqueue(
+          id,
+          { version: 1, receivedAt: 10, rawMessage: createRawMessage(id, "lane-a") },
+          { laneKey: "channel:lane-a", receivedAt: 10 },
+        );
+      }
+      const conflict = Object.assign(
+        new Error(
+          'Session "agent:main:discord:channel:lane-a" changed while starting work. Retry.',
+        ),
+        { code: "session_identity_conflict" },
+      );
+      const processDiscordMessage = vi
+        .fn()
+        .mockRejectedValueOnce(conflict)
+        .mockResolvedValueOnce(undefined);
+      const params = createDiscordHandlerParams();
+      const messageRunQueue = createDiscordMessageRunQueue({
+        runtime: params.runtime,
+        testing: { processDiscordMessage: processDiscordMessage as never },
+      });
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: params.runtime,
+        queue,
+        dispatch: async (_event, lifecycle) => {
+          const ingress = fanInChannelIngressLifecycles([lifecycle]);
+          ingress.lifecycle?.onDeferred();
+          messageRunQueue.enqueue(
+            buildDiscordInboundJob(await createBaseDiscordMessageContext(), {
+              ingressSettlement: ingress,
+            }),
+          );
+          return { kind: "deferred" };
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(
+          async () => {
+            expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+              {
+                id: conflictId,
+                reason: "session-identity-conflict",
+                message: conflict.message,
+              },
+            ]);
+            expect(processDiscordMessage).toHaveBeenCalledTimes(2);
+          },
+          { timeout: 5_000 },
+        );
+        await expect(queue.listPending({ limit: "all" })).resolves.toEqual([]);
+      } finally {
+        await monitor.stop();
+        await messageRunQueue.deactivate();
+      }
+    });
+  });
+
   it("does not abort concurrent runs with a Discord-owned channel timeout", async () => {
     vi.useFakeTimers();
     try {

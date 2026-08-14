@@ -122,6 +122,7 @@ describe("buildDiscordInboundJob", () => {
     const ctx = await createBaseDiscordMessageContext();
     const ingressSettlement = {
       settle: vi.fn(async () => {}),
+      fail: vi.fn(async () => {}),
       abandon: vi.fn(async () => {}),
       cancel: vi.fn(async () => {}),
     };

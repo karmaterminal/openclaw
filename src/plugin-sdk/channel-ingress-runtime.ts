@@ -127,6 +127,7 @@ export function fanInChannelIngressLifecycles(
 ): {
   lifecycle: ChannelIngressLifecycle | undefined;
   settle: () => Promise<void>;
+  fail: (error: unknown) => Promise<void>;
   abandon: (error?: unknown) => Promise<void>;
   cancel: () => Promise<void>;
 } {
@@ -136,6 +137,7 @@ export function fanInChannelIngressLifecycles(
     return {
       lifecycle: undefined,
       settle: async () => {},
+      fail: async () => {},
       abandon: async () => {},
       cancel: async () => {},
     };
@@ -207,6 +209,10 @@ export function fanInChannelIngressLifecycles(
         await adoptAll();
         handedOff = true;
       }
+    },
+    fail: async (error) => {
+      handedOff = true;
+      await failAll(error);
     },
     abandon: async (_error?: unknown) => {
       if (!handedOff) {

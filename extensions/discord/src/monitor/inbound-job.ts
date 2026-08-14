@@ -25,6 +25,7 @@ export type DiscordInboundJob = {
   runtime: DiscordInboundJobRuntime;
   ingressSettlement?: {
     settle: () => Promise<void>;
+    fail: (error: unknown) => Promise<void>;
     abandon: (error?: unknown) => Promise<void>;
     cancel: () => Promise<void>;
   };

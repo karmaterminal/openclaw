@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { SESSION_IDENTITY_CONFLICT_ERROR_CODE } from "../../config/sessions/lifecycle.js";
 import * as sessionAccessor from "../../config/sessions/session-accessor.js";
 import {
   deleteSessionEntryLifecycle,
@@ -261,6 +262,9 @@ describe("reply turn admission", () => {
     await mutation;
 
     await expect(admission).rejects.toThrow(/changed while starting work/i);
+    await expect(admission).rejects.toMatchObject({
+      code: SESSION_IDENTITY_CONFLICT_ERROR_CODE,
+    });
   });
 
   it("drops queued work when reset cleanup cancels admission", async () => {
@@ -644,7 +648,7 @@ describe("reply turn admission", () => {
   });
 
   it.each(["visible", "heartbeat"] as const)(
-    "rejects %s reply admission for a tombstoned recovery session",
+    "retains lifecycle invalidation for a tombstoned %s recovery session",
     async (kind) => {
       const sessionKey = `agent:main:telegram:topic:recovery-tombstone:${kind}`;
       const sessionId = "tombstoned-session";
@@ -663,15 +667,17 @@ describe("reply turn admission", () => {
         },
       });
 
-      await expect(
-        admitTestReplyTurn({
-          sessionKey,
-          sessionId,
-          expectedSessionId: sessionId,
-          storePath,
-          kind,
-        }),
-      ).rejects.toThrow(/changed while starting work/i);
+      const admission = admitTestReplyTurn({
+        sessionKey,
+        sessionId,
+        expectedSessionId: sessionId,
+        storePath,
+        kind,
+      });
+      await expect(admission).rejects.toThrow(/changed while starting work/i);
+      await expect(admission).rejects.not.toMatchObject({
+        code: SESSION_IDENTITY_CONFLICT_ERROR_CODE,
+      });
     },
   );
 

@@ -15,6 +15,7 @@ import type { Client } from "../internal/discord.js";
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
 import type { DiscordMessageEvent } from "./listeners.js";
+import { isSessionIdentityConflictError } from "./session-identity-conflict.js";
 
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
@@ -153,6 +154,9 @@ export function createDiscordIngressMonitor(params: {
         deadLetterMinAgeMs: 0,
       },
       resolveNonRetryableFailure: (error) => {
+        if (isSessionIdentityConflictError(error)) {
+          return { reason: "session-identity-conflict", message: error.message };
+        }
         if (error instanceof DiscordIngressPayloadError) {
           return { reason: "invalid-event", message: error.message };
         }
