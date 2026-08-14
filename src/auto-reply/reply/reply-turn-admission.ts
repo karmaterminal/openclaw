@@ -7,7 +7,10 @@ import {
   type MainSessionRecoveryOwnerLease,
 } from "../../agents/main-session-recovery/main-session-recovery-store.js";
 // Decides whether an inbound turn may start, queue, or abort a reply run.
-import { resolveSessionWorkStartError } from "../../config/sessions/lifecycle.js";
+import {
+  resolveSessionWorkStartError,
+  SessionIdentityConflictError,
+} from "../../config/sessions/lifecycle.js";
 import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { InternalSessionEntry, SessionEntry } from "../../config/sessions/types.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
@@ -94,6 +97,16 @@ function rejectLifecycleInvalidatedWork(params: { kind: ReplyTurnKind; message: 
     throw new QueuedFollowupLifecycleInvalidatedError(params.message);
   }
   throw new Error(params.message);
+}
+
+function rejectSessionIdentityConflictWork(params: {
+  kind: ReplyTurnKind;
+  message: string;
+}): never {
+  if (params.kind === "queued_followup") {
+    throw new QueuedFollowupLifecycleInvalidatedError(params.message);
+  }
+  throw new SessionIdentityConflictError(params.message);
 }
 
 function isAbortSignalAborted(signal: AbortSignal | undefined): boolean {
@@ -237,7 +250,7 @@ async function admitReplyTurnWithWaitSignal(
               });
               admittedSessionEntry = currentEntry as InternalSessionEntry | undefined;
               if (expectedSessionId && !currentEntry) {
-                rejectLifecycleInvalidatedWork({
+                rejectSessionIdentityConflictWork({
                   kind: params.kind,
                   message: `Session "${params.sessionKey}" was deleted while starting work. Retry.`,
                 });
@@ -270,7 +283,7 @@ async function admitReplyTurnWithWaitSignal(
                 currentEntry?.sessionId !== expectedSessionId &&
                 !activeOperationRotatedExpectedSession
               ) {
-                rejectLifecycleInvalidatedWork({
+                rejectSessionIdentityConflictWork({
                   kind: params.kind,
                   message: `Session "${params.sessionKey}" changed while starting work. Retry.`,
                 });
@@ -313,7 +326,7 @@ async function admitReplyTurnWithWaitSignal(
             target: { sessionKey: params.sessionKey, storePath },
           });
           if (ownerClaim.kind === "invalidated") {
-            rejectLifecycleInvalidatedWork({
+            rejectSessionIdentityConflictWork({
               kind: params.kind,
               message: `Session "${params.sessionKey}" changed while starting work. Retry.`,
             });

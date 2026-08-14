@@ -4,6 +4,7 @@ import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 import { danger } from "openclaw/plugin-sdk/runtime-env";
 import { materializeDiscordInboundJob, type DiscordInboundJob } from "./inbound-job.js";
 import type { RuntimeEnv } from "./message-handler.preflight.types.js";
+import { isSessionIdentityConflictError } from "./session-identity-conflict.js";
 import type { DiscordMonitorStatusSink } from "./status.js";
 
 type ProcessDiscordMessage = typeof import("./message-handler.process.js").processDiscordMessage;
@@ -54,6 +55,8 @@ async function processDiscordQueuedMessage(params: {
   } catch (error) {
     if (abortSignal?.aborted) {
       await params.job.ingressSettlement?.cancel();
+    } else if (isSessionIdentityConflictError(error)) {
+      await params.job.ingressSettlement?.fail(error);
     } else {
       await params.job.ingressSettlement?.abandon(error);
     }

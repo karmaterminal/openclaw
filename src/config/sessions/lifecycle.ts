@@ -22,6 +22,16 @@ type SessionWorkStartOptions = {
 /** Stable Gateway error detail for stale session lifecycle requests. */
 export const SESSION_LIFECYCLE_CHANGED_ERROR_REASON = "session-changed";
 const SESSION_WORK_START_INVALIDATED_ERROR_CODE = "SESSION_WORK_START_INVALIDATED";
+export const SESSION_IDENTITY_CONFLICT_ERROR_CODE = "session_identity_conflict";
+
+export class SessionIdentityConflictError extends Error {
+  readonly code = SESSION_IDENTITY_CONFLICT_ERROR_CODE;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "SessionIdentityConflictError";
+  }
+}
 
 export class SessionWorkStartInvalidatedError extends Error {
   readonly code = SESSION_WORK_START_INVALIDATED_ERROR_CODE;
