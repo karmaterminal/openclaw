@@ -1,0 +1,32 @@
+SHA under test: 8318e58bd22186ffd4bd317ccb05b8592570ad57 (assembly head, unmodified)
+command: OPENCLAW_VITEST_MAX_WORKERS=6 NODE_OPTIONS=--max-old-space-size=12288 node --import tsx scripts/test-projects.mts
+
+[test] warning: broad local run will start 322 Vitest shards; use `pnpm test:changed` for routine checks.
+[test] running 322 Vitest shards with parallelism 6
+[test] failed 322 Vitest shards in 1762.63s; Vitest summaries above are per-shard, not aggregate totals.
+[test] failed shard digest (27):
+[test] - test/vitest/vitest.gateway-server.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-server.config.ts --reporter=verbose
+[test] - test/vitest/vitest.unit-fast-fake-timers.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.unit-fast-fake-timers.config.ts --reporter=verbose
+[test] - test/vitest/vitest.ui.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.ui.config.ts --reporter=verbose
+[test] - test/vitest/vitest.gateway-server.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-server.config.ts --reporter=verbose
+[test] - test/vitest/vitest.gateway-core.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-core.config.ts --reporter=verbose
+[test] - test/vitest/vitest.tui-pty.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.tui-pty.config.ts --reporter=verbose
+[test] - test/vitest/vitest.gateway-methods.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-methods.config.ts --reporter=verbose
+[test] - test/vitest/vitest.agents-core.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.agents-core.config.ts --reporter=verbose
+[test] - test/vitest/vitest.extension-qa.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.extension-qa.config.ts --reporter=verbose
+[test] - test/vitest/vitest.agents-embedded-agent-run.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.agents-embedded-agent-run.config.ts --reporter=verbose
+[test] - test/vitest/vitest.agents-support.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.agents-support.config.ts --reporter=verbose
+[test] - test/vitest/vitest.extension-memory.config.ts (exit 1)
+[test]   rerun: node scripts/run-vitest.mjs run --config test/vitest/vitest.extension-memory.config.ts --reporter=verbose
+[test] - ... 15 more failed shard(s) omitted

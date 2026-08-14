@@ -440,6 +440,7 @@ extensions/xai/index.test.ts
 extensions/xai/onboard.test.ts
 extensions/xai/provider-policy-api.test.ts
 extensions/xai/runtime-model-compat.test.ts
+extensions/xai/server-compaction.test.ts
 extensions/xai/stream.test.ts
 extensions/xai/web-search.test.ts
 extensions/zai/detect.test.ts
@@ -471,6 +472,7 @@ packages/ai/src/providers/openai-responses-shared.test.ts
 packages/ai/src/providers/transform-messages.test.ts
 packages/ai/src/transports/anthropic-compaction-replay.test.ts
 packages/ai/src/transports/anthropic-transport-stream.test.ts
+packages/ai/src/transports/openai-responses-client.compact.test.ts
 packages/ai/src/transports/openai-responses-client.continuation.test.ts
 packages/ai/src/transports/openai-responses-client.pricing.test.ts
 packages/ai/src/transports/openai-responses-client.terminal-error.test.ts
@@ -676,9 +678,11 @@ src/agents/embedded-agent-runner/run/terminal-preparation.test.ts
 src/agents/embedded-agent-runner/run/terminal-resolution.delivery-state.test.ts
 src/agents/embedded-agent-runner/run/terminal-resolution.test.ts
 src/agents/embedded-agent-runner/run.terminal-timeout.test.ts
+src/agents/embedded-agent-runner/server-endpoint-compaction.test.ts
 src/agents/embedded-agent-runner/thinking-replay-repair.test.ts
 src/agents/embedded-agent-runner/thinking.test.ts
 src/agents/embedded-agent-runner/tool-result-truncation.test.ts
+src/agents/embedded-agent-runner/transcript-rewrite.test.ts
 src/agents/embedded-agent-runner/usage-reporting.test-support.ts
 src/agents/failover/classify.message-predicates.test.ts
 src/agents/failover/context-overflow.legacy.test.ts
