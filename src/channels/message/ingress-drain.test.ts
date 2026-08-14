@@ -300,9 +300,16 @@ describe("channel ingress drain", () => {
 
       clock += 1_000;
       await vi.advanceTimersByTimeAsync(1_000);
-      await vi.waitFor(async () => expect(await queue.listFailed?.()).toHaveLength(1));
-      const failed = await queue.listFailed?.();
-      expect(failed?.[0]).toMatchObject({ id: "released-stall", reason: "handler-timeout" });
+      await vi.waitFor(async () =>
+        expect(await queue.listPending({ limit: "all" })).toMatchObject([
+          {
+            id: "released-stall",
+            attempts: 1,
+            lastError: expect.stringMatching(/handler-timeout/),
+          },
+        ]),
+      );
+      expect(await queue.listFailed?.()).toEqual([]);
       drain.dispose();
     });
   });

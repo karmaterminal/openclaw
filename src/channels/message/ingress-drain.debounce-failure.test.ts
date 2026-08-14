@@ -95,8 +95,14 @@ describe("channel ingress drain debounce failures", () => {
         { text: "retry me" },
         { laneKey: "shared", receivedAt: clock },
       );
-      queue.release = async () => {
-        throw new Error("persistent release failure");
+      const releaseClaim = queue.release.bind(queue);
+      let releaseAttempts = 0;
+      queue.release = async (...args) => {
+        releaseAttempts += 1;
+        if (releaseAttempts <= 8) {
+          throw new Error("bounded release failure");
+        }
+        return await releaseClaim(...args);
       };
 
       const sessionError = new Error("Session changed while starting work. Retry.");
@@ -135,9 +141,15 @@ describe("channel ingress drain debounce failures", () => {
       clock += 73_000;
       await vi.advanceTimersByTimeAsync(73_000);
       expect(await queue.listClaims()).toEqual([]);
-      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-        { id: "debounced-settlement-failure", reason: "handler-timeout" },
+      expect(releaseAttempts).toBe(9);
+      expect(await queue.listPending({ limit: "all" })).toMatchObject([
+        {
+          id: "debounced-settlement-failure",
+          attempts: 1,
+          lastError: expect.stringMatching(/handler-timeout/),
+        },
       ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       expect(drain.activeLaneKeys().has("shared")).toBe(false);
       drain.dispose();
     });

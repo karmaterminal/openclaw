@@ -17,7 +17,7 @@ describe("channel ingress drain watchdog", () => {
     closeOpenClawStateDatabaseForTest();
   });
 
-  it("guillotines pre-adoption stalls with handler-timeout", async () => {
+  it("releases pre-adoption stalls through retry policy", async () => {
     await withTempState(async (stateDir) => {
       let clock = 10_000;
       const queue = createTestIngressQueue(stateDir, { now: () => clock });
@@ -27,6 +27,7 @@ describe("channel ingress drain watchdog", () => {
         queue,
         now: () => clock,
         adoptionStallTimeoutMs: 5_000,
+        retryPolicy: { baseMs: 1_000, maxMs: 1_000 },
         dispatchClaimedEvent: async () => {
           // Never adopt, never return -- stall until watchdog.
           await new Promise(() => {});
@@ -38,16 +39,22 @@ describe("channel ingress drain watchdog", () => {
       await vi.advanceTimersByTimeAsync(5_000);
       await drain.waitForIdle();
 
-      const reenqueue = await queue.enqueue("evt-stall", { text: "x" });
-      expect(reenqueue.kind).toBe("failed");
-      if (reenqueue.kind === "failed") {
-        expect(reenqueue.record.reason).toBe("handler-timeout");
-      }
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect(await queue.listPending({ limit: "all" })).toMatchObject([
+        {
+          id: "evt-stall",
+          attempts: 1,
+          lastError: expect.stringMatching(/handler-timeout/),
+        },
+      ]);
+      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      clock += 1_000;
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
       drain.dispose();
     });
   });
 
-  it("guillotines deferred stalls", async () => {
+  it("releases deferred stalls through retry policy", async () => {
     await withTempState(async (stateDir) => {
       let clock = 30_000;
       const queue = createTestIngressQueue(stateDir, { now: () => clock });
@@ -70,11 +77,84 @@ describe("channel ingress drain watchdog", () => {
       await vi.advanceTimersByTimeAsync(5_000);
       await drain.waitForIdle();
 
-      const reenqueue = await queue.enqueue("evt-def-stall", { text: "x" });
-      expect(reenqueue.kind).toBe("failed");
-      if (reenqueue.kind === "failed") {
-        expect(reenqueue.record.reason).toBe("handler-timeout");
-      }
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect(await queue.listPending({ limit: "all" })).toMatchObject([
+        {
+          id: "evt-def-stall",
+          attempts: 1,
+          lastError: expect.stringMatching(/handler-timeout/),
+        },
+      ]);
+      drain.dispose();
+    });
+  });
+
+  it("dead-letters stalls only when retry policy permits", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 40_000;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue("evt-terminal", { text: "x" }, { laneKey: "l1", receivedAt: 1 });
+
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        adoptionStallTimeoutMs: 1_000,
+        retryPolicy: { maxAttempts: 1, deadLetterMinAgeMs: 0 },
+        dispatchClaimedEvent: async () => {
+          await new Promise(() => {});
+        },
+      });
+
+      await drain.drainOnce();
+      clock += 1_000;
+      await vi.advanceTimersByTimeAsync(1_000);
+      await drain.waitForIdle();
+
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        {
+          id: "evt-terminal",
+          reason: "retry-limit-exceeded",
+          message: expect.stringMatching(/handler-timeout/),
+        },
+      ]);
+      drain.dispose();
+    });
+  });
+
+  it("keeps unrelated lanes progressing while a stalled lane awaits disposition", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 50_000;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue("stalled", { text: "x" }, { laneKey: "lane-a" });
+
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        adoptionStallTimeoutMs: 5_000,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          if (event.id === "stalled") {
+            await new Promise(() => {});
+          }
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await queue.enqueue("healthy", { text: "x" }, { laneKey: "lane-b" });
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await vi.waitFor(() => expect(adopted).toEqual(["healthy"]));
+
+      clock += 5_000;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await drain.waitForIdle();
+
+      expect(await queue.listPending({ limit: "all" })).toMatchObject([
+        { id: "stalled", attempts: 1 },
+      ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       drain.dispose();
     });
   });

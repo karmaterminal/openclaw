@@ -42,7 +42,7 @@ import {
   type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
 
-/** Default claim→adoption stall before dead-lettering with handler-timeout. */
+/** Default claim→adoption stall before canonical failure disposition. */
 export const DEFAULT_INGRESS_ADOPTION_STALL_MS = 5 * 60 * 1000;
 
 /** Bounded tombstone write retries — wedged ownership beats silent double-dispatch. */
@@ -386,25 +386,27 @@ export function createChannelIngressDrain<
       }
       const ageMs = now() - state.startedAt;
       const displayId = state.eventId.replace(/^0+(?=\d)/, "") || state.eventId;
-      const message = `Channel ingress claim→adoption stalled for event ${displayId} on lane ${state.laneKey} after ${ageMs}ms; marking failed (handler-timeout).`;
+      const error = new Error(
+        `Channel ingress claim→adoption stalled for event ${displayId} on lane ${state.laneKey} after ${ageMs}ms (handler-timeout).`,
+      );
       // Closed guillotine flag — catch must not string-sniff errors.
       state.guillotined = true;
       clearStallTimer(state);
-      log(message);
+      log(error.message);
       try {
-        state.abortController.abort(new Error(message));
+        state.abortController.abort(error);
       } catch {
         // AbortController.abort is not fallible in practice.
       }
-      // Same bounded-retry/hold-ownership policy as tombstone: a fail write
-      // error must not falsely settle (would stop heartbeat and wedge recovery).
+      // Timeout is a dispatch failure; canonical disposition decides retry vs
+      // dead-letter. A write error must retain heartbeat and ownership.
       void state
         .settleOnce(async () => {
-          await failClaim(state.claim, "handler-timeout", message);
+          await applyFailureDisposition(state.claim, error);
         })
         .catch((err: unknown) => {
           log(
-            `ingress drain: failed to dead-letter stalled event ${displayId}; holding claim: ${formatError(err)}`,
+            `ingress drain: failed to settle stalled event ${displayId}; holding claim: ${formatError(err)}`,
           );
         });
     }, adoptionStallTimeoutMs);
