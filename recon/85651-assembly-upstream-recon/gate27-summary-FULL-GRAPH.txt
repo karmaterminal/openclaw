@@ -1,0 +1,233 @@
+drift-cure-gate: c3887db7c174e3c6041fda6576f6d717b67edd50  HEAD=8318e58bd22186ffd4bd317ccb05b8592570ad57  base=ff73a14f5ae  PRcreate=ff73a14f5ae
+files examined: 899
+
+  GENUINE        335
+  MIXED-CLOBBER  221
+  SAFE-NEW       343
+
+== FROZEN-STALE (high-confidence pure clobber; re-sync to upstream) ==
+
+== MIXED-CLOBBER (ranked by dropped post-fork upstream lines; triage top-down) ==
+    588  src/state/openclaw-state-db.test.ts                  0748bfa23a6 refactor(state): simplify schema migration val
+    496  scripts/lib/ci-node-test-plan.mts                    4a5aeb8dd2b improve(ci): shorten GitHub-hosted outage runs
+    292  src/auto-reply/reply/get-reply-run.media-only.test.ts 5235269b3c3 fix(agents): heartbeats lose all conversation 
+    200  src/audit/audit-event-writer.test.ts                 35d764076e0 fix(audit): ignore inherited execution identit
+    151  src/gateway/server.chat.gateway-server-chat-b.test.ts 0dd16739951 improve(gateway): cut slow server test setup (
+    140  src/agents/subagents/spawn/subagent-spawn.in-process-gateway.test.ts 5e9575fb415 fix(gateway): show one entry per subagent run 
+    112  src/infra/delivery-queue-sqlite.ts                   ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+    110  src/infra/delivery-queue-sqlite-bound.ts             ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+    109  src/acp/runtime/session-meta.ts                      1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+    108  src/auto-reply/reply/queue.collect.test.ts           97a53a9b35a feat: audit admitted channel participant ident
+    107  src/state/openclaw-state-schema.sql                  562391b9af3 feat(audit): explain denied operator approvals
+    106  src/agents/subagents/announce/subagent-announce-delivery.test.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+    103  src/auto-reply/reply/get-reply.ts                    b8ddddd702a feat(media): let agents inspect unsupported lo
+    102  test/scripts/package-mac-app.test.ts                 737982d5fe0 fix(macos): adopt Peekaboo 4.1 bridge contract
+    102  src/agents/openclaw-tools.session-status.test.ts     66e83a17e68 fix(sessions): distinguish transient lookup fa
+     91  src/agents/embedded-agent-runner/compact.hooks.test.ts 02272c345f3 fix(perf): close prepared runtime regressions
+     91  extensions/signal/src/monitor/event-handler.reply-session-conflict.test.ts 5af3d49621b fix(plugin-sdk): make ingress cancellation fan
+     86  src/gateway/server-methods/chat.directive-tags.test.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     83  src/auto-reply/reply/queue/drain.ts                  97a53a9b35a feat: audit admitted channel participant ident
+     80  src/gateway/server-methods/artifacts.test.ts         1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     79  src/agents/embedded-agent-runner/runs.ts             54cf346abb2 fix: preserve pending input across authority c
+     67  src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts 7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+     65  src/agents/agent-command.live-model-switch.test.ts   f525bee2b46 test: isolate assistant transcript repair cove
+     60  src/auto-reply/reply/agent-runner.runreplyagent.e2e.test.ts 42b74b2978d fix: restrict pending input to route-only chan
+     57  src/agents/agent-hooks/compaction-safeguard.ts       8eb97397240 fix: isolate compaction structure audit
+     54  src/agents/subagents/registry/subagent-registry.test.ts 5e9575fb415 fix(gateway): show one entry per subagent run 
+     53  src/infra/heartbeat-wake.ts                          ?
+     53  src/gateway/server-chat.agent-events.test.ts         02272c345f3 fix(perf): close prepared runtime regressions
+     52  src/gateway/server-restart-sentinel.test.ts          1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     51  src/config/sessions/session-accessor.conformance.test.ts 4afccbdaa43 fix(sessions): exclude protected sessions from
+     50  src/gateway/server-runtime-subscriptions.test.ts     1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     50  src/gateway/server-maintenance.test.ts               1e6de9a4810 fix(gateway): recover phantom 'running' sessio
+     49  src/gateway/server-methods/chat-send-dispatch-errors.test.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     46  src/gateway/server-maintenance.ts                    73443ebed48 fix: stopping a session leaves subagents runni
+     44  src/gateway/server-methods/server-methods.test.ts    b233ea79575 fix(health): surface blocked ingress lanes (#1
+     44  src/auto-reply/reply/agent-runner-run.ts             42b74b2978d fix: restrict pending input to route-only chan
+     44  extensions/signal/src/monitor/event-handler.ts       97a53a9b35a feat: audit admitted channel participant ident
+     43  src/cron/service/timer.regression.test.ts            7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+     43  src/agents/subagents/registry/subagent-registry-run-manager.ts 307021eca4a refactor(agents): split subagent-registry-run-
+     41  src/auto-reply/reply/get-reply-run-admission.ts      7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+     37  src/gateway/server-chat.ts                           02272c345f3 fix(perf): close prepared runtime regressions
+     36  src/infra/heartbeat-runner.returns-default-unset.test.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     35  src/agents/transcript-redact.test.ts                 25d4807b383 feat(anthropic): opt-in server-side compaction
+     34  src/auto-reply/reply/session.test.ts                 babba7124df fix: heartbeats fail after successful replies 
+     33  src/state/openclaw-state-db.generated.d.ts           562391b9af3 feat(audit): explain denied operator approvals
+     33  src/agents/subagents/spawn/subagent-spawn.test.ts    c636cf559ae fix(agents): scope dormant model catalog reads
+     31  src/gateway/server-methods/chat-send-agent-dispatch.ts 83bca684402 fix: remove new-chat startup stalls (#122471)
+     30  src/gateway/server-startup-post-attach.test.ts       c636cf559ae fix(agents): scope dormant model catalog reads
+     30  src/auto-reply/reply/get-reply-run-execute.ts        b5809f5f44e fix: enforce native tool policy across harness
+     28  src/gateway/tool-resolution.ts                       1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     27  src/plugins/git-install.ts                           5a643e35431 fix(plugins): keep packed entries consistent t
+     27  src/auto-reply/reply/get-reply-run-context.ts        5235269b3c3 fix(agents): heartbeats lose all conversation 
+     27  extensions/telegram/src/bot.create-telegram-bot.test.ts 72a8b9b5b46 fix(telegram): retry abandoned durable ingress
+     26  src/agents/subagents/announce/subagent-announce-delivery.ts ?
+     26  extensions/codex/src/app-server/run-attempt.turn-watches.test.ts e43015146eb fix(codex): preserve quiet native tool results
+     25  src/tasks/task-registry.test.ts                      b82ad646a51 fix(delivery): preserve suppressed send outcom
+     25  src/auto-reply/reply/reply-state.test.ts             85edd7fdc1f fix: clear stale CLI bindings after manual com
+     25  src/agents/system-prompt.test.ts                     d4b1e9644eb fix(ai): stabilize prompt caching across disco
+     24  src/agents/subagents/spawn/subagent-spawn.ts         5e9575fb415 fix(gateway): show one entry per subagent run 
+     24  extensions/codex/src/app-server/config.test.ts       e1b8150a06c fix(codex): let owners install plugins from di
+     23  src/gateway/tool-resolution.test.ts                  1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     23  src/gateway/server.sessions.compaction.test.ts       85edd7fdc1f fix: clear stale CLI bindings after manual com
+     23  src/gateway/server-lifecycle.ts                      0c824f09d54 feat(gateway): observe paired node desktops (#
+     23  src/commands/status-overview-rows.ts                 28a5889e9bd feat: supervise headless Linux host desktop (#
+     22  src/agents/subagents/registry/subagent-control.ts    f3f203f31d4 refactor(agents): split subagent-control.ts in
+     22  src/agents/embedded-agent-runner/compact.hooks.harness.ts c3887db7c17 feat: compact xAI sessions server-side (AI-ass
+     22  src/agents/agent-tools.policy.ts                     1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     22  extensions/signal/src/monitor/event-handler.ingress-lifecycle.test.ts db28ac2d481 test(signal): cover merged ingress failures
+     21  src/gateway/server-restart-sentinel.ts               ba3cb317773 fix(gateway): prevent targetless events from w
+     21  src/gateway/server-methods/chat-broadcast.ts         1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     21  src/agents/openclaw-tools.sessions.test.ts           1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     21  scripts/plugin-sdk-surface-report.mts                1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     20  src/gateway/chat-abort.ts                            249a38d29fb fix: keep background work scoped to its select
+     20  src/agents/subagents/registry/subagent-registry-restore.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     19  src/infra/heartbeat-wake-policy.ts                   8f0a71d475a fix(tasks): wake queued completion events (#12
+     18  src/agents/subagents/registry/subagent-registry-queries.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     18  src/agents/subagents/registry/subagent-control.test.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     18  src/agents/subagents/announce/subagent-announce.requester-settle-wake.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     18  src/agents/embedded-agent-runner/run-orchestrator.ts 3cdbe3a511e fix(ollama): verify guided setup with runtime 
+     17  src/gateway/server-runtime-subscriptions.ts          97a53a9b35a feat: audit admitted channel participant ident
+     17  src/auto-reply/reply/queue/types.ts                  97a53a9b35a feat: audit admitted channel participant ident
+     16  test/scripts/check-wrapper-shadowing.test.ts         fce5b6688a5 refactor(tooling): enforce zero wrapper and ex
+     16  src/infra/system-events.test.ts                      902eddf16b0 fix: keep global channel events agent-scoped (
+     16  src/cron/service/timer-execution.ts                  d3308e2cfd9 fix(cron): fence executions with durable recei
+     16  src/agents/transcript-redact.ts                      25d4807b383 feat(anthropic): opt-in server-side compaction
+     16  src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     16  src/agents/embedded-agent-runner/run/attempt-stream-prepare.ts b5809f5f44e fix: enforce native tool policy across harness
+     15  src/state/openclaw-state-db-schema-additive.ts       ade3456dd48 feat: add one-paste node onboarding (#122499)
+     15  src/plugin-sdk/infra-runtime.ts                      c23d66e3b57 refactor: consolidate coercion ownership (#122
+     15  src/infra/openclaw-cli-invocation.test.ts            55d7f8a4182 fix(agents): pin agent openclaw invocations to
+     15  extensions/acpx/src/pi-session-catalog.test.ts       b54034d5c22 fix: isolated gateways list and open the opera
+     14  ui/src/pages/chat/components/chat-tool-cards.node.test.ts 678c89c5500 fix(ui): partial tool output no longer flips a
+     14  src/plugin-sdk/system-event-runtime.ts               902eddf16b0 fix: keep global channel events agent-scoped (
+     14  src/logging/diagnostic.test.ts                       d60a98ec873 fix(diagnostics): suppress startup-only heartb
+     14  src/auto-reply/reply/commands-compact.ts             c23c188902f fix: explicit agent ownership no longer breaks
+     14  src/agents/openclaw-tools.ts                         1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     13  src/state/openclaw-state-db-contract.ts              b6548e509aa refactor(state): retire commitments schema (#1
+     13  src/logging/diagnostic.ts                            dceb2c343c4 refactor: retire due compat-ledger surfaces (c
+     13  src/cli/gateway-cli/run.option-collisions.test.ts    8e0f464a5f0 fix(gateway): suppress ambient channel auto-en
+     13  src/agents/subagents/announce/subagent-announce.ts   1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     13  src/agents/embedded-agent-subscribe.handlers.tools.start.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     13  config/knip.config.ts                                79380000e01 refactor(plugin-sdk): remove test-only facades
+     12  test/scripts/check-export-name-collisions.test.ts    fce5b6688a5 refactor(tooling): enforce zero wrapper and ex
+     12  src/infra/heartbeat-runner-scheduler.ts              7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+     12  src/gateway/server-methods/sessions-compact.ts       73443ebed48 fix: stopping a session leaves subagents runni
+     12  src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts 7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+     12  packages/agent-core/src/agent-loop.ts                b080dd1e765 refactor: consolidate coercion contracts (#122
+     11  src/status/summary.ts                                28a5889e9bd feat: supervise headless Linux host desktop (#
+     11  src/gateway/probe.device-auth-scope.test.ts          cf885476a10 test: stabilize hosted UI and gateway races (#
+     11  src/cli/nodes-camera.test.ts                         92ed766673d fix(camera): publish URL downloads atomically 
+     11  src/auto-reply/reply/agent-runner-execution.test-support.ts c500ab7cc0d fix: preserve steering after tool-authority ch
+     11  src/audit/audit-event-writer.ts                      562391b9af3 feat(audit): explain denied operator approvals
+     11  src/agents/subagents/announce/subagent-announce.format.e2e.test.ts 0f5984f4e11 fix(agents): bound task-completion result prom
+     11  src/agents/embedded-agent-runner/runs.force-clear-terminal.test.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     10  src/agents/tools/media-generate-background-shared.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+     10  src/agents/subagents/registry/subagent-registry.archive.e2e.test.ts 41fc4558de0 fix(agents): queued subagents falsely fail wit
+      9  test/vitest-scoped-config.test.ts                    cef071582ea feat: let limited browsers request admin acces
+      9  src/tui/tui-event-handlers.ts                        2f337adb8e7 fix(tui): render each live assistant message o
+      9  src/gateway/server-methods/chat-send-handler.ts      bb5ef9872a7 fix: resume sessions interrupted by gateway re
+      9  src/gateway/agent-turn/agent-run-execution-phase.ts  1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      9  src/auto-reply/reply/agent-runner-execute.ts         7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+      9  src/agents/subagents/registry/subagent-registry-read.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      9  src/agents/embedded-agent-runner/compact.types.ts    b5809f5f44e fix: enforce native tool policy across harness
+      9  src/agents/command/cli-compaction.ts                 71ea4e3838c fix(agents): preserve native CLI compaction bi
+      9  extensions/copilot/src/tool-bridge.test.ts           e4acf438133 test(agents): scope extension fixtures to expl
+      8  ui/src/e2e/session-management.groups.e2e.test.ts     c631b1a45ed fix: archived chat composer returns after sess
+      8  src/agents/openclaw-tools.subagents.sessions-spawn.test-harness.ts 5e9575fb415 fix(gateway): show one entry per subagent run 
+      7  src/logging/diagnostic-stability.ts                  d52a8b3475c fix(logging): parse diagnostics.stability limi
+      7  src/infra/heartbeat-runner-run.ts                    ?
+      7  src/flows/doctor-core-checks.runtime.ts              6f99d3405ce fix(doctor): stop after failed config migratio
+      7  src/cli/config-cli.test.ts                           d2628e430cc fix(cli): avoid restart hint for unchanged con
+      7  src/auto-reply/reply/followup-turn-admission.ts      c3887db7c17 feat: compact xAI sessions server-side (AI-ass
+      7  src/auto-reply/reply/agent-runner-execution.ts       ?
+      7  src/auto-reply/reply/agent-runner-embedded-candidate.ts 42b74b2978d fix: restrict pending input to route-only chan
+      7  src/agents/agent-tools.ts                            b9c6789560b feat(secrets): authenticated egress substituti
+      6  ui/src/lib/chat/tool-cards.ts                        678c89c5500 fix(ui): partial tool output no longer flips a
+      6  src/infra/heartbeat-runner-execution.ts              7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+      6  src/gateway/server-close.test.ts                     77d89b2fa84 fix(agents): scope quota failures to auth prof
+      6  src/auto-reply/reply/session-updates.ts              85edd7fdc1f fix: clear stale CLI bindings after manual com
+      6  src/auto-reply/reply/agent-runner-cli-candidate.ts   42b74b2978d fix: restrict pending input to route-only chan
+      6  src/agents/subagents/spawn/acp-spawn.test.ts         5e9575fb415 fix(gateway): show one entry per subagent run 
+      6  src/agents/internal-events.ts                        0f5984f4e11 fix(agents): bound task-completion result prom
+      5  src/plugin-sdk/provider-catalog-live-runtime.ts      c23d66e3b57 refactor: consolidate coercion ownership (#122
+      5  src/plugins/bundled-plugin-naming.test.ts            b080dd1e765 refactor: consolidate coercion contracts (#122
+      5  src/infra/session-delivery-queue-storage.ts          ba3cb317773 fix(gateway): prevent targetless events from w
+      5  src/gateway/server-close.ts                          73443ebed48 fix: stopping a session leaves subagents runni
+      5  src/agents/subagents/announce/subagent-announce-output.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      5  scripts/protocol-gen-swift.ts                        8876528f7c0 feat: clone GitHub projects from session picke
+      5  scripts/bench-agent-concurrency-worker.ts            b080dd1e765 refactor: consolidate coercion contracts (#122
+      4  ui/src/components/form-controls.browser.test.ts      bfe1f33ea0e improve(ui): make Control UI feel native on mo
+      4  src/infra/heartbeat-wake.test.ts                     7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+      4  src/infra/heartbeat-runner-delivery.ts               fb9a62e9956 fix(heartbeat): suppress silent exec acknowled
+      4  src/gateway/test/server-sessions.test-helpers.ts     be124de8fb7 test: slim gateway session creation coverage (
+      4  src/gateway/session-utils-contracts.ts               0e6f38178a2 refactor(ui): simplify model effort profile fl
+      4  src/cron/service/state.ts                            d3308e2cfd9 fix(cron): fence executions with durable recei
+      4  src/config/types.agent-defaults.ts                   1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      4  src/config/sessions/types.ts                         77d89b2fa84 fix(agents): scope quota failures to auth prof
+      4  src/config/sessions/session-accessor.sqlite-entry.ts 97a53a9b35a feat: audit admitted channel participant ident
+      4  src/commands/doctor/shared/active-tool-schema-warnings.ts 582d0422f1e fix(doctor): exit after unparseable config rep
+      4  src/cli/update-cli.test.ts                           b080dd1e765 refactor: consolidate coercion contracts (#122
+      4  src/agents/system-prompt.ts                          d4b1e9644eb fix(ai): stabilize prompt caching across disco
+      4  src/agents/subagents/registry/subagent-registry-lifecycle.test.ts ebd0133be21 fix(agents): preserve Swarm collector errors (
+      4  src/agents/embedded-agent-runner/run/params.ts       b5809f5f44e fix: enforce native tool policy across harness
+      4  src/agents/embedded-agent-runner/run/attempt-execution-phase.ts c6fc12dc674 fix: keep compacted sessions usable after tran
+      4  apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json cc2fc55f9b4 feat: portals — expose agent-run dev servers
+      3  src/tui/embedded-backend.ts                          f6fff4f7fdb refactor: canonicalize aliases and classify te
+      3  src/tasks/task-flow-registry.store.sqlite.ts         9da43d67e16 refactor: remove residual normalization adapte
+      3  src/infra/heartbeat-runner-config.ts                 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      3  src/index.ts                                         87d3c5318da fix(cli): route legacy version through entry f
+      3  src/hooks/llm-slug-generator.ts                      249a38d29fb fix: keep background work scoped to its select
+      3  src/gateway/server-runtime-services.test.ts          ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+      3  src/gateway/mcp-http.runtime.test.ts                 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      3  src/config/sessions/session-accessor.ts              bb5ef9872a7 fix: resume sessions interrupted by gateway re
+      3  src/config/sessions/session-accessor.sqlite-transcript-write.ts 85edd7fdc1f fix: clear stale CLI bindings after manual com
+      3  src/auto-reply/reply/agent-runner-result-accounting.ts babba7124df fix: heartbeats fail after successful replies 
+      3  src/auto-reply/reply/agent-runner-core.ts            7fcddedaaf6 fix(heartbeat): prevent replies disappearing d
+      3  src/agents/tool-display-config.ts                    cc2fc55f9b4 feat: portals — expose agent-run dev servers
+      3  src/agents/subagents/registry/subagent-registry-sweeper.ts 41fc4558de0 fix(agents): queued subagents falsely fail wit
+      3  extensions/codex/src/app-server/runtime-artifact.test.ts e689231e428 fix: make Codex onboarding survive inherited N
+      3  extensions/codex/src/app-server/dynamic-tools.ts     b080dd1e765 refactor: consolidate coercion contracts (#122
+      3  docs/tools/subagents.md                              d2dad76ecde feat(doctor): relocate shared auth store into 
+      2  test/scripts/lint-suppressions.test.ts               b4f91fadf3e fix(snapshot): survive cold PowerShell starts 
+      2  src/infra/session-delivery-queue-runtime.test.ts     ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+      2  src/gateway/server-methods/chat-send-dispatch-errors.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      2  src/gateway/config-reload.test.ts                    b9c6789560b feat(secrets): authenticated egress substituti
+      2  src/gateway/agent-turn/agent-turn-service.ts         1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      2  src/config/zod-schema.agent-defaults.ts              1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      2  src/commands/status.command-report-data.ts           37b4fc8621d feat(backup): recorded runs, scheduled backups
+      2  src/auto-reply/reply/agent-runner-result-payloads.ts babba7124df fix: heartbeats fail after successful replies 
+      2  src/agents/subagents/registry/subagent-registry.ts   1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      2  src/agents/session-transcript-repair.ts              c6fc12dc674 fix: keep compacted sessions usable after tran
+      2  src/agents/embedded-agent-utils.ts                   c6fc12dc674 fix: keep compacted sessions usable after tran
+      2  src/agents/embedded-agent-runner/prepared-compaction-runtime.ts 94c28e093d6 fix(test): route agent directory runs to ownin
+      2  src/agents/cli-runner/helpers.ts                     7dbe21b9cff fix(agents): hydrate CLI images from agent wor
+      1  tsdown.config.ts                                     1cb9f70cb30 fix(gateway): isolate full model catalog disco
+      1  src/tui/embedded-backend.test.ts                     f6fff4f7fdb refactor: canonicalize aliases and classify te
+      1  src/tasks/task-registry.maintenance.ts               1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      1  src/process/command-queue.ts                         c23d66e3b57 refactor: consolidate coercion ownership (#122
+      1  src/infra/session-delivery-queue.storage.test.ts     ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+      1  src/infra/session-delivery-queue.recovery.test.ts    ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+      1  src/gateway/server-runtime-services.ts               ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+      1  src/gateway/server-restart-sentinel-agent-delivery.ts ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+      1  src/gateway/server-methods/chat-send-nonagent-finalization.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      1  src/gateway/mcp-http.test.ts                         1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      1  src/gateway/mcp-http.runtime.ts                      1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      1  src/gateway/agent-turn/agent-session-persist.ts      1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      1  src/cron/isolated-agent/run.runtime.ts               249a38d29fb fix: keep background work scoped to its select
+      1  src/auto-reply/reply/commands-system-prompt.test.ts  1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      1  src/auto-reply/reply/commands-context-report.ts      c23d66e3b57 refactor: consolidate coercion ownership (#122
+      1  src/agents/tools-effective-inventory.ts              c23c188902f fix: explicit agent ownership no longer breaks
+      1  src/agents/subagents/registry/subagent-registry.types.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      1  src/agents/subagents/completion/subagent-completion-admission.store.ts ad6bc6d3ae8 fix(delivery): keep failed queue rows payload-
+      1  src/agents/embedded-agent-runner/run/run-attempt-dispatch.ts 7c5eaede1e9 feat(codex): pass explicit skill selections as
+      1  src/agents/embedded-agent-runner/run/overflow-context-recovery.ts 65fca84d7c6 fix(agents): keep compacted sessions recoverab
+      1  src/agents/embedded-agent-runner/run/attempt-tool-prepare.ts b9c6789560b feat(secrets): authenticated egress substituti
+      1  src/agents/embedded-agent-runner/run/attempt-system-prompt-prepare.ts 94c28e093d6 fix(test): route agent directory runs to ownin
+      1  src/agents/embedded-agent-runner/compaction-checkpoint.ts 1ca60fbc3a3 refactor(agents): make multi-agent ownership e
+      1  src/agents/core-tool-factory-descriptors.ts          cc2fc55f9b4 feat: portals — expose agent-run dev servers
+      1  src/agents/command/attempt-execution.ts              59c2b9f265c fix(agents): stop CLI runs re-recording final 
+      1  src/agents/command/attempt-execution.cli.test.ts     59c2b9f265c fix(agents): stop CLI runs re-recording final 
+      1  packages/gateway-protocol/src/schema/agent.ts        72ec2a0bb1c fix(ui): show resolved agent names in New Sess
+
+full TSV: /tmp/recon-gate27-full/classification.tsv
