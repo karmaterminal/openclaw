@@ -1,7 +1,7 @@
 # Adversarial review of filed Project 87 ward issues
 
-Reviewer: this lane, against exact `6b09`, causal `cfbb29`, filed #1255–#1259, and `causal-bug-proof` evidence language.
-No GitHub/project/product/fleet mutations.
+Reviewer: this lane, against exact `6b09`, causal `cfbb29`, filed #1255–#1260, and `causal-bug-proof` evidence language.
+No GitHub/project/product/fleet mutations. Resume also reviewed #1260 and Project 87 serialization `#1255 → #1256 → #1258 → #1257 → #1260 → #1259`.
 
 ## Findings (accepted)
 
@@ -14,7 +14,7 @@ Those are different owners:
 - budget: `ingress-drain.ts` `onAbandoned` / `resolveIngressFailureDisposition`
 - reason: `reply-turn-admission.ts` three-way collapse
 
-Upstream #118873/#118879 do not own the abandonment bypass. Folding (b) into the #1255 PR will either widen the fossil or ship an unproven session-owner guess. **Correction:** keep (b) as a named follow-up; do not block the budget fossil on it.
+Upstream #118873/#118879 do not own the abandonment bypass. Folding (b) into the #1255 PR will either widen the fossil or ship an unproven session-owner guess. **Correction (now filed):** (b) is #1260. Do not block the #1255 budget fossil on it.
 
 ### F2. “Proven” / “strongest proven” overclaim
 
@@ -27,7 +27,7 @@ Upstream #118873/#118879 do not own the abandonment bypass. Folding (b) into the
 ### F3. Success-shaped missing evidence
 
 - #1255 says a fossil “is currently running.” Branch `codeagent/silas-abandonment-red-fossil` @ `6f4ef385ea7` exists (test-only). There is no PR, no docs `PROOFS/` row, no captured RED log. “Running” ≠ RED receipt.
-- #1256/#1257/#1258/#1259 have no fossils at all.
+- #1256/#1257/#1258/#1259/#1260 have no fossils at all.
 - #1254 comment’s Silas snapshot (14 attempts, 17-deep backlog) is an earlier window than the causal 42 / 1h46m count. Prefer the later journal window; do not average them.
 
 ### F4. Mocked-executor / observer false proof
@@ -50,7 +50,7 @@ Zero-payload warning is an **observer** after `runDispatch()` (`execution.ts:85-
 
 ### F8. Live-fleet mutation risk is correctly gated in prose, weakly in status
 
-All five issues say no live queue/DB/VACUUM/reauth. Good. Project 87 still has parent #1254 in `in_coding_agent`, which invites a worker to “fix the fleet.” Move #1254 to **In Progress** (scribe orchestration). Coding agents get one child issue.
+All six issues say no live queue/DB/VACUUM/reauth. Good. Parent #1254 is now **In Progress** (scribe orchestration) — F8 is addressed on the project board. Coding agents still get one child issue.
 
 ### F9. Continuation trigger
 
@@ -58,11 +58,11 @@ None of the filed bodies blame continuation. Keep it that way. #124176 is yield-
 
 ### F10. Labels / parent linkage
 
-#1255–#1259 have no labels. Parent #1254 has `bug` + `non-continuation`. Recommend the same labels plus explicit `Closes`/`Child of` language already present. No project field currently stores parent-issue edges (query of that field is unused).
+#1255–#1259 still have no labels. #1260 has `non-continuation` only. Parent #1254 has `bug` + `non-continuation`. Recommend `bug` + `non-continuation` on every child.
 
 ## Corrections applied in this corpus
 
-- Split #1255 desired contract; name session-admission reason as follow-up.
+- Split #1255 desired contract; session-admission reason is now filed #1260.
 - Downgrade “proven” language to the evidence-language ladder.
 - Record Silas fossil as **source present, RED receipt unpublished**.
 - Rewrite #1258 proof plan around the existing nullable column.
@@ -72,7 +72,7 @@ None of the filed bodies blame continuation. Keep it that way. #124176 is yield-
 
 ## What I did not treat as a finding
 
-- Five-way split: correct.
+- Six-way split (original five plus #1260): correct. Do not re-merge #1260 into #1255.
 - Discord `deadLetterMinAgeMs: 0` in the Silas fossil: matches `extensions/discord/src/monitor/ingress.ts:552-555`.
 - Independence from continuation: correct.
 - Mutation gates: directionally correct.
@@ -80,4 +80,16 @@ None of the filed bodies blame continuation. Keep it that way. #124176 is yield-
 
 ## Residual review risk
 
-If the #1255 coding agent “preserves the session-lifecycle reason” by guessing `recovery-owner-invalidated` without a closed reason code, that is a speculative session-owner repair and should be rejected in review.
+If the #1255 coding agent “preserves the session-lifecycle reason” by guessing `recovery-owner-invalidated` without #1260’s `R-NC-SILAS-REASON`, that is a speculative session-owner repair and should be rejected in review.
+
+### F11. #1260 must stay instrumentation-first
+
+Filed body is owner-correct. Risk: a worker “fixes” admission/recovery in the same PR. That would amalgamate with #118879 and skip the isolated Silas receipt. Reject any behavioral successor until `R-NC-SILAS-REASON` exists.
+
+### F12. Serialization vs copy-parallelism
+
+New serial order puts #1258 before #1257. That is a workflow choice, not a causal dependency: #1257 copy work can still run in parallel on **immutable copies** without claiming the next `in_coding_agent` slot. Do not let serialization become a false data dependency.
+
+### F13. Full-suite interrupt is not a new product red
+
+The docs-lane `test-projects.mts` run was interrupted at 215/538 shard starts. Do not treat partial FAILs as a new composite regression. Last complete tally is the causal lane’s 528/10/24 on `6b09`.

@@ -3,7 +3,7 @@
   "title": "SICK WARD - channel issues healing",
   "owner": "karmaterminal",
   "node_id": "PVT_kwDOAYLGvs4BgeH2",
-  "reviewed_at": "2026-08-15T22:30:00Z",
+  "reviewed_at": "2026-08-15T23:10:00Z",
   "composite": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
   "causal_graph": "cfbb29bfd3e751e718fda44649b690268621f13f",
   "parent_issue": 1254,
@@ -11,7 +11,7 @@
     "url": "https://github.com/openclaw/openclaw/pull/121204",
     "owns": "ambient freshness / FIFO starvation after recovery",
     "belongs": [],
-    "does_not_belong": [1255, 1256, 1257, 1258, 1259],
+    "does_not_belong": [1255, 1256, 1257, 1258, 1259, 1260],
     "file_overlap_only": ["src/channels/message/ingress-drain.ts"],
     "deployed_on_6b09": "9045fc66614 and merge composite; do not wait for upstream land"
   },
@@ -31,27 +31,21 @@
     "swim": "Do not use for this ward.",
     "Done": "Proof published at PR-NNNNNN/PROOFS/<FULL_SHA>/ AND deployment disposition recorded."
   },
-  "first_three_treatment_order": [1255, 1256, 1257],
-  "follow_up_after_first_three": [1258, 1259],
-  "named_unfiled_follow_up": [
-    {
-      "id": "session-admission-reason-code",
-      "owner": "src/auto-reply/reply/reply-turn-admission.ts",
-      "do_not_fold_into": 1255,
-      "related_upstream": ["https://github.com/openclaw/openclaw/issues/118873"]
-    }
-  ],
+  "serialization": [1255, 1256, 1258, 1257, 1260, 1259],
+  "first_three_treatment_order": [1255, 1256, 1258],
+  "follow_up_after_first_three": [1257, 1260, 1259],
+  "named_unfiled_follow_up": [],
   "items": [
     {
       "issue": 1254,
       "title": "Fleet triage: Discord turns duplicate, dispatch without payload, or fail to produce visible speech",
       "project_item_id": "PVTI_lADOAYLGvs4BgeH2zg2ri8E",
-      "status_now": "in_coding_agent",
+      "status_now": "In Progress",
       "status_recommended": "In Progress",
       "role": "parent-orchestration",
       "depends_on": [],
       "blocks": [],
-      "children": [1255, 1256, 1257, 1258, 1259]
+      "children": [1255, 1256, 1257, 1258, 1259, 1260]
     },
     {
       "issue": 1255,
@@ -75,7 +69,8 @@
       "status_recommended": "Todo",
       "role": "second-treatment",
       "depends_on": [],
-      "parallel_ok_after": 1255,
+      "serial_index": 2,
+      "depends_on_serial": [1255],
       "do_not_merge_with": [124176, 122076, 1257]
     },
     {
@@ -84,9 +79,10 @@
       "project_item_id": "PVTI_lADOAYLGvs4BgeH2zg2rlZg",
       "status_now": "Todo",
       "status_recommended": "Todo",
-      "role": "third-treatment",
-      "depends_on": [],
-      "parallel_ok_on": "immutable DB copies only",
+      "role": "fourth-treatment",
+      "serial_index": 4,
+      "depends_on_serial": [1255, 1256, 1258],
+      "parallel_ok_on": "immutable DB copies only; serialization is workflow, not a data dependency",
       "candidate_upstream": [119884, 119901],
       "do_not_merge_with": [1256]
     },
@@ -96,8 +92,9 @@
       "project_item_id": "PVTI_lADOAYLGvs4BgeH2zg2rlac",
       "status_now": "Todo",
       "status_recommended": "Todo",
-      "role": "observability-before-rune-repair",
-      "depends_on": [],
+      "role": "third-treatment",
+      "serial_index": 3,
+      "depends_on_serial": [1255, 1256],
       "required_before": ["any Rune delivery fix"],
       "implementation_note": "Populate existing completed_metadata_json; do not add a column or bump schema."
     },
@@ -107,10 +104,27 @@
       "project_item_id": "PVTI_lADOAYLGvs4BgeH2zg2rlcI",
       "status_now": "Todo",
       "status_recommended": "Todo",
-      "role": "observability-before-elliott-repair",
-      "depends_on": [],
+      "role": "sixth-treatment",
+      "serial_index": 6,
+      "depends_on_serial": [1255, 1256, 1258, 1257, 1260],
       "required_before": ["any Elliott fallback/config/reauth change"],
       "do_not_merge_with": [114603]
+    },
+    {
+      "issue": 1260,
+      "title": "Reply-turn admission collapses three lifecycle rejection reasons into one error",
+      "project_item_id": "PVTI_lADOAYLGvs4BgeH2zg2rxag",
+      "status_now": "Todo",
+      "status_recommended": "Todo",
+      "role": "fifth-treatment-instrumentation",
+      "serial_index": 5,
+      "depends_on_serial": [1255, 1256, 1258, 1257],
+      "do_not_fold_into": 1255,
+      "related_upstream": [
+        "https://github.com/openclaw/openclaw/issues/118873",
+        "https://github.com/openclaw/openclaw/pull/118879"
+      ],
+      "required_before": ["any Silas admission/recovery behavioral successor"]
     }
   ],
   "labels_recommended": ["bug", "non-continuation"],

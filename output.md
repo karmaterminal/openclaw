@@ -1,4 +1,4 @@
-# Project 87 ward issue architecture (filed #1255–#1259)
+# Project 87 ward issue architecture (filed #1255–#1260)
 
 Bound parent: [karmaterminal/openclaw#1254](https://github.com/karmaterminal/openclaw/issues/1254)
 Deployed composite: `6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955`
@@ -12,15 +12,19 @@ This lane reviewed the now-filed ward issues. It did not file issues, mutate Pro
 
 ## Verdict in one page
 
-The prior causal lane used the `causal-bug-proof` method honestly: frozen SHAs, separate defect nodes, GitNexus-as-discovery-only, a 7-layer temporal graph, and interventions labelled `not-executed`. It did **not** close any intervention gate. The filed split is the right five-way cut. None of #1255–#1259 belong in upstream PR #121204.
+The prior causal lane used the `causal-bug-proof` method honestly: frozen SHAs, separate defect nodes, GitNexus-as-discovery-only, a 7-layer temporal graph, and interventions labelled `not-executed`. It did **not** close any intervention gate. The filed split is now six independent owners. None of #1255–#1260 belong in upstream PR #121204.
 
-First-three treatment order stays:
+Project 87 serialization (authoritative):
+
+`#1255 → #1256 → #1258 → #1257 → #1260 → #1259`
+
+First three in that serial order:
 
 1. #1255 abandonment retry-budget bypass (only source-plus-cadence retry-policy defect; RED fossil source exists)
 2. #1256 Codex settled-turn rejection reason (same-trace zero-payload chain; inner predicate unknown)
-3. #1257 synchronous agent-SQLite transcript holds (same-trace amplifier; planner/corruption unproven)
+3. #1258 ingress terminal-outcome lineage (Rune classifiable before any speech invention)
 
-Then #1258 (Rune lineage) and #1259 (Elliott route reason). Do not wait for continuation telemetry. Do not treat silence as one disease.
+Then #1257 (SQLite amplifier on copies), #1260 (admission-reason instrumentation; was the unfiled follow-up), #1259 (Elliott route reason). Do not wait for continuation telemetry. Do not treat silence as one disease.
 
 ## Causal-method audit
 
@@ -38,7 +42,7 @@ Incomplete evidence gates (still open):
 
 | Gate | Status |
 | --- | --- |
-| Desired-contract RED receipt published | Incomplete. Silas fossil **source** exists; no published RED log/JUnit/docs row. #1256–#1259 have no fossil. |
+| Desired-contract RED receipt published | Incomplete. Silas fossil **source** exists; no published RED log/JUnit/docs row. #1256–#1260 have no fossil. |
 | Behavioral first-bad | Incomplete. Introducing commits are textual archaeology only. |
 | GREEN → patch-only revert RED → reapply GREEN | Incomplete for every family. Graph interventions are `not-executed`. |
 | Incident-shaped / live executor-transport receipt | Incomplete. `messageId=unknown` still blocks Discord-event → run join. |
@@ -62,6 +66,7 @@ It is the upstream vehicle for fork #1229. Touched production: Discord preflight
 | #1257 agent SQLite hot read | **No.** Agent DB, not ingress drain. |
 | #1258 terminal-outcome lineage | **No.** Completion metadata / discriminator. 121204 may complete stale-ambient as handled; that is one enum value, not this issue. |
 | #1259 route materialization reason | **No.** Prepared provider route owner. |
+| #1260 admission reason collapse | **No.** Reply-turn admission / session recovery owner. |
 
 Do not extend #121204. Do not wait for it to land upstream before treating #1255 on the deployed composite.
 
@@ -73,28 +78,27 @@ Do not extend #121204. Do not wait for it to land upstream before treating #1255
 4. Only after those treatments are proved, layer the proved composite onto the pure continuation assembly.
 5. Continuation is elective session self-control. Upstream spawn/yield (#122076 / #124176) does not subsume it. Princes currently appear to use continuation little outside formal proofs; **no telemetry in this investigation attributes the fleet illness to continuation**. Do not write “continuation caused silence.”
 
-## Issue split (keep five; one named follow-up)
+## Issue split (six filed; none combined)
 
-The five filed issues match the causal minimum cut. Combine none.
+The five original treatments plus #1260 match the causal minimum cut. Combine none. #1260 **is** the previously named `session-admission-reason-code` follow-up; it is now filed and must still stay out of #1255’s repair PR.
 
-Named follow-up **not filed** and must stay out of #1255’s repair PR:
-
-- `session-admission-reason-code`: `admitReplyTurn` collapses three producers into `Session ... changed while starting work. Retry.` (`src/auto-reply/reply/reply-turn-admission.ts:263-325`). Upstream #118873 / #118879 track a **different** recovery-residue branch. Silas’s exact producer is unknown. #1255 currently amalgamates this into its desired contract; see `issue-updates/1255.md`.
+- #1260: `admitReplyTurn` collapses three producers into `Session ... changed while starting work. Retry.` (`src/auto-reply/reply/reply-turn-admission.ts:263-325`). Instrumentation only. Upstream #118873 / #118879 track a **different** recovery-residue branch and are evaluated only if `R-NC-SILAS-REASON` is `recovery-owner-invalidated`.
 
 Related but non-owners: fork #1229/#1188/#787/#1115/#1227; upstream #122076/#124176 (yield-only), #119884/#119901 (ANALYZE candidate), #114137 (intentional `NO_REPLY`), #118873/#118879, #114603 (conditional proxy/SecretRef).
 
 ## Project 87 workflow (Copilot / tmux)
 
-Observed statuses (2026-08-15, org project 87):
+Observed statuses (2026-08-15 resume, org project 87):
 
 | Item | Status now | Recommended |
 | --- | --- | --- |
-| #1254 parent | `in_coding_agent` | **In Progress** — scribe/manual orchestration only |
-| #1255 | `in_coding_agent` | keep — fossil/fix coding lane |
-| #1256 | Todo | Todo until a coding agent is actually assigned |
-| #1257 | Todo | Todo; may start in parallel on **immutable DB copies** after #1255 is claimed |
-| #1258 | Todo | Todo; start after #1255 if a second seat is free, before any Rune “fix” |
-| #1259 | Todo | Todo; isolated session only; last of the first wave |
+| #1254 parent | **In Progress** | keep — scribe/manual orchestration only |
+| #1255 | `in_coding_agent` | keep — first serial treatment |
+| #1256 | Todo | next after #1255 |
+| #1258 | Todo | third serial; before any Rune “fix” |
+| #1257 | Todo | fourth; copies only |
+| #1260 | Todo | fifth; instrumentation only |
+| #1259 | Todo | last; isolated session |
 
 Column rules:
 
@@ -103,26 +107,22 @@ Column rules:
 - **In Progress** — scribe or a human is orchestrating, reviewing drafts, or publishing proofs. Not for the coding agent.
 - **prince_review** — only when a reliable prince reviewer is actually available. Do not park items here as a default gate.
 - **swim** — do **not** use for this ward. SWIM is an old continuation/presentation method; it does not apply to these reliability fossils.
-- **Done** — only after (a) proof publication at `PR-NNNNNN/PROOFS/<FULL_SHA>/`, (b) GREEN→revert-RED→reapply-GREEN, (c) explicit deployment disposition (apply / wait / do-not-deploy). Closing the GitHub issue is a later maintainer step; this lane must not close #1254–#1259.
+- **Done** — only after (a) proof publication at `PR-NNNNNN/PROOFS/<FULL_SHA>/`, (b) GREEN→revert-RED→reapply-GREEN, (c) explicit deployment disposition (apply / wait / do-not-deploy). Closing the GitHub issue is a later maintainer step; this lane must not close #1254–#1260.
 
 ## Implementation / proof ordering
 
 ```text
 #1255 RED fossil receipt → abandonment budget patch → closure on temp state-dir
-        │
-        ├─► #1256 reason-only instrumentation fossil (copied agent DB, no creds/send)
-        │         → repair only the observed predicate → closure
-        │         → incident-shaped receipt before claiming Cael/Ronan/Emeric cured
-        │
-        ├─► #1257 copied-store EXPLAIN/ANALYZE/timing (never live VACUUM)
-        │         → land #119901 only if the copy proves stale sqlite_stat1
-        │         → otherwise bound the sync read owner; keep integrity separate
-        │
-        ├─► #1258 populate existing completed_metadata_json with a closed enum
-        │         → one isolated nonce: 1 event → 1 run-or-gate → 1 terminal → snowflake?
-        │
-        └─► #1259 typed materialization reason in existing fallback decision
-                  → one isolated candidate; expired Copilot cleanup stays separate
+  → #1256 reason-only instrumentation (copied agent DB, no creds/send)
+        → repair only the observed predicate → incident-shaped receipt before “speech cured”
+  → #1258 populate existing completed_metadata_json
+        → one isolated nonce: 1 event → 1 run-or-gate → 1 terminal → snowflake?
+  → #1257 copied-store EXPLAIN/ANALYZE/timing (never live VACUUM)
+        → land #119901 only if the copy proves stale sqlite_stat1
+  → #1260 admission-reason instrumentation (preserve visible text)
+        → R-NC-SILAS-REASON before any behavioral successor; #118879 only if recovery-owner
+  → #1259 typed materialization reason
+        → one isolated candidate; expired Copilot cleanup stays separate
 ```
 
 Then: publish proofs → deployment disposition → only afterwards consider continuation-assembly layering.
@@ -139,12 +139,32 @@ Then: publish proofs → deployment disposition → only afterwards consider con
 - `complete()` already has `completed_metadata_json`; it still nulls `payload_json` / `metadata_json` (`src/channels/message/ingress-queue.ts:1051-1121`)
 - Policy-gate / no-dispatch still `onAdopted()` (`src/channels/message/ingress-monitor.ts:446-450`)
 - `materializePreparedRuntimeModel` collapses four predicates (`src/agents/runtime-plan/materialize-model.ts:99-135`)
+- `admitReplyTurn` three-way collapse (`src/auto-reply/reply/reply-turn-admission.ts:263-325`) is now #1260, not an unfiled note
 
 Current-upstream flux on these owners since `530b`: `fc4d5d744fa` (readable-transcript cleanup) only. It does not cure the observed multi-second successful reads.
 
 ## Full-suite note
 
-Product SHA is unchanged (`6b09`). Causal lane already ran `node --import tsx scripts/test-projects.mts` on this composite: **538/538 shards, 528 green / 10 red, 24 failing tests**, classified as 17 baseline + 7 load-sensitive. This review adds Markdown/JSON only. See `output.md` validation section after the local full-suite rerun on this docs commit.
+Product SHA is unchanged (`6b09`). This docs lane started the sanctioned wrapper once:
+
+```text
+node --import tsx scripts/test-projects.mts
+```
+
+**Classification: incomplete / interrupted — not a completion tally.** Recovered log `/tmp/1786832529651-copilot-tool-output-2030385-7a68ef72-99d9-42e8-a220-fbee2d7d9202.txt` (mtime 2026-08-15 15:41:31 PDT, 1.78 MiB, 21068 lines): 538 shards announced, **215** `[test] starting` lines, **no** `538/538 shard invocations completed` line. Not rerun (user instruction: do not blindly rerun if recoverable).
+
+Partial FAIL files seen before interrupt (not a final set):
+
+- continuation Responses (3) — causal baseline family
+- Project 84 topology contract — causal baseline family
+- Discord `message-handler.queue.test.ts` exhausted-preflight dead-letter — causal baseline family
+- TUI PTY xAI account-limit — causal load-sensitive family
+- UI chat-file-link / cursor-policy browser tests
+- gateway-server `server-startup-secret-owner-isolation.test.ts` (9)
+- gateway-core portal IPv6 + node workspace transfer
+- unit-fast usage/provenance helpers (3)
+
+Last **complete** sanctioned tally remains the causal lane on this same composite: **538/538, 528 green / 10 red, 24 failing tests** (17 baseline + 7 load-sensitive). This lane still changes Markdown/JSON only. Those reds are outside #1254–#1260 product scope.
 
 ## Uncertainties
 
