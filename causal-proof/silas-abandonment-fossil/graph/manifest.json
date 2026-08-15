@@ -1,0 +1,18 @@
+{
+  "schema": "frond.causal-bug-proof.v1",
+  "name": "Silas-class ingress abandonment retry-budget bypass: RED characterization fossil",
+  "boundIssue": "karmaterminal/openclaw#1254",
+  "nodes": 23,
+  "edges": 21,
+  "layers": [
+    "code",
+    "commit",
+    "defect",
+    "governance",
+    "incident",
+    "intervention",
+    "test"
+  ],
+  "interventionExecuted": false,
+  "relationNote": "Every fossil edge is CHARACTERIZES, never PROVES. This lane observes and freezes behavior; it applies no production change, so no counterfactual was landed and no causal claim is discharged."
+}

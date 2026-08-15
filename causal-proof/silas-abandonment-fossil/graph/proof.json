@@ -1,0 +1,330 @@
+{
+  "directed": true,
+  "multigraph": true,
+  "graph": {
+    "name": "Silas-class ingress abandonment retry-budget bypass: RED characterization fossil",
+    "schema": "frond.causal-bug-proof.v1",
+    "boundIssue": "karmaterminal/openclaw#1254"
+  },
+  "nodes": [
+    {
+      "layer": "governance",
+      "kind": "constraint",
+      "label": "Test/proof only; no production fix, no fleet mutation, no PR",
+      "id": "governance:proof-only-lane"
+    },
+    {
+      "layer": "governance",
+      "kind": "evidence-gap",
+      "label": "GitNexus index is not exact 6b09",
+      "toolReportedCommit": "a59a96549b7736613cb86dc846b28d0d82f03295",
+      "indexedAt": "2026-08-08T14:08:45.829Z",
+      "note": "Graph shape confirmed the disposition asymmetry, but releaseUnadopted (introduced by 06600e2ca09) is absent from the index, so symbol-level lookups were re-verified against 6b09 source directly.",
+      "id": "governance:stale-gitnexus"
+    },
+    {
+      "layer": "governance",
+      "kind": "evidence-gap",
+      "label": "Fossil cannot run unchanged at 16c14e5bbfc9",
+      "note": "queue.listFailed and src/channels/message/ingress-drain.test-helpers.ts did not exist yet. Classified by source inspection instead of a behavioral run; no assertion was weakened to obtain a result.",
+      "id": "governance:unrunnable-at-seam-birth"
+    },
+    {
+      "layer": "commit",
+      "kind": "composite",
+      "sha": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+      "id": "commit:deployed"
+    },
+    {
+      "layer": "commit",
+      "kind": "upstream-base",
+      "sha": "530b33e4e37264c89ecd5abdd06279dd23d5c867",
+      "id": "commit:absorbed-upstream"
+    },
+    {
+      "layer": "commit",
+      "kind": "upstream-context",
+      "sha": "ab5b8b9a02c8b90c15b9c618b03cdf9a553d0cde",
+      "id": "commit:current-upstream"
+    },
+    {
+      "layer": "commit",
+      "kind": "introducing-commit",
+      "sha": "16c14e5bbfc9e3a82203272ec7bb82b586df0a84",
+      "pr": "openclaw/openclaw#108924",
+      "timestamp": "2026-07-16",
+      "id": "commit:turn-adoption"
+    },
+    {
+      "layer": "commit",
+      "kind": "behavioral-baseline",
+      "sha": "ac110917e1356833f65e1536768cbfbe7c1938d0",
+      "note": "06600e2ca09^; oldest revision where the unchanged fossil still runs.",
+      "id": "commit:pre-discord-retry-fix"
+    },
+    {
+      "layer": "commit",
+      "kind": "codifying-commit",
+      "sha": "06600e2ca09f33810c096f80b1ac20f0577b48a9",
+      "timestamp": "2026-08-12",
+      "note": "Added onCancelled, refactored the unconditional release into releaseUnadopted, and added the test that pins the unbounded behavior.",
+      "id": "commit:discord-retry-fix"
+    },
+    {
+      "layer": "code",
+      "kind": "owner-boundary",
+      "file": "src/channels/message/ingress-drain.ts",
+      "lines": "504-509",
+      "label": "onAbandoned lifecycle callback",
+      "id": "code:on-abandoned"
+    },
+    {
+      "layer": "code",
+      "kind": "release-path",
+      "file": "src/channels/message/ingress-drain.ts",
+      "lines": "421-438",
+      "label": "releaseUnadopted",
+      "id": "code:release-unadopted"
+    },
+    {
+      "layer": "code",
+      "kind": "bounded-path",
+      "file": "src/channels/message/ingress-drain.ts",
+      "lines": "325-354",
+      "label": "applyFailureDisposition",
+      "id": "code:apply-failure-disposition"
+    },
+    {
+      "layer": "code",
+      "kind": "policy-owner",
+      "file": "src/channels/message/ingress-retry-policy.ts",
+      "lines": "92-121",
+      "label": "resolveIngressFailureDisposition (sole maxAttempts enforcement site)",
+      "id": "code:resolve-failure-disposition"
+    },
+    {
+      "layer": "code",
+      "kind": "production-config",
+      "file": "extensions/discord/src/monitor/ingress.ts",
+      "lines": "552-555",
+      "label": "maxAttempts=8, deadLetterMinAgeMs=0",
+      "id": "code:discord-retry-policy"
+    },
+    {
+      "layer": "code",
+      "kind": "conflicting-expectation",
+      "file": "src/channels/message/ingress-drain.test.ts",
+      "lines": "676-707",
+      "label": "keeps retry-accounted abandonment pending beyond the failure threshold",
+      "note": "Asserts listFailed() === [] after abandonments past maxAttempts. Carries no comment naming a contract or invariant reason.",
+      "id": "code:codifying-test"
+    },
+    {
+      "layer": "defect",
+      "kind": "retry-policy-bypass",
+      "owner": "durable ingress abandonment",
+      "status": "behaviorally-characterized",
+      "id": "defect:silas-abandonment-budget"
+    },
+    {
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seat": "silas",
+      "observedAttempts": 42,
+      "id": "incident:silas-loop"
+    },
+    {
+      "layer": "test",
+      "kind": "landed-fossil",
+      "file": "src/channels/message/ingress-drain.abandonment-retry-budget.test.ts",
+      "commit": "6f4ef385ea7",
+      "expectedResult": "RED on 6b09",
+      "observedResult": "1 failed | 4 passed",
+      "id": "fossil:abandonment-retry-budget"
+    },
+    {
+      "layer": "test",
+      "kind": "negative-control",
+      "label": "keeps an abandoned claim retryable below the attempt ceiling",
+      "observedResult": "GREEN on 6b09",
+      "id": "control:below-ceiling"
+    },
+    {
+      "layer": "test",
+      "kind": "negative-control",
+      "label": "leaves cancellation budget-free even at the attempt ceiling",
+      "observedResult": "GREEN on 6b09",
+      "id": "control:cancellation-budget-free"
+    },
+    {
+      "layer": "test",
+      "kind": "negative-control",
+      "label": "keeps an unrelated lane draining while one lane head is abandoned",
+      "observedResult": "GREEN on 6b09",
+      "id": "control:unrelated-lane"
+    },
+    {
+      "layer": "test",
+      "kind": "negative-control",
+      "label": "still dead-letters an ordinary thrown dispatch failure on its bounded path",
+      "observedResult": "GREEN on 6b09",
+      "id": "control:thrown-failure"
+    },
+    {
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-landed",
+      "note": "Applied locally only to prove the fossil is reachable, then reverted. All five fossil tests turned GREEN; one pre-existing test (code:codifying-test) turned RED.",
+      "id": "intervention:abandonment-budget"
+    }
+  ],
+  "edges": [
+    {
+      "relation": "CALLS_UNCONDITIONALLY",
+      "source": "code:on-abandoned",
+      "target": "code:release-unadopted",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "source": "code:apply-failure-disposition",
+      "target": "code:resolve-failure-disposition",
+      "key": 0
+    },
+    {
+      "relation": "NEVER_REACHES",
+      "evidenceClass": "source-plus-gitnexus-graph",
+      "note": "onFailed reaches the bounded disposition; onAbandoned has no path to it at any inspected revision.",
+      "source": "code:on-abandoned",
+      "target": "code:apply-failure-disposition",
+      "key": 0
+    },
+    {
+      "relation": "OWNS",
+      "source": "code:on-abandoned",
+      "target": "defect:silas-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "MAKES_REACHABLE",
+      "note": "deadLetterMinAgeMs=0 removes the age floor, so only the unreachable attempt ceiling remained as a bound.",
+      "source": "code:discord-retry-policy",
+      "target": "defect:silas-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "INTRODUCES",
+      "evidenceClass": "source-inspection",
+      "note": "onAbandoned already called releaseClaim(state.claim, \"turn-abandoned\") directly while applyFailureDisposition existed in the same file.",
+      "source": "commit:turn-adoption",
+      "target": "defect:silas-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "INTRODUCES",
+      "evidenceClass": "git-log-pickaxe",
+      "source": "commit:discord-retry-fix",
+      "target": "code:codifying-test",
+      "key": 0
+    },
+    {
+      "relation": "CODIFIES",
+      "note": "Blocks a purely additive repair: the fix lane must delete or retarget this expectation.",
+      "source": "code:codifying-test",
+      "target": "defect:silas-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "CHARACTERIZES",
+      "evidenceClass": "behavioral-red",
+      "note": "No intervention landed in this lane, so the fossil characterizes the missing contract rather than proving causation.",
+      "source": "fossil:abandonment-retry-budget",
+      "target": "defect:silas-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "CHARACTERIZES",
+      "evidenceClass": "shape-match-not-replay",
+      "note": "Reproduces the production retry policy and the pre-adoption abandonment path, not the seat's session-lifecycle rejection producer.",
+      "source": "fossil:abandonment-retry-budget",
+      "target": "incident:silas-loop",
+      "key": 0
+    },
+    {
+      "relation": "BOUNDS_REPAIR",
+      "note": "Repair must not dead-letter before the ceiling.",
+      "source": "control:below-ceiling",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "BOUNDS_REPAIR",
+      "note": "Repair must not consume budget on cancellation.",
+      "source": "control:cancellation-budget-free",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "BOUNDS_REPAIR",
+      "note": "Repair must not disturb a neighbouring lane.",
+      "source": "control:unrelated-lane",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "BOUNDS_REPAIR",
+      "note": "Repair must keep the ordinary-failure producer message distinct from the abandonment one.",
+      "source": "control:thrown-failure",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "OBSERVED_RED",
+      "note": "1 failed | 4 passed",
+      "source": "commit:deployed",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "OBSERVED_RED",
+      "note": "1 failed | 4 passed, fossil unchanged",
+      "source": "commit:absorbed-upstream",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "OBSERVED_RED",
+      "note": "1 failed | 4 passed, fossil unchanged; defect is live upstream",
+      "source": "commit:current-upstream",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "OBSERVED_RED",
+      "note": "2 failed | 3 passed; primary RED identical, cancellation control structurally inapplicable because onCancelled did not exist",
+      "source": "commit:pre-discord-retry-fix",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "LIMITS_EVIDENCE",
+      "source": "governance:unrunnable-at-seam-birth",
+      "target": "commit:turn-adoption",
+      "key": 0
+    },
+    {
+      "relation": "WOULD_SATISFY",
+      "evidenceClass": "local-unlanded-counterfactual",
+      "note": "Reverted before commit; recorded to prove the fossil asserts a reachable contract, not an impossible one.",
+      "source": "intervention:abandonment-budget",
+      "target": "fossil:abandonment-retry-budget",
+      "key": 0
+    },
+    {
+      "relation": "CONFLICTS_WITH",
+      "source": "intervention:abandonment-budget",
+      "target": "code:codifying-test",
+      "key": 0
+    }
+  ]
+}

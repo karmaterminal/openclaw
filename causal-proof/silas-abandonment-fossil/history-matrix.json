@@ -1,0 +1,62 @@
+{
+  "schema": "frond.fossil-history-matrix.v1",
+  "boundIssue": "karmaterminal/openclaw#1254",
+  "fossil": "src/channels/message/ingress-drain.abandonment-retry-budget.test.ts",
+  "fossilCommit": "6f4ef385ea7",
+  "runner": "node scripts/run-vitest.mjs run --config test/vitest/vitest.channels.config.ts --maxWorkers=1 src/channels/message/ingress-drain.abandonment-retry-budget.test.ts",
+  "adaptationPolicy": "Fossil bytes were identical at every runnable revision. No import was rewritten and no assertion was weakened to obtain a result.",
+  "crossRevisionSetup": "Detached git worktrees with node_modules symlinked from the 6b09 checkout. Workspace packages resolve through tsconfig paths / the vitest alias at ./packages, so each worktree used its own workspace sources. packages/normalization-core and packages/retry are byte-identical across 6b09, 530b33e and ab5b8b9, so the symlink cannot have changed behavior. Worktrees were removed after the runs.",
+  "revisions": [
+    {
+      "sha": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+      "role": "deployed composite (lane base)",
+      "runnable": true,
+      "tally": "1 failed | 4 passed (5)",
+      "primary": "RED",
+      "controls": "4 GREEN",
+      "classification": "intended RED for the missing contract"
+    },
+    {
+      "sha": "530b33e4e37264c89ecd5abdd06279dd23d5c867",
+      "role": "absorbed upstream base",
+      "runnable": true,
+      "tally": "1 failed | 4 passed (5)",
+      "primary": "RED",
+      "controls": "4 GREEN",
+      "classification": "identical to 6b09; not fork-introduced"
+    },
+    {
+      "sha": "ab5b8b9a02c8b90c15b9c618b03cdf9a553d0cde",
+      "role": "current upstream context",
+      "runnable": true,
+      "tally": "1 failed | 4 passed (5)",
+      "primary": "RED",
+      "controls": "4 GREEN",
+      "classification": "still live upstream; no later upstream flux repaired it"
+    },
+    {
+      "sha": "ac110917e1356833f65e1536768cbfbe7c1938d0",
+      "role": "06600e2ca09^, immediately before the Discord retry/cancellation fix",
+      "runnable": true,
+      "tally": "2 failed | 3 passed (5)",
+      "primary": "RED",
+      "controls": "3 GREEN, 1 structurally inapplicable",
+      "classification": "primary RED identical. The cancellation control failed with 'expected cancel callback to be defined' because lifecycle.onCancelled did not exist before 06600e2ca09. Structural absence, not a behavioral regression."
+    },
+    {
+      "sha": "16c14e5bbfc9e3a82203272ec7bb82b586df0a84",
+      "role": "turn-adoption lifecycle seam introduction (openclaw/openclaw#108924)",
+      "runnable": false,
+      "unrunnableReason": "queue.listFailed (the dead-letter observation surface) and src/channels/message/ingress-drain.test-helpers.ts did not exist at this revision. Making the fossil run would have required replacing its terminal-outcome assertion, which is forbidden.",
+      "primary": "RED by source inspection",
+      "sourceEvidence": "onAbandoned called releaseClaim(state.claim, \"turn-abandoned\") inside settleOnce with no disposition check, while applyFailureDisposition -> resolveIngressFailureDisposition already existed at line 401 of the same file.",
+      "classification": "born broken at the seam's introduction"
+    }
+  ],
+  "verdict": {
+    "bornBroken": true,
+    "laterRegression": false,
+    "forkIntroduced": false,
+    "statement": "The bypass is original to the turn-adoption lifecycle seam (16c14e5bbfc9, upstream, 2026-07-16) and is unchanged in the absorbed upstream base, the deployed composite, and current upstream main. 06600e2ca09 refactored the unconditional release into releaseUnadopted and added a test that pins the behavior; it did not introduce the bypass. 69983f80113 made pre-adoption failures hand back to durable ingress, which is what turned an unbounded loop into the observed 42-attempt capped-cadence retry storm rather than a stranded claim."
+  }
+}

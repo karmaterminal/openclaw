@@ -1,0 +1,97 @@
+{
+  "tool": "gitnexus",
+  "repo": "openclaw",
+  "indexedCommit": "a59a96549b7736613cb86dc846b28d0d82f03295",
+  "indexedAt": "2026-08-08T14:08:45.829Z",
+  "targetCommit": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+  "staleness": {
+    "exactMatch": false,
+    "note": "The index predates 6b09. releaseUnadopted resolves as 'Target not found' and resolveIngressFailureDisposition reports zero non-test callers, so every symbol-level claim below was re-verified directly against 6b09 source before use.",
+    "impactProbe": {
+      "target": "releaseUnadopted",
+      "direction": "upstream",
+      "result": "Target 'releaseUnadopted' not found"
+    }
+  },
+  "asymmetry": {
+    "statement": "The bounded-disposition path is reachable from onFailed and unreachable from onAbandoned. The index shows this at its own SHA, where onAbandoned still called releaseClaim directly; 6b09 has the same asymmetry with releaseUnadopted interposed.",
+    "boundedPath": [
+      "onFailed (src/channels/message/ingress-drain.ts)",
+      "applyFailureDisposition (src/channels/message/ingress-drain.ts)",
+      "resolveIngressFailureDisposition (src/channels/message/ingress-retry-policy.ts)",
+      "shouldDeadLetterRetryableIngressEvent (src/channels/message/ingress-retry-policy.ts)"
+    ],
+    "bypassPath": [
+      "onAbandoned (src/channels/message/ingress-drain.ts)",
+      "releaseClaim (src/channels/message/ingress-drain.ts)"
+    ]
+  },
+  "cypher": {
+    "query": "MATCH (a)-[r:CodeRelation]->(b) WHERE a.name IN [\"onAbandoned\",\"onCancelled\",\"onFailed\",\"releaseUnadopted\",\"applyFailureDisposition\"] RETURN a.name AS caller, a.filePath AS callerFile, r.type AS rel, b.name AS callee, b.filePath AS calleeFile ORDER BY caller, callee",
+    "callEdges": [
+      {
+        "caller": "applyFailureDisposition",
+        "callerFile": "src/channels/message/ingress-drain.ts",
+        "callee": "failClaim",
+        "calleeFile": "src/channels/message/ingress-drain.ts"
+      },
+      {
+        "caller": "applyFailureDisposition",
+        "callerFile": "src/channels/message/ingress-drain.ts",
+        "callee": "releaseClaim",
+        "calleeFile": "src/channels/message/ingress-drain.ts"
+      },
+      {
+        "caller": "applyFailureDisposition",
+        "callerFile": "src/channels/message/ingress-drain.ts",
+        "callee": "resolveIngressFailureDisposition",
+        "calleeFile": "src/channels/message/ingress-retry-policy.ts"
+      },
+      {
+        "caller": "onFailed",
+        "callerFile": "src/channels/message/ingress-drain.ts",
+        "callee": "applyFailureDisposition",
+        "calleeFile": "src/channels/message/ingress-drain.ts"
+      },
+      {
+        "caller": "onAbandoned",
+        "callerFile": "src/channels/message/ingress-drain.ts",
+        "callee": "clearStallTimer",
+        "calleeFile": "src/channels/message/ingress-drain.ts"
+      },
+      {
+        "caller": "onAbandoned",
+        "callerFile": "src/channels/message/ingress-drain.ts",
+        "callee": "releaseClaim",
+        "calleeFile": "src/channels/message/ingress-drain.ts"
+      }
+    ],
+    "absentEdge": {
+      "caller": "onAbandoned",
+      "callee": "applyFailureDisposition",
+      "meaning": "No call edge exists in either direction of the graph; abandonment cannot reach the only maxAttempts enforcement site."
+    }
+  },
+  "verifiedAgainst6b09": [
+    {
+      "file": "src/channels/message/ingress-drain.ts",
+      "lines": "503-506",
+      "fact": "onAbandoned calls releaseUnadopted(state, { lastError: \"turn-abandoned\" })"
+    },
+    {
+      "file": "src/channels/message/ingress-drain.ts",
+      "lines": "421-437",
+      "fact": "releaseUnadopted only ever calls releaseClaim"
+    },
+    {
+      "file": "src/channels/message/ingress-drain.ts",
+      "lines": "486-499",
+      "fact": "onFailed calls applyFailureDisposition"
+    },
+    {
+      "file": "src/channels/message/ingress-retry-policy.ts",
+      "lines": "112-119",
+      "fact": "retry-limit-exceeded is produced only inside resolveIngressFailureDisposition"
+    }
+  ]
+}

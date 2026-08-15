@@ -1,0 +1,22 @@
+source,target,evidenceClass,note,relation
+code:on-abandoned,code:release-unadopted,,,CALLS_UNCONDITIONALLY
+code:apply-failure-disposition,code:resolve-failure-disposition,,,CALLS
+code:on-abandoned,code:apply-failure-disposition,source-plus-gitnexus-graph,onFailed reaches the bounded disposition; onAbandoned has no path to it at any inspected revision.,NEVER_REACHES
+code:on-abandoned,defect:silas-abandonment-budget,,,OWNS
+code:discord-retry-policy,defect:silas-abandonment-budget,,"deadLetterMinAgeMs=0 removes the age floor, so only the unreachable attempt ceiling remained as a bound.",MAKES_REACHABLE
+commit:turn-adoption,defect:silas-abandonment-budget,source-inspection,"onAbandoned already called releaseClaim(state.claim, ""turn-abandoned"") directly while applyFailureDisposition existed in the same file.",INTRODUCES
+commit:discord-retry-fix,code:codifying-test,git-log-pickaxe,,INTRODUCES
+code:codifying-test,defect:silas-abandonment-budget,,Blocks a purely additive repair: the fix lane must delete or retarget this expectation.,CODIFIES
+fossil:abandonment-retry-budget,defect:silas-abandonment-budget,behavioral-red,"No intervention landed in this lane, so the fossil characterizes the missing contract rather than proving causation.",CHARACTERIZES
+fossil:abandonment-retry-budget,incident:silas-loop,shape-match-not-replay,"Reproduces the production retry policy and the pre-adoption abandonment path, not the seat's session-lifecycle rejection producer.",CHARACTERIZES
+control:below-ceiling,fossil:abandonment-retry-budget,,Repair must not dead-letter before the ceiling.,BOUNDS_REPAIR
+control:cancellation-budget-free,fossil:abandonment-retry-budget,,Repair must not consume budget on cancellation.,BOUNDS_REPAIR
+control:unrelated-lane,fossil:abandonment-retry-budget,,Repair must not disturb a neighbouring lane.,BOUNDS_REPAIR
+control:thrown-failure,fossil:abandonment-retry-budget,,Repair must keep the ordinary-failure producer message distinct from the abandonment one.,BOUNDS_REPAIR
+commit:deployed,fossil:abandonment-retry-budget,,1 failed | 4 passed,OBSERVED_RED
+commit:absorbed-upstream,fossil:abandonment-retry-budget,,"1 failed | 4 passed, fossil unchanged",OBSERVED_RED
+commit:current-upstream,fossil:abandonment-retry-budget,,"1 failed | 4 passed, fossil unchanged; defect is live upstream",OBSERVED_RED
+commit:pre-discord-retry-fix,fossil:abandonment-retry-budget,,"2 failed | 3 passed; primary RED identical, cancellation control structurally inapplicable because onCancelled did not exist",OBSERVED_RED
+governance:unrunnable-at-seam-birth,commit:turn-adoption,,,LIMITS_EVIDENCE
+intervention:abandonment-budget,fossil:abandonment-retry-budget,local-unlanded-counterfactual,"Reverted before commit; recorded to prove the fossil asserts a reachable contract, not an impossible one.",WOULD_SATISFY
+intervention:abandonment-budget,code:codifying-test,,,CONFLICTS_WITH
