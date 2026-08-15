@@ -1,0 +1,15 @@
+window,seat,continuation_traces,continuation_spans,work_spans,work_fire_spans,delegate_dispatch_spans,delegate_fire_spans,fanout_spans,queue_drain_spans,compaction_released_spans,disabled_spans,typed_continue_work_tool_spans,typed_continue_delegate_tool_spans,typed_request_compaction_tool_spans,loki_bracket_work_signals,loki_tool_work_signals,loki_bracket_delegate_signals,loki_slow_sqlite_hold_logs,loki_slow_sqlite_wait_logs,loki_sqlite_lock_wait_failed_logs,model_turn_spans,discord_processed_spans,run_error_spans,message_processed_error_spans
+24h,cael-prince,180,224,8,8,14,13,0,150,31,0,7,16,2,2,14,2,508,0,0,242,354,22,320
+24h,elliott-prince,173,173,0,0,0,0,0,173,0,0,0,0,0,0,0,0,9,15,0,0,192,2,37
+24h,emeric-prince,170,170,0,0,0,0,0,169,1,0,0,0,0,0,0,0,130,0,0,191,462,30,350
+24h,ronan-prince,99,99,0,0,0,0,0,92,7,0,0,0,0,0,0,0,298,0,2,130,53,20,0
+24h,rune-prince,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+24h,silas-prince,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1091,0,1091
+24h,unknown-root,5,5,0,0,1,1,0,2,1,0,1,4,2,0,0,0,0,0,0,22,188,4,0
+7d,cael-prince,6878,7275,78,81,131,108,0,6732,141,0,71,152,37,28,245,27,15635,2,2,5730,3586,242,327
+7d,elliott-prince,3276,3280,5,0,0,0,0,3275,0,0,12,11,1,0,2,0,260,61,6,0,1538,122,44
+7d,emeric-prince,8560,8594,16,8,0,0,0,8548,17,1,8,14,4,0,14,0,409,2,0,5035,5815,81,852
+7d,ronan-prince,5928,5969,7,4,5,4,0,5881,68,0,6,11,6,0,90,0,8560,22,8,4235,3245,211,4
+7d,rune-prince,2848,2848,0,0,0,0,0,2844,4,0,0,0,0,0,0,0,3171,61,0,272,893,326,50
+7d,silas-prince,4864,5022,14,37,16,10,6,4858,0,0,15,53,3,4,13,1,738,417,17,23,4823,245,3536
+7d,unknown-root,35,238,62,53,32,30,2,146,24,0,88,128,50,0,0,0,0,0,0,8501,12234,1549,27

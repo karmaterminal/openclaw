@@ -1,0 +1,133 @@
+{
+  "issue": "karmaterminal/openclaw#1254",
+  "source_revision": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+  "captured_at_utc": "2026-08-15T21:55:23Z",
+  "window_end_utc": "2026-08-15T21:55:01Z",
+  "windows": {
+    "24h": {
+      "start_utc": "2026-08-14T21:55:01Z",
+      "end_utc": "2026-08-15T21:55:01Z",
+      "tempo_complete": true,
+      "loki_instant": true,
+      "unique_continuation_traces": 624,
+      "canonical_continuation_spans": 671,
+      "entry_spans": {
+        "continuation.work": 8,
+        "continuation.delegate.dispatch": 15,
+        "total": 23
+      },
+      "wake_return_finalization": {
+        "continuation.work.fire": 8,
+        "continuation.delegate.fire": 14,
+        "continuation.queue.fanout": 0,
+        "continuation.queue.drain": 586,
+        "continuation.compaction.released": 40,
+        "continuation.disabled": 0
+      },
+      "typed_tool_spans": {
+        "continue_work": 8,
+        "continue_delegate": 20,
+        "request_compaction": 4
+      },
+      "loki_signal_origins": {
+        "bracket_work": 2,
+        "tool_call_work": 14,
+        "bracket_delegate": 2,
+        "tool_call_delegate": 0
+      },
+      "unique_sessions_from_loki": 7,
+      "effective_signal_log_records": 18,
+      "controls": {
+        "model_turn_spans": 585,
+        "discord_processed_spans": 2340,
+        "run_error_spans": 78,
+        "message_processed_error_spans": 1798,
+        "slow_sqlite_hold_logs": 945,
+        "sqlite_lock_wait_logs": 15,
+        "sqlite_lock_wait_failed_logs": 2,
+        "empty_payload_log_heuristic": 147,
+        "finalization_failed_log_heuristic": 115
+      }
+    },
+    "7d": {
+      "start_utc": "2026-08-08T21:55:01Z",
+      "end_utc": "2026-08-15T21:55:01Z",
+      "tempo_complete": true,
+      "tempo_trace_count_method": "traceID dedupe across seven complete 24h slices",
+      "loki_instant": true,
+      "unique_continuation_traces": 32389,
+      "canonical_continuation_spans": 33226,
+      "entry_spans": {
+        "continuation.work": 182,
+        "continuation.delegate.dispatch": 184,
+        "total": 366
+      },
+      "wake_return_finalization": {
+        "continuation.work.fire": 183,
+        "continuation.delegate.fire": 152,
+        "continuation.queue.fanout": 8,
+        "continuation.queue.drain": 32284,
+        "continuation.compaction.released": 254,
+        "continuation.disabled": 1
+      },
+      "typed_tool_spans": {
+        "continue_work": 200,
+        "continue_delegate": 369,
+        "request_compaction": 101
+      },
+      "loki_signal_origins": {
+        "bracket_work": 32,
+        "tool_call_work": 364,
+        "bracket_delegate": 28,
+        "tool_call_delegate": 0
+      },
+      "unique_sessions_from_loki": 116,
+      "effective_signal_log_records": 424,
+      "controls": {
+        "model_turn_spans": 23796,
+        "discord_processed_spans": 32134,
+        "run_error_spans": 2776,
+        "message_processed_error_spans": 4840,
+        "slow_sqlite_hold_logs": 28773,
+        "sqlite_lock_wait_logs": 565,
+        "sqlite_lock_wait_failed_logs": 33,
+        "empty_payload_log_heuristic": 12722,
+        "finalization_failed_log_heuristic": 1664
+      }
+    }
+  },
+  "backend": {
+    "tempo": {
+      "ready_http": 200,
+      "version": "2.5.0",
+      "complete_24h_blocks": 24,
+      "complete_24h_jobs": "25/25",
+      "seven_day_method": "seven complete 24h slices because unsliced search hit limit=10000",
+      "degraded_after_capture": "historical searches returned live-store-only responses without totalBlocks; later zero matches are unknown"
+    },
+    "loki": {
+      "ready_http": 200,
+      "method": "instant count_over_time",
+      "range_max_entries_limit": 5000
+    },
+    "node_journal": {
+      "ssh_reachable": ["cael", "elliott", "emeric", "ronan", "rune", "silas"],
+      "usable": false,
+      "reason": "journalctl scope mismatch and Cael timeout; not interpreted as zero"
+    }
+  },
+  "proof_traffic": {
+    "tempo_k6_marker_matches": 0,
+    "tempo_project81_marker_matches": 0,
+    "resource_marker_present": false,
+    "known_manual_window_start_utc": "2026-08-15T16:25:00Z",
+    "excluded": false,
+    "classification": "unknown_without_stable_marker"
+  },
+  "privacy": {
+    "payloads_read": false,
+    "raw_identifiers_in_artifacts": false,
+    "session_identifiers": "counted after local processing and omitted"
+  },
+  "verdict": "Continuation entry activity is too rare to explain fleet symptom prevalence alone; it intersects symptoms and may amplify individual traces, but causality is unproven."
+}
