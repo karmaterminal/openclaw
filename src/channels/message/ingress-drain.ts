@@ -17,6 +17,11 @@ import {
 } from "./ingress-claim-owner.js";
 import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
 import {
+  type OnChannelIngressPendingDispositionCommitted,
+  type ResolveChannelIngressPendingDisposition,
+  resolveIngressPendingDispositions,
+} from "./ingress-drain-pending-disposition.js";
+import {
   activeClaimKey,
   IngressAdoptionLostError,
   isIngressAdoptionLostError,
@@ -78,6 +83,8 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
+  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -661,9 +668,15 @@ export function createChannelIngressDrain<
 
     await recoverStaleClaims();
 
-    const pending = await queue.listPending({ limit: "all", orderBy });
+    const dispositionNow = now();
+    const pendingDispositionResult = await resolveIngressPendingDispositions({
+      ...options,
+      dispositionNow,
+      queue,
+      orderBy,
+      log,
+    });
     const claims = await queue.listClaims();
-    const activeLaneKeys = new Set(laneOwnerByKey.keys());
     const claimedLaneKeys = new Set(
       claims
         .filter((claim) => {
@@ -679,25 +692,35 @@ export function createChannelIngressDrain<
           resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
         ),
     );
+    const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
+    const oldestRetainedPendingLaneKeys = new Set<string>();
     const retryDelayedLaneKeys = new Set<string>();
-    for (const event of pending) {
-      if (resolveIngressRetryDelayMs(event, options.retryPolicy, now()) > 0) {
-        retryDelayedLaneKeys.add(
-          resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey),
-        );
+    for (const event of pendingDispositionResult.pending) {
+      const retryDelayMs = resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow);
+      if (retryDelayMs === 0) {
+        eligiblePending.push(event);
+      }
+      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
+      if (oldestRetainedPendingLaneKeys.has(laneKey)) {
+        continue;
+      }
+      oldestRetainedPendingLaneKeys.add(laneKey);
+      // Only the oldest retained row may block its lane for retry backoff.
+      if (retryDelayMs > 0) {
+        retryDelayedLaneKeys.add(laneKey);
       }
     }
 
     // Deterministic blocked set for claimNext lane serialization.
     const blockedLaneKeys = new Set<string>([
-      ...sortedKeys(activeLaneKeys),
+      ...sortedKeys(laneOwnerByKey.keys()),
       ...sortedKeys(claimedLaneKeys),
       ...sortedKeys(retryDelayedLaneKeys),
+      ...sortedKeys(pendingDispositionResult.blockedLaneKeys),
     ]);
 
-    // Optional supersede scan: pending events may abort unadopted same-lane work.
-    // Free the lane in blockedLaneKeys so claimNext can take the superseding event.
-    for (const event of pending) {
+    // Supersede may free a lane so claimNext can take the replacement event.
+    for (const event of eligiblePending) {
       if (shouldStop()) {
         break;
       }
@@ -707,7 +730,7 @@ export function createChannelIngressDrain<
       }
     }
 
-    const candidateIds = new Set(pending.map((event) => event.id));
+    const candidateIds = new Set(eligiblePending.map((event) => event.id));
     let started = 0;
     while (started < startLimit) {
       if (shouldStop()) {
